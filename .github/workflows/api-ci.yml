@@ -41,22 +41,18 @@ jobs:
       PORT: 4000
       PRISMA_LOG_LEVEL: info
       CI: "true"
+      ACTIONS_STEP_DEBUG: "true"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Print workspace tree (top)
+      - name: Print workspace tree
         run: |
-          echo "== repo root =="
-          pwd
-          ls -la
-          echo "== api dir =="
-          cd api
-          ls -la
-          echo "== prisma dir =="
-          cd prisma || true
-          ls -la || true
+          set -x
+          echo "== repo root =="; pwd; ls -la ..
+          echo "== api dir ==";  pwd; ls -la
+          echo "== prisma ==";   ls -la prisma || true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -67,7 +63,11 @@ jobs:
             api/package-lock.json
 
       - name: Install deps
-        run: npm ci
+        run: |
+          set -x
+          npm ci
+          npm -v
+          node -v
 
       - name: Show Prisma version
         run: npx prisma -v
@@ -78,10 +78,8 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
-      - name: Check migration status
-        run: |
-          set -xe
-          npx prisma migrate status --schema=prisma/schema.prisma
+      - name: Migration status
+        run: npx prisma migrate status --schema=prisma/schema.prisma
 
       - name: Apply DB migrations
         run: npm run prisma:deploy
@@ -94,10 +92,12 @@ jobs:
 
       - name: Start API (background)
         run: |
-          node dist/src/server.js &
+          set -x
+          node dist/src/server.js > server.log 2>&1 &
           echo $! > api.pid
-          sleep 1
-          ps aux | grep node
+          sleep 2
+          ps aux | grep -E "node dist/src/server.js" || true
+          tail -n +1 server.log || true
 
       - name: Wait for API
         run: |
@@ -112,8 +112,22 @@ jobs:
       - name: Healthcheck
         run: curl -sSf http://localhost:4000/healthz | tee /dev/stderr
 
-      - name: Tail API logs on failure
-        if: failure()
+      # Always upload logs & tree so we can see why it failed
+      - name: Collect debug artifacts
+        if: always()
         run: |
-          echo "Build failed — showing recent Node processes/log hints"
-          ps aux | grep node || true
+          set -x
+          mkdir -p ../_ci_debug
+          cp -v server.log ../_ci_debug/server.log 2>/dev/null || true
+          cp -v api.pid ../_ci_debug/api.pid 2>/dev/null || true
+          cp -v package.json ../_ci_debug/api.package.json
+          cp -v tsconfig.json ../_ci_debug/api.tsconfig.json
+          cp -v prisma/schema.prisma ../_ci_debug/schema.prisma
+          npx prisma -v > ../_ci_debug/prisma-version.txt || true
+          tree -a -I "node_modules" .. > ../_ci_debug/tree.txt || true
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-ci-debug
+          path: _ci_debug
