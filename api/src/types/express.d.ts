@@ -1,5 +1,5 @@
-// Tell TypeScript that Express.Request has an `auth` property we attach in middleware.
-import "express";
+// api/src/types/express.d.ts
+import "express-serve-static-core";
 
 declare module "express-serve-static-core" {
   interface Request {
