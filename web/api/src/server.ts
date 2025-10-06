@@ -1,0 +1,188 @@
+import express from "express";
+import cors from "cors";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
+import { env } from "./env";
+import { prisma } from "./prisma";
+
+/* Routers */
+import authRouter from "./routes/auth";
+import aiRouter from "./routes/ai";
+import reportsRouter from "./routes/reports";
+import leadsRouter from "./routes/leads";
+import mailRouter from "./routes/mail";
+import gmailRouter from "./routes/gmail";
+import leadsAiRouter from "./routes/leads-ai";
+
+// ------------------------------------------------------
+// App Setup
+// ------------------------------------------------------
+const app = express();
+
+/** ✅ CORS + body parsing **/
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true, // allow cookies
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"], // important for preflight
+  })
+);
+app.use(express.json({ limit: "2mb" }));
+
+/** ✅ JWT decode middleware — accepts header or cookie **/
+app.use((req, _res, next) => {
+  let token: string | null = null;
+
+  // 1) Authorization: Bearer <jwt>
+  const h = req.headers.authorization;
+  if (h && h.startsWith("Bearer ")) token = h.slice(7);
+
+  // 2) Fallback: jwt cookie
+  if (!token && req.headers.cookie) {
+    const m = req.headers.cookie.match(/(?:^|;\s*)jwt=([^;]+)/);
+    if (m) token = decodeURIComponent(m[1]);
+  }
+
+  if (token) {
+    try {
+      (req as any).auth = jwt.verify(token, env.APP_JWT_SECRET);
+    } catch (err) {
+      console.warn("[auth] invalid or expired JWT");
+    }
+  }
+  next();
+});
+// --- JWT DEBUG HELPERS (paste right after the JWT middleware) ---
+app.use((req, _res, next) => {
+  // keep the raw Authorization header so we can inspect it later
+  (req as any).__rawAuthHeader = req.headers.authorization || "";
+  next();
+});
+
+app.get("/__debug/token", (req, res) => {
+  const raw: string = (req as any).__rawAuthHeader || "";
+  const token = raw.startsWith("Bearer ") ? raw.slice(7) : null;
+
+  let verified: any = null;
+  let verifyError: string | null = null;
+
+  if (token) {
+    try {
+      verified = jwt.verify(token, env.APP_JWT_SECRET);
+    } catch (e: any) {
+      verifyError = e?.message || String(e);
+    }
+  } else {
+    verifyError = "no Authorization: Bearer <token> header";
+  }
+
+  res.json({
+    receivedAuthHeader: !!raw,
+    tokenPreview: token ? token.slice(0, 20) + "…" : null,
+    usingSecretPreview: (env.APP_JWT_SECRET || "").slice(0, 6) + "…",
+    verifyError,
+    verified, // should include { userId, tenantId, email, iat, exp } if OK
+  });
+});
+
+app.get("/__debug/whoami", (req, res) => {
+  res.json({
+    auth: (req as any).auth ?? null,
+    sawAuthHeader: !!req.headers.authorization,
+    hasJwtCookie: !!(req.headers.cookie || "").match(/(?:^|;\s*)jwt=/),
+  });
+});
+// --- end debug helpers ---
+
+/** ✅ Quick debug route to verify token decode */
+app.get("/__debug/whoami", (req, res) => {
+  res.json({ auth: (req as any).auth ?? null });
+});
+
+/** ✅ Healthcheck */
+app.get("/healthz", (_req, res) => res.send("ok"));
+
+/**
+ * -------- Dev bootstrap (idempotent) --------
+ */
+async function ensureDevData() {
+  // 1) Tenant
+  let tenant = await prisma.tenant.findFirst({ where: { name: "Demo Tenant" } });
+  if (!tenant) {
+    tenant = await prisma.tenant.create({ data: { name: "Demo Tenant" } });
+  }
+
+  // 2) User
+  const demoEmail = "erin@acme.test";
+  let user = await prisma.user.findUnique({ where: { email: demoEmail } });
+  if (!user) {
+    const passwordHash = await bcrypt.hash("secret12", 10);
+    user = await prisma.user.create({
+      data: {
+        tenantId: tenant.id,
+        email: demoEmail,
+        name: "Demo User",
+        role: "owner",
+        passwordHash,
+      },
+    });
+  }
+
+  return { tenant, user };
+}
+
+// Auto-seed dev data
+if (process.env.NODE_ENV !== "production") {
+  ensureDevData()
+    .then(({ user }) => console.log(`[dev] bootstrap ready for ${user.email}`))
+    .catch((e) => console.error("[dev] bootstrap failed:", e));
+}
+
+/** ✅ Dev seed endpoint (idempotent) */
+app.post("/seed", async (_req, res) => {
+  try {
+    const out = await ensureDevData();
+    const jwtToken = jwt.sign(
+      { userId: out.user.id, tenantId: out.tenant.id, email: out.user.email },
+      env.APP_JWT_SECRET,
+      { expiresIn: "12h" }
+    );
+    res.json({ ...out, jwt: jwtToken });
+  } catch (err: any) {
+    console.error("[seed] failed:", err);
+    res.status(500).json({ error: err?.message ?? "seed failed" });
+  }
+});
+
+/** ✅ Routers */
+app.use("/auth", authRouter);
+app.use("/leads", leadsRouter);
+app.use("/ai", aiRouter);
+app.use("/reports", reportsRouter);
+app.use("/mail", mailRouter);
+app.use("/gmail", gmailRouter);
+app.use("/leads/ai", leadsAiRouter);
+
+/** ✅ DB Debug */
+app.get("/__debug/db", async (_req, res) => {
+  const url = process.env.DATABASE_URL || "";
+  const masked = url.replace(/:\/\/([^:]+):([^@]+)@/, "://***:***@");
+
+  try {
+    const rows = await prisma.$queryRaw<
+      Array<{ table_name: string }>
+    >`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`;
+    res.json({ databaseUrl: masked, tables: rows.map((r) => r.table_name) });
+  } catch (e: any) {
+    res.status(500).json({ databaseUrl: masked, error: e?.message || String(e) });
+  }
+});
+
+/** ✅ 404 handler */
+app.use((_req, res) => res.status(404).json({ error: "not found" }));
+
+/** ✅ Start server */
+app.listen(env.PORT, () => {
+  console.log(`API running at http://localhost:${env.PORT}`);
+});
