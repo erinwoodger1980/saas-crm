@@ -31,18 +31,34 @@ jobs:
     defaults:
       run:
         working-directory: api
+        shell: bash
 
     env:
+      NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/saascrm?schema=public
       APP_JWT_SECRET: test_secret_for_ci
       OPENAI_API_KEY: dummy_for_ci
       PORT: 4000
+      PRISMA_LOG_LEVEL: info
       CI: "true"
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Node setup
+      - name: Print workspace tree (top)
+        run: |
+          echo "== repo root =="
+          pwd
+          ls -la
+          echo "== api dir =="
+          cd api
+          ls -la
+          echo "== prisma dir =="
+          cd prisma || true
+          ls -la || true
+
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -53,21 +69,36 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Prisma generate
+      - name: Show Prisma version
+        run: npx prisma -v
+
+      - name: Validate Prisma schema
+        run: npx prisma validate --schema=prisma/schema.prisma
+
+      - name: Generate Prisma client
         run: npm run prisma:generate
 
-      - name: Apply DB migrations (deploy)
+      - name: Check migration status
+        run: |
+          set -xe
+          npx prisma migrate status --schema=prisma/schema.prisma
+
+      - name: Apply DB migrations
         run: npm run prisma:deploy
 
-      - name: Type-check
+      - name: Type-check (no emit)
         run: npx tsc -p tsconfig.json --pretty false --noEmit
 
-      - name: Build API
+      - name: Build
         run: npm run build
 
       - name: Start API (background)
-        run: node dist/src/server.js &
-      
+        run: |
+          node dist/src/server.js &
+          echo $! > api.pid
+          sleep 1
+          ps aux | grep node
+
       - name: Wait for API
         run: |
           for i in {1..40}; do
@@ -80,3 +111,9 @@ jobs:
 
       - name: Healthcheck
         run: curl -sSf http://localhost:4000/healthz | tee /dev/stderr
+
+      - name: Tail API logs on failure
+        if: failure()
+        run: |
+          echo "Build failed — showing recent Node processes/log hints"
+          ps aux | grep node || true
