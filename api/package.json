@@ -8,7 +8,9 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/src/server.js",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:generate": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6.16.3",
@@ -20,7 +22,8 @@
     "googleapis": "^161.0.0",
     "jsonwebtoken": "^9.0.2",
     "openai": "^4.104.0",
-    "prisma": "^6.16.3"
+    "prisma": "^6.16.3",
+    "bcrypt": "^6.0.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
@@ -28,7 +31,6 @@
     "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.6.1",
-    "bcrypt": "^6.0.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   }
