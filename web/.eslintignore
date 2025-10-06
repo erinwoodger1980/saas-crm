@@ -1,0 +1,4 @@
+# web/.eslintignore
+.next
+out
+node_modules
