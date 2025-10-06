@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "build": "next build",              // CI calls this; plain build is most stable
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"         // handy locally & if we add a CI step later
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
