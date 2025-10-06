@@ -26,7 +26,7 @@ jobs:
           --health-cmd="pg_isready -U postgres"
           --health-interval=5s
           --health-timeout=5s
-          --health-retries=40
+          --health-retries=30
 
     defaults:
       run:
@@ -35,61 +35,35 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/saascrm?schema=public
       APP_JWT_SECRET: test_secret_for_ci
-      # Prevent OpenAI client from crashing if a route gets hit during CI
-      OPENAI_API_KEY: "dummy"
+      OPENAI_API_KEY: dummy_for_ci
       PORT: 4000
       CI: "true"
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Show tree (repo root)
-        run: |
-          pwd
-          ls -la
-          echo "--- api dir ---"
-          ls -la api
-          echo "--- prisma dir ---"
-          ls -la api/prisma || true
-          echo "--- schema preview ---"
-          sed -n '1,120p' api/prisma/schema.prisma || true
-
-      - name: Setup Node
+      - name: Node setup
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: api/package-lock.json
+          cache-dependency-path: |
+            api/package-lock.json
 
       - name: Install deps
         run: npm ci
 
       - name: Prisma generate
-        run: |
-          npx prisma --version
-          npm run prisma:generate || npx prisma generate --schema=prisma/schema.prisma
+        run: npm run prisma:generate
 
-      - name: Wait for Postgres
-        run: |
-          for i in {1..40}; do
-            if pg_isready -h localhost -p 5432 -U postgres; then
-              echo "Postgres is ready"; exit 0
-            fi
-            echo "Waiting for Postgres..."; sleep 2
-          done
-          echo "Postgres failed to become healthy"; exit 1
+      - name: Apply DB migrations (deploy)
+        run: npm run prisma:deploy
 
-      - name: Apply migrations (deploy)
-        run: |
-          npm run prisma:deploy || npx prisma migrate deploy --schema=prisma/schema.prisma
-          echo "Tables:"
-          psql "$DATABASE_URL" -c "\dt" || true
+      - name: Type-check
+        run: npx tsc -p tsconfig.json --pretty false --noEmit
 
-      - name: TypeScript build
-        run: |
-          node -v
-          npm run build
+      - name: Build API
+        run: npm run build
 
       - name: Start API (background)
         run: node dist/src/server.js &
@@ -104,5 +78,5 @@ jobs:
           done
           echo "API failed to start"; exit 1
 
-      - name: Ping healthcheck
+      - name: Healthcheck
         run: curl -sSf http://localhost:4000/healthz | tee /dev/stderr
