@@ -1,0 +1,40 @@
+# OS
+.DS_Store
+
+# Node / monorepo
+node_modules/
+**/node_modules/
+
+# Build artifacts
+.next/
+out/
+dist/
+coverage/
+.turbo/
+.cache/
+
+# Env files (never commit secrets)
+.env
+*.env
+api/.env
+web/.env
+web/.env.local
+web/.env.*.local
+
+# Logs & misc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Keep folder structure but ignore contents
+api/dist/*
+!api/dist/.gitkeep
+api/uploads/*
+!api/uploads/.gitkeep
+api/tmp/*
+!api/tmp/.gitkeep
+web/.next/*
+!web/.next/.gitkeep
+web/out/*
+!web/out/.gitkeep

@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id            String         @id @default(cuid())
+  name          String
+  createdAt     DateTime       @default(now())
+  users         User[]
+  leads         Lead[]
+  opportunities Opportunity[]
+  leadFieldDefs LeadFieldDef[]
+
+  // NEW: one-per-tenant Gmail connection
+  gmailConnection TenantGmailConnection?
+}
+
+model User {
+  id           String  @id @default(cuid())
+  tenantId     String
+  tenant       Tenant  @relation(fields: [tenantId], references: [id])
+  email        String  @unique
+  name         String?
+  role         String  @default("user")
+  passwordHash String
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  DISQUALIFIED
+}
+
+model Lead {
+  id           String     @id @default(cuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  createdById  String
+  contactName  String
+  email        String?
+  status       LeadStatus @default(NEW)
+  capturedAt   DateTime   @default(now())
+  nextActionAt DateTime?
+  nextAction   String?
+
+  briefJson Json?
+  custom    Json?
+
+  opportunity Opportunity?
+}
+
+enum OppStage {
+  QUALIFY
+  PROPOSE
+  NEGOTIATE
+  WON
+  LOST
+}
+
+model Opportunity {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  leadId    String    @unique
+  lead      Lead      @relation(fields: [leadId], references: [id])
+  title     String
+  valueGBP  Decimal?
+  stage     OppStage  @default(QUALIFY)
+  wonAt     DateTime?
+  lostAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, stage])
+}
+
+model EmailIngest {
+  id          String    @id @default(cuid())
+  tenantId    String
+  provider    String // "local" | "gmail" | "outlook"
+  messageId   String // unique per provider
+  fromEmail   String?
+  subject     String?
+  snippet     String?
+  processedAt DateTime?
+  leadId      String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([tenantId, provider, messageId])
+}
+
+/**
+ * Per-tenant custom field definitions for Leads.
+ * Each definition’s `key` is used in Lead.custom (e.g. "budget", "site_postcode").
+ */
+model LeadFieldDef {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  key       String
+  label     String
+  type      String  @default("text") // "text" | "number" | "date" | "email" | "select" | "checkbox"
+  required  Boolean @default(false)
+  config    Json?
+  sortOrder Int     @default(0)
+
+  @@unique([tenantId, key])
+  @@index([tenantId, sortOrder])
+}
+
+//
+// NEW: stores the Gmail account connected for a tenant
+//
+model TenantGmailConnection {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  gmailAddress String @unique
+  googleUserId String
+
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LeadTrainingExample {
+  id          String   @id @default(cuid())
+  tenantId    String
+  provider    String   // e.g. "gmail", "outlook", "local"
+  messageId   String   // email/message id from provider
+  label       String   // "lead" | "not_lead"
+  extracted   Json?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, provider, messageId])
+}

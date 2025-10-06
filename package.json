@@ -1,0 +1,15 @@
+{
+  "name": "saas-crm",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c cyan,magenta \"npm --prefix api run dev\" \"npm --prefix web run dev\"",
+    "dev:api": "npm --prefix api run dev",
+    "dev:web": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "start:web": "npm --prefix web run start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
