@@ -1,13 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Turn off ESLint & TS type checks during the production build.
-  // You can run `npm run lint` separately in CI if you want lint to gate PRs.
+  // silence the “inferred root” warning for Turbopack
+  turbopack: { root: __dirname },
+
+  // ✅ Let CI builds pass even if ESLint or TS has warnings/errors.
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
 
-  turbopack: { root: __dirname },
-  experimental: {},
+  experimental: {
+    // keep other experimental flags here if you need them
+  },
 };
 
 export default nextConfig;
