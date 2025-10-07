@@ -87,14 +87,23 @@ jobs:
       - name: Type-check (no emit)
         run: npx tsc -p tsconfig.json --pretty false --noEmit
 
-      - name: Build (capture full log)
+      # ---- Build & capture a log + explicit exit status ----
+      - name: Build (capture logs)
         run: |
           set -x
-          npm run build 2>&1 | tee build.log
-          echo "==== dist tree (if any) ===="
-          (tree -a dist || true)
+          set -o pipefail
+          (npm run build) 2>&1 | tee build.log
+          echo ${PIPESTATUS[0]} > build.status
 
+      - name: Fail if build failed
+        run: |
+          code=$(cat build.status || echo 1)
+          echo "Build exit code: $code"
+          test "$code" -eq 0
+
+      # ---- Try to start the API only if build passed ----
       - name: Start API (background)
+        if: success()
         run: |
           set -x
           node dist/src/server.js > server.log 2>&1 &
@@ -104,6 +113,7 @@ jobs:
           tail -n +1 server.log || true
 
       - name: Wait for API
+        if: success()
         run: |
           for i in {1..40}; do
             if curl -sf http://localhost:4000/healthz >/dev/null; then
@@ -114,21 +124,24 @@ jobs:
           echo "API failed to start"; exit 1
 
       - name: Healthcheck
+        if: success()
         run: curl -sSf http://localhost:4000/healthz | tee /dev/stderr
 
+      # ---- Always collect artifacts so we can debug failures ----
       - name: Collect debug artifacts
         if: always()
         run: |
           set -x
           mkdir -p ../_ci_debug
           cp -v build.log ../_ci_debug/build.log 2>/dev/null || true
+          cp -v build.status ../_ci_debug/build.status 2>/dev/null || true
           cp -v server.log ../_ci_debug/server.log 2>/dev/null || true
           cp -v api.pid ../_ci_debug/api.pid 2>/dev/null || true
           cp -v package.json ../_ci_debug/api.package.json
           cp -v tsconfig.json ../_ci_debug/api.tsconfig.json
           cp -v prisma/schema.prisma ../_ci_debug/schema.prisma
           npx prisma -v > ../_ci_debug/prisma-version.txt || true
-          (tree -a -I "node_modules" .. > ../_ci_debug/tree.txt) || true
+          tree -a -I "node_modules" .. > ../_ci_debug/tree.txt || true
 
       - name: Upload debug artifacts
         if: always()
