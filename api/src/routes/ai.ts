@@ -1,41 +1,29 @@
-// api/src/routes/ai.ts
 import { Router } from "express";
 import { prisma } from "../prisma";
-import { openai } from "../ai";
+import { aiRespond } from "../ai";   // ✅ named import
 
 const r = Router();
 
 r.post("/chat", async (req, res) => {
-  const auth = req.auth;
+  const auth = (req as any).auth;
   if (!auth) return res.status(401).json({ error: "unauthorized" });
 
   const { question } = req.body || {};
   if (!question) return res.json({ answer: "Please ask a question." });
 
-  // Example fast path
   if (/sales.*month/i.test(question)) {
-    const rows: Array<{ total: number | string | null }> = await prisma.$queryRawUnsafe(
+    const rows: Array<{ total: number }> = await prisma.$queryRawUnsafe(
       `SELECT SUM(COALESCE("valueGBP",0)) AS total
        FROM "Opportunity"
        WHERE "tenantId"='${auth.tenantId}' AND "wonAt" IS NOT NULL
        AND date_trunc('month',"wonAt") = date_trunc('month', now())`
     );
-    const total = rows?.[0]?.total ?? 0;
-    return res.json({ answer: `Sales this month: £${total}` });
+    return res.json({ answer: `Sales this month: £${rows?.[0]?.total || 0}` });
   }
 
-  // Fallback to OpenAI
-  const messages = [
-    { role: "system" as const, content: "You are Joinery AI. Answer briefly in UK English." },
-    { role: "user" as const, content: String(question) }
-  ];
-
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages
-  });
-
-  const text = completion.choices[0]?.message?.content?.trim() || "Sorry, I couldn’t answer that.";
+  const system = "You are Joinery AI. Answer briefly in UK English.";
+  const user = `Question: ${question}`;
+  const text = await aiRespond({ system, user });
   res.json({ answer: text });
 });
 

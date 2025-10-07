@@ -1,22 +1,21 @@
 // api/src/env.ts
-import dotenv from "dotenv";
-dotenv.config(); // loads api/.env
+import 'dotenv/config';
 
-// small helper to read optional envs
-const opt = (k: string, fallback = "") => process.env[k] ?? fallback;
+function req(name: string, fallback?: string) {
+  const v = process.env[name] ?? fallback;
+  if (v === undefined || v === '') {
+    // Only throw for truly required vars
+    if (name === 'DATABASE_URL' || name === 'APP_JWT_SECRET') {
+      throw new Error(`[env] Missing required ${name}`);
+    }
+    console.warn(`[env] ${name} is missing or empty`);
+  }
+  return v as string;
+}
 
 export const env = {
-  PORT: Number(process.env.PORT || 4000),
-
-  DATABASE_URL: opt("DATABASE_URL"),
-  APP_JWT_SECRET: opt("APP_JWT_SECRET"),
-  OPENAI_API_KEY: opt("OPENAI_API_KEY", ""),
-
-  // ✅ make sure these are exported so the callback can read them
-  GMAIL_CLIENT_ID: opt("GMAIL_CLIENT_ID", ""),
-  GMAIL_CLIENT_SECRET: opt("GMAIL_CLIENT_SECRET", ""),
-  GMAIL_REDIRECT_URI: opt(
-    "GMAIL_REDIRECT_URI",
-    "http://localhost:4000/gmail/oauth/callback"
-  ),
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',   // optional in dev; warn above
+  APP_JWT_SECRET: req('APP_JWT_SECRET', 'dev_secret'),
+  PORT: Number(process.env.PORT ?? 4000),
+  DATABASE_URL: req('DATABASE_URL'),
 };
