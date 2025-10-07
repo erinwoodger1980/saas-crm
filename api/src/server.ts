@@ -13,6 +13,7 @@ import leadsRouter from "./routes/leads";
 import mailRouter from "./routes/mail";
 import gmailRouter from "./routes/gmail";
 import leadsAiRouter from "./routes/leads-ai";
+import ms365Router from "./routes/ms365"; // ← NEW
 
 // ------------------------------------------------------
 // App Setup
@@ -47,7 +48,7 @@ app.use((req, _res, next) => {
   if (token) {
     try {
       (req as any).auth = jwt.verify(token, env.APP_JWT_SECRET);
-    } catch (err) {
+    } catch {
       console.warn("[auth] invalid or expired JWT");
     }
   }
@@ -185,6 +186,7 @@ app.use("/reports", reportsRouter);
 app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);
 app.use("/leads/ai", leadsAiRouter);
+app.use("/ms365", ms365Router); // ← NEW
 
 /** ✅ DB Debug */
 app.get("/__debug/db", async (_req, res) => {

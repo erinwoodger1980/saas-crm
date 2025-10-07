@@ -268,7 +268,7 @@ export default function LeadsPage() {
 
     if (from !== to) {
       try {
-        await apiFetch(`/leads/${activeId}`, { method: "PATCH", body: { status: to } });
+        await apiFetch(`/leads/${activeId}`, { method: "PATCH", json: { status: to } });
       } catch {
         setGrouped(prev); // rollback
       }
@@ -298,7 +298,7 @@ export default function LeadsPage() {
     try {
       await apiFetch("/leads/ai/feedback", {
         method: "POST",
-        body: {
+        json: {
           provider,
           messageId,
           leadId: lead.id,
@@ -366,7 +366,7 @@ export default function LeadsPage() {
         return next;
       });
 
-      await apiFetch(`/leads/${targetId}`, { method: "PATCH", body: payload });
+      await apiFetch(`/leads/${targetId}`, { method: "PATCH", json: payload });
 
       setDetails((d) => (d ? ({ ...d, ...payload } as Lead) : d));
       setPreviewLead((p) => (p ? ({ ...p, ...payload } as Lead) : p));

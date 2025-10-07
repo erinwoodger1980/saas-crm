@@ -30,30 +30,40 @@ export function setJwt(token: string) {
   )}; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
 }
 
-/** Generic fetch wrapper that injects JWT, includes cookies, and handles JSON */
-export async function apiFetch<T = any>(
+/**
+ * Generic fetch wrapper:
+ * - injects JWT
+ * - includes cookies
+ * - supports `json` (preferred) or raw `body`
+ * - parses JSON response (or returns {} when empty)
+ */
+export async function apiFetch<T = unknown>(
   path: string,
-  init: RequestInit & { body?: any } = {}
+  init: RequestInit & { json?: unknown } = {}
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
   const token = getJwt();
 
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(init.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  const headers = new Headers(init.headers);
 
-  const body =
-    init.body && typeof init.body !== "string"
-      ? JSON.stringify(init.body)
-      : (init.body as any);
+  // Only set Content-Type automatically if we're sending JSON
+  let body: BodyInit | null | undefined = init.body as BodyInit | null | undefined;
+  if (init.json !== undefined) {
+    body = JSON.stringify(init.json);
+    if (!headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+  }
+
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
 
   const res = await fetch(url, {
     ...init,
     headers,
     body,
-    credentials: "include", // <-- send cookies with every request
+    credentials: "include", // send cookies with every request
   });
 
   if (!res.ok) {
@@ -76,7 +86,7 @@ export async function apiFetch<T = any>(
 
   // Gracefully handle empty responses
   const text = await res.text();
-  return (text ? JSON.parse(text) : ({} as T)) as T;
+  return (text ? (JSON.parse(text) as T) : ({} as T)) as T;
 }
 
 /**
