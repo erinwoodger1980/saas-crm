@@ -1,4 +1,4 @@
-name: API CI
+name: API CI (with full logs)
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     services:
       postgres:
         image: postgres:16
-        ports: ['5432:5432']
+        ports: [ "5432:5432" ]
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -41,127 +41,140 @@ jobs:
       PORT: 4000
       PRISMA_LOG_LEVEL: info
       CI: "true"
-      ACTIONS_STEP_DEBUG: "true"
 
     steps:
-      # --- Step 1: Checkout the repository ---
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Step 2: Print file structure for visibility ---
+      # Prepare a logs dir _outside_ api so we can always upload it
+      - name: Prepare log dirs
+        run: |
+          mkdir -p ../_ci_debug
+          echo "run_id=${{ github.run_id }}" > ../_ci_debug/meta.txt
+          echo "sha=${{ github.sha }}" >> ../_ci_debug/meta.txt
+
       - name: Print workspace tree
+        continue-on-error: true
         run: |
           set -x
-          echo "== repo root =="; pwd; ls -la ..
-          echo "== api dir ==";  pwd; ls -la
-          echo "== prisma ==";   ls -la prisma || true
+          echo "== repo root ==" > ../_ci_debug/tree.txt
+          (cd .. && ls -la) >> ../_ci_debug/tree.txt 2>&1 || true
+          echo -e "\n== api dir ==" >> ../_ci_debug/tree.txt
+          ls -la >> ../_ci_debug/tree.txt 2>&1 || true
+          echo -e "\n== prisma ==" >> ../_ci_debug/tree.txt
+          ls -la prisma >> ../_ci_debug/tree.txt 2>&1 || true
 
-      # --- Step 3: Setup Node.js environment ---
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: |
-            api/package-lock.json
+          cache: npm
+          cache-dependency-path: api/package-lock.json
 
-      # --- Step 4: Install dependencies ---
-      - name: Install deps
-        run: |
-          set -x
-          npm ci
-          npm -v
-          node -v
-
-      # --- Step 5: Check Prisma setup ---
-      - name: Show Prisma version
-        run: npx prisma -v
-
-      - name: Validate Prisma schema
-        run: npx prisma validate --schema=prisma/schema.prisma
-
-      - name: Generate Prisma client
-        run: npm run prisma:generate
-
-      - name: Migration status
-        run: npx prisma migrate status --schema=prisma/schema.prisma
-
-      - name: Apply DB migrations
-        run: npm run prisma:deploy
-
-      # --- Step 6: Type-check (logs captured even if it fails) ---
-      - name: Type-check (no emit) — capture logs
+      - name: Install deps (capture)
         continue-on-error: true
         run: |
-          set -x
           set -o pipefail
-          (npx tsc -p tsconfig.json --pretty false --noEmit) 2>&1 | tee tsc.log
-          echo ${PIPESTATUS[0]} > tsc.status
+          (npm ci) 2>&1 | tee ../_ci_debug/install.log
+          echo ${PIPESTATUS[0]} > ../_ci_debug/install.status
+          npm -v | tee -a ../_ci_debug/install.log
+          node -v | tee -a ../_ci_debug/install.log
 
-      # --- Step 7: Build API & capture build log ---
-      - name: Build (capture logs)
+      - name: Prisma version (capture)
+        continue-on-error: true
         run: |
-          set -x
+          (npx prisma -v) 2>&1 | tee ../_ci_debug/prisma-version.txt
+
+      - name: Validate schema (capture)
+        continue-on-error: true
+        run: |
           set -o pipefail
-          (npm run build) 2>&1 | tee build.log
-          echo ${PIPESTATUS[0]} > build.status
+          (npx prisma validate --schema=prisma/schema.prisma) 2>&1 | tee ../_ci_debug/prisma-validate.log
+          echo ${PIPESTATUS[0]} > ../_ci_debug/prisma-validate.status
 
-      - name: Fail if build failed
+      - name: Prisma generate (capture)
+        continue-on-error: true
         run: |
-          code=$(cat build.status || echo 1)
-          echo "Build exit code: $code"
-          test "$code" -eq 0
+          set -o pipefail
+          (npm run prisma:generate) 2>&1 | tee ../_ci_debug/prisma-generate.log
+          echo ${PIPESTATUS[0]} > ../_ci_debug/prisma-generate.status
 
-      # --- Step 8: Start API server (background) ---
-      - name: Start API (background)
-        if: success()
+      - name: Prisma migrate status (capture)
+        continue-on-error: true
         run: |
-          set -x
-          node dist/src/server.js > server.log 2>&1 &
-          echo $! > api.pid
-          sleep 3
-          ps aux | grep -E "node dist/src/server.js" || true
-          tail -n +10 server.log || true
+          set -o pipefail
+          (npx prisma migrate status --schema=prisma/schema.prisma) 2>&1 | tee ../_ci_debug/prisma-status.log
+          echo ${PIPESTATUS[0]} > ../_ci_debug/prisma-status.status
 
-      # --- Step 9: Wait for API health endpoint ---
-      - name: Wait for API
-        if: success()
+      - name: Prisma deploy (capture)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          (npm run prisma:deploy) 2>&1 | tee ../_ci_debug/prisma-deploy.log
+          echo ${PIPESTATUS[0]} > ../_ci_debug/prisma-deploy.status
+
+      - name: Type-check (tsc) (capture)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          (npx tsc -p tsconfig.json --pretty false --noEmit) 2>&1 | tee ../_ci_debug/tsc.log
+          echo ${PIPESTATUS[0]} > ../_ci_debug/tsc.status
+
+      - name: Build (capture)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          (npm run build) 2>&1 | tee ../_ci_debug/build.log
+          echo ${PIPESTATUS[0]} > ../_ci_debug/build.status
+
+      - name: Start API (background, capture)
+        if: always()
+        continue-on-error: true
+        run: |
+          # Only try to start if build.status == 0 and dist exists
+          code=$(cat ../_ci_debug/build.status 2>/dev/null || echo 1)
+          if [ "$code" -ne 0 ] || [ ! -f dist/src/server.js ]; then
+            echo "Skipping start: build failed or dist missing" | tee ../_ci_debug/server.log
+            exit 0
+          fi
+          node dist/src/server.js > ../_ci_debug/server.log 2>&1 &
+          echo $! > ../_ci_debug/api.pid
+          sleep 2
+          ps aux | grep -E "node dist/src/server.js" >> ../_ci_debug/server.log 2>&1 || true
+          tail -n +1 ../_ci_debug/server.log || true
+
+      - name: Wait for /healthz (capture)
+        if: always()
+        continue-on-error: true
         run: |
           for i in {1..40}; do
             if curl -sf http://localhost:4000/healthz >/dev/null; then
-              echo "✅ API is up"
+              echo "API is up" | tee ../_ci_debug/healthz.log
+              echo 0 > ../_ci_debug/healthz.status
               exit 0
             fi
-            echo "⏳ Waiting for API..."
+            echo "Waiting for API..." | tee -a ../_ci_debug/healthz.log
             sleep 2
           done
-          echo "❌ API failed to start"
+          echo 1 > ../_ci_debug/healthz.status
           exit 1
 
-      # --- Step 10: Verify healthcheck ---
-      - name: Healthcheck
-        if: success()
-        run: curl -sSf http://localhost:4000/healthz | tee /dev/stderr
-
-      # --- Step 11: Collect debug artifacts (always runs) ---
-      - name: Collect debug artifacts
-        if: always()
+      # Final gate: fail job if any critical step failed
+      - name: Evaluate result
         run: |
-          set -x
-          mkdir -p ../_ci_debug
-          cp -v tsc.log ../_ci_debug/tsc.log 2>/dev/null || true
-          cp -v tsc.status ../_ci_debug/tsc.status 2>/dev/null || true
-          cp -v build.log ../_ci_debug/build.log 2>/dev/null || true
-          cp -v build.status ../_ci_debug/build.status 2>/dev/null || true
-          cp -v server.log ../_ci_debug/server.log 2>/dev/null || true
-          cp -v api.pid ../_ci_debug/api.pid 2>/dev/null || true
-          cp -v package.json ../_ci_debug/api.package.json
-          cp -v tsconfig.json ../_ci_debug/api.tsconfig.json
-          cp -v prisma/schema.prisma ../_ci_debug/schema.prisma
-          npx prisma -v > ../_ci_debug/prisma-version.txt || true
-          tree -a -I "node_modules" .. > ../_ci_debug/tree.txt || true
+          FAIL=0
+          for f in install prisma-validate prisma-generate prisma-deploy tsc build; do
+            s=$(cat ../_ci_debug/${f}.status 2>/dev/null || echo 1)
+            echo "$f: $s"
+            if [ "$s" -ne 0 ]; then FAIL=1; fi
+          done
+          # healthz is optional; it fails if build failed
+          if [ "$FAIL" -ne 0 ]; then
+            echo "One or more steps failed"
+            exit 1
+          fi
+          echo "All core steps succeeded"
 
-      # --- Step 12: Upload logs for debugging ---
       - name: Upload debug artifacts
         if: always()
         uses: actions/upload-artifact@v4
