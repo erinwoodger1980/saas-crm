@@ -44,9 +44,11 @@ jobs:
       ACTIONS_STEP_DEBUG: "true"
 
     steps:
+      # --- Step 1: Checkout the repository ---
       - name: Checkout
         uses: actions/checkout@v4
 
+      # --- Step 2: Print file structure for visibility ---
       - name: Print workspace tree
         run: |
           set -x
@@ -54,6 +56,7 @@ jobs:
           echo "== api dir ==";  pwd; ls -la
           echo "== prisma ==";   ls -la prisma || true
 
+      # --- Step 3: Setup Node.js environment ---
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -62,6 +65,7 @@ jobs:
           cache-dependency-path: |
             api/package-lock.json
 
+      # --- Step 4: Install dependencies ---
       - name: Install deps
         run: |
           set -x
@@ -69,6 +73,7 @@ jobs:
           npm -v
           node -v
 
+      # --- Step 5: Check Prisma setup ---
       - name: Show Prisma version
         run: npx prisma -v
 
@@ -84,10 +89,16 @@ jobs:
       - name: Apply DB migrations
         run: npm run prisma:deploy
 
-      - name: Type-check (no emit)
-        run: npx tsc -p tsconfig.json --pretty false --noEmit
+      # --- Step 6: Type-check (logs captured even if it fails) ---
+      - name: Type-check (no emit) — capture logs
+        continue-on-error: true
+        run: |
+          set -x
+          set -o pipefail
+          (npx tsc -p tsconfig.json --pretty false --noEmit) 2>&1 | tee tsc.log
+          echo ${PIPESTATUS[0]} > tsc.status
 
-      # ---- Build & capture a log + explicit exit status ----
+      # --- Step 7: Build API & capture build log ---
       - name: Build (capture logs)
         run: |
           set -x
@@ -101,38 +112,45 @@ jobs:
           echo "Build exit code: $code"
           test "$code" -eq 0
 
-      # ---- Try to start the API only if build passed ----
+      # --- Step 8: Start API server (background) ---
       - name: Start API (background)
         if: success()
         run: |
           set -x
           node dist/src/server.js > server.log 2>&1 &
           echo $! > api.pid
-          sleep 2
+          sleep 3
           ps aux | grep -E "node dist/src/server.js" || true
-          tail -n +1 server.log || true
+          tail -n +10 server.log || true
 
+      # --- Step 9: Wait for API health endpoint ---
       - name: Wait for API
         if: success()
         run: |
           for i in {1..40}; do
             if curl -sf http://localhost:4000/healthz >/dev/null; then
-              echo "API is up"; exit 0;
+              echo "✅ API is up"
+              exit 0
             fi
-            echo "Waiting for API..."; sleep 2;
+            echo "⏳ Waiting for API..."
+            sleep 2
           done
-          echo "API failed to start"; exit 1
+          echo "❌ API failed to start"
+          exit 1
 
+      # --- Step 10: Verify healthcheck ---
       - name: Healthcheck
         if: success()
         run: curl -sSf http://localhost:4000/healthz | tee /dev/stderr
 
-      # ---- Always collect artifacts so we can debug failures ----
+      # --- Step 11: Collect debug artifacts (always runs) ---
       - name: Collect debug artifacts
         if: always()
         run: |
           set -x
           mkdir -p ../_ci_debug
+          cp -v tsc.log ../_ci_debug/tsc.log 2>/dev/null || true
+          cp -v tsc.status ../_ci_debug/tsc.status 2>/dev/null || true
           cp -v build.log ../_ci_debug/build.log 2>/dev/null || true
           cp -v build.status ../_ci_debug/build.status 2>/dev/null || true
           cp -v server.log ../_ci_debug/server.log 2>/dev/null || true
@@ -143,6 +161,7 @@ jobs:
           npx prisma -v > ../_ci_debug/prisma-version.txt || true
           tree -a -I "node_modules" .. > ../_ci_debug/tree.txt || true
 
+      # --- Step 12: Upload logs for debugging ---
       - name: Upload debug artifacts
         if: always()
         uses: actions/upload-artifact@v4
