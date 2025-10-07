@@ -87,8 +87,12 @@ jobs:
       - name: Type-check (no emit)
         run: npx tsc -p tsconfig.json --pretty false --noEmit
 
-      - name: Build
-        run: npm run build
+      - name: Build (capture full log)
+        run: |
+          set -x
+          npm run build 2>&1 | tee build.log
+          echo "==== dist tree (if any) ===="
+          (tree -a dist || true)
 
       - name: Start API (background)
         run: |
@@ -112,19 +116,20 @@ jobs:
       - name: Healthcheck
         run: curl -sSf http://localhost:4000/healthz | tee /dev/stderr
 
-      # Always upload logs & tree so we can see why it failed
       - name: Collect debug artifacts
         if: always()
         run: |
           set -x
           mkdir -p ../_ci_debug
+          cp -v build.log ../_ci_debug/build.log 2>/dev/null || true
           cp -v server.log ../_ci_debug/server.log 2>/dev/null || true
           cp -v api.pid ../_ci_debug/api.pid 2>/dev/null || true
           cp -v package.json ../_ci_debug/api.package.json
           cp -v tsconfig.json ../_ci_debug/api.tsconfig.json
           cp -v prisma/schema.prisma ../_ci_debug/schema.prisma
           npx prisma -v > ../_ci_debug/prisma-version.txt || true
-          tree -a -I "node_modules" .. > ../_ci_debug/tree.txt || true
+          (tree -a -I "node_modules" .. > ../_ci_debug/tree.txt) || true
+
       - name: Upload debug artifacts
         if: always()
         uses: actions/upload-artifact@v4
