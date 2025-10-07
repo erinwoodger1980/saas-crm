@@ -1,21 +1,11 @@
-// api/src/env.ts
-import 'dotenv/config';
-
-function req(name: string, fallback?: string) {
-  const v = process.env[name] ?? fallback;
-  if (v === undefined || v === '') {
-    // Only throw for truly required vars
-    if (name === 'DATABASE_URL' || name === 'APP_JWT_SECRET') {
-      throw new Error(`[env] Missing required ${name}`);
-    }
-    console.warn(`[env] ${name} is missing or empty`);
-  }
-  return v as string;
-}
+import "dotenv/config";
 
 export const env = {
-  OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',   // optional in dev; warn above
-  APP_JWT_SECRET: req('APP_JWT_SECRET', 'dev_secret'),
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY!,
+  APP_JWT_SECRET: process.env.APP_JWT_SECRET!,
   PORT: Number(process.env.PORT ?? 4000),
-  DATABASE_URL: req('DATABASE_URL'),
+  DATABASE_URL: process.env.DATABASE_URL!,
+  GMAIL_CLIENT_ID: process.env.GMAIL_CLIENT_ID!,
+  GMAIL_CLIENT_SECRET: process.env.GMAIL_CLIENT_SECRET!,
+  GMAIL_REDIRECT_URI: process.env.GMAIL_REDIRECT_URI!,
 };
