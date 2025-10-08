@@ -61,7 +61,13 @@ type FieldDef = {
   config?: { options?: string[] };
 };
 
+type GmailAttachment = { filename: string; size?: number; attachmentId: string };
+
 const STATUSES: Lead["status"][] = ["NEW", "CONTACTED", "QUALIFIED", "DISQUALIFIED"];
+const API_URL =
+  (process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE ||
+    "http://localhost:4000")!.replace(/\/$/, "");
 
 /* --------------- Page --------------- */
 export default function LeadsPage() {
@@ -93,7 +99,36 @@ export default function LeadsPage() {
     custom: Record<string, any>;
   } | null>(null);
 
+  // import busy flag
+  const [importing, setImporting] = useState<"gmail" | "ms365" | null>(null);
+
+  // full email details (Gmail)
+  const [emailDetails, setEmailDetails] = useState<{
+    bodyText?: string;
+    bodyHtml?: string;
+    subject?: string;
+    from?: string;
+    date?: string;
+    attachments?: GmailAttachment[];
+  } | null>(null);
+  const [loadingEmail, setLoadingEmail] = useState(false);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  async function importFrom(provider: "gmail" | "ms365") {
+    try {
+      const payload = provider === "gmail" ? { max: 10, q: "newer_than:30d" } : { max: 10 };
+      await apiFetch("/" + (provider === "gmail" ? "gmail/import" : "ms365/import"), {
+        method: "POST",
+        json: payload,
+      });
+      const data = await apiFetch<Grouped>("/leads/grouped");
+      setGrouped(data);
+      alert(`Imported from ${provider.toUpperCase()} ✔`);
+    } catch (e: any) {
+      alert(`Import from ${provider.toUpperCase()} failed: ${e?.message || e}`);
+    }
+  }
 
   /* ---------- initial data (guarded by ensureDemoAuth) ---------- */
   useEffect(() => {
@@ -275,6 +310,33 @@ export default function LeadsPage() {
     }
   }
 
+  /* ---------- Open lead (and fetch full email if Gmail) ---------- */
+  function openLead(lead: Lead) {
+    setSelectedId(lead.id);
+    setPreviewLead(lead);
+    setForm({
+      contactName: lead.contactName ?? "",
+      email: (lead.email ?? "") as string,
+      status: lead.status,
+      nextAction: lead.nextAction ?? "",
+      nextActionAt: lead.nextActionAt ? new Date(lead.nextActionAt).toISOString().slice(0, 16) : "",
+      custom: { ...(lead.custom || {}) },
+    });
+    setOpen(true);
+
+    // fetch full email for Gmail
+    setEmailDetails(null);
+    const provider = lead.custom?.provider;
+    const messageId = lead.custom?.messageId;
+    if (provider === "gmail" && messageId) {
+      setLoadingEmail(true);
+      apiFetch(`/gmail/message/${messageId}`)
+        .then((d: any) => setEmailDetails(d))
+        .catch(() => setEmailDetails(null))
+        .finally(() => setLoadingEmail(false));
+    }
+  }
+
   /* ---------- AI Feedback (confirm / reject) ---------- */
   async function sendFeedback(lead: Lead, isLead: boolean) {
     const provider = lead.custom?.provider ?? "gmail";
@@ -396,8 +458,58 @@ export default function LeadsPage() {
             Drag cards using the handle ⋮⋮ to move between columns. Click a card to view & edit.
           </p>
         </div>
+
         <div className="flex gap-2 items-center">
-          <Button className="btn">Import</Button>
+          <Button
+            className="btn"
+            disabled={importing !== null}
+            onClick={async () => {
+              setImporting("gmail");
+              try {
+                await importFrom("gmail");
+              } finally {
+                setImporting(null);
+              }
+            }}
+            title="Import recent emails from Gmail"
+          >
+            <span className="mr-2 inline-flex items-center">
+              {/* Gmail logo */}
+              <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#EA4335" d="M24 11L4 24v14h8V23l12-8 12 8v15h8V24z" />
+                <path fill="#FBBC04" d="M44 38h-8V23l8 5z" />
+                <path fill="#34A853" d="M4 38h8V23l-8 5z" />
+                <path fill="#4285F4" d="M24 11l12 8 8-5-20-13-20 13 8 5z" />
+              </svg>
+            </span>
+            {importing === "gmail" ? "Importing…" : "Import Gmail"}
+          </Button>
+
+          <Button
+            className="btn"
+            disabled={importing !== null}
+            onClick={async () => {
+              setImporting("ms365");
+              try {
+                await importFrom("ms365");
+              } finally {
+                setImporting(null);
+              }
+            }}
+            title="Import recent emails from Outlook 365"
+          >
+            <span className="mr-2 inline-flex items-center">
+              {/* Outlook / 365 logo */}
+              <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#0078D4" d="M6 14h22v20H6z" />
+                <path fill="#106EBE" d="M28 14h14v20H28z" />
+                <path fill="#0359A6" d="M42 16v16l4 2V14z" />
+                <rect x="10" y="18" width="14" height="12" fill="#fff" rx="2" />
+              </svg>
+            </span>
+            {importing === "ms365" ? "Importing…" : "Import Outlook"}
+          </Button>
+
           <Button className="btn btn-primary">New Lead</Button>
           <Button variant="outline" onClick={handleLogout}>
             Logout
@@ -420,21 +532,7 @@ export default function LeadsPage() {
               title={labelFor(status)}
               count={grouped[status].length}
               items={grouped[status]}
-              onOpen={(lead) => {
-                setSelectedId(lead.id);
-                setPreviewLead(lead);
-                setForm({
-                  contactName: lead.contactName ?? "",
-                  email: lead.email ?? "",
-                  status: lead.status,
-                  nextAction: lead.nextAction ?? "",
-                  nextActionAt: lead.nextActionAt
-                    ? new Date(lead.nextActionAt).toISOString().slice(0, 16)
-                    : "",
-                  custom: { ...(lead.custom || {}) },
-                });
-                setOpen(true);
-              }}
+              onOpen={openLead}
               onFeedback={sendFeedback}
             />
           ))}
@@ -453,6 +551,8 @@ export default function LeadsPage() {
             setPreviewLead(null);
             setDetails(null);
             setForm(null);
+            setEmailDetails(null);
+            setLoadingEmail(false);
           }
         }}
       >
@@ -488,6 +588,61 @@ export default function LeadsPage() {
               </Section>
             )}
 
+            {/* Full email (Gmail) */}
+            {form?.custom?.provider === "gmail" && (
+              <Section title="Email (full)">
+                {loadingEmail && <div className="text-sm text-slate-500">Loading email…</div>}
+
+                {!loadingEmail && emailDetails && (
+                  <div className="space-y-3">
+                    <div className="text-xs text-slate-600">
+                      <div>
+                        <span className="font-medium">From:</span>{" "}
+                        {emailDetails.from || form?.custom?.from || "Unknown"}
+                      </div>
+                      {emailDetails.date && (
+                        <div>
+                          <span className="font-medium">Date:</span> {emailDetails.date}
+                        </div>
+                      )}
+                    </div>
+
+                    {emailDetails.bodyHtml ? (
+                      <div
+                        className="prose max-w-none rounded-md border bg-white p-3 text-sm"
+                        dangerouslySetInnerHTML={{ __html: emailDetails.bodyHtml }}
+                      />
+                    ) : (
+                      <pre className="max-h-64 overflow-auto rounded-md border bg-slate-50 p-3 text-xs whitespace-pre-wrap">
+                        {emailDetails.bodyText || "(no body)"}
+                      </pre>
+                    )}
+
+                    {emailDetails.attachments && emailDetails.attachments.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-slate-600 mb-1">Attachments</div>
+                        <ul className="space-y-1">
+                          {emailDetails.attachments.map((a) => (
+                            <li key={a.attachmentId} className="text-sm">
+                              <a
+                                className="text-blue-700 underline"
+                                href={`${API_URL}/gmail/message/${form?.custom?.messageId}/attachments/${a.attachmentId}/download`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {a.filename || "attachment"}
+                                {a.size ? ` (${a.size} bytes)` : ""}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Section>
+            )}
+
             {form && (
               <>
                 <Section title="Contact">
@@ -501,9 +656,7 @@ export default function LeadsPage() {
                     <LabeledSelect
                       label="Status"
                       value={form.status}
-                      onChange={(v) =>
-                        setForm((f) => (f ? ({ ...f, status: v as Lead["status"] } as any) : f))
-                      }
+                      onChange={(v) => setForm((f) => (f ? ({ ...f, status: v as Lead["status"] } as any) : f))}
                       options={STATUSES.map((s) => ({ label: labelFor(s), value: s }))}
                     />
                     <LabeledInput
@@ -531,9 +684,7 @@ export default function LeadsPage() {
                         def={def}
                         value={form.custom?.[def.key] ?? ""}
                         onChange={(v) =>
-                          setForm((f) =>
-                            f ? { ...f, custom: { ...(f.custom || {}), [def.key]: v } } : f
-                          )
+                          setForm((f) => (f ? { ...f, custom: { ...(f.custom || {}), [def.key]: v } } : f))
                         }
                       />
                     ))}
@@ -609,9 +760,7 @@ function Column({
     >
       <div className="mb-2 flex items-center justify-between">
         <div className="text-xs font-semibold tracking-wide text-slate-600">{title}</div>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-          {count}
-        </span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{count}</span>
       </div>
 
       <SortableContext items={items.map((l) => l.id)} strategy={verticalListSortingStrategy}>
@@ -642,11 +791,10 @@ function SortableCard({
   onOpen: (lead: Lead) => void;
   onFeedback: (lead: Lead, isLead: boolean) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({
-      id: lead.id,
-      data: { type: "card", columnId },
-    });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: lead.id,
+    data: { type: "card", columnId },
+  });
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -680,9 +828,7 @@ function Card({
   const aiFb = lead.custom?.aiFeedback as { isLead?: boolean; at?: string } | undefined;
 
   return (
-    <div
-      className={`card card-hover w-full px-3 py-2 ${isOverlay ? "ring-2 ring-blue-400" : ""}`}
-    >
+    <div className={`card card-hover w-full px-3 py-2 ${isOverlay ? "ring-2 ring-blue-400" : ""}`}>
       <div className="flex items-start gap-2">
         {/* Drag handle */}
         <button
@@ -702,14 +848,8 @@ function Card({
               {avatarText(lead.contactName)}
             </span>
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium">
-                {lead.contactName || "Lead"}
-              </div>
-              {lead.email && (
-                <div className="truncate text-xs text-slate-500 max-w-full">
-                  {lead.email}
-                </div>
-              )}
+              <div className="truncate text-sm font-medium">{lead.contactName || "Lead"}</div>
+              {lead.email && <div className="truncate text-xs text-slate-500 max-w-full">{lead.email}</div>}
             </div>
           </div>
 
@@ -778,9 +918,7 @@ function StatusBadge({ status }: { status: Lead["status"] }) {
     DISQUALIFIED: "bg-slate-100 text-slate-600 border-slate-200",
   };
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[status]}`}
-    >
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[status]}`}>
       {labelFor(status)}
     </span>
   );
@@ -789,9 +927,7 @@ function StatusBadge({ status }: { status: Lead["status"] }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border p-3">
-      <div className="mb-2 text-xs font-semibold tracking-wide text-slate-600">
-        {title}
-      </div>
+      <div className="mb-2 text-xs font-semibold tracking-wide text-slate-600">{title}</div>
       {children}
     </div>
   );

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
+  (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL)?.replace(/\/$/, "") ||
+  "http://localhost:4000";
 
 function pickToken(json: any): string | null {
   return (
@@ -44,6 +45,22 @@ export default function LoginPage() {
       return url.searchParams.get("next") || "/leads";
     } catch {
       return "/leads";
+    }
+  }, []);
+
+  /** 1) Handle MS365 (and any provider) redirect: /login?jwt=... */
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      const jwt = url.searchParams.get("jwt");
+      if (jwt) {
+        storeAuth(jwt);
+        // Clean the URL then send user along
+        const go = url.searchParams.get("next") || "/leads";
+        window.location.replace(go);
+      }
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -159,6 +176,14 @@ export default function LoginPage() {
         >
           {loading ? "Signing in…" : "Sign in"}
         </button>
+
+        {/* 2) Microsoft 365 OAuth button */}
+        <a
+          href={`${API_URL}/integrations/ms365/login`}
+          className="mt-3 inline-flex w-full items-center justify-center rounded-md border px-4 py-2 text-sm hover:bg-slate-50"
+        >
+          Sign in with Microsoft 365
+        </a>
 
         <div className="mt-3 flex items-center justify-between">
           <p className="text-xs text-slate-500">

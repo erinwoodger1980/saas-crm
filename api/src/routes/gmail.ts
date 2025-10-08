@@ -15,9 +15,7 @@ function getAuth(req: any) {
   };
 }
 
-/* --------------------------------------------------------------------------------
- * Helpers
- * ------------------------------------------------------------------------------*/
+/* ---------------------------- Helpers ---------------------------- */
 async function refreshAccessToken(refreshToken: string) {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -49,30 +47,51 @@ function pickHeader(headers: Array<{ name: string; value: string }>, name: strin
   return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
-async function getMessagePlainText(accessToken: string, id: string) {
-  const msgRes = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
+async function fetchMessage(accessToken: string, id: string, format: "full" | "raw" | "metadata" | "minimal" = "full") {
+  const r = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=${format}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  const msg = await msgRes.json();
-  if (!msgRes.ok) throw new Error(msg?.error?.message || "gmail message fetch failed");
+  const j = await r.json();
+  if (!r.ok) throw new Error(j?.error?.message || "gmail message fetch failed");
+  return j;
+}
+
+type GmailAttachment = { filename: string; size?: number; attachmentId: string };
+
+function extractBodyAndAttachments(msg: any): { bodyText: string; bodyHtml?: string; attachments: GmailAttachment[] } {
+  let bodyText = "";
+  let bodyHtml: string | undefined;
+  const attachments: GmailAttachment[] = [];
+
+  const walk = (p: any) => {
+    if (!p) return;
+    if (p.filename && p.body?.attachmentId) {
+      attachments.push({ filename: p.filename, size: p.body?.size, attachmentId: p.body.attachmentId });
+    }
+    if (p.mimeType === "text/plain" && p.body?.data) {
+      bodyText += decodeMimeStr(p.body.data) + "\n";
+    }
+    if (p.mimeType === "text/html" && p.body?.data && !bodyHtml) {
+      bodyHtml = decodeMimeStr(p.body.data);
+    }
+    if (p.parts) p.parts.forEach(walk);
+  };
+  walk(msg.payload);
+  if (!bodyText && msg.payload?.body?.data) bodyText = decodeMimeStr(msg.payload.body.data);
+  return { bodyText: bodyText.trim(), bodyHtml, attachments };
+}
+
+async function getMessagePlainText(accessToken: string, id: string) {
+  const msg = await fetchMessage(accessToken, id, "full");
 
   const headers = msg.payload?.headers || [];
   const subject = pickHeader(headers, "Subject");
   const from = pickHeader(headers, "From");
 
-  let body = "";
-  const walk = (p: any) => {
-    if (!p) return;
-    if (p.mimeType === "text/plain" && p.body?.data) {
-      body += decodeMimeStr(p.body.data) + "\n";
-    }
-    if (p.parts) p.parts.forEach(walk);
-  };
-  walk(msg.payload);
-  if (!body && msg.payload?.body?.data) body = decodeMimeStr(msg.payload.body.data);
+  const { bodyText } = extractBodyAndAttachments(msg);
 
-  return { id, subject, from, snippet: msg.snippet || "", body: body.trim() };
+  return { id, subject, from, snippet: msg.snippet || "", body: bodyText };
 }
 
 function basicHeuristics(body: string) {
@@ -120,9 +139,7 @@ ${body}`;
   }
 }
 
-/* --------------------------------------------------------------------------------
- * GET /gmail/connection — current Gmail connection
- * ------------------------------------------------------------------------------*/
+/* ---------------- Current connection ---------------- */
 router.get("/connection", async (req, res) => {
   const { tenantId } = getAuth(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -139,20 +156,13 @@ router.get("/connection", async (req, res) => {
   }
 });
 
-/* --------------------------------------------------------------------------------
- * GET /gmail/connect — start OAuth (supports ?jwt= for dev)
- * ------------------------------------------------------------------------------*/
+/* ---------------- OAuth start ---------------- */
 router.get("/connect", (req, res) => {
-  // Optional dev helper: allow ?jwt= to synthesize req.auth for a direct browser hit
   const qJwt = (req.query.jwt as string | undefined) || undefined;
   if (qJwt && !req.auth) {
     try {
       const decoded = jwt.verify(qJwt, env.APP_JWT_SECRET) as any;
-      (req as any).auth = {
-        userId: decoded.userId,
-        tenantId: decoded.tenantId,
-        email: decoded.email,
-      };
+      (req as any).auth = { userId: decoded.userId, tenantId: decoded.tenantId, email: decoded.email };
     } catch {
       return res.status(401).send("invalid jwt");
     }
@@ -163,12 +173,7 @@ router.get("/connect", (req, res) => {
 
   const clientId = env.GMAIL_CLIENT_ID;
   const redirectUri = env.GMAIL_REDIRECT_URI || "http://localhost:4000/gmail/oauth/callback";
-
-  if (!clientId) {
-    return res
-      .status(500)
-      .send("GMAIL_CLIENT_ID missing in api/.env (restart server after setting it).");
-  }
+  if (!clientId) return res.status(500).send("GMAIL_CLIENT_ID missing.");
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -180,17 +185,14 @@ router.get("/connect", (req, res) => {
     state: JSON.stringify({ tenantId, userId }),
   });
 
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  return res.redirect(302, url);
+  res.redirect(302, `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
 });
 
-/* --------------------------------------------------------------------------------
- * GET /gmail/oauth/callback — exchange code for tokens & store refresh_token
- * ------------------------------------------------------------------------------*/
+/* ---------------- OAuth callback ---------------- */
 router.get("/oauth/callback", async (req, res) => {
   const { code, state, error } = req.query as Record<string, string>;
   if (error) return res.status(400).send(`OAuth error: ${error}`);
-  if (!code) return res.status(400).send("Missing ?code from Google");
+  if (!code) return res.status(400).send("Missing ?code");
 
   let parsed: { tenantId?: string; userId?: string } = {};
   try {
@@ -210,7 +212,6 @@ router.get("/oauth/callback", async (req, res) => {
     }),
   });
   const tokens = await tokenRes.json();
-
   if (!tokenRes.ok) {
     console.error("[gmail] token exchange failed:", tokens);
     return res.status(500).json(tokens);
@@ -219,41 +220,97 @@ router.get("/oauth/callback", async (req, res) => {
   const { id_token, refresh_token } = tokens as { id_token?: string; refresh_token?: string };
   let gmailAddress: string | null = null;
   if (id_token) {
-    const payload = JSON.parse(Buffer.from(id_token.split(".")[1], "base64").toString("utf8"));
-    gmailAddress = payload.email;
+    const payloadB64 = String(id_token).split(".")[1];
+    if (payloadB64) {
+      const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8"));
+      gmailAddress = payload?.email || null;
+    }
   }
   if (!refresh_token) {
-    return res
-      .status(400)
-      .send("No refresh_token returned. Revoke old access in your Google Account and reconnect.");
+    return res.status(400).send("No refresh_token. Revoke old access in Google Account and reconnect.");
   }
 
   await prisma.gmailTenantConnection.upsert({
     where: { tenantId: parsed.tenantId! },
-    update: {
-      refreshToken: refresh_token,
-      gmailAddress,
-      connectedById: parsed.userId ?? null,
-    },
-    create: {
-      tenantId: parsed.tenantId!,
-      connectedById: parsed.userId ?? null,
-      gmailAddress,
-      refreshToken: refresh_token,
-    },
+    update: { refreshToken: refresh_token, gmailAddress, connectedById: parsed.userId ?? null },
+    create: { tenantId: parsed.tenantId!, connectedById: parsed.userId ?? null, gmailAddress, refreshToken: refresh_token },
   });
 
-  return res.send(`
-    <h2>✅ Gmail Connected!</h2>
-    <p>Account: ${gmailAddress || "unknown"}</p>
-    <p>You can now close this window.</p>
-  `);
+  return res.send(`<h2>✅ Gmail Connected!</h2><p>Account: ${gmailAddress || "unknown"}</p>`);
 });
 
-/* --------------------------------------------------------------------------------
- * POST /gmail/import — fetch recent messages, extract leads, create Lead + EmailIngest
- * Body: { max?: number, q?: string }
- * ------------------------------------------------------------------------------*/
+/* ---------------- FULL MESSAGE + ATTACHMENTS ---------------- */
+
+/** GET /gmail/message/:id  -> subject, from, date, bodyText/bodyHtml, attachments[] */
+router.get("/message/:id", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  try {
+    const conn = await prisma.gmailTenantConnection.findUnique({ where: { tenantId } });
+    if (!conn) return res.status(400).json({ error: "gmail not connected" });
+    const accessToken = await refreshAccessToken(conn.refreshToken);
+    const msg = await fetchMessage(accessToken, req.params.id, "full");
+
+    const headers = msg.payload?.headers || [];
+    const subject = pickHeader(headers, "Subject");
+    const from = pickHeader(headers, "From");
+    const date = pickHeader(headers, "Date");
+
+    const { bodyText, bodyHtml, attachments } = extractBodyAndAttachments(msg);
+
+    return res.json({
+      id: msg.id,
+      subject,
+      from,
+      date,
+      snippet: msg.snippet || "",
+      bodyText,
+      bodyHtml,
+      attachments, // [{filename, size, attachmentId}]
+    });
+  } catch (e: any) {
+    console.error("[gmail] message fetch failed:", e);
+    return res.status(500).json({ error: e?.message || "message fetch failed" });
+  }
+});
+
+/** GET /gmail/message/:id/attachments/:attachmentId/download -> binary */
+router.get("/message/:id/attachments/:attachmentId/download", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).send("unauthorized");
+
+  try {
+    const conn = await prisma.gmailTenantConnection.findUnique({ where: { tenantId } });
+    if (!conn) return res.status(400).send("gmail not connected");
+    const accessToken = await refreshAccessToken(conn.refreshToken);
+
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${req.params.id}/attachments/${req.params.attachmentId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const j = await r.json();
+    if (!r.ok) return res.status(500).send(j?.error?.message || "attachment fetch failed");
+
+    const dataB64 = j.data as string; // web-safe base64
+    const buf = Buffer.from(dataB64.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${req.params.attachmentId}"`);
+    return res.send(buf);
+  } catch (e: any) {
+    console.error("[gmail] attachment download failed:", e);
+    return res.status(500).send(e?.message || "attachment download failed");
+  }
+});
+
+/* ---------------- Import (idempotent) ---------------- */
+/**
+ * POST /gmail/import  { max?: number, q?: string }
+ *
+ * Idempotency strategy:
+ *  - Before processing each message, we try to create an EmailIngest row (unique key tenantId+provider+messageId).
+ *  - If it already exists, we skip (no duplicate leads).
+ */
 router.post("/import", async (req, res) => {
   const { tenantId, userId } = getAuth(req);
   if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
@@ -282,15 +339,23 @@ router.post("/import", async (req, res) => {
     const results: any[] = [];
 
     for (const m of messages) {
-      // Idempotency: skip if already processed
-      const existing = await prisma.emailIngest.findUnique({
-        where: { tenantId_provider_messageId: { tenantId, provider: "gmail", messageId: m.id } },
-      });
-      if (existing?.leadId) {
-        results.push({ id: m.id, skipped: true, reason: "already processed" });
+      // ---- IDENTITY CLAIM: create placeholder EmailIngest; if exists, skip
+      try {
+        await prisma.emailIngest.create({
+          data: {
+            tenantId,
+            provider: "gmail",
+            messageId: m.id,
+            createdAt: new Date(),
+          },
+        });
+      } catch (err: any) {
+        // Unique violation means we already processed (or are processing) this message
+        results.push({ id: m.id, skipped: true, reason: "already indexed" });
         continue;
       }
 
+      // Fetch content
       const full = await getMessagePlainText(accessToken, m.id);
       const ai = await extractLeadWithOpenAI(full.subject || "", full.body || "");
       const heur = basicHeuristics(full.body || "");
@@ -300,33 +365,30 @@ router.post("/import", async (req, res) => {
         !!(heur.email || heur.contactName || /quote|estimate|enquiry|inquiry/i.test(full.subject || ""));
 
       if (!isLead) {
-        await prisma.emailIngest.upsert({
+        await prisma.emailIngest.update({
           where: { tenantId_provider_messageId: { tenantId, provider: "gmail", messageId: m.id } },
-          update: { snippet: full.snippet, subject: full.subject, fromEmail: full.from },
-          create: {
-            tenantId,
-            provider: "gmail",
-            messageId: m.id,
-            fromEmail: full.from,
-            subject: full.subject,
+          data: {
             snippet: full.snippet,
+            subject: full.subject,
+            fromEmail: full.from,
+            processedAt: new Date(),
           },
         });
         results.push({ id: m.id, isLead: false });
         continue;
       }
 
-// Prefer body-parsed email (forms) over the From header
-const contactName =
-  ai?.contactName ||
-  heur.contactName ||
-  (full.from?.match(/"?([^"<@]+)"?\s*<.*>/)?.[1] || null);
+      // Prefer body email over header (web forms)
+      const contactName =
+        ai?.contactName ||
+        heur.contactName ||
+        (full.from?.match(/"?([^"<@]+)"?\s*<.*>/)?.[1] || null);
 
-const email =
-  ai?.email ||
-  heur.email || // ← body first (common for web forms)
-  (full.from?.match(/<([^>]+)>/)?.[1] || null) ||
-  null;
+      const email =
+        ai?.email ||
+        heur.email ||
+        (full.from?.match(/<([^>]+)>/)?.[1] || null) ||
+        null;
 
       const custom: Record<string, any> = {
         provider: "gmail",
@@ -350,24 +412,14 @@ const email =
         },
       });
 
-      await prisma.emailIngest.upsert({
+      await prisma.emailIngest.update({
         where: { tenantId_provider_messageId: { tenantId, provider: "gmail", messageId: m.id } },
-        update: {
+        data: {
           processedAt: new Date(),
           leadId: lead.id,
           subject: full.subject,
           fromEmail: full.from,
           snippet: full.snippet,
-        },
-        create: {
-          tenantId,
-          provider: "gmail",
-          messageId: m.id,
-          fromEmail: full.from,
-          subject: full.subject,
-          snippet: full.snippet,
-          processedAt: new Date(),
-          leadId: lead.id,
         },
       });
 
