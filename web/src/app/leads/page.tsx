@@ -1,54 +1,44 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch, ensureDemoAuth } from "@/lib/api";
-
+import { apiFetch, ensureDemoAuth, getJwt } from "@/lib/api";
 import {
-  DndContext,
-  DragEndEvent,
-  DragOverlay,
-  DragStartEvent,
-  PointerSensor,
-  useDroppable,
-  useSensor,
-  useSensors,
-  closestCorners,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
+
 /* ---------------- Types ---------------- */
+type LeadStatus =
+  | "NEW_ENQUIRY"
+  | "INFO_REQUESTED"
+  | "DISQUALIFIED"
+  | "REJECTED"
+  | "READY_TO_QUOTE"
+  | "QUOTE_SENT"
+  | "WON"
+  | "LOST";
+
 type Lead = {
   id: string;
   contactName: string;
   email?: string | null;
-  status: "NEW" | "CONTACTED" | "QUALIFIED" | "DISQUALIFIED";
+  status: LeadStatus;
   nextAction?: string | null;
   nextActionAt?: string | null;
   custom?: Record<string, any>;
 };
-
-type Grouped = {
-  NEW: Lead[];
-  CONTACTED: Lead[];
-  QUALIFIED: Lead[];
-  DISQUALIFIED: Lead[];
+type EmailDetails = {
+  bodyText?: string;
+  bodyHtml?: string;
+  subject?: string;
+  from?: string;
+  date?: string;
+  attachments?: { filename: string; size?: number; attachmentId: string }[];
+  threadId?: string;
 };
+
+type Grouped = Record<LeadStatus, Lead[]>;
 
 type FieldDef = {
   id: string;
@@ -61,9 +51,28 @@ type FieldDef = {
   config?: { options?: string[] };
 };
 
-type GmailAttachment = { filename: string; size?: number; attachmentId: string };
+type GmailAttachment = {
+  id?: string;               // our UI will accept id or attachmentId
+  attachmentId?: string;
+  name?: string;
+  filename?: string;
+  mimeType?: string;
+  size?: number;
+};
 
-const STATUSES: Lead["status"][] = ["NEW", "CONTACTED", "QUALIFIED", "DISQUALIFIED"];
+const STATUS_LABELS: Record<LeadStatus, string> = {
+  NEW_ENQUIRY: "New enquiry",
+  INFO_REQUESTED: "Info requested",
+  DISQUALIFIED: "Disqualified",
+  REJECTED: "Rejected",
+  READY_TO_QUOTE: "Ready to quote",
+  QUOTE_SENT: "Quote sent",
+  WON: "Won",
+  LOST: "Lost",
+};
+
+const STATUSES: LeadStatus[] = Object.keys(STATUS_LABELS) as LeadStatus[];
+
 const API_URL =
   (process.env.NEXT_PUBLIC_API_URL ||
     process.env.NEXT_PUBLIC_API_BASE ||
@@ -71,15 +80,21 @@ const API_URL =
 
 /* --------------- Page --------------- */
 export default function LeadsPage() {
-  const [grouped, setGrouped] = useState<Grouped>({
-    NEW: [],
-    CONTACTED: [],
-    QUALIFIED: [],
+  const empty: Grouped = {
+    NEW_ENQUIRY: [],
+    INFO_REQUESTED: [],
     DISQUALIFIED: [],
-  });
+    REJECTED: [],
+    READY_TO_QUOTE: [],
+    QUOTE_SENT: [],
+    WON: [],
+    LOST: [],
+  };
+
+  const [grouped, setGrouped] = useState<Grouped>(empty);
+  const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
 
   const [error, setError] = useState<string | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
 
   // modal state
   const [open, setOpen] = useState(false);
@@ -89,81 +104,259 @@ export default function LeadsPage() {
   const [loadingDetails, setLoadingDetails] = useState(false);
 
   const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([]);
-  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<{
     contactName: string;
     email: string;
-    status: Lead["status"];
+    status: LeadStatus;
     nextAction: string;
     nextActionAt: string;
     custom: Record<string, any>;
   } | null>(null);
 
-  // import busy flag
   const [importing, setImporting] = useState<"gmail" | "ms365" | null>(null);
+  const [autoSaving, setAutoSaving] = useState(false);
 
-  // full email details (Gmail)
-  const [emailDetails, setEmailDetails] = useState<{
-    bodyText?: string;
-    bodyHtml?: string;
-    subject?: string;
-    from?: string;
-    date?: string;
-    attachments?: GmailAttachment[];
-  } | null>(null);
-  const [loadingEmail, setLoadingEmail] = useState(false);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+const [emailDetails, setEmailDetails] = useState<EmailDetails | null>(null);
+const [loadingEmail, setLoadingEmail] = useState(false);
+// --- Supplier email modal state ---
+const [sendOpen, setSendOpen] = useState(false);
+const [sendTo, setSendTo] = useState("");
+const [sendSubject, setSendSubject] = useState("");
+const [sendBody, setSendBody] = useState("");
+const [sendAttIds, setSendAttIds] = useState<string[]>([]);
+useEffect(() => {
+  const defaultSubj = `Quote request – ${form?.contactName || details?.contactName || previewLead?.contactName || "Lead"}`;
+  setSendSubject((s) => s || defaultSubj);
+  const allIds = (emailDetails?.attachments || [])
+    .map((a: any) => a.attachmentId || a.id)
+    .filter(Boolean);
+  setSendAttIds(allIds);
+}, [emailDetails, form?.contactName, details?.id]);
 
-  async function importFrom(provider: "gmail" | "ms365") {
+  /* ---------- helpers ---------- */
+
+  // Attachment download URL — served by the small API addition below
+  function attachmentUrl(messageId: string, attachmentId: string) {
+    // JWT is also in cookie; adding a cache-buster helps avoid stale downloads
+    const bust = Date.now();
+    return `${API_URL}/gmail/message/${encodeURIComponent(
+      messageId
+    )}/attachment/${encodeURIComponent(attachmentId)}?v=${bust}`;
+  }
+
+ async function importFrom(provider: "gmail" | "ms365") {
+  try {
+    const payload = provider === "gmail" ? { max: 10, q: "newer_than:30d" } : { max: 10 };
+    await apiFetch("/" + (provider === "gmail" ? "gmail/import" : "ms365/import"), {
+      method: "POST",
+      json: payload,
+    });
+    const data = await apiFetch<Grouped>("/leads/grouped");
+    setGrouped(normaliseToNewStatuses(data));
+    alert(`Imported from ${provider.toUpperCase()} ✔`);
+  } catch (e: any) {
+    alert(`Import from ${provider.toUpperCase()} failed: ${e?.message || e}`);
+  }
+} // <-- CLOSES importFrom properly
+
+// Normalize server buckets to new statuses and de-dupe by id
+function normaliseToNewStatuses(g: any): Grouped {
+  const out: Grouped = {
+    NEW_ENQUIRY: [],
+    INFO_REQUESTED: [],
+    DISQUALIFIED: [],
+    REJECTED: [],
+    READY_TO_QUOTE: [],
+    QUOTE_SENT: [],
+    WON: [],
+    LOST: [],
+  };
+
+  const mapLegacyToNew = (legacy: string | undefined): LeadStatus => {
+    switch ((legacy || "").toUpperCase()) {
+      case "NEW": return "NEW_ENQUIRY";
+      case "CONTACTED": return "INFO_REQUESTED";
+      case "QUALIFIED": return "READY_TO_QUOTE";
+      case "DISQUALIFIED": return "DISQUALIFIED";
+      case "NEW_ENQUIRY":
+      case "INFO_REQUESTED":
+      case "REJECTED":
+      case "READY_TO_QUOTE":
+      case "QUOTE_SENT":
+      case "WON":
+      case "LOST":
+        return legacy as LeadStatus;
+      default:
+        return "NEW_ENQUIRY";
+    }
+  };
+
+  const seen = new Set<string>();
+  const insert = (l: any) => {
+    if (!l?.id) return;
+    if (seen.has(l.id)) return;
+    seen.add(l.id);
+    const s = mapLegacyToNew(l.status as string);
+    out[s].push({ ...l, status: s } as Lead);
+  };
+
+  // Legacy buckets
+  (g?.NEW || []).forEach(insert);
+  (g?.CONTACTED || []).forEach(insert);
+  (g?.QUALIFIED || []).forEach(insert);
+  (g?.DISQUALIFIED || []).forEach(insert);
+
+  // Already-new buckets (if server returned them)
+  STATUSES.forEach((s) => (g?.[s] || []).forEach(insert));
+
+  return out;
+}
+ 
+  // PATCH only the changed fields (optimistic)
+  async function autoSave(patch: Partial<Lead>) {
+    const targetId = details?.id ?? previewLead?.id ?? selectedId ?? null;
+    if (!targetId) return;
+
+    // optimistic UI: update grouped + form
+    setGrouped((g) => {
+      const next: Grouped = structuredClone(g);
+      // find which column currently holds it
+      for (const s of STATUSES) {
+        const idx = next[s].findIndex((x) => x.id === targetId);
+        if (idx >= 0) {
+          const current = next[s][idx];
+          const newCustom =
+            patch.custom !== undefined ? { ...(current.custom || {}), ...(patch.custom as any) } : current.custom;
+          const updated: Lead = { ...current, ...(patch as any), custom: newCustom };
+          // move column if status changed
+          if (patch.status && patch.status !== s) {
+            next[s].splice(idx, 1);
+            next[patch.status].unshift(updated);
+          } else {
+            next[s][idx] = updated;
+          }
+          break;
+        }
+      }
+      return next;
+    });
+
+    setForm((f) => (f ? mergeIntoForm(f, patch) : f));
+
     try {
-      const payload = provider === "gmail" ? { max: 10, q: "newer_than:30d" } : { max: 10 };
-      await apiFetch("/" + (provider === "gmail" ? "gmail/import" : "ms365/import"), {
-        method: "POST",
-        json: payload,
-      });
-      const data = await apiFetch<Grouped>("/leads/grouped");
-      setGrouped(data);
-      alert(`Imported from ${provider.toUpperCase()} ✔`);
-    } catch (e: any) {
-      alert(`Import from ${provider.toUpperCase()} failed: ${e?.message || e}`);
+      setAutoSaving(true);
+      await apiFetch(`/leads/${targetId}`, { method: "PATCH", json: patch });
+    } catch (e) {
+      console.error("autosave failed:", e);
+    } finally {
+      setAutoSaving(false);
     }
   }
 
-  /* ---------- initial data (guarded by ensureDemoAuth) ---------- */
+  function mergeIntoForm(
+    f: {
+      contactName: string;
+      email: string;
+      status: LeadStatus;
+      nextAction: string;
+      nextActionAt: string;
+      custom: Record<string, any>;
+    } | null,
+    patch: Partial<Lead>
+  ) {
+    if (!f) return f;
+    const mergedCustom =
+      patch.custom !== undefined ? { ...(f.custom || {}), ...(patch.custom as Record<string, any>) } : f.custom;
+    return { ...f, ...(patch as any), custom: mergedCustom || f.custom };
+  }
+
+function openLead(lead: Lead) {
+  // seed the modal form immediately
+  setSelectedId(lead.id);
+  setPreviewLead(lead);
+  setForm({
+    contactName: lead.contactName ?? "",
+    email: (lead.email ?? "") as string,
+    status: lead.status,
+    nextAction: lead.nextAction ?? "",
+    nextActionAt: lead.nextActionAt
+      ? new Date(lead.nextActionAt).toISOString().slice(0, 16)
+      : "",
+    custom: { ...(lead.custom || {}) },
+  });
+  setOpen(true);
+
+  // reset email details
+  setEmailDetails(null);
+  setLoadingEmail(false);
+
+// fetch authoritative details (also brings in full body / attachments if present)
+setLoadingDetails(true);
+apiFetch<any>(`/leads/${lead.id}`)
+  .then(async (raw) => {
+    const d: Lead = (raw && (raw.lead ?? raw)) as Lead;
+    setDetails(d);
+    setForm({
+      contactName: d.contactName ?? "",
+      email: d.email ?? "",
+      status: d.status,
+      nextAction: d.nextAction ?? "",
+      nextActionAt: d.nextActionAt
+        ? new Date(d.nextActionAt).toISOString().slice(0, 16)
+        : "",
+      custom: { ...(d.custom || {}) },
+    });
+
+    // --- Fetch full Gmail message if present ---
+    const provider = d.custom?.provider;
+    const messageId = d.custom?.messageId as string | undefined;
+    if (provider === "gmail" && messageId) {
+      try {
+        setLoadingEmail(true);
+const msg = await apiFetch<EmailDetails>(`/gmail/message/${messageId}`);
+setEmailDetails(msg);
+      } catch (err) {
+        console.error("Email details fetch failed:", err);
+        setEmailDetails(null);
+      } finally {
+        setLoadingEmail(false);
+      }
+    } else {
+      setEmailDetails(null);
+    }
+  })
+  .catch((e) => console.error("Lead details fetch failed:", e))
+  .finally(() => setLoadingDetails(false));
+}
+  /* ---------- initial data ---------- */
   useEffect(() => {
     let cancel = false;
-
     (async () => {
       setError(null);
-
       const ok = await ensureDemoAuth();
       if (!ok) {
         if (!cancel) setError("Not authenticated");
         return;
       }
-
       try {
         const data = await apiFetch<Grouped>("/leads/grouped");
-        if (!cancel) setGrouped(data);
+        if (!cancel) setGrouped(normaliseToNewStatuses(data));
       } catch (e: any) {
         if (!cancel) setError(`Failed to load: ${e?.message ?? "unknown"}`);
       }
     })();
-
     return () => {
       cancel = true;
     };
   }, []);
 
-  /* ---------- field defs (also wait for auth) ---------- */
+  /* ---------- field defs ---------- */
   useEffect(() => {
     let cancel = false;
-
     (async () => {
       const ok = await ensureDemoAuth();
       if (!ok) return;
-
       try {
         const defs = await apiFetch<FieldDef[]>("/leads/fields");
         if (!cancel) setFieldDefs(defs);
@@ -171,277 +364,12 @@ export default function LeadsPage() {
         if (!cancel) setFieldDefs([]);
       }
     })();
-
     return () => {
       cancel = true;
     };
   }, []);
 
-  /* ---------- load details when selected ---------- */
-  useEffect(() => {
-    if (!selectedId) return;
-
-    // 1) Seed from preview immediately so modal isn’t blank
-    if (previewLead) {
-      setForm({
-        contactName: previewLead.contactName ?? "",
-        email: previewLead.email ?? "",
-        status: previewLead.status,
-        nextAction: previewLead.nextAction ?? "",
-        nextActionAt: previewLead.nextActionAt
-          ? new Date(previewLead.nextActionAt).toISOString().slice(0, 16)
-          : "",
-        custom: { ...(previewLead.custom || {}) },
-      });
-    }
-
-    // 2) Fetch authoritative details
-    setLoadingDetails(true);
-    setDetails(null);
-
-    apiFetch<any>(`/leads/${selectedId}`)
-      .then((raw) => {
-        const d: Lead = (raw && (raw.lead ?? raw)) as Lead;
-        setDetails(d);
-        setForm({
-          contactName: d.contactName ?? "",
-          email: d.email ?? "",
-          status: d.status,
-          nextAction: d.nextAction ?? "",
-          nextActionAt: d.nextActionAt
-            ? new Date(d.nextActionAt).toISOString().slice(0, 16)
-            : "",
-          custom: { ...(d.custom || {}) },
-        });
-      })
-      .catch((e) => console.error("Lead details fetch failed:", e))
-      .finally(() => setLoadingDetails(false));
-  }, [selectedId, previewLead]);
-
-  const allIds = useMemo(
-    () => ({
-      NEW: grouped.NEW.map((l) => l.id),
-      CONTACTED: grouped.CONTACTED.map((l) => l.id),
-      QUALIFIED: grouped.QUALIFIED.map((l) => l.id),
-      DISQUALIFIED: grouped.DISQUALIFIED.map((l) => l.id),
-    }),
-    [grouped]
-  );
-
-  const activeLead = useMemo(
-    () =>
-      (activeId &&
-        (grouped.NEW.find((l) => l.id === activeId) ||
-          grouped.CONTACTED.find((l) => l.id === activeId) ||
-          grouped.QUALIFIED.find((l) => l.id === activeId) ||
-          grouped.DISQUALIFIED.find((l) => l.id === activeId))) ||
-      null,
-    [activeId, grouped]
-  );
-
-  /* ---------- DnD helpers ---------- */
-  function getContainerOf(id: string | null): Lead["status"] | null {
-    if (!id) return null;
-    if (STATUSES.includes(id as Lead["status"])) return id as Lead["status"];
-    for (const s of STATUSES) {
-      if (allIds[s].includes(id)) return s;
-    }
-    return null;
-  }
-
-  function onDragStart(e: DragStartEvent) {
-    setActiveId(String(e.active.id));
-  }
-
-  async function onDragEnd(e: DragEndEvent) {
-    const { active, over } = e;
-    setActiveId(null);
-    if (!over) return;
-
-    const activeId = String(active.id);
-    const overId = String(over.id);
-
-    const from = getContainerOf(activeId);
-    const to = getContainerOf(overId);
-    if (!from || !to) return;
-
-    const fromList = grouped[from];
-    const toList = grouped[to];
-    const activeIndex = fromList.findIndex((l) => l.id === activeId);
-
-    let overIndex: number;
-    if (STATUSES.includes(overId as any)) {
-      overIndex = toList.length;
-    } else {
-      const idxInTo = toList.findIndex((l) => l.id === overId);
-      overIndex = idxInTo < 0 ? toList.length : idxInTo;
-    }
-
-    if (from === to && activeIndex === overIndex) return;
-
-    const prev = structuredClone(grouped) as Grouped;
-
-    setGrouped((g) => {
-      const next: Grouped = {
-        ...g,
-        [from]: [...g[from]],
-        [to]: [...g[to]],
-      };
-      const [moved] = next[from].splice(activeIndex, 1);
-      const movedUpdated = from === to ? moved : { ...moved, status: to };
-      next[to].splice(overIndex, 0, movedUpdated);
-
-      if (from === to) {
-        next[to] = arrayMove(
-          next[to],
-          next[to].findIndex((l) => l.id === activeId),
-          overIndex
-        );
-      }
-      return next;
-    });
-
-    if (from !== to) {
-      try {
-        await apiFetch(`/leads/${activeId}`, { method: "PATCH", json: { status: to } });
-      } catch {
-        setGrouped(prev); // rollback
-      }
-    }
-  }
-
-  /* ---------- Open lead (and fetch full email if Gmail) ---------- */
-  function openLead(lead: Lead) {
-    setSelectedId(lead.id);
-    setPreviewLead(lead);
-    setForm({
-      contactName: lead.contactName ?? "",
-      email: (lead.email ?? "") as string,
-      status: lead.status,
-      nextAction: lead.nextAction ?? "",
-      nextActionAt: lead.nextActionAt ? new Date(lead.nextActionAt).toISOString().slice(0, 16) : "",
-      custom: { ...(lead.custom || {}) },
-    });
-    setOpen(true);
-
-    // fetch full email for Gmail
-    setEmailDetails(null);
-    const provider = lead.custom?.provider;
-    const messageId = lead.custom?.messageId;
-    if (provider === "gmail" && messageId) {
-      setLoadingEmail(true);
-      apiFetch(`/gmail/message/${messageId}`)
-        .then((d: any) => setEmailDetails(d))
-        .catch(() => setEmailDetails(null))
-        .finally(() => setLoadingEmail(false));
-    }
-  }
-
-  /* ---------- AI Feedback (confirm / reject) ---------- */
-  async function sendFeedback(lead: Lead, isLead: boolean) {
-    const provider = lead.custom?.provider ?? "gmail";
-    const messageId = lead.custom?.messageId ?? undefined;
-
-    // optimistic tiny flag
-    setGrouped((g) => {
-      const next = structuredClone(g) as Grouped;
-      for (const s of STATUSES) {
-        const i = next[s].findIndex((l) => l.id === lead.id);
-        if (i >= 0) {
-          const custom = { ...(next[s][i].custom || {}) };
-          custom.aiFeedback = { isLead, at: new Date().toISOString() };
-          next[s][i] = { ...next[s][i], custom };
-          break;
-        }
-      }
-      return next;
-    });
-
-    try {
-      await apiFetch("/leads/ai/feedback", {
-        method: "POST",
-        json: {
-          provider,
-          messageId,
-          leadId: lead.id,
-          isLead,
-          snapshot: {
-            subject: lead.custom?.subject ?? null,
-            summary: lead.custom?.summary ?? null,
-            emailOnCard: lead.email ?? null,
-          },
-        },
-      });
-    } catch (e) {
-      console.error("feedback failed:", e);
-    }
-  }
-
-  /* ---------- Save (modal) ---------- */
-  async function saveEdits() {
-    const targetId = details?.id ?? previewLead?.id ?? selectedId ?? null;
-    const fromStatus = details?.status ?? previewLead?.status ?? form?.status ?? null;
-    const toStatus = form?.status ?? fromStatus;
-    if (!targetId || !toStatus || !STATUSES.includes(toStatus)) {
-      alert("Missing or invalid data; please try again.");
-      return;
-    }
-
-    setSaving(true);
-
-    const payload = {
-      contactName: form?.contactName.trim() ?? "",
-      email: form?.email.trim() || null,
-      status: toStatus,
-      nextAction: form?.nextAction.trim() || null,
-      nextActionAt: form?.nextActionAt ? new Date(form.nextActionAt).toISOString() : null,
-      custom: form?.custom ?? {},
-    };
-
-    const prev = structuredClone(grouped) as Grouped;
-
-    try {
-      setGrouped((g) => {
-        const next = structuredClone(g) as Grouped;
-        const safeFrom = (fromStatus && STATUSES.includes(fromStatus) ? fromStatus : toStatus)!;
-        const safeTo = toStatus;
-
-        if (!next[safeFrom]) (next as any)[safeFrom] = [];
-        if (!next[safeTo]) (next as any)[safeTo] = [];
-
-        if (safeFrom === safeTo) {
-          const list = next[safeTo];
-          const idx = list.findIndex((l) => l.id === targetId);
-          if (idx >= 0) list[idx] = { ...list[idx], ...payload } as Lead;
-        } else {
-          const fromList = next[safeFrom];
-          const toList = next[safeTo];
-          const idx = fromList.findIndex((l) => l.id === targetId);
-          if (idx >= 0) {
-            const updated = { ...fromList[idx], ...payload } as Lead;
-            fromList.splice(idx, 1);
-            toList.unshift(updated);
-          } else {
-            toList.unshift({ id: targetId, ...payload } as Lead);
-          }
-        }
-        return next;
-      });
-
-      await apiFetch(`/leads/${targetId}`, { method: "PATCH", json: payload });
-
-      setDetails((d) => (d ? ({ ...d, ...payload } as Lead) : d));
-      setPreviewLead((p) => (p ? ({ ...p, ...payload } as Lead) : p));
-    } catch (e) {
-      setGrouped(prev);
-      console.error(e);
-      alert("Failed to save changes.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  /* ---------- Logout ---------- */
+  /* ---------- UI ---------- */
   function handleLogout() {
     try {
       localStorage.removeItem("jwt");
@@ -449,14 +377,22 @@ export default function LeadsPage() {
     window.location.href = "/login";
   }
 
+// De-dupe any accidental duplicates in the active tab
+const rows = useMemo(() => {
+  const seen = new Set<string>();
+  return grouped[tab].filter((l) => {
+    if (seen.has(l.id)) return false;
+    seen.add(l.id);
+    return true;
+  });
+}, [grouped, tab]);
+
   return (
     <div className="p-6">
-      <header className="mb-5 flex items-center justify-between">
+      <header className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Leads</h1>
-          <p className="text-sm text-slate-500">
-            Drag cards using the handle ⋮⋮ to move between columns. Click a card to view & edit.
-          </p>
+          <p className="text-sm text-slate-500">Tabbed list. Click a row to view & edit.</p>
         </div>
 
         <div className="flex gap-2 items-center">
@@ -474,7 +410,6 @@ export default function LeadsPage() {
             title="Import recent emails from Gmail"
           >
             <span className="mr-2 inline-flex items-center">
-              {/* Gmail logo */}
               <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
                 <path fill="#EA4335" d="M24 11L4 24v14h8V23l12-8 12 8v15h8V24z" />
                 <path fill="#FBBC04" d="M44 38h-8V23l8 5z" />
@@ -499,7 +434,6 @@ export default function LeadsPage() {
             title="Import recent emails from Outlook 365"
           >
             <span className="mr-2 inline-flex items-center">
-              {/* Outlook / 365 logo */}
               <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
                 <path fill="#0078D4" d="M6 14h22v20H6z" />
                 <path fill="#106EBE" d="M28 14h14v20H28z" />
@@ -523,25 +457,37 @@ export default function LeadsPage() {
         </div>
       )}
 
-      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {STATUSES.map((status) => (
-            <Column
-              key={status}
-              id={status}
-              title={labelFor(status)}
-              count={grouped[status].length}
-              items={grouped[status]}
-              onOpen={openLead}
-              onFeedback={sendFeedback}
-            />
-          ))}
-        </div>
+      {/* Tabs */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {STATUSES.map((s) => (
+          <button
+            key={s}
+            onClick={() => setTab(s)}
+            className={`rounded-full border px-3 py-1 text-sm ${
+              tab === s ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700"
+            }`}
+          >
+            {STATUS_LABELS[s]}{" "}
+            <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-100 px-1 text-xs text-slate-600">
+              {grouped[s].length}
+            </span>
+          </button>
+        ))}
+      </div>
 
-        <DragOverlay>{activeLead ? <Card lead={activeLead} isOverlay /> : null}</DragOverlay>
-      </DndContext>
+      {/* Rows */}
+      <div className="space-y-2">
+        {rows.length === 0 && (
+          <div className="rounded-lg border border-dashed bg-slate-50 py-10 text-center text-sm text-slate-500">
+            No leads in “{STATUS_LABELS[tab]}”.
+          </div>
+        )}
+        {rows.map((lead) => (
+          <Row key={lead.id} lead={lead} onOpen={() => openLead(lead)} onStatus={(s) => autoSave({ status: s })} />
+        ))}
+      </div>
 
-      {/* Details modal */}
+      {/* Modal */}
       <Dialog
         open={open}
         onOpenChange={(v) => {
@@ -551,305 +497,445 @@ export default function LeadsPage() {
             setPreviewLead(null);
             setDetails(null);
             setForm(null);
-            setEmailDetails(null);
-            setLoadingEmail(false);
           }
         }}
       >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="inline-flex size-8 items-center justify-center rounded-full bg-slate-100 text-sm font-medium">
-                {avatarText(form?.contactName ?? previewLead?.contactName)}
-              </span>
-              <input
-                className="w-full max-w-full rounded-md border p-2 text-base outline-none focus:ring-2"
-                placeholder="Name"
-                value={form?.contactName ?? ""}
-                onChange={(e) => setForm((f) => (f ? { ...f, contactName: e.target.value } : f))}
-              />
-            </DialogTitle>
-            <DialogDescription>Full details for this lead.</DialogDescription>
-          </DialogHeader>
+        <DialogContent className="w-[95vw] max-w-4xl md:max-w-5xl p-0">
+          <div className="max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogHeader className="p-4 md:p-6 pb-2">
+              <DialogTitle className="flex items-center gap-2">
+                <span className="inline-flex size-8 items-center justify-center rounded-full bg-slate-100 text-sm font-medium">
+                  {avatarText(form?.contactName ?? previewLead?.contactName)}
+                </span>
+                <input
+                  className="w-full max-w-full rounded-md border p-2 text-base outline-none focus:ring-2"
+                  placeholder="Name"
+                  value={form?.contactName ?? ""}
+                  onChange={(e) => setForm((f) => (f ? { ...f, contactName: e.target.value } : f))}
+                  onBlur={(e) => autoSave({ contactName: e.target.value })}
+                />
+              </DialogTitle>
+              <DialogDescription className="flex items-center gap-3">
+                <span className="text-xs text-slate-500">
+                  {autoSaving ? "Saving…" : "Changes are saved automatically"}
+                </span>
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-4">
-            {loadingDetails && <div className="text-sm text-slate-500">Loading details…</div>}
+{/* Scrollable content */}
+<div className="px-4 md:px-6 pb-6 overflow-y-auto">
+{/* ---- EMAIL ---- */}
+<Section title="Email">
+  {/* Summary */}
+  {form?.custom?.summary ? (
+    <div className="text-sm text-slate-700 mb-2">{form.custom.summary}</div>
+  ) : null}
 
-            {(form?.custom?.subject || form?.custom?.summary) && (
-              <Section title="Email">
-                <div className="space-y-1">
-                  {form?.custom?.subject && (
-                    <div className="text-sm font-medium line-clamp-2">{form.custom.subject}</div>
-                  )}
-                  {form?.custom?.summary && (
-                    <div className="text-xs text-slate-600 line-clamp-4">{form.custom.summary}</div>
-                  )}
-                </div>
-              </Section>
-            )}
-
-            {/* Full email (Gmail) */}
-            {form?.custom?.provider === "gmail" && (
-              <Section title="Email (full)">
-                {loadingEmail && <div className="text-sm text-slate-500">Loading email…</div>}
-
-                {!loadingEmail && emailDetails && (
-                  <div className="space-y-3">
-                    <div className="text-xs text-slate-600">
-                      <div>
-                        <span className="font-medium">From:</span>{" "}
-                        {emailDetails.from || form?.custom?.from || "Unknown"}
-                      </div>
-                      {emailDetails.date && (
-                        <div>
-                          <span className="font-medium">Date:</span> {emailDetails.date}
-                        </div>
-                      )}
-                    </div>
-
-                    {emailDetails.bodyHtml ? (
-                      <div
-                        className="prose max-w-none rounded-md border bg-white p-3 text-sm"
-                        dangerouslySetInnerHTML={{ __html: emailDetails.bodyHtml }}
-                      />
-                    ) : (
-                      <pre className="max-h-64 overflow-auto rounded-md border bg-slate-50 p-3 text-xs whitespace-pre-wrap">
-                        {emailDetails.bodyText || "(no body)"}
-                      </pre>
-                    )}
-
-                    {emailDetails.attachments && emailDetails.attachments.length > 0 && (
-                      <div>
-                        <div className="text-xs font-semibold text-slate-600 mb-1">Attachments</div>
-                        <ul className="space-y-1">
-                          {emailDetails.attachments.map((a) => (
-                            <li key={a.attachmentId} className="text-sm">
-                              <a
-                                className="text-blue-700 underline"
-                                href={`${API_URL}/gmail/message/${form?.custom?.messageId}/attachments/${a.attachmentId}/download`}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {a.filename || "attachment"}
-                                {a.size ? ` (${a.size} bytes)` : ""}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </Section>
-            )}
-
-            {form && (
-              <>
-                <Section title="Contact">
-                  <div className="grid grid-cols-2 gap-3">
-                    <LabeledInput
-                      label="Email"
-                      type="email"
-                      value={form.email}
-                      onChange={(v) => setForm((f) => (f ? { ...f, email: v } : f))}
-                    />
-                    <LabeledSelect
-                      label="Status"
-                      value={form.status}
-                      onChange={(v) => setForm((f) => (f ? ({ ...f, status: v as Lead["status"] } as any) : f))}
-                      options={STATUSES.map((s) => ({ label: labelFor(s), value: s }))}
-                    />
-                    <LabeledInput
-                      label="Next Action"
-                      value={form.nextAction}
-                      onChange={(v) => setForm((f) => (f ? { ...f, nextAction: v } : f))}
-                    />
-                    <LabeledInput
-                      label="Next Action At"
-                      type="datetime-local"
-                      value={form.nextActionAt}
-                      onChange={(v) => setForm((f) => (f ? { ...f, nextActionAt: v } : f))}
-                    />
-                  </div>
-                </Section>
-
-                <Section title="Custom Fields">
-                  <div className="grid grid-cols-2 gap-3">
-                    {fieldDefs.length === 0 && (
-                      <div className="col-span-2 text-xs text-slate-500">No custom fields yet.</div>
-                    )}
-                    {fieldDefs.map((def) => (
-                      <DynamicFieldEditor
-                        key={def.id}
-                        def={def}
-                        value={form.custom?.[def.key] ?? ""}
-                        onChange={(v) =>
-                          setForm((f) => (f ? { ...f, custom: { ...(f.custom || {}), [def.key]: v } } : f))
-                        }
-                      />
-                    ))}
-                  </div>
-                </Section>
-              </>
-            )}
-          </div>
-
-          <DialogFooter className="mt-2 gap-2">
-            {selectedId && (
-              <>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    const target =
-                      details ?? previewLead ?? (grouped.NEW.find((l) => l.id === selectedId) as Lead | undefined);
-                    if (target) sendFeedback(target, true);
-                  }}
-                >
-                  ✓ Confirm
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    const target =
-                      details ?? previewLead ?? (grouped.NEW.find((l) => l.id === selectedId) as Lead | undefined);
-                    if (target) sendFeedback(target, false);
-                  }}
-                >
-                  ✕ Reject
-                </Button>
-              </>
-            )}
-            <div className="flex-1" />
-            <Button onClick={() => setOpen(false)} className="btn">
-              Close
-            </Button>
-            <Button disabled={saving || !form} onClick={saveEdits} className="btn btn-primary">
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+  {/* Meta (From / Date / Subject) */}
+  {(emailDetails?.from ||
+    emailDetails?.date ||
+    emailDetails?.subject ||
+    form?.custom?.from ||
+    form?.custom?.date ||
+    form?.custom?.subject) && (
+    <div className="mb-2 text-[11px] text-slate-500 space-y-0.5">
+      {(emailDetails?.from ?? form?.custom?.from) && (
+        <div>From: {emailDetails?.from ?? form?.custom?.from}</div>
+      )}
+      {(emailDetails?.date ?? form?.custom?.date) && (
+        <div>Date: {emailDetails?.date ?? form?.custom?.date}</div>
+      )}
+      {(emailDetails?.subject ?? form?.custom?.subject) && (
+        <div>Subject: {emailDetails?.subject ?? form?.custom?.subject}</div>
+      )}
     </div>
-  );
-}
+  )}
 
-/* --------------- Column --------------- */
-function Column({
-  id,
-  title,
-  count,
-  items,
-  onOpen,
-  onFeedback,
-}: {
-  id: Lead["status"];
-  title: string;
-  count: number;
-  items: Lead[];
-  onOpen: (lead: Lead) => void;
-  onFeedback: (lead: Lead, isLead: boolean) => void;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id, data: { columnId: id } });
+  {/* Body */}
+  <div className="rounded-md border bg-white/60 p-3 text-sm leading-relaxed shadow-inner max-h-[50vh] overflow-auto">
+    {emailDetails?.bodyHtml && typeof emailDetails.bodyHtml === "string" ? (
+      <div
+        className="prose prose-sm max-w-none"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: emailDetails.bodyHtml }}
+      />
+    ) : (
+      <div className="whitespace-pre-wrap break-words">
+        {emailDetails?.bodyText ??
+          (form?.custom?.full as string | undefined) ??
+          (form?.custom?.body as string | undefined) ??
+          "No email body captured for this message."}
+      </div>
+    )}
+  </div>
+
+  {/* Attachments (open inline) */}
+{(() => {
+  const atts = emailDetails?.attachments ?? [];
+  const messageId = form?.custom?.messageId as string | undefined;
+  if (!atts.length || !messageId) return null;
 
   return (
-    <div
-      ref={setNodeRef}
-      className={`rounded-2xl border bg-white p-3 transition-colors ${
-        isOver ? "border-blue-400 bg-blue-50/40" : "border-[rgb(var(--border))]"
-      } min-h-[180px]`}
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <div className="text-xs font-semibold tracking-wide text-slate-600">{title}</div>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{count}</span>
-      </div>
+    <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {atts.map((att: any) => {
+        const attachmentId = att.attachmentId || att.id;
+        if (!attachmentId) return null;
 
-      <SortableContext items={items.map((l) => l.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-2">
-          {items.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-xs text-slate-400">
-              Drop leads here
+        const href = `${API_URL}/gmail/message/${messageId}/attachments/${attachmentId}?v=${Date.now()}`;
+
+        const sizeLabel =
+          typeof att.size === "number" ? ` (${Math.round(att.size / 1024)} KB)` : "";
+
+        return (
+          <a
+            key={attachmentId}
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 rounded-md border p-2 hover:bg-slate-50"
+            title={att.filename || "Attachment"}
+          >
+            <span className="inline-flex size-8 items-center justify-center rounded-md bg-slate-100">
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M20.5 12.5l-7.78 7.78a5.5 5.5 0 01-7.78-7.78L12 5.22a3.5 3.5 0 114.95 4.95L9.64 17.48a1.5 1.5 0 01-2.12-2.12l7.07-7.07"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <span className="truncate text-xs">
+              {att.filename || "Attachment"}
+              {sizeLabel}
+            </span>
+          </a>
+        );
+      })}
+    </div>
+  );
+})()}
+</Section>
+              {/* CONTACT */}
+              {form && (
+                <>
+                  <Section title="Contact">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <LabeledInput
+                        label="Email"
+                        type="email"
+                        value={form.email}
+                        onChange={(v) => setForm((f) => (f ? { ...f, email: v } : f))}
+                        onBlurCommit={(v) => autoSave({ email: v || null })}
+                      />
+
+                      <LabeledSelect
+                        label="Status"
+                        value={form.status}
+                        options={STATUSES.map((s) => ({ label: STATUS_LABELS[s], value: s }))}
+                        onChange={(v) => setForm((f) => (f ? ({ ...f, status: v as LeadStatus } as any) : f))}
+                        onCommit={(v) => autoSave({ status: v as LeadStatus })}
+                      />
+
+                      <LabeledInput
+                        label="Next Action"
+                        value={form.nextAction}
+                        onChange={(v) => setForm((f) => (f ? { ...f, nextAction: v } : f))}
+                        onBlurCommit={(v) => autoSave({ nextAction: v || null })}
+                      />
+
+                      <LabeledInput
+                        label="Next Action At"
+                        type="datetime-local"
+                        value={form.nextActionAt}
+                        onChange={(v) => setForm((f) => (f ? { ...f, nextActionAt: v } : f))}
+                        onBlurCommit={(v) => autoSave({ nextActionAt: v ? new Date(v).toISOString() : null })}
+                      />
+                    </div>
+                  </Section>
+
+                  <Section title="Custom Fields">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {fieldDefs.length === 0 && (
+                        <div className="col-span-2 text-xs text-slate-500">No custom fields yet.</div>
+                      )}
+                      {fieldDefs.map((def) => (
+                        <DynamicFieldEditor
+                          key={def.id}
+                          def={def}
+                          value={form.custom?.[def.key] ?? ""}
+                          onChange={(v) =>
+                            setForm((f) => (f ? { ...f, custom: { ...(f.custom || {}), [def.key]: v } } : f))
+                          }
+                          onCommit={(v) =>
+                            autoSave({ custom: { ...(form?.custom || {}), [def.key]: v } as any })
+                          }
+                        />
+                      ))}
+                    </div>
+                  </Section>
+                </>
+              )}
+            </div>
+
+            {/* Footer: confirm/reject visible only until you pick one */}
+            <DialogFooter className="gap-2 p-4 border-t bg-white">
+              {selectedId &&
+                !(details?.custom?.aiFeedback || previewLead?.custom?.aiFeedback) && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        const t = details ?? previewLead!;
+                        await autoSave({ status: "READY_TO_QUOTE" });
+                        try {
+                          await apiFetch("/leads/ai/feedback", {
+                            method: "POST",
+                            json: {
+                              provider: t.custom?.provider ?? "gmail",
+                              messageId: t.custom?.messageId,
+                              leadId: t.id,
+                              isLead: true,
+                              snapshot: {
+                                subject: t.custom?.subject ?? null,
+                                summary: t.custom?.summary ?? null,
+                                emailOnCard: t.email ?? null,
+                              },
+                            },
+                          });
+                        } catch {}
+                      }}
+                    >
+                      ✓ Confirm
+                    </Button>
+
+                    <Button
+                      variant="destructive"
+                      onClick={async () => {
+                        const t = details ?? previewLead!;
+                        await autoSave({ status: "REJECTED" });
+                        try {
+                          await apiFetch("/leads/ai/feedback", {
+                            method: "POST",
+                            json: {
+                              provider: t.custom?.provider ?? "gmail",
+                              messageId: t.custom?.messageId,
+                              leadId: t.id,
+                              isLead: false,
+                              snapshot: {
+                                subject: t.custom?.subject ?? null,
+                                summary: t.custom?.summary ?? null,
+                                emailOnCard: t.email ?? null,
+                              },
+                            },
+                          });
+                        } catch {}
+                      }}
+                    >
+                      ✕ Reject
+                    </Button>
+                  </>
+                )}
+                
+           
+<Button
+  variant="outline"
+  onClick={() => setSendOpen(true)}
+>
+  ✉️ Send to Supplier
+</Button>
+   <div className="flex-1" />
+              <Button onClick={() => setOpen(false)} className="btn">
+                Close
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+        </Dialog>
+        {/* --- Send to Supplier modal --- */}
+<Dialog open={sendOpen} onOpenChange={setSendOpen}>
+  <DialogContent className="w-[95vw] max-w-xl p-0">
+    <div className="p-4 md:p-6">
+      <DialogHeader className="p-0 mb-3">
+        <DialogTitle>Send to Supplier</DialogTitle>
+        <DialogDescription>Choose recipient, include notes, and pick attachments.</DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-3">
+        <label className="block">
+          <div className="text-xs text-slate-600 mb-1">To (supplier email)</div>
+          <input
+            type="email"
+            className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
+            value={sendTo}
+            onChange={(e) => setSendTo(e.target.value)}
+            placeholder="supplier@example.com"
+          />
+        </label>
+
+        <label className="block">
+          <div className="text-xs text-slate-600 mb-1">Subject</div>
+          <input
+            className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
+            value={sendSubject}
+            onChange={(e) => setSendSubject(e.target.value)}
+          />
+        </label>
+
+        <label className="block">
+          <div className="text-xs text-slate-600 mb-1">Message to supplier</div>
+          <textarea
+            className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2 min-h-[90px]"
+            value={sendBody}
+            onChange={(e) => setSendBody(e.target.value)}
+            placeholder="Any extra context or notes…"
+          />
+        </label>
+
+        {/* Questionnaire preview (all custom fields except system ones) */}
+        <div className="rounded-md border p-3">
+          <div className="text-xs font-semibold text-slate-600 mb-2">Questionnaire fields to include</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+            {Object.entries(form?.custom || {})
+              .filter(([k]) => !["provider","messageId","subject","from","summary","full","body","date"].includes(k))
+              .map(([k, v]) => (
+                <div key={k} className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 truncate">{k}</span>
+                  <span className="text-slate-900 truncate max-w-[12rem]">{String(v)}</span>
+                </div>
+              ))}
+            {Object.keys(form?.custom || {})
+              .filter((k) => !["provider","messageId","subject","from","summary","full","body","date"].includes(k))
+              .length === 0 && (
+                <div className="text-xs text-slate-500">No extra fields yet.</div>
+              )}
+          </div>
+        </div>
+
+        {/* Attachments picker */}
+        <div className="rounded-md border p-3">
+          <div className="text-xs font-semibold text-slate-600 mb-2">Include attachments</div>
+          {(emailDetails?.attachments?.length ?? 0) === 0 ? (
+            <div className="text-xs text-slate-500">No attachments available</div>
+          ) : (
+            <div className="space-y-2">
+              {emailDetails!.attachments!.map((att: any) => {
+                const id = att.attachmentId || att.id;
+                if (!id) return null;
+                const checked = sendAttIds.includes(id);
+                return (
+                  <label key={id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        setSendAttIds((prev) =>
+                          e.target.checked ? [...prev, id] : prev.filter((x) => x !== id)
+                        )
+                      }
+                    />
+                    <span className="truncate">
+                      {att.filename || "Attachment"}{" "}
+                      {typeof att.size === "number" ? `(${Math.round(att.size / 1024)} KB)` : ""}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           )}
-          {items.map((lead) => (
-            <SortableCard key={lead.id} lead={lead} columnId={id} onOpen={onOpen} onFeedback={onFeedback} />
-          ))}
         </div>
-      </SortableContext>
+      </div>
+
+      <DialogFooter className="mt-4 p-0 pt-4">
+        <div className="flex-1" />
+        <Button variant="outline" onClick={() => setSendOpen(false)}>Cancel</Button>
+        <Button
+          onClick={async () => {
+            try {
+              if (!details?.id && !previewLead?.id) {
+                alert("No lead loaded");
+                return;
+              }
+              if (!sendTo) {
+                alert("Please enter a supplier email address");
+                return;
+              }
+
+              // Build questionnaire payload (exclude system keys)
+              const fields: Record<string, any> = {};
+              Object.entries(form?.custom || {}).forEach(([k, v]) => {
+                if (!["provider","messageId","subject","from","summary","full","body","date"].includes(k)) {
+                  fields[k] = v;
+                }
+              });
+
+              // Build attachment refs for backend
+              const attachments = sendAttIds.map((attachmentId) => ({
+                source: "gmail",
+                messageId: form?.custom?.messageId,
+                attachmentId,
+              }));
+
+              await apiFetch(`/leads/${details?.id ?? previewLead!.id}/request-supplier-quote`, {
+                method: "POST",
+                json: {
+                  to: sendTo,
+                  subject: sendSubject,
+                  text: sendBody,
+                  fields,
+                  attachments,
+                },
+              });
+
+              alert("Supplier quote request sent ✔");
+              setSendOpen(false);
+            } catch (e: any) {
+              console.error(e);
+              alert("Failed to send: " + (e?.message || "unknown error"));
+            }
+          }}
+        >
+          Send
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
+    
     </div>
   );
 }
 
-/* --------------- Cards --------------- */
-function SortableCard({
-  lead,
-  columnId,
-  onOpen,
-  onFeedback,
-}: {
-  lead: Lead;
-  columnId: Lead["status"];
-  onOpen: (lead: Lead) => void;
-  onFeedback: (lead: Lead, isLead: boolean) => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: lead.id,
-    data: { type: "card", columnId },
-  });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : undefined,
-    boxShadow: isDragging ? "0 10px 20px rgba(0,0,0,0.12)" : undefined,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes}>
-      <Card lead={lead} onOpen={() => onOpen(lead)} dragListeners={listeners} onFeedback={onFeedback} />
-    </div>
-  );
-}
-
-function Card({
+/* ---------------- Row (full-width) ---------------- */
+function Row({
   lead,
   onOpen,
-  dragListeners,
-  onFeedback,
-  isOverlay = false,
+  onStatus,
 }: {
   lead: Lead;
-  onOpen?: () => void;
-  dragListeners?: any;
-  onFeedback?: (lead: Lead, isLead: boolean) => void;
-  isOverlay?: boolean;
+  onOpen: () => void;
+  onStatus: (s: LeadStatus) => void;
 }) {
   const subject = lead.custom?.subject as string | undefined;
   const summary = lead.custom?.summary as string | undefined;
-  const aiFb = lead.custom?.aiFeedback as { isLead?: boolean; at?: string } | undefined;
 
   return (
-    <div className={`card card-hover w-full px-3 py-2 ${isOverlay ? "ring-2 ring-blue-400" : ""}`}>
-      <div className="flex items-start gap-2">
-        {/* Drag handle */}
-        <button
-          type="button"
-          aria-label="Drag"
-          {...dragListeners}
-          onClick={(e) => e.stopPropagation()}
-          className="mt-1 inline-flex h-6 w-6 cursor-grab items-center justify-center rounded-md border bg-white text-slate-400 hover:text-slate-600 active:cursor-grabbing"
-        >
-          ⋮⋮
-        </button>
-
-        {/* Clickable area opens modal */}
-        <button type="button" onClick={onOpen} className="flex-1 min-w-0 text-left">
+    <div className="rounded-xl border bg-white p-3 hover:shadow-sm transition">
+      <div className="flex items-start gap-3">
+        <button onClick={onOpen} className="flex-1 text-left min-w-0">
           <div className="mb-1 flex items-center gap-2">
-            <span className="inline-flex size-7 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-700">
+            <span className="inline-flex size-8 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-700">
               {avatarText(lead.contactName)}
             </span>
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium">{lead.contactName || "Lead"}</div>
-              {lead.email && <div className="truncate text-xs text-slate-500 max-w-full">{lead.email}</div>}
+              <div className="truncate text-sm font-medium">
+                {lead.contactName || "Lead"}
+              </div>
+              {lead.email && (
+                <div className="truncate text-xs text-slate-500">{lead.email}</div>
+              )}
             </div>
           </div>
 
@@ -859,74 +945,31 @@ function Card({
               {summary && <div className="text-[11px] text-slate-600 line-clamp-2">{summary}</div>}
             </div>
           )}
-
-          <div className="mt-2 flex items-center gap-2">
-            <StatusBadge status={lead.status} />
-            {lead.nextAction && (
-              <span className="truncate rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
-                {lead.nextAction}
-              </span>
-            )}
-            {aiFb && (
-              <span
-                className={`ml-1 rounded-full border px-1.5 py-0.5 text-[10px] ${
-                  aiFb.isLead ? "border-emerald-300 text-emerald-700 bg-emerald-50" : "border-rose-300 text-rose-700 bg-rose-50"
-                }`}
-              >
-                {aiFb.isLead ? "✓ confirmed" : "✕ rejected"}
-              </span>
-            )}
-          </div>
         </button>
-      </div>
 
-      {/* Confirm / Reject buttons inline */}
-      {onFeedback && (
-        <div className="mt-2 flex items-center gap-2">
-          <Button
-            variant="secondary"
-            className="h-7 px-2 text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              onFeedback(lead, true);
-            }}
+        {/* inline status switcher */}
+        <div className="shrink-0">
+          <select
+            className="rounded-md border bg-white p-2 text-xs"
+            value={lead.status}
+            onChange={(e) => onStatus(e.target.value as LeadStatus)}
           >
-            ✓ Confirm
-          </Button>
-          <Button
-            variant="destructive"
-            className="h-7 px-2 text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              onFeedback(lead, false);
-            }}
-          >
-            ✕ Reject
-          </Button>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-/* --------------- Pretty bits --------------- */
-function StatusBadge({ status }: { status: Lead["status"] }) {
-  const map: Record<Lead["status"], string> = {
-    NEW: "bg-blue-50 text-blue-700 border-blue-200",
-    CONTACTED: "bg-amber-50 text-amber-700 border-amber-200",
-    QUALIFIED: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    DISQUALIFIED: "bg-slate-100 text-slate-600 border-slate-200",
-  };
-  return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[status]}`}>
-      {labelFor(status)}
-    </span>
-  );
-}
-
+/* ---------------- Pretty bits & inputs ---------------- */
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border p-3">
+    <div className="rounded-xl border p-3 mb-3">
       <div className="mb-2 text-xs font-semibold tracking-wide text-slate-600">{title}</div>
       {children}
     </div>
@@ -938,11 +981,13 @@ function LabeledInput({
   type = "text",
   value,
   onChange,
+  onBlurCommit,
 }: {
   label: string;
   type?: string;
   value: string;
   onChange: (v: string) => void;
+  onBlurCommit?: (v: string) => void;
 }) {
   return (
     <label className="space-y-1.5">
@@ -952,6 +997,7 @@ function LabeledInput({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={(e) => onBlurCommit?.(e.target.value)}
       />
     </label>
   );
@@ -960,13 +1006,15 @@ function LabeledInput({
 function LabeledSelect({
   label,
   value,
-  onChange,
   options,
+  onChange,
+  onCommit,
 }: {
   label: string;
   value: string;
-  onChange: (v: string) => void;
   options: { label: string; value: string }[];
+  onChange: (v: string) => void;
+  onCommit?: (v: string) => void;
 }) {
   return (
     <label className="space-y-1.5">
@@ -975,6 +1023,7 @@ function LabeledSelect({
         className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={(e) => onCommit?.(e.target.value)}
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -990,10 +1039,12 @@ function DynamicFieldEditor({
   def,
   value,
   onChange,
+  onCommit,
 }: {
   def: FieldDef;
   value: any;
   onChange: (v: any) => void;
+  onCommit?: (v: any) => void;
 }) {
   const wrap = (node: React.ReactNode) => (
     <label className="space-y-1.5">
@@ -1001,6 +1052,8 @@ function DynamicFieldEditor({
       {node}
     </label>
   );
+
+  const common = { onBlur: (e: any) => onCommit?.(e.target.value) };
 
   switch (def.type) {
     case "number":
@@ -1010,6 +1063,7 @@ function DynamicFieldEditor({
           type="number"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+          {...common}
         />
       );
     case "date":
@@ -1019,6 +1073,7 @@ function DynamicFieldEditor({
           type="date"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          {...common}
         />
       );
     case "select":
@@ -1027,6 +1082,7 @@ function DynamicFieldEditor({
           className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => onCommit?.(e.target.value)}
         >
           <option value=""></option>
           {(def.config?.options || []).map((opt) => (
@@ -1043,25 +1099,13 @@ function DynamicFieldEditor({
           type="text"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          {...common}
         />
       );
   }
 }
 
 /* --------------- Helpers --------------- */
-function labelFor(s: Lead["status"]) {
-  switch (s) {
-    case "NEW":
-      return "New";
-    case "CONTACTED":
-      return "Contacted";
-    case "QUALIFIED":
-      return "Qualified";
-    case "DISQUALIFIED":
-      return "Disqualified";
-  }
-}
-
 function avatarText(name?: string | null) {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/);
