@@ -1,4 +1,4 @@
-name: Web CI build (pull_request)
+name: Web CI
 
 
 on:

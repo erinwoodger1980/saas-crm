@@ -1,4 +1,4 @@
-name: API CI (with full logs) / build (pull_request)
+name: API CI (with full logs)
 
 
 on:
