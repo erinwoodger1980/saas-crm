@@ -13,6 +13,7 @@ import leadsRouter from "./routes/leads";
 import mailRouter from "./routes/mail";
 import gmailRouter from "./routes/gmail";
 import leadsAiRouter from "./routes/leads-ai";
+import ms365Router from "./routes/ms365"; // ← NEW
 
 // ------------------------------------------------------
 // App Setup
@@ -47,15 +48,15 @@ app.use((req, _res, next) => {
   if (token) {
     try {
       (req as any).auth = jwt.verify(token, env.APP_JWT_SECRET);
-    } catch (err) {
+    } catch {
       console.warn("[auth] invalid or expired JWT");
     }
   }
   next();
 });
-// --- JWT DEBUG HELPERS (paste right after the JWT middleware) ---
+
+// --- JWT DEBUG HELPERS ---
 app.use((req, _res, next) => {
-  // keep the raw Authorization header so we can inspect it later
   (req as any).__rawAuthHeader = req.headers.authorization || "";
   next();
 });
@@ -82,7 +83,7 @@ app.get("/__debug/token", (req, res) => {
     tokenPreview: token ? token.slice(0, 20) + "…" : null,
     usingSecretPreview: (env.APP_JWT_SECRET || "").slice(0, 6) + "…",
     verifyError,
-    verified, // should include { userId, tenantId, email, iat, exp } if OK
+    verified,
   });
 });
 
@@ -95,11 +96,6 @@ app.get("/__debug/whoami", (req, res) => {
 });
 // --- end debug helpers ---
 
-/** ✅ Quick debug route to verify token decode */
-app.get("/__debug/whoami", (req, res) => {
-  res.json({ auth: (req as any).auth ?? null });
-});
-
 /** ✅ Healthcheck */
 app.get("/healthz", (_req, res) => res.send("ok"));
 
@@ -107,13 +103,11 @@ app.get("/healthz", (_req, res) => res.send("ok"));
  * -------- Dev bootstrap (idempotent) --------
  */
 async function ensureDevData() {
-  // 1) Tenant
   let tenant = await prisma.tenant.findFirst({ where: { name: "Demo Tenant" } });
   if (!tenant) {
     tenant = await prisma.tenant.create({ data: { name: "Demo Tenant" } });
   }
 
-  // 2) User
   const demoEmail = "erin@acme.test";
   let user = await prisma.user.findUnique({ where: { email: demoEmail } });
   if (!user) {
@@ -139,7 +133,7 @@ if (process.env.NODE_ENV !== "production") {
     .catch((e) => console.error("[dev] bootstrap failed:", e));
 }
 
-/** ✅ Dev seed endpoint (idempotent) */
+/** ✅ Dev seed endpoint */
 app.post("/seed", async (_req, res) => {
   try {
     const out = await ensureDevData();
@@ -155,6 +149,35 @@ app.post("/seed", async (_req, res) => {
   }
 });
 
+/** ✅ Dev Login route (for local use only) */
+app.post("/auth/dev-login", async (req, res) => {
+  try {
+    const email = req.body.email || "erin@acme.test";
+    const tenant = await prisma.tenant.findFirst({ where: { name: "Demo Tenant" } });
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!tenant || !user) {
+      return res.status(404).json({ error: "demo tenant or user not found" });
+    }
+
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        tenantId: tenant.id,
+        email: user.email,
+        role: user.role,
+      },
+      env.APP_JWT_SECRET,
+      { expiresIn: "12h" }
+    );
+
+    return res.json({ token });
+  } catch (err: any) {
+    console.error("[dev-login] failed:", err);
+    res.status(500).json({ error: err?.message || "dev-login failed" });
+  }
+});
+
 /** ✅ Routers */
 app.use("/auth", authRouter);
 app.use("/leads", leadsRouter);
@@ -163,6 +186,7 @@ app.use("/reports", reportsRouter);
 app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);
 app.use("/leads/ai", leadsAiRouter);
+app.use("/ms365", ms365Router); // ← NEW
 
 /** ✅ DB Debug */
 app.get("/__debug/db", async (_req, res) => {
