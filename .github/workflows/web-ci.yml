@@ -1,8 +1,5 @@
-name: Web CI
-jobs:
-  build:
-    name: build (pull_request)
-    # … rest of your job
+name: Web CI build (pull_request)
+
 
 on:
   push:

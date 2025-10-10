@@ -1,8 +1,5 @@
-name: API CI
-jobs:
-  build:
-    name: build (pull_request)
-    # … rest of your job
+name: API CI (with full logs) / build (pull_request)
+
 
 on:
   push:
