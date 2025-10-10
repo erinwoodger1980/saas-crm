@@ -1,7 +1,42 @@
+// api/src/routes/leads.ts
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { gmailSend, getAccessTokenForTenant, gmailFetchAttachment } from "../services/gmail";
+import { env } from "../env";
 
 const router = Router();
+
+/* ------------ filename helpers (ensure extension) ------------ */
+const EXT_FROM_MIME: Record<string, string> = {
+  "application/pdf": ".pdf",
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/tiff": ".tif",
+  "application/zip": ".zip",
+  "text/plain": ".txt",
+  "text/csv": ".csv",
+  "application/vnd.ms-excel": ".xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/vnd.ms-powerpoint": ".ppt",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+  "application/vnd.dwg": ".dwg",
+  "image/vnd.dxf": ".dxf",
+  "application/octet-stream": ".bin",
+};
+
+function ensureFilenameWithExt(filename: string | undefined, mimeType: string) {
+  let name = (filename || "attachment").trim();
+  const hasExt = /\.[a-z0-9]{2,5}$/i.test(name);
+  if (!hasExt) {
+    const ext = EXT_FROM_MIME[mimeType] || ".bin";
+    name += ext;
+  }
+  return name;
+}
 
 /** Quick mount check (GET /leads) */
 router.get("/", (_req, res) => res.json({ ok: true, where: "/leads root" }));
@@ -11,6 +46,7 @@ function getAuth(req: any) {
   return {
     tenantId: req.auth?.tenantId as string | undefined,
     userId: req.auth?.userId as string | undefined,
+    email: req.auth?.email as string | undefined,
   };
 }
 
@@ -56,24 +92,38 @@ router.post("/fields", async (req, res) => {
   res.json(def);
 });
 
-/* -------------------- GROUPED (Kanban columns) -------------------- */
-/* IMPORTANT: define BEFORE "/:id" so "grouped" isn't treated as an id */
+/* -------------------- GROUPED (Kanban / Tabs) -------------------- */
+const DEFAULT_BUCKETS = [
+  "NEW",
+  "CONTACTED",
+  "QUALIFIED",
+  "DISQUALIFIED",
+  "INFO_REQUESTED",
+  "REJECTED",
+  "READY_TO_QUOTE",
+  "QUOTE_SENT",
+  "WON",
+  "LOST",
+] as const;
+
 router.get("/grouped", async (req, res) => {
   const { tenantId } = getAuth(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-  const items = await prisma.lead.findMany({
+  const rows = await prisma.lead.findMany({
     where: { tenantId },
     orderBy: [{ capturedAt: "desc" }],
   });
 
-  const grouped: Record<"NEW" | "CONTACTED" | "QUALIFIED" | "DISQUALIFIED", any[]> = {
-    NEW: [],
-    CONTACTED: [],
-    QUALIFIED: [],
-    DISQUALIFIED: [],
-  };
-  for (const l of items) grouped[l.status as keyof typeof grouped]?.push(l);
+  const grouped: Record<(typeof DEFAULT_BUCKETS)[number], any[]> = Object.fromEntries(
+    DEFAULT_BUCKETS.map((s) => [s, []])
+  ) as any;
+
+  for (const l of rows) {
+    const s = (l.status as (typeof DEFAULT_BUCKETS)[number]) || "NEW";
+    if (grouped[s]) grouped[s].push(l);
+    else grouped.NEW.push(l);
+  }
 
   res.json(grouped);
 });
@@ -93,58 +143,331 @@ router.post("/", async (req, res) => {
   } = req.body;
   if (!contactName) return res.status(400).json({ error: "contactName required" });
 
-  const lead = await prisma.lead.create({
-    data: {
-      tenantId,
-      createdById: userId,
-      contactName,
-      email,
-      status,
-      nextAction,
-      nextActionAt: nextActionAt ? new Date(nextActionAt) : null,
-      custom,
-    },
-  });
-
-  res.json(lead);
-});
-
-router.patch("/:id", async (req, res) => {
-  const { tenantId } = getAuth(req);
-  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
-
-  const { id } = req.params;
-  const { contactName, email, status, nextAction, nextActionAt, custom } = req.body;
-
   try {
-    const updated = await prisma.lead.updateMany({
-      where: { id, tenantId },
+    const lead = await prisma.lead.create({
       data: {
+        tenantId,
+        createdById: userId,
         contactName,
         email,
         status,
         nextAction,
-        nextActionAt:
-          nextActionAt === undefined ? undefined : nextActionAt ? new Date(nextActionAt) : null,
+        nextActionAt: nextActionAt ? new Date(nextActionAt) : null,
         custom,
       },
     });
+    res.json(lead);
+  } catch (e: any) {
+    console.error("[leads POST] failed:", e?.message || e);
+    res.status(400).json({ error: e?.message || "create failed" });
+  }
+});
 
-    if (updated.count === 0) {
+/**
+ * PATCH /leads/:id — partial update (merges custom)
+ */
+router.patch("/:id", async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const id = String(req.params.id);
+    const existing = await prisma.lead.findUnique({ where: { id } });
+    if (!existing || existing.tenantId !== tenantId) {
       return res.status(404).json({ error: "not found" });
     }
 
-    // return the latest row
-    const fresh = await prisma.lead.findFirst({ where: { id, tenantId } });
-    return res.json(fresh);
+    const allowedStatuses = DEFAULT_BUCKETS;
+
+    const {
+      contactName,
+      email,
+      status,
+      nextAction,
+      nextActionAt,
+      custom,
+    } = (req.body ?? {}) as {
+      contactName?: unknown;
+      email?: unknown;
+      status?: unknown;
+      nextAction?: unknown;
+      nextActionAt?: unknown;
+      custom?: unknown;
+    };
+
+    const data: any = {};
+
+    if (contactName !== undefined) data.contactName = String(contactName);
+    if (email !== undefined) data.email = email === null || email === "" ? null : String(email);
+
+    if (status !== undefined) {
+      const s = String(status).toUpperCase();
+      if (!allowedStatuses.includes(s as any)) {
+        return res.status(400).json({ error: `invalid status "${status}"` });
+      }
+      data.status = s;
+    }
+
+    if (nextAction !== undefined) {
+      data.nextAction = nextAction === null || nextAction === "" ? null : String(nextAction);
+    }
+
+    if (nextActionAt !== undefined) {
+      if (nextActionAt === null || nextActionAt === "") {
+        data.nextActionAt = null;
+      } else {
+        const d = new Date(nextActionAt as any);
+        if (isNaN(d.getTime())) {
+          return res.status(400).json({ error: "invalid nextActionAt" });
+        }
+        data.nextActionAt = d;
+      }
+    }
+
+    if (custom !== undefined) {
+      const prev = (existing.custom as Record<string, any>) || {};
+      const patch = (custom as Record<string, any>) || {};
+      data.custom = { ...prev, ...patch };
+    }
+
+    const updated = await prisma.lead.update({ where: { id }, data });
+    return res.json({ ok: true, lead: updated });
   } catch (err: any) {
     console.error("[leads PATCH] failed:", err);
     return res.status(500).json({ error: "update failed" });
   }
 });
 
+/* ---------------- REQUEST: supplier quote (AI + attachments) ---------------- */
+/**
+ * POST /leads/:id/request-supplier-quote
+ * Body: {
+ *   to: string,
+ *   subject?: string,
+ *   text?: string,
+ *   fields?: Record<string, any>,
+ *   attachments?: Array<
+ *     | { source: "gmail"; messageId: string; attachmentId: string }
+ *     | { source: "upload"; filename: string; mimeType: string; base64: string }
+ *   >
+ * }
+ */
+router.post("/:id/request-supplier-quote", async (req, res) => {
+  try {
+    const { tenantId, email: fromEmail } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const id = String(req.params.id);
+    const lead = await prisma.lead.findUnique({ where: { id } });
+    if (!lead || lead.tenantId !== tenantId) {
+      return res.status(404).json({ error: "not found" });
+    }
+
+    const { to, subject, text, fields, attachments } = (req.body ?? {}) as {
+      to?: string;
+      subject?: string;
+      text?: string;
+      fields?: Record<string, any>;
+      attachments?: Array<
+        | { source: "gmail"; messageId: string; attachmentId: string }
+        | { source: "upload"; filename: string; mimeType: string; base64: string }
+      >;
+    };
+
+    if (!to) return res.status(400).json({ error: "to is required" });
+
+    const sub = subject || `Quote request for ${lead.contactName || "lead"} (${lead.id.slice(0, 8)})`;
+
+    // Build summary lines
+    const lines: string[] = [];
+    lines.push("Lead details:");
+    lines.push(`- Name: ${lead.contactName || "-"}`);
+    lines.push(`- Email: ${lead.email || "-"}`);
+    lines.push(`- Status: ${lead.status}`);
+    const summary =
+      typeof lead.custom === "object" && lead.custom && "summary" in (lead.custom as any)
+        ? (lead.custom as any).summary
+        : "-";
+    lines.push(`- Summary: ${summary}`);
+    lines.push("");
+
+    if (fields && typeof fields === "object") {
+      lines.push("Questionnaire:");
+      Object.entries(fields).forEach(([k, v]) => {
+        lines.push(`- ${k}: ${v ?? "-"}`);
+      });
+      lines.push("");
+    }
+
+    if (text) {
+      lines.push("Notes:");
+      lines.push(text);
+      lines.push("");
+    }
+
+    /* -------- AI formatting (optional) -------- */
+    let finalSubject = sub;
+    let finalBody: string | null = null;
+
+    if (env.OPENAI_API_KEY) {
+      try {
+        const originalBody =
+          typeof lead.custom === "object" && lead.custom && (lead.custom as any).full
+            ? String((lead.custom as any).full)
+            : (typeof lead.custom === "object" && lead.custom && (lead.custom as any).body
+                ? String((lead.custom as any).body)
+                : "");
+
+        const aiPrompt = `
+You are drafting a clean, professional supplier quote request email.
+Write a concise subject (<= 80 chars) and a tidy plain-text body.
+
+LEAD:
+- Name: ${lead.contactName || "-"}
+- Email: ${lead.email || "-"}
+- Status: ${lead.status}
+
+SUMMARY: ${summary || "-"}
+
+QUESTIONNAIRE (key: value):
+${Object.entries(fields || {}).map(([k,v]) => `- ${k}: ${v ?? "-"}`).join("\n") || "(none)"}
+
+ORIGINAL EMAIL (for context, plain text):
+${originalBody || "(not available)"}
+
+ADDITIONAL NOTES FROM USER:
+${(text || "").trim() || "(none)"}
+
+Return JSON with keys: subject, body. Keep body plain text.
+`;
+
+        const resp = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            input: aiPrompt,
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        const json = await resp.json();
+        const textOut =
+          json?.output_text ||
+          json?.choices?.[0]?.message?.content ||
+          json?.choices?.[0]?.output_text ||
+          "";
+
+        try {
+          const parsed = JSON.parse(String(textOut));
+          if (parsed?.subject) finalSubject = String(parsed.subject);
+          if (parsed?.body) finalBody = String(parsed.body);
+        } catch {
+          // fallback to manual template
+        }
+      } catch (e) {
+        console.warn("AI formatting skipped:", e);
+      }
+    }
+
+    const subToUse = finalSubject;
+    const bodyText =
+      finalBody ??
+      `Hi,
+
+Please provide a quote for the following enquiry.
+
+${lines.join("\n")}
+
+Thanks,
+${fromEmail || "CRM"}
+`;
+
+    /* -------- Gather attachments -------- */
+    const acc: Array<{ filename: string; mimeType: string; buffer: Buffer }> = [];
+    const accessToken = await getAccessTokenForTenant(tenantId);
+
+    if (Array.isArray(attachments)) {
+      for (const a of attachments) {
+        if ((a as any).source === "gmail") {
+          const g = a as { source: "gmail"; messageId: string; attachmentId: string };
+          const { buffer, filename, mimeType } = await gmailFetchAttachment(
+            accessToken,
+            g.messageId,
+            g.attachmentId
+          );
+          const safeName = ensureFilenameWithExt(filename, mimeType);
+          acc.push({ filename: safeName, mimeType, buffer });
+        } else if ((a as any).source === "upload") {
+          const u = a as { source: "upload"; filename: string; mimeType: string; base64: string };
+          const buffer = Buffer.from(u.base64, "base64");
+          const safeName = ensureFilenameWithExt(u.filename, u.mimeType);
+          acc.push({ filename: safeName, mimeType: u.mimeType, buffer });
+        }
+      }
+    }
+
+    /* -------- Build multipart RFC-822 -------- */
+    const boundary = "mixed_" + Math.random().toString(36).slice(2);
+    const fromHeader = fromEmail || "me";
+
+    const head =
+      `From: ${fromHeader}\r\n` +
+      `To: ${to}\r\n` +
+      `Subject: ${subToUse}\r\n` +
+      `MIME-Version: 1.0\r\n` +
+      `Content-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n`;
+
+    let mime = "";
+    // Text part
+    mime += `--${boundary}\r\n`;
+    mime += `Content-Type: text/plain; charset="UTF-8"\r\n`;
+    mime += `Content-Transfer-Encoding: 7bit\r\n\r\n`;
+    mime += `${bodyText}\r\n`;
+
+    // Attachments
+    for (const file of acc) {
+      const b64 = file.buffer.toString("base64").replace(/.{76}(?=.)/g, "$&\r\n");
+      mime += `--${boundary}\r\n`;
+      mime += `Content-Type: ${file.mimeType}; name="${file.filename}"\r\n`;
+      mime += `Content-Disposition: attachment; filename="${file.filename}"\r\n`;
+      mime += `Content-Transfer-Encoding: base64\r\n\r\n`;
+      mime += `${b64}\r\n`;
+    }
+    mime += `--${boundary}--\r\n`;
+
+    // Send via Gmail
+    const sent = await gmailSend(accessToken, head + mime);
+
+    // Save breadcrumb
+    const safeCustom =
+      typeof lead.custom === "object" && lead.custom !== null ? (lead.custom as any) : {};
+    await prisma.lead.update({
+      where: { id },
+      data: {
+        nextAction: "Await supplier quote",
+        nextActionAt: new Date(),
+        custom: {
+          ...safeCustom,
+          lastSupplierEmailTo: to,
+          lastSupplierEmailSubject: subToUse,
+          lastSupplierFields: fields || null,
+          lastSupplierAttachmentCount: acc.length,
+        },
+      },
+    });
+
+    return res.json({ ok: true, sent });
+  } catch (e: any) {
+    console.error("[leads] request-supplier-quote failed:", e);
+    return res.status(500).json({ error: e?.message || "send failed" });
+  }
+});
+
 /* ------------------------ READ ONE (modal) ------------------------ */
-/* Returns details for the modal: { lead, fields } */
 router.get("/:id", async (req, res) => {
   const { tenantId } = getAuth(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -162,8 +485,35 @@ router.get("/:id", async (req, res) => {
   res.json({ lead, fields });
 });
 
+/* ------------------------ AI feedback (training) ------------------------ */
+router.post("/ai/feedback", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+    const { provider = "gmail", messageId = "", leadId, isLead, snapshot } = req.body || {};
+    if (!leadId || typeof isLead !== "boolean") {
+      return res.status(400).json({ error: "leadId and isLead required" });
+    }
+
+    await prisma.leadTrainingExample.create({
+      data: {
+        tenantId,
+        provider,
+        messageId: messageId || "",
+        label: isLead ? "lead" : "not_lead",
+        extracted: snapshot || null,
+      },
+    });
+
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[leads] ai/feedback failed:", e);
+    return res.status(500).json({ error: e?.message || "feedback failed" });
+  }
+});
+
 /* ------------------------ DEMO SEED (optional) ------------------------ */
-/* Hit once to create a couple of field defs + a demo lead with custom data */
 router.post("/seed-demo", async (req, res) => {
   const { tenantId, userId } = getAuth(req);
   if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });

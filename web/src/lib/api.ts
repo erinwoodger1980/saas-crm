@@ -7,7 +7,7 @@ const API_BASE =
     (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL)!.replace(/\/$/, "")) ||
   "http://localhost:4000";
 
-/** Read/write JWT in localStorage (browser only) */
+/** JWT helpers */
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("jwt");
@@ -18,46 +18,60 @@ export function setJwt(token: string) {
   try {
     localStorage.setItem("jwt", token);
   } catch {}
-
-  // Also set a cookie so the API (and Next middleware) can read it
   const secure =
-    typeof window !== "undefined" && window.location.protocol === "https:"
-      ? "; Secure"
-      : "";
-  // 30 days, SameSite=Lax keeps it on normal navigations
-  document.cookie = `jwt=${encodeURIComponent(
-    token
-  )}; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
+    typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `jwt=${encodeURIComponent(token)}; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
 }
 
-/** Generic fetch wrapper that injects JWT, includes cookies, and handles JSON */
-export async function apiFetch<T = any>(
+export function clearJwt() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem("jwt");
+  } catch {}
+  // expire cookie
+  document.cookie = `jwt=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+/**
+ * Generic fetch wrapper:
+ * - injects JWT
+ * - includes cookies
+ * - supports `json` (preferred) or raw `body`
+ * - parses JSON response (or returns {} when empty)
+ * - auto-recovers on 401 by clearing auth and redirecting to /login
+ */
+export async function apiFetch<T = unknown>(
   path: string,
-  init: RequestInit & { body?: any } = {}
+  init: RequestInit & { json?: unknown } = {}
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
   const token = getJwt();
 
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(init.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  const headers = new Headers(init.headers);
+  let body: BodyInit | null | undefined = init.body as BodyInit | null | undefined;
 
-  const body =
-    init.body && typeof init.body !== "string"
-      ? JSON.stringify(init.body)
-      : (init.body as any);
+  if (init.json !== undefined) {
+    body = JSON.stringify(init.json);
+    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  }
 
-  const res = await fetch(url, {
-    ...init,
-    headers,
-    body,
-    credentials: "include", // <-- send cookies with every request
-  });
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const res = await fetch(url, { ...init, headers, body, credentials: "include" });
+
+  // Handle 401: clear token and bounce to login
+  if (res.status === 401) {
+    clearJwt();
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.href = `/login?next=${next}`;
+    }
+    throw new Error(`Unauthorized for ${url}`);
+  }
 
   if (!res.ok) {
-    // Try to extract a helpful error body
     let details: any = null;
     try {
       details = await res.json();
@@ -74,22 +88,20 @@ export async function apiFetch<T = any>(
     throw new Error(`${msg} for ${url}`);
   }
 
-  // Gracefully handle empty responses
   const text = await res.text();
-  return (text ? JSON.parse(text) : ({} as T)) as T;
+  return (text ? (JSON.parse(text) as T) : ({} as T)) as T;
 }
 
 /**
  * ensureDemoAuth()
  * - If no JWT, try login (erin@acme.test / secret12)
  * - If that fails, call /seed to create demo tenant+user
- * - Store JWT (localStorage + cookie) and return true when authenticated
+ * - Store JWT and return true when authenticated
  */
 export async function ensureDemoAuth(): Promise<boolean> {
   if (typeof window === "undefined") return false;
   if (getJwt()) return true;
 
-  // 1) Try to log in
   try {
     const login = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
@@ -104,16 +116,10 @@ export async function ensureDemoAuth(): Promise<boolean> {
         return true;
       }
     }
-  } catch {
-    // fall through
-  }
+  } catch {}
 
-  // 2) Seed a demo tenant+user and store JWT
   try {
-    const seeded = await fetch(`${API_BASE}/seed`, {
-      method: "POST",
-      credentials: "include",
-    });
+    const seeded = await fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" });
     if (seeded.ok) {
       const data = await seeded.json().catch(() => ({}));
       if (data?.jwt) {
@@ -121,9 +127,7 @@ export async function ensureDemoAuth(): Promise<boolean> {
         return true;
       }
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
 
   return false;
 }
