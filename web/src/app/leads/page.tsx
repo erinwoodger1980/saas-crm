@@ -213,46 +213,81 @@ function normaliseToNewStatuses(g: any): Grouped {
   return out;
 }
  
-  // PATCH only the changed fields (optimistic)
-  async function autoSave(patch: Partial<Lead>) {
-    const targetId = details?.id ?? previewLead?.id ?? selectedId ?? null;
-    if (!targetId) return;
+ // PATCH only the changed fields (optimistic) + AI feedback logging
+async function autoSave(patch: Partial<Lead>) {
+  const targetId = details?.id ?? previewLead?.id ?? selectedId ?? null;
+  if (!targetId) return;
 
-    // optimistic UI: update grouped + form
-    setGrouped((g) => {
-      const next: Grouped = structuredClone(g);
-      // find which column currently holds it
-      for (const s of STATUSES) {
-        const idx = next[s].findIndex((x) => x.id === targetId);
-        if (idx >= 0) {
-          const current = next[s][idx];
-          const newCustom =
-            patch.custom !== undefined ? { ...(current.custom || {}), ...(patch.custom as any) } : current.custom;
-          const updated: Lead = { ...current, ...(patch as any), custom: newCustom };
-          // move column if status changed
-          if (patch.status && patch.status !== s) {
-            next[s].splice(idx, 1);
-            next[patch.status].unshift(updated);
-          } else {
-            next[s][idx] = updated;
-          }
-          break;
+  // optimistic UI: update grouped + form
+  setGrouped((g) => {
+    const next: Grouped = structuredClone(g);
+    for (const s of STATUSES) {
+      const idx = next[s].findIndex((x) => x.id === targetId);
+      if (idx >= 0) {
+        const current = next[s][idx];
+        const newCustom =
+          patch.custom !== undefined ? { ...(current.custom || {}), ...(patch.custom as any) } : current.custom;
+        const updated: Lead = { ...current, ...(patch as any), custom: newCustom };
+
+        // move column if status changed
+        if (patch.status && patch.status !== s) {
+          next[s].splice(idx, 1);
+          next[patch.status].unshift(updated);
+        } else {
+          next[s][idx] = updated;
+        }
+        break;
+      }
+    }
+    return next;
+  });
+
+  setForm((f) => (f ? mergeIntoForm(f, patch) : f));
+
+  try {
+    setAutoSaving(true);
+    await apiFetch(`/leads/${targetId}`, { method: "PATCH", json: patch });
+
+    // ---- AI feedback: only when status actually changes ----
+    if (patch.status) {
+      const movedTo = patch.status;
+
+      // Decide label for training
+      const isLead =
+        movedTo === "READY_TO_QUOTE" || movedTo === "INFO_REQUESTED" ? true :
+        movedTo === "REJECTED" ? false :
+        undefined;
+
+      if (isLead !== undefined) {
+        const meta = details ?? previewLead ?? null;
+        const custom = (meta?.custom || {}) as Record<string, any>;
+        try {
+          await apiFetch("/leads/ai/feedback", {
+            method: "POST",
+            json: {
+              provider: custom.provider ?? "gmail",
+              messageId: custom.messageId ?? "",
+              leadId: targetId,
+              isLead,
+              snapshot: {
+                subject: custom.subject ?? null,
+                summary: custom.summary ?? null,
+                emailOnCard: meta?.email ?? null,
+                movedTo,
+              },
+            },
+          });
+        } catch {
+          // non-fatal — ignore feedback errors in UI
         }
       }
-      return next;
-    });
-
-    setForm((f) => (f ? mergeIntoForm(f, patch) : f));
-
-    try {
-      setAutoSaving(true);
-      await apiFetch(`/leads/${targetId}`, { method: "PATCH", json: patch });
-    } catch (e) {
-      console.error("autosave failed:", e);
-    } finally {
-      setAutoSaving(false);
     }
+  } catch (e) {
+    console.error("autosave failed:", e);
+  } finally {
+    setAutoSaving(false);
   }
+}
 
   function mergeIntoForm(
     f: {
@@ -444,10 +479,27 @@ const rows = useMemo(() => {
             {importing === "ms365" ? "Importing…" : "Import Outlook"}
           </Button>
 
-          <Button className="btn btn-primary">New Lead</Button>
-          <Button variant="outline" onClick={handleLogout}>
-            Logout
-          </Button>
+          <Button
+  className="btn btn-primary"
+  onClick={async () => {
+    const name = prompt("Enter lead name:");
+    if (!name) return;
+    try {
+      const lead = await apiFetch("/leads", {
+        method: "POST",
+        json: { contactName: name, email: "", status: "NEW_ENQUIRY" },
+      });
+      // Refresh data
+      const data = await apiFetch<Grouped>("/leads/grouped");
+      setGrouped(normaliseToNewStatuses(data));
+      alert("Lead created ✔");
+    } catch (e) {
+      alert("Failed to create lead: " + (e as any).message);
+    }
+  }}
+>
+  + New Lead
+</Button>
         </div>
       </header>
 
@@ -551,23 +603,31 @@ const rows = useMemo(() => {
     </div>
   )}
 
-  {/* Body */}
-  <div className="rounded-md border bg-white/60 p-3 text-sm leading-relaxed shadow-inner max-h-[50vh] overflow-auto">
-    {emailDetails?.bodyHtml && typeof emailDetails.bodyHtml === "string" ? (
-      <div
-        className="prose prose-sm max-w-none"
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: emailDetails.bodyHtml }}
-      />
-    ) : (
-      <div className="whitespace-pre-wrap break-words">
-        {emailDetails?.bodyText ??
-          (form?.custom?.full as string | undefined) ??
-          (form?.custom?.body as string | undefined) ??
-          "No email body captured for this message."}
-      </div>
-    )}
-  </div>
+{/* Body with toggle */}
+{(() => {
+  const [showFull, setShowFull] = useState(false);
+  const bodyText =
+    emailDetails?.bodyText ??
+    (form?.custom?.full as string | undefined) ??
+    (form?.custom?.body as string | undefined) ??
+    "No email body captured for this message.";
+
+  return (
+    <div className="mb-3">
+      <button
+        className="text-xs text-blue-600 underline mb-2"
+        onClick={() => setShowFull(!showFull)}
+      >
+        {showFull ? "Hide full email" : "Show full email"}
+      </button>
+      {showFull && (
+        <div className="rounded-md border bg-white/60 p-3 text-sm leading-relaxed shadow-inner max-h-[50vh] overflow-auto whitespace-pre-wrap break-words">
+          {bodyText}
+        </div>
+      )}
+    </div>
+  );
+})()}
 
   {/* Attachments (open inline) */}
 {(() => {
@@ -848,58 +908,86 @@ const rows = useMemo(() => {
         </div>
       </div>
 
-      <DialogFooter className="mt-4 p-0 pt-4">
-        <div className="flex-1" />
-        <Button variant="outline" onClick={() => setSendOpen(false)}>Cancel</Button>
-        <Button
-          onClick={async () => {
-            try {
-              if (!details?.id && !previewLead?.id) {
-                alert("No lead loaded");
-                return;
-              }
-              if (!sendTo) {
-                alert("Please enter a supplier email address");
-                return;
-              }
+<DialogFooter className="mt-4 p-0 pt-4">
+  <div className="flex-1" />
 
-              // Build questionnaire payload (exclude system keys)
-              const fields: Record<string, any> = {};
-              Object.entries(form?.custom || {}).forEach(([k, v]) => {
-                if (!["provider","messageId","subject","from","summary","full","body","date"].includes(k)) {
-                  fields[k] = v;
-                }
-              });
+  <Button variant="outline" onClick={() => setSendOpen(false)}>
+    Cancel
+  </Button>
 
-              // Build attachment refs for backend
-              const attachments = sendAttIds.map((attachmentId) => ({
-                source: "gmail",
-                messageId: form?.custom?.messageId,
-                attachmentId,
-              }));
+  <Button
+    onClick={async () => {
+      try {
+        const leadId = details?.id ?? previewLead?.id;
+        if (!leadId) {
+          alert("No lead loaded");
+          return;
+        }
+        if (!sendTo) {
+          alert("Please enter a supplier email address");
+          return;
+        }
 
-              await apiFetch(`/leads/${details?.id ?? previewLead!.id}/request-supplier-quote`, {
-                method: "POST",
-                json: {
-                  to: sendTo,
-                  subject: sendSubject,
-                  text: sendBody,
-                  fields,
-                  attachments,
-                },
-              });
+        // Build questionnaire payload (exclude system/meta keys)
+        const fields: Record<string, any> = {};
+        Object.entries(form?.custom || {}).forEach(([k, v]) => {
+          if (!["provider", "messageId", "subject", "from", "summary", "full", "body", "date"].includes(k)) {
+            fields[k] = v;
+          }
+        });
 
-              alert("Supplier quote request sent ✔");
-              setSendOpen(false);
-            } catch (e: any) {
-              console.error(e);
-              alert("Failed to send: " + (e?.message || "unknown error"));
-            }
-          }}
-        >
-          Send
-        </Button>
-      </DialogFooter>
+        // Build attachment refs for backend (Gmail source)
+        const attachments = sendAttIds.map((attachmentId) => ({
+          source: "gmail" as const,
+          messageId: form?.custom?.messageId as string | undefined,
+          attachmentId,
+        }));
+
+        // Fallback subject if empty
+        const subj =
+          sendSubject?.trim() ||
+          `Quote request – ${
+            form?.contactName || details?.contactName || previewLead?.contactName || "Lead"
+          }`;
+
+        // --- Call backend and type response to avoid TS errors ---
+        const resp = await apiFetch<{ ok?: boolean; sent?: boolean; aiBody?: string; aiSubject?: string }>(
+          `/leads/${leadId}/request-supplier-quote`,
+          {
+            method: "POST",
+            json: {
+              to: sendTo,
+              subject: subj,
+              text: sendBody,
+              fields,
+              attachments,
+            },
+          }
+        );
+
+        // --- Handle backend response ---
+        if (resp?.ok || resp?.sent) {
+          alert("Supplier quote request sent ✔");
+          setSendOpen(false);
+        } else if (resp?.aiBody) {
+          // The backend returned an AI-suggested draft — show it to the user for review
+          setSendBody(resp.aiBody);
+          if (resp.aiSubject) setSendSubject(resp.aiSubject);
+          alert("AI has improved your email draft. Please review and send again.");
+        } else {
+          alert("Send completed, but response was unexpected.");
+          setSendOpen(false);
+        }
+      } catch (e: any) {
+        console.error(e);
+        const msg = e?.message || "unknown error";
+        alert("Failed to send: " + msg);
+      }
+    }}
+  >
+    Send
+  </Button>
+</DialogFooter>
     </div>
   </DialogContent>
 </Dialog>
@@ -924,6 +1012,7 @@ function Row({
   return (
     <div className="rounded-xl border bg-white p-3 hover:shadow-sm transition">
       <div className="flex items-start gap-3">
+        {/* Clicking the left side opens modal */}
         <button onClick={onOpen} className="flex-1 text-left min-w-0">
           <div className="mb-1 flex items-center gap-2">
             <span className="inline-flex size-8 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-700">
@@ -947,12 +1036,56 @@ function Row({
           )}
         </button>
 
-        {/* inline status switcher */}
-        <div className="shrink-0">
+        {/* --- Quick actions + dropdown --- */}
+        <div className="shrink-0 flex flex-col items-end gap-1">
+          {/* Reject */}
+          <button
+            className="rounded-md border border-red-300 text-red-600 px-2 py-1 text-[11px] hover:bg-red-50"
+            title="Reject this enquiry"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStatus("REJECTED");
+            }}
+          >
+            ✕ Reject
+          </button>
+
+          {/* Ask for info */}
+          <button
+            className="rounded-md border border-amber-300 text-amber-600 px-2 py-1 text-[11px] hover:bg-amber-50"
+            title="Request more information"
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                await apiFetch(`/leads/${lead.id}/request-info`, { method: "POST" });
+                onStatus("INFO_REQUESTED");
+                alert("Questionnaire link sent to customer ✔");
+              } catch (err) {
+                alert("Failed to request info");
+              }
+            }}
+          >
+            📋 Info
+          </button>
+
+          {/* Ready to quote */}
+          <button
+            className="rounded-md border border-green-300 text-green-600 px-2 py-1 text-[11px] hover:bg-green-50"
+            title="Mark as ready to quote"
+            onClick={(e) => {
+              e.stopPropagation();
+              onStatus("READY_TO_QUOTE");
+            }}
+          >
+            ✅ Ready
+          </button>
+
+          {/* Optional: keep dropdown */}
           <select
-            className="rounded-md border bg-white p-2 text-xs"
+            className="rounded-md border bg-white p-2 text-xs mt-1"
             value={lead.status}
-            onChange={(e) => onStatus(e.target.value as LeadStatus)}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => onStatus(e.target.value.toUpperCase() as LeadStatus)}
           >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
