@@ -57,6 +57,7 @@ model Lead {
   nextAction   String?
   briefJson    Json?
   custom       Json?
+  description  String?
   opportunity  Opportunity?
   emailIngests EmailIngest[]
 }
@@ -181,4 +182,19 @@ model LeadTrainingExample {
   createdAt DateTime @default(now())
 
   @@index([tenantId, provider, messageId])
+}
+
+model TenantSettings {
+  tenantId      String  @id
+  slug          String  @unique // public URL part, e.g. "bailey-hague"
+  brandName     String
+  introHtml     String? // questionnaire intro (HTML or text)
+  website       String?
+  phone         String?
+  logoUrl       String?
+  links         Json? // [{label,url},...]
+  questionnaire Json? // reserve for future per-tenant fields
+
+  // relation (if you have a Tenant model, keep this loose for now)
+  // tenant     Tenant  @relation(fields: [tenantId], references: [id])
 }

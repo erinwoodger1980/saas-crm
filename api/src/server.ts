@@ -1,3 +1,4 @@
+// api/src/server.ts
 import express from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
@@ -13,25 +14,32 @@ import leadsRouter from "./routes/leads";
 import mailRouter from "./routes/mail";
 import gmailRouter from "./routes/gmail";
 import leadsAiRouter from "./routes/leads-ai";
-import ms365Router from "./routes/ms365"; // ← NEW
+import ms365Router from "./routes/ms365";
+import tenantsRouter from "./routes/tenants";
+import publicRouter from "./routes/public";
 
 // ------------------------------------------------------
 // App Setup
 // ------------------------------------------------------
 const app = express();
 
-/** ✅ CORS + body parsing **/
+/** ✅ CORS (allow cookies + auth header) */
 app.use(
   cors({
     origin: "http://localhost:3000",
-    credentials: true, // allow cookies
+    credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"], // important for preflight
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+/** ✅ Body parser should come before routers */
 app.use(express.json({ limit: "2mb" }));
 
-/** ✅ JWT decode middleware — accepts header or cookie **/
+/** ✅ Public (no auth required) */
+app.use("/public", publicRouter);
+
+/** ✅ JWT decode middleware — reads header or cookie, sets req.auth */
 app.use((req, _res, next) => {
   let token: string | null = null;
 
@@ -55,7 +63,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-// --- JWT DEBUG HELPERS ---
+// --- JWT DEBUG HELPERS (optional) ---
 app.use((req, _res, next) => {
   (req as any).__rawAuthHeader = req.headers.authorization || "";
   next();
@@ -98,6 +106,12 @@ app.get("/__debug/whoami", (req, res) => {
 
 /** ✅ Healthcheck */
 app.get("/healthz", (_req, res) => res.send("ok"));
+
+/** Small auth guard for protected routers */
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
+  next();
+}
 
 /**
  * -------- Dev bootstrap (idempotent) --------
@@ -178,7 +192,7 @@ app.post("/auth/dev-login", async (req, res) => {
   }
 });
 
-/** ✅ Routers */
+/** ✅ Routers (protected ones mounted AFTER JWT middleware) */
 app.use("/auth", authRouter);
 app.use("/leads", leadsRouter);
 app.use("/ai", aiRouter);
@@ -186,7 +200,10 @@ app.use("/reports", reportsRouter);
 app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);
 app.use("/leads/ai", leadsAiRouter);
-app.use("/ms365", ms365Router); // ← NEW
+app.use("/ms365", ms365Router);
+
+// 🔒 Tenant settings require a valid JWT
+app.use("/tenant", requireAuth, tenantsRouter);
 
 /** ✅ DB Debug */
 app.get("/__debug/db", async (_req, res) => {

@@ -6,18 +6,18 @@ import { env } from "../env";
 
 const router = Router();
 
-// Map new UI statuses to legacy DB enum until your Prisma schema is migrated
+/* ---------------- Status mapping (UI -> legacy DB enum) ---------------- */
 function uiStatusToDb(status: string): "NEW" | "CONTACTED" | "QUALIFIED" | "DISQUALIFIED" {
   switch (status.toUpperCase()) {
-    case "NEW_ENQUIRY":      return "NEW";
-    case "INFO_REQUESTED":   return "CONTACTED";
-    case "READY_TO_QUOTE":   return "QUALIFIED";
-    case "REJECTED":         return "DISQUALIFIED";
-    // These don’t exist in legacy enum; choose nearest buckets
-    case "QUOTE_SENT":       return "QUALIFIED";
-    case "WON":              return "QUALIFIED";
-    case "LOST":             return "DISQUALIFIED";
-    default:                 return "NEW";
+    case "NEW_ENQUIRY":    return "NEW";
+    case "INFO_REQUESTED": return "CONTACTED";
+    case "READY_TO_QUOTE": return "QUALIFIED";
+    case "REJECTED":       return "DISQUALIFIED";
+    // nearest buckets for the rest
+    case "QUOTE_SENT":     return "QUALIFIED";
+    case "WON":            return "QUALIFIED";
+    case "LOST":           return "DISQUALIFIED";
+    default:               return "NEW";
   }
 }
 
@@ -90,6 +90,7 @@ router.post("/fields", async (req, res) => {
     config,
     sortOrder = 0,
   } = req.body;
+
   if (!key || !label) {
     return res.status(400).json({ error: "key and label required" });
   }
@@ -144,6 +145,7 @@ router.get("/grouped", async (req, res) => {
 });
 
 /* ------------------------- LEADS CRUD ------------------------- */
+/** Create lead (supports manual description) */
 router.post("/", async (req, res) => {
   const { tenantId, userId } = getAuth(req);
   if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
@@ -151,24 +153,28 @@ router.post("/", async (req, res) => {
   const {
     contactName,
     email,
-    status = "NEW",
+    status,                 // UI status like NEW_ENQUIRY / INFO_REQUESTED / …
     custom = {},
     nextAction,
     nextActionAt,
-  } = req.body;
+    description,            // ← NEW: free text when not from an email
+  } = req.body || {};
+
   if (!contactName) return res.status(400).json({ error: "contactName required" });
 
   try {
+    const uiStatus = (status as string | undefined) || "NEW_ENQUIRY";
     const lead = await prisma.lead.create({
       data: {
         tenantId,
         createdById: userId,
-        contactName,
-        email,
-        status,
-        nextAction,
+        contactName: String(contactName),
+        email: email ?? "",
+        status: uiStatusToDb(uiStatus),
+        nextAction: nextAction ?? null,
         nextActionAt: nextActionAt ? new Date(nextActionAt) : null,
-        custom,
+        description: description ?? null,            // ← NEW
+        custom: { ...(custom ?? {}), uiStatus },
       },
     });
     res.json(lead);
@@ -178,9 +184,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-/**
- * PATCH /leads/:id — partial update (merges custom)
- */
+/** PATCH /leads/:id — partial update (merges custom, supports description) */
 router.patch("/:id", async (req, res) => {
   try {
     const { tenantId } = getAuth(req);
@@ -201,14 +205,8 @@ router.patch("/:id", async (req, res) => {
       nextAction,
       nextActionAt,
       custom,
-    } = (req.body ?? {}) as {
-      contactName?: unknown;
-      email?: unknown;
-      status?: unknown;
-      nextAction?: unknown;
-      nextActionAt?: unknown;
-      custom?: unknown;
-    };
+      description, // ← NEW
+    } = (req.body ?? {}) as Record<string, unknown>;
 
     const data: any = {};
 
@@ -216,15 +214,14 @@ router.patch("/:id", async (req, res) => {
     if (email !== undefined) data.email = email === null || email === "" ? null : String(email);
 
     if (status !== undefined) {
-  const s = String(status).toUpperCase();
-  if (!allowedStatuses.includes(s as any)) {
-    return res.status(400).json({ error: `invalid status "${status}"` });
-  }
-  // Save legacy enum to DB, stash the UI status in custom for the frontend
-  data.status = uiStatusToDb(s);
-  const prevCustom = (existing.custom as Record<string, any>) || {};
-  data.custom = { ...prevCustom, uiStatus: s };
-}
+      const s = String(status).toUpperCase();
+      if (!allowedStatuses.includes(s as any)) {
+        return res.status(400).json({ error: `invalid status "${status}"` });
+      }
+      data.status = uiStatusToDb(s);
+      const prevCustom = (existing.custom as Record<string, any>) || {};
+      data.custom = { ...prevCustom, uiStatus: s };
+    }
 
     if (nextAction !== undefined) {
       data.nextAction = nextAction === null || nextAction === "" ? null : String(nextAction);
@@ -235,11 +232,13 @@ router.patch("/:id", async (req, res) => {
         data.nextActionAt = null;
       } else {
         const d = new Date(nextActionAt as any);
-        if (isNaN(d.getTime())) {
-          return res.status(400).json({ error: "invalid nextActionAt" });
-        }
+        if (isNaN(d.getTime())) return res.status(400).json({ error: "invalid nextActionAt" });
         data.nextActionAt = d;
       }
+    }
+
+    if (description !== undefined) {
+      data.description = description === "" ? null : String(description); // ← NEW
     }
 
     if (custom !== undefined) {
@@ -257,19 +256,6 @@ router.patch("/:id", async (req, res) => {
 });
 
 /* ---------------- REQUEST: supplier quote (AI + attachments) ---------------- */
-/**
- * POST /leads/:id/request-supplier-quote
- * Body: {
- *   to: string,
- *   subject?: string,
- *   text?: string,
- *   fields?: Record<string, any>,
- *   attachments?: Array<
- *     | { source: "gmail"; messageId: string; attachmentId: string }
- *     | { source: "upload"; filename: string; mimeType: string; base64: string }
- *   >
- * }
- */
 router.post("/:id/request-supplier-quote", async (req, res) => {
   try {
     const { tenantId, email: fromEmail } = getAuth(req);
@@ -277,9 +263,7 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
 
     const id = String(req.params.id);
     const lead = await prisma.lead.findUnique({ where: { id } });
-    if (!lead || lead.tenantId !== tenantId) {
-      return res.status(404).json({ error: "not found" });
-    }
+    if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
 
     const { to, subject, text, fields, attachments } = (req.body ?? {}) as {
       to?: string;
@@ -311,9 +295,7 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
 
     if (fields && typeof fields === "object") {
       lines.push("Questionnaire:");
-      Object.entries(fields).forEach(([k, v]) => {
-        lines.push(`- ${k}: ${v ?? "-"}`);
-      });
+      Object.entries(fields).forEach(([k, v]) => lines.push(`- ${k}: ${v ?? "-"}`));
       lines.push("");
     }
 
@@ -502,7 +484,8 @@ router.get("/:id", async (req, res) => {
 
   res.json({ lead, fields });
 });
-// --- Send questionnaire link for more info ---
+
+/* ------------------------ Request more info ------------------------ */
 router.post("/:id/request-info", async (req, res) => {
   try {
     const { tenantId, email: fromEmail } = getAuth(req);
@@ -511,63 +494,17 @@ router.post("/:id/request-info", async (req, res) => {
     const id = String(req.params.id);
     const lead = await prisma.lead.findUnique({ where: { id } });
     if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
-
-    const { to } = req.body;
-    if (!to) return res.status(400).json({ error: "to required" });
-
-    // Generate dynamic questionnaire link
-    const link = `https://yourapp.com/questionnaire/${id}?token=${Buffer.from(lead.id).toString("base64")}`;
-
-    const subject = `More information needed to quote your project`;
-    const body = `
-Hi ${lead.contactName || ""},
-
-Thanks for your enquiry. To prepare your quotation, we need a little more information.
-
-Please click the link below to provide details:
-${link}
-
-You can skip any fields you've already given us.
-
-Kind regards,
-${fromEmail || "Joinery Team"}
-`;
-
-    const accessToken = await getAccessTokenForTenant(tenantId);
-    await gmailSend(accessToken, `To: ${to}\r\nSubject: ${subject}\r\n\r\n${body}`);
-
-    await prisma.lead.update({
-      where: { id },
-      data: { status: "INFO_REQUESTED" },
-    });
-
-    return res.json({ ok: true });
-  } catch (e: any) {
-    console.error("[request-info] failed:", e);
-    res.status(500).json({ error: e?.message || "failed" });
-  }
-});
-
-// --- Request more info (email customer a questionnaire link) ---
-router.post("/:id/request-info", async (req, res) => {
-  try {
-    const { tenantId, email: fromEmail } = getAuth(req);
-    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
-
-    const id = String(req.params.id);
-    const lead = await prisma.lead.findUnique({ where: { id } });
-    if (!lead || lead.tenantId !== tenantId) {
-      return res.status(404).json({ error: "not found" });
-    }
     if (!lead.email) return res.status(400).json({ error: "lead has no email" });
 
     const WEB_ORIGIN = process.env.WEB_ORIGIN || "http://localhost:3000";
-    const qUrl = `${WEB_ORIGIN}/q/${encodeURIComponent(id)}`;
+    const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const slug = ts?.slug || ("tenant-" + tenantId.slice(0, 6));
+    const qUrl = `${WEB_ORIGIN}/q/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`;
 
-    // Keep whatever they already provided (will be prefilled in the UI form)
     const already = typeof lead.custom === "object" && lead.custom ? (lead.custom as any) : {};
-    const importantKeys = Object.keys(already)
-      .filter(k => !["provider","messageId","subject","from","summary","full","body","date","uiStatus"].includes(k));
+    const importantKeys = Object.keys(already).filter((k) =>
+      !["provider","messageId","subject","from","summary","full","body","date","uiStatus"].includes(k)
+    );
 
     const accessToken = await getAccessTokenForTenant(tenantId);
     const fromHeader = fromEmail || "me";
@@ -578,7 +515,7 @@ Thanks for your enquiry. To prepare an accurate quote we need a few more details
 Please fill in (or confirm) this short form: ${qUrl}
 
 We’ll auto-fill anything you already provided:
-${importantKeys.length ? importantKeys.map(k => `- ${k}: ${already[k] ?? "-"}`).join("\n") : "- (no fields captured yet)"}
+${importantKeys.length ? importantKeys.map((k) => `- ${k}: ${already[k] ?? "-"}`).join("\n") : "- (no fields captured yet)"}
 
 Thanks,
 ${fromEmail || "CRM"}`;
@@ -594,29 +531,23 @@ ${fromEmail || "CRM"}`;
 
     await gmailSend(accessToken, rfc822);
 
-    // flip to INFO_REQUESTED (DB enum mapper) and store uiStatus
-    const prevCustom = already;
     await prisma.lead.update({
       where: { id },
       data: {
         status: uiStatusToDb("INFO_REQUESTED"),
-        custom: { ...prevCustom, uiStatus: "INFO_REQUESTED" },
+        custom: { ...already, uiStatus: "INFO_REQUESTED" },
         nextAction: "Await questionnaire",
         nextActionAt: new Date(),
       },
     });
 
-    // train: positive example of "needs more info"
     await prisma.leadTrainingExample.create({
       data: {
         tenantId,
-        provider: prevCustom.provider || "gmail",
-        messageId: prevCustom.messageId || "",
+        provider: already.provider || "gmail",
+        messageId: already.messageId || "",
         label: "needs_more_info",
-        extracted: {
-          subject: prevCustom.subject ?? null,
-          summary: prevCustom.summary ?? null,
-        } as any,
+        extracted: { subject: already.subject ?? null, summary: already.summary ?? null } as any,
       },
     });
 
@@ -627,7 +558,7 @@ ${fromEmail || "CRM"}`;
   }
 });
 
-// --- Questionnaire submit (front-end will POST here) ---
+/* ------------------------ Questionnaire submit ------------------------ */
 router.post("/:id/submit-questionnaire", async (req, res) => {
   try {
     const { tenantId } = getAuth(req);
@@ -635,13 +566,11 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
 
     const id = String(req.params.id);
     const lead = await prisma.lead.findUnique({ where: { id } });
-    if (!lead || lead.tenantId !== tenantId) {
-      return res.status(404).json({ error: "not found" });
-    }
+    if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
 
     const answers = (req.body?.answers ?? {}) as Record<string, any>;
 
-    const prev = (typeof lead.custom === "object" && lead.custom) ? (lead.custom as any) : {};
+    const prev = typeof lead.custom === "object" && lead.custom ? (lead.custom as any) : {};
     const merged = { ...prev, ...answers, uiStatus: "READY_TO_QUOTE" };
 
     const updated = await prisma.lead.update({
@@ -654,7 +583,6 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
       },
     });
 
-    // train: positive example of "good enquiry"
     await prisma.leadTrainingExample.create({
       data: {
         tenantId,
@@ -671,6 +599,7 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
     return res.status(500).json({ error: e?.message || "submit failed" });
   }
 });
+
 /* ------------------------ AI feedback (training) ------------------------ */
 router.post("/ai/feedback", async (req, res) => {
   try {
@@ -724,7 +653,7 @@ router.post("/seed-demo", async (req, res) => {
       status: "NEW",
       nextAction: "Intro call",
       nextActionAt: new Date(),
-      custom: { company: "Acme Co", phone: "+1 555 0100" },
+      custom: { company: "Acme Co", phone: "+1 555 0100", uiStatus: "NEW_ENQUIRY" },
     },
   });
 

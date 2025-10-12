@@ -16,7 +16,7 @@ const NAV: NavItem[] = [
   { href: "/leads", label: "Leads" },
   { href: "/opportunities", label: "Opportunities" },
   { href: "/workshop", label: "Workshop" },
-  { href: "/reports", label: "Reports" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

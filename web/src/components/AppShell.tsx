@@ -13,7 +13,7 @@ const nav = [
   { href: "/leads", label: "Leads", icon: Mail },
   { href: "/opportunities", label: "Opportunities", icon: RadioTower },
   { href: "/workshop", label: "Workshop", icon: Wrench },
-  { href: "/reports", label: "Reports", icon: LineChart },
+  { href: "/settings", label: "Settings", icon: LineChart },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -29,7 +29,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <Separator />
         <nav className="p-2 space-y-1">
           {nav.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href;
+            const active = pathname?.startsWith(href);
             return (
               <Link
                 key={href}
