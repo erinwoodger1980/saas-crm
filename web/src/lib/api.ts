@@ -13,6 +13,7 @@ const API_BASE =
  * JWT helpers
  * ------------------------------------------------------------- */
 
+/** JWT helpers */
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("jwt");
@@ -48,6 +49,26 @@ export function clearJwt() {
  *  - leaves 401 handling to the caller (no auto-logout)
  * ------------------------------------------------------------- */
 
+  document.cookie = `jwt=${encodeURIComponent(token)}; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
+}
+
+export function clearJwt() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem("jwt");
+  } catch {}
+  // expire cookie
+  document.cookie = `jwt=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+/**
+ * Generic fetch wrapper:
+ * - injects JWT
+ * - includes cookies
+ * - supports `json` (preferred) or raw `body`
+ * - parses JSON response (or returns {} when empty)
+ * - auto-recovers on 401 by clearing auth and redirecting to /login
+ */
 export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit & { json?: unknown } = {}
@@ -66,6 +87,21 @@ export async function apiFetch<T = unknown>(
 
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
+
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const res = await fetch(url, { ...init, headers, body, credentials: "include" });
+
+  // Handle 401: clear token and bounce to login
+  if (res.status === 401) {
+    clearJwt();
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.href = `/login?next=${next}`;
+    }
+    throw new Error(`Unauthorized for ${url}`);
   }
 
   const res = await fetch(url, { ...init, headers, body, credentials: "include" });
@@ -83,6 +119,7 @@ export async function apiFetch<T = unknown>(
   /* ---------- other errors ---------- */
   if (!res.ok) {
     let msg = `Request failed ${res.status} ${res.statusText}`;
+    let details: any = null;
     try {
       const t = await res.text();
       if (t) {
@@ -107,6 +144,10 @@ export async function apiFetch<T = unknown>(
  * - if JWT missing, try demo login or /seed
  * ------------------------------------------------------------- */
 
+ * - If no JWT, try login (erin@acme.test / secret12)
+ * - If that fails, call /seed to create demo tenant+user
+ * - Store JWT and return true when authenticated
+ */
 export async function ensureDemoAuth(): Promise<boolean> {
   if (typeof window === "undefined") return false;
   if (getJwt()) return true;
@@ -128,6 +169,7 @@ export async function ensureDemoAuth(): Promise<boolean> {
   } catch {
     /* ignore */
   }
+  } catch {}
 
   try {
     const seeded = await fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" });
@@ -141,6 +183,7 @@ export async function ensureDemoAuth(): Promise<boolean> {
   } catch {
     /* ignore */
   }
+  } catch {}
 
   return false;
 }
