@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch, ensureDemoAuth } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import LeadModal, { Lead } from "./LeadModal";
+
 import { apiFetch, ensureDemoAuth, getJwt } from "@/lib/api";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -19,6 +23,27 @@ type LeadStatus =
   | "WON"
   | "LOST";
 
+type Grouped = Record<LeadStatus, Lead[]>;
+
+const STATUS_LABELS: Record<LeadStatus, string> = {
+  NEW_ENQUIRY: "New enquiry",
+  INFO_REQUESTED: "Info requested",
+  DISQUALIFIED: "Disqualified",
+  REJECTED: "Rejected",
+  READY_TO_QUOTE: "Ready to quote",
+  QUOTE_SENT: "Quote sent",
+  WON: "Won",
+  LOST: "Lost",
+};
+
+// Leads now focuses on intake+triage only:
+const ACTIVE_TABS: LeadStatus[] = [
+  "NEW_ENQUIRY",
+  "INFO_REQUESTED",
+  "DISQUALIFIED",
+  "REJECTED",
+  "READY_TO_QUOTE",
+];
 type Lead = {
   id: string;
   contactName: string;
@@ -78,7 +103,6 @@ const API_URL =
     process.env.NEXT_PUBLIC_API_BASE ||
     "http://localhost:4000")!.replace(/\/$/, "");
 
-/* --------------- Page --------------- */
 export default function LeadsPage() {
   const empty: Grouped = {
     NEW_ENQUIRY: [],
@@ -94,10 +118,27 @@ export default function LeadsPage() {
   const [grouped, setGrouped] = useState<Grouped>(empty);
   const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
 
+  const [grouped, setGrouped] = useState<Grouped>(empty);
+  const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
   const [error, setError] = useState<string | null>(null);
 
-  // modal state
+  // modal
   const [open, setOpen] = useState(false);
+  const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
+
+  // background auto-import watcher (controlled by settings toggle in localStorage)
+  useEffect(() => {
+    (async () => {
+      const ok = await ensureDemoAuth();
+      if (!ok) return;
+      await refreshGrouped();
+    })();
+  }, []);
+
+  // periodic refresh + optional auto-import every 10 minutes
+  useEffect(() => {
+    const id = setInterval(async () => {
+      const auto = localStorage.getItem("autoImportInbox") === "true";
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewLead, setPreviewLead] = useState<Lead | null>(null);
   const [details, setDetails] = useState<Lead | null>(null);
@@ -393,11 +434,130 @@ setEmailDetails(msg);
       const ok = await ensureDemoAuth();
       if (!ok) return;
       try {
-        const defs = await apiFetch<FieldDef[]>("/leads/fields");
-        if (!cancel) setFieldDefs(defs);
-      } catch {
-        if (!cancel) setFieldDefs([]);
+        if (auto) {
+          // Soft import (Gmail + 365). Failures are ignored.
+          await Promise.allSettled([
+            apiFetch("/gmail/import", { method: "POST", json: { max: 10, q: "newer_than:30d" } }),
+            apiFetch("/ms365/import", { method: "POST", json: { max: 10 } }),
+          ]);
+        }
+      } finally {
+        await refreshGrouped();
       }
+    }, 10 * 60 * 1000); // 10 minutes
+    return () => clearInterval(id);
+  }, []);
+
+  async function refreshGrouped() {
+    try {
+      const data = await apiFetch<Grouped>("/leads/grouped");
+      setGrouped(normaliseToNewStatuses(data));
+    } catch (e: any) {
+      setError(`Failed to load: ${e?.message ?? "unknown"}`);
+    }
+  }
+
+  function openLead(l: Lead) {
+    setLeadPreview(l);
+    setOpen(true);
+  }
+
+  // Normalize server buckets to new statuses and de-dupe by id
+  function normaliseToNewStatuses(g: any): Grouped {
+    const out: Grouped = {
+      NEW_ENQUIRY: [],
+      INFO_REQUESTED: [],
+      DISQUALIFIED: [],
+      REJECTED: [],
+      READY_TO_QUOTE: [],
+      QUOTE_SENT: [],
+      WON: [],
+      LOST: [],
+    };
+
+    const mapLegacyToNew = (legacy: string | undefined): LeadStatus => {
+      switch ((legacy || "").toUpperCase()) {
+        case "NEW": return "NEW_ENQUIRY";
+        case "CONTACTED": return "INFO_REQUESTED";
+        case "QUALIFIED": return "READY_TO_QUOTE";
+        case "DISQUALIFIED": return "DISQUALIFIED";
+        case "NEW_ENQUIRY":
+        case "INFO_REQUESTED":
+        case "REJECTED":
+        case "READY_TO_QUOTE":
+        case "QUOTE_SENT":
+        case "WON":
+        case "LOST":
+          return legacy as LeadStatus;
+        default:
+          return "NEW_ENQUIRY";
+      }
+    };
+
+    const seen = new Set<string>();
+    const insert = (l: any) => {
+      if (!l?.id) return;
+      if (seen.has(l.id)) return;
+      seen.add(l.id);
+      const s = mapLegacyToNew(l.status as string);
+      out[s].push({ ...l, status: s } as Lead);
+    };
+
+    (g?.NEW || []).forEach(insert);
+    (g?.CONTACTED || []).forEach(insert);
+    (g?.QUALIFIED || []).forEach(insert);
+    (g?.DISQUALIFIED || []).forEach(insert);
+    (Object.keys(STATUS_LABELS) as LeadStatus[]).forEach((s) => (g?.[s] || []).forEach(insert));
+
+    return out;
+  }
+
+  // PATCH helper used by modal
+  async function autoSave(leadId: string, patch: Partial<Lead>) {
+    // optimistic update
+    setGrouped((g) => {
+      const next = structuredClone(g);
+      const statuses = Object.keys(next) as LeadStatus[];
+      for (const s of statuses) {
+        const idx = next[s].findIndex((x) => x.id === leadId);
+        if (idx >= 0) {
+          const current = next[s][idx];
+          const newCustom =
+            patch.custom !== undefined
+              ? { ...(current.custom || {}), ...(patch.custom as any) }
+              : current.custom;
+          const updated: Lead = { ...current, ...(patch as any), custom: newCustom };
+
+          if (patch.status && patch.status !== s) {
+            next[s].splice(idx, 1);
+            next[patch.status].unshift(updated);
+          } else {
+            next[s][idx] = updated;
+          }
+          break;
+        }
+      }
+      return next;
+    });
+
+    try {
+      await apiFetch(`/leads/${leadId}`, { method: "PATCH", json: patch });
+    } catch (e) {
+      // swallow; modal shows saving state
+      console.error("autoSave failed:", e);
+    }
+  }
+
+  // Only show intake tabs
+  const rows = useMemo(() => {
+    const list = grouped[tab as LeadStatus] || [];
+    const seen = new Set<string>();
+    return list.filter((l) => {
+      if (seen.has(l.id)) return false;
+      seen.add(l.id);
+      return true;
+    });
+  }, [grouped, tab]);
     })();
     return () => {
       cancel = true;
@@ -427,12 +587,37 @@ const rows = useMemo(() => {
       <header className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Leads</h1>
+          <p className="text-sm text-slate-500">Capture and triage enquiries. Quote lifecycle is in Opportunities.</p>
           <p className="text-sm text-slate-500">Tabbed list. Click a row to view & edit.</p>
         </div>
 
         <div className="flex gap-2 items-center">
           <Button
             className="btn"
+            onClick={async () => {
+              const contactName = prompt("Enter lead name:");
+              if (!contactName) return;
+              try {
+                const lead = await apiFetch<any>("/leads", {
+                  method: "POST",
+                  json: { contactName, email: "", custom: { provider: "manual" } },
+                });
+                await refreshGrouped();
+                if (lead?.id) openLead({
+                  id: lead.id,
+                  contactName: lead.contactName ?? contactName,
+                  email: lead.email ?? "",
+                  status: (lead.status as LeadStatus) ?? "NEW_ENQUIRY",
+                  custom: lead.custom ?? { provider: "manual" },
+                });
+              } catch (e: any) {
+                alert("Failed to create lead: " + (e?.message || "unknown error"));
+              }
+            }}
+          >
+            + New Lead
+          </Button>
+          <Button variant="outline" onClick={refreshGrouped}>Refresh</Button>
             disabled={importing !== null}
             onClick={async () => {
               setImporting("gmail");
@@ -509,6 +694,9 @@ const rows = useMemo(() => {
         </div>
       )}
 
+      {/* Tabs (intake only) */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {ACTIVE_TABS.map((s) => (
       {/* Tabs */}
       <div className="mb-4 flex flex-wrap gap-2">
         {STATUSES.map((s) => (
@@ -535,22 +723,27 @@ const rows = useMemo(() => {
           </div>
         )}
         {rows.map((lead) => (
+          <Row
+            key={lead.id}
+            lead={lead}
+            onOpen={() => openLead(lead)}
+            onStatus={(s) => autoSave(lead.id, { status: s })}
+          />
           <Row key={lead.id} lead={lead} onOpen={() => openLead(lead)} onStatus={(s) => autoSave({ status: s })} />
         ))}
       </div>
 
       {/* Modal */}
+      <LeadModal
       <Dialog
         open={open}
         onOpenChange={(v) => {
           setOpen(v);
-          if (!v) {
-            setSelectedId(null);
-            setPreviewLead(null);
-            setDetails(null);
-            setForm(null);
-          }
+          if (!v) setLeadPreview(null);
         }}
+        leadPreview={leadPreview}
+        onAutoSave={autoSave}
+      />
       >
         <DialogContent className="w-[95vw] max-w-4xl md:max-w-5xl p-0">
           <div className="max-h-[85vh] overflow-hidden flex flex-col">
@@ -996,6 +1189,7 @@ const rows = useMemo(() => {
   );
 }
 
+/* ---------------- Row ---------------- */
 /* ---------------- Row (full-width) ---------------- */
 function Row({
   lead,
@@ -1028,14 +1222,22 @@ function Row({
             </div>
           </div>
 
-          {(subject || summary) && (
+          {(subject || summary || lead.custom?.description) && (
             <div className="mt-1 space-y-1">
               {subject && <div className="text-xs font-medium line-clamp-1">{subject}</div>}
               {summary && <div className="text-[11px] text-slate-600 line-clamp-2">{summary}</div>}
+              {lead.custom?.description && (
+                <div className="text-[11px] text-slate-500 line-clamp-2 italic">
+                  {lead.custom.description}
+                </div>
+              )}
             </div>
           )}
         </button>
 
+        <div className="shrink-0 flex flex-col items-end gap-1">
+          <button
+            className="rounded-md border border-red-300 text-red-600 px-2 py-1 text-[11px] hover:bg-red-50"
         {/* --- Quick actions + dropdown --- */}
         <div className="shrink-0 flex flex-col items-end gap-1">
           {/* Reject */}
@@ -1049,6 +1251,8 @@ function Row({
           >
             ✕ Reject
           </button>
+          <button
+            className="rounded-md border border-amber-300 text-amber-600 px-2 py-1 text-[11px] hover:bg-amber-50"
 
           {/* Ask for info */}
           <button
@@ -1059,6 +1263,8 @@ function Row({
               try {
                 await apiFetch(`/leads/${lead.id}/request-info`, { method: "POST" });
                 onStatus("INFO_REQUESTED");
+                alert("Questionnaire link sent ✔");
+              } catch {
                 alert("Questionnaire link sent to customer ✔");
               } catch (err) {
                 alert("Failed to request info");
@@ -1067,6 +1273,8 @@ function Row({
           >
             📋 Info
           </button>
+          <button
+            className="rounded-md border border-green-300 text-green-600 px-2 py-1 text-[11px] hover:bg-green-50"
 
           {/* Ready to quote */}
           <button
@@ -1087,6 +1295,8 @@ function Row({
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => onStatus(e.target.value.toUpperCase() as LeadStatus)}
           >
+            {(["NEW_ENQUIRY","INFO_REQUESTED","DISQUALIFIED","REJECTED","READY_TO_QUOTE"] as LeadStatus[])
+              .map((s) => (
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {STATUS_LABELS[s]}
