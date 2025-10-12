@@ -1,7 +1,9 @@
 // web/app/page.tsx
+import SourceRoiCard from "./_components/SourceRoiCard";
+
 export default function DashboardPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       {/* top cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded-xl border bg-white p-4">
@@ -35,6 +37,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* ROI Card */}
+      <SourceRoiCard />
     </div>
   );
 }

@@ -42,3 +42,9 @@ next-env.d.ts
 
 # api env
 api/.env
+
+node_modules/
+.next/
+.turbo/
+out/
+.env.local

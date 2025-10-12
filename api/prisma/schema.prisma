@@ -60,6 +60,8 @@ model Lead {
   description  String?
   opportunity  Opportunity?
   emailIngests EmailIngest[]
+
+  followUpLogs  FollowUpLog[]
 }
 
 enum OppStage {
@@ -194,7 +196,61 @@ model TenantSettings {
   logoUrl       String?
   links         Json? // [{label,url},...]
   questionnaire Json? // reserve for future per-tenant fields
+  inbox         Json?
+  inboxWatchEnabled Boolean @default(false)
+  inboxLastRun      DateTime?
 
   // relation (if you have a Tenant model, keep this loose for now)
   // tenant     Tenant  @relation(fields: [tenantId], references: [id])
+}
+// --- ADD these models at the end of your existing schema ---
+
+model FollowUpLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  leadId     String
+  variant    String   // "A" | "B"
+  subject    String
+  body       String
+  sentAt     DateTime @default(now())
+  opened     Boolean? // update later via webhook or polling
+  replied    Boolean? // update later
+  converted  Boolean? // WON?
+  delayDays  Int?     // days since last email when sent
+
+  lead       Lead     @relation(fields: [leadId], references: [id])
+
+  @@index([tenantId, leadId, sentAt])
+}
+
+model LeadSourceCost {
+  id          String   @id @default(cuid())
+  tenantId    String
+  source      String
+  month       DateTime // first day of month (UTC)
+  spend       Float    @default(0)
+  leads       Int      @default(0)
+  conversions Int      @default(0)
+  scalable    Boolean  @default(true)
+
+  @@unique([tenantId, source, month])
+  @@index([tenantId, source, month])
+}
+model LeadSourceSpend {
+  id        String   @id @default(cuid())
+  tenantId  String
+  source    String
+  month     DateTime // first of month
+  amountGBP Decimal  @default(0)
+
+  @@index([tenantId, source, month])
+}
+
+model LeadSourceConfig {
+  id        String   @id @default(cuid())
+  tenantId  String
+  source    String
+  scalable  Boolean  @default(true)
+
+  @@unique([tenantId, source])
 }

@@ -296,5 +296,81 @@ router.get("/settings/by-slug/:slug", async (req, res) => {
     links: (s.links as any) ?? [],
   });
 });
+// ========== INBOX WATCH (GET/PUT) ==========
+router.get("/inbox", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+  const inbox = (s?.inbox as any) || {};
+  res.json({
+    gmail: !!inbox.gmail,
+    ms365: !!inbox.ms365,
+    intervalMinutes: typeof inbox.intervalMinutes === "number" ? inbox.intervalMinutes : 10,
+  });
+});
+
+router.put("/inbox", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const { gmail = false, ms365 = false, intervalMinutes = 10 } = req.body || {};
+  const s = await prisma.tenantSettings.upsert({
+    where: { tenantId },
+    update: { inbox: { gmail: !!gmail, ms365: !!ms365, intervalMinutes: Number(intervalMinutes) || 10 } },
+    create: {
+      tenantId,
+      slug: "tenant-" + tenantId.slice(0, 6),
+      brandName: "Your Company",
+      inbox: { gmail: !!gmail, ms365: !!ms365, intervalMinutes: Number(intervalMinutes) || 10 },
+    },
+  });
+  res.json({ ok: true, inbox: s.inbox });
+});
+
+// ========== LEAD SOURCE COSTS ==========
+router.get("/costs", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const { from, to } = req.query as { from?: string; to?: string };
+  const where: any = { tenantId };
+  if (from || to) {
+    where.month = {};
+    if (from) where.month.gte = new Date(from);
+    if (to) where.month.lte = new Date(to);
+  }
+  const rows = await prisma.leadSourceCost.findMany({
+    where,
+    orderBy: [{ month: "desc" }, { source: "asc" }],
+  });
+  res.json(rows);
+});
+
+router.post("/costs", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const { source, month, spend, leads, conversions, scalable } = req.body || {};
+  if (!source || !month) return res.status(400).json({ error: "source and month required (YYYY-MM-01)" });
+
+  const monthDate = new Date(month); // pass first-of-month
+  const row = await prisma.leadSourceCost.upsert({
+    where: { tenantId_source_month: { tenantId, source, month: monthDate } },
+    update: { spend: Number(spend) || 0, leads: Number(leads) || 0, conversions: Number(conversions) || 0, scalable: !!scalable },
+    create: { tenantId, source, month: monthDate, spend: Number(spend) || 0, leads: Number(leads) || 0, conversions: Number(conversions) || 0, scalable: !!scalable },
+  });
+  res.json(row);
+});
+
+router.delete("/costs/:id", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+  const id = String(req.params.id);
+  const row = await prisma.leadSourceCost.findUnique({ where: { id } });
+  if (!row || row.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
+  await prisma.leadSourceCost.delete({ where: { id } });
+  res.json({ ok: true });
+});
 
 export default router;

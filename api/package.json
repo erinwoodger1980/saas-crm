@@ -24,6 +24,7 @@
     "openai": "^4.104.0"
   },
   "devDependencies": {
+    "@prisma/internals": "^6.17.1",
     "@types/bcrypt": "^5.0.2",
     "@types/cheerio": "^0.22.35",
     "@types/cors": "^2.8.19",

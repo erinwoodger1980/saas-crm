@@ -5,6 +5,13 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { env } from "./env";
 import { prisma } from "./prisma";
+import aiFollowupRouter from "./routes/ai-followup";     // ← ADD
+import opportunitiesRouter from "./routes/opportunities"; // ← ADD
+import settingsInboxRouter from "./routes/settings-inbox";
+import sourceCostsRouter from "./routes/source-costs";
+import analyticsRouter from "./routes/analytics";
+import opportunitiesRouter from "./routes/opportunities";
+
 
 /* Routers */
 import authRouter from "./routes/auth";
@@ -201,6 +208,12 @@ app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);
 app.use("/leads/ai", leadsAiRouter);
 app.use("/ms365", ms365Router);
+app.use("/ai", aiFollowupRouter);               // /ai/followup/*
+app.use("/opportunities", opportunitiesRouter); // /opportunities/*
+app.use("/settings/inbox", requireAuth, settingsInboxRouter);
+app.use("/source-costs", requireAuth, sourceCostsRouter);
+app.use("/analytics", requireAuth, analyticsRouter);
+app.use("/opportunities", opportunitiesRouter);
 
 // 🔒 Tenant settings require a valid JWT
 app.use("/tenant", requireAuth, tenantsRouter);
@@ -222,6 +235,83 @@ app.get("/__debug/db", async (_req, res) => {
 
 /** ✅ 404 handler */
 app.use((_req, res) => res.status(404).json({ error: "not found" }));
+import jwt from "jsonwebtoken";
+import fetch from "node-fetch"; // Node <18 — if you're on 18+, use global fetch
+// ...rest of imports already present
+
+// --- Helper to sign a per-tenant token (5 min) ---
+function signSystemToken(tenantId: string) {
+  return jwt.sign(
+    { tenantId, userId: "system", email: "system@local" },
+    env.APP_JWT_SECRET,
+    { expiresIn: "5m" }
+  );
+}
+
+// --- Background watcher: tick every minute; run per-tenant on their own cadence ---
+function startInboxWatcher() {
+  const API_ORIGIN = `http://localhost:${env.PORT}`;
+
+  let busy = false;
+  setInterval(async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      // Find tenants that enabled watching
+      const all = await prisma.tenantSettings.findMany({
+        where: {
+          OR: [
+            { inbox: { path: ["gmail"], equals: true } },
+            { inbox: { path: ["ms365"], equals: true } },
+          ],
+        },
+        select: { tenantId: true, inbox: true },
+      });
+
+      const now = Date.now();
+      for (const s of all) {
+        const inbox = (s.inbox as any) || {};
+        const intervalMin = Math.max(2, Number(inbox.intervalMinutes) || 10);
+        // Simple “jitter”: only fire if divisible by interval mins
+        const shouldRun = Math.floor(now / 60000) % intervalMin === 0;
+        if (!shouldRun) continue;
+
+        const token = signSystemToken(s.tenantId);
+        const common = {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        } as const;
+
+        if (inbox.gmail) {
+          try {
+            await fetch(`${API_ORIGIN}/gmail/import`, {
+              ...common,
+              body: JSON.stringify({ max: 25, q: "newer_than:30d" }),
+            } as any);
+          } catch {}
+        }
+        if (inbox.ms365) {
+          try {
+            await fetch(`${API_ORIGIN}/ms365/import`, {
+              ...common,
+              body: JSON.stringify({ max: 25 }),
+            } as any);
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.warn("[inbox watcher] tick failed:", (e as any)?.message || e);
+    } finally {
+      busy = false;
+    }
+  }, 60_000);
+}
+
+// call it once the server is up (place before app.listen or right after)
+startInboxWatcher();
 
 /** ✅ Start server */
 app.listen(env.PORT, () => {

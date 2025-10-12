@@ -7,27 +7,17 @@ import { env } from "../env";
 const router = Router();
 
 /* ---------------- Status mapping (UI -> legacy DB enum) ---------------- */
-function uiStatusToDb(
-  status: string
-): "NEW" | "CONTACTED" | "QUALIFIED" | "DISQUALIFIED" {
+function uiStatusToDb(status: string): "NEW" | "CONTACTED" | "QUALIFIED" | "DISQUALIFIED" {
   switch (status.toUpperCase()) {
-    case "NEW_ENQUIRY":
-      return "NEW";
-    case "INFO_REQUESTED":
-      return "CONTACTED";
-    case "READY_TO_QUOTE":
-      return "QUALIFIED";
-    case "REJECTED":
-      return "DISQUALIFIED";
-    // Nearest buckets for values not in legacy enum:
-    case "QUOTE_SENT":
-      return "QUALIFIED";
-    case "WON":
-      return "QUALIFIED";
-    case "LOST":
-      return "DISQUALIFIED";
-    default:
-      return "NEW";
+    case "NEW_ENQUIRY":    return "NEW";
+    case "INFO_REQUESTED": return "CONTACTED";
+    case "READY_TO_QUOTE": return "QUALIFIED";
+    case "REJECTED":       return "DISQUALIFIED";
+    // nearest buckets for the rest
+    case "QUOTE_SENT":     return "QUALIFIED";
+    case "WON":            return "QUALIFIED";
+    case "LOST":           return "DISQUALIFIED";
+    default:               return "NEW";
   }
 }
 
@@ -100,6 +90,7 @@ router.post("/fields", async (req, res) => {
     config,
     sortOrder = 0,
   } = req.body;
+
   if (!key || !label) {
     return res.status(400).json({ error: "key and label required" });
   }
@@ -118,14 +109,11 @@ router.post("/fields", async (req, res) => {
 });
 
 /* -------------------- GROUPED (Kanban / Tabs) -------------------- */
-/** We accept both legacy and new labels coming from DB, UI normaliser handles both on the frontend */
 const DEFAULT_BUCKETS = [
-  // legacy DB enum values
   "NEW",
   "CONTACTED",
   "QUALIFIED",
   "DISQUALIFIED",
-  // new UI labels (kept for forward-compat)
   "INFO_REQUESTED",
   "REJECTED",
   "READY_TO_QUOTE",
@@ -157,6 +145,7 @@ router.get("/grouped", async (req, res) => {
 });
 
 /* ------------------------- LEADS CRUD ------------------------- */
+/** Create lead (supports manual description) */
 router.post("/", async (req, res) => {
   const { tenantId, userId } = getAuth(req);
   if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
@@ -164,10 +153,11 @@ router.post("/", async (req, res) => {
   const {
     contactName,
     email,
-    status,            // UI status may be NEW_ENQUIRY / INFO_REQUESTED / etc.
+    status,                 // UI status like NEW_ENQUIRY / INFO_REQUESTED / …
     custom = {},
     nextAction,
     nextActionAt,
+    description,            // ← NEW: free text when not from an email
   } = req.body || {};
 
   if (!contactName) return res.status(400).json({ error: "contactName required" });
@@ -180,10 +170,11 @@ router.post("/", async (req, res) => {
         createdById: userId,
         contactName: String(contactName),
         email: email ?? "",
-        status: uiStatusToDb(uiStatus),                        // ✅ map to DB enum
+        status: uiStatusToDb(uiStatus),
         nextAction: nextAction ?? null,
         nextActionAt: nextActionAt ? new Date(nextActionAt) : null,
-        custom: { ...(custom ?? {}), uiStatus },               // ✅ remember UI status for frontend
+        description: description ?? null,            // ← NEW
+        custom: { ...(custom ?? {}), uiStatus },
       },
     });
     res.json(lead);
@@ -193,9 +184,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-/**
- * PATCH /leads/:id — partial update (merges custom)
- */
+/** PATCH /leads/:id — partial update (merges custom, supports description) */
 router.patch("/:id", async (req, res) => {
   try {
     const { tenantId } = getAuth(req);
@@ -216,14 +205,8 @@ router.patch("/:id", async (req, res) => {
       nextAction,
       nextActionAt,
       custom,
-    } = (req.body ?? {}) as {
-      contactName?: unknown;
-      email?: unknown;
-      status?: unknown;
-      nextAction?: unknown;
-      nextActionAt?: unknown;
-      custom?: unknown;
-    };
+      description, // ← NEW
+    } = (req.body ?? {}) as Record<string, unknown>;
 
     const data: any = {};
 
@@ -235,7 +218,6 @@ router.patch("/:id", async (req, res) => {
       if (!allowedStatuses.includes(s as any)) {
         return res.status(400).json({ error: `invalid status "${status}"` });
       }
-      // Map to DB enum and also keep the UI version for the frontend
       data.status = uiStatusToDb(s);
       const prevCustom = (existing.custom as Record<string, any>) || {};
       data.custom = { ...prevCustom, uiStatus: s };
@@ -250,11 +232,13 @@ router.patch("/:id", async (req, res) => {
         data.nextActionAt = null;
       } else {
         const d = new Date(nextActionAt as any);
-        if (isNaN(d.getTime())) {
-          return res.status(400).json({ error: "invalid nextActionAt" });
-        }
+        if (isNaN(d.getTime())) return res.status(400).json({ error: "invalid nextActionAt" });
         data.nextActionAt = d;
       }
+    }
+
+    if (description !== undefined) {
+      data.description = description === "" ? null : String(description); // ← NEW
     }
 
     if (custom !== undefined) {
@@ -272,19 +256,6 @@ router.patch("/:id", async (req, res) => {
 });
 
 /* ---------------- REQUEST: supplier quote (AI + attachments) ---------------- */
-/**
- * POST /leads/:id/request-supplier-quote
- * Body: {
- *   to: string,
- *   subject?: string,
- *   text?: string,
- *   fields?: Record<string, any>,
- *   attachments?: Array<
- *     | { source: "gmail"; messageId: string; attachmentId: string }
- *     | { source: "upload"; filename: string; mimeType: string; base64: string }
- *   >
- * }
- */
 router.post("/:id/request-supplier-quote", async (req, res) => {
   try {
     const { tenantId, email: fromEmail } = getAuth(req);
@@ -292,9 +263,7 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
 
     const id = String(req.params.id);
     const lead = await prisma.lead.findUnique({ where: { id } });
-    if (!lead || lead.tenantId !== tenantId) {
-      return res.status(404).json({ error: "not found" });
-    }
+    if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
 
     const { to, subject, text, fields, attachments } = (req.body ?? {}) as {
       to?: string;
@@ -326,9 +295,7 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
 
     if (fields && typeof fields === "object") {
       lines.push("Questionnaire:");
-      Object.entries(fields).forEach(([k, v]) => {
-        lines.push(`- ${k}: ${v ?? "-"}`);
-      });
+      Object.entries(fields).forEach(([k, v]) => lines.push(`- ${k}: ${v ?? "-"}`));
       lines.push("");
     }
 
@@ -519,7 +486,6 @@ router.get("/:id", async (req, res) => {
 });
 
 /* ------------------------ Request more info ------------------------ */
-/** Keep ONE route (you had two). Uses the lead's email and a generated form URL. */
 router.post("/:id/request-info", async (req, res) => {
   try {
     const { tenantId, email: fromEmail } = getAuth(req);
@@ -527,31 +493,17 @@ router.post("/:id/request-info", async (req, res) => {
 
     const id = String(req.params.id);
     const lead = await prisma.lead.findUnique({ where: { id } });
-    if (!lead || lead.tenantId !== tenantId) {
-      return res.status(404).json({ error: "not found" });
-    }
+    if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
     if (!lead.email) return res.status(400).json({ error: "lead has no email" });
 
     const WEB_ORIGIN = process.env.WEB_ORIGIN || "http://localhost:3000";
-const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
-const slug = ts?.slug || ("tenant-" + tenantId.slice(0, 6));
-const qUrl = `${WEB_ORIGIN}/q/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`;
+    const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const slug = ts?.slug || ("tenant-" + tenantId.slice(0, 6));
+    const qUrl = `${WEB_ORIGIN}/q/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`;
 
-    // Keep whatever they already provided (will be prefilled in the UI form)
     const already = typeof lead.custom === "object" && lead.custom ? (lead.custom as any) : {};
-    const importantKeys = Object.keys(already).filter(
-      (k) =>
-        ![
-          "provider",
-          "messageId",
-          "subject",
-          "from",
-          "summary",
-          "full",
-          "body",
-          "date",
-          "uiStatus",
-        ].includes(k)
+    const importantKeys = Object.keys(already).filter((k) =>
+      !["provider","messageId","subject","from","summary","full","body","date","uiStatus"].includes(k)
     );
 
     const accessToken = await getAccessTokenForTenant(tenantId);
@@ -563,11 +515,7 @@ Thanks for your enquiry. To prepare an accurate quote we need a few more details
 Please fill in (or confirm) this short form: ${qUrl}
 
 We’ll auto-fill anything you already provided:
-${
-  importantKeys.length
-    ? importantKeys.map((k) => `- ${k}: ${already[k] ?? "-"}`).join("\n")
-    : "- (no fields captured yet)"
-}
+${importantKeys.length ? importantKeys.map((k) => `- ${k}: ${already[k] ?? "-"}`).join("\n") : "- (no fields captured yet)"}
 
 Thanks,
 ${fromEmail || "CRM"}`;
@@ -583,29 +531,23 @@ ${fromEmail || "CRM"}`;
 
     await gmailSend(accessToken, rfc822);
 
-    // Flip to INFO_REQUESTED (mapped in DB) and store uiStatus
-    const prevCustom = already;
     await prisma.lead.update({
       where: { id },
       data: {
         status: uiStatusToDb("INFO_REQUESTED"),
-        custom: { ...prevCustom, uiStatus: "INFO_REQUESTED" },
+        custom: { ...already, uiStatus: "INFO_REQUESTED" },
         nextAction: "Await questionnaire",
         nextActionAt: new Date(),
       },
     });
 
-    // Train: positive example of "needs more info"
     await prisma.leadTrainingExample.create({
       data: {
         tenantId,
-        provider: prevCustom.provider || "gmail",
-        messageId: prevCustom.messageId || "",
+        provider: already.provider || "gmail",
+        messageId: already.messageId || "",
         label: "needs_more_info",
-        extracted: {
-          subject: prevCustom.subject ?? null,
-          summary: prevCustom.summary ?? null,
-        } as any,
+        extracted: { subject: already.subject ?? null, summary: already.summary ?? null } as any,
       },
     });
 
@@ -624,9 +566,7 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
 
     const id = String(req.params.id);
     const lead = await prisma.lead.findUnique({ where: { id } });
-    if (!lead || lead.tenantId !== tenantId) {
-      return res.status(404).json({ error: "not found" });
-    }
+    if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
 
     const answers = (req.body?.answers ?? {}) as Record<string, any>;
 
@@ -643,7 +583,6 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
       },
     });
 
-    // Train: positive example of "good enquiry"
     await prisma.leadTrainingExample.create({
       data: {
         tenantId,
@@ -672,13 +611,22 @@ router.post("/ai/feedback", async (req, res) => {
       return res.status(400).json({ error: "leadId and isLead required" });
     }
 
+    // 🔎 Pull source from the lead’s custom fields to teach the model
+    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+    const custom = (lead?.custom as any) || {};
+    const source = typeof custom.source === "string" ? custom.source : (snapshot?.source || null);
+
     await prisma.leadTrainingExample.create({
       data: {
         tenantId,
         provider,
         messageId: messageId || "",
         label: isLead ? "lead" : "not_lead",
-        extracted: snapshot || null,
+        extracted: {
+          ...(snapshot || {}),
+          source: source || null,
+          statusAtTime: lead?.status || null,
+        } as any,
       },
     });
 
@@ -688,6 +636,7 @@ router.post("/ai/feedback", async (req, res) => {
     return res.status(500).json({ error: e?.message || "feedback failed" });
   }
 });
+
 
 /* ------------------------ DEMO SEED (optional) ------------------------ */
 router.post("/seed-demo", async (req, res) => {
