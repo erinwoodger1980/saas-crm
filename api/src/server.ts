@@ -3,15 +3,9 @@ import express from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
+import fetch from "node-fetch";
 import { env } from "./env";
 import { prisma } from "./prisma";
-import aiFollowupRouter from "./routes/ai-followup";     // ← ADD
-import opportunitiesRouter from "./routes/opportunities"; // ← ADD
-import settingsInboxRouter from "./routes/settings-inbox";
-import sourceCostsRouter from "./routes/source-costs";
-import analyticsRouter from "./routes/analytics";
-import opportunitiesRouter from "./routes/opportunities";
-
 
 /* Routers */
 import authRouter from "./routes/auth";
@@ -24,37 +18,63 @@ import leadsAiRouter from "./routes/leads-ai";
 import ms365Router from "./routes/ms365";
 import tenantsRouter from "./routes/tenants";
 import publicRouter from "./routes/public";
+import aiFollowupRouter from "./routes/ai-followup";
+import opportunitiesRouter from "./routes/opportunities";
+import settingsInboxRouter from "./routes/settings-inbox";
+import sourceCostsRouter from "./routes/source-costs";
+import analyticsRouter from "./routes/analytics";
+import billingRouter, { webhook as stripeWebhook } from "./routes/billing";
+import quotesRouter from "./routes/quotes";
+import publicSignupRouter from "./routes/public-signup";
 
-// ------------------------------------------------------
-// App Setup
-// ------------------------------------------------------
 const app = express();
 
-/** ✅ CORS (allow cookies + auth header) */
+/* ------------------------------------------------------
+ * Core app setup
+ * ---------------------------------------------------- */
+app.set("trust proxy", 1);
+
+/** CORS (allow cookies + auth header) */
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: process.env.WEB_ORIGIN || "http://localhost:3000",
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-/** ✅ Body parser should come before routers */
+// Stripe webhook requires raw body
+app.post(
+  "/billing/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook
+);
+/**
+ * Stripe webhook NOTE:
+ * If/when you add a real billing router with a webhook,
+ * it must be mounted with `express.raw()` BEFORE `express.json()`.
+ * Example:
+ *
+ *   app.post("/billing/webhook",
+ *     express.raw({ type: "application/json" }),
+ *     (req, res) => { /* handle event here *\/ }
+ *   );
+ */
+
+/** JSON parser comes after potential raw webhook route */
 app.use(express.json({ limit: "2mb" }));
 
-/** ✅ Public (no auth required) */
+/** Public (no auth required) */
 app.use("/public", publicRouter);
 
-/** ✅ JWT decode middleware — reads header or cookie, sets req.auth */
+/** JWT decode middleware — reads header or cookie, sets req.auth */
 app.use((req, _res, next) => {
   let token: string | null = null;
 
-  // 1) Authorization: Bearer <jwt>
   const h = req.headers.authorization;
   if (h && h.startsWith("Bearer ")) token = h.slice(7);
 
-  // 2) Fallback: jwt cookie
   if (!token && req.headers.cookie) {
     const m = req.headers.cookie.match(/(?:^|;\s*)jwt=([^;]+)/);
     if (m) token = decodeURIComponent(m[1]);
@@ -70,7 +90,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-// --- JWT DEBUG HELPERS (optional) ---
+/* ------------------ Debug helpers (dev only) ------------------ */
 app.use((req, _res, next) => {
   (req as any).__rawAuthHeader = req.headers.authorization || "";
   next();
@@ -109,9 +129,8 @@ app.get("/__debug/whoami", (req, res) => {
     hasJwtCookie: !!(req.headers.cookie || "").match(/(?:^|;\s*)jwt=/),
   });
 });
-// --- end debug helpers ---
 
-/** ✅ Healthcheck */
+/** Healthcheck */
 app.get("/healthz", (_req, res) => res.send("ok"));
 
 /** Small auth guard for protected routers */
@@ -120,9 +139,7 @@ function requireAuth(req: any, res: any, next: any) {
   next();
 }
 
-/**
- * -------- Dev bootstrap (idempotent) --------
- */
+/* ---------------- Dev bootstrap (idempotent) ---------------- */
 async function ensureDevData() {
   let tenant = await prisma.tenant.findFirst({ where: { name: "Demo Tenant" } });
   if (!tenant) {
@@ -147,14 +164,13 @@ async function ensureDevData() {
   return { tenant, user };
 }
 
-// Auto-seed dev data
 if (process.env.NODE_ENV !== "production") {
   ensureDevData()
     .then(({ user }) => console.log(`[dev] bootstrap ready for ${user.email}`))
     .catch((e) => console.error("[dev] bootstrap failed:", e));
 }
 
-/** ✅ Dev seed endpoint */
+/** Dev seed endpoint */
 app.post("/seed", async (_req, res) => {
   try {
     const out = await ensureDevData();
@@ -170,7 +186,7 @@ app.post("/seed", async (_req, res) => {
   }
 });
 
-/** ✅ Dev Login route (for local use only) */
+/** Dev login (local only) */
 app.post("/auth/dev-login", async (req, res) => {
   try {
     const email = req.body.email || "erin@acme.test";
@@ -199,7 +215,7 @@ app.post("/auth/dev-login", async (req, res) => {
   }
 });
 
-/** ✅ Routers (protected ones mounted AFTER JWT middleware) */
+/* ---------------- Protected Routers ---------------- */
 app.use("/auth", authRouter);
 app.use("/leads", leadsRouter);
 app.use("/ai", aiRouter);
@@ -208,17 +224,18 @@ app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);
 app.use("/leads/ai", leadsAiRouter);
 app.use("/ms365", ms365Router);
-app.use("/ai", aiFollowupRouter);               // /ai/followup/*
-app.use("/opportunities", opportunitiesRouter); // /opportunities/*
+/** FIX: mount follow-up routes under /ai/followup (was overriding /ai) */
+app.use("/ai/followup", aiFollowupRouter);
+app.use("/opportunities", opportunitiesRouter);
 app.use("/settings/inbox", requireAuth, settingsInboxRouter);
 app.use("/source-costs", requireAuth, sourceCostsRouter);
 app.use("/analytics", requireAuth, analyticsRouter);
-app.use("/opportunities", opportunitiesRouter);
-
-// 🔒 Tenant settings require a valid JWT
 app.use("/tenant", requireAuth, tenantsRouter);
+app.use("/billing", billingRouter);
+app.use("/quotes", quotesRouter);
+app.use("/public", publicSignupRouter);
 
-/** ✅ DB Debug */
+/** DB Debug */
 app.get("/__debug/db", async (_req, res) => {
   const url = process.env.DATABASE_URL || "";
   const masked = url.replace(/:\/\/([^:]+):([^@]+)@/, "://***:***@");
@@ -233,13 +250,7 @@ app.get("/__debug/db", async (_req, res) => {
   }
 });
 
-/** ✅ 404 handler */
-app.use((_req, res) => res.status(404).json({ error: "not found" }));
-import jwt from "jsonwebtoken";
-import fetch from "node-fetch"; // Node <18 — if you're on 18+, use global fetch
-// ...rest of imports already present
-
-// --- Helper to sign a per-tenant token (5 min) ---
+/* ---------------- Background Inbox Watcher ---------------- */
 function signSystemToken(tenantId: string) {
   return jwt.sign(
     { tenantId, userId: "system", email: "system@local" },
@@ -248,16 +259,14 @@ function signSystemToken(tenantId: string) {
   );
 }
 
-// --- Background watcher: tick every minute; run per-tenant on their own cadence ---
 function startInboxWatcher() {
   const API_ORIGIN = `http://localhost:${env.PORT}`;
-
   let busy = false;
+
   setInterval(async () => {
     if (busy) return;
     busy = true;
     try {
-      // Find tenants that enabled watching
       const all = await prisma.tenantSettings.findMany({
         where: {
           OR: [
@@ -272,7 +281,6 @@ function startInboxWatcher() {
       for (const s of all) {
         const inbox = (s.inbox as any) || {};
         const intervalMin = Math.max(2, Number(inbox.intervalMinutes) || 10);
-        // Simple “jitter”: only fire if divisible by interval mins
         const shouldRun = Math.floor(now / 60000) % intervalMin === 0;
         if (!shouldRun) continue;
 
@@ -291,13 +299,24 @@ function startInboxWatcher() {
               ...common,
               body: JSON.stringify({ max: 25, q: "newer_than:30d" }),
             } as any);
+
+            await fetch(`${API_ORIGIN}/opportunities/reconcile-replies`, {
+              ...common,
+              method: "POST",
+            } as any);
           } catch {}
         }
+
         if (inbox.ms365) {
           try {
             await fetch(`${API_ORIGIN}/ms365/import`, {
               ...common,
               body: JSON.stringify({ max: 25 }),
+            } as any);
+
+            await fetch(`${API_ORIGIN}/opportunities/reconcile-replies`, {
+              ...common,
+              method: "POST",
             } as any);
           } catch {}
         }
@@ -310,10 +329,16 @@ function startInboxWatcher() {
   }, 60_000);
 }
 
-// call it once the server is up (place before app.listen or right after)
 startInboxWatcher();
 
-/** ✅ Start server */
+/* ---------------- 404 + Error handlers ---------------- */
+app.use((req, res) => res.status(404).json({ error: "not_found", path: req.path }));
+app.use((err: any, _req: any, res: any, _next: any) => {
+  console.error(err);
+  res.status(500).json({ error: "internal_error" });
+});
+
+/** Start server */
 app.listen(env.PORT, () => {
   console.log(`API running at http://localhost:${env.PORT}`);
 });

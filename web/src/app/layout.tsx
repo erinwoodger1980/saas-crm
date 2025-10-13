@@ -3,8 +3,8 @@
 import "./globals.css";
 import { ReactNode, useEffect } from "react";
 import { usePathname } from "next/navigation";
-import AppShell from "../components/AppShell";
 import { Toaster } from "@/components/ui/toaster";
+import AppShell from "./components/AppShell";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:4000";
@@ -14,7 +14,6 @@ function DevAuth() {
     if (typeof window === "undefined") return;
     if (localStorage.getItem("jwt")) return;
 
-    // Create demo tenant+user and stash JWT for local dev
     fetch(`${API_BASE}/seed`, { method: "POST" })
       .then((r) => r.json())
       .then((d) => {
@@ -25,11 +24,10 @@ function DevAuth() {
       })
       .catch((err) => console.error("Auto-seed failed:", err));
   }, []);
-
   return null;
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isAuthRoute = pathname?.startsWith("/login");
   const isPublicQuestionnaire = pathname?.startsWith("/q/");
@@ -38,12 +36,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="h-full">
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
-        {/* Only run DevAuth inside the app (never on public pages) */}
         {!(isPublicQuestionnaire || isPublicThankYou) && <DevAuth />}
 
-        {(isAuthRoute || isPublicQuestionnaire || isPublicThankYou) ? (
+        {isAuthRoute || isPublicQuestionnaire || isPublicThankYou ? (
           children
         ) : (
+          // ✅ Use the shared AppShell (sidebar + header + logos, no max-width cap)
           <AppShell>{children}</AppShell>
         )}
 

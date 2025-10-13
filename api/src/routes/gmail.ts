@@ -27,7 +27,6 @@ async function getAccessTokenForTenant(tenantId: string) {
 /* ============================================================
    Gmail helpers
    ============================================================ */
-// api/src/routes/gmail.ts (or ../services/gmail.ts if you moved it)
 async function refreshAccessToken(refreshToken: string) {
   const url = "https://oauth2.googleapis.com/token";
   try {
@@ -41,8 +40,6 @@ async function refreshAccessToken(refreshToken: string) {
         refresh_token: refreshToken,
       }),
     });
-
-    // If Google responded, log status and sample of body
     const text = await res.text();
     if (!res.ok) {
       console.error("[gmail] token refresh NOT OK", res.status, text);
@@ -51,12 +48,7 @@ async function refreshAccessToken(refreshToken: string) {
     const json = JSON.parse(text);
     return json.access_token as string;
   } catch (err: any) {
-    // This is the “fetch failed” path (network/DNS/TLS)
-    console.error("[gmail] token refresh FETCH FAILED", {
-      url,
-      message: err?.message,
-      cause: err?.cause,
-    });
+    console.error("[gmail] token refresh FETCH FAILED", { url, message: err?.message, cause: err?.cause });
     throw err;
   }
 }
@@ -79,6 +71,23 @@ function pickHeader(headers: Array<{ name: string; value: string }>, name: strin
   return headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
 }
 
+function addressOnly(val: string | null | undefined) {
+  if (!val) return null;
+  const m = String(val).match(/<([^>]+)>/);
+  if (m) return m[1].toLowerCase();
+  return String(val).toLowerCase().trim();
+}
+
+function splitAddresses(val: string | null | undefined): string[] {
+  if (!val) return [];
+  // split by comma and semicolon, trim, extract addressOnly per entry
+  return String(val)
+    .split(/[,;]+/)
+    .map((s) => s.trim())
+    .map((s) => addressOnly(s) || s)
+    .filter(Boolean);
+}
+
 async function fetchMessage(
   accessToken: string,
   id: string,
@@ -92,15 +101,18 @@ async function fetchMessage(
   if (!r.ok) throw new Error(j?.error?.message || "gmail message fetch failed");
   return j;
 }
-async function gmailSend(accessToken: string, rawRfc822: string) {
+
+async function gmailSend(accessToken: string, rawRfc822: string, opts?: { threadId?: string }) {
   const url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
   const raw = Buffer.from(rawRfc822).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const body: any = { raw };
+  if (opts?.threadId) body.threadId = opts.threadId;
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ raw }),
+      body: JSON.stringify(body),
     });
 
     const text = await res.text();
@@ -259,12 +271,12 @@ router.get("/connect", (req, res) => {
     access_type: "offline",
     prompt: "consent",
     scope: [
-  "openid",
-  "email",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/gmail.modify"
-].join(" "),
+      "openid",
+      "email",
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/gmail.modify",
+    ].join(" "),
     state: JSON.stringify({ tenantId, userId }),
   });
 
@@ -370,7 +382,6 @@ router.get("/message/:id", async (req, res) => {
    Attachments (INLINE view by default + /download fallback)
    ============================================================ */
 function sniffMime(buf: Buffer, fallback = "application/octet-stream") {
-  // very small magic-byte sniffing for common types
   if (buf.slice(0, 5).toString() === "%PDF-") return "application/pdf";
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
   if (buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
@@ -404,7 +415,6 @@ router.get(
       const messageId = String(req.params.id);
       const attachmentId = String(req.params.attachmentId);
 
-      // 1) fetch raw attachment (web-safe base64)
       const attRsp = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -417,7 +427,6 @@ router.get(
       }
       const buf = Buffer.from(String(attJson.data).replace(/-/g, "+").replace(/_/g, "/"), "base64");
 
-      // 2) fetch message to discover filename & declared mimeType
       const msg = await fetchMessage(accessToken, messageId, "full");
       let filename = "attachment";
       let mimeType = "application/octet-stream";
@@ -432,18 +441,15 @@ router.get(
       };
       walk(msg.payload);
 
-      // 3) refine mime by sniffing if it's still generic
       if (!mimeType || mimeType === "application/octet-stream") {
         mimeType = sniffMime(buf, mimeType);
       }
 
-      // 4) ensure filename has extension
       const hasExt = /\.[a-z0-9]{2,}$/i.test(filename);
       if (!hasExt && EXT_FROM_MIME[mimeType]) {
         filename = `${filename}${EXT_FROM_MIME[mimeType]}`;
       }
 
-      // 5) headers: inline by default (open in browser) or attachment if /download
       res.setHeader("Content-Type", mimeType || "application/octet-stream");
       res.setHeader(
         "Content-Disposition",
@@ -511,8 +517,29 @@ router.get("/thread/:threadId", async (req, res) => {
 });
 
 /* ============================================================
-   Import (idempotent)
+   Import (idempotent) — writes EmailThread + EmailMessage + EmailIngest
    ============================================================ */
+
+async function findLeadForInbound(tenantId: string, fromAddr: string | null, threadId: string | null) {
+  // 1) If we already have a thread linked to a lead, use it.
+  if (threadId) {
+    const t = await prisma.emailThread.findUnique({
+      where: { tenantId_provider_threadId: { tenantId, provider: "gmail", threadId } },
+      select: { leadId: true },
+    });
+    if (t?.leadId) return t.leadId;
+  }
+  // 2) Fallback: exact email match to existing lead
+  if (fromAddr) {
+    const lead = await prisma.lead.findFirst({
+      where: { tenantId, email: fromAddr.toLowerCase() },
+      select: { id: true },
+    });
+    if (lead) return lead.id;
+  }
+  return null;
+}
+
 router.post("/import", async (req, res) => {
   const { tenantId, userId } = getAuth(req);
   if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
@@ -538,7 +565,8 @@ router.post("/import", async (req, res) => {
     const results: any[] = [];
 
     for (const m of messages) {
-      // Create EmailIngest row first (idempotent index). If present, skip.
+      // Create EmailIngest row first (idempotent). If present, skip FULL processing but do minimal thread sync.
+      let createdIngest = false;
       try {
         await prisma.emailIngest.create({
           data: {
@@ -547,91 +575,151 @@ router.post("/import", async (req, res) => {
             messageId: m.id,
           },
         });
+        createdIngest = true;
       } catch {
-        results.push({ id: m.id, skipped: true, reason: "already indexed" });
-        continue;
+        // already indexed previously — still try to ensure thread+message exist (defensive)
       }
 
-      // Fetch content & decide
-     const msg = await fetchMessage(accessToken, m.id, "full");
-     const headers = msg.payload?.headers || [];
-     const subject = pickHeader(headers, "Subject");
-     const from = pickHeader(headers, "From");
-     const { bodyText } = extractBodyAndAttachments(msg);
+      // Pull message
+      const msg = await fetchMessage(accessToken, m.id, "full");
+      const headers = msg.payload?.headers || [];
+      const subject = pickHeader(headers, "Subject") || "";
+      const fromHdr = pickHeader(headers, "From") || "";
+      const toHdr = pickHeader(headers, "To") || "";
+      const ccHdr = pickHeader(headers, "Cc") || "";
 
-const full = { id: msg.id, subject, from, snippet: msg.snippet || "", body: bodyText };
-      const ai = await extractLeadWithOpenAI(full.subject || "", full.body || "");
-      const heur = basicHeuristics(full.body || "");
+      const fromAddr = addressOnly(fromHdr);
+      const toAddrs = splitAddresses(toHdr);
+      const ccAddrs = splitAddresses(ccHdr);
+      const allRcpts = [...toAddrs, ...ccAddrs];
 
-      const isLead =
-        ai?.isLead ??
-        !!(
-          heur.email ||
-          heur.contactName ||
-          /quote|estimate|enquiry|inquiry/i.test(full.subject || "")
-        );
+      const { bodyText } = extractBodyAndAttachments(msg);
+      const snippet = msg.snippet || "";
+      const threadId = msg.threadId || null;
 
-      if (!isLead) {
+      // Upsert EmailThread
+      const thread = await prisma.emailThread.upsert({
+        where: { tenantId_provider_threadId: { tenantId, provider: "gmail", threadId: threadId || `single:${m.id}` } },
+        update: { subject: subject || undefined, updatedAt: new Date() },
+        create: {
+          tenantId,
+          provider: "gmail",
+          threadId: threadId || `single:${m.id}`,
+          subject: subject || null,
+        },
+      });
+
+      // Find or create lead
+      let leadId = await findLeadForInbound(tenantId, fromAddr, threadId);
+
+      // If new conversation and no lead yet → attempt AI/heuristics then create
+      let createdLead = false;
+      if (!leadId) {
+        // Run AI + heuristics ONLY if this is a brand new ingest
+        let isLead = false;
+        let ai: any = null;
+        let heur = basicHeuristics(bodyText || "");
+        try {
+          ai = await extractLeadWithOpenAI(subject, bodyText);
+        } catch {}
+        isLead =
+          ai?.isLead ??
+          !!(heur.email || heur.contactName || /quote|estimate|enquiry|inquiry/i.test(subject));
+
+        if (isLead) {
+          const contactName =
+            ai?.contactName ||
+            heur.contactName ||
+            (fromHdr?.match(/"?([^"<@]+)"?\s*<.*>/)?.[1] || null);
+
+          const email =
+            ai?.email ||
+            heur.email ||
+            fromAddr ||
+            null;
+
+          const custom: Record<string, any> = {
+            provider: "gmail",
+            messageId: m.id,
+            threadId: thread.threadId,
+            subject: subject || null,
+            from: fromHdr || null,
+            summary: ai?.summary || snippet || null,
+            uiStatus: "NEW_ENQUIRY",
+          };
+          if (ai?.projectType) custom.projectType = ai.projectType;
+          if (heur.phone) custom.phone = heur.phone;
+
+          const created = await prisma.lead.create({
+            data: {
+              tenantId,
+              createdById: userId,
+              contactName: contactName || (email ? email.split("@")?.[0] : "New Lead"),
+              email,
+              status: "NEW",
+              nextAction: ai?.nextAction || "Review enquiry",
+              custom,
+            },
+          });
+          leadId = created.id;
+          createdLead = true;
+        }
+      }
+
+      // Link thread to lead if we have one now
+      if (leadId && !thread.leadId) {
+        await prisma.emailThread.update({ where: { id: thread.id }, data: { leadId } });
+      }
+
+      // Upsert EmailMessage (idempotent on (tenantId, provider, messageId))
+      try {
+        await prisma.emailMessage.create({
+          data: {
+            tenantId,
+            provider: "gmail",
+            messageId: m.id,
+            threadId: thread.id,
+            direction: "inbound",
+            fromEmail: fromAddr,
+            toEmail: allRcpts.length ? allRcpts.join(", ") : null,
+            subject: subject || null,
+            snippet: snippet || null,
+            bodyText: bodyText || null,
+            sentAt: msg.internalDate ? new Date(Number(msg.internalDate)) : new Date(),
+            leadId: leadId || null,
+          },
+        });
+      } catch {
+        // already present
+      }
+
+      // Touch thread timestamps
+      await prisma.emailThread.update({
+        where: { id: thread.id },
+        data: { lastInboundAt: new Date(), updatedAt: new Date(), ...(subject ? { subject } : {}) },
+      });
+
+      // Update EmailIngest row (legacy)
+      try {
         await prisma.emailIngest.update({
           where: { tenantId_provider_messageId: { tenantId, provider: "gmail", messageId: m.id } },
           data: {
-            snippet: full.snippet,
-            subject: full.subject,
-            fromEmail: full.from,
             processedAt: new Date(),
+            leadId: leadId || null,
+            subject,
+            fromEmail: fromHdr,
+            snippet,
           },
         });
-        results.push({ id: m.id, isLead: false });
-        continue;
-      }
+      } catch {}
 
-      // Prefer body-parsed email (forms) over From header
-      const contactName =
-        ai?.contactName ||
-        heur.contactName ||
-        (full.from?.match(/"?([^"<@]+)"?\s*<.*>/)?.[1] || null);
-
-      const email =
-        ai?.email ||
-        heur.email ||
-        (full.from?.match(/<([^>]+)>/)?.[1] || null) ||
-        null;
-
-      const custom: Record<string, any> = {
-        provider: "gmail",
-        messageId: m.id,
-        threadId: msg.threadId || null,   // <— add this
-        subject: full.subject || null,
-        from: full.from || null,
-        summary: ai?.summary || full.snippet || null,
-      };
-      if (ai?.projectType) custom.projectType = ai.projectType;
-      if (heur.phone) custom.phone = heur.phone;
-
-      const lead = await prisma.lead.create({
-        data: {
-          tenantId,
-          createdById: userId,
-          contactName: contactName || (email ? email.split("@")?.[0] : "New Lead"),
-          email,
-          status: "NEW", // keep backend enum compatibility
-          nextAction: ai?.nextAction || "Review enquiry",
-          custom,
-        },
+      results.push({
+        id: m.id,
+        threadId: thread.threadId,
+        linkedLeadId: leadId || null,
+        createdLead,
+        indexed: createdIngest,
       });
-
-      await prisma.emailIngest.update({
-        where: { tenantId_provider_messageId: { tenantId, provider: "gmail", messageId: m.id } },
-        data: {
-          processedAt: new Date(),
-          leadId: lead.id,
-          subject: full.subject,
-          fromEmail: full.from,
-          snippet: full.snippet,
-        },
-      });
-
-      results.push({ id: m.id, isLead: true, leadId: lead.id });
     }
 
     return res.json({ ok: true, imported: results });
@@ -640,13 +728,16 @@ const full = { id: msg.id, subject, from, snippet: msg.snippet || "", body: body
     return res.status(500).json({ error: e?.message || "import failed" });
   }
 });
-// --- Debug route to check Gmail token scopes ---
+
+/* ============================================================
+   Debug helpers
+   ============================================================ */
 router.get("/debug/scopes", async (req, res) => {
   try {
     const { tenantId } = (req as any).auth || {};
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
     
-    const accessToken = await getAccessTokenForTenant(tenantId); // uses your helper
+    const accessToken = await getAccessTokenForTenant(tenantId);
     const r = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${accessToken}`);
     const j = await r.json();
     return res.json({ ok: r.ok, scope: j.scope, raw: j });
@@ -655,7 +746,7 @@ router.get("/debug/scopes", async (req, res) => {
     return res.status(500).json({ error: e?.message || "failed" });
   }
 });
-// Disconnect Gmail for this tenant (delete stored refresh token)
+
 router.post("/disconnect", async (req, res) => {
   try {
     const { tenantId } = (req as any).auth || {};

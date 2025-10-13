@@ -1,11 +1,18 @@
+// web/src/app/leads/LeadModal.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
+import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
 
 const API_URL =
   (process.env.NEXT_PUBLIC_API_URL ||
@@ -110,8 +117,7 @@ export default function LeadModal({
   const [emailDetails, setEmailDetails] = useState<EmailDetails | null>(null);
   const [loadingEmail, setLoadingEmail] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const [quotePrep, setQuotePrep] = useState(false); // special layout when READY_TO_QUOTE
+  const [quotePrep, setQuotePrep] = useState(false);
 
   // fetch authoritative details when opened
   useEffect(() => {
@@ -131,7 +137,6 @@ export default function LeadModal({
 
     (async () => {
       try {
-        // 1) Lead (full)
         const raw = await apiFetch<any>(`/leads/${leadPreview.id}`);
         const d: Lead = (raw && (raw.lead ?? raw)) as Lead;
         setDetails(d);
@@ -146,15 +151,12 @@ export default function LeadModal({
           custom: { ...(d.custom || {}) },
         });
 
-        // 2) Lead field defs
         const defs = await apiFetch<FieldDef[]>("/leads/fields");
         setFieldDefs(defs);
 
-        // 3) Tenant questionnaire (private settings)
         const s = await apiFetch<TenantSettings>("/tenant/settings");
         setTenantQ((s.questionnaire ?? []) as QField[]);
 
-        // 4) Email details (if gmail source)
         const provider = d.custom?.provider;
         const messageId = d.custom?.messageId as string | undefined;
         if (provider === "gmail" && messageId) {
@@ -177,21 +179,19 @@ export default function LeadModal({
   }, [open, leadPreview]);
 
   useEffect(() => {
-    // auto switch to quote prep view when status is READY_TO_QUOTE
     setQuotePrep((form?.status ?? leadPreview?.status) === "READY_TO_QUOTE");
   }, [form?.status, leadPreview?.status]);
 
   const allLabeledFields = useMemo(() => {
-  const map = new Map<string, string>();
-  fieldDefs.forEach((f) => map.set(f.key, f.label));
-  (tenantQ || []).forEach((q) => {
-    if (!map.has(q.key)) map.set(q.key, q.label || q.key);
-  });
-  return map;
-}, [fieldDefs, tenantQ]);
+    const map = new Map<string, string>();
+    fieldDefs.forEach((f) => map.set(f.key, f.label));
+    (tenantQ || []).forEach((q) => {
+      if (!map.has(q.key)) map.set(q.key, q.label || q.key);
+    });
+    return map;
+  }, [fieldDefs, tenantQ]);
 
-if (!open || !leadPreview || !form) return null;
-
+  if (!open || !leadPreview || !form) return null;
 
   async function commit(patch: Partial<Lead>) {
     setSaving(true);
@@ -214,7 +214,8 @@ if (!open || !leadPreview || !form) return null;
       "lastSupplierEmailSubject",
       "lastSupplierFields",
       "lastSupplierAttachmentCount",
-      "description", // we *do* show this elsewhere in email/summary area
+      "description",
+      "threadId",
     ]);
 
     const entries = Object.entries(form!.custom || {}).filter(([k]) => !systemKeys.has(k));
@@ -224,15 +225,15 @@ if (!open || !leadPreview || !form) return null;
 
     const gridClass =
       style === "spacious"
-        ? "grid grid-cols-1 md:grid-cols-2 gap-3"
-        : "grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2";
+        ? "grid grid-cols-1 md:grid-cols-2 gap-4"
+        : "grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3";
 
     return (
       <div className={gridClass}>
         {entries.map(([k, v]) => (
-          <div key={k} className="flex items-start justify-between gap-3">
-            <div className="text-xs text-slate-500">{allLabeledFields.get(k) || k}</div>
-            <div className="text-sm text-slate-900 max-w-[18rem] break-words">{String(v)}</div>
+          <div key={k} className="flex items-start justify-between gap-4">
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">{allLabeledFields.get(k) || k}</div>
+            <div className="text-sm text-slate-900 max-w-[22rem] break-words">{String(v)}</div>
           </div>
         ))}
       </div>
@@ -245,182 +246,202 @@ if (!open || !leadPreview || !form) return null;
     (form?.custom?.body as string | undefined) ??
     "";
 
+  const LeadSourceBlock = () => {
+    const current = (form?.custom?.source as string | undefined) ?? null;
+    const leadId = details?.id ?? leadPreview.id;
+
+    const handleSaved = (next: string | null) => {
+      const updated: Record<string, any> = { ...(form?.custom || {}) };
+      if (next && next.trim()) updated.source = next;
+      else delete updated.source;
+      setForm((f) => (f ? { ...f, custom: updated } : f));
+    };
+
+    return (
+      <div className="mt-5">
+        <div className="mb-1 text-xs text-slate-600">Lead Source</div>
+        <LeadSourcePicker leadId={leadId} value={current} onSaved={handleSaved} />
+      </div>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-5xl p-0">
-        <div className="max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader className="p-4 md:p-6 pb-2">
-            <DialogTitle className="flex items-center gap-2">
-              <span className="inline-flex size-8 items-center justify-center rounded-full bg-slate-100 text-sm font-medium">
+      <DialogContent className="w-[96vw] max-w-5xl p-0 overflow-hidden rounded-2xl shadow-2xl">
+        {/* HEADER STRIP */}
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-indigo-500/10 to-fuchsia-500/10" />
+          <DialogHeader className="relative p-5 md:p-6">
+            <DialogTitle className="flex items-center gap-3">
+              <span className="inline-flex size-10 items-center justify-center rounded-xl bg-slate-900 text-white text-sm font-semibold shadow">
                 {avatarText(form.contactName)}
               </span>
-              <input
-                className="w-full max-w-full rounded-md border p-2 text-base outline-none focus:ring-2"
-                placeholder="Name"
-                value={form.contactName}
-                onChange={(e) => setForm((f) => ({ ...f!, contactName: e.target.value }))}
-                onBlur={(e) => commit({ contactName: e.target.value })}
-              />
+
+              <div className="flex-1 min-w-0">
+                <input
+                  className="w-full max-w-full rounded-lg border bg-white/90 p-2 text-base outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Name"
+                  value={form.contactName}
+                  onChange={(e) => setForm((f) => ({ ...f!, contactName: e.target.value }))}
+                  onBlur={(e) => commit({ contactName: e.target.value })}
+                />
+                <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-600">
+                  <span>{saving ? "Saving…" : "Auto-saved"}</span>
+                  <span className="text-slate-400">•</span>
+                  {/* Status pill (readable) + select control */}
+                  <span className="rounded-full border px-2 py-0.5 bg-white text-slate-700">
+                    {STATUS_LABELS[form.status]}
+                  </span>
+                  <select
+                    className="ml-2 rounded-md border bg-white p-1.5 text-xs outline-none focus:ring-2"
+                    value={form.status}
+                    onChange={(e) => setForm((f) => ({ ...f!, status: e.target.value as LeadStatus }))}
+                    onBlur={(e) => commit({ status: e.target.value as LeadStatus })}
+                  >
+                    {(Object.keys(STATUS_LABELS) as LeadStatus[]).map((s) => (
+                      <option key={s} value={s}>
+                        {STATUS_LABELS[s]}
+                      </option>
+                    ))}
+                  </select>
+
+                  <Button
+                    variant="outline"
+                    className="ml-auto h-7 px-2 text-xs"
+                    onClick={() => setQuotePrep((v) => !v)}
+                  >
+                    {quotePrep ? "Standard View" : "Quote Prep View"}
+                  </Button>
+                </div>
+              </div>
             </DialogTitle>
-            <DialogDescription className="flex items-center gap-3">
-              <span className="text-xs text-slate-500">
-                {saving ? "Saving…" : "Changes are saved automatically"}
-              </span>
-              <span className="text-xs text-slate-400">·</span>
-              <span className="text-xs text-slate-600">Status: {STATUS_LABELS[form.status]}</span>
-              <Button
-                variant="outline"
-                className="ml-2 h-7 px-2 text-xs"
-                onClick={() => setQuotePrep((v) => !v)}
-              >
-                {quotePrep ? "Standard View" : "Quote Prep View"}
-              </Button>
+
+            <DialogDescription className="sr-only">
+              Lead details, email context, questionnaire fields and actions.
             </DialogDescription>
           </DialogHeader>
-
-          <div className="px-4 md:px-6 pb-6 overflow-y-auto">
-            {quotePrep ? (
-              <>
-                {/* QUOTE PREP VIEW */}
-                <Section title="Customer">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <LabeledInput
-                      label="Email"
-                      value={form.email}
-                      onChange={(v) => setForm((f) => ({ ...f!, email: v }))}
-                      onBlurCommit={(v) => commit({ email: v || null })}
-                      type="email"
-                    />
-                    <LabeledInput
-                      label="Next Action"
-                      value={form.nextAction}
-                      onChange={(v) => setForm((f) => ({ ...f!, nextAction: v }))}
-                      onBlurCommit={(v) => commit({ nextAction: v || null })}
-                    />
-                    <LabeledInput
-                      label="Next Action At"
-                      value={form.nextActionAt}
-                      onChange={(v) => setForm((f) => ({ ...f!, nextActionAt: v }))}
-                      onBlurCommit={(v) =>
-                        commit({ nextActionAt: v ? new Date(v).toISOString() : null })
-                      }
-                      type="datetime-local"
-                    />
-                  </div>
-                </Section>
-
-                <Section title="Project / Questionnaire">
-                  {renderCustomGrid("spacious")}
-                </Section>
-
-                <Section title="Files">
-                  <AttachmentsGrid
-                    messageId={(form.custom?.messageId as string | undefined) || ""}
-                    attachments={emailDetails?.attachments || []}
-                  />
-                </Section>
-
-                <Section title="Email Thread">
-                  <EmailMeta emailDetails={emailDetails} form={form} />
-                  <EmailBody bodyText={bodyText} />
-                </Section>
-              </>
-            ) : (
-              <>
-                {/* STANDARD VIEW */}
-                <Section title="Email">
-                  <EmailMeta emailDetails={emailDetails} form={form} />
-                  <EmailBody bodyText={bodyText} />
-                  <AttachmentsGrid
-                    messageId={(form.custom?.messageId as string | undefined) || ""}
-                    attachments={emailDetails?.attachments || []}
-                  />
-                </Section>
-
-                <Section title="Contact">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <LabeledInput
-                      label="Email"
-                      value={form.email}
-                      onChange={(v) => setForm((f) => ({ ...f!, email: v }))}
-                      onBlurCommit={(v) => commit({ email: v || null })}
-                      type="email"
-                    />
-                    <LabeledSelect
-                      label="Status"
-                      value={form.status}
-                      options={(Object.keys(STATUS_LABELS) as LeadStatus[]).map((s) => ({
-                        label: STATUS_LABELS[s],
-                        value: s,
-                      }))}
-                      onChange={(v) => setForm((f) => ({ ...f!, status: v as LeadStatus }))}
-                      onCommit={(v) => commit({ status: v as LeadStatus })}
-                    />
-                    <LabeledInput
-                      label="Next Action"
-                      value={form.nextAction}
-                      onChange={(v) => setForm((f) => ({ ...f!, nextAction: v }))}
-                      onBlurCommit={(v) => commit({ nextAction: v || null })}
-                    />
-                    <LabeledInput
-                      label="Next Action At"
-                      value={form.nextActionAt}
-                      onChange={(v) => setForm((f) => ({ ...f!, nextActionAt: v }))}
-                      onBlurCommit={(v) =>
-                        commit({ nextActionAt: v ? new Date(v).toISOString() : null })
-                      }
-                      type="datetime-local"
-                    />
-                  </div>
-                </Section>
-
-                <Section title="All Fields">
-                  {renderCustomGrid("compact")}
-                </Section>
-              </>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2 p-4 border-t bg-white">
-            {form.status !== "REJECTED" && (
-              <Button variant="destructive" onClick={() => commit({ status: "REJECTED" })}>
-                ✕ Reject
-              </Button>
-            )}
-            {form.status !== "INFO_REQUESTED" && (
-              <Button
-                variant="secondary"
-                onClick={async () => {
-                  try {
-                    await apiFetch(`/leads/${leadPreview.id}/request-info`, { method: "POST" });
-                    await commit({ status: "INFO_REQUESTED" });
-                  } catch {
-                    // ignore
-                  }
-                }}
-              >
-                📋 Request Info
-              </Button>
-            )}
-            {form.status !== "READY_TO_QUOTE" && (
-              <Button variant="secondary" onClick={() => commit({ status: "READY_TO_QUOTE" })}>
-                ✅ Ready to Quote
-              </Button>
-            )}
-            <div className="flex-1" />
-            <Button onClick={() => onOpenChange(false)}>Close</Button>
-          </DialogFooter>
         </div>
+
+        {/* BODY */}
+        <div className="px-5 md:px-6 pb-6 overflow-y-auto max-h-[75vh]">
+          {quotePrep ? (
+            <>
+              <Section title="Customer">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <LabeledInput
+                    label="Email"
+                    value={form.email}
+                    onChange={(v) => setForm((f) => ({ ...f!, email: v }))}
+                    onBlurCommit={(v) => commit({ email: v || null })}
+                    type="email"
+                  />
+                  <LabeledInput
+                    label="Next Action"
+                    value={form.nextAction}
+                    onChange={(v) => setForm((f) => ({ ...f!, nextAction: v }))}
+                    onBlurCommit={(v) => commit({ nextAction: v || null })}
+                  />
+                  <LabeledInput
+                    label="Next Action At"
+                    value={form.nextActionAt}
+                    onChange={(v) => setForm((f) => ({ ...f!, nextActionAt: v }))}
+                    onBlurCommit={(v) =>
+                      commit({ nextActionAt: v ? new Date(v).toISOString() : null })
+                    }
+                    type="datetime-local"
+                  />
+                </div>
+                <LeadSourceBlock />
+              </Section>
+
+              <Section title="Project / Questionnaire">{renderCustomGrid("spacious")}</Section>
+
+              <Section title="Files">
+                <AttachmentsGrid
+                  messageId={(form.custom?.messageId as string | undefined) || ""}
+                  attachments={emailDetails?.attachments || []}
+                />
+              </Section>
+
+              <Section title="Email Thread">
+                <EmailMeta emailDetails={emailDetails} form={form} />
+                <EmailBody bodyText={bodyText} loading={loadingEmail} />
+              </Section>
+            </>
+          ) : (
+            <>
+              <Section title="Email">
+                <EmailMeta emailDetails={emailDetails} form={form} />
+                <EmailBody bodyText={bodyText} loading={loadingEmail} />
+                <AttachmentsGrid
+                  messageId={(form.custom?.messageId as string | undefined) || ""}
+                  attachments={emailDetails?.attachments || []}
+                />
+              </Section>
+
+              <Section title="Contact">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <LabeledInput
+                    label="Email"
+                    value={form.email}
+                    onChange={(v) => setForm((f) => ({ ...f!, email: v }))}
+                    onBlurCommit={(v) => commit({ email: v || null })}
+                    type="email"
+                  />
+                  <LabeledInput
+                    label="Next Action"
+                    value={form.nextAction}
+                    onChange={(v) => setForm((f) => ({ ...f!, nextAction: v }))}
+                    onBlurCommit={(v) => commit({ nextAction: v || null })}
+                  />
+                  <LabeledInput
+                    label="Next Action At"
+                    value={form.nextActionAt}
+                    onChange={(v) => setForm((f) => ({ ...f!, nextActionAt: v }))}
+                    onBlurCommit={(v) =>
+                      commit({ nextActionAt: v ? new Date(v).toISOString() : null })
+                    }
+                    type="datetime-local"
+                  />
+                </div>
+                <LeadSourceBlock />
+              </Section>
+
+              <Section title="All Fields">{renderCustomGrid("compact")}</Section>
+            </>
+          )}
+        </div>
+
+        {/* FOOTER */}
+        <DialogFooter className="gap-2 p-4 border-t bg-white/90 backdrop-blur">
+          {form.status !== "REJECTED" && (
+            <Button
+              variant="destructive"
+              className="shadow-sm"
+              onClick={() => commit({ status: "REJECTED" })}
+            >
+              ✕ Reject
+            </Button>
+          )}
+
+          <div className="flex-1" />
+          <Button onClick={() => onOpenChange(false)} className="shadow-sm">
+            Close
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-/* —————— dumb UI bits —————— */
+/* —————— UI bits —————— */
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border p-3 mb-3">
-      <div className="mb-2 text-xs font-semibold tracking-wide text-slate-600">{title}</div>
+    <div className="rounded-2xl border bg-white/90 shadow-[0_12px_30px_-18px_rgba(2,6,23,0.35)] p-4 md:p-5 mb-4">
+      <div className="mb-3 text-[11px] font-semibold tracking-wide uppercase text-slate-600">
+        {title}
+      </div>
       {children}
     </div>
   );
@@ -453,47 +474,15 @@ function LabeledInput({
   );
 }
 
-function LabeledSelect({
-  label,
-  value,
-  options,
-  onChange,
-  onCommit,
-}: {
-  label: string;
-  value: string;
-  options: { label: string; value: string }[];
-  onChange: (v: string) => void;
-  onCommit?: (v: string) => void;
-}) {
-  return (
-    <label className="space-y-1.5">
-      <div className="text-xs text-slate-600">{label}</div>
-      <select
-        className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={(e) => onCommit?.(e.target.value)}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 function EmailMeta({ emailDetails, form }: { emailDetails: EmailDetails | null; form: any }) {
   const from = emailDetails?.from ?? form?.custom?.from;
   const date = emailDetails?.date ?? form?.custom?.date;
   const subject = emailDetails?.subject ?? form?.custom?.subject;
-  return (from || date || subject || form?.custom?.description) ? (
+  return from || date || subject || form?.custom?.description ? (
     <div className="mb-2 text-[11px] text-slate-600 space-y-0.5">
-      {subject && <div>Subject: {subject}</div>}
-      {from && <div>From: {from}</div>}
-      {date && <div>Date: {date}</div>}
+      {subject && <div><span className="text-slate-500">Subject:</span> {subject}</div>}
+      {from && <div><span className="text-slate-500">From:</span> {from}</div>}
+      {date && <div><span className="text-slate-500">Date:</span> {date}</div>}
       {form?.custom?.description && (
         <div className="italic text-slate-500">Description: {form.custom.description}</div>
       )}
@@ -501,16 +490,22 @@ function EmailMeta({ emailDetails, form }: { emailDetails: EmailDetails | null; 
   ) : null;
 }
 
-function EmailBody({ bodyText }: { bodyText: string }) {
+function EmailBody({ bodyText, loading }: { bodyText: string; loading: boolean }) {
   const [show, setShow] = useState(false);
+  if (loading) {
+    return <div className="text-xs text-slate-500">Loading email…</div>;
+  }
   if (!bodyText) return null;
   return (
-    <div className="mb-3">
-      <button className="text-xs text-blue-600 underline mb-2" onClick={() => setShow((v) => !v)}>
+    <div className="mb-4">
+      <button
+        className="text-xs text-blue-600 underline mb-2 hover:text-blue-700"
+        onClick={() => setShow((v) => !v)}
+      >
         {show ? "Hide full email" : "Show full email"}
       </button>
       {show && (
-        <div className="rounded-md border bg-white/60 p-3 text-sm leading-relaxed shadow-inner max-h-[50vh] overflow-auto whitespace-pre-wrap break-words">
+        <div className="rounded-lg border bg-white p-3 text-sm leading-relaxed shadow-inner max-h-[50vh] overflow-auto whitespace-pre-wrap break-words">
           {bodyText}
         </div>
       )}
@@ -523,33 +518,37 @@ function AttachmentsGrid({
   attachments,
 }: {
   messageId?: string;
-  attachments: { id?: string; attachmentId?: string; filename?: string; size?: number }[];
+  attachments: { attachmentId?: string; filename?: string; size?: number }[];
 }) {
   if (!messageId || !attachments?.length) return null;
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-      {attachments.map((att) => {
-        const attachmentId = att.attachmentId || att.id;
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      {attachments.map((att, i) => {
+        const attachmentId = att.attachmentId;
         if (!attachmentId) return null;
         const href = attachmentUrl(messageId, attachmentId);
         const sizeLabel =
-          typeof att.size === "number" ? ` (${Math.round(att.size / 1024)} KB)` : "";
+          typeof att.size === "number" ? ` • ${Math.round(att.size / 1024)} KB` : "";
         return (
           <a
-            key={attachmentId}
+            key={`${attachmentId}-${i}`}
             href={href}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-2 rounded-md border p-2 hover:bg-slate-50"
+            className="group overflow-hidden rounded-xl border bg-white ring-1 ring-slate-200 hover:ring-blue-300/60 hover:bg-blue-50/40 hover:shadow-[0_10px_25px_-12px_rgba(37,99,235,0.35)] transition-all"
             title={att.filename || "Attachment"}
           >
-            <span className="inline-flex size-8 items-center justify-center rounded-md bg-slate-100">
-              📎
-            </span>
-            <span className="truncate text-xs">
-              {att.filename || "Attachment"}
-              {sizeLabel}
-            </span>
+            <div className="flex items-center gap-2 p-2">
+              <span className="inline-flex size-9 items-center justify-center rounded-lg bg-slate-900 text-white shadow">
+                📎
+              </span>
+              <div className="min-w-0">
+                <div className="truncate text-xs font-medium text-slate-800">
+                  {att.filename || "Attachment"}
+                </div>
+                <div className="text-[11px] text-slate-500">{sizeLabel}</div>
+              </div>
+            </div>
           </a>
         );
       })}

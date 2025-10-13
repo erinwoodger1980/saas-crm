@@ -21,7 +21,10 @@
     "express": "^5.1.0",
     "googleapis": "^161.0.0",
     "jsonwebtoken": "^9.0.2",
-    "openai": "^4.104.0"
+    "multer": "^2.0.2",
+    "openai": "^4.104.0",
+    "stripe": "^19.1.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@prisma/internals": "^6.17.1",
@@ -30,9 +33,10 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.0.0",
     "@types/node": "^24.6.1",
     "bcrypt": "^6.0.0",
-    "prisma": "^6.17.0",
+    "prisma": "^6.17.1",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   }

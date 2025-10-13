@@ -1,9 +1,12 @@
+// web/src/app/leads/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import LeadModal, { Lead } from "./LeadModal";
+
+/* -------------------------------- Types -------------------------------- */
 
 type LeadStatus =
   | "NEW_ENQUIRY"
@@ -28,7 +31,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   LOST: "Lost",
 };
 
-// Leads now focuses on intake+triage only:
+// Intake-focused tabs
 const ACTIVE_TABS: LeadStatus[] = [
   "NEW_ENQUIRY",
   "INFO_REQUESTED",
@@ -36,6 +39,8 @@ const ACTIVE_TABS: LeadStatus[] = [
   "REJECTED",
   "READY_TO_QUOTE",
 ];
+
+/* -------------------------------- Page -------------------------------- */
 
 export default function LeadsPage() {
   const empty: Grouped = {
@@ -52,12 +57,12 @@ export default function LeadsPage() {
   const [grouped, setGrouped] = useState<Grouped>(empty);
   const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   // modal
   const [open, setOpen] = useState(false);
   const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
 
-  // background auto-import watcher (controlled by settings toggle in localStorage)
   useEffect(() => {
     (async () => {
       const ok = await ensureDemoAuth();
@@ -72,7 +77,6 @@ export default function LeadsPage() {
       const auto = localStorage.getItem("autoImportInbox") === "true";
       try {
         if (auto) {
-          // Soft import (Gmail + 365). Failures are ignored.
           await Promise.allSettled([
             apiFetch("/gmail/import", { method: "POST", json: { max: 10, q: "newer_than:30d" } }),
             apiFetch("/ms365/import", { method: "POST", json: { max: 10 } }),
@@ -81,16 +85,20 @@ export default function LeadsPage() {
       } finally {
         await refreshGrouped();
       }
-    }, 10 * 60 * 1000); // 10 minutes
+    }, 10 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
 
   async function refreshGrouped() {
+    setLoading(true);
     try {
       const data = await apiFetch<Grouped>("/leads/grouped");
       setGrouped(normaliseToNewStatuses(data));
+      setError(null);
     } catch (e: any) {
       setError(`Failed to load: ${e?.message ?? "unknown"}`);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -114,10 +122,14 @@ export default function LeadsPage() {
 
     const mapLegacyToNew = (legacy: string | undefined): LeadStatus => {
       switch ((legacy || "").toUpperCase()) {
-        case "NEW": return "NEW_ENQUIRY";
-        case "CONTACTED": return "INFO_REQUESTED";
-        case "QUALIFIED": return "READY_TO_QUOTE";
-        case "DISQUALIFIED": return "DISQUALIFIED";
+        case "NEW":
+          return "NEW_ENQUIRY";
+        case "CONTACTED":
+          return "INFO_REQUESTED";
+        case "QUALIFIED":
+          return "READY_TO_QUOTE";
+        case "DISQUALIFIED":
+          return "DISQUALIFIED";
         case "NEW_ENQUIRY":
         case "INFO_REQUESTED":
         case "REJECTED":
@@ -133,8 +145,7 @@ export default function LeadsPage() {
 
     const seen = new Set<string>();
     const insert = (l: any) => {
-      if (!l?.id) return;
-      if (seen.has(l.id)) return;
+      if (!l?.id || seen.has(l.id)) return;
       seen.add(l.id);
       const s = mapLegacyToNew(l.status as string);
       out[s].push({ ...l, status: s } as Lead);
@@ -149,39 +160,28 @@ export default function LeadsPage() {
     return out;
   }
 
-  // PATCH helper used by modal
-  async function autoSave(leadId: string, patch: Partial<Lead>) {
-    // optimistic update
+  // PATCH helper used by modal (we keep only “Reject” here)
+  async function setRejected(leadId: string) {
+    // optimistic update to REJECTED
     setGrouped((g) => {
       const next = structuredClone(g);
-      const statuses = Object.keys(next) as LeadStatus[];
-      for (const s of statuses) {
-        const idx = next[s].findIndex((x) => x.id === leadId);
-        if (idx >= 0) {
-          const current = next[s][idx];
-          const newCustom =
-            patch.custom !== undefined
-              ? { ...(current.custom || {}), ...(patch.custom as any) }
-              : current.custom;
-          const updated: Lead = { ...current, ...(patch as any), custom: newCustom };
-
-          if (patch.status && patch.status !== s) {
-            next[s].splice(idx, 1);
-            next[patch.status].unshift(updated);
-          } else {
-            next[s][idx] = updated;
-          }
-          break;
+      (Object.keys(next) as LeadStatus[]).forEach((s) => {
+        const i = next[s].findIndex((x) => x.id === leadId);
+        if (i >= 0) {
+          const current = next[s][i];
+          const updated: Lead = { ...current, status: "REJECTED" };
+          next[s].splice(i, 1);
+          next.REJECTED.unshift(updated);
         }
-      }
+      });
       return next;
     });
-
     try {
-      await apiFetch(`/leads/${leadId}`, { method: "PATCH", json: patch });
+      await apiFetch(`/leads/${leadId}`, { method: "PATCH", json: { status: "REJECTED" } });
     } catch (e) {
-      // swallow; modal shows saving state
-      console.error("autoSave failed:", e);
+      console.error("reject failed:", e);
+      // best-effort: refresh
+      refreshGrouped();
     }
   }
 
@@ -196,17 +196,21 @@ export default function LeadsPage() {
     });
   }, [grouped, tab]);
 
+  /* ------------------------------ Render ------------------------------ */
+
   return (
-    <div className="p-6">
-      <header className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div className="p-6 space-y-6">{/* keep simple page padding; layout handles sidebar/header */}
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Leads</h1>
-          <p className="text-sm text-slate-500">Capture and triage enquiries. Quote lifecycle is in Opportunities.</p>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">Leads</h1>
+          <p className="text-sm text-slate-500">
+            Capture and triage enquiries. Quote lifecycle is managed in Opportunities.
+          </p>
         </div>
 
         <div className="flex gap-2 items-center">
           <Button
-            className="btn"
             onClick={async () => {
               const contactName = prompt("Enter lead name:");
               if (!contactName) return;
@@ -216,13 +220,14 @@ export default function LeadsPage() {
                   json: { contactName, email: "", custom: { provider: "manual" } },
                 });
                 await refreshGrouped();
-                if (lead?.id) openLead({
-                  id: lead.id,
-                  contactName: lead.contactName ?? contactName,
-                  email: lead.email ?? "",
-                  status: (lead.status as LeadStatus) ?? "NEW_ENQUIRY",
-                  custom: lead.custom ?? { provider: "manual" },
-                });
+                if (lead?.id)
+                  openLead({
+                    id: lead.id,
+                    contactName: lead.contactName ?? contactName,
+                    email: lead.email ?? "",
+                    status: (lead.status as LeadStatus) ?? "NEW_ENQUIRY",
+                    custom: lead.custom ?? { provider: "manual" },
+                  });
               } catch (e: any) {
                 alert("Failed to create lead: " + (e?.message || "unknown error"));
               }
@@ -230,50 +235,68 @@ export default function LeadsPage() {
           >
             + New Lead
           </Button>
-          <Button variant="outline" onClick={refreshGrouped}>Refresh</Button>
+          <Button variant="outline" onClick={refreshGrouped}>
+            Refresh
+          </Button>
         </div>
-      </header>
+      </div>
 
-      {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {/* Tabs (intake only) */}
-      <div className="mb-4 flex flex-wrap gap-2">
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-2">
         {ACTIVE_TABS.map((s) => (
           <button
             key={s}
             onClick={() => setTab(s)}
-            className={`rounded-full border px-3 py-1 text-sm ${
-              tab === s ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700"
+            className={`rounded-full border px-3 py-1 text-sm transition ${
+              tab === s
+                ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                : "bg-white text-slate-700 hover:bg-slate-50"
             }`}
           >
-            {STATUS_LABELS[s]}{" "}
-            <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-100 px-1 text-xs text-slate-600">
+            {STATUS_LABELS[s]}
+            <span
+              className={`ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs ${
+                tab === s ? "bg-white/20" : "bg-slate-100 text-slate-600"
+              }`}
+            >
               {grouped[s].length}
             </span>
           </button>
         ))}
       </div>
 
-      {/* Rows */}
-      <div className="space-y-2">
-        {rows.length === 0 && (
-          <div className="rounded-lg border border-dashed bg-slate-50 py-10 text-center text-sm text-slate-500">
-            No leads in “{STATUS_LABELS[tab]}”.
+      {/* Card Section */}
+      <SectionCard
+        title="Inbox"
+        action={
+          <span className="text-xs text-slate-500">
+            {loading ? "Syncing…" : `${rows.length} in “${STATUS_LABELS[tab]}”`}
+          </span>
+        }
+      >
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
           </div>
         )}
-        {rows.map((lead) => (
-          <Row
-            key={lead.id}
-            lead={lead}
-            onOpen={() => openLead(lead)}
-            onStatus={(s) => autoSave(lead.id, { status: s })}
-          />
-        ))}
-      </div>
+
+        {loading ? (
+          <RowsSkeleton />
+        ) : rows.length === 0 ? (
+          <EmptyState title={`No leads in “${STATUS_LABELS[tab]}”.`} />
+        ) : (
+          <div className="grid gap-3">
+            {rows.map((lead) => (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                onOpen={() => openLead(lead)}            // status changes now happen in the modal
+                onReject={() => setRejected(lead.id)}    // only quick action left
+              />
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
       {/* Modal */}
       <LeadModal
@@ -283,35 +306,85 @@ export default function LeadsPage() {
           if (!v) setLeadPreview(null);
         }}
         leadPreview={leadPreview}
-        onAutoSave={autoSave}
+        onAutoSave={async (id, patch) => {
+          // keep existing autosave (used for field edits); status changes are done inside modal UI
+          try {
+            await apiFetch(`/leads/${id}`, { method: "PATCH", json: patch });
+            await refreshGrouped();
+          } catch (e) {
+            console.error("autoSave failed:", e);
+          }
+        }}
       />
     </div>
   );
 }
 
-/* ---------------- Row ---------------- */
-function Row({
+/* ============================== UI Bits =============================== */
+
+function SectionCard({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border bg-white shadow-sm">
+      <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
+        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+        {action}
+      </div>
+      <div className="p-4 sm:p-5">{children}</div>
+    </section>
+  );
+}
+
+function EmptyState({ title, action }: { title: string; action?: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-dashed bg-slate-50 py-10 text-center text-sm text-slate-500">
+      <div>{title}</div>
+      {action && <div className="mt-3">{action}</div>}
+    </div>
+  );
+}
+
+function RowsSkeleton() {
+  return (
+    <div className="space-y-2">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="h-20 rounded-xl bg-slate-100 animate-pulse" />
+      ))}
+    </div>
+  );
+}
+
+/* ---------------- Row/Card ---------------- */
+
+function LeadCard({
   lead,
   onOpen,
-  onStatus,
+  onReject,
 }: {
   lead: Lead;
   onOpen: () => void;
-  onStatus: (s: LeadStatus) => void;
+  onReject: () => void;
 }) {
   const subject = lead.custom?.subject as string | undefined;
   const summary = lead.custom?.summary as string | undefined;
 
   return (
-    <div className="rounded-xl border bg-white p-3 hover:shadow-sm transition">
+    <div className="group rounded-xl border bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,.04)] hover:shadow-md transition">
       <div className="flex items-start gap-3">
         <button onClick={onOpen} className="flex-1 text-left min-w-0">
           <div className="mb-1 flex items-center gap-2">
-            <span className="inline-flex size-8 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-700">
+            <span className="inline-grid place-items-center h-9 w-9 rounded-xl bg-slate-100 text-[11px] font-semibold text-slate-700 border">
               {avatarText(lead.contactName)}
             </span>
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium">
+              <div className="truncate text-sm font-medium text-slate-900">
                 {lead.contactName || "Lead"}
               </div>
               {lead.email && (
@@ -323,9 +396,11 @@ function Row({
           {(subject || summary || lead.custom?.description) && (
             <div className="mt-1 space-y-1">
               {subject && <div className="text-xs font-medium line-clamp-1">{subject}</div>}
-              {summary && <div className="text-[11px] text-slate-600 line-clamp-2">{summary}</div>}
+              {summary && (
+                <div className="text-[12px] text-slate-600 line-clamp-2">{summary}</div>
+              )}
               {lead.custom?.description && (
-                <div className="text-[11px] text-slate-500 line-clamp-2 italic">
+                <div className="text-[12px] text-slate-500 line-clamp-2 italic">
                   {lead.custom.description}
                 </div>
               )}
@@ -333,54 +408,24 @@ function Row({
           )}
         </button>
 
+        {/* Quick actions: Reject + status pill (read-only) */}
         <div className="shrink-0 flex flex-col items-end gap-1">
           <button
             className="rounded-md border border-red-300 text-red-600 px-2 py-1 text-[11px] hover:bg-red-50"
             onClick={(e) => {
               e.stopPropagation();
-              onStatus("REJECTED");
+              onReject();
             }}
           >
             ✕ Reject
           </button>
-          <button
-            className="rounded-md border border-amber-300 text-amber-600 px-2 py-1 text-[11px] hover:bg-amber-50"
-            onClick={async (e) => {
-              e.stopPropagation();
-              try {
-                await apiFetch(`/leads/${lead.id}/request-info`, { method: "POST" });
-                onStatus("INFO_REQUESTED");
-                alert("Questionnaire link sent ✔");
-              } catch {
-                alert("Failed to request info");
-              }
-            }}
-          >
-            📋 Info
-          </button>
-          <button
-            className="rounded-md border border-green-300 text-green-600 px-2 py-1 text-[11px] hover:bg-green-50"
-            onClick={(e) => {
-              e.stopPropagation();
-              onStatus("READY_TO_QUOTE");
-            }}
-          >
-            ✅ Ready
-          </button>
 
-          <select
-            className="rounded-md border bg-white p-2 text-xs mt-1"
-            value={lead.status}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => onStatus(e.target.value.toUpperCase() as LeadStatus)}
+          <span
+            className="mt-1 inline-flex items-center rounded-full border px-2 py-1 text-[11px] text-slate-700 bg-slate-50"
+            title="Status (change inside the lead modal)"
           >
-            {(["NEW_ENQUIRY","INFO_REQUESTED","DISQUALIFIED","REJECTED","READY_TO_QUOTE"] as LeadStatus[])
-              .map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
+            {STATUS_LABELS[lead.status as LeadStatus] || "—"}
+          </span>
         </div>
       </div>
     </div>

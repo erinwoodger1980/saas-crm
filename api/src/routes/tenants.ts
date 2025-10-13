@@ -33,6 +33,48 @@ router.get("/settings", async (req, res) => {
   res.json(s);
 });
 
+/** PATCH /tenant/settings/basic { brandName?: string, website?: string } */
+router.patch("/settings/basic", async (req: any, res) => {
+  const tenantId = req.auth?.tenantId as string | undefined;
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const { brandName, website } = (req.body || {}) as {
+    brandName?: string;
+    website?: string;
+  };
+
+  // Do we already have a settings row? (grab slug if present)
+  const existing = await prisma.tenantSettings.findUnique({
+    where: { tenantId },
+    select: { slug: true },
+  });
+
+  // Build partial update payload only for provided fields
+  const updateData: any = {};
+  if (brandName !== undefined) updateData.brandName = brandName || "Your Company";
+  if (website !== undefined) updateData.website = website || null;
+
+  // If there is no row yet, we must provide the required fields on create
+  const defaultSlug = "tenant-" + tenantId.slice(0, 6).toLowerCase();
+
+  const row = await prisma.tenantSettings.upsert({
+    where: { tenantId },
+    update: updateData,
+    create: {
+      tenantId,
+      slug: existing?.slug || defaultSlug,
+      brandName: brandName || "Your Company",
+      website: website || null,
+      // sensible defaults for first creation so other code paths don't break
+      introHtml: "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
+      links: [],
+    },
+  });
+
+  res.json(row);
+});
+
+
 /**
  * POST /tenant/settings/enrich
  * Body: { website: string }
@@ -296,6 +338,7 @@ router.get("/settings/by-slug/:slug", async (req, res) => {
     links: (s.links as any) ?? [],
   });
 });
+
 // ========== INBOX WATCH (GET/PUT) ==========
 router.get("/inbox", async (req, res) => {
   const { tenantId } = getAuth(req);

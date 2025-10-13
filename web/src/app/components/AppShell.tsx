@@ -1,107 +1,85 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { ReactNode } from "react";
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon?: React.ReactNode;
-};
-
-const NAV: NavItem[] = [
-  { href: "/", label: "Dashboard" },
-  { href: "/leads", label: "Leads" },
-  { href: "/opportunities", label: "Opportunities" },
-  { href: "/workshop", label: "Workshop" },
-  { href: "/settings", label: "Settings" },
+const nav = [
+  { href: "/dashboard", label: "Dashboard", emoji: "🧭" },
+  { href: "/leads", label: "Leads", emoji: "📬" },
+  { href: "/opportunities", label: "Opportunities", emoji: "🎯" },
+  { href: "/workshop", label: "Workshop", emoji: "🛠️" },
+  { href: "/settings", label: "Settings", emoji: "⚙️" },
 ];
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      {/* Sidebar */}
-      <aside
-        className={`border-r bg-white transition-all duration-200 ease-out ${
-          collapsed ? "w-[84px]" : "w-[220px]"
-        }`}
-      >
-        <div className="h-16 flex items-center justify-between px-4">
-          <Link href="/" className="flex items-center gap-3">
-            {/* Full logo when expanded */}
-            {!collapsed ? (
-              <Image
-                src="/logo.full.png"
-                alt="Joinery AI"
-                width={140}
-                height={40}
-                priority
-              />
-            ) : (
-              // Icon when collapsed
-              <Image
-                src="/logo-icon.png"
-                alt="Joinery AI"
-                width={40}
-                height={40}
-                priority
-              />
-            )}
-          </Link>
-
-          <button
-            aria-label={collapsed ? "Expand menu" : "Collapse menu"}
-            onClick={() => setCollapsed((s) => !s)}
-            className="rounded-md border px-2 py-1 text-sm hover:bg-slate-50"
-            title={collapsed ? "Expand" : "Collapse"}
-          >
-            {collapsed ? "›" : "‹"}
-          </button>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      {/* Top header */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b">
+        <div className="px-6 h-16 flex items-center justify-between max-w-screen-2xl mx-auto">
+          <div className="flex items-center gap-3">
+            {/* Use icon in header, ensure no squashing */}
+            <img
+              src="/logo-icon.png"
+              alt="Joinery AI"
+              className="h-8 w-auto object-contain rounded-md shadow-sm"
+            />
+            <span className="font-semibold tracking-tight text-lg text-slate-700">
+              Joinery&nbsp;AI
+            </span>
+          </div>
+          <div className="text-xs text-slate-500 pr-1">v0.1</div>
         </div>
+      </header>
 
-        <nav className="mt-2 px-2">
-          <ul className="space-y-1">
-            {NAV.map((item) => {
-              const active =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href);
-              return (
-                <li key={item.href}>
+      {/* Main grid */}
+      <div className="px-6 py-8 grid grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)] gap-8 max-w-screen-2xl mx-auto">
+        {/* Sidebar */}
+        <aside className="md:sticky md:top-[80px] md:self-start">
+          <div className="rounded-2xl border bg-white shadow-[0_8px_30px_rgba(2,6,23,0.06)] p-6">
+            {/* MUCH bigger full logo with hover highlight */}
+            <div className="group mb-6 flex justify-center">
+              <div className="relative inline-flex items-center justify-center rounded-xl transition-all duration-300 ring-1 ring-slate-200/70 bg-white px-3 py-2
+                              hover:ring-blue-300/60 hover:bg-blue-50/40 hover:shadow-[0_12px_30px_-12px_rgba(37,99,235,0.35)]">
+                <img
+                  src="/logo-full.png"
+                  alt="Joinery AI"
+                  className="h-28 md:h-[7.5rem] w-auto object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                />
+              </div>
+            </div>
+
+            {/* Nav with subtle hover shadow + highlight */}
+            <nav className="space-y-2">
+              {nav.map((n) => {
+                const active =
+                  pathname === n.href || pathname?.startsWith(n.href + "/");
+                return (
                   <Link
-                    href={item.href}
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors
-                    ${active ? "bg-slate-100 text-slate-900" : "text-slate-700 hover:bg-slate-50"}`}
-                    title={collapsed ? item.label : undefined}
+                    key={n.href}
+                    href={n.href}
+                    className={[
+                      "flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium transition-all",
+                      "ring-1",
+                      active
+                        ? "bg-slate-900 text-white ring-slate-900 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.45)]"
+                        : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 hover:shadow-[0_8px_24px_-14px_rgba(2,6,23,0.35)]",
+                    ].join(" ")}
                   >
-                    {/* Optional place for icons in the future */}
-                    {collapsed ? (
-                      <span className="truncate">{item.label[0]}</span>
-                    ) : (
-                      <span className="truncate">{item.label}</span>
-                    )}
+                    <span className="text-lg">{n.emoji}</span>
+                    <span>{n.label}</span>
                   </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-      </aside>
+                );
+              })}
+            </nav>
+          </div>
+        </aside>
 
-      {/* Main */}
-      <div className="flex-1 min-w-0">
-        <header className="h-12 flex items-center border-b bg-white px-4 text-sm text-slate-600">
-          <span className="font-medium">Joinery AI</span>
-          <span className="mx-2">·</span>
-          <span>Ask about sales, pipeline, timecards...</span>
-          <div className="ml-auto">Account</div>
-        </header>
-        <main className="p-6">{children}</main>
+        {/* Content area */}
+        <main className="min-w-0">{children}</main>
       </div>
     </div>
   );

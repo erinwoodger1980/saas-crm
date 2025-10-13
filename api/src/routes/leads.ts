@@ -65,6 +65,11 @@ function getAuth(req: any) {
   };
 }
 
+/* Small date helper for LeadSourceCost month bucketing */
+function monthStartUTC(d: Date) {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0));
+}
+
 /* -------------------- FIELD DEFINITIONS -------------------- */
 router.get("/fields", async (req, res) => {
   const { tenantId } = getAuth(req);
@@ -122,6 +127,17 @@ const DEFAULT_BUCKETS = [
   "LOST",
 ] as const;
 
+function dbStatusToUi(db: string): (typeof DEFAULT_BUCKETS)[number] {
+  const s = String(db).toUpperCase();
+  switch (s) {
+    case "NEW": return "NEW";
+    case "CONTACTED": return "CONTACTED";
+    case "QUALIFIED": return "READY_TO_QUOTE";
+    case "DISQUALIFIED": return "DISQUALIFIED";
+    default: return "NEW";
+  }
+}
+
 router.get("/grouped", async (req, res) => {
   const { tenantId } = getAuth(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -136,8 +152,12 @@ router.get("/grouped", async (req, res) => {
   ) as any;
 
   for (const l of rows) {
-    const s = (l.status as (typeof DEFAULT_BUCKETS)[number]) || "NEW";
-    if (grouped[s]) grouped[s].push(l);
+    const ui = ((l.custom as any)?.uiStatus as string | undefined)?.toUpperCase();
+    const bucket = (ui && DEFAULT_BUCKETS.includes(ui as any))
+      ? (ui as (typeof DEFAULT_BUCKETS)[number])
+      : dbStatusToUi(String(l.status));
+
+    if (grouped[bucket]) grouped[bucket].push(l);
     else grouped.NEW.push(l);
   }
 
@@ -157,7 +177,7 @@ router.post("/", async (req, res) => {
     custom = {},
     nextAction,
     nextActionAt,
-    description,            // ← NEW: free text when not from an email
+    description,            // free text when not from an email
   } = req.body || {};
 
   if (!contactName) return res.status(400).json({ error: "contactName required" });
@@ -173,7 +193,7 @@ router.post("/", async (req, res) => {
         status: uiStatusToDb(uiStatus),
         nextAction: nextAction ?? null,
         nextActionAt: nextActionAt ? new Date(nextActionAt) : null,
-        description: description ?? null,            // ← NEW
+        description: description ?? null,
         custom: { ...(custom ?? {}), uiStatus },
       },
     });
@@ -184,7 +204,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-/** PATCH /leads/:id — partial update (merges custom, supports description) */
+/** PATCH /leads/:id — partial update (merge custom, adjust LeadSourceCost.conversions on WON transitions) */
 router.patch("/:id", async (req, res) => {
   try {
     const { tenantId } = getAuth(req);
@@ -196,7 +216,7 @@ router.patch("/:id", async (req, res) => {
       return res.status(404).json({ error: "not found" });
     }
 
-    const allowedStatuses = DEFAULT_BUCKETS;
+    const allowedStatuses = DEFAULT_BUCKETS as readonly string[];
 
     const {
       contactName,
@@ -205,22 +225,24 @@ router.patch("/:id", async (req, res) => {
       nextAction,
       nextActionAt,
       custom,
-      description, // ← NEW
+      description,
     } = (req.body ?? {}) as Record<string, unknown>;
 
     const data: any = {};
+    const prevCustom = (existing.custom as Record<string, any>) || {};
+    const patchCustom = (custom as Record<string, any>) || {};
+    const nextCustom: Record<string, any> = { ...prevCustom, ...patchCustom };
 
     if (contactName !== undefined) data.contactName = String(contactName);
     if (email !== undefined) data.email = email === null || email === "" ? null : String(email);
 
     if (status !== undefined) {
       const s = String(status).toUpperCase();
-      if (!allowedStatuses.includes(s as any)) {
+      if (!allowedStatuses.includes(s)) {
         return res.status(400).json({ error: `invalid status "${status}"` });
       }
       data.status = uiStatusToDb(s);
-      const prevCustom = (existing.custom as Record<string, any>) || {};
-      data.custom = { ...prevCustom, uiStatus: s };
+      nextCustom.uiStatus = s;
     }
 
     if (nextAction !== undefined) {
@@ -238,16 +260,46 @@ router.patch("/:id", async (req, res) => {
     }
 
     if (description !== undefined) {
-      data.description = description === "" ? null : String(description); // ← NEW
+      data.description = description === "" ? null : String(description);
     }
 
-    if (custom !== undefined) {
-      const prev = (existing.custom as Record<string, any>) || {};
-      const patch = (custom as Record<string, any>) || {};
-      data.custom = { ...prev, ...patch };
+    if (status !== undefined || custom !== undefined) {
+      data.custom = nextCustom;
     }
 
+    // Determine status transition around WON
+    const prevUi = String(prevCustom.uiStatus || "").toUpperCase();
+    const nextUi = String(nextCustom.uiStatus || prevUi || "").toUpperCase();
+    const prevWon = prevUi === "WON";
+    const nextWon = nextUi === "WON";
+
+    // Apply update first
     const updated = await prisma.lead.update({ where: { id }, data });
+
+    // If WON toggled, adjust LeadSourceCost.conversions for that source/month
+    if (prevWon !== nextWon) {
+      const source =
+        (nextCustom.source ?? prevCustom.source ?? "Unknown").toString().trim() || "Unknown";
+      const cap = existing.capturedAt instanceof Date
+        ? existing.capturedAt
+        : new Date(existing.capturedAt as any);
+      const m = monthStartUTC(cap);
+
+      await prisma.leadSourceCost.upsert({
+        where: { tenantId_source_month: { tenantId, source, month: m } },
+        update: { conversions: { increment: nextWon ? 1 : -1 } },
+        create: {
+          tenantId,
+          source,
+          month: m,
+          spend: 0,
+          leads: 0,
+          conversions: nextWon ? 1 : 0,
+          scalable: true,
+        },
+      });
+    }
+
     return res.json({ ok: true, lead: updated });
   } catch (err: any) {
     console.error("[leads PATCH] failed:", err);
@@ -636,7 +688,6 @@ router.post("/ai/feedback", async (req, res) => {
     return res.status(500).json({ error: e?.message || "feedback failed" });
   }
 });
-
 
 /* ------------------------ DEMO SEED (optional) ------------------------ */
 router.post("/seed-demo", async (req, res) => {

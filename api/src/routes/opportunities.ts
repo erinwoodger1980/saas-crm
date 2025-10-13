@@ -38,7 +38,7 @@ router.get("/:id/followups", async (req, res) => {
 /**
  * POST /opportunities/:id/send-followup
  * Body: { variant, subject, body }
- * Sends email via Gmail (if connected) and logs a FollowUpLog row.
+ * Sends email via Gmail (if connected), upserts EmailThread, logs EmailMessage + FollowUpLog.
  */
 router.post("/:id/send-followup", async (req, res) => {
   try {
@@ -59,6 +59,15 @@ router.post("/:id/send-followup", async (req, res) => {
     };
     if (!subject || !body) return res.status(400).json({ error: "subject and body required" });
 
+    // 1) Find the existing Gmail thread for this lead (if any)
+    const thread = await prisma.emailThread.findFirst({
+      where: { tenantId, leadId: id, provider: "gmail" },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    // 2) Send with Gmail
+    // NOTE: gmailSend(accessToken, rfc822) only accepts 2 args in your project.
+    // If you later extend it to accept a threadId, you can add it back.
     const accessToken = await getAccessTokenForTenant(tenantId);
     const fromHeader = fromEmail || "me";
     const rfc822 =
@@ -70,8 +79,54 @@ router.post("/:id/send-followup", async (req, res) => {
       `Content-Transfer-Encoding: 7bit\r\n\r\n` +
       `${body}\r\n`;
 
-    await gmailSend(accessToken, rfc822);
+    const sent = await gmailSend(accessToken, rfc822); // <-- two args only
 
+    // 3) Ensure we have an EmailThread row
+    // Prefer the threadId returned from Gmail, then existing thread, else a synthetic id
+    const providerThreadId =
+      (sent as any).threadId || thread?.threadId || `single:${(sent as any).id}`;
+
+    const threadRow = await prisma.emailThread.upsert({
+      where: {
+        tenantId_provider_threadId: {
+          tenantId,
+          provider: "gmail",
+          threadId: providerThreadId,
+        },
+      },
+      update: {
+        subject: subject || undefined,
+        leadId: id, // link if not already
+        updatedAt: new Date(),
+      },
+      create: {
+        tenantId,
+        provider: "gmail",
+        threadId: providerThreadId,
+        subject: subject || null,
+        leadId: id,
+      },
+    });
+
+    // 4) Log an outbound EmailMessage
+    await prisma.emailMessage.create({
+      data: {
+        tenantId,
+        provider: "gmail",
+        messageId: (sent as any).id, // gmail message id
+        threadId: threadRow.id, // FK to EmailThread
+        direction: "outbound",
+        fromEmail: fromEmail || null,
+        toEmail: lead.email,
+        subject,
+        snippet: null,
+        bodyText: body,
+        sentAt: new Date(),
+        leadId: id,
+      },
+    });
+
+    // Keep your existing follow-up log + lead next action
     await prisma.followUpLog.create({
       data: {
         tenantId,
@@ -91,7 +146,7 @@ router.post("/:id/send-followup", async (req, res) => {
       },
     });
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, threadId: providerThreadId, messageId: (sent as any).id });
   } catch (e: any) {
     console.error("[opportunities send-followup] failed:", e);
     return res.status(500).json({ error: e?.message || "send failed" });
@@ -117,20 +172,33 @@ router.post("/:id/next-followup", async (req, res) => {
 
     const source = (opp.lead?.custom as any)?.source || "Unknown";
 
+    // Look back 2 months
     const from = new Date(new Date().getFullYear(), new Date().getMonth() - 2, 1);
+
     const leads = await prisma.lead.findMany({
       where: { tenantId, capturedAt: { gte: from } },
       select: { status: true, custom: true },
     });
-    const spends = await prisma.leadSourceSpend.findMany({ where: { tenantId, month: { gte: from } } });
 
-    let wins = 0, spend = 0;
+    // Use LeadSourceSpend (Decimal amountGBP)
+    const spends = await prisma.leadSourceSpend.findMany({
+      where: { tenantId, month: { gte: from } },
+    });
+
+    let wins = 0;
+    let spend = 0;
+
     for (const l of leads) {
-      if (((l.custom as any)?.source || "Unknown") === source && String(l.status).toUpperCase() === "WON") wins++;
+      const src = (l.custom as any)?.source || "Unknown";
+      if (src === source && String(l.status).toUpperCase() === "WON") wins++;
     }
     for (const s of spends) {
-      if (s.source === source) spend += Number(s.amountGBP || 0);
+      if ((s as any).source === source) {
+        // amountGBP is Decimal → coerce safely to number
+        spend += Number((s as any).amountGBP) || 0;
+      }
     }
+
     const cps = wins ? spend / wins : null;
 
     const baseDaysA = cps && cps < 400 ? 2 : 4;
@@ -156,8 +224,15 @@ Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
 `;
       const r = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
-        headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "gpt-4o-mini", input: prompt, response_format: { type: "json_object" } }),
+        headers: {
+          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          input: prompt,
+          response_format: { type: "json_object" },
+        }),
       });
       const j = await r.json();
       const text = j?.output_text || j?.choices?.[0]?.message?.content || "{}";
@@ -169,7 +244,10 @@ Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
       } catch {}
     }
 
-    await prisma.followupExperiment.create({
+    // Prisma accessor for model FollowupExperiment is lower-camelcase: followupExperiment
+    // Create experiment row if the model exists on this Prisma client
+    const anyPrisma = prisma as any;
+    await anyPrisma.followupExperiment?.create?.({
       data: {
         tenantId,
         opportunityId: opp.id,
@@ -182,11 +260,145 @@ Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
       },
     });
 
-    res.json({ whenISO: when.toISOString(), subject, body, variant, rationale, source, cps });
+    res.json({
+      whenISO: when.toISOString(),
+      subject,
+      body,
+      variant,
+      rationale,
+      source,
+      cps,
+    });
   } catch (e: any) {
     console.error("[opportunities next-followup] failed:", e);
     res.status(500).json({ error: e?.message || "failed" });
   }
+});
+
+// GET /opportunities/replied-since?days=30
+// Returns: { replied: [{ leadId, at }] } where "at" is the last inbound email timestamp.
+router.get("/replied-since", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const days = Math.max(1, Math.min(90, Number(req.query.days) || 30));
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  // Pull recent ingests
+  const ingests = await prisma.emailIngest.findMany({
+    where: { tenantId, createdAt: { gte: since } },
+    select: { leadId: true, fromEmail: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Map: email -> leadId
+  const allLeads = await prisma.lead.findMany({
+    where: { tenantId },
+    select: { id: true, email: true },
+  });
+  const emailToLead = new Map<string, string>();
+  for (const l of allLeads) {
+    if (l.email) emailToLead.set(l.email.toLowerCase(), l.id);
+  }
+
+  // Last inbound per lead
+  const latest = new Map<string, Date>();
+  for (const it of ingests) {
+    const leadId =
+      it.leadId || (it.fromEmail ? emailToLead.get(String(it.fromEmail).toLowerCase()) : undefined);
+    if (!leadId) continue;
+    const prev = latest.get(leadId);
+    if (!prev || it.createdAt > prev) latest.set(leadId, it.createdAt);
+  }
+
+  res.json({
+    replied: Array.from(latest.entries()).map(([leadId, at]) => ({
+      leadId,
+      at: at.toISOString(),
+    })),
+  });
+});
+
+// POST /opportunities/reconcile-replies
+// Links orphan ingests to leads via fromEmail and marks recent followups as replied.
+router.post("/reconcile-replies", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  // 1) Load orphan ingests for tenant
+  const orphans = await prisma.emailIngest.findMany({
+    where: { tenantId, leadId: null },
+    select: { id: true, fromEmail: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (!orphans.length) return res.json({ ok: true, linked: 0, repliedMarked: 0 });
+
+  // 2) Build quick email -> leadId map
+  const leads = await prisma.lead.findMany({
+    where: { tenantId, email: { not: null } },
+    select: { id: true, email: true },
+  });
+  const emailToLead = new Map<string, string>();
+  for (const l of leads) {
+    if (l.email) emailToLead.set(l.email.toLowerCase(), l.id);
+  }
+
+  let linked = 0;
+  let repliedMarked = 0;
+
+  for (const ing of orphans) {
+    const addr = String(ing.fromEmail || "").toLowerCase().trim();
+    if (!addr) continue;
+
+    const leadId = emailToLead.get(addr);
+    if (!leadId) continue;
+
+    // 3) Link the ingest to the lead
+    await prisma.emailIngest.update({
+      where: { id: ing.id },
+      data: { leadId },
+    });
+    linked++;
+
+    // 4) Mark the nearest previous follow-up as replied (if any)
+    const lastFU = await prisma.followUpLog.findFirst({
+      where: { tenantId, leadId },
+      orderBy: { sentAt: "desc" },
+    });
+    if (lastFU && lastFU.sentAt <= ing.createdAt && !lastFU.replied) {
+      await prisma.followUpLog.update({
+        where: { id: lastFU.id },
+        data: { replied: true },
+      });
+      repliedMarked++;
+    }
+  }
+
+  res.json({ ok: true, linked, repliedMarked });
+});
+
+// GET /opportunities/:id/replies
+router.get("/:id/replies", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const id = String(req.params.id);
+  const lead = await prisma.lead.findUnique({ where: { id } });
+  if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
+
+  const lastInbound = await prisma.emailIngest.findFirst({
+    where: { tenantId, leadId: id },
+    select: { createdAt: true, snippet: true, subject: true, fromEmail: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  res.json({
+    lastInboundAt: lastInbound?.createdAt?.toISOString() ?? null,
+    snippet: lastInbound?.snippet ?? null,
+    subject: lastInbound?.subject ?? null,
+    fromEmail: lastInbound?.fromEmail ?? null,
+  });
 });
 
 export default router;
