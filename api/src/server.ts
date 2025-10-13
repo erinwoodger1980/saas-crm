@@ -34,43 +34,36 @@ const app = express();
  * ---------------------------------------------------- */
 app.set("trust proxy", 1);
 
-/** CORS (allow cookies + auth header) — supports multiple WEB_ORIGIN values */
-// Parse list from WEB_ORIGIN env (comma/space separated)
-const allowedOrigins = (process.env.WEB_ORIGIN || "")
+/** ---- CORS (mirror one allowed origin) ---- */
+const allowedOrigins = (
+  process.env.ALLOWED_ORIGINS || process.env.WEB_ORIGIN || ""
+)
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
-// Sensible defaults for local dev if env empty
-if (allowedOrigins.length === 0) {
-  allowedOrigins.push(
-    "http://localhost:3000",
-    "https://joineryai.app",
-    "https://www.joineryai.app"
-  );
-}
+// e.g. ALLOWED_ORIGINS="https://www.joineryai.app,https://joineryai.app"
+const corsHandler = cors({
+  origin(origin, cb) {
+    // allow same-origin / curl / healthz (no Origin header)
+    if (!origin) return cb(null, true);
 
-// Make CORS vary by Origin so caches don’t mix responses
-app.use((req, res, next) => {
-  res.setHeader("Vary", "Origin");
-  next();
+    // allow if exact match in the allowlist
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+
+    // (optional) also allow your Render web preview domains, if you ever need them:
+    // if (/\.onrender\.com$/.test(new URL(origin).host)) return cb(null, true);
+
+    return cb(new Error(`CORS: origin not allowed: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
 });
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      // No origin -> allow (server-to-server, health checks)
-      if (!origin) return callback(null, true);
-      // Allow only exact matches
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Block others
-      callback(new Error(`CORS: origin not allowed: ${origin}`));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+app.use(corsHandler);
+app.options("*", corsHandler); // ensure preflight replies everywhere
 
 // Stripe webhook requires raw body
 app.post(
