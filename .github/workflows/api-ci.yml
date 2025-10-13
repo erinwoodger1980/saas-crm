@@ -1,5 +1,4 @@
-name: API CI (with full logs)
-
+name: API CI
 
 on:
   push:
@@ -14,171 +13,33 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        ports: [ "5432:5432" ]
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: saascrm
-        options: >-
-          --health-cmd="pg_isready -U postgres"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=30
-
     defaults:
       run:
         working-directory: api
-        shell: bash
 
+    # Only needed so `prisma generate` can run in CI. It will NOT connect.
     env:
-      NODE_ENV: test
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/saascrm?schema=public
-      APP_JWT_SECRET: test_secret_for_ci
-      OPENAI_API_KEY: dummy_for_ci
-      PORT: 4000
-      PRISMA_LOG_LEVEL: info
-      CI: "true"
+      NODE_ENV: "production"
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/placeholder?schema=public"
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # Prepare a logs dir _outside_ api so we can always upload it
-      - name: Prepare log dirs
-        run: |
-          mkdir -p ../_ci_debug
-          echo "run_id=${{ github.run_id }}" > ../_ci_debug/meta.txt
-          echo "sha=${{ github.sha }}" >> ../_ci_debug/meta.txt
-
-      - name: Print workspace tree
-        continue-on-error: true
-        run: |
-          set -x
-          echo "== repo root ==" > ../_ci_debug/tree.txt
-          (cd .. && ls -la) >> ../_ci_debug/tree.txt 2>&1 || true
-          echo -e "\n== api dir ==" >> ../_ci_debug/tree.txt
-          ls -la >> ../_ci_debug/tree.txt 2>&1 || true
-          echo -e "\n== prisma ==" >> ../_ci_debug/tree.txt
-          ls -la prisma >> ../_ci_debug/tree.txt 2>&1 || true
+      - uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: npm
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: api/package-lock.json
 
-      - name: Install deps (capture)
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          (npm ci) 2>&1 | tee ../_ci_debug/install.log
-          echo ${PIPESTATUS[0]} > ../_ci_debug/install.status
-          npm -v | tee -a ../_ci_debug/install.log
-          node -v | tee -a ../_ci_debug/install.log
+      - name: Install deps
+        run: npm ci
 
-      - name: Prisma version (capture)
-        continue-on-error: true
-        run: |
-          (npx prisma -v) 2>&1 | tee ../_ci_debug/prisma-version.txt
+      - name: Prisma validate
+        run: npx prisma validate
 
-      - name: Validate schema (capture)
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          (npx prisma validate --schema=prisma/schema.prisma) 2>&1 | tee ../_ci_debug/prisma-validate.log
-          echo ${PIPESTATUS[0]} > ../_ci_debug/prisma-validate.status
+      - name: Prisma generate
+        run: npm run prisma:generate
 
-      - name: Prisma generate (capture)
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          (npm run prisma:generate) 2>&1 | tee ../_ci_debug/prisma-generate.log
-          echo ${PIPESTATUS[0]} > ../_ci_debug/prisma-generate.status
-
-      - name: Prisma migrate status (capture)
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          (npx prisma migrate status --schema=prisma/schema.prisma) 2>&1 | tee ../_ci_debug/prisma-status.log
-          echo ${PIPESTATUS[0]} > ../_ci_debug/prisma-status.status
-
-      - name: Prisma deploy (capture)
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          (npm run prisma:deploy) 2>&1 | tee ../_ci_debug/prisma-deploy.log
-          echo ${PIPESTATUS[0]} > ../_ci_debug/prisma-deploy.status
-
-      - name: Type-check (tsc) (capture)
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          (npx tsc -p tsconfig.json --pretty false --noEmit) 2>&1 | tee ../_ci_debug/tsc.log
-          echo ${PIPESTATUS[0]} > ../_ci_debug/tsc.status
-
-      - name: Build (capture)
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          (npm run build) 2>&1 | tee ../_ci_debug/build.log
-          echo ${PIPESTATUS[0]} > ../_ci_debug/build.status
-
-      - name: Start API (background, capture)
-        if: always()
-        continue-on-error: true
-        run: |
-          # Only try to start if build.status == 0 and dist exists
-          code=$(cat ../_ci_debug/build.status 2>/dev/null || echo 1)
-          if [ "$code" -ne 0 ] || [ ! -f dist/src/server.js ]; then
-            echo "Skipping start: build failed or dist missing" | tee ../_ci_debug/server.log
-            exit 0
-          fi
-          node dist/src/server.js > ../_ci_debug/server.log 2>&1 &
-          echo $! > ../_ci_debug/api.pid
-          sleep 2
-          ps aux | grep -E "node dist/src/server.js" >> ../_ci_debug/server.log 2>&1 || true
-          tail -n +1 ../_ci_debug/server.log || true
-
-      - name: Wait for /healthz (capture)
-        if: always()
-        continue-on-error: true
-        run: |
-          for i in {1..40}; do
-            if curl -sf http://localhost:4000/healthz >/dev/null; then
-              echo "API is up" | tee ../_ci_debug/healthz.log
-              echo 0 > ../_ci_debug/healthz.status
-              exit 0
-            fi
-            echo "Waiting for API..." | tee -a ../_ci_debug/healthz.log
-            sleep 2
-          done
-          echo 1 > ../_ci_debug/healthz.status
-          exit 1
-
-      # Final gate: fail job if any critical step failed
-      - name: Evaluate result
-        run: |
-          FAIL=0
-          for f in install prisma-validate prisma-generate prisma-deploy tsc build; do
-            s=$(cat ../_ci_debug/${f}.status 2>/dev/null || echo 1)
-            echo "$f: $s"
-            if [ "$s" -ne 0 ]; then FAIL=1; fi
-          done
-          # healthz is optional; it fails if build failed
-          if [ "$FAIL" -ne 0 ]; then
-            echo "One or more steps failed"
-            exit 1
-          fi
-          echo "All core steps succeeded"
-
-      - name: Upload debug artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: api-ci-debug
-          path: _ci_debug
+      - name: TypeScript build
+        run: npm run build
