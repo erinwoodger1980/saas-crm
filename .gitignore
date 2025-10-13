@@ -5,10 +5,18 @@ node_modules/
 dist/
 build/
 .cache/
-pnpm-lock.yaml
+uploads/
+
 # Env & secrets
 .env
 .env.*.local
-uploads/
+
 # OS
 .DS_Store
+
+# Archives / dumps
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
