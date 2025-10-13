@@ -61,15 +61,6 @@ app.use(cors(corsOptions));
 // Make OPTIONS preflight reply with the same headers
 app.options("*", cors(corsOptions));
 
-// (Optional) quick probe to test CORS/headers from the browser
-app.get("/api-check", (req, res) => {
-  res.json({
-    ok: true,
-    originReceived: req.headers.origin || null,
-    allowList: ALLOWED_ORIGINS,
-  });
-});
-
 // Stripe webhook requires raw body
 app.post(
   "/billing/webhook",
@@ -80,16 +71,19 @@ app.post(
  * Stripe webhook NOTE:
  * If/when you add a real billing router with a webhook,
  * it must be mounted with `express.raw()` BEFORE `express.json()`.
- * Example:
- *
- *   app.post("/billing/webhook",
- *     express.raw({ type: "application/json" }),
- *     (req, res) => { /* handle event here *\/ }
- *   );
  */
 
 /** JSON parser comes after potential raw webhook route */
 app.use(express.json({ limit: "2mb" }));
+
+/** Quick probe to test CORS/headers from the browser (added after CORS + JSON) */
+app.get("/api-check", (req, res) => {
+  res.json({
+    ok: true,
+    originReceived: req.headers.origin || null,
+    allowList: (process.env.WEB_ORIGIN || "").split(",").map((s) => s.trim()),
+  });
+});
 
 /** Public (no auth required) */
 app.use("/public", publicRouter);
@@ -270,7 +264,7 @@ app.get("/__debug/db", async (_req, res) => {
     const rows = await prisma.$queryRaw<
       Array<{ table_name: string }>
     >`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`;
-    res.json({ databaseUrl: masked, tables: rows.map((r) => r.table_name) });
+  res.json({ databaseUrl: masked, tables: rows.map((r) => r.table_name) });
   } catch (e: any) {
     res.status(500).json({ databaseUrl: masked, error: e?.message || String(e) });
   }
