@@ -34,10 +34,38 @@ const app = express();
  * ---------------------------------------------------- */
 app.set("trust proxy", 1);
 
-/** CORS (allow cookies + auth header) */
+/** CORS (allow cookies + auth header) — supports multiple WEB_ORIGIN values */
+// Parse list from WEB_ORIGIN env (comma/space separated)
+const allowedOrigins = (process.env.WEB_ORIGIN || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// Sensible defaults for local dev if env empty
+if (allowedOrigins.length === 0) {
+  allowedOrigins.push(
+    "http://localhost:3000",
+    "https://joineryai.app",
+    "https://www.joineryai.app"
+  );
+}
+
+// Make CORS vary by Origin so caches don’t mix responses
+app.use((req, res, next) => {
+  res.setHeader("Vary", "Origin");
+  next();
+});
+
 app.use(
   cors({
-    origin: process.env.WEB_ORIGIN || "http://localhost:3000",
+    origin(origin, callback) {
+      // No origin -> allow (server-to-server, health checks)
+      if (!origin) return callback(null, true);
+      // Allow only exact matches
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      // Block others
+      callback(new Error(`CORS: origin not allowed: ${origin}`));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
