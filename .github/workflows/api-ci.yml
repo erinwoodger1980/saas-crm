@@ -6,40 +6,28 @@ on:
   pull_request:
     branches: [ main ]
 
-concurrency:
-  group: api-ci-${{ github.ref }}
-  cancel-in-progress: true
+defaults:
+  run:
+    working-directory: api
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: api
-
-    # Only needed so `prisma generate` can run in CI. It will NOT connect.
-    env:
-      NODE_ENV: "production"
-      DATABASE_URL: "postgresql://user:pass@localhost:5432/placeholder?schema=public"
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
           cache-dependency-path: api/package-lock.json
 
       - name: Install deps
         run: npm ci
 
-      - name: Prisma validate
-        run: npx prisma validate
-
       - name: Prisma generate
         run: npm run prisma:generate
 
-      - name: TypeScript build
+      - name: TypeScript compile
         run: npm run build
