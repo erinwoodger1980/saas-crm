@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default function BillingCancelPage() {
   return (
     <main className="mx-auto max-w-2xl p-6">

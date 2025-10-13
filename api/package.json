@@ -3,17 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "description": "Joinery AI API",
-  "main": "dist/src/server.js",
+  "type": "commonjs",
+  "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
-    "start": "node dist/src/server.js",
+    "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:deploy": "prisma migrate deploy"
   },
   "dependencies": {
-    "@prisma/client": "^6.17.0",
+    "@prisma/client": "^6.17.1",
     "axios": "^1.12.2",
+    "bcrypt": "^6.0.0",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",
     "dayjs": "^1.11.18",
@@ -22,6 +24,7 @@
     "googleapis": "^161.0.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
     "openai": "^4.104.0",
     "stripe": "^19.1.0",
     "zod": "^3.25.76"
@@ -35,7 +38,6 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.6.1",
-    "bcrypt": "^6.0.0",
     "prisma": "^6.17.1",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"

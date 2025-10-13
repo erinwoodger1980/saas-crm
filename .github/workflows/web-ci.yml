@@ -13,11 +13,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: web
-
     env:
       CI: "true"
       NEXT_TELEMETRY_DISABLED: "1"
@@ -32,16 +30,18 @@ jobs:
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
-      - name: Install dependencies (including optional native packages)
+      - name: Install dependencies (including optional)
         run: npm ci --include=optional
+
+      # ✅ Ensure the platform binary exists even if lockfile didn’t include it
+      - name: Install lightningcss binaries (no-save)
+        run: npm i lightningcss@^1.27.0 lightningcss-linux-x64-gnu@^1.27.0 --no-save
 
       - name: Rebuild LightningCSS for the runner
         run: npm rebuild lightningcss || true
 
-      - name: Build Next.js (disable LightningCSS for Linux)
+      - name: Build Next.js
         run: npm run build
-        env:
-          NEXT_DISABLE_LIGHTNINGCSS: "1"
 
       - name: Upload build artifact (optional)
         if: success()

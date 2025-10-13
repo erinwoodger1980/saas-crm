@@ -191,5 +191,26 @@ export const webhook = async (req: express.Request, res: express.Response) => {
     res.status(400).send(`Webhook Error: ${e?.message || e}`);
   }
 };
+// GET /billing/status  -> current tenant’s subscription snapshot
+router.get("/status", async (req: any, res) => {
+  const tenantId = req.auth?.tenantId as string | undefined;
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const t = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: {
+      name: true,
+      subscriptionStatus: true,
+      plan: true,
+      trialEndsAt: true,
+      stripeCustomerId: true,
+      stripeSubscriptionId: true,
+      discountCodeUsed: true,
+    },
+  });
+
+  if (!t) return res.status(404).json({ error: "tenant_not_found" });
+  res.json(t);
+});
 
 export default router;
