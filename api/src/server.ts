@@ -34,36 +34,41 @@ const app = express();
  * ---------------------------------------------------- */
 app.set("trust proxy", 1);
 
-/** ---- CORS (mirror one allowed origin) ---- */
-const allowedOrigins = (
-  process.env.ALLOWED_ORIGINS || process.env.WEB_ORIGIN || ""
-)
+/** --- CORS (allow cookies + auth header, proper preflight) --- */
+// Allow one or more frontend origins via comma-separated env var
+const ALLOWED_ORIGINS = (process.env.WEB_ORIGIN || "http://localhost:3000")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
-// e.g. ALLOWED_ORIGINS="https://www.joineryai.app,https://joineryai.app"
-const corsHandler = cors({
-  origin(origin, cb) {
-    // allow same-origin / curl / healthz (no Origin header)
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, cb) => {
+    // same-origin / server-to-server has no Origin header
     if (!origin) return cb(null, true);
-
-    // allow if exact match in the allowlist
-    if (allowedOrigins.includes(origin)) return cb(null, true);
-
-    // (optional) also allow your Render web preview domains, if you ever need them:
-    // if (/\.onrender\.com$/.test(new URL(origin).host)) return cb(null, true);
-
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    // (optional) allow bare apex if you only provided www
+    const host = origin.replace(/^https?:\/\//, "");
+    if (ALLOWED_ORIGINS.some((o) => o.includes(host))) return cb(null, true);
     return cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 204,
-});
+};
 
-app.use(corsHandler);
-app.options("*", corsHandler); // ensure preflight replies everywhere
+// Must go before routes
+app.use(cors(corsOptions));
+// Make OPTIONS preflight reply with the same headers
+app.options("*", cors(corsOptions));
+
+// (Optional) quick probe to test CORS/headers from the browser
+app.get("/api-check", (req, res) => {
+  res.json({
+    ok: true,
+    originReceived: req.headers.origin || null,
+    allowList: ALLOWED_ORIGINS,
+  });
+});
 
 // Stripe webhook requires raw body
 app.post(
