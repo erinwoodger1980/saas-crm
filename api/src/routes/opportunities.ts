@@ -19,7 +19,7 @@ function getAuth(req: any) {
  * GET /opportunities/:id/followups
  * Returns the sent follow-ups (most recent first)
  */
-router.get("/:id/followups", async (req, res) => {
+router.get("/:id/followups", async (req: any, res: any) => {
   const { tenantId } = getAuth(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
@@ -40,7 +40,7 @@ router.get("/:id/followups", async (req, res) => {
  * Body: { variant, subject, body }
  * Sends email via Gmail (if connected), upserts EmailThread, logs EmailMessage + FollowUpLog.
  */
-router.post("/:id/send-followup", async (req, res) => {
+router.post("/:id/send-followup", async (req: any, res: any) => {
   try {
     const { tenantId, email: fromEmail } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -66,8 +66,6 @@ router.post("/:id/send-followup", async (req, res) => {
     });
 
     // 2) Send with Gmail
-    // NOTE: gmailSend(accessToken, rfc822) only accepts 2 args in your project.
-    // If you later extend it to accept a threadId, you can add it back.
     const accessToken = await getAccessTokenForTenant(tenantId);
     const fromHeader = fromEmail || "me";
     const rfc822 =
@@ -79,10 +77,10 @@ router.post("/:id/send-followup", async (req, res) => {
       `Content-Transfer-Encoding: 7bit\r\n\r\n` +
       `${body}\r\n`;
 
-    const sent = await gmailSend(accessToken, rfc822); // <-- two args only
+    // NOTE: gmailSend(accessToken, rfc822) — two args in your project
+    const sent = await gmailSend(accessToken, rfc822);
 
     // 3) Ensure we have an EmailThread row
-    // Prefer the threadId returned from Gmail, then existing thread, else a synthetic id
     const providerThreadId =
       (sent as any).threadId || thread?.threadId || `single:${(sent as any).id}`;
 
@@ -96,7 +94,7 @@ router.post("/:id/send-followup", async (req, res) => {
       },
       update: {
         subject: subject || undefined,
-        leadId: id, // link if not already
+        leadId: id,
         updatedAt: new Date(),
       },
       create: {
@@ -113,8 +111,8 @@ router.post("/:id/send-followup", async (req, res) => {
       data: {
         tenantId,
         provider: "gmail",
-        messageId: (sent as any).id, // gmail message id
-        threadId: threadRow.id, // FK to EmailThread
+        messageId: (sent as any).id,
+        threadId: threadRow.id,
         direction: "outbound",
         fromEmail: fromEmail || null,
         toEmail: lead.email,
@@ -126,7 +124,7 @@ router.post("/:id/send-followup", async (req, res) => {
       },
     });
 
-    // Keep your existing follow-up log + lead next action
+    // Follow-up log + next action
     await prisma.followUpLog.create({
       data: {
         tenantId,
@@ -158,7 +156,7 @@ router.post("/:id/send-followup", async (req, res) => {
  * Body: { variant?: "A" | "B" }
  * Returns: { whenISO, subject, body, variant, rationale }
  */
-router.post("/:id/next-followup", async (req, res) => {
+router.post("/:id/next-followup", async (req: any, res: any) => {
   try {
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -180,7 +178,6 @@ router.post("/:id/next-followup", async (req, res) => {
       select: { status: true, custom: true },
     });
 
-    // Use LeadSourceSpend (Decimal amountGBP)
     const spends = await prisma.leadSourceSpend.findMany({
       where: { tenantId, month: { gte: from } },
     });
@@ -194,7 +191,6 @@ router.post("/:id/next-followup", async (req, res) => {
     }
     for (const s of spends) {
       if ((s as any).source === source) {
-        // amountGBP is Decimal → coerce safely to number
         spend += Number((s as any).amountGBP) || 0;
       }
     }
@@ -222,6 +218,8 @@ Inputs:
 - Performance: CPS=${cps ?? "unknown"} (lower is better)
 Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
 `;
+
+      // --- OpenAI Responses API call (typed + defensive) ---
       const r = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {
@@ -234,18 +232,36 @@ Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
           response_format: { type: "json_object" },
         }),
       });
-      const j = await r.json();
-      const text = j?.output_text || j?.choices?.[0]?.message?.content || "{}";
-      try {
-        const parsed = JSON.parse(String(text));
-        subject = parsed.subject || subject;
-        body = parsed.body || body;
-        rationale = parsed.rationale || rationale;
-      } catch {}
+
+      if (!r.ok) {
+        console.warn(
+          "[opportunities] OpenAI responses API failed:",
+          r.status,
+          await r.text().catch(() => "")
+        );
+      } else {
+        // Cast to any so TS doesn't treat it as {} and flag property access
+        const j: any = await r.json();
+
+        const rawText: string =
+          (j?.output_text as string | undefined) ??
+          (j?.choices?.[0]?.message?.content as string | undefined) ??
+          "{}";
+
+        try {
+          const parsed = JSON.parse(rawText);
+          if (parsed && typeof parsed === "object") {
+            if (typeof parsed.subject === "string") subject = parsed.subject;
+            if (typeof parsed.body === "string") body = parsed.body;
+            if (typeof parsed.rationale === "string") rationale = parsed.rationale;
+          }
+        } catch {
+          // keep defaults on parse error
+        }
+      }
     }
 
-    // Prisma accessor for model FollowupExperiment is lower-camelcase: followupExperiment
-    // Create experiment row if the model exists on this Prisma client
+    // Optional: log suggestion into followupExperiment if the model/table exists
     const anyPrisma = prisma as any;
     await anyPrisma.followupExperiment?.create?.({
       data: {
@@ -277,21 +293,19 @@ Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
 
 // GET /opportunities/replied-since?days=30
 // Returns: { replied: [{ leadId, at }] } where "at" is the last inbound email timestamp.
-router.get("/replied-since", async (req, res) => {
+router.get("/replied-since", async (req: any, res: any) => {
   const { tenantId } = getAuth(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   const days = Math.max(1, Math.min(90, Number(req.query.days) || 30));
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  // Pull recent ingests
   const ingests = await prisma.emailIngest.findMany({
     where: { tenantId, createdAt: { gte: since } },
     select: { leadId: true, fromEmail: true, createdAt: true },
     orderBy: { createdAt: "desc" },
   });
 
-  // Map: email -> leadId
   const allLeads = await prisma.lead.findMany({
     where: { tenantId },
     select: { id: true, email: true },
@@ -301,7 +315,6 @@ router.get("/replied-since", async (req, res) => {
     if (l.email) emailToLead.set(l.email.toLowerCase(), l.id);
   }
 
-  // Last inbound per lead
   const latest = new Map<string, Date>();
   for (const it of ingests) {
     const leadId =
@@ -321,11 +334,10 @@ router.get("/replied-since", async (req, res) => {
 
 // POST /opportunities/reconcile-replies
 // Links orphan ingests to leads via fromEmail and marks recent followups as replied.
-router.post("/reconcile-replies", async (req, res) => {
+router.post("/reconcile-replies", async (req: any, res: any) => {
   const { tenantId } = getAuth(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-  // 1) Load orphan ingests for tenant
   const orphans = await prisma.emailIngest.findMany({
     where: { tenantId, leadId: null },
     select: { id: true, fromEmail: true, createdAt: true },
@@ -334,7 +346,6 @@ router.post("/reconcile-replies", async (req, res) => {
 
   if (!orphans.length) return res.json({ ok: true, linked: 0, repliedMarked: 0 });
 
-  // 2) Build quick email -> leadId map
   const leads = await prisma.lead.findMany({
     where: { tenantId, email: { not: null } },
     select: { id: true, email: true },
@@ -354,14 +365,12 @@ router.post("/reconcile-replies", async (req, res) => {
     const leadId = emailToLead.get(addr);
     if (!leadId) continue;
 
-    // 3) Link the ingest to the lead
     await prisma.emailIngest.update({
       where: { id: ing.id },
       data: { leadId },
     });
     linked++;
 
-    // 4) Mark the nearest previous follow-up as replied (if any)
     const lastFU = await prisma.followUpLog.findFirst({
       where: { tenantId, leadId },
       orderBy: { sentAt: "desc" },
@@ -379,7 +388,7 @@ router.post("/reconcile-replies", async (req, res) => {
 });
 
 // GET /opportunities/:id/replies
-router.get("/:id/replies", async (req, res) => {
+router.get("/:id/replies", async (req: any, res: any) => {
   const { tenantId } = getAuth(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
