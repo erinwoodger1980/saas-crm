@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies (including optional native packages)
         run: npm ci --include=optional
 
+      - name: Rebuild LightningCSS for the runner
+        run: npm rebuild lightningcss || true
+
       - name: Build Next.js (disable LightningCSS for Linux)
         run: npm run build
         env:
