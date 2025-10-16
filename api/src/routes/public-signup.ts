@@ -24,35 +24,33 @@ if (!/^https?:\/\//i.test(APP_URL)) {
   throw new Error(`APP_URL must be absolute (http/https). Got: ${APP_URL}`);
 }
 
-// Note: omit apiVersion to use the SDK’s pinned version (avoids TS literal mismatch)
+// Use SDK’s pinned apiVersion (avoids TS literal mismatches)
 const stripe = new Stripe(STRIPE_SECRET_KEY);
+
+/** Quick debug endpoint to verify which APP_URL the API is using */
+router.get("/_debug/app-url", (_req, res) => {
+  res.json({ APP_URL });
+});
 
 /**
  * POST /public/signup
  * body: { company: string, email: string, password?: string, plan: "monthly"|"annual", promotionCode?: string }
  */
 router.post("/signup", async (req, res) => {
-  // Make errors readable while debugging. Set VERBOSE_ERRORS=1 in Render to keep this in prod.
   const VERBOSE = process.env.VERBOSE_ERRORS === "1" || process.env.NODE_ENV !== "production";
   const say = (status: number, error: string, extra?: any) =>
     res.status(status).json(VERBOSE ? { error, ...extra } : { error: "internal_error" });
 
   try {
     const { company, email, password, plan, promotionCode } = req.body || {};
+    if (!company || !email || !plan) return say(400, "company, email and plan are required");
 
-    if (!company || !email || !plan) {
-      return say(400, "company, email and plan are required");
-    }
     const planNorm = String(plan).toLowerCase();
-    if (planNorm !== "monthly" && planNorm !== "annual") {
-      return say(400, "invalid_plan", { plan });
-    }
+    if (planNorm !== "monthly" && planNorm !== "annual") return say(400, "invalid_plan", { plan });
 
     /* ---------- 1) Find-or-create Tenant ---------- */
     let tenant = await prisma.tenant.findFirst({ where: { name: company } });
-    if (!tenant) {
-      tenant = await prisma.tenant.create({ data: { name: company } });
-    }
+    if (!tenant) tenant = await prisma.tenant.create({ data: { name: company } });
 
     /* ---------- 2) Find-or-create Admin User ---------- */
     let user = await prisma.user.findUnique({ where: { email } });
@@ -69,7 +67,7 @@ router.post("/signup", async (req, res) => {
       });
     }
 
-    /* ---------- 3) Short-lived JWT for setup after success ---------- */
+    /* ---------- 3) Short-lived JWT for setup ---------- */
     const setupToken = jwt.sign(
       { userId: user.id, tenantId: tenant.id, email: user.email, role: user.role },
       env.APP_JWT_SECRET,
@@ -91,20 +89,17 @@ router.post("/signup", async (req, res) => {
       });
     }
 
-    /* ---------- 5) Resolve & preflight Price (fast fail on mismatch) ---------- */
+    /* ---------- 5) Resolve & preflight Price ---------- */
     const priceId = planNorm === "annual" ? PRICE_ANNUAL : PRICE_MONTHLY;
     try {
       const price = await stripe.prices.retrieve(priceId);
       if (!price?.id) return say(500, "stripe_price_lookup_failed", { priceId, message: "no id returned" });
       if (!price.active) return say(500, "price_inactive", { priceId });
     } catch (e: any) {
-      return say(500, "stripe_price_lookup_failed", {
-        priceId,
-        message: e?.message || String(e),
-      });
+      return say(500, "stripe_price_lookup_failed", { priceId, message: e?.message || String(e) });
     }
 
-    /* ---------- 6) Optional promotion code (non-fatal if not found) ---------- */
+    /* ---------- 6) Optional promotion code ---------- */
     const founders = (process.env.FOUNDERS_PROMO_CODE || "").trim();
     const promoInput = (promotionCode || founders || "").trim() || undefined;
 
@@ -122,6 +117,14 @@ router.post("/signup", async (req, res) => {
     }
 
     /* ---------- 7) Stripe Checkout Session ---------- */
+    const successUrl = `${APP_URL}/signup/thank-you?session_id={CHECKOUT_SESSION_ID}&setup_jwt=${encodeURIComponent(
+      setupToken
+    )}`;
+    const cancelUrl = `${APP_URL}/signup`;
+
+    console.log("[signup] using APP_URL =", APP_URL);
+    console.log("[signup] success_url:", successUrl, "cancel_url:", cancelUrl);
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId!,
@@ -133,14 +136,13 @@ router.post("/signup", async (req, res) => {
       ...(promotionCodeId
         ? { discounts: [{ promotion_code: promotionCodeId }] }
         : { allow_promotion_codes: true }),
-      success_url: `${APP_URL}/signup/thank-you?session_id={CHECKOUT_SESSION_ID}&setup_jwt=${encodeURIComponent(
-        setupToken
-      )}`,
-      cancel_url: `${APP_URL}/signup`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
       metadata: { tenantId: tenant.id, userId: user.id, plan: planNorm },
     });
 
-    return res.json({ url: session.url });
+    // while debugging, include resolved URLs; front-end will only use `url`
+    return res.json({ url: session.url, successUrl, cancelUrl });
   } catch (e: any) {
     console.error("[public/signup] failed:", e);
     const msg = e?.raw?.message || e?.message || "internal_error";
