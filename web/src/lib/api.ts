@@ -2,7 +2,7 @@
 
 /** Sanitize + resolve the API base from envs */
 function sanitizeBase(v?: string | null): string {
-  const raw = (v ?? "").trim();                              // remove hidden \n / spaces
+  const raw = (v ?? "").trim(); // remove hidden \n / spaces
   const val = (raw || "http://localhost:4000").replace(/\/+$/g, ""); // strip trailing slashes
   if (!/^https?:\/\//i.test(val)) throw new Error("API base must include http/https");
   return val;
@@ -16,7 +16,6 @@ export const API_BASE = sanitizeBase(
 
 // TEMP: prove what the browser is using (remove after verifying)
 if (typeof window !== "undefined") {
-  // Should print: "[API_BASE] \"https://joinery-ai.onrender.com\"" (no \n)
   console.log("[API_BASE]", JSON.stringify(API_BASE));
 }
 
@@ -77,8 +76,8 @@ export async function apiFetch<T = unknown>(
   if (!res.ok) {
     const msg = (json as any)?.error || (json as any)?.message || `Request failed ${res.status}`;
     const e = new Error(`${msg} for ${url}`) as any;
-    e.status = res.status;
-    e.body = raw;
+    (e as any).status = res.status;
+    (e as any).body = raw;
     throw e;
   }
 
@@ -91,4 +90,49 @@ function safeJson(t: string) {
   } catch {
     return null;
   }
+}
+
+/* ---------------- Dev helper: ensureDemoAuth ----------------
+   Some pages import this. In dev, it tries a normal login first,
+   then falls back to /seed. In prod it quickly no-ops.
+---------------------------------------------------------------- */
+
+export async function ensureDemoAuth(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  if (getJwt()) return true;
+
+  // Try real login first (works if demo user exists)
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email: "erin@acme.test", password: "secret12" }),
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data?.jwt) {
+        setJwt(data.jwt);
+        return true;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Fallback: ask API to create demo tenant/user and return a token
+  try {
+    const seeded = await fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" });
+    if (seeded.ok) {
+      const data = await seeded.json().catch(() => ({}));
+      if (data?.jwt) {
+        setJwt(data.jwt);
+        return true;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return false;
 }
