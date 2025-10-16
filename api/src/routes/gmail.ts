@@ -239,7 +239,8 @@ router.get("/connection", async (req, res) => {
 });
 
 /* ============================================================
-   OAuth start
+   OAuth start (primary)  ->  /gmail/connect
+   + backward-compatible aliases (see bottom)
    ============================================================ */
 router.get("/connect", (req, res) => {
   // Optional dev helper: accept ?jwt=
@@ -339,6 +340,13 @@ router.get("/oauth/callback", async (req, res) => {
       refreshToken: refresh_token,
     },
   });
+
+  // Redirect back into the app if APP_URL is available; otherwise show a simple HTML message.
+  const appUrl = (process.env.APP_URL || "").trim();
+  if (appUrl && /^https?:\/\//i.test(appUrl)) {
+    const next = `${appUrl.replace(/\/+$/, "")}/settings?gmail=connected`;
+    return res.redirect(302, next);
+  }
 
   return res.send(`<h2>✅ Gmail Connected!</h2><p>Account: ${gmailAddress || "unknown"}</p>`);
 });
@@ -517,7 +525,7 @@ router.get("/thread/:threadId", async (req, res) => {
 });
 
 /* ============================================================
-   Import (idempotent) — writes EmailThread + EmailMessage + EmailIngest
+   Import (idempotent)
    ============================================================ */
 
 async function findLeadForInbound(tenantId: string, fromAddr: string | null, threadId: string | null) {
@@ -758,5 +766,11 @@ router.post("/disconnect", async (req, res) => {
     return res.status(500).json({ error: e?.message || "failed to disconnect" });
   }
 });
+
+/* ============================================================
+   Back-compat start aliases
+   ============================================================ */
+router.get("/oauth/start", (_req, res) => res.redirect(302, "/gmail/connect"));
+router.get("/oauth2/start", (_req, res) => res.redirect(302, "/gmail/connect"));
 
 export default router;
