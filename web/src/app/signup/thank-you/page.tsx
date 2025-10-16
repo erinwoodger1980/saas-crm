@@ -1,9 +1,14 @@
+// web/src/app/signup/thank-you/page.tsx
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function ThankYouPage() {
+// Disable static prerender so we can always read the query string
+export const dynamic = "force-dynamic";
+
+function ThankYouInner() {
   const params = useSearchParams();
   const sessionId = params.get("session_id");
   const setupJwt = params.get("setup_jwt");
@@ -16,13 +21,13 @@ export default function ThankYouPage() {
       </p>
 
       {sessionId && (
-        <div className="text-sm text-gray-500 mb-6">
-          Stripe Session ID: <code>{sessionId}</code>
+        <div className="text-sm text-gray-500 mb-2">
+          Stripe Session ID: <code className="break-all">{sessionId}</code>
         </div>
       )}
       {setupJwt && (
         <div className="text-sm text-gray-500 mb-6">
-          Setup Token: <code>{setupJwt}</code>
+          Setup Token (JWT): <code className="break-all">{setupJwt}</code>
         </div>
       )}
 
@@ -33,5 +38,13 @@ export default function ThankYouPage() {
         Continue to Setup
       </Link>
     </main>
+  );
+}
+
+export default function ThankYouPage() {
+  return (
+    <Suspense fallback={<main className="mx-auto max-w-xl p-6">Loading…</main>}>
+      <ThankYouInner />
+    </Suspense>
   );
 }
