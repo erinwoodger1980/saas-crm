@@ -1,35 +1,50 @@
 // web/src/app/signup/thank-you/page.tsx
 "use client";
-import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+
+import { Suspense, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-function Inner() {
+function ThankYouInner() {
   const params = useSearchParams();
+  const router = useRouter();
+
   const sessionId = params.get("session_id") || "";
   const setupJwt = params.get("setup_jwt") || "";
 
-  const setupHref = setupJwt ? `/setup?setup_jwt=${encodeURIComponent(setupJwt)}` : "/setup";
+  useEffect(() => {
+    if (setupJwt) {
+      try {
+        sessionStorage.setItem("setup_jwt", setupJwt);
+      } catch {}
+      // Forward immediately with the token in the URL to be explicit.
+      router.replace(`/setup?setup_jwt=${encodeURIComponent(setupJwt)}`);
+    }
+  }, [setupJwt, router]);
 
   return (
     <main className="mx-auto max-w-xl p-6 text-center">
       <h1 className="text-3xl font-semibold mb-4">🎉 Thank you for signing up!</h1>
-      <p className="text-gray-700 mb-6">Your 14-day free trial has started.</p>
+      <p className="text-gray-700 mb-6">
+        Your 14-day free trial has started. You’ll receive a confirmation email shortly.
+      </p>
 
-      <Link
-        href={setupHref}
-        className="inline-block bg-black text-white rounded px-6 py-3 hover:bg-gray-800 transition"
-      >
-        Continue to Setup
-      </Link>
-
-      {!setupJwt && (
-        <p className="mt-4 text-sm text-amber-600">
-          (We couldn’t find a setup token. If you reached this page manually,
-          please return from the Stripe success page.)
+      {sessionId && (
+        <p className="text-sm text-gray-500 mb-6">
+          Stripe Session: <code className="break-all">{sessionId}</code>
         </p>
+      )}
+
+      {/* Fallback button in case the auto-redirect is delayed */}
+      {setupJwt && (
+        <Link
+          href={`/setup?setup_jwt=${encodeURIComponent(setupJwt)}`}
+          className="inline-block bg-black text-white rounded px-6 py-3 hover:bg-gray-800 transition"
+        >
+          Continue to Setup
+        </Link>
       )}
     </main>
   );
@@ -38,7 +53,7 @@ function Inner() {
 export default function ThankYouPage() {
   return (
     <Suspense fallback={<main className="mx-auto max-w-xl p-6">Loading…</main>}>
-      <Inner />
+      <ThankYouInner />
     </Suspense>
   );
 }
