@@ -6,26 +6,32 @@ import { env } from "../env";
 
 const router = Router();
 
-function getAuth(req: any) {
-  return {
-    tenantId: req.auth?.tenantId as string | undefined,
-  };
+/* ------------------------- helpers ------------------------- */
+function authTenantId(req: any): string | null {
+  return (req?.auth?.tenantId as string) || null;
+}
+function ensureHttps(u: string) {
+  return /^https?:\/\//i.test(u) ? u : `https://${u}`;
 }
 
-/** Get current tenant settings (by auth); create defaults if missing */
+/* ============================================================
+   SETTINGS
+============================================================ */
+
+/** Get current tenant settings (create defaults if missing) */
 router.get("/settings", async (req, res) => {
-  const { tenantId } = getAuth(req);
+  const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   let s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
   if (!s) {
-    const defaultSlug = "tenant-" + tenantId.slice(0, 6).toLowerCase();
     s = await prisma.tenantSettings.create({
       data: {
         tenantId,
-        slug: defaultSlug,
+        slug: `tenant-${tenantId.slice(0, 6).toLowerCase()}`,
         brandName: "Your Company",
-        introHtml: "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
+        introHtml:
+          "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
         links: [],
       },
     });
@@ -33,9 +39,9 @@ router.get("/settings", async (req, res) => {
   res.json(s);
 });
 
-/** PATCH /tenant/settings/basic { brandName?: string, website?: string } */
-router.patch("/settings/basic", async (req: any, res) => {
-  const tenantId = req.auth?.tenantId as string | undefined;
+/** Quick update: brand / website */
+router.patch("/settings/basic", async (req, res) => {
+  const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   const { brandName, website } = (req.body || {}) as {
@@ -43,30 +49,25 @@ router.patch("/settings/basic", async (req: any, res) => {
     website?: string;
   };
 
-  // Do we already have a settings row? (grab slug if present)
   const existing = await prisma.tenantSettings.findUnique({
     where: { tenantId },
     select: { slug: true },
   });
-
-  // Build partial update payload only for provided fields
-  const updateData: any = {};
-  if (brandName !== undefined) updateData.brandName = brandName || "Your Company";
-  if (website !== undefined) updateData.website = website || null;
-
-  // If there is no row yet, we must provide the required fields on create
-  const defaultSlug = "tenant-" + tenantId.slice(0, 6).toLowerCase();
+  const slug = existing?.slug || `tenant-${tenantId.slice(0, 6).toLowerCase()}`;
 
   const row = await prisma.tenantSettings.upsert({
     where: { tenantId },
-    update: updateData,
+    update: {
+      ...(brandName !== undefined ? { brandName: brandName || "Your Company" } : {}),
+      ...(website !== undefined ? { website: website || null } : {}),
+    },
     create: {
       tenantId,
-      slug: existing?.slug || defaultSlug,
+      slug,
       brandName: brandName || "Your Company",
       website: website || null,
-      // sensible defaults for first creation so other code paths don't break
-      introHtml: "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
+      introHtml:
+        "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
       links: [],
     },
   });
@@ -74,74 +75,76 @@ router.patch("/settings/basic", async (req: any, res) => {
   res.json(row);
 });
 
-
 /**
  * POST /tenant/settings/enrich
  * Body: { website: string }
+ * Scrapes the site, extracts brand + logo + phone, optionally refines via OpenAI,
+ * and upserts TenantSettings (including logoUrl and links).
  */
 router.post("/settings/enrich", async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  let { website } = (req.body || {}) as { website?: string };
+  if (!website) return res.status(400).json({ error: "website required" });
+
   try {
-    const { tenantId } = getAuth(req as any);
-    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    website = ensureHttps(website);
 
-    let { website } = (req.body || {}) as { website?: string };
-    if (!website) return res.status(400).json({ error: "website required" });
-
-    // Normalize URL
-    if (!/^https?:\/\//i.test(website)) website = "https://" + website;
-
-    // Fetch homepage (Node 18+ has global fetch)
     const resp = await fetch(website, {
       redirect: "follow",
       headers: { "User-Agent": "JoineryAI/1.0" },
     } as RequestInit);
     if (!resp.ok) {
-      return res.status(400).json({ error: `failed to fetch ${website} (${resp.status})` });
+      return res
+        .status(400)
+        .json({ error: `failed to fetch ${website} (${resp.status})` });
     }
 
     const html = await resp.text();
     const $ = cheerio.load(html);
 
-    // Candidate brand name
-    const title =
-      ($("meta[property='og:site_name']").attr("content") || $("title").first().text() || "").trim();
+    // Brand
+    const brandName =
+      $(`meta[property='og:site_name']`).attr("content") ||
+      $("title").first().text() ||
+      "Your Company";
 
-    // Logos / icons
-    const logoCandidates: string[] = [];
-    $("link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='shortcut icon']").each(
-      (_idx: number, el: any) => {
-        const href = $(el).attr("href");
-        if (href) logoCandidates.push(new URL(href, website!).href);
-      }
-    );
-    const ogImg = $("meta[property='og:image']").attr("content");
-    if (ogImg) logoCandidates.push(new URL(ogImg, website!).href);
-    logoCandidates.push(new URL("/favicon.ico", website!).href); // last resort
-    const logoUrl = logoCandidates[0] || null;
+    // Icons / logo candidates
+    const candidates: string[] = [];
+    $(
+      "link[rel*='icon'], link[rel='shortcut icon'], link[rel='apple-touch-icon']"
+    ).each((_i, el) => {
+      const href = $(el).attr("href");
+      if (href) candidates.push(new URL(href, website!).href);
+    });
+    const ogImg = $(`meta[property='og:image']`).attr("content");
+    if (ogImg) candidates.push(new URL(ogImg, website!).href);
+    candidates.push(new URL("/favicon.ico", website!).href); // fallback
+    const logoUrl = candidates[0] || null;
 
-    // Phone (quick regex across body text)
-    const textSample = $("body").text().replace(/\s+/g, " ").slice(0, 12000);
-    const phoneMatches = textSample.match(/(\+?\d[\d\s().-]{7,}\d)/g) || [];
-    const phone = phoneMatches[0]?.trim() || null;
+    // Phone (simple regex as a backup)
+    const text = $("body").text().replace(/\s+/g, " ").slice(0, 15000);
+    const phone = (text.match(/(\+?\d[\d\s().-]{7,}\d)/g) || [])[0]?.trim() || null;
 
-    // Try to extract Organization/LocalBusiness from JSON-LD
+    // JSON-LD org
     let orgJson: any = null;
-    $("script[type='application/ld+json']").each((_i: number, el: any) => {
+    $(`script[type='application/ld+json']`).each((_i, el) => {
       try {
-        const raw = $(el).text();
-        const parsed = JSON.parse(raw);
+        const parsed = JSON.parse($(el).text());
         const arr = Array.isArray(parsed) ? parsed : [parsed];
-        const org = arr.find(
-          (x: any) => x && typeof x === "object" && ["Organization", "LocalBusiness"].includes(x["@type"])
+        const org = arr.find((x) =>
+          x && typeof x === "object"
+            ? ["Organization", "LocalBusiness"].includes(x["@type"])
+            : false
         );
         if (org && !orgJson) orgJson = org;
-      } catch {
-        // ignore
-      }
+      } catch {}
     });
 
-    const initialDraft = {
-      brandName: title || orgJson?.name || "Your Company",
+    // Seed before AI
+    const seed = {
+      brandName,
       website,
       phone: orgJson?.telephone || phone || null,
       address: orgJson?.address || null,
@@ -150,18 +153,17 @@ router.post("/settings/enrich", async (req, res) => {
       introSuggestion: "",
     };
 
-    // Optionally refine with OpenAI
-    let aiOut = { ...initialDraft };
+    // Optional AI clean-up (nice links + intro)
+    let enriched = { ...seed };
     if (env.OPENAI_API_KEY) {
-      const origin = new URL(website!).origin;
+      const origin = new URL(website).origin;
       const navLinks = $("a[href]")
         .slice(0, 120)
-        .map((_i: number, a: any) => {
+        .map((_i, a) => {
           const href = $(a).attr("href") || "";
           const label = ($(a).text() || "").trim().replace(/\s+/g, " ");
           const abs = new URL(href, website!).href;
-          if (!label || !abs.startsWith(origin)) return null;
-          if (label.length > 60) return null;
+          if (!label || !abs.startsWith(origin) || label.length > 60) return null;
           return { label, url: abs };
         })
         .get()
@@ -169,24 +171,20 @@ router.post("/settings/enrich", async (req, res) => {
         .slice(0, 20) as { label: string; url: string }[];
 
       const prompt = `
-From the following scraped details, output a compact JSON object with:
-brandName, phone (single string or null), address (one line or null), logoUrl (a URL or null),
-links (up to 6 helpful on-site links as {label,url}), and a short plain-text "introSuggestion"
-that greets a new enquiry and points to the main product pages. Keep it UK-English. Avoid emojis.
+Return JSON with: brandName, phone, address, logoUrl, links (<=6 {label,url}),
+and introSuggestion (short plain text greeting for enquiries). UK English.
 
 SCRAPED:
-- Title/og: ${initialDraft.brandName}
-- Phone (regex): ${phone || "-"}
-- JSON-LD name: ${orgJson?.name || "-"}
-- JSON-LD telephone: ${orgJson?.telephone || "-"}
-- JSON-LD address: ${JSON.stringify(orgJson?.address || null)}
-- Candidate logo: ${logoUrl || "-"}
+- Title/og: ${seed.brandName}
+- Phone: ${seed.phone || "-"}
+- JSON-LD address: ${JSON.stringify(seed.address)}
+- Candidate logo: ${seed.logoUrl || "-"}
 
-NAV LINKS (label -> url):
+NAV LINKS:
 ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
 `;
 
-      const respAi = await fetch("https://api.openai.com/v1/responses", {
+      const ai = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${env.OPENAI_API_KEY}`,
@@ -198,64 +196,64 @@ ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
           response_format: { type: "json_object" },
         }),
       });
-
-      const json = await respAi.json();
+      const data = await ai.json();
       const textOut =
-        json?.output_text ||
-        json?.choices?.[0]?.message?.content ||
-        json?.choices?.[0]?.output_text ||
+        data?.output_text ||
+        data?.choices?.[0]?.message?.content ||
+        data?.choices?.[0]?.output_text ||
         "{}";
 
       try {
-        const parsed = JSON.parse(String(textOut));
-        aiOut = {
-          brandName: parsed.brandName || initialDraft.brandName,
-          phone: parsed.phone ?? initialDraft.phone ?? null,
-          website: website!,
-          logoUrl: parsed.logoUrl || initialDraft.logoUrl || null,
-          links: Array.isArray(parsed.links) ? parsed.links.slice(0, 6) : [],
-          introSuggestion: parsed.introSuggestion || "",
-          address: parsed.address ?? null,
+        const p = JSON.parse(String(textOut));
+        enriched = {
+          brandName: p.brandName || seed.brandName,
+          phone: p.phone ?? seed.phone,
+          website,
+          logoUrl: p.logoUrl || seed.logoUrl || null,
+          links: Array.isArray(p.links) ? p.links.slice(0, 6) : [],
+          introSuggestion: p.introSuggestion || "",
+          address: p.address ?? seed.address,
         } as any;
       } catch {
-        // fall back to initialDraft if parsing fails
+        // keep seed
       }
     }
 
-    // Upsert TenantSettings
-    const settings = await prisma.tenantSettings.upsert({
+    // Upsert settings
+    const saved = await prisma.tenantSettings.upsert({
       where: { tenantId },
       update: {
-        brandName: aiOut.brandName || "Your Company",
-        website: aiOut.website,
-        phone: aiOut.phone,
-        logoUrl: aiOut.logoUrl,
-        links: aiOut.links || [],
-        // Seed intro if currently empty
-        introHtml: aiOut.introSuggestion ? (aiOut.introSuggestion as string) : undefined,
+        brandName: enriched.brandName || "Your Company",
+        website: enriched.website,
+        phone: enriched.phone,
+        logoUrl: enriched.logoUrl,
+        links: enriched.links || [],
+        ...(enriched.introSuggestion
+          ? { introHtml: enriched.introSuggestion }
+          : {}),
       },
       create: {
         tenantId,
-        slug: "tenant-" + tenantId.slice(0, 6),
-        brandName: aiOut.brandName || "Your Company",
-        website: aiOut.website,
-        phone: aiOut.phone,
-        logoUrl: aiOut.logoUrl,
-        links: aiOut.links || [],
-        introHtml: aiOut.introSuggestion || null,
+        slug: `tenant-${tenantId.slice(0, 6)}`,
+        brandName: enriched.brandName || "Your Company",
+        website: enriched.website,
+        phone: enriched.phone,
+        logoUrl: enriched.logoUrl,
+        links: enriched.links || [],
+        introHtml: enriched.introSuggestion || null,
       },
     });
 
-    return res.json({ ok: true, settings });
+    res.json({ ok: true, settings: saved });
   } catch (e: any) {
-    console.error("[tenant enrich] failed:", e);
-    return res.status(500).json({ error: e?.message || "enrich failed" });
+    console.error("[tenant enrich] failed", e);
+    res.status(500).json({ error: e?.message || "enrich failed" });
   }
 });
 
-/** Update current tenant settings */
+/** Full save (incl. questionnaire) */
 router.put("/settings", async (req, res) => {
-  const { tenantId } = getAuth(req);
+  const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   const {
@@ -265,19 +263,17 @@ router.put("/settings", async (req, res) => {
     website,
     phone,
     links,
-    logoUrl,          // optional, if you added it
-    questionnaire,    // ✅ persist this
+    logoUrl,
+    questionnaire,
   } = req.body || {};
 
   if (!slug || !brandName) {
     return res.status(400).json({ error: "slug and brandName required" });
   }
 
-  // (Optional) light validation to avoid nuking your data with junk
-  let qToSave: any = null;
+  let qSave: any = undefined;
   if (Array.isArray(questionnaire)) {
-    // Each item: { id, key, label, type, required?, options? }
-    qToSave = questionnaire.map((f: any) => ({
+    qSave = questionnaire.map((f: any) => ({
       id: String(f.id || crypto.randomUUID?.() || Date.now()),
       key: String(f.key || "").trim(),
       label: String(f.label || "").trim(),
@@ -296,9 +292,9 @@ router.put("/settings", async (req, res) => {
         introHtml: introHtml ?? null,
         website: website ?? null,
         phone: phone ?? null,
-        logoUrl: logoUrl ?? undefined,        // only if your schema has logoUrl
+        logoUrl: logoUrl ?? undefined,
         links: Array.isArray(links) ? links : [],
-        questionnaire: qToSave ?? undefined,  // ✅ save questionnaire when provided
+        ...(qSave ? { questionnaire: qSave } : {}),
       },
       create: {
         tenantId,
@@ -307,18 +303,18 @@ router.put("/settings", async (req, res) => {
         introHtml: introHtml ?? null,
         website: website ?? null,
         phone: phone ?? null,
-        logoUrl: logoUrl ?? undefined,        // only if in schema
+        logoUrl: logoUrl ?? undefined,
         links: Array.isArray(links) ? links : [],
-        questionnaire: qToSave ?? null,       // ✅ seed questionnaire
+        questionnaire: qSave ?? null,
       },
     });
-    res.json(updated); // ✅ return it so the UI keeps state after save
+    res.json(updated);
   } catch (e: any) {
     res.status(400).json({ error: e?.message || "save failed" });
   }
 });
 
-/** Public lookup by slug (for /q/:slug/:id) */
+/** Public lookup by slug */
 router.get("/settings/by-slug/:slug", async (req, res) => {
   const slug = String(req.params.slug || "").toLowerCase().trim();
   if (!slug) return res.status(400).json({ error: "slug required" });
@@ -326,7 +322,6 @@ router.get("/settings/by-slug/:slug", async (req, res) => {
   const s = await prisma.tenantSettings.findFirst({ where: { slug } });
   if (!s) return res.status(404).json({ error: "unknown tenant" });
 
-  // Return only public-safe fields
   res.json({
     tenantId: s.tenantId,
     slug: s.slug,
@@ -339,9 +334,11 @@ router.get("/settings/by-slug/:slug", async (req, res) => {
   });
 });
 
-// ========== INBOX WATCH (GET/PUT) ==========
+/* ============================================================
+   INBOX WATCH
+============================================================ */
 router.get("/inbox", async (req, res) => {
-  const { tenantId } = getAuth(req);
+  const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   const s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
@@ -349,31 +346,44 @@ router.get("/inbox", async (req, res) => {
   res.json({
     gmail: !!inbox.gmail,
     ms365: !!inbox.ms365,
-    intervalMinutes: typeof inbox.intervalMinutes === "number" ? inbox.intervalMinutes : 10,
+    intervalMinutes:
+      typeof inbox.intervalMinutes === "number" ? inbox.intervalMinutes : 10,
   });
 });
 
 router.put("/inbox", async (req, res) => {
-  const { tenantId } = getAuth(req);
+  const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   const { gmail = false, ms365 = false, intervalMinutes = 10 } = req.body || {};
   const s = await prisma.tenantSettings.upsert({
     where: { tenantId },
-    update: { inbox: { gmail: !!gmail, ms365: !!ms365, intervalMinutes: Number(intervalMinutes) || 10 } },
+    update: {
+      inbox: {
+        gmail: !!gmail,
+        ms365: !!ms365,
+        intervalMinutes: Number(intervalMinutes) || 10,
+      },
+    },
     create: {
       tenantId,
-      slug: "tenant-" + tenantId.slice(0, 6),
+      slug: `tenant-${tenantId.slice(0, 6)}`,
       brandName: "Your Company",
-      inbox: { gmail: !!gmail, ms365: !!ms365, intervalMinutes: Number(intervalMinutes) || 10 },
+      inbox: {
+        gmail: !!gmail,
+        ms365: !!ms365,
+        intervalMinutes: Number(intervalMinutes) || 10,
+      },
     },
   });
   res.json({ ok: true, inbox: s.inbox });
 });
 
-// ========== LEAD SOURCE COSTS ==========
+/* ============================================================
+   LEAD SOURCE COSTS
+============================================================ */
 router.get("/costs", async (req, res) => {
-  const { tenantId } = getAuth(req);
+  const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   const { from, to } = req.query as { from?: string; to?: string };
@@ -391,27 +401,47 @@ router.get("/costs", async (req, res) => {
 });
 
 router.post("/costs", async (req, res) => {
-  const { tenantId } = getAuth(req);
+  const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
   const { source, month, spend, leads, conversions, scalable } = req.body || {};
-  if (!source || !month) return res.status(400).json({ error: "source and month required (YYYY-MM-01)" });
+  if (!source || !month)
+    return res
+      .status(400)
+      .json({ error: "source and month required (YYYY-MM-01)" });
 
-  const monthDate = new Date(month); // pass first-of-month
+  const monthDate = new Date(month);
   const row = await prisma.leadSourceCost.upsert({
-    where: { tenantId_source_month: { tenantId, source, month: monthDate } },
-    update: { spend: Number(spend) || 0, leads: Number(leads) || 0, conversions: Number(conversions) || 0, scalable: !!scalable },
-    create: { tenantId, source, month: monthDate, spend: Number(spend) || 0, leads: Number(leads) || 0, conversions: Number(conversions) || 0, scalable: !!scalable },
+    where: {
+      tenantId_source_month: { tenantId, source, month: monthDate },
+    },
+    update: {
+      spend: Number(spend) || 0,
+      leads: Number(leads) || 0,
+      conversions: Number(conversions) || 0,
+      scalable: !!scalable,
+    },
+    create: {
+      tenantId,
+      source,
+      month: monthDate,
+      spend: Number(spend) || 0,
+      leads: Number(leads) || 0,
+      conversions: Number(conversions) || 0,
+      scalable: !!scalable,
+    },
   });
   res.json(row);
 });
 
 router.delete("/costs/:id", async (req, res) => {
-  const { tenantId } = getAuth(req);
+  const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
   const id = String(req.params.id);
   const row = await prisma.leadSourceCost.findUnique({ where: { id } });
-  if (!row || row.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
+  if (!row || row.tenantId !== tenantId)
+    return res.status(404).json({ error: "not found" });
   await prisma.leadSourceCost.delete({ where: { id } });
   res.json({ ok: true });
 });
