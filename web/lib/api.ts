@@ -1,6 +1,15 @@
 // web/lib/api.ts
-const API_BASE =
-  (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000").replace(/\/$/, "");
+
+function sanitizeBase(raw?: string): string {
+  const v = (raw ?? "").trim();                 // <-- kill hidden \n or spaces
+  const base = (v || "http://localhost:4000").replace(/\/+$/g, ""); // strip trailing slashes
+  if (!/^https?:\/\//i.test(base)) {
+    throw new Error("NEXT_PUBLIC_API_URL must include http/https");
+  }
+  return base;
+}
+
+const API_BASE = sanitizeBase(process.env.NEXT_PUBLIC_API_URL);
 
 function readCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
@@ -9,7 +18,6 @@ function readCookie(name: string): string | null {
 }
 
 export function getJwt(): string | null {
-  // prefer cookie (middleware sees it), fall back to localStorage
   const fromCookie = readCookie("jwt");
   if (fromCookie) return fromCookie;
   try {
@@ -23,7 +31,6 @@ export function clearAuth() {
   try {
     localStorage.removeItem("jwt");
   } catch {}
-  // expire cookie
   if (typeof document !== "undefined") {
     document.cookie = `jwt=; Path=/; Max-Age=0; SameSite=Lax`;
   }
@@ -42,39 +49,35 @@ export async function apiFetch<T>(
   } = {}
 ): Promise<T> {
   const token = getJwt();
-  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
 
-  const headers: Record<string, string> = {
-    ...(opts.headers || {}),
-  };
+  // ensure leading slash and trim accidental whitespace
+  const cleanPath = (path || "").trim();
+  const url =
+    cleanPath.startsWith("http")
+      ? cleanPath
+      : `${API_BASE}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
+
+  const headers: Record<string, string> = { ...(opts.headers || {}) };
 
   if (opts.body !== undefined && !(opts.body instanceof FormData)) {
     headers["Content-Type"] = headers["Content-Type"] || "application/json";
   }
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(url, {
     method: opts.method || "GET",
     headers,
-    // only stringify plain bodies; let FormData pass through
     body:
       opts.body === undefined || opts.body instanceof FormData
         ? (opts.body as any)
         : JSON.stringify(opts.body),
-    // CORS: we don’t **need** credentials when using Authorization header,
-    // but leaving it ‘include’ is safe locally too.
     credentials: "include",
   });
 
-  // Try to parse text -> json for better errors
   const raw = await res.text();
-  const maybeJson = raw ? safeJson(raw) : null;
+  const maybeJson = safeJson(raw);
 
   if (res.status === 401) {
-    // unauthorised: nuke auth and bounce to login
     try {
       clearAuth();
       if (typeof window !== "undefined") {
