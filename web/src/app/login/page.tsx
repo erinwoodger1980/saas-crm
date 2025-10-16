@@ -1,205 +1,88 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { apiFetch, setJwt } from "@/lib/api";
 
-const API_URL =
-  (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL)?.replace(/\/$/, "") ||
-  "http://localhost:4000";
-
-function pickToken(json: any): string | null {
-  return (
-    json?.jwt ||
-    json?.token ||
-    json?.accessToken ||
-    json?.data?.jwt ||
-    json?.data?.token ||
-    null
-  );
-}
-
-/** Store token both in localStorage (for client fetches) and as a cookie (for middleware). */
-function storeAuth(token: string) {
-  try {
-    localStorage.setItem("jwt", token);
-  } catch {}
-  const secure =
-    typeof window !== "undefined" && window.location.protocol === "https:"
-      ? "; Secure"
-      : "";
-  // 30 days, SameSite=Lax so regular navigations carry it
-  document.cookie = `jwt=${encodeURIComponent(
-    token
-  )}; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
-}
+export const dynamic = "force-dynamic";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("erin@acme.test");
-  const [password, setPassword] = useState("secret12");
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [debugBody, setDebugBody] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  const next = useMemo(() => {
-    try {
-      const url = new URL(window.location.href);
-      return url.searchParams.get("next") || "/leads";
-    } catch {
-      return "/leads";
-    }
-  }, []);
-
-  /** 1) Handle MS365 (and any provider) redirect: /login?jwt=... */
-  useEffect(() => {
-    try {
-      const url = new URL(window.location.href);
-      const jwt = url.searchParams.get("jwt");
-      if (jwt) {
-        storeAuth(jwt);
-        // Clean the URL then send user along
-        const go = url.searchParams.get("next") || "/leads";
-        window.location.replace(go);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  async function doLogin(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setErr(null);
-    setDebugBody(null);
+    setError("");
     setLoading(true);
-
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
+      const res = await apiFetch<{ jwt: string }>("/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        json: { email, password },
       });
-
-      const text = await res.text();
-      let json: any = {};
-      try {
-        json = text ? JSON.parse(text) : {};
-      } catch {}
-      const token = pickToken(json);
-
-      if (!res.ok || !token) {
-        setErr(
-          json?.error ||
-            json?.message ||
-            `Login failed (${res.status}) — see response below`
-        );
-        setDebugBody(text || "(empty response)");
-        setLoading(false);
-        return;
+      if (res?.jwt) {
+        setJwt(res.jwt);
+        router.push("/dashboard");
+      } else {
+        throw new Error("Invalid login response");
       }
-
-      storeAuth(token);
-      window.location.href = next;
-    } catch (e: any) {
-      setErr(e?.message || "Network error");
-      setLoading(false);
-    }
-  }
-
-  /** Handy dev escape hatch — /seed always returns { jwt } */
-  async function useDevSeed() {
-    setErr(null);
-    setDebugBody(null);
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/seed`, { method: "POST" });
-      const json = await res.json();
-      const token = pickToken(json);
-      if (!res.ok || !token) {
-        setErr(json?.error || `Seed failed (${res.status})`);
-        setDebugBody(JSON.stringify(json, null, 2));
-        setLoading(false);
-        return;
-      }
-      storeAuth(token);
-      window.location.href = next;
-    } catch (e: any) {
-      setErr(e?.message || "Network error");
+    } catch (err: any) {
+      console.error(err);
+      setError("Invalid email or password");
+    } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 flex items-center justify-center p-6">
-      <form
-        onSubmit={doLogin}
-        className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm"
-      >
-        <h1 className="text-lg font-semibold mb-4">Log in to Joinery CRM</h1>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow">
+        <h1 className="text-2xl font-semibold text-center mb-2">Welcome back 👋</h1>
+        <p className="text-gray-500 text-center mb-6">
+          Log in to your Joinery AI account
+        </p>
 
-        <label className="block text-sm mb-3">
-          <span className="text-slate-600">Email</span>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="email"
-            className="mt-1 w-full rounded-md border p-2 outline-none focus:ring-2"
+            required
+            placeholder="Work email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            autoComplete="username"
-            required
+            className="w-full rounded-lg border border-gray-300 px-3 py-2"
           />
-        </label>
-
-        <label className="block text-sm mb-4">
-          <span className="text-slate-600">Password</span>
           <input
             type="password"
-            className="mt-1 w-full rounded-md border p-2 outline-none focus:ring-2"
+            required
+            placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
+            className="w-full rounded-lg border border-gray-300 px-3 py-2"
           />
-        </label>
-
-        {err && (
-          <div className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {err}
-          </div>
-        )}
-        {debugBody && (
-          <pre className="mb-3 max-h-40 overflow-auto rounded-md bg-slate-50 p-2 text-[11px] text-slate-700 border">
-            {debugBody}
-          </pre>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-md bg-blue-600 px-4 py-2 text-white disabled:opacity-60"
-        >
-          {loading ? "Signing in…" : "Sign in"}
-        </button>
-
-        {/* 2) Microsoft 365 OAuth button */}
-        <a
-          href={`${API_URL}/integrations/ms365/login`}
-          className="mt-3 inline-flex w-full items-center justify-center rounded-md border px-4 py-2 text-sm hover:bg-slate-50"
-        >
-          Sign in with Microsoft 365
-        </a>
-
-        <div className="mt-3 flex items-center justify-between">
-          <p className="text-xs text-slate-500">
-            Dev account: <code>erin@acme.test</code> / <code>secret12</code>
-          </p>
+          {error && (
+            <p className="text-sm text-red-600 text-center">{error}</p>
+          )}
           <button
-            type="button"
-            onClick={useDevSeed}
+            type="submit"
             disabled={loading}
-            className="text-xs text-blue-700 underline"
-            title="Call /seed and store the returned jwt"
+            className="w-full rounded-lg bg-black py-3 text-white hover:bg-gray-800 transition"
           >
-            Use dev seed
+            {loading ? "Signing in…" : "Sign in"}
           </button>
+        </form>
+
+        <div className="mt-4 flex justify-between text-sm text-gray-600">
+          <Link href="/forgot-password" className="hover:text-black">
+            Forgot password?
+          </Link>
+          <Link href="/signup" className="hover:text-black">
+            Create account
+          </Link>
         </div>
-      </form>
-    </div>
+      </div>
+    </main>
   );
 }
