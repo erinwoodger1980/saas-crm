@@ -79,9 +79,12 @@ app.get("/api-check", (req, res) => {
 /** Public (no auth required) */
 app.use("/public", publicRouter);
 
-// ✅ mount signup router at BOTH paths to handle /public/signup and /public-signup
+// keep existing mounts
 app.use("/public-signup", publicSignupRouter);
 app.use("/public", publicSignupRouter);
+
+// ✅ add this so absolute paths inside the router still match
+app.use("/", publicSignupRouter);
 
 /** JWT decode middleware — reads header or cookie, sets req.auth */
 app.use((req, _res, next) => {
