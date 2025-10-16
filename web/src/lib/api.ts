@@ -62,6 +62,13 @@ export async function apiFetch<T = unknown>(
     : `${API_BASE}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
 
   const headers = new Headers(init.headers);
+
+  // Attach Authorization header if we have a JWT (avoids cross-site cookie issues)
+  const jwt = getJwt();
+  if (jwt && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${jwt}`);
+  }
+
   let body: BodyInit | null | undefined = init.body as any;
 
   if (init.json !== undefined) {
