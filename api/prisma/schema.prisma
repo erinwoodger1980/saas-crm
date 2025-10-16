@@ -116,6 +116,9 @@ model User {
   passwordHash          String
   GmailTenantConnection GmailTenantConnection[] // reverse relation safety
   Ms365TenantConnection Ms365TenantConnection[] // reverse relation safety
+
+  // 🔽 NEW: back-relation for password resets
+  passwordResetToken PasswordResetToken?
 }
 
 model Lead {
@@ -488,4 +491,14 @@ model UploadedFile {
   uploadedAt DateTime @default(now())
 
   @@index([tenantId, quoteId])
+}
+
+/**
+ * ============== NEW: Password reset tokens ==============
+ */
+model PasswordResetToken {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
 }
