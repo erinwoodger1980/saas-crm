@@ -198,7 +198,6 @@ export default function LeadModal({
     return map;
   }, [fieldDefs, tenantQ]);
 
-  // -------- helper: compute missing required questionnaire keys (above early return) --------
   const missingRequiredQ = useMemo(() => {
     const required = (tenantQ || []).filter((q) => q.required);
     const custom = form?.custom || {};
@@ -218,19 +217,17 @@ export default function LeadModal({
     setSaving(false);
   }
 
-  /* ---------- ACTIONS (exact endpoints) ---------- */
+  /* ---------- ACTIONS ---------- */
 
   async function handleRequestInfo() {
     if (!details?.id) return;
     setSendingInfo(true);
     try {
-      // Call API (no body required by your server)
       await apiFetch(`/leads/${encodeURIComponent(details.id)}/request-info`, {
         method: "POST",
         json: {},
       });
 
-      // Update local state + DB status
       if (form?.status !== "INFO_REQUESTED") {
         await commit({ status: "INFO_REQUESTED" });
         setForm((f) => (f ? { ...f, status: "INFO_REQUESTED" } : f));
@@ -259,19 +256,15 @@ export default function LeadModal({
     if (!details?.id) return;
     setSendingSupplier(true);
     try {
-      // Get 'to' address (required by API)
       let to: string | null =
         (form?.custom?.lastSupplierEmailTo as string | undefined)?.trim() || null;
       if (!to) {
-        // Ask the user just once if not remembered
         to = window.prompt("Supplier email to send the quote request to?")?.trim() || null;
       }
       if (!to) throw new Error("Supplier email is required.");
 
-      // Optional fields payload
       const fields = form?.custom?.lastSupplierFields || undefined;
 
-      // Optional attachments (Gmail)
       const messageId = (form?.custom?.messageId as string | undefined) || undefined;
       const gmailAtts = (emailDetails?.attachments || []).map((a) => ({
         source: "gmail" as const,
@@ -281,13 +274,11 @@ export default function LeadModal({
       const attachments =
         messageId && gmailAtts.length ? gmailAtts : undefined;
 
-      // POST to the exact route your API exposes
       await apiFetch(`/leads/${encodeURIComponent(details.id)}/request-supplier-quote`, {
         method: "POST",
         json: { to, fields, attachments },
       });
 
-      // Persist breadcrumbs locally (subject may be set server-side)
       await commit({
         custom: {
           ...(form?.custom || {}),
@@ -298,10 +289,7 @@ export default function LeadModal({
         } as any,
       });
 
-      toast({
-        title: "Outsourcing email sent",
-        description: `Sent to ${to}`,
-      });
+      toast({ title: "Outsourcing email sent", description: `Sent to ${to}` });
     } catch (e: any) {
       console.error(e);
       toast({
@@ -312,6 +300,49 @@ export default function LeadModal({
     } finally {
       setSendingSupplier(false);
     }
+  }
+
+  async function handleDisqualify() {
+    if (!details?.id) return;
+    const reason =
+      window.prompt("Reason for disqualifying this lead? (e.g. Not a fit, Budget, Timeline)")?.trim() ||
+      "";
+    if (!reason) return; // user cancelled
+    const patch: Partial<Lead> = {
+      status: "DISQUALIFIED",
+      custom: {
+        ...(form?.custom || {}),
+        disqualifiedReason: reason,
+        disqualifiedAt: new Date().toISOString(),
+      } as any,
+    };
+    await commit(patch);
+    setForm((f) =>
+      f
+        ? {
+            ...f,
+            status: "DISQUALIFIED",
+            custom: { ...(f.custom || {}), disqualifiedReason: reason, disqualifiedAt: new Date().toISOString() },
+          }
+        : f
+    );
+    toast({ title: "Lead disqualified", description: reason });
+  }
+
+  async function handleReopen() {
+    if (!details?.id) return;
+    const next = {
+      status: "NEW_ENQUIRY" as LeadStatus,
+      custom: { ...(form?.custom || {}) } as any,
+    };
+    delete (next.custom as any).disqualifiedReason;
+    delete (next.custom as any).disqualifiedAt;
+
+    await commit(next);
+    setForm((f) =>
+      f ? { ...f, status: "NEW_ENQUIRY", custom: next.custom } : f
+    );
+    toast({ title: "Lead reopened" });
   }
 
   /* ---------- RENDER ---------- */
@@ -333,6 +364,8 @@ export default function LeadModal({
       "lastSupplierAttachmentCount",
       "description",
       "threadId",
+      "disqualifiedReason",
+      "disqualifiedAt",
     ]);
 
     const entries = Object.entries(form!.custom || {}).filter(([k]) => !systemKeys.has(k));
@@ -384,6 +417,8 @@ export default function LeadModal({
     );
   };
 
+  const disqReason = form.custom?.disqualifiedReason as string | undefined;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[96vw] max-w-5xl p-0 overflow-hidden rounded-2xl shadow-2xl">
@@ -407,7 +442,6 @@ export default function LeadModal({
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-600">
                   <span>{saving ? "Saving…" : "Auto-saved"}</span>
                   <span className="text-slate-400">•</span>
-                  {/* Status pill (readable) + select control */}
                   <span className="rounded-full border px-2 py-0.5 bg-white text-slate-700">
                     {STATUS_LABELS[form.status]}
                   </span>
@@ -432,6 +466,35 @@ export default function LeadModal({
                     {quotePrep ? "Standard View" : "Quote Prep View"}
                   </Button>
                 </div>
+
+                {/* If disqualified, surface the reason inline */}
+                {form.status === "DISQUALIFIED" && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded-md bg-red-50 text-red-700 border border-red-200 px-2 py-1">
+                      Disqualified{disqReason ? ` — ${disqReason}` : ""}
+                    </span>
+                    <Button
+                      variant="secondary"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        const next = window.prompt("Update reason", disqReason || "")?.trim() || "";
+                        if (!next) return;
+                        const updated = {
+                          ...form.custom,
+                          disqualifiedReason: next,
+                          disqualifiedAt: form.custom?.disqualifiedAt || new Date().toISOString(),
+                        };
+                        setForm((f) => (f ? { ...f, custom: updated } : f));
+                        commit({ custom: updated });
+                      }}
+                    >
+                      Edit reason
+                    </Button>
+                    <Button variant="outline" className="h-7 px-2 text-xs" onClick={handleReopen}>
+                      Reopen lead
+                    </Button>
+                  </div>
+                )}
               </div>
             </DialogTitle>
 
@@ -443,6 +506,27 @@ export default function LeadModal({
 
         {/* BODY */}
         <div className="px-5 md:px-6 pb-6 overflow-y-auto max-h-[75vh]">
+          {/* NEW: Description editor (always at top) */}
+          <Section title="Description">
+            <LabeledTextarea
+              value={form.custom?.description || ""}
+              onChange={(v) =>
+                setForm((f) =>
+                  f ? { ...f, custom: { ...(f.custom || {}), description: v } } : f
+                )
+              }
+              onBlurCommit={(v) =>
+                commit({
+                  custom: {
+                    ...(form.custom || {}),
+                    description: v || "",
+                  } as any,
+                })
+              }
+              placeholder="Short summary of the enquiry, context, goals, budget, etc."
+            />
+          </Section>
+
           {quotePrep ? (
             <>
               <Section title="Customer">
@@ -553,10 +637,17 @@ export default function LeadModal({
             {sendingSupplier ? "Emailing…" : "Send Outsourcing Email"}
           </Button>
 
-          {/* Reject */}
+          {/* Disqualify */}
+          {form.status !== "DISQUALIFIED" && (
+            <Button variant="destructive" className="shadow-sm" onClick={handleDisqualify}>
+              Disqualify
+            </Button>
+          )}
+
+          {/* Reject (kept, separate from disqualify) */}
           {form.status !== "REJECTED" && (
             <Button
-              variant="destructive"
+              variant="outline"
               className="shadow-sm"
               onClick={() => commit({ status: "REJECTED" })}
             >
@@ -614,15 +705,51 @@ function LabeledInput({
   );
 }
 
+function LabeledTextarea({
+  value,
+  onChange,
+  onBlurCommit,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onBlurCommit?: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="space-y-1.5 block">
+      <textarea
+        className="w-full min-h-[96px] rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={(e) => onBlurCommit?.(e.target.value)}
+      />
+    </label>
+  );
+}
+
 function EmailMeta({ emailDetails, form }: { emailDetails: EmailDetails | null; form: any }) {
   const from = emailDetails?.from ?? form?.custom?.from;
   const date = emailDetails?.date ?? form?.custom?.date;
   const subject = emailDetails?.subject ?? form?.custom?.subject;
   return from || date || subject || form?.custom?.description ? (
     <div className="mb-2 text-[11px] text-slate-600 space-y-0.5">
-      {subject && <div><span className="text-slate-500">Subject:</span> {subject}</div>}
-      {from && <div><span className="text-slate-500">From:</span> {from}</div>}
-      {date && <div><span className="text-slate-500">Date:</span> {date}</div>}
+      {subject && (
+        <div>
+          <span className="text-slate-500">Subject:</span> {subject}
+        </div>
+      )}
+      {from && (
+        <div>
+          <span className="text-slate-500">From:</span> {from}
+        </div>
+      )}
+      {date && (
+        <div>
+          <span className="text-slate-500">Date:</span> {date}
+        </div>
+      )}
       {form?.custom?.description && (
         <div className="italic text-slate-500">Description: {form.custom.description}</div>
       )}
