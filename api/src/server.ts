@@ -26,6 +26,7 @@ import billingRouter, { webhook as stripeWebhook } from "./routes/billing";
 import quotesRouter from "./routes/quotes";
 import publicSignupRouter from "./routes/public-signup";
 import authSetupRouter from "./routes/auth-setup";
+import analyticsDashboardRouter from "./routes/analytics-dashboard";
 
 const app = express();
 
@@ -253,6 +254,7 @@ app.use("/tenant", requireAuth, tenantsRouter);
 app.use("/billing", billingRouter);
 app.use("/quotes", quotesRouter);
 app.use("/auth/setup", authSetupRouter);
+app.use("/analytics/dashboard", requireAuth, analyticsDashboardRouter);
 
 /** DB Debug */
 app.get("/__debug/db", async (_req, res) => {
