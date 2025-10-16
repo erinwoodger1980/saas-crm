@@ -1,40 +1,47 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch, setJwt } from "@/lib/api";
 
 export default function SetupClient() {
   const params = useSearchParams();
   const router = useRouter();
 
-  // From thank-you page redirect: /setup?setup_jwt=...
-  const tokenFromUrl = params.get("setup_jwt") || "";
-
-  const [setupJwt, setSetupJwt] = useState(tokenFromUrl);
+  // Prefer fresh token from URL, else fall back to sessionStorage.
+  const tokenFromUrl = params.get("setup_jwt") || null;
+  const [setupJwt, setSetupJwt] = useState<string | null>(tokenFromUrl);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
 
+  // Save token from URL → sessionStorage; or restore from sessionStorage.
   useEffect(() => {
-    if (tokenFromUrl) setSetupJwt(tokenFromUrl);
-  }, [tokenFromUrl]);
+    if (tokenFromUrl) {
+      sessionStorage.setItem("setup_jwt", tokenFromUrl);
+      setSetupJwt(tokenFromUrl);
+    } else if (!setupJwt) {
+      const cached = sessionStorage.getItem("setup_jwt");
+      if (cached) setSetupJwt(cached);
+    }
+  }, [tokenFromUrl, setupJwt]);
+
+  const canSubmit = useMemo(
+    () => !!setupJwt && password.length >= 8 && password === confirm && !loading,
+    [setupJwt, password, confirm, loading]
+  );
 
   async function submit() {
     setErr(null);
-
-    if (!setupJwt) return setErr("Missing setup token. Open the link from the thank-you page.");
-    if (!password || password.length < 8) {
-      return setErr("Password must be at least 8 characters.");
-    }
-    if (password !== confirm) {
-      return setErr("Passwords do not match.");
-    }
+    if (!setupJwt) return setErr("Missing setup token. Please return via the thank-you page.");
+    if (password.length < 8) return setErr("Password must be at least 8 characters.");
+    if (password !== confirm) return setErr("Passwords do not match.");
 
     setLoading(true);
     try {
+      // Your existing backend route
       const { jwt } = await apiFetch<{ jwt: string }>("/auth/setup/complete", {
         method: "POST",
         json: { setup_jwt: setupJwt, password },
@@ -42,8 +49,9 @@ export default function SetupClient() {
 
       if (!jwt) throw new Error("No token returned");
       setJwt(jwt);
+      sessionStorage.removeItem("setup_jwt");
       setOk(true);
-      setTimeout(() => router.push("/dashboard"), 900);
+      setTimeout(() => router.push("/dashboard"), 700);
     } catch (e: any) {
       setErr(e?.message || "Failed to complete setup");
       setLoading(false);
@@ -57,21 +65,8 @@ export default function SetupClient() {
         Finish setting up your account by creating a password.
       </p>
 
-      {/* If for any reason the user hit /setup directly, allow pasting the token */}
-      {!tokenFromUrl && (
-        <div className="mb-4">
-          <label className="block text-sm text-gray-600 mb-1">Setup token</label>
-          <input
-            className="w-full border rounded p-2 font-mono"
-            placeholder="Paste setup_jwt"
-            value={setupJwt}
-            onChange={(e) => setSetupJwt(e.target.value)}
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            You get this automatically when coming from the Stripe success page.
-          </p>
-        </div>
-      )}
+      {/* Hidden token input for forms / autofill tools (not visible to user) */}
+      <input type="hidden" name="setup_jwt" value={setupJwt ?? ""} />
 
       <div className="space-y-4">
         <div>
@@ -82,6 +77,7 @@ export default function SetupClient() {
             placeholder="At least 8 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
           />
         </div>
 
@@ -93,8 +89,15 @@ export default function SetupClient() {
             placeholder="Re-enter password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
           />
         </div>
+
+        {!setupJwt && (
+          <div className="border border-red-300 bg-red-50 text-red-700 p-3 rounded">
+            Missing setup token. Please open the “Continue to Setup” link from the thank-you page.
+          </div>
+        )}
 
         {err && (
           <div className="border border-red-300 bg-red-50 text-red-700 p-3 rounded">
@@ -109,8 +112,10 @@ export default function SetupClient() {
 
         <button
           onClick={submit}
-          disabled={loading}
-          className="w-full bg-black text-white rounded px-5 py-3"
+          disabled={!canSubmit}
+          className={`w-full rounded px-5 py-3 text-white ${
+            canSubmit ? "bg-black hover:bg-gray-800" : "bg-black/50 cursor-not-allowed"
+          }`}
         >
           {loading ? "Saving…" : "Finish setup"}
         </button>
