@@ -46,7 +46,7 @@ const corsOptions: cors.CorsOptions = {
     // same-origin / server-to-server has no Origin header
     if (!origin) return cb(null, true);
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    // (optional) allow bare apex if you only provided www
+    // accept apex vs www mismatch (best-effort)
     const host = origin.replace(/^https?:\/\//, "");
     if (ALLOWED_ORIGINS.some((o) => o.includes(host))) return cb(null, true);
     return cb(new Error(`CORS: origin not allowed: ${origin}`));
@@ -58,25 +58,20 @@ const corsOptions: cors.CorsOptions = {
 
 // Must go before routes
 app.use(cors(corsOptions));
-// Make OPTIONS preflight reply with the same headers
-app.options("*", cors(corsOptions));
+// If you explicitly want to handle OPTIONS, Express 5 requires a real pattern, not "*"
+app.options("(.*)", cors(corsOptions));
 
-// Stripe webhook requires raw body
+/** Stripe webhook requires raw body — mount BEFORE express.json() */
 app.post(
   "/billing/webhook",
   express.raw({ type: "application/json" }),
   stripeWebhook
 );
-/**
- * Stripe webhook NOTE:
- * If/when you add a real billing router with a webhook,
- * it must be mounted with `express.raw()` BEFORE `express.json()`.
- */
 
 /** JSON parser comes after potential raw webhook route */
 app.use(express.json({ limit: "2mb" }));
 
-/** Quick probe to test CORS/headers from the browser (added after CORS + JSON) */
+/** Quick probe to test CORS/headers from the browser */
 app.get("/api-check", (req, res) => {
   res.json({
     ok: true,
@@ -87,6 +82,8 @@ app.get("/api-check", (req, res) => {
 
 /** Public (no auth required) */
 app.use("/public", publicRouter);
+// keep signup endpoints separate to avoid confusion/collisions with other public routes
+app.use("/public-signup", publicSignupRouter);
 
 /** JWT decode middleware — reads header or cookie, sets req.auth */
 app.use((req, _res, next) => {
@@ -244,7 +241,7 @@ app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);
 app.use("/leads/ai", leadsAiRouter);
 app.use("/ms365", ms365Router);
-/** FIX: mount follow-up routes under /ai/followup (was overriding /ai) */
+// mount follow-up under its own prefix so it doesn't shadow /ai
 app.use("/ai/followup", aiFollowupRouter);
 app.use("/opportunities", opportunitiesRouter);
 app.use("/settings/inbox", requireAuth, settingsInboxRouter);
@@ -253,7 +250,6 @@ app.use("/analytics", requireAuth, analyticsRouter);
 app.use("/tenant", requireAuth, tenantsRouter);
 app.use("/billing", billingRouter);
 app.use("/quotes", quotesRouter);
-app.use("/public", publicSignupRouter);
 
 /** DB Debug */
 app.get("/__debug/db", async (_req, res) => {
@@ -264,7 +260,7 @@ app.get("/__debug/db", async (_req, res) => {
     const rows = await prisma.$queryRaw<
       Array<{ table_name: string }>
     >`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`;
-  res.json({ databaseUrl: masked, tables: rows.map((r) => r.table_name) });
+    res.json({ databaseUrl: masked, tables: rows.map((r) => r.table_name) });
   } catch (e: any) {
     res.status(500).json({ databaseUrl: masked, error: e?.message || String(e) });
   }
@@ -352,6 +348,7 @@ function startInboxWatcher() {
 startInboxWatcher();
 
 /* ---------------- 404 + Error handlers ---------------- */
+// No bare "*" — Express 5 compatible
 app.use((req, res) => res.status(404).json({ error: "not_found", path: req.path }));
 app.use((err: any, _req: any, res: any, _next: any) => {
   console.error(err);
