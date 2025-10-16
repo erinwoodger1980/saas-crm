@@ -2,8 +2,8 @@
 
 /** Sanitize + resolve the API base from envs */
 function sanitizeBase(v?: string | null): string {
-  const raw = (v ?? "").trim(); // remove hidden \n / spaces
-  const val = (raw || "http://localhost:4000").replace(/\/+$/g, ""); // strip trailing slashes
+  const raw = (v ?? "").trim();
+  const val = (raw || "http://localhost:4000").replace(/\/+$/g, "");
   if (!/^https?:\/\//i.test(val)) throw new Error("API base must include http/https");
   return val;
 }
@@ -35,6 +35,7 @@ export function setJwt(token: string) {
   try {
     localStorage.setItem("jwt", token);
   } catch {}
+  // Cookie is not used cross-domain, but keep it for localhost/subdomain cases
   const secure =
     typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `jwt=${encodeURIComponent(
@@ -62,20 +63,22 @@ export async function apiFetch<T = unknown>(
     : `${API_BASE}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
 
   const headers = new Headers(init.headers);
+  // Always send JSON unless caller overrides
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
 
-  // Attach Authorization header if we have a JWT (avoids cross-site cookie issues)
-  const jwt = getJwt();
-  if (jwt && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${jwt}`);
+  // Attach JWT as Bearer (critical for cross-domain API on Render)
+  const token = getJwt();
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   let body: BodyInit | null | undefined = init.body as any;
-
   if (init.json !== undefined) {
     body = JSON.stringify(init.json);
     if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   }
 
+  // Cookies are irrelevant cross-domain; leaving include is harmless
   const res = await fetch(url, { ...init, headers, body, credentials: "include" });
   const raw = await res.text();
   const json = raw ? safeJson(raw) : null;
@@ -83,11 +86,10 @@ export async function apiFetch<T = unknown>(
   if (!res.ok) {
     const msg = (json as any)?.error || (json as any)?.message || `Request failed ${res.status}`;
     const e = new Error(`${msg} for ${url}`) as any;
-    (e as any).status = res.status;
-    (e as any).body = raw;
+    e.status = res.status;
+    e.body = raw;
     throw e;
   }
-
   return (json as T) ?? ({} as T);
 }
 
@@ -99,10 +101,7 @@ function safeJson(t: string) {
   }
 }
 
-/* ---------------- Dev helper: ensureDemoAuth ----------------
-   Some pages import this. In dev, it tries a normal login first,
-   then falls back to /seed. In prod it quickly no-ops.
----------------------------------------------------------------- */
+/* ---------------- Dev helper: ensureDemoAuth ---------------- */
 
 export async function ensureDemoAuth(): Promise<boolean> {
   if (typeof window === "undefined") return false;
@@ -123,9 +122,7 @@ export async function ensureDemoAuth(): Promise<boolean> {
         return true;
       }
     }
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 
   // Fallback: ask API to create demo tenant/user and return a token
   try {
@@ -137,9 +134,7 @@ export async function ensureDemoAuth(): Promise<boolean> {
         return true;
       }
     }
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 
   return false;
 }
