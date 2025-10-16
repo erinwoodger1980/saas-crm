@@ -1,4 +1,3 @@
-// api/src/server.ts
 import express from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
@@ -35,18 +34,23 @@ const app = express();
  * ---------------------------------------------------- */
 app.set("trust proxy", 1);
 
-/** --- CORS (allow cookies + auth header, proper preflight) --- */
-const ALLOWED_ORIGINS = (process.env.WEB_ORIGIN || "http://localhost:3000")
-  .split(",")
+/** ---------- CORS (allow cookies + Authorization header) ---------- */
+const ORIGINS_RAW =
+  process.env.WEB_ORIGIN || process.env.ALLOWED_ORIGINS || "http://localhost:3000";
+
+const ALLOWED_ORIGINS = ORIGINS_RAW.split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true); // same-origin / server-to-server
+    if (!origin) return cb(null, true); // same-origin or server-to-server
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+
+    // Loose host match (helps with http/https discrepancies)
     const host = origin.replace(/^https?:\/\//, "");
     if (ALLOWED_ORIGINS.some((o) => o.includes(host))) return cb(null, true);
+
     cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
   credentials: true,
@@ -55,15 +59,10 @@ const corsOptions: cors.CorsOptions = {
 };
 
 app.use(cors(corsOptions));
-// ✅ Express 5 compatible catch-all for preflight:
-app.options(/.*/, cors(corsOptions));
+app.options(/.*/, cors(corsOptions)); // preflight for all routes
 
-/** Stripe webhook requires raw body — mount BEFORE express.json() */
-app.post(
-  "/billing/webhook",
-  express.raw({ type: "application/json" }),
-  stripeWebhook
-);
+/** ---------- Stripe webhook (raw body) BEFORE express.json() ---------- */
+app.post("/billing/webhook", express.raw({ type: "application/json" }), stripeWebhook);
 
 /** JSON parser comes after potential raw webhook route */
 app.use(express.json({ limit: "2mb" }));
@@ -73,27 +72,29 @@ app.get("/api-check", (req, res) => {
   res.json({
     ok: true,
     originReceived: req.headers.origin || null,
-    allowList: (process.env.WEB_ORIGIN || "").split(",").map((s) => s.trim()),
+    allowList: ALLOWED_ORIGINS,
   });
 });
 
-/** Public (no auth required) */
+/** ---------- Public (no auth required) ---------- */
 app.use("/public", publicRouter);
 
-// keep existing mounts
-app.use("/public-signup", publicSignupRouter);
+/**
+ * The public-signup router registers '/signup' internally.
+ * Mounting it under '/public' exposes '/public/signup' and related paths.
+ * (Avoid mounting the same router at multiple bases to prevent duplicates.)
+ */
 app.use("/public", publicSignupRouter);
 
-// ✅ add this so absolute paths inside the router still match
-app.use("/", publicSignupRouter);
-
-/** JWT decode middleware — reads header or cookie, sets req.auth */
+/** ---------- JWT decode middleware (Authorization header or jwt cookie) ---------- */
 app.use((req, _res, next) => {
   let token: string | null = null;
 
+  // Authorization: Bearer <token>
   const h = req.headers.authorization;
   if (h && h.startsWith("Bearer ")) token = h.slice(7);
 
+  // Fallback: jwt cookie
   if (!token && req.headers.cookie) {
     const m = req.headers.cookie.match(/(?:^|;\s*)jwt=([^;]+)/);
     if (m) token = decodeURIComponent(m[1]);
@@ -109,7 +110,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-/* ------------------ Debug helpers (dev only) ------------------ */
+/* ------------------ Debug helpers (safe to keep) ------------------ */
 app.use((req, _res, next) => {
   (req as any).__rawAuthHeader = req.headers.authorization || "";
   next();
