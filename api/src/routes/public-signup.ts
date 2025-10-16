@@ -15,14 +15,16 @@ function mustGet(name: string) {
   return v;
 }
 
-const STRIPE_SECRET_KEY = mustGet("STRIPE_SECRET_KEY");          // sk_test_...
-const PRICE_MONTHLY = mustGet("STRIPE_PRICE_MONTHLY");           // price_...
-const PRICE_ANNUAL  = mustGet("STRIPE_PRICE_ANNUAL");            // price_...
-const APP_URL       = mustGet("APP_URL");                        // https://joineryai.app
+const STRIPE_SECRET_KEY = mustGet("STRIPE_SECRET_KEY");      // sk_test_... or sk_live_...
+const PRICE_MONTHLY     = mustGet("STRIPE_PRICE_MONTHLY");   // price_...
+const PRICE_ANNUAL      = mustGet("STRIPE_PRICE_ANNUAL");    // price_...
+const APP_URL           = mustGet("APP_URL");                // e.g. https://joineryai.app
+
 if (!/^https?:\/\//i.test(APP_URL)) {
   throw new Error(`APP_URL must be absolute (http/https). Got: ${APP_URL}`);
 }
 
+// Note: omit apiVersion to use the SDK’s pinned version (avoids TS literal mismatch)
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 
 /**
@@ -30,28 +32,29 @@ const stripe = new Stripe(STRIPE_SECRET_KEY);
  * body: { company: string, email: string, password?: string, plan: "monthly"|"annual", promotionCode?: string }
  */
 router.post("/signup", async (req, res) => {
-  // Quick flag to show real error messages in prod when VERBOSE_ERRORS=1
+  // Make errors readable while debugging. Set VERBOSE_ERRORS=1 in Render to keep this in prod.
   const VERBOSE = process.env.VERBOSE_ERRORS === "1" || process.env.NODE_ENV !== "production";
   const say = (status: number, error: string, extra?: any) =>
     res.status(status).json(VERBOSE ? { error, ...extra } : { error: "internal_error" });
 
   try {
     const { company, email, password, plan, promotionCode } = req.body || {};
-    if (!company || !email || !plan) {
-      return res.status(400).json({ error: "company, email and plan are required" });
-    }
 
+    if (!company || !email || !plan) {
+      return say(400, "company, email and plan are required");
+    }
     const planNorm = String(plan).toLowerCase();
     if (planNorm !== "monthly" && planNorm !== "annual") {
-      return res.status(400).json({ error: "invalid_plan", detail: plan });
+      return say(400, "invalid_plan", { plan });
     }
 
-    // 1) Find-or-create Tenant + Admin user (idempotent for retries)
+    /* ---------- 1) Find-or-create Tenant ---------- */
     let tenant = await prisma.tenant.findFirst({ where: { name: company } });
     if (!tenant) {
       tenant = await prisma.tenant.create({ data: { name: company } });
     }
 
+    /* ---------- 2) Find-or-create Admin User ---------- */
     let user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
       const passwordHash = await bcrypt.hash(password || Math.random().toString(36).slice(2), 10);
@@ -61,19 +64,19 @@ router.post("/signup", async (req, res) => {
           email,
           role: "owner",
           passwordHash,
-          name: company + " Admin",
+          name: `${company} Admin`,
         },
       });
     }
 
-    // 2) Short-lived JWT for setup wizard after success redirect
+    /* ---------- 3) Short-lived JWT for setup after success ---------- */
     const setupToken = jwt.sign(
       { userId: user.id, tenantId: tenant.id, email: user.email, role: user.role },
       env.APP_JWT_SECRET,
       { expiresIn: "30m" }
     );
 
-    // 3) Stripe Customer (re-use if exists)
+    /* ---------- 4) Ensure Stripe Customer (reuse if present) ---------- */
     let customerId = tenant.stripeCustomerId || null;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -88,10 +91,20 @@ router.post("/signup", async (req, res) => {
       });
     }
 
-    // 4) Resolve price
+    /* ---------- 5) Resolve & preflight Price (fast fail on mismatch) ---------- */
     const priceId = planNorm === "annual" ? PRICE_ANNUAL : PRICE_MONTHLY;
+    try {
+      const price = await stripe.prices.retrieve(priceId);
+      if (!price?.id) return say(500, "stripe_price_lookup_failed", { priceId, message: "no id returned" });
+      if (!price.active) return say(500, "price_inactive", { priceId });
+    } catch (e: any) {
+      return say(500, "stripe_price_lookup_failed", {
+        priceId,
+        message: e?.message || String(e),
+      });
+    }
 
-    // 5) (Optional) founders / promo code → promotion_code id
+    /* ---------- 6) Optional promotion code (non-fatal if not found) ---------- */
     const founders = (process.env.FOUNDERS_PROMO_CODE || "").trim();
     const promoInput = (promotionCode || founders || "").trim() || undefined;
 
@@ -101,18 +114,17 @@ router.post("/signup", async (req, res) => {
         const list = await stripe.promotionCodes.list({ code: promoInput, active: true, limit: 1 });
         promotionCodeId = list.data[0]?.id ?? null;
         if (!promotionCodeId && VERBOSE) {
-          console.warn(`[public/signup] promo code not found or inactive: "${promoInput}"`);
+          console.warn(`[public/signup] promo not found or inactive: "${promoInput}"`);
         }
       } catch (e: any) {
-        // Don’t block signup if promo lookup fails—just allow user to enter it on Stripe
-        console.warn("[public/signup] promo lookup failed:", e?.message || e);
+        if (VERBOSE) console.warn("[public/signup] promo lookup failed:", e?.message || e);
       }
     }
 
-    // 6) Create Checkout Session
+    /* ---------- 7) Stripe Checkout Session ---------- */
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      customer: customerId,
+      customer: customerId!,
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: {
         trial_period_days: 14,
@@ -121,7 +133,9 @@ router.post("/signup", async (req, res) => {
       ...(promotionCodeId
         ? { discounts: [{ promotion_code: promotionCodeId }] }
         : { allow_promotion_codes: true }),
-      success_url: `${APP_URL}/signup/thank-you?session_id={CHECKOUT_SESSION_ID}&setup_jwt=${encodeURIComponent(setupToken)}`,
+      success_url: `${APP_URL}/signup/thank-you?session_id={CHECKOUT_SESSION_ID}&setup_jwt=${encodeURIComponent(
+        setupToken
+      )}`,
       cancel_url: `${APP_URL}/signup`,
       metadata: { tenantId: tenant.id, userId: user.id, plan: planNorm },
     });
@@ -131,11 +145,7 @@ router.post("/signup", async (req, res) => {
     console.error("[public/signup] failed:", e);
     const msg = e?.raw?.message || e?.message || "internal_error";
     const code = e?.code || e?.raw?.code;
-    return res.status(500).json(
-      process.env.VERBOSE_ERRORS === "1" || process.env.NODE_ENV !== "production"
-        ? { error: msg, code }
-        : { error: "internal_error" }
-    );
+    return res.status(500).json(VERBOSE ? { error: msg, code } : { error: "internal_error" });
   }
 });
 
