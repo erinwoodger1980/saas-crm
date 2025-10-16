@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
+import { useToast } from "@/components/ui/use-toast";
 
 const API_URL =
   (process.env.NEXT_PUBLIC_API_URL ||
@@ -102,6 +103,8 @@ export default function LeadModal({
   leadPreview: Lead | null;
   onAutoSave: (id: string, patch: Partial<Lead>) => Promise<void>;
 }) {
+  const { toast } = useToast();
+
   const [details, setDetails] = useState<Lead | null>(null);
   const [form, setForm] = useState<{
     contactName: string;
@@ -118,6 +121,10 @@ export default function LeadModal({
   const [loadingEmail, setLoadingEmail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [quotePrep, setQuotePrep] = useState(false);
+
+  // action states
+  const [sendingInfo, setSendingInfo] = useState(false);
+  const [sendingSupplier, setSendingSupplier] = useState(false);
 
   // fetch authoritative details when opened
   useEffect(() => {
@@ -191,6 +198,18 @@ export default function LeadModal({
     return map;
   }, [fieldDefs, tenantQ]);
 
+  // -------- helper: compute missing required questionnaire keys (above early return) --------
+  const missingRequiredQ = useMemo(() => {
+    const required = (tenantQ || []).filter((q) => q.required);
+    const custom = form?.custom || {};
+    return required
+      .filter((q) => {
+        const v = custom[q.key];
+        return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
+      })
+      .map((q) => q.key);
+  }, [tenantQ, form?.custom]);
+
   if (!open || !leadPreview || !form) return null;
 
   async function commit(patch: Partial<Lead>) {
@@ -198,6 +217,104 @@ export default function LeadModal({
     await onAutoSave(leadPreview!.id, patch);
     setSaving(false);
   }
+
+  /* ---------- ACTIONS (exact endpoints) ---------- */
+
+  async function handleRequestInfo() {
+    if (!details?.id) return;
+    setSendingInfo(true);
+    try {
+      // Call API (no body required by your server)
+      await apiFetch(`/leads/${encodeURIComponent(details.id)}/request-info`, {
+        method: "POST",
+        json: {},
+      });
+
+      // Update local state + DB status
+      if (form?.status !== "INFO_REQUESTED") {
+        await commit({ status: "INFO_REQUESTED" });
+        setForm((f) => (f ? { ...f, status: "INFO_REQUESTED" } : f));
+      }
+
+      toast({
+        title: "Info request sent",
+        description:
+          missingRequiredQ.length
+            ? `Asked for: ${missingRequiredQ.join(", ")}`
+            : "Asked client to complete the questionnaire.",
+      });
+    } catch (e: any) {
+      console.error(e);
+      toast({
+        title: "Failed to send info request",
+        description: e?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingInfo(false);
+    }
+  }
+
+  async function handleSendOutsourcingEmail() {
+    if (!details?.id) return;
+    setSendingSupplier(true);
+    try {
+      // Get 'to' address (required by API)
+      let to: string | null =
+        (form?.custom?.lastSupplierEmailTo as string | undefined)?.trim() || null;
+      if (!to) {
+        // Ask the user just once if not remembered
+        to = window.prompt("Supplier email to send the quote request to?")?.trim() || null;
+      }
+      if (!to) throw new Error("Supplier email is required.");
+
+      // Optional fields payload
+      const fields = form?.custom?.lastSupplierFields || undefined;
+
+      // Optional attachments (Gmail)
+      const messageId = (form?.custom?.messageId as string | undefined) || undefined;
+      const gmailAtts = (emailDetails?.attachments || []).map((a) => ({
+        source: "gmail" as const,
+        messageId: messageId!,
+        attachmentId: a.attachmentId!,
+      }));
+      const attachments =
+        messageId && gmailAtts.length ? gmailAtts : undefined;
+
+      // POST to the exact route your API exposes
+      await apiFetch(`/leads/${encodeURIComponent(details.id)}/request-supplier-quote`, {
+        method: "POST",
+        json: { to, fields, attachments },
+      });
+
+      // Persist breadcrumbs locally (subject may be set server-side)
+      await commit({
+        custom: {
+          ...(form?.custom || {}),
+          lastSupplierEmailTo: to,
+          lastSupplierEmailSubject:
+            (form?.custom?.lastSupplierEmailSubject as string) || undefined,
+          lastSupplierFields: fields || null,
+        } as any,
+      });
+
+      toast({
+        title: "Outsourcing email sent",
+        description: `Sent to ${to}`,
+      });
+    } catch (e: any) {
+      console.error(e);
+      toast({
+        title: "Failed to send outsourcing email",
+        description: e?.message || "Please check details and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingSupplier(false);
+    }
+  }
+
+  /* ---------- RENDER ---------- */
 
   function renderCustomGrid(style: "compact" | "spacious" = "compact") {
     const systemKeys = new Set([
@@ -232,7 +349,9 @@ export default function LeadModal({
       <div className={gridClass}>
         {entries.map(([k, v]) => (
           <div key={k} className="flex items-start justify-between gap-4">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">{allLabeledFields.get(k) || k}</div>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
+              {allLabeledFields.get(k) || k}
+            </div>
             <div className="text-sm text-slate-900 max-w-[22rem] break-words">{String(v)}</div>
           </div>
         ))}
@@ -414,6 +533,27 @@ export default function LeadModal({
 
         {/* FOOTER */}
         <DialogFooter className="gap-2 p-4 border-t bg-white/90 backdrop-blur">
+          {/* Request Info */}
+          <Button
+            variant="secondary"
+            className="shadow-sm"
+            onClick={handleRequestInfo}
+            disabled={sendingInfo || saving}
+          >
+            {sendingInfo ? "Sending…" : "Request Info"}
+          </Button>
+
+          {/* Send Outsourcing Email */}
+          <Button
+            variant="default"
+            className="shadow-sm"
+            onClick={handleSendOutsourcingEmail}
+            disabled={sendingSupplier || saving}
+          >
+            {sendingSupplier ? "Emailing…" : "Send Outsourcing Email"}
+          </Button>
+
+          {/* Reject */}
           {form.status !== "REJECTED" && (
             <Button
               variant="destructive"
