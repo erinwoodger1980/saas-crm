@@ -35,31 +35,27 @@ const app = express();
 app.set("trust proxy", 1);
 
 /** --- CORS (allow cookies + auth header, proper preflight) --- */
-// Allow one or more frontend origins via comma-separated env var
 const ALLOWED_ORIGINS = (process.env.WEB_ORIGIN || "http://localhost:3000")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
 const corsOptions: cors.CorsOptions = {
-  origin: (origin, cb) => {
-    // same-origin / server-to-server has no Origin header
-    if (!origin) return cb(null, true);
+  origin(origin, cb) {
+    if (!origin) return cb(null, true); // same-origin / server-to-server
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    // accept apex vs www mismatch (best-effort)
     const host = origin.replace(/^https?:\/\//, "");
     if (ALLOWED_ORIGINS.some((o) => o.includes(host))) return cb(null, true);
-    return cb(new Error(`CORS: origin not allowed: ${origin}`));
+    cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
-// Must go before routes
 app.use(cors(corsOptions));
-// If you explicitly want to handle OPTIONS, Express 5 requires a real pattern, not "*"
-app.options("(.*)", cors(corsOptions));
+// ✅ Express 5 compatible catch-all for preflight:
+app.options(/.*/, cors(corsOptions));
 
 /** Stripe webhook requires raw body — mount BEFORE express.json() */
 app.post(
@@ -82,7 +78,6 @@ app.get("/api-check", (req, res) => {
 
 /** Public (no auth required) */
 app.use("/public", publicRouter);
-// keep signup endpoints separate to avoid confusion/collisions with other public routes
 app.use("/public-signup", publicSignupRouter);
 
 /** JWT decode middleware — reads header or cookie, sets req.auth */
@@ -241,7 +236,6 @@ app.use("/mail", mailRouter);
 app.use("/gmail", gmailRouter);
 app.use("/leads/ai", leadsAiRouter);
 app.use("/ms365", ms365Router);
-// mount follow-up under its own prefix so it doesn't shadow /ai
 app.use("/ai/followup", aiFollowupRouter);
 app.use("/opportunities", opportunitiesRouter);
 app.use("/settings/inbox", requireAuth, settingsInboxRouter);
@@ -348,7 +342,6 @@ function startInboxWatcher() {
 startInboxWatcher();
 
 /* ---------------- 404 + Error handlers ---------------- */
-// No bare "*" — Express 5 compatible
 app.use((req, res) => res.status(404).json({ error: "not_found", path: req.path }));
 app.use((err: any, _req: any, res: any, _next: any) => {
   console.error(err);
