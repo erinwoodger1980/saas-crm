@@ -8,14 +8,15 @@ import { env } from "../env";
 
 const router = Router();
 
-/* ------------ Env validation (once) ------------ */
+/* ---------------------- Env & Stripe setup ---------------------- */
+
 function mustGet(name: string) {
   const v = (process.env[name] || "").trim();
   if (!v) throw new Error(`Missing required env: ${name}`);
   return v;
 }
 
-const STRIPE_SECRET_KEY = mustGet("STRIPE_SECRET_KEY");      // sk_test_... or sk_live_...
+const STRIPE_SECRET_KEY = mustGet("STRIPE_SECRET_KEY");      // sk_test_...
 const PRICE_MONTHLY     = mustGet("STRIPE_PRICE_MONTHLY");   // price_...
 const PRICE_ANNUAL      = mustGet("STRIPE_PRICE_ANNUAL");    // price_...
 const APP_URL           = mustGet("APP_URL");                // e.g. https://joineryai.app
@@ -24,38 +25,58 @@ if (!/^https?:\/\//i.test(APP_URL)) {
   throw new Error(`APP_URL must be absolute (http/https). Got: ${APP_URL}`);
 }
 
-// Use SDK’s pinned apiVersion (avoids TS literal mismatches)
+// use SDK’s pinned version (don’t pass apiVersion literal to avoid TS churn)
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 
-/** Quick debug endpoint to verify which APP_URL the API is using */
-router.get("/_debug/app-url", (_req, res) => {
-  res.json({ APP_URL });
-});
+const VERBOSE =
+  process.env.VERBOSE_ERRORS === "1" || process.env.NODE_ENV !== "production";
+const say = (res: any, status: number, error: string, extra?: any) =>
+  res.status(status).json(VERBOSE ? { error, ...extra } : { error: "internal_error" });
 
+/* ---------------------- POST /public/signup ---------------------- */
 /**
- * POST /public/signup
- * body: { company: string, email: string, password?: string, plan: "monthly"|"annual", promotionCode?: string }
+ * body: {
+ *   company: string,
+ *   email: string,
+ *   password?: string,           // optional; we auto-generate if omitted
+ *   plan: "monthly" | "annual",
+ *   promotionCode?: string       // optional code users may have
+ * }
+ *
+ * Returns: { url: string }  → Stripe Checkout redirect URL
  */
 router.post("/signup", async (req, res) => {
-  const VERBOSE = process.env.VERBOSE_ERRORS === "1" || process.env.NODE_ENV !== "production";
-  const say = (status: number, error: string, extra?: any) =>
-    res.status(status).json(VERBOSE ? { error, ...extra } : { error: "internal_error" });
-
   try {
-    const { company, email, password, plan, promotionCode } = req.body || {};
-    if (!company || !email || !plan) return say(400, "company, email and plan are required");
+    const { company, email, password, plan, promotionCode } = (req.body || {}) as {
+      company?: string;
+      email?: string;
+      password?: string;
+      plan?: string;
+      promotionCode?: string;
+    };
+
+    if (!company || !email || !plan) {
+      return say(res, 400, "company, email and plan are required");
+    }
 
     const planNorm = String(plan).toLowerCase();
-    if (planNorm !== "monthly" && planNorm !== "annual") return say(400, "invalid_plan", { plan });
+    if (planNorm !== "monthly" && planNorm !== "annual") {
+      return say(res, 400, "invalid_plan", { plan });
+    }
 
-    /* ---------- 1) Find-or-create Tenant ---------- */
+    /* 1) Find-or-create Tenant */
     let tenant = await prisma.tenant.findFirst({ where: { name: company } });
-    if (!tenant) tenant = await prisma.tenant.create({ data: { name: company } });
+    if (!tenant) {
+      tenant = await prisma.tenant.create({ data: { name: company } });
+    }
 
-    /* ---------- 2) Find-or-create Admin User ---------- */
+    /* 2) Find-or-create Admin user */
     let user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      const passwordHash = await bcrypt.hash(password || Math.random().toString(36).slice(2), 10);
+      const passwordHash = await bcrypt.hash(
+        password || Math.random().toString(36).slice(2),
+        10
+      );
       user = await prisma.user.create({
         data: {
           tenantId: tenant.id,
@@ -67,14 +88,14 @@ router.post("/signup", async (req, res) => {
       });
     }
 
-    /* ---------- 3) Short-lived JWT for setup ---------- */
+    /* 3) Short-lived JWT to finish setup after Stripe redirect */
     const setupToken = jwt.sign(
       { userId: user.id, tenantId: tenant.id, email: user.email, role: user.role },
       env.APP_JWT_SECRET,
       { expiresIn: "30m" }
     );
 
-    /* ---------- 4) Ensure Stripe Customer (reuse if present) ---------- */
+    /* 4) Ensure Stripe Customer (re-use if present) */
     let customerId = tenant.stripeCustomerId || null;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -89,17 +110,20 @@ router.post("/signup", async (req, res) => {
       });
     }
 
-    /* ---------- 5) Resolve & preflight Price ---------- */
+    /* 5) Resolve & preflight price */
     const priceId = planNorm === "annual" ? PRICE_ANNUAL : PRICE_MONTHLY;
     try {
       const price = await stripe.prices.retrieve(priceId);
-      if (!price?.id) return say(500, "stripe_price_lookup_failed", { priceId, message: "no id returned" });
-      if (!price.active) return say(500, "price_inactive", { priceId });
+      if (!price?.id) return say(res, 500, "stripe_price_lookup_failed", { priceId, reason: "no id" });
+      if (!price.active) return say(res, 500, "price_inactive", { priceId });
     } catch (e: any) {
-      return say(500, "stripe_price_lookup_failed", { priceId, message: e?.message || String(e) });
+      return say(res, 500, "stripe_price_lookup_failed", {
+        priceId,
+        message: e?.message || String(e),
+      });
     }
 
-    /* ---------- 6) Optional promotion code ---------- */
+    /* 6) Optional promo code (non-fatal) */
     const founders = (process.env.FOUNDERS_PROMO_CODE || "").trim();
     const promoInput = (promotionCode || founders || "").trim() || undefined;
 
@@ -116,7 +140,8 @@ router.post("/signup", async (req, res) => {
       }
     }
 
-    /* ---------- 7) Stripe Checkout Session ---------- */
+    /* 7) Checkout Session — success URL includes setup_jwt AND we
+          also store setup_jwt in metadata as a fallback for recovery */
     const successUrl = `${APP_URL}/signup/thank-you?session_id={CHECKOUT_SESSION_ID}&setup_jwt=${encodeURIComponent(
       setupToken
     )}`;
@@ -138,16 +163,48 @@ router.post("/signup", async (req, res) => {
         : { allow_promotion_codes: true }),
       success_url: successUrl,
       cancel_url: cancelUrl,
-      metadata: { tenantId: tenant.id, userId: user.id, plan: planNorm },
+      metadata: {
+        tenantId: tenant.id,
+        userId: user.id,
+        plan: planNorm,
+        setup_jwt: setupToken, // <-- fallback path used by /public/checkout-session
+      },
     });
 
-    // while debugging, include resolved URLs; front-end will only use `url`
-    return res.json({ url: session.url, successUrl, cancelUrl });
+    return res.json({ url: session.url });
   } catch (e: any) {
     console.error("[public/signup] failed:", e);
     const msg = e?.raw?.message || e?.message || "internal_error";
     const code = e?.code || e?.raw?.code;
-    return res.status(500).json(VERBOSE ? { error: msg, code } : { error: "internal_error" });
+    return res
+      .status(500)
+      .json(VERBOSE ? { error: msg, code } : { error: "internal_error" });
+  }
+});
+
+/* ---------------- GET /public/checkout-session ----------------- */
+/**
+ * Fallback to recover the setup_jwt if it wasn't carried in the URL.
+ * Client calls: /public/checkout-session?session_id=cs_123
+ * Returns: { setup_jwt: string }
+ */
+router.get("/checkout-session", async (req, res) => {
+  try {
+    const id = String(req.query.session_id || "");
+    if (!id) return say(res, 400, "missing session_id");
+
+    const s = await stripe.checkout.sessions.retrieve(id, { expand: ["customer"] });
+    const setupJwt =
+      (s.metadata as any)?.setup_jwt ||
+      // defensive: if you ever copy this to customer metadata
+      (s.customer && typeof s.customer === "object" && (s.customer as any).metadata?.setup_jwt) ||
+      null;
+
+    if (!setupJwt) return say(res, 404, "setup_jwt_not_found");
+    return res.json({ setup_jwt: setupJwt });
+  } catch (e: any) {
+    console.error("[public/checkout-session] failed:", e?.message || e);
+    return say(res, 500, "internal_error");
   }
 });
 
