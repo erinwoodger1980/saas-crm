@@ -1,13 +1,21 @@
+// web/src/lib/api.ts
 /** ------------------------------------------------------------
  * API helper utilities for the Joinery AI web app
  * ------------------------------------------------------------ */
 
-/** Base API URL (from env or default localhost) */
-const API_BASE =
-  (typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL) &&
-    (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL)!.replace(/\/$/, "")) ||
-  "http://localhost:4000";
+/** Sanitize + resolve API base from env */
+function sanitizeBase(v?: string | null): string {
+  const raw = (v ?? "").trim();                     // kill hidden \n / spaces
+  const val = (raw || "http://localhost:4000").replace(/\/+$/g, ""); // strip trailing slashes
+  if (!/^https?:\/\//i.test(val)) {
+    throw new Error("NEXT_PUBLIC_API_URL/BASE must include http/https");
+  }
+  return val;
+}
+
+export const API_BASE = sanitizeBase(
+  (typeof process !== "undefined" && (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL)) || ""
+);
 
 /* -------------------------------------------------------------
  * JWT helpers
@@ -15,7 +23,11 @@ const API_BASE =
 
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("jwt");
+  try {
+    return localStorage.getItem("jwt");
+  } catch {
+    return null;
+  }
 }
 
 export function setJwt(token: string) {
@@ -40,25 +52,24 @@ export function clearJwt() {
 
 /* -------------------------------------------------------------
  * apiFetch()
- * Generic fetch wrapper:
- *  - injects JWT
- *  - includes cookies
- *  - supports `json` body
- *  - parses JSON response (gracefully handles empty)
- *  - leaves 401 handling to the caller (no auto-logout)
  * ------------------------------------------------------------- */
 
 export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit & { json?: unknown } = {}
 ): Promise<T> {
-  const url = `${API_BASE}${path}`;
   const token = getJwt();
 
-  const headers = new Headers(init.headers);
-  let body: BodyInit | null | undefined = init.body as BodyInit | null | undefined;
+  // ensure path is trimmed and has a single leading slash
+  const cleanPath = (path || "").trim();
+  const url =
+    cleanPath.startsWith("http")
+      ? cleanPath
+      : `${API_BASE}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
 
-  // handle JSON helper
+  const headers = new Headers(init.headers);
+
+  let body: BodyInit | null | undefined = init.body as BodyInit | null | undefined;
   if (init.json !== undefined) {
     body = JSON.stringify(init.json);
     if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
@@ -70,7 +81,6 @@ export async function apiFetch<T = unknown>(
 
   const res = await fetch(url, { ...init, headers, body, credentials: "include" });
 
-  /* ---------- 401 handling: do NOT clear JWT automatically ---------- */
   if (res.status === 401) {
     let msg = "Unauthorized";
     try {
@@ -80,36 +90,45 @@ export async function apiFetch<T = unknown>(
     throw new Error(msg);
   }
 
-  /* ---------- other errors ---------- */
+  const raw = await res.text();
+  const maybeJson = safeJson(raw);
+
   if (!res.ok) {
-    let msg = `Request failed ${res.status} ${res.statusText}`;
-    try {
-      const t = await res.text();
-      if (t) {
-        try {
-          const j = JSON.parse(t);
-          msg = j?.error || j?.message || msg;
-        } catch {
-          msg = t || msg;
-        }
-      }
-    } catch {}
-    throw new Error(`${msg} for ${url}`);
+    const msg =
+      (maybeJson as any)?.error ||
+      (maybeJson as any)?.message ||
+      `Request failed ${res.status} ${res.statusText}`;
+    const e = new Error(`${msg} for ${url}`) as any;
+    e.status = res.status;
+    e.body = raw;
+    throw e;
   }
 
-  /* ---------- success ---------- */
-  const text = await res.text();
-  return (text ? (JSON.parse(text) as T) : ({} as T)) as T;
+  return (maybeJson as T) ?? ({} as T);
+}
+
+function safeJson(text: string) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 /* -------------------------------------------------------------
  * ensureDemoAuth()
- * - if JWT missing, try demo login or /seed
+ * Only runs locally; never hit /seed in production.
  * ------------------------------------------------------------- */
 
 export async function ensureDemoAuth(): Promise<boolean> {
   if (typeof window === "undefined") return false;
   if (getJwt()) return true;
+
+  const isLocal =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+
+  if (!isLocal) return false; // ⛔️ don’t run in prod
 
   try {
     const login = await fetch(`${API_BASE}/auth/login`, {
@@ -125,9 +144,7 @@ export async function ensureDemoAuth(): Promise<boolean> {
         return true;
       }
     }
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 
   try {
     const seeded = await fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" });
@@ -138,9 +155,7 @@ export async function ensureDemoAuth(): Promise<boolean> {
         return true;
       }
     }
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 
   return false;
 }
