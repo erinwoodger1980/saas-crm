@@ -239,7 +239,7 @@ router.get("/connection", async (req, res) => {
 });
 
 /* ============================================================
-   OAuth start JSON -> /gmail/connect/start  (for UI “Auth URL not provided”)
+   OAuth start JSON -> /gmail/connect/start
    ============================================================ */
 function buildAuthUrl(tenantId: string, userId?: string) {
   const clientId = env.GMAIL_CLIENT_ID;
@@ -305,24 +305,50 @@ router.get("/connect", (req, res) => {
 });
 
 /* ============================================================
-   OAuth callback
+   OAuth callback  (robust state parsing + JWT fallback)
    ============================================================ */
 router.get("/oauth/callback", async (req, res) => {
-  const { code, state, error } = req.query as Record<string, string>;
-  if (error) return res.status(400).send(`OAuth error: ${error}`);
-  if (!code) return res.status(400).send("Missing ?code");
+  const q = req.query as Record<string, string | undefined>;
+  if (q.error) return res.status(400).send(`OAuth error: ${q.error}`);
+  if (!q.code) return res.status(400).send("Missing ?code");
 
+  // 1) Parse state robustly (raw → decodeURIComponent → JSON.parse)
   let parsed: { tenantId?: string; userId?: string } = {};
-  try {
-    parsed = state ? JSON.parse(state) : {};
-  } catch {}
+  const raw = q.state ?? "";
+  const candidates: string[] = [];
+  if (raw) candidates.push(raw);
+  try { if (raw) candidates.push(decodeURIComponent(raw)); } catch {}
+
+  for (const s of candidates) {
+    try {
+      const j = JSON.parse(s);
+      if (j && typeof j === "object") { parsed = j; break; }
+    } catch {}
+  }
+
+  // 2) Fallback: derive tenant from JWT (Authorization header or jwt cookie)
+  if (!parsed.tenantId) {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+      const cookieToken = (req.headers.cookie || "").match(/(?:^|;\s*)jwt=([^;]+)/)?.[1];
+      const token = bearer || (cookieToken ? decodeURIComponent(cookieToken) : null);
+      if (token) {
+        const decoded = jwt.verify(token, env.APP_JWT_SECRET) as any;
+        parsed.tenantId = decoded?.tenantId;
+        parsed.userId = decoded?.userId ?? parsed.userId;
+      }
+    } catch {}
+  }
+
   if (!parsed.tenantId) return res.status(400).send("Missing tenantId in state");
 
+  // 3) Exchange code for tokens
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      code,
+      code: q.code!,
       client_id: env.GMAIL_CLIENT_ID,
       client_secret: env.GMAIL_CLIENT_SECRET,
       redirect_uri: env.GMAIL_REDIRECT_URI || "http://localhost:4000/gmail/oauth/callback",
@@ -338,11 +364,11 @@ router.get("/oauth/callback", async (req, res) => {
   const { id_token, refresh_token } = tokens as { id_token?: string; refresh_token?: string };
   let gmailAddress: string | null = null;
   if (id_token) {
-    const payloadB64 = String(id_token).split(".")[1];
-    if (payloadB64) {
+    try {
+      const payloadB64 = String(id_token).split(".")[1];
       const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8"));
       gmailAddress = payload?.email || null;
-    }
+    } catch {}
   }
   if (!refresh_token) {
     return res
@@ -548,6 +574,7 @@ router.get("/thread/:threadId", async (req, res) => {
    ============================================================ */
 
 async function findLeadForInbound(tenantId: string, fromAddr: string | null, threadId: string | null) {
+  // 1) If we already have a thread linked to a lead, use it.
   if (threadId) {
     const t = await prisma.emailThread.findUnique({
       where: { tenantId_provider_threadId: { tenantId, provider: "gmail", threadId } },
@@ -555,6 +582,7 @@ async function findLeadForInbound(tenantId: string, fromAddr: string | null, thr
     });
     if (t?.leadId) return t.leadId;
   }
+  // 2) Fallback: exact email match to existing lead
   if (fromAddr) {
     const lead = await prisma.lead.findFirst({
       where: { tenantId, email: fromAddr.toLowerCase() },
@@ -575,6 +603,7 @@ router.post("/import", async (req, res) => {
   try {
     const accessToken = await getAccessTokenForTenant(tenantId);
 
+    // List messages
     const listRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?${new URLSearchParams({
         q,
@@ -589,6 +618,7 @@ router.post("/import", async (req, res) => {
     const results: any[] = [];
 
     for (const m of messages) {
+      // Create EmailIngest row first (idempotent). If present, skip FULL processing but do minimal thread sync.
       let createdIngest = false;
       try {
         await prisma.emailIngest.create({
@@ -599,8 +629,11 @@ router.post("/import", async (req, res) => {
           },
         });
         createdIngest = true;
-      } catch {}
+      } catch {
+        // already indexed previously — still try to ensure thread+message exist (defensive)
+      }
 
+      // Pull message
       const msg = await fetchMessage(accessToken, m.id, "full");
       const headers = msg.payload?.headers || [];
       const subject = pickHeader(headers, "Subject") || "";
@@ -617,6 +650,7 @@ router.post("/import", async (req, res) => {
       const snippet = msg.snippet || "";
       const threadId = msg.threadId || null;
 
+      // Upsert EmailThread
       const thread = await prisma.emailThread.upsert({
         where: { tenantId_provider_threadId: { tenantId, provider: "gmail", threadId: threadId || `single:${m.id}` } },
         update: { subject: subject || undefined, updatedAt: new Date() },
@@ -628,10 +662,13 @@ router.post("/import", async (req, res) => {
         },
       });
 
+      // Find or create lead
       let leadId = await findLeadForInbound(tenantId, fromAddr, threadId);
 
+      // If new conversation and no lead yet → attempt AI/heuristics then create
       let createdLead = false;
       if (!leadId) {
+        // Run AI + heuristics ONLY if this is a brand new ingest
         let isLead = false;
         let ai: any = null;
         let heur = basicHeuristics(bodyText || "");
@@ -682,10 +719,12 @@ router.post("/import", async (req, res) => {
         }
       }
 
+      // Link thread to lead if we have one now
       if (leadId && !thread.leadId) {
         await prisma.emailThread.update({ where: { id: thread.id }, data: { leadId } });
       }
 
+      // Upsert EmailMessage (idempotent on (tenantId, provider, messageId))
       try {
         await prisma.emailMessage.create({
           data: {
@@ -703,13 +742,17 @@ router.post("/import", async (req, res) => {
             leadId: leadId || null,
           },
         });
-      } catch {}
+      } catch {
+        // already present
+      }
 
+      // Touch thread timestamps
       await prisma.emailThread.update({
         where: { id: thread.id },
         data: { lastInboundAt: new Date(), updatedAt: new Date(), ...(subject ? { subject } : {}) },
       });
 
+      // Update EmailIngest row (legacy)
       try {
         await prisma.emailIngest.update({
           where: { tenantId_provider_messageId: { tenantId, provider: "gmail", messageId: m.id } },
