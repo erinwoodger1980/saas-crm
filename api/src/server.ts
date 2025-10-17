@@ -28,6 +28,9 @@ import publicSignupRouter from "./routes/public-signup";
 import authSetupRouter from "./routes/auth-setup";
 import analyticsDashboardRouter from "./routes/analytics-dashboard";
 
+/** ML proxy (→ forwards to FastAPI) */
+import mlProxyRouter from "./routes/ml";
+
 const app = express();
 
 /* ------------------------------------------------------
@@ -79,13 +82,14 @@ app.get("/api-check", (req, res) => {
 
 /** ---------- Public (no auth required) ---------- */
 app.use("/public", publicRouter);
-
-/**
- * The public-signup router registers '/signup' internally.
- * Mounting it under '/public' exposes '/public/signup' and related paths.
- * (Avoid mounting the same router at multiple bases to prevent duplicates.)
- */
+/** public-signup exposes /public/signup and friends */
 app.use("/public", publicSignupRouter);
+
+/** ---------- ML proxy (no auth; read-only) ----------
+ *  /ml/health and /ml/predict forward to your FastAPI service.
+ *  Make sure ML_URL is set on Render (e.g. https://ml-web-tann.onrender.com)
+ */
+app.use("/ml", mlProxyRouter);
 
 /** ---------- JWT decode middleware (Authorization header or jwt cookie) ---------- */
 app.use((req, _res, next) => {
