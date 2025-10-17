@@ -1,60 +1,193 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
+type DashboardData = {
+  totalLeads: number;
+  monthLeads: number;
+  disqualified: number;
+  won: number;
+  reasonCounts: Record<string, number>;
+};
+
 export default function DashboardPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // --- ML tester state ---
+  const [area, setArea] = useState<number>(12);
+  const [grade, setGrade] = useState<"Basic" | "Standard" | "Premium">("Standard");
+  const [mlLoading, setMlLoading] = useState(false);
+  const [mlResult, setMlResult] = useState<{ predicted_price?: number; win_probability?: number; error?: string } | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await apiFetch("/analytics/dashboard");
+        const res = await apiFetch<DashboardData>("/analytics/dashboard");
         setData(res);
       } catch (e) {
         console.error("Failed to load dashboard:", e);
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
 
-  if (!data) return <div className="p-6">Loading dashboard…</div>;
+  const reasonData = useMemo(
+    () => Object.entries(data?.reasonCounts || {}).map(([name, value]) => ({ name, value })),
+    [data]
+  );
 
-  const reasonData = Object.entries(data.reasonCounts || {}).map(([name, value]) => ({
-    name,
-    value,
-  }));
+  const COLORS = ["#10b981", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6", "#14b8a6", "#f97316"];
 
-  const COLORS = ["#10b981", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6"];
+  async function runPrediction() {
+    setMlLoading(true);
+    setMlResult(null);
+    try {
+      // 1) try via API proxy (recommended)
+      try {
+        const res = await apiFetch<{ predicted_price: number; win_probability: number }>("/ml/predict", {
+          method: "POST",
+          json: { area_m2: area, materials_grade: grade },
+        });
+        setMlResult(res);
+        setMlLoading(false);
+        return;
+      } catch (proxiedErr) {
+        // fall back to direct ML URL if provided
+      }
+
+      // 2) direct ML call if NEXT_PUBLIC_ML_URL is set
+      const ML_URL =
+        (typeof process !== "undefined" &&
+          (process.env.NEXT_PUBLIC_ML_URL || "")) || "";
+
+      if (!ML_URL) throw new Error("ML service not configured (NEXT_PUBLIC_ML_URL).");
+
+      const res = await fetch(`${ML_URL.replace(/\/$/, "")}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // NOTE: no cookies here; ML is a public FastAPI service
+        body: JSON.stringify({ area_m2: area, materials_grade: grade }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || `ML request failed ${res.status}`);
+      setMlResult(json);
+    } catch (e: any) {
+      setMlResult({ error: e?.message || "Prediction failed" });
+    } finally {
+      setMlLoading(false);
+    }
+  }
+
+  if (loading) return <div className="p-6">Loading dashboard…</div>;
 
   return (
     <main className="p-6 space-y-6">
-      <h1 className="text-2xl font-semibold mb-4">📊 Dashboard Overview</h1>
+      <h1 className="text-2xl font-semibold mb-2">📊 Dashboard Overview</h1>
+      <p className="text-slate-600 text-sm mb-4">
+        Quick snapshot of your pipeline plus a live ML prediction tester.
+      </p>
 
+      {/* Top metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Metric title="Total Leads" value={data.totalLeads} />
-        <Metric title="New This Month" value={data.monthLeads} />
-        <Metric title="Disqualified" value={data.disqualified} />
-        <Metric title="Won" value={data.won} />
+        <Metric title="Total Leads" value={data?.totalLeads ?? 0} />
+        <Metric title="New This Month" value={data?.monthLeads ?? 0} />
+        <Metric title="Disqualified" value={data?.disqualified ?? 0} />
+        <Metric title="Won" value={data?.won ?? 0} />
       </div>
 
-      <Card className="p-6">
-        <h2 className="text-lg font-semibold mb-4">Disqualification Reasons</h2>
-        {reasonData.length ? (
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie data={reasonData} dataKey="value" nameKey="name" outerRadius={120} label>
-                {reasonData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        ) : (
-          <p className="text-slate-500 text-sm">No disqualified leads yet.</p>
-        )}
-      </Card>
+      {/* Two columns: Pie + ML tester */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold mb-4">Disqualification Reasons</h2>
+          {reasonData.length ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie data={reasonData} dataKey="value" nameKey="name" outerRadius={120} label>
+                  {reasonData.map((entry, index) => (
+                    <Cell key={`cell-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-slate-500 text-sm">No disqualified leads yet.</p>
+          )}
+        </Card>
+
+        {/* ML Prediction tester */}
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold mb-4">🔮 Price & Win Probability (ML)</h2>
+          <p className="text-sm text-slate-600 mb-4">
+            Try a quick prediction using your trained model.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <label className="block">
+              <div className="text-xs text-slate-600 mb-1">Area (m²)</div>
+              <input
+                type="number"
+                min={1}
+                className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
+                value={area}
+                onChange={(e) => setArea(Math.max(1, Number(e.target.value || 1)))}
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-xs text-slate-600 mb-1">Materials grade</div>
+              <select
+                className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
+                value={grade}
+                onChange={(e) => setGrade(e.target.value as any)}
+              >
+                <option>Basic</option>
+                <option>Standard</option>
+                <option>Premium</option>
+              </select>
+            </label>
+
+            <div className="flex items-end">
+              <Button className="w-full" onClick={runPrediction} disabled={mlLoading}>
+                {mlLoading ? "Predicting…" : "Run Prediction"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Result */}
+          {mlResult && (
+            <div className="mt-4 rounded-lg border bg-slate-50 p-3 text-sm">
+              {mlResult.error ? (
+                <div className="text-red-600">Error: {mlResult.error}</div>
+              ) : (
+                <div className="space-y-1">
+                  <div>
+                    💰 Predicted Price:{" "}
+                    <b>£{Number(mlResult.predicted_price ?? 0).toLocaleString()}</b>
+                  </div>
+                  <div>
+                    🎯 Win Probability:{" "}
+                    <b>{Math.round(100 * Number(mlResult.win_probability ?? 0))}%</b>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Hint about configuration */}
+          <div className="mt-3 text-[11px] text-slate-500">
+            This calls <code>/ml/predict</code> on your API; if unavailable it falls back to{" "}
+            <code>NEXT_PUBLIC_ML_URL</code>.
+          </div>
+        </Card>
+      </div>
     </main>
   );
 }
