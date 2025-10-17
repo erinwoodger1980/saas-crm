@@ -117,7 +117,7 @@ model User {
   GmailTenantConnection GmailTenantConnection[] // reverse relation safety
   Ms365TenantConnection Ms365TenantConnection[] // reverse relation safety
 
-  // 🔽 NEW: back-relation for password resets
+  // 🔽 back-relation for password resets
   passwordResetToken PasswordResetToken?
 }
 
@@ -275,19 +275,33 @@ model LeadTrainingExample {
   @@index([tenantId, provider, messageId])
 }
 
+/**
+ * ✅ Unified TenantSettings (only ONE model)
+ */
 model TenantSettings {
   tenantId          String    @id
-  slug              String    @unique // public URL part
+  slug              String    @unique         // public URL part
   brandName         String
   introHtml         String?
   website           String?
   phone             String?
   logoUrl           String?
   links             Json?
+
+  // Questionnaire shown on public intake
   questionnaire     Json?
+
+  // Inbox configuration and status
   inbox             Json?
   inboxWatchEnabled Boolean   @default(false)
   inboxLastRun      DateTime?
+
+  // Default specs used when a line doesn’t specify them
+  // e.g. { "Screen": { "frameWidthMM":195, "frameDepthMM":44, "timberType":"Sapele", "finish":"None", "thicknessMM":45 }, "Door": { ... } }
+  quoteDefaults     Json?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model FollowUpLog {
@@ -434,7 +448,7 @@ model Quote {
   title         String
   status        QuoteStatus @default(DRAFT)
   currency      String      @default("GBP") // original currency
-  exchangeRate  Decimal? // rate to GBP (if applicable)
+  exchangeRate  Decimal?    // rate to GBP (if applicable)
   deliveryCost  Decimal?    @default(0)
   markupDefault Decimal?    @default(0) // e.g. 0.25 = 25%
 
@@ -494,7 +508,7 @@ model UploadedFile {
 }
 
 /**
- * ============== NEW: Password reset tokens ==============
+ * ============== Password reset tokens ==============
  */
 model PasswordResetToken {
   userId    String   @id
