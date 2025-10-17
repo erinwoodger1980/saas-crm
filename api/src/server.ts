@@ -29,6 +29,7 @@ import authSetupRouter from "./routes/auth-setup";
 import analyticsDashboardRouter from "./routes/analytics-dashboard";
 import quoteDefaultsRouter from "./routes/quote-defaults";
 import questionnaireFillRouter from "./routes/questionnaire-fill";
+import mlParseRouter from "./routes/ml-parse";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -263,6 +264,24 @@ app.use("/auth/setup", authSetupRouter);
 app.use("/analytics/dashboard", requireAuth, analyticsDashboardRouter);
 app.use("/quote-defaults", requireAuth, quoteDefaultsRouter);
 app.use("/questionnaire/fill", requireAuth, questionnaireFillRouter);
+
+
+/** ---------- Public (no auth required) ---------- */
+app.use("/public", publicRouter);
+app.use("/public", publicSignupRouter);
+
+/** ---------- Auth required from here ---------- */
+app.use((req, _res, next) => {
+  // (your existing JWT decode middleware is already here above in your file;
+  // if not, keep as you have it. Key point: ensure req.auth is set before mlParseRouter.)
+  next();
+});
+
+/** ---------- ML parse (requires auth) — keep BEFORE the ML proxy ---------- */
+app.use("/ml", mlParseRouter);
+
+/** ---------- ML proxy (forwards to FastAPI) ---------- */
+app.use("/ml", mlProxyRouter);
 
 /** DB Debug */
 app.get("/__debug/db", async (_req, res) => {
