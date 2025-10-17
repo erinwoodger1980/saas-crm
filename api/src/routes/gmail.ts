@@ -811,6 +811,33 @@ router.post("/disconnect", async (req, res) => {
     return res.status(500).json({ error: e?.message || "failed to disconnect" });
   }
 });
+/* ============================================================
+   Debug: server-side list (proxies Gmail with a fresh access token)
+   ============================================================ */
+router.get("/debug/list", async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const accessToken = await getAccessTokenForTenant(tenantId);
+    const max = String(Math.max(1, Math.min(Number(req.query.max || 5), 50)));
+    const q = String(req.query.q || "newer_than:30d");
+
+    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?${new URLSearchParams({
+      maxResults: max,
+      q,
+    }).toString()}`;
+
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const j = await r.json();
+    if (!r.ok) return res.status(r.status).json(j);
+    return res.json(j);
+  } catch (e: any) {
+    console.error("[gmail/debug/list]", e);
+    return res.status(500).json({ error: e?.message || "failed" });
+  }
+});
+
 
 /* ============================================================
    Back-compat start aliases
