@@ -28,6 +28,7 @@ import publicSignupRouter from "./routes/public-signup";
 import authSetupRouter from "./routes/auth-setup";
 import analyticsDashboardRouter from "./routes/analytics-dashboard";
 import quoteDefaultsRouter from "./routes/quote-defaults";
+import questionnaireFillRouter from "./routes/questionnaire-fill";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -261,6 +262,7 @@ app.use("/quotes", quotesRouter);
 app.use("/auth/setup", authSetupRouter);
 app.use("/analytics/dashboard", requireAuth, analyticsDashboardRouter);
 app.use("/quote-defaults", requireAuth, quoteDefaultsRouter);
+app.use("/questionnaire/fill", requireAuth, questionnaireFillRouter);
 
 /** DB Debug */
 app.get("/__debug/db", async (_req, res) => {
