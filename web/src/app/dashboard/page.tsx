@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import QuestionnaireDemo from "@/components/QuestionnaireDemo";
 
 type DashboardData = {
   totalLeads: number;
@@ -141,6 +142,8 @@ export default function DashboardPage() {
             <p className="text-slate-500 text-sm">No disqualified leads yet.</p>
           )}
         </Card>
+        {/* Questionnaire + ML demo */}
+<QuestionnaireDemo />
 
         {/* ML Prediction tester */}
         <Card className="p-6">
