@@ -12,11 +12,17 @@ type DashboardData = {
   disqualified: number;
   won: number;
   reasonCounts: Record<string, number>;
+  ml?: {
+    avgPredictedPrice: number | null;
+    avgWinProbability: number | null; // 0..1
+    sampleSizes: { price: number; win: number };
+  };
 };
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
   // --- ML tester state ---
   const [area, setArea] = useState<number>(12);
@@ -29,8 +35,9 @@ export default function DashboardPage() {
       try {
         const res = await apiFetch<DashboardData>("/analytics/dashboard");
         setData(res);
-      } catch (e) {
+      } catch (e: any) {
         console.error("Failed to load dashboard:", e);
+        setErr(e?.message || "Failed to load");
       } finally {
         setLoading(false);
       }
@@ -48,30 +55,27 @@ export default function DashboardPage() {
     setMlLoading(true);
     setMlResult(null);
     try {
-      // 1) try via API proxy (recommended)
+      // 1) Try through API proxy (recommended)
       try {
         const res = await apiFetch<{ predicted_price: number; win_probability: number }>("/ml/predict", {
           method: "POST",
           json: { area_m2: area, materials_grade: grade },
         });
         setMlResult(res);
-        setMlLoading(false);
         return;
-      } catch (proxiedErr) {
-        // fall back to direct ML URL if provided
+      } catch {
+        // fall back to direct
       }
 
-      // 2) direct ML call if NEXT_PUBLIC_ML_URL is set
+      // 2) Fallback to direct ML URL if provided
       const ML_URL =
         (typeof process !== "undefined" &&
           (process.env.NEXT_PUBLIC_ML_URL || "")) || "";
-
       if (!ML_URL) throw new Error("ML service not configured (NEXT_PUBLIC_ML_URL).");
 
       const res = await fetch(`${ML_URL.replace(/\/$/, "")}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // NOTE: no cookies here; ML is a public FastAPI service
         body: JSON.stringify({ area_m2: area, materials_grade: grade }),
       });
 
@@ -85,7 +89,13 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) return <div className="p-6">Loading dashboard…</div>;
+  if (err) return <div className="p-6 text-red-600">Error: {err}</div>;
+  if (loading || !data) return <div className="p-6">Loading dashboard…</div>;
+
+  const avgPrice = data.ml?.avgPredictedPrice ?? null;
+  const avgWin = data.ml?.avgWinProbability ?? null;
+  const nPrice = data.ml?.sampleSizes.price ?? 0;
+  const nWin = data.ml?.sampleSizes.win ?? 0;
 
   return (
     <main className="p-6 space-y-6">
@@ -95,11 +105,21 @@ export default function DashboardPage() {
       </p>
 
       {/* Top metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Metric title="Total Leads" value={data?.totalLeads ?? 0} />
-        <Metric title="New This Month" value={data?.monthLeads ?? 0} />
-        <Metric title="Disqualified" value={data?.disqualified ?? 0} />
-        <Metric title="Won" value={data?.won ?? 0} />
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
+        <Metric title="Total Leads" value={data.totalLeads} />
+        <Metric title="New This Month" value={data.monthLeads} />
+        <Metric title="Disqualified" value={data.disqualified} />
+        <Metric title="Won" value={data.won} />
+        <Metric
+          title="Avg Predicted Price"
+          value={avgPrice != null ? `£${Math.round(avgPrice).toLocaleString()}` : "—"}
+          subtitle={nPrice ? `from ${nPrice} lead${nPrice === 1 ? "" : "s"}` : undefined}
+        />
+        <Metric
+          title="Avg Win Probability"
+          value={avgWin != null ? `${Math.round(avgWin * 100)}%` : "—"}
+          subtitle={nWin ? `from ${nWin} lead${nWin === 1 ? "" : "s"}` : undefined}
+        />
       </div>
 
       {/* Two columns: Pie + ML tester */}
@@ -181,7 +201,6 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Hint about configuration */}
           <div className="mt-3 text-[11px] text-slate-500">
             This calls <code>/ml/predict</code> on your API; if unavailable it falls back to{" "}
             <code>NEXT_PUBLIC_ML_URL</code>.
@@ -192,12 +211,21 @@ export default function DashboardPage() {
   );
 }
 
-function Metric({ title, value }: { title: string; value: number }) {
+function Metric({
+  title,
+  value,
+  subtitle,
+}: {
+  title: string;
+  value: number | string;
+  subtitle?: string;
+}) {
   return (
     <Card className="shadow-md border bg-white/90">
       <CardContent className="p-4 text-center">
-        <div className="text-sm text-slate-600 mb-1">{title}</div>
+        <div className="text-xs text-slate-600 mb-1">{title}</div>
         <div className="text-2xl font-semibold">{value}</div>
+        {subtitle && <div className="mt-1 text-[11px] text-slate-500">{subtitle}</div>}
       </CardContent>
     </Card>
   );

@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
 import { useToast } from "@/components/ui/use-toast";
+import PredictionCard from "@/components/PredictionCard";
+import QuoteMLSuggest from "@/components/QuoteMLSuggest";
 
 const API_URL =
   (process.env.NEXT_PUBLIC_API_URL ||
@@ -555,6 +557,65 @@ export default function LeadModal({
                   />
                 </div>
                 <LeadSourceBlock />
+                {/* --- ML Suggestion --- */}
+<div className="mt-4">
+  <QuoteMLSuggest
+    getPayload={() => {
+      // Pull data from current form
+      const custom: any = form?.custom || {};
+      const area = Number(custom.area_m2 ?? custom.areaM2 ?? 0);
+      const grade = (custom.materials_grade ?? custom.materialsGrade ?? "Standard") as string;
+      const projectType = (custom.project_type ?? custom.projectType ?? null) as string | null;
+      const source = (custom.source as string) || null;
+
+      if (!area || !grade) return null;
+
+      return {
+        area_m2: area,
+        materials_grade: grade,
+        project_type: projectType,
+        lead_source: source,
+        region: "uk",
+      };
+    }}
+    onApplyPrice={(priceGBP) => {
+      // Save predicted price into lead.custom.predicted_price
+      const nextCustom = { ...(form?.custom || {}), predicted_price: priceGBP };
+      setForm((f) => (f ? { ...f, custom: nextCustom } : f));
+      commit({ custom: nextCustom });
+      toast({ title: "Applied ML predicted price", description: `£${priceGBP.toFixed(0)}` });
+    }}
+    onAddLine={(line) => {
+      // Optional — just log for now
+      console.log("Add line", line);
+      toast({ title: "ML line suggested", description: `${line.description}: £${line.unitPrice}` });
+    }}
+  />
+</div>
+                {/* ML Prediction */}
+<div className="mt-4">
+  <PredictionCard
+    getPayload={() => {
+      // pull values from the current lead form
+      const custom = (form?.custom || {}) as any;
+      const area = Number(custom.area_m2 || custom.areaM2 || 0);
+      const grade =
+        (custom.materials_grade ||
+          custom.materialsGrade ||
+          "Standard") as string;
+
+      if (!area || !grade) return null;
+
+      return {
+        area_m2: area,
+        materials_grade: grade,
+        project_type: (custom.projectType as string) || null,
+        lead_source: (custom.source as string) || null,
+        region: "uk",
+      };
+    }}
+  />
+</div>
               </Section>
 
               <Section title="Project / Questionnaire">{renderCustomGrid("spacious")}</Section>
