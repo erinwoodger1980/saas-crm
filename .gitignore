@@ -20,3 +20,6 @@ uploads/
 *.tar.gz
 *.tgz
 *.rar
+
+# ignore dependencies
+**/node_modules

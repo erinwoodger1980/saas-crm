@@ -1,0 +1,10 @@
+fastapi==0.114.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.0
+pandas==2.2.2
+numpy==1.26.4
+scikit-learn==1.5.2
+xgboost==2.1.1
+psycopg[binary]==3.2.1
+python-dotenv==1.0.1
+joblib==1.4.2
