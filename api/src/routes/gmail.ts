@@ -459,6 +459,20 @@ const EXT_FROM_MIME: Record<string, string> = {
 router.get(
   ["/message/:id/attachments/:attachmentId", "/message/:id/attachments/:attachmentId/download"],
   async (req, res) => {
+    // Allow ?jwt= to auth this request (so server->server fetch can work)
+try {
+  const qJwt = (req.query.jwt as string | undefined) || undefined;
+  if (qJwt && !req.auth) {
+    const decoded = jwt.verify(qJwt, env.APP_JWT_SECRET) as any;
+    (req as any).auth = {
+      tenantId: decoded.tenantId,
+      userId: decoded.userId,
+      email: decoded.email,
+    };
+  }
+} catch {
+  // ignore — if jwt invalid we’ll fall back to normal auth check below
+}
     try {
       const { tenantId } = getAuth(req);
       if (!tenantId) return res.status(401).send("unauthorized");
