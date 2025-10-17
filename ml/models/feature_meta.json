@@ -1,0 +1,50 @@
+{
+  "price": {
+    "trained": true,
+    "features": [
+      "area_m2",
+      "materials_grade",
+      "project_type",
+      "lead_source",
+      "region"
+    ],
+    "num_cols": [
+      "area_m2"
+    ],
+    "cat_cols": [
+      "materials_grade",
+      "project_type",
+      "lead_source",
+      "region"
+    ],
+    "mae": 5547.169767578125,
+    "rows": 25
+  },
+  "win": {
+    "trained": true,
+    "features": [
+      "area_m2",
+      "quote_value_gbp",
+      "num_emails_thread",
+      "days_to_first_reply",
+      "materials_grade",
+      "project_type",
+      "lead_source",
+      "region"
+    ],
+    "num_cols": [
+      "area_m2",
+      "quote_value_gbp",
+      "num_emails_thread",
+      "days_to_first_reply"
+    ],
+    "cat_cols": [
+      "materials_grade",
+      "project_type",
+      "lead_source",
+      "region"
+    ],
+    "auc": 0.33333333333333337,
+    "rows": 25
+  }
+}
