@@ -39,6 +39,26 @@ const app = express();
 /* ------------------------------------------------------
  * Core app setup
  * ---------------------------------------------------- */
+// Allow ?jwt=<token> on attachment fetches (for ML server)
+app.use((req, _res, next) => {
+  // only for our attachment endpoints
+  const forAttachment =
+    req.path.startsWith("/gmail/message/") && req.path.includes("/attachments/");
+  if (!forAttachment) return next();
+
+  // if already authenticated (cookie or Authorization), carry on
+  if ((req as any).auth) return next();
+
+  const qJwt = (req.query.jwt as string | undefined) || undefined;
+  if (qJwt) {
+    try {
+      (req as any).auth = jwt.verify(qJwt, env.APP_JWT_SECRET);
+    } catch {
+      // ignore; request will 401 in the handler like normal
+    }
+  }
+  next();
+});
 app.set("trust proxy", 1);
 
 /** ---------- CORS (allow cookies + Authorization header) ---------- */
