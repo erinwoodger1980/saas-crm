@@ -1,4 +1,6 @@
 // api/src/routes/ml.ts
+import jwt from "jsonwebtoken";
+import { env } from "../env";
 import { Router } from "express";
 
 const router = Router();
@@ -93,8 +95,19 @@ router.post("/parse-quote", async (req, res) => {
  */
 router.post("/train", async (req, res) => {
   try {
-    const tenantId = (req as any)?.auth?.tenantId;
-    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    let tenantId = (req as any)?.auth?.tenantId;
+if (!tenantId) {
+  const header = req.headers.authorization || "";
+  if (header.startsWith("Bearer ")) {
+    try {
+      const decoded = jwt.verify(header.slice(7), env.APP_JWT_SECRET) as any;
+      tenantId = decoded?.tenantId;
+    } catch {
+      /* ignore */
+    }
+  }
+}
+if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "").trim();
     if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
