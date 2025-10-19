@@ -76,3 +76,23 @@ export async function gmailFetchAttachment(
 
   return { buffer, filename, mimeType };
 }
+// ------------------------------------------------------------
+// Fetch full Gmail message (metadata, minimal, or full)
+// ------------------------------------------------------------
+export async function fetchMessage(
+  accessToken: string,
+  messageId: string,
+  format: "minimal" | "full" | "metadata" = "full"
+): Promise<any> {
+  const rsp = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=${format}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (!rsp.ok) {
+    const err = await rsp.text();
+    throw new Error(`Gmail fetchMessage failed (${rsp.status}): ${err}`);
+  }
+
+  return rsp.json();
+}
