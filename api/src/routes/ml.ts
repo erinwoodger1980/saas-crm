@@ -2,9 +2,19 @@
 import { Router } from "express";
 
 const router = Router();
+
+// Resolve ML base URL once, ensure no trailing slash
 const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000")
   .trim()
   .replace(/\/$/, "");
+
+// Resolve our own API base (for calling internal endpoints) without trailing slash
+const API_BASE = (
+  process.env.APP_API_URL ||
+  process.env.API_URL ||
+  process.env.RENDER_EXTERNAL_URL ||
+  `http://localhost:${process.env.PORT || 4000}`
+).replace(/\/$/, "");
 
 /**
  * POST /ml/predict
@@ -34,13 +44,14 @@ router.post("/predict", async (req, res) => {
     if (!r.ok) return res.status(r.status).json(json);
     return res.json(json);
   } catch (e: any) {
-    console.error("[ml proxy] /predict failed:", e?.message || e);
+    console.error("[ml] /predict failed:", e?.message || e);
     return res.status(502).json({ error: "ml_unreachable" });
   }
 });
 
 /**
  * GET /ml/health
+ * Simple health probe to the ML service.
  */
 router.get("/health", async (_req, res) => {
   try {
@@ -53,7 +64,8 @@ router.get("/health", async (_req, res) => {
 
 /**
  * POST /ml/parse-quote
- * Body: { url: "https://.../gmail/message/.../attachments/...?...jwt=<token>" }
+ * Body: { url: "https://.../gmail/message/.../attachments/...?...jwt=<token>", filename?, quotedAt? }
+ * Forwards a single attachment URL to the ML service to extract structured quote data.
  */
 router.post("/parse-quote", async (req, res) => {
   try {
@@ -79,37 +91,32 @@ router.post("/parse-quote", async (req, res) => {
     }
     return res.json(json);
   } catch (e: any) {
-    console.error("[ml proxy] /parse-quote failed:", e?.message || e);
+    console.error("[ml] /parse-quote failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
 
 /**
  * POST /ml/train
- * 1) Calls /internal/ml/ingest-gmail to collect signed PDF URLs
- * 2) Sends those items to the ML server /train
+ * Flow:
+ * 1) Call /internal/ml/ingest-gmail to collect signed PDF URLs (scoped to tenant)
+ * 2) Send those items to the ML server /train
+ * 3) Persist parsed samples to DB via /internal/ml/save-samples
  */
 router.post("/train", async (req: any, res) => {
   try {
     const tenantId = req.auth?.tenantId as string | undefined;
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
-
     if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
 
     const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 500), 500));
-
-    const API_BASE =
-      (process.env.APP_API_URL ||
-        process.env.API_URL ||
-        process.env.RENDER_EXTERNAL_URL ||
-        `http://localhost:${process.env.PORT || 4000}`)!
-        .replace(/\/$/, "");
 
     // 1) Collect signed attachment URLs
     const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-gmail`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // forward the user's bearer token so the internal route sees the same tenant
         ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
       },
       body: JSON.stringify({ limit }),
@@ -128,9 +135,9 @@ router.post("/train", async (req: any, res) => {
       ? ingestJson.items.map((it: any) => ({
           messageId: it.messageId,
           attachmentId: it.attachmentId,
-          url: it.url ?? it.downloadUrl,            // <-- FIX: ML expects `url`
+          url: it.url ?? it.downloadUrl,    // ML expects `url`
           filename: it.filename ?? null,
-          quotedAt: it.sentAt ?? null,              // pass the Date header (if present)
+          quotedAt: it.sentAt ?? null,      // from the email "Date" header if present
         }))
       : [];
 
@@ -149,9 +156,60 @@ router.post("/train", async (req: any, res) => {
       return res.status(trainResp.status).json({ error: "ml_train_failed", detail: trainJson });
     }
 
-    return res.json({ ok: true, tenantId, received: items.length, ml: trainJson });
+    // 3) Persist parsed samples if available
+    const samples = Array.isArray(trainJson.samples) ? trainJson.samples : [];
+    let saved: any = { ok: true, inserted: 0 };
+    if (samples.length) {
+      // Build payload for internal save
+      const savePayload = {
+        samples: samples.map((s: any) => ({
+          messageId: s.messageId,
+          attachmentId: s.attachmentId,
+          url: s.url,
+          quotedAt: s.quotedAt,                 // ISO string coming back from ML
+          text_chars: s.text_chars ?? 0,
+          parsed: {
+            currency: s.parsed?.currency ?? null,
+            estimated_total: s.parsed?.estimated_total ?? null,
+            confidence: s.parsed?.confidence ?? null,
+            detected_totals: s.parsed?.detected_totals ?? [],
+          },
+        })),
+      };
+
+      const saveResp = await fetch(`${API_BASE}/internal/ml/save-samples`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+        },
+        body: JSON.stringify(savePayload),
+      });
+
+      const saveText = await saveResp.text();
+      try { saved = saveText ? JSON.parse(saveText) : saved; } catch { saved = { ...saved, raw: saveText }; }
+
+      if (!saveResp.ok) {
+        // We still return ML response, but surface the save error
+        return res.status(saveResp.status).json({
+          error: "save_failed",
+          detail: saved,
+          ml: trainJson,
+          tenantId,
+          received: items.length,
+        });
+      }
+    }
+
+    return res.json({
+      ok: true,
+      tenantId,
+      received: items.length,
+      ml: trainJson,
+      saved,
+    });
   } catch (e: any) {
-    console.error("[ml/train] failed:", e?.message || e);
+    console.error("[ml] /train failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
