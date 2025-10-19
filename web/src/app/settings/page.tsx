@@ -248,6 +248,7 @@ export default function SettingsPage() {
       setSavingInbox(false);
     }
   }
+  
 
   async function connectGmail() {
     try {
@@ -701,6 +702,37 @@ export default function SettingsPage() {
             />
             <span className="text-sm">Microsoft 365</span>
           </label>
+          {/* ---------------- Train Model Button ---------------- */}
+<div className="mt-6 border-t pt-4">
+  <h3 className="text-lg font-semibold mb-2">Machine Learning</h3>
+  <p className="text-sm text-gray-500 mb-4">
+    Train the model using the last 500 sent quote emails with PDF attachments.
+  </p>
+
+  <Button
+    onClick={async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/ml/train`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("jwt")}`,
+          },
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || "Training failed");
+
+        alert(`✅ Model training started.\n${json.message || "Training triggered."}`);
+      } catch (err: any) {
+        console.error("Train model failed:", err);
+        alert(`❌ ${err.message || "Failed to trigger training"}`);
+      }
+    }}
+  >
+    Train Model
+  </Button>
+</div>
 
           <Field label="Interval (minutes)">
             <input
