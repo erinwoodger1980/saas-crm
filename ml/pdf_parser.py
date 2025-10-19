@@ -1,156 +1,144 @@
 # ml/pdf_parser.py
 from __future__ import annotations
+from typing import Dict, Any, List, Tuple
+import io, re
 
-import io
-import re
-from typing import Any, Dict, List, Optional, Tuple
-
-# --- HTTP fetch (requests if available, else urllib) ---
+# We’ll try pypdf first (pure Python). If needed, you can later add pdfplumber or OCR.
 try:
-    import requests  # type: ignore
-    def _http_get(url: str, timeout: int = 30) -> bytes:
-        r = requests.get(url, timeout=timeout)
-        r.raise_for_status()
-        return r.content
-except Exception:  # pragma: no cover
-    import urllib.request
-    def _http_get(url: str, timeout: int = 30) -> bytes:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return resp.read()
+    from pypdf import PdfReader  # pip install pypdf
+except Exception:
+    PdfReader = None  # type: ignore
 
-# --- PDF text extraction: prefer PyPDF2; fallback to plain bytes marker ---
-def pdf_bytes_to_text(data: bytes) -> str:
+
+def extract_text_from_pdf_bytes(data: bytes) -> str:
     """
-    Try to extract text from a PDF. If PyPDF2 isn't available or fails,
-    we return an empty string so caller can still record metadata.
+    Extracts text from a PDF (bytes) using pypdf.
+    Returns a single string (may be empty if the PDF is fully graphical).
     """
-    try:
-        import PyPDF2  # type: ignore
-        reader = PyPDF2.PdfReader(io.BytesIO(data))
-        chunks: List[str] = []
-        for page in reader.pages:
-            try:
-                chunks.append(page.extract_text() or "")
-            except Exception:
-                pass
-        return "\n".join(chunks).strip()
-    except Exception:
-        # Graceful fallback
+    if not data:
         return ""
 
-CURRENCY_RE = re.compile(r"(£|\$|€)\s?([0-9]{1,3}(?:[,\s][0-9]{3})*(?:\.[0-9]{2})?)")
-TOTAL_HINT_RE = re.compile(r"\b(total|grand total|amount due|subtotal)\b", re.I)
+    if PdfReader is None:
+        # pypdf not available
+        return ""
 
-# A very light heuristic to pull row-like lines: Description, Qty, Unit, Line total
-ROW_RE = re.compile(
+    try:
+        text_parts: List[str] = []
+        reader = PdfReader(io.BytesIO(data))
+        for page in reader.pages:
+            try:
+                t = page.extract_text() or ""
+            except Exception:
+                t = ""
+            if t:
+                text_parts.append(t)
+        return "\n".join(text_parts).strip()
+    except Exception:
+        return ""
+
+
+_money_pat = re.compile(
     r"""
-    ^\s*
-    (?P<desc>[A-Za-z][^\d\n]{3,}?)\s{2,}         # description blob (no leading numbers)
-    (?P<qty>\d+(?:\.\d+)?)\s{1,}                 # qty
-    (?P<unit>(?:£|\$|€)?\s?\d[\d,\s]*\.?\d{0,2})\s{1,}  # unit price
-    (?P<line>(?:£|\$|€)?\s?\d[\d,\s]*\.?\d{0,2})\s*     # line price
-    $
+    (?<![\w])            # not part of a longer word
+    (?:£|\$|€)?          # optional currency symbol
+    \s*
+    (?:\d{1,3}(?:,\d{3})*|\d+)   # 1,234 or 1234
+    (?:\.\d{2})?         # optional .00
+    (?![\w])             # not part of a longer word
     """,
-    re.X | re.I | re.M,
+    re.X,
 )
 
-def _to_number(s: str) -> Optional[float]:
-    s = s.strip()
-    s = s.replace(",", "").replace(" ", "")
-    s = s.lstrip("£$€")
+
+def _to_number(s: str) -> float | None:
     try:
-        return float(s)
+        v = s.replace(",", "").replace(" ", "")
+        # strip currency symbols
+        v = v.lstrip("£$€")
+        return float(v)
     except Exception:
         return None
 
-def parse_quote_text(text: str) -> Dict[str, Any]:
+
+def parse_totals_from_text(text: str) -> Dict[str, Any]:
     """
-    Heuristic parser for quotes:
-      - finds likely currency
-      - tries to pull table-like rows (desc, qty, unit, line)
-      - estimates subtotal/total if explicit marker found
+    Very simple heuristics:
+      - scan lines for keywords like Total, Grand Total, Subtotal, VAT
+      - collect money values on those lines
+      - choose a final 'estimated_total' if we can spot a grand total / total
     """
-    out: Dict[str, Any] = {
-        "currency": None,
-        "lines": [],             # [{description, qty, unit_price, line_total}]
-        "detected_totals": [],   # raw totals spotted in text
-        "estimated_total": None,
-        "confidence": 0.0,
-    }
-    if not text:
-        return out
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    detected: List[Tuple[str, float]] = []  # (label, value)
 
-    # Currency detection (first currency symbol seen)
-    m = CURRENCY_RE.search(text)
-    if m:
-        out["currency"] = m.group(1)
+    KEYWORDS = [
+        ("grand_total", r"grand\s*total|amount\s*due|balance\s*due"),
+        ("total", r"total\b(?!\s*ex)"),
+        ("subtotal", r"\bsub\s*total|\bsubtotal"),
+        ("vat", r"\bvat\b|tax|tva|gst"),
+    ]
+    compiled = [(name, re.compile(pat, re.I)) for name, pat in KEYWORDS]
 
-    # Row extraction
-    lines: List[Dict[str, Any]] = []
-    for m in ROW_RE.finditer(text):
-        desc = m.group("desc").strip()
-        qty = _to_number(m.group("qty")) or 0.0
-        unit_price = _to_number(m.group("unit") or "") or 0.0
-        line_total = _to_number(m.group("line") or "") or (qty * unit_price if qty and unit_price else None)
+    for ln in lines:
+        money_on_line = _money_pat.findall(ln)
+        if not money_on_line:
+            continue
+        lower = ln.lower()
 
-        if desc and (qty or unit_price or line_total):
-            lines.append({
-                "description": re.sub(r"\s{2,}", " ", desc),
-                "qty": qty,
-                "unit_price": unit_price,
-                "line_total": line_total,
-            })
-
-    out["lines"] = lines
-
-    # Totals spotted near keywords
-    totals_found: List[float] = []
-    for block in re.split(r"\n{2,}", text):
-        if TOTAL_HINT_RE.search(block):
-            for m in CURRENCY_RE.finditer(block):
-                val = _to_number(m.group(0))
+        for name, creg in compiled:
+            if creg.search(lower):
+                # Take the last money-looking token on the line (often the rightmost number)
+                val = _to_number(money_on_line[-1])
                 if val is not None:
-                    totals_found.append(val)
-    out["detected_totals"] = totals_found
+                    detected.append((name, val))
+                break
 
-    # Estimate a total if table rows look coherent
-    sum_lines = sum([l.get("line_total") or (l["qty"] * l["unit_price"]) or 0.0 for l in lines])
-    estimated_total = sum_lines if sum_lines > 0 else (max(totals_found) if totals_found else None)
-    out["estimated_total"] = round(estimated_total, 2) if estimated_total else None
+    # choose an estimated_total
+    est = None
+    # prefer grand_total > total > subtotal (+vat if present)
+    gts = [v for (name, v) in detected if name == "grand_total"]
+    ts = [v for (name, v) in detected if name == "total"]
+    subs = [v for (name, v) in detected if name == "subtotal"]
+    vats = [v for (name, v) in detected if name == "vat"]
 
-    # Confidence: naive score based on signals
-    score = 0
-    if lines:
-        score += 0.5
-    if totals_found:
-        score += 0.35
-    if out["estimated_total"]:
-        score += 0.15
-    out["confidence"] = round(min(1.0, score), 2)
+    if gts:
+        est = max(gts)
+    elif ts:
+        est = max(ts)
+    elif subs:
+        # crude: subtotal + largest VAT we saw
+        if vats:
+            est = max(subs) + max(vats)
+        else:
+            est = max(subs)
 
+    out = {
+        "detected_totals": [{"label": name, "value": v} for (name, v) in detected],
+        "estimated_total": est,
+        "currency": _guess_currency(text),
+        "confidence": _confidence_from_detected(detected, est),
+        "lines": [],  # (line items can be added later)
+    }
     return out
 
-def parse_pdf_from_url(url: str, timeout: int = 30) -> Dict[str, Any]:
-    """
-    Download a PDF from a (signed) URL and parse it into a lightweight structure.
-    """
-    try:
-        raw = _http_get(url, timeout=timeout)
-    except Exception as e:
-        return {"ok": False, "error": f"download_failed: {e}", "url": url}
 
-    if not raw or (len(raw) > 4 and raw[:4] != b"%PDF"):
-        # Still attempt text extraction; some servers strip header in streams
-        text = pdf_bytes_to_text(raw)
-        if not text:
-            return {"ok": False, "error": "not_pdf_or_unreadable", "url": url}
-    else:
-        text = pdf_bytes_to_text(raw)
+def _guess_currency(text: str) -> str | None:
+    t = text[:10000]  # just sample
+    if "£" in t:
+        return "GBP"
+    if "€" in t:
+        return "EUR"
+    if "$" in t:
+        return "USD"
+    return None
 
-    parsed = parse_quote_text(text)
-    return {
-        "ok": True,
-        "url": url,
-        "text_chars": len(text),
-        "parsed": parsed,
-    }
+
+def _confidence_from_detected(detected: List[Tuple[str, float]], est: float | None) -> float:
+    # Tiny heuristic scoring
+    if est is None:
+        return 0.0
+    score = 0.4
+    if any(name == "grand_total" for name, _ in detected):
+        score += 0.4
+    if any(name == "vat" for name, _ in detected):
+        score += 0.1
+    return min(1.0, score)

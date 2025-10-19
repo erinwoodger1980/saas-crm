@@ -1,11 +1,13 @@
 # ml/main.py
+from __future__ import annotations
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List, Set
 import joblib, pandas as pd, numpy as np
-import json, os, traceback
-from pdf_parser import parse_pdf_from_url
+import json, os, traceback, urllib.request, datetime
+
+from pdf_parser import extract_text_from_pdf_bytes, parse_totals_from_text
 
 app = FastAPI(title="JoineryAI ML API")
 
@@ -14,6 +16,7 @@ app.add_middleware(
     allow_origins=[
         "https://joineryai.app",
         "https://www.joineryai.app",
+        "https://api.joineryai.app",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
@@ -45,20 +48,19 @@ if os.path.exists(META_PATH):
         traceback.print_exc()
         feature_meta = {}
 
-# --------- Introspect pipelines to recover expected input columns ----------
+# ----------------- expected columns discovery -----------------
 def _walk_estimators(obj):
-    """Yield nested estimators/transformers inside sklearn Pipelines/ColumnTransformers."""
     try:
         from sklearn.pipeline import Pipeline
         from sklearn.compose import ColumnTransformer
     except Exception:
         return
-    if isinstance(obj, Pipeline):
-        for _, step in obj.steps:
+    if str(type(obj)).endswith("Pipeline'>") or getattr(obj, "steps", None):
+        for _, step in getattr(obj, "steps", []):
             yield step
             for inner in _walk_estimators(step):
                 yield inner
-    elif hasattr(obj, "transformers"):  # ColumnTransformer-like
+    if hasattr(obj, "transformers"):
         try:
             for _name, trans, _cols in obj.transformers:  # type: ignore[attr-defined]
                 yield trans
@@ -69,18 +71,19 @@ def _walk_estimators(obj):
             pass
 
 def expected_columns_from_model(model) -> List[str]:
-    """Try to read the column names a ColumnTransformer was fit with."""
+    try:
+        from sklearn.compose import ColumnTransformer  # noqa
+    except Exception:
+        return []
     cols: List[str] = []
     for est in _walk_estimators(model):
         if hasattr(est, "transformers"):
             try:
                 for _name, _trans, _cols in est.transformers:  # type: ignore[attr-defined]
                     if isinstance(_cols, (list, tuple, np.ndarray)):
-                        str_cols = [c for c in _cols if isinstance(c, str)]
-                        cols.extend(str_cols)
+                        cols.extend([c for c in _cols if isinstance(c, str)])
             except Exception:
                 continue
-    # Deduplicate preserving order
     seen = set()
     out: List[str] = []
     for c in cols:
@@ -89,12 +92,10 @@ def expected_columns_from_model(model) -> List[str]:
             out.append(c)
     return out
 
-# Build the final expected column list:
 meta_cols: List[str] = list(feature_meta.get("columns") or [])
 price_cols = expected_columns_from_model(price_model) if price_model else []
 win_cols   = expected_columns_from_model(win_model) if win_model else []
 
-# Union in a stable order: meta first, then any new from models
 def _ordered_union(primary: List[str], extra: List[str]) -> List[str]:
     seen: Set[str] = set()
     out: List[str] = []
@@ -108,11 +109,9 @@ DEFAULT_BASE = ["area_m2", "materials_grade", "project_type", "lead_source", "re
 COLUMNS: List[str] = _ordered_union(meta_cols or DEFAULT_BASE, price_cols)
 COLUMNS = _ordered_union(COLUMNS, win_cols)
 
-# Work out numeric vs categorical
 NUMERIC_COLUMNS: Set[str] = set(feature_meta.get("numeric_columns") or [])
 CATEGORICAL_COLUMNS: Set[str] = set(feature_meta.get("categorical_columns") or [])
 if not NUMERIC_COLUMNS and not CATEGORICAL_COLUMNS:
-    # Heuristics + known numerics
     numeric_hints = ("area", "num_", "days_", "value", "gbp", "amount", "count")
     known_numerics = {"area_m2", "num_emails_thread", "days_to_first_reply", "quote_value_gbp"}
     for col in COLUMNS:
@@ -120,7 +119,7 @@ if not NUMERIC_COLUMNS and not CATEGORICAL_COLUMNS:
             NUMERIC_COLUMNS.add(col)
     CATEGORICAL_COLUMNS = set(c for c in COLUMNS if c not in NUMERIC_COLUMNS)
 
-# --------- Request schema ----------
+# ----------------- prediction schema + builder -----------------
 class QuoteIn(BaseModel):
     area_m2: float = Field(..., description="Projected area (m^2)")
     materials_grade: str = Field(..., description="Basic | Standard | Premium")
@@ -128,7 +127,6 @@ class QuoteIn(BaseModel):
     lead_source: Optional[str] = None
     region: Optional[str] = "uk"
 
-# --------- Feature row builder ----------
 def build_feature_row(q: QuoteIn) -> pd.DataFrame:
     base = {
         "area_m2": float(q.area_m2),
@@ -137,31 +135,25 @@ def build_feature_row(q: QuoteIn) -> pd.DataFrame:
         "lead_source": (q.lead_source or ""),
         "region": (q.region or "uk"),
     }
-
-    # Fill all expected columns; default 0 for numeric, "" for categorical
     row: Dict[str, Any] = {}
     for col in COLUMNS:
         if col in base:
             row[col] = base[col]
         else:
             row[col] = 0 if col in NUMERIC_COLUMNS else ""
-
     df = pd.DataFrame([row], columns=COLUMNS)
-
-    # Enforce dtypes
     for col in NUMERIC_COLUMNS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
     for col in CATEGORICAL_COLUMNS:
         if col in df.columns:
             df[col] = df[col].astype(str)
-
     return df
 
 def models_status():
     return {"price": bool(price_model), "win": bool(win_model)}
 
-# --------- Routes ----------
+# ----------------- routes: health/meta/predict -----------------
 @app.get("/")
 def root():
     return {"ok": True, "models": models_status()}
@@ -185,7 +177,6 @@ def meta():
 async def predict(req: Request):
     if not price_model or not win_model:
         raise HTTPException(status_code=503, detail="models not loaded")
-
     try:
         payload = await req.json()
         q = QuoteIn(**payload)
@@ -194,17 +185,7 @@ async def predict(req: Request):
 
     try:
         X = build_feature_row(q)
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Feature build failed: {e}")
-
-    try:
         price = float(price_model.predict(X)[0])
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"price predict failed: {e}")
-
-    try:
         if hasattr(win_model, "predict_proba"):
             win_prob = float(win_model.predict_proba(X)[0][1])
         else:
@@ -212,7 +193,7 @@ async def predict(req: Request):
             win_prob = float(max(0.0, min(1.0, win_pred)))
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"win predict failed: {e}")
+        raise HTTPException(status_code=500, detail=f"predict failed: {e}")
 
     return {
         "predicted_price": round(price, 2),
@@ -220,66 +201,137 @@ async def predict(req: Request):
         "columns_used": COLUMNS,
     }
 
-# --------- Training (structured payload from API) ----------
+# ----------------- parsing helpers -----------------
+def _http_get_bytes(url: str, timeout: int = 30) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": "JoineryAI-ML/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+def _iso(dt_str: Optional[str]) -> Optional[str]:
+    if not dt_str:
+        return None
+    try:
+        # try RFC2822-like strings first (e.g., "Wed, 15 Oct 2025 12:59:55 +0100")
+        return datetime.datetime.strptime(dt_str, "%a, %d %b %Y %H:%M:%S %z").astimezone(
+            datetime.timezone.utc
+        ).isoformat()
+    except Exception:
+        try:
+            return datetime.datetime.fromisoformat(dt_str).astimezone(
+                datetime.timezone.utc
+            ).isoformat()
+        except Exception:
+            return None
+
+# ----------------- parse-quote + train -----------------
 class TrainItem(BaseModel):
     messageId: str
     attachmentId: str
-    downloadUrl: str
-    quotedAt: str
+    url: str
+    filename: Optional[str] = None
+    quotedAt: Optional[str] = None
 
 class TrainPayload(BaseModel):
     tenantId: str
     items: List[TrainItem] = []
 
+@app.post("/parse-quote")
+async def parse_quote(req: Request):
+    """
+    Body: { url: string, filename?: string, quotedAt?: string }
+    Downloads a single PDF, extracts text, and heuristically detects totals.
+    """
+    body = await req.json()
+    url = body.get("url")
+    if not url or not isinstance(url, str):
+        raise HTTPException(status_code=422, detail="missing url")
+
+    filename = body.get("filename") or "attachment.pdf"
+    quoted_at = _iso(body.get("quotedAt"))
+
+    try:
+        pdf_bytes = _http_get_bytes(url)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"download_failed: {e}")
+
+    text = extract_text_from_pdf_bytes(pdf_bytes) or ""
+    parsed = parse_totals_from_text(text) if text else {
+        "currency": None,
+        "lines": [],
+        "detected_totals": [],
+        "estimated_total": None,
+        "confidence": 0,
+    }
+
+    return {
+        "ok": True,
+        "filename": filename,
+        "quotedAt": quoted_at,
+        "text_chars": len(text),
+        "parsed": parsed,
+    }
+
 @app.post("/train")
 async def train(payload: TrainPayload):
     """
-    Download each signed attachment URL, parse lightweight quote structure,
-    and return a summary (placeholder for real training).
+    Downloads each signed URL -> extracts text -> finds totals (heuristic).
+    Returns quick stats + a few sample records. Later you can fit/refresh models here.
     """
-    parsed_results = []
-    failures = []
+    ok = 0
+    fails: List[Dict[str, Any]] = []
+    samples: List[Dict[str, Any]] = []
 
-    for it in payload.items:
-        res = parse_pdf_from_url(it.downloadUrl)
-        if res.get("ok"):
-            parsed_results.append({
-                "messageId": it.messageId,
-                "attachmentId": it.attachmentId,
-                "quotedAt": it.quotedAt,
-                "url": it.downloadUrl,
-                "text_chars": res.get("text_chars", 0),
-                "parsed": res.get("parsed", {}),
-            })
-        else:
-            failures.append({
-                "messageId": it.messageId,
-                "attachmentId": it.attachmentId,
-                "url": it.downloadUrl,
-                "error": res.get("error", "unknown"),
+    for item in payload.items:
+        try:
+            pdf_bytes = _http_get_bytes(item.url)
+            text = extract_text_from_pdf_bytes(pdf_bytes) or ""
+            parsed = parse_totals_from_text(text) if text else {
+                "currency": None,
+                "lines": [],
+                "detected_totals": [],
+                "estimated_total": None,
+                "confidence": 0,
+            }
+            ok += 1
+
+            # keep up to 5 samples
+            if len(samples) < 5:
+                samples.append({
+                    "messageId": item.messageId,
+                    "attachmentId": item.attachmentId,
+                    "quotedAt": _iso(item.quotedAt),
+                    "url": item.url,
+                    "text_chars": len(text),
+                    "parsed": parsed,
+                })
+        except Exception as e:
+            fails.append({
+                "messageId": item.messageId,
+                "attachmentId": item.attachmentId,
+                "url": item.url,
+                "error": f"{e}",
             })
 
-    # Naive placeholder “training”: aggregate a few stats
-    total_docs = len(payload.items)
-    ok_docs = len(parsed_results)
-    fail_docs = len(failures)
-    avg_total = None
-    totals = []
-    for r in parsed_results:
-        est = (r.get("parsed") or {}).get("estimated_total")
-        if isinstance(est, (int, float)):
-            totals.append(float(est))
-    if totals:
-        avg_total = round(sum(totals) / len(totals), 2)
+    avg_est = None
+    vals = [
+        s["parsed"]["estimated_total"]
+        for s in samples
+        if s.get("parsed", {}).get("estimated_total") is not None
+    ]
+    if vals:
+        try:
+            avg_est = round(float(sum(vals)) / len(vals), 2)
+        except Exception:
+            avg_est = None
 
     return {
         "ok": True,
         "tenantId": payload.tenantId,
-        "received_items": total_docs,
-        "parsed_ok": ok_docs,
-        "failed": fail_docs,
-        "avg_estimated_total": avg_total,
-        "samples": parsed_results[:5],  # include first few examples for debugging
-        "failures": failures[:5],
-        "message": "Training job accepted (placeholder).",
+        "received_items": len(payload.items),
+        "parsed_ok": ok,
+        "failed": len(fails),
+        "avg_estimated_total": avg_est,
+        "samples": samples,
+        "failures": fails,
+        "message": "Training job accepted (heuristic parser).",
     }
