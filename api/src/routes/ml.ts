@@ -93,36 +93,32 @@ router.post("/parse-quote", async (req, res) => {
  */
 router.post("/train", async (req, res) => {
   try {
-    const auth = (req as any).auth;
-    if (!auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
+    const tenantId = (req as any)?.auth?.tenantId;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-    const origin = (process.env.APP_URL || "").replace(/\/$/, "");
-    const token = (req.headers.authorization || "").split(" ")[1] || "";
+    const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "").trim();
+    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
 
-    const r = await fetch(`${origin}/gmail/import`, {
+    const { limit = 500 } = req.body || {};
+
+    const r = await fetch(`${ML_URL.replace(/\/$/, "")}/train`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        max: 500,
-        q: "in:sent filename:pdf quote",
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenantId, limit }),
     });
 
-    const bodyText = await r.text();
+    const text = await r.text();
     let json: any = {};
-    try {
-      json = bodyText ? JSON.parse(bodyText) : {};
-    } catch {
-      json = { raw: bodyText };
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+
+    if (!r.ok) {
+      return res.status(r.status).json({ error: "ml_train_failed", detail: json });
     }
 
-    return res.status(r.status).json(json);
+    return res.json({ ok: true, ...json });
   } catch (e: any) {
-    console.error("[ml/train] failed:", e);
-    return res.status(500).json({ error: "train_failed", detail: e?.message || String(e) });
+    console.error("[ml/train] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
   }
 });
 
