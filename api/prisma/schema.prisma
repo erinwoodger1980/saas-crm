@@ -516,3 +516,22 @@ model PasswordResetToken {
   token     String   @unique
   expiresAt DateTime
 }
+model MLTrainingSample {
+  id           String   @id @default(cuid())
+  tenantId     String
+  messageId    String
+  attachmentId String
+  url          String
+  quotedAt     DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Indexes (Prisma 6.x uses model-level @@index)
+  @@index([tenantId])
+  @@index([messageId])
+  @@index([attachmentId])
+  @@index([quotedAt])
+
+  // Prevent duplicate samples for the same tenant/message/attachment
+  @@unique([tenantId, messageId, attachmentId])
+}
