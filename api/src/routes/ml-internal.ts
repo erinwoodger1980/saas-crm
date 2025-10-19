@@ -1,8 +1,11 @@
+
 // api/src/routes/ml-internal.ts
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { getAccessTokenForTenant, fetchMessage } from "../services/gmail";
+
+/* -------- Types -------- */
 type GmailMessageRef = { id: string; threadId?: string };
 type GmailListResponse = { messages?: GmailMessageRef[]; nextPageToken?: string };
 
@@ -12,37 +15,24 @@ const router = Router();
  * POST /internal/ml/ingest-gmail
  * Body: { limit?: number }
  *
- * Finds the most recent Sent emails that look like quotes (PDF attachments),
- * and returns **signed URLs** for each attachment so the ML server can fetch
- * them through your API (no direct Gmail creds needed on the ML side).
- *
- * Response:
- * {
- *   ok: true,
- *   count: number,
- *   items: [
- *     {
- *       messageId, threadId, subject, sentAt,
- *       attachmentId, filename, url // (signed)
- *     }, ...
- *   ]
- * }
+ * Finds recent Sent emails with PDF quote attachments, and returns
+ * **signed API URLs** for each attachment so the ML server can fetch them
+ * without direct Gmail credentials.
  */
 router.post("/ingest-gmail", async (req: any, res) => {
   try {
     const tenantId = req.auth?.tenantId as string | undefined;
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-    // 1) sanitize limit (1..500)
     const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 500), 500));
 
-    // 2) Gmail access token for this tenant
+    // Access token for this tenant's Gmail connection
     const accessToken = await getAccessTokenForTenant(tenantId);
 
-    // 3) Gmail search (Sent, has PDF attachments) — we’ll paginate until we reach `limit`
-    const q = 'in:sent filename:pdf has:attachment';
-    const maxPage = 100; // Gmail `maxResults` cap per call
-    let nextPageToken: string | undefined = undefined;
+    // Gmail search query: Sent + has PDF attachments
+    const q = "in:sent filename:pdf has:attachment";
+    const maxPage = 100; // Gmail cap per page
+    let nextPageToken: string | undefined;
 
     type Item = {
       messageId: string;
@@ -55,35 +45,35 @@ router.post("/ingest-gmail", async (req: any, res) => {
     };
     const out: Item[] = [];
 
-    const baseApi =
-      process.env.APP_URL?.replace(/\/$/, "") ||
-      process.env.API_URL?.replace(/\/$/, "") ||
-      process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "") ||
-      "https://api.joineryai.app"; // sensible prod default
+    // IMPORTANT: always use your **API** origin for signed links
+    const baseApi = (
+      process.env.APP_API_URL ||
+      process.env.API_PUBLIC_ORIGIN ||
+      "https://api.joineryai.app"
+    ).replace(/\/$/, "");
 
     while (out.length < limit) {
-  const searchUrl: string =
-    "https://gmail.googleapis.com/gmail/v1/users/me/messages?" +
-    new URLSearchParams({
-      q,
-      maxResults: String(Math.min(limit - out.length, maxPage)),
-      ...(nextPageToken ? { pageToken: nextPageToken } : {}),
-    }).toString();
+      const searchUrl: string =
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages?" +
+        new URLSearchParams({
+          q,
+          maxResults: String(Math.min(limit - out.length, maxPage)),
+          ...(nextPageToken ? { pageToken: nextPageToken } : {}),
+        }).toString();
 
-  const listRes: Response = await fetch(searchUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-
-  const listJson = (await listRes.json()) as GmailListResponse;
+      const listRes = await fetch(searchUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const listJson: GmailListResponse = await listRes.json();
 
       if (!listRes.ok) {
         return res.status(listRes.status).json(listJson);
       }
 
-      const msgs: Array<{ id: string; threadId?: string }> = listJson.messages || [];
+      const msgs: GmailMessageRef[] = listJson.messages || [];
       nextPageToken = listJson.nextPageToken;
 
-      // 4) For each message, load full payload to discover attachments & metadata
+      // For each message, fetch "full" to find attachments + headers
       for (const m of msgs) {
         if (out.length >= limit) break;
 
@@ -96,13 +86,12 @@ router.post("/ingest-gmail", async (req: any, res) => {
           headers.find((h: any) => h.name?.toLowerCase?.() === "date")?.value || null;
         const threadId = msg.threadId || m.threadId || m.id;
 
-        // collect only PDF attachments
+        // Gather only PDF attachments
         const pdfs: { attachmentId: string; filename: string }[] = [];
         const walk = (part: any) => {
           if (!part) return;
           const isPdf =
-            part?.mimeType === "application/pdf" ||
-            /\.pdf$/i.test(part?.filename || "");
+            part?.mimeType === "application/pdf" || /\.pdf$/i.test(part?.filename || "");
           if (isPdf && part?.body?.attachmentId) {
             pdfs.push({
               attachmentId: part.body.attachmentId,
@@ -113,26 +102,24 @@ router.post("/ingest-gmail", async (req: any, res) => {
         };
         walk(msg.payload);
 
-        // light heuristic: subject hints OR has pdfs
+        // Simple heuristic: subject suggests a quote OR there are PDFs
         const looksLikeQuote =
           /quote|estimate|proposal|quotation/i.test(subject || "") || pdfs.length > 0;
-
         if (!looksLikeQuote) continue;
 
-        // 5) Build signed URLs that allow the ML server to fetch the attachment via your API
-        //    We sign with a short-lived JWT that encodes the tenant id (no user context needed).
-        const signed = (attachmentId: string) => {
+        // Build short-lived signed URLs (JWT) to download via your API
+        const signedUrl = (attachmentId: string) => {
           const token = jwt.sign(
             { tenantId, userId: "system", email: "system@local" },
             env.APP_JWT_SECRET,
             { expiresIn: "15m" }
           );
-          const url =
+          return (
             `${baseApi}/gmail/message/` +
             `${encodeURIComponent(m.id)}` +
             `/attachments/${encodeURIComponent(attachmentId)}` +
-            `?jwt=${encodeURIComponent(token)}`;
-          return url;
+            `?jwt=${encodeURIComponent(token)}`
+          );
         };
 
         for (const a of pdfs) {
@@ -144,7 +131,7 @@ router.post("/ingest-gmail", async (req: any, res) => {
             sentAt: date,
             attachmentId: a.attachmentId,
             filename: a.filename,
-            url: signed(a.attachmentId),
+            url: signedUrl(a.attachmentId),
           });
         }
       }
