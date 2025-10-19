@@ -5,6 +5,9 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List, Set
 import joblib, pandas as pd, numpy as np
 import json, os, traceback
+# --- add (or keep) these imports ---
+from fastapi import FastAPI
+from pydantic import BaseModel
 
 app = FastAPI(title="JoineryAI ML API")
 
@@ -223,4 +226,29 @@ async def predict(req: Request):
         "predicted_price": round(price, 2),
         "win_probability": round(win_prob, 3),
         "columns_used": COLUMNS,
+    }
+
+
+# ensure you have your FastAPI app defined somewhere above:
+# app = FastAPI()
+
+class TrainRequest(BaseModel):
+    tenantId: str
+    limit: int = 500
+
+@app.post("/train")
+async def train(req: TrainRequest):
+    """
+    Placeholder: trigger training on the last N quote PDFs for this tenant.
+    Replace the body with your real ingestion + training pipeline.
+    """
+    # TODO:
+    # 1) Pull last `req.limit` sent Gmail messages with PDF quote attachments (for req.tenantId)
+    # 2) Extract line items + prices
+    # 3) Fit/refresh models and persist artifacts
+    return {
+        "ok": True,
+        "tenantId": req.tenantId,
+        "trained_on": req.limit,
+        "message": "Training job triggered (placeholder)."
     }
