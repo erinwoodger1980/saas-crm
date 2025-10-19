@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,11 +7,408 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/**
- * =========================
- * Enums
- * =========================
- */
+model Tenant {
+  id                    String                 @id @default(cuid())
+  name                  String
+  createdAt             DateTime               @default(now())
+  stripeCustomerId      String?                @unique
+  stripeSubscriptionId  String?                @unique
+  trialEndsAt           DateTime?
+  discountCodeUsed      String?
+  seatsOffice           Int                    @default(5)
+  seatsWorkshop         Int                    @default(10)
+  seatsDisplay          Int                    @default(2)
+  subscriptionStatus    SubscriptionStatus?
+  plan                  Plan?
+  emailIngests          EmailIngest[]
+  emailMessages         EmailMessage[]
+  emailThreads          EmailThread[]
+  GmailTenantConnection GmailTenantConnection?
+  leads                 Lead[]
+  leadFieldDefs         LeadFieldDef[]
+  Ms365TenantConnection Ms365TenantConnection?
+  opportunities         Opportunity[]
+  quotes                Quote[]
+  UploadedFile          UploadedFile[]
+  users                 User[]
+}
+
+model User {
+  id                    String                  @id @default(cuid())
+  tenantId              String
+  email                 String                  @unique
+  name                  String?
+  role                  String                  @default("user")
+  passwordHash          String
+  GmailTenantConnection GmailTenantConnection[]
+  Ms365TenantConnection Ms365TenantConnection[]
+  passwordResetToken    PasswordResetToken?
+  tenant                Tenant                  @relation(fields: [tenantId], references: [id])
+}
+
+model Lead {
+  id            String         @id @default(cuid())
+  tenantId      String
+  createdById   String
+  contactName   String
+  email         String?
+  status        LeadStatus     @default(NEW)
+  capturedAt    DateTime       @default(now())
+  nextActionAt  DateTime?
+  nextAction    String?
+  briefJson     Json?
+  custom        Json?
+  description   String?
+  emailIngests  EmailIngest[]
+  emailMessages EmailMessage[]
+  emailThreads  EmailThread[]
+  followUpLogs  FollowUpLog[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  opportunity   Opportunity?
+  Quote         Quote[]
+}
+
+model Opportunity {
+  id            String         @id @default(cuid())
+  tenantId      String
+  leadId        String         @unique
+  title         String
+  valueGBP      Decimal?
+  stage         OppStage       @default(QUALIFY)
+  wonAt         DateTime?
+  lostAt        DateTime?
+  createdAt     DateTime       @default(now())
+  emailMessages EmailMessage[]
+  emailThreads  EmailThread[]
+  lead          Lead           @relation(fields: [leadId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, stage])
+}
+
+model EmailIngest {
+  id                String    @id @default(cuid())
+  tenantId          String
+  provider          String
+  messageId         String
+  fromEmail         String?
+  subject           String?
+  snippet           String?
+  processedAt       DateTime?
+  leadId            String?
+  createdAt         DateTime  @default(now())
+  aiPredictedIsLead Boolean?
+  userLabelIsLead   Boolean?
+  userLabeledAt     DateTime?
+  lead              Lead?     @relation(fields: [leadId], references: [id])
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, messageId], name: "tenantId_provider_messageId")
+  @@index([tenantId])
+}
+
+model LeadFieldDef {
+  id        String  @id @default(cuid())
+  tenantId  String
+  key       String
+  label     String
+  type      String  @default("text")
+  required  Boolean @default(false)
+  config    Json?
+  sortOrder Int     @default(0)
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@index([tenantId, sortOrder])
+}
+
+model GmailTenantConnection {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  connectedById String?
+  gmailAddress  String?
+  refreshToken  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  connectedBy   User?    @relation(fields: [connectedById], references: [id])
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+}
+
+model Ms365TenantConnection {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  connectedById String?
+  ms365Address  String?
+  refreshToken  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  connectedBy   User?    @relation(fields: [connectedById], references: [id])
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+}
+
+model LeadExample {
+  id        String    @id @default(cuid())
+  tenantId  String
+  provider  String
+  messageId String
+  subject   String?
+  body      String?
+  extracted Json?
+  label     LeadLabel @default(UNSURE)
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, provider, messageId])
+}
+
+model LeadTrainingExample {
+  id        String   @id @default(cuid())
+  tenantId  String
+  provider  String
+  messageId String
+  label     String
+  extracted Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, provider, messageId])
+}
+
+/// *
+///  * ✅ Unified TenantSettings (only ONE model)
+model TenantSettings {
+  tenantId          String    @id
+  slug              String    @unique
+  brandName         String
+  introHtml         String?
+  website           String?
+  phone             String?
+  links             Json?
+  questionnaire     Json?
+  logoUrl           String?
+  inbox             Json?
+  inboxLastRun      DateTime?
+  inboxWatchEnabled Boolean   @default(false)
+  quoteDefaults     Json?
+  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime  @default(now())
+}
+
+model FollowUpLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  leadId    String
+  variant   String
+  subject   String
+  body      String
+  sentAt    DateTime @default(now())
+  opened    Boolean?
+  replied   Boolean?
+  converted Boolean?
+  delayDays Int?
+  messageId String?
+  provider  String?
+  threadId  String?
+  lead      Lead     @relation(fields: [leadId], references: [id])
+
+  @@index([tenantId, leadId, sentAt])
+}
+
+model LeadSourceCost {
+  id          String   @id @default(cuid())
+  tenantId    String
+  source      String
+  month       DateTime
+  spend       Float    @default(0)
+  leads       Int      @default(0)
+  conversions Int      @default(0)
+  scalable    Boolean  @default(true)
+
+  @@unique([tenantId, source, month])
+  @@index([tenantId, source, month])
+}
+
+model LeadSourceSpend {
+  id        String   @id @default(cuid())
+  tenantId  String
+  source    String
+  month     DateTime
+  amountGBP Decimal  @default(0)
+
+  @@index([tenantId, source, month])
+}
+
+model LeadSourceConfig {
+  id       String  @id @default(cuid())
+  tenantId String
+  source   String
+  scalable Boolean @default(true)
+
+  @@unique([tenantId, source])
+}
+
+model FollowupExperiment {
+  id            String    @id @default(cuid())
+  tenantId      String
+  opportunityId String
+  variant       String
+  source        String
+  suggestedAt   DateTime
+  whenISO       String
+  subject       String
+  body          String
+  sentAt        DateTime?
+  replied       Boolean?
+  outcome       String?
+
+  @@index([tenantId, opportunityId])
+}
+
+model EmailThread {
+  id             String         @id @default(cuid())
+  tenantId       String
+  provider       String
+  threadId       String
+  subject        String?
+  leadId         String?
+  opportunityId  String?
+  lastInboundAt  DateTime?
+  lastOutboundAt DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  messages       EmailMessage[]
+  lead           Lead?          @relation(fields: [leadId], references: [id])
+  opportunity    Opportunity?   @relation(fields: [opportunityId], references: [id])
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, threadId])
+  @@index([tenantId, leadId])
+  @@index([tenantId, opportunityId])
+}
+
+model EmailMessage {
+  id            String       @id @default(cuid())
+  tenantId      String
+  threadId      String
+  provider      String
+  messageId     String
+  fromEmail     String?
+  toEmail       String?
+  cc            String?
+  bcc           String?
+  subject       String?
+  snippet       String?
+  bodyText      String?
+  bodyHtml      String?
+  direction     String
+  sentAt        DateTime
+  createdAt     DateTime     @default(now())
+  leadId        String?
+  opportunityId String?
+  lead          Lead?        @relation(fields: [leadId], references: [id])
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  thread        EmailThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, messageId])
+  @@index([tenantId, threadId, sentAt])
+  @@index([tenantId, leadId])
+}
+
+/// *
+///  * =============== Quoting ===============
+model Quote {
+  id                  String         @id @default(cuid())
+  tenantId            String
+  leadId              String?
+  title               String
+  status              QuoteStatus    @default(DRAFT)
+  currency            String         @default("GBP")
+  exchangeRate        Decimal?
+  deliveryCost        Decimal?       @default(0)
+  markupDefault       Decimal?       @default(0)
+  subtotalMaterialGBP Decimal?       @default(0)
+  subtotalLabourGBP   Decimal?       @default(0)
+  subtotalOtherGBP    Decimal?       @default(0)
+  totalGBP            Decimal?       @default(0)
+  proposalPdfUrl      String?
+  notes               String?
+  meta                Json?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  lead                Lead?          @relation(fields: [leadId], references: [id])
+  tenant              Tenant         @relation(fields: [tenantId], references: [id])
+  lines               QuoteLine[]
+  supplierFiles       UploadedFile[]
+
+  @@index([tenantId, leadId])
+}
+
+model QuoteLine {
+  id               String  @id @default(cuid())
+  quoteId          String
+  supplier         String?
+  sku              String?
+  description      String
+  qty              Decimal @default(1)
+  unitPrice        Decimal @default(0)
+  currency         String  @default("GBP")
+  deliveryShareGBP Decimal @default(0)
+  lineTotalGBP     Decimal @default(0)
+  meta             Json?
+  quote            Quote   @relation(fields: [quoteId], references: [id])
+
+  @@index([quoteId])
+}
+
+model UploadedFile {
+  id         String   @id @default(cuid())
+  tenantId   String
+  quoteId    String?
+  kind       FileKind
+  name       String
+  path       String
+  mimeType   String?
+  sizeBytes  Int?
+  uploadedAt DateTime @default(now())
+  quote      Quote?   @relation(fields: [quoteId], references: [id])
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, quoteId])
+}
+
+/// *
+///  * ============== Password reset tokens ==============
+model PasswordResetToken {
+  userId    String   @id
+  token     String   @unique
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model MLTrainingSample {
+  id           String    @id @default(cuid())
+  tenantId     String
+  messageId    String
+  attachmentId String
+  url          String
+  quotedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, messageId, attachmentId])
+  @@index([tenantId])
+  @@index([messageId])
+  @@index([attachmentId])
+  @@index([quotedAt])
+}
+
+/// *
+///  * =========================
+///  * Enums
+///  * =========================
 enum SubscriptionStatus {
   trialing
   active
@@ -65,473 +461,4 @@ enum QuoteStatus {
 enum FileKind {
   SUPPLIER_QUOTE
   OTHER
-}
-
-/**
- * =========================
- * Models
- * =========================
- */
-
-model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-
-  // Relations (existing)
-  users                 User[]
-  leads                 Lead[]
-  opportunities         Opportunity[]
-  leadFieldDefs         LeadFieldDef[]
-  GmailTenantConnection GmailTenantConnection?
-  Ms365TenantConnection Ms365TenantConnection?
-  emailIngests          EmailIngest[]
-  emailThreads          EmailThread[]
-  emailMessages         EmailMessage[]
-
-  // ---------------- Billing & Seats ----------------
-  stripeCustomerId     String?             @unique
-  stripeSubscriptionId String?             @unique
-  subscriptionStatus   SubscriptionStatus?
-  plan                 Plan?
-  trialEndsAt          DateTime?
-  discountCodeUsed     String?
-
-  seatsOffice   Int @default(5)
-  seatsWorkshop Int @default(10)
-  seatsDisplay  Int @default(2)
-
-  // ---------------- Quoting ----------------
-  quotes       Quote[]
-  UploadedFile UploadedFile[]
-}
-
-model User {
-  id                    String                  @id @default(cuid())
-  tenantId              String
-  tenant                Tenant                  @relation(fields: [tenantId], references: [id])
-  email                 String                  @unique
-  name                  String?
-  role                  String                  @default("user")
-  passwordHash          String
-  GmailTenantConnection GmailTenantConnection[] // reverse relation safety
-  Ms365TenantConnection Ms365TenantConnection[] // reverse relation safety
-
-  // 🔽 back-relation for password resets
-  passwordResetToken PasswordResetToken?
-}
-
-model Lead {
-  id           String        @id @default(cuid())
-  tenantId     String
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  createdById  String
-  contactName  String
-  email        String?
-  status       LeadStatus    @default(NEW)
-  capturedAt   DateTime      @default(now())
-  nextActionAt DateTime?
-  nextAction   String?
-  briefJson    Json?
-  custom       Json?
-  description  String?
-  opportunity  Opportunity?
-  emailIngests EmailIngest[]
-
-  followUpLogs FollowUpLog[]
-
-  // Optional navigations for threading
-  emailThreads  EmailThread[]
-  emailMessages EmailMessage[]
-  Quote         Quote[]
-}
-
-model Opportunity {
-  id        String    @id @default(cuid())
-  tenantId  String
-  tenant    Tenant    @relation(fields: [tenantId], references: [id])
-  leadId    String    @unique
-  lead      Lead      @relation(fields: [leadId], references: [id])
-  title     String
-  valueGBP  Decimal?
-  stage     OppStage  @default(QUALIFY)
-  wonAt     DateTime?
-  lostAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  // Optional: reverse threading navigations
-  emailThreads  EmailThread[]
-  emailMessages EmailMessage[]
-
-  @@index([tenantId, stage])
-}
-
-model EmailIngest {
-  id String @id @default(cuid())
-
-  // tenant + relations
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  // provenance
-  provider  String // "gmail" | "ms365" | ...
-  messageId String // provider-specific message id (unique per tenant+provider)
-
-  // email metadata
-  fromEmail String?
-  subject   String?
-  snippet   String?
-
-  // pipeline linkage
-  processedAt DateTime?
-  leadId      String?
-  lead        Lead?     @relation(fields: [leadId], references: [id])
-
-  // learning fields
-  aiPredictedIsLead Boolean?
-  userLabelIsLead   Boolean?
-  userLabeledAt     DateTime?
-
-  createdAt DateTime @default(now())
-
-  // idempotency
-  @@unique([tenantId, provider, messageId], name: "tenantId_provider_messageId")
-  @@index([tenantId])
-}
-
-model LeadFieldDef {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  key       String
-  label     String
-  type      String  @default("text")
-  required  Boolean @default(false)
-  config    Json?
-  sortOrder Int     @default(0)
-
-  @@unique([tenantId, key])
-  @@index([tenantId, sortOrder])
-}
-
-model GmailTenantConnection {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  connectedById String?
-  connectedBy   User?   @relation(fields: [connectedById], references: [id])
-
-  gmailAddress String?
-  refreshToken String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@unique([tenantId])
-  @@index([tenantId])
-}
-
-model Ms365TenantConnection {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  connectedById String?
-  connectedBy   User?   @relation(fields: [connectedById], references: [id])
-
-  ms365Address String?
-  refreshToken String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@unique([tenantId])
-  @@index([tenantId])
-}
-
-model LeadExample {
-  id        String    @id @default(cuid())
-  tenantId  String
-  provider  String // "gmail" | "outlook" | "local"
-  messageId String
-  subject   String?
-  body      String?
-  extracted Json?
-  label     LeadLabel @default(UNSURE)
-  createdAt DateTime  @default(now())
-
-  @@index([tenantId, provider, messageId])
-}
-
-model LeadTrainingExample {
-  id        String   @id @default(cuid())
-  tenantId  String
-  provider  String // e.g. "gmail", "outlook", "local"
-  messageId String // email/message id from provider
-  label     String // "lead" | "not_lead"
-  extracted Json?
-  createdAt DateTime @default(now())
-
-  @@index([tenantId, provider, messageId])
-}
-
-/**
- * ✅ Unified TenantSettings (only ONE model)
- */
-model TenantSettings {
-  tenantId          String    @id
-  slug              String    @unique         // public URL part
-  brandName         String
-  introHtml         String?
-  website           String?
-  phone             String?
-  logoUrl           String?
-  links             Json?
-
-  // Questionnaire shown on public intake
-  questionnaire     Json?
-
-  // Inbox configuration and status
-  inbox             Json?
-  inboxWatchEnabled Boolean   @default(false)
-  inboxLastRun      DateTime?
-
-  // Default specs used when a line doesn’t specify them
-  // e.g. { "Screen": { "frameWidthMM":195, "frameDepthMM":44, "timberType":"Sapele", "finish":"None", "thicknessMM":45 }, "Door": { ... } }
-  quoteDefaults     Json?
-
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-}
-
-model FollowUpLog {
-  id        String   @id @default(cuid())
-  tenantId  String
-  leadId    String
-  variant   String
-  subject   String
-  body      String
-  sentAt    DateTime @default(now())
-  opened    Boolean?
-  replied   Boolean?
-  converted Boolean?
-  delayDays Int?
-
-  provider  String?
-  messageId String?
-  threadId  String?
-
-  lead Lead @relation(fields: [leadId], references: [id])
-
-  @@index([tenantId, leadId, sentAt])
-}
-
-model LeadSourceCost {
-  id          String   @id @default(cuid())
-  tenantId    String
-  source      String
-  month       DateTime // first day of month (UTC)
-  spend       Float    @default(0)
-  leads       Int      @default(0)
-  conversions Int      @default(0)
-  scalable    Boolean  @default(true)
-
-  @@unique([tenantId, source, month])
-  @@index([tenantId, source, month])
-}
-
-model LeadSourceSpend {
-  id        String   @id @default(cuid())
-  tenantId  String
-  source    String
-  month     DateTime
-  amountGBP Decimal  @default(0)
-
-  @@index([tenantId, source, month])
-}
-
-model LeadSourceConfig {
-  id       String  @id @default(cuid())
-  tenantId String
-  source   String
-  scalable Boolean @default(true)
-
-  @@unique([tenantId, source])
-}
-
-model FollowupExperiment {
-  id            String    @id @default(cuid())
-  tenantId      String
-  opportunityId String
-  variant       String
-  source        String
-  suggestedAt   DateTime
-  whenISO       String
-  subject       String
-  body          String
-  sentAt        DateTime?
-  replied       Boolean?
-  outcome       String?
-
-  @@index([tenantId, opportunityId])
-}
-
-model EmailThread {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  provider      String
-  threadId      String
-  subject       String?
-  leadId        String?
-  lead          Lead?        @relation(fields: [leadId], references: [id])
-  opportunityId String?
-  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
-
-  lastInboundAt  DateTime?
-  lastOutboundAt DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  messages EmailMessage[]
-
-  @@unique([tenantId, provider, threadId])
-  @@index([tenantId, leadId])
-  @@index([tenantId, opportunityId])
-}
-
-model EmailMessage {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  threadId String
-  thread   EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-
-  provider  String
-  messageId String
-
-  fromEmail String?
-  toEmail   String?
-  cc        String?
-  bcc       String?
-  subject   String?
-  snippet   String?
-  bodyText  String?
-  bodyHtml  String?
-
-  direction String // "inbound" | "outbound"
-  sentAt    DateTime
-  createdAt DateTime @default(now())
-
-  leadId        String?
-  lead          Lead?        @relation(fields: [leadId], references: [id])
-  opportunityId String?
-  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
-
-  @@unique([tenantId, provider, messageId])
-  @@index([tenantId, threadId, sentAt])
-  @@index([tenantId, leadId])
-}
-
-/**
- * =============== Quoting ===============
- */
-model Quote {
-  id       String  @id @default(cuid())
-  tenantId String
-  tenant   Tenant  @relation(fields: [tenantId], references: [id])
-  leadId   String?
-  lead     Lead?   @relation(fields: [leadId], references: [id])
-
-  title         String
-  status        QuoteStatus @default(DRAFT)
-  currency      String      @default("GBP") // original currency
-  exchangeRate  Decimal?    // rate to GBP (if applicable)
-  deliveryCost  Decimal?    @default(0)
-  markupDefault Decimal?    @default(0) // e.g. 0.25 = 25%
-
-  subtotalMaterialGBP Decimal? @default(0)
-  subtotalLabourGBP   Decimal? @default(0)
-  subtotalOtherGBP    Decimal? @default(0)
-  totalGBP            Decimal? @default(0)
-
-  proposalPdfUrl String?
-  notes          String?
-  meta           Json?
-
-  supplierFiles UploadedFile[]
-  lines         QuoteLine[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([tenantId, leadId])
-}
-
-model QuoteLine {
-  id      String @id @default(cuid())
-  quoteId String
-  quote   Quote  @relation(fields: [quoteId], references: [id])
-
-  supplier         String?
-  sku              String?
-  description      String
-  qty              Decimal @default(1)
-  unitPrice        Decimal @default(0) // original currency
-  currency         String  @default("GBP") // original currency
-  deliveryShareGBP Decimal @default(0) // apportioned share
-  lineTotalGBP     Decimal @default(0) // after currency + markup
-
-  meta Json?
-
-  @@index([quoteId])
-}
-
-model UploadedFile {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  quoteId String?
-  quote   Quote?  @relation(fields: [quoteId], references: [id])
-
-  kind       FileKind
-  name       String
-  path       String // storage path or URL
-  mimeType   String?
-  sizeBytes  Int?
-  uploadedAt DateTime @default(now())
-
-  @@index([tenantId, quoteId])
-}
-
-/**
- * ============== Password reset tokens ==============
- */
-model PasswordResetToken {
-  userId    String   @id
-  user      User     @relation(fields: [userId], references: [id])
-  token     String   @unique
-  expiresAt DateTime
-}
-model MLTrainingSample {
-  id           String   @id @default(cuid())
-  tenantId     String
-  messageId    String
-  attachmentId String
-  url          String
-  quotedAt     DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Indexes (Prisma 6.x uses model-level @@index)
-  @@index([tenantId])
-  @@index([messageId])
-  @@index([attachmentId])
-  @@index([quotedAt])
-
-  // Prevent duplicate samples for the same tenant/message/attachment
-  @@unique([tenantId, messageId, attachmentId])
 }

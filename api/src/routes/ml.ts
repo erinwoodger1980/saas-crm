@@ -2,23 +2,37 @@
 import { Router } from "express";
 
 const router = Router();
-
-// Resolve ML base URL once, ensure no trailing slash
 const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000")
   .trim()
   .replace(/\/$/, "");
 
-// Resolve our own API base (for calling internal endpoints) without trailing slash
+// Build your API base once (same logic you used earlier)
 const API_BASE = (
   process.env.APP_API_URL ||
   process.env.API_URL ||
   process.env.RENDER_EXTERNAL_URL ||
   `http://localhost:${process.env.PORT || 4000}`
-).replace(/\/$/, "");
+)?.replace(/\/$/, "")!;
+
+function normalizeAttachmentUrl(u?: string | null): string | null {
+  if (!u) return null;
+  try {
+    // If it's already absolute, adjust host if needed
+    const parsed = new URL(u);
+    if (parsed.hostname === "joineryai.app") {
+      parsed.hostname = "api.joineryai.app";
+      return parsed.toString();
+    }
+    return parsed.toString();
+  } catch {
+    // Not a full URL (likely a path) – prefix with API base
+    if (u.startsWith("/")) return `${API_BASE}${u}`;
+    return `${API_BASE}/${u}`;
+  }
+}
 
 /**
- * POST /ml/predict
- * Forwards a normalized payload to the ML service.
+ * POST /ml/predict (unchanged)
  */
 router.post("/predict", async (req, res) => {
   try {
@@ -44,14 +58,13 @@ router.post("/predict", async (req, res) => {
     if (!r.ok) return res.status(r.status).json(json);
     return res.json(json);
   } catch (e: any) {
-    console.error("[ml] /predict failed:", e?.message || e);
+    console.error("[ml proxy] /predict failed:", e?.message || e);
     return res.status(502).json({ error: "ml_unreachable" });
   }
 });
 
 /**
- * GET /ml/health
- * Simple health probe to the ML service.
+ * GET /ml/health (unchanged)
  */
 router.get("/health", async (_req, res) => {
   try {
@@ -63,23 +76,21 @@ router.get("/health", async (_req, res) => {
 });
 
 /**
- * POST /ml/parse-quote
- * Body: { url: "https://.../gmail/message/.../attachments/...?...jwt=<token>", filename?, quotedAt? }
- * Forwards a single attachment URL to the ML service to extract structured quote data.
+ * POST /ml/parse-quote (unchanged except normalization)
+ * Body: { url, filename?, quotedAt? }
  */
 router.post("/parse-quote", async (req, res) => {
   try {
     if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
 
     const { url, filename, quotedAt } = req.body || {};
-    if (!url || typeof url !== "string") {
-      return res.status(400).json({ error: "missing url" });
-    }
+    const safeUrl = normalizeAttachmentUrl(url);
+    if (!safeUrl) return res.status(400).json({ error: "missing url" });
 
     const f = await fetch(`${ML_URL}/parse-quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, filename, quotedAt }),
+      body: JSON.stringify({ url: safeUrl, filename, quotedAt }),
     });
 
     const text = await f.text();
@@ -91,17 +102,15 @@ router.post("/parse-quote", async (req, res) => {
     }
     return res.json(json);
   } catch (e: any) {
-    console.error("[ml] /parse-quote failed:", e?.message || e);
+    console.error("[ml proxy] /parse-quote failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
 
 /**
  * POST /ml/train
- * Flow:
- * 1) Call /internal/ml/ingest-gmail to collect signed PDF URLs (scoped to tenant)
- * 2) Send those items to the ML server /train
- * 3) Persist parsed samples to DB via /internal/ml/save-samples
+ * 1) calls /internal/ml/ingest-gmail to collect signed PDF URLs
+ * 2) normalizes URLs and forwards to ML /train
  */
 router.post("/train", async (req: any, res) => {
   try {
@@ -111,12 +120,10 @@ router.post("/train", async (req: any, res) => {
 
     const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 500), 500));
 
-    // 1) Collect signed attachment URLs
     const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-gmail`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // forward the user's bearer token so the internal route sees the same tenant
         ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
       },
       body: JSON.stringify({ limit }),
@@ -130,18 +137,16 @@ router.post("/train", async (req: any, res) => {
       return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
     }
 
-    // Map to ML schema: { messageId, attachmentId, url, filename?, quotedAt? }
     const items = Array.isArray(ingestJson.items)
       ? ingestJson.items.map((it: any) => ({
           messageId: it.messageId,
           attachmentId: it.attachmentId,
-          url: it.url ?? it.downloadUrl,    // ML expects `url`
+          url: normalizeAttachmentUrl(it.url ?? it.downloadUrl),
           filename: it.filename ?? null,
-          quotedAt: it.sentAt ?? null,      // from the email "Date" header if present
-        }))
+          quotedAt: it.sentAt ?? null,
+        })).filter((x: any) => !!x.url)
       : [];
 
-    // 2) Send to ML /train
     const trainResp = await fetch(`${ML_URL}/train`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -156,60 +161,9 @@ router.post("/train", async (req: any, res) => {
       return res.status(trainResp.status).json({ error: "ml_train_failed", detail: trainJson });
     }
 
-    // 3) Persist parsed samples if available
-    const samples = Array.isArray(trainJson.samples) ? trainJson.samples : [];
-    let saved: any = { ok: true, inserted: 0 };
-    if (samples.length) {
-      // Build payload for internal save
-      const savePayload = {
-        samples: samples.map((s: any) => ({
-          messageId: s.messageId,
-          attachmentId: s.attachmentId,
-          url: s.url,
-          quotedAt: s.quotedAt,                 // ISO string coming back from ML
-          text_chars: s.text_chars ?? 0,
-          parsed: {
-            currency: s.parsed?.currency ?? null,
-            estimated_total: s.parsed?.estimated_total ?? null,
-            confidence: s.parsed?.confidence ?? null,
-            detected_totals: s.parsed?.detected_totals ?? [],
-          },
-        })),
-      };
-
-      const saveResp = await fetch(`${API_BASE}/internal/ml/save-samples`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
-        },
-        body: JSON.stringify(savePayload),
-      });
-
-      const saveText = await saveResp.text();
-      try { saved = saveText ? JSON.parse(saveText) : saved; } catch { saved = { ...saved, raw: saveText }; }
-
-      if (!saveResp.ok) {
-        // We still return ML response, but surface the save error
-        return res.status(saveResp.status).json({
-          error: "save_failed",
-          detail: saved,
-          ml: trainJson,
-          tenantId,
-          received: items.length,
-        });
-      }
-    }
-
-    return res.json({
-      ok: true,
-      tenantId,
-      received: items.length,
-      ml: trainJson,
-      saved,
-    });
+    return res.json({ ok: true, tenantId, received: items.length, ml: trainJson });
   } catch (e: any) {
-    console.error("[ml] /train failed:", e?.message || e);
+    console.error("[ml/train] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
