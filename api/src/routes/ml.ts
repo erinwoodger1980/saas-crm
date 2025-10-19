@@ -90,7 +90,7 @@ router.post("/parse-quote", async (req, res) => {
 /**
  * POST /ml/train
  * 1) Calls /internal/ml/ingest-gmail to collect signed PDF URLs
- * 2) Sends those items to the ML server /train
+ * 2) Maps to ML schema and sends { tenantId, items } to the ML server /train
  */
 router.post("/train", async (req: any, res) => {
   try {
@@ -124,24 +124,33 @@ router.post("/train", async (req: any, res) => {
     let ingestJson: any = {};
     try { ingestJson = ingestText ? JSON.parse(ingestText) : {}; } catch { ingestJson = { raw: ingestText }; }
 
-    if (!ingestResp.ok) {
+    if (!ingestResp.ok || !ingestJson?.ok) {
       return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
     }
 
-    const items = Array.isArray(ingestJson.items) ? ingestJson.items.map((it: any) => ({
-      url: it.url,
-      filename: it.filename,
-      messageId: it.messageId,
-      threadId: it.threadId,
-      subject: it.subject,
-      sentAt: it.sentAt,
-    })) : [];
+    // 2) Transform to ML schema: { messageId, attachmentId, downloadUrl, quotedAt }
+    const items = (Array.isArray(ingestJson.items) ? ingestJson.items : [])
+      .filter((it: any) => it.attachmentId && it.url)
+      .map((it: any) => ({
+        messageId: it.messageId,
+        attachmentId: it.attachmentId,
+        downloadUrl: it.url, // rename url -> downloadUrl
+        quotedAt: it.sentAt ? new Date(it.sentAt).toISOString() : new Date().toISOString(),
+      }));
 
-    // 2) Send items to ML /train
+    if (items.length === 0) {
+      return res.status(400).json({
+        error: "no_items",
+        detail: "No suitable PDF quote attachments found to train on.",
+        ingestCount: ingestJson.count ?? 0,
+      });
+    }
+
+    // 3) Send to ML service
     const trainResp = await fetch(`${ML_URL}/train`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({ tenantId, items }),
     });
 
     const trainText = await trainResp.text();
