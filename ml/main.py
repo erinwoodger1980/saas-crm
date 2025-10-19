@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List, Set
 import joblib, pandas as pd, numpy as np
 import json, os, traceback
+from pdf_parser import parse_pdf_from_url
 
 app = FastAPI(title="JoineryAI ML API")
 
@@ -219,46 +220,66 @@ async def predict(req: Request):
         "columns_used": COLUMNS,
     }
 
-# --------- Training (accepts items from API ingest) ----------
+# --------- Training (structured payload from API) ----------
 class TrainItem(BaseModel):
-    url: str
-    filename: Optional[str] = None
-    messageId: Optional[str] = None
-    threadId: Optional[str] = None
-    subject: Optional[str] = None
-    sentAt: Optional[str] = None
+    messageId: str
+    attachmentId: str
+    downloadUrl: str
+    quotedAt: str
 
 class TrainPayload(BaseModel):
-    items: Optional[List[TrainItem]] = None
-    tenantId: Optional[str] = None
-    limit: Optional[int] = 500
+    tenantId: str
+    items: List[TrainItem] = []
 
 @app.post("/train")
 async def train(payload: TrainPayload):
     """
-    Accepts a list of signed attachment URLs (items[].url). Placeholder implementation:
-    just acknowledges receipt. Replace with:
-      - download each PDF from item.url
-      - parse quotes
-      - fit models and persist to models/
+    Download each signed attachment URL, parse lightweight quote structure,
+    and return a summary (placeholder for real training).
     """
-    items = payload.items or []
+    parsed_results = []
+    failures = []
 
-    if not items:
-        if payload.tenantId:
-            # Back-compat: API may still call with tenantId/limit only
-            return {
-                "ok": True,
-                "tenantId": payload.tenantId,
-                "trained_on": int(payload.limit or 500),
-                "message": "Training job triggered (placeholder; no items provided).",
-            }
-        raise HTTPException(status_code=400, detail="No items provided")
+    for it in payload.items:
+        res = parse_pdf_from_url(it.downloadUrl)
+        if res.get("ok"):
+            parsed_results.append({
+                "messageId": it.messageId,
+                "attachmentId": it.attachmentId,
+                "quotedAt": it.quotedAt,
+                "url": it.downloadUrl,
+                "text_chars": res.get("text_chars", 0),
+                "parsed": res.get("parsed", {}),
+            })
+        else:
+            failures.append({
+                "messageId": it.messageId,
+                "attachmentId": it.attachmentId,
+                "url": it.downloadUrl,
+                "error": res.get("error", "unknown"),
+            })
 
-    # TODO: implement download/parse/train here.
+    # Naive placeholder “training”: aggregate a few stats
+    total_docs = len(payload.items)
+    ok_docs = len(parsed_results)
+    fail_docs = len(failures)
+    avg_total = None
+    totals = []
+    for r in parsed_results:
+        est = (r.get("parsed") or {}).get("estimated_total")
+        if isinstance(est, (int, float)):
+            totals.append(float(est))
+    if totals:
+        avg_total = round(sum(totals) / len(totals), 2)
 
     return {
         "ok": True,
-        "received": len(items),
+        "tenantId": payload.tenantId,
+        "received_items": total_docs,
+        "parsed_ok": ok_docs,
+        "failed": fail_docs,
+        "avg_estimated_total": avg_total,
+        "samples": parsed_results[:5],  # include first few examples for debugging
+        "failures": failures[:5],
         "message": "Training job accepted (placeholder).",
     }
