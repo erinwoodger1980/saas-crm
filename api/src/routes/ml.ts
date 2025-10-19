@@ -1,6 +1,4 @@
 // api/src/routes/ml.ts
-import jwt from "jsonwebtoken";
-import { env } from "../env";
 import { Router } from "express";
 
 const router = Router();
@@ -88,52 +86,77 @@ router.post("/parse-quote", async (req, res) => {
     return res.status(500).json({ error: "internal_error" });
   }
 });
+
 /**
  * POST /ml/train
- * Imports the last 500 sent Gmail messages that have PDF quote attachments
- * and sends them to the importer for training.
+ * 1) Calls /internal/ml/ingest-gmail to collect signed PDF URLs
+ * 2) Sends those items to the ML server /train
  */
-router.post("/train", async (req, res) => {
+router.post("/train", async (req: any, res) => {
   try {
-    let tenantId = (req as any)?.auth?.tenantId;
-if (!tenantId) {
-  const header = req.headers.authorization || "";
-  if (header.startsWith("Bearer ")) {
-    try {
-      const decoded = jwt.verify(header.slice(7), env.APP_JWT_SECRET) as any;
-      tenantId = decoded?.tenantId;
-    } catch {
-      /* ignore */
-    }
-  }
-}
-if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-    const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "").trim();
     if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
 
-    const { limit = 500 } = req.body || {};
+    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 500), 500));
 
-    const r = await fetch(`${ML_URL.replace(/\/$/, "")}/train`, {
+    // Build a base to call our own API (works on Render and locally)
+    const API_BASE =
+      (process.env.APP_API_URL ||
+        process.env.API_URL ||
+        process.env.RENDER_EXTERNAL_URL ||
+        `http://localhost:${process.env.PORT || 4000}`)!
+        .replace(/\/$/, "");
+
+    // 1) Collect items (signed attachment URLs) from our internal endpoint
+    const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-gmail`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId, limit }),
+      headers: {
+        "Content-Type": "application/json",
+        // forward the user's bearer token so the internal route sees the same tenant
+        ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+      },
+      body: JSON.stringify({ limit }),
     });
 
-    const text = await r.text();
-    let json: any = {};
-    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+    const ingestText = await ingestResp.text();
+    let ingestJson: any = {};
+    try { ingestJson = ingestText ? JSON.parse(ingestText) : {}; } catch { ingestJson = { raw: ingestText }; }
 
-    if (!r.ok) {
-      return res.status(r.status).json({ error: "ml_train_failed", detail: json });
+    if (!ingestResp.ok) {
+      return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
     }
 
-    return res.json({ ok: true, ...json });
+    const items = Array.isArray(ingestJson.items) ? ingestJson.items.map((it: any) => ({
+      url: it.url,
+      filename: it.filename,
+      messageId: it.messageId,
+      threadId: it.threadId,
+      subject: it.subject,
+      sentAt: it.sentAt,
+    })) : [];
+
+    // 2) Send items to ML /train
+    const trainResp = await fetch(`${ML_URL}/train`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+
+    const trainText = await trainResp.text();
+    let trainJson: any = {};
+    try { trainJson = trainText ? JSON.parse(trainText) : {}; } catch { trainJson = { raw: trainText }; }
+
+    if (!trainResp.ok) {
+      return res.status(trainResp.status).json({ error: "ml_train_failed", detail: trainJson });
+    }
+
+    return res.json({ ok: true, tenantId, received: items.length, ml: trainJson });
   } catch (e: any) {
     console.error("[ml/train] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
-
 
 export default router;
