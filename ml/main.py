@@ -5,9 +5,6 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List, Set
 import joblib, pandas as pd, numpy as np
 import json, os, traceback
-# --- add (or keep) these imports ---
-from fastapi import FastAPI
-from pydantic import BaseModel
 
 app = FastAPI(title="JoineryAI ML API")
 
@@ -62,7 +59,7 @@ def _walk_estimators(obj):
                 yield inner
     elif hasattr(obj, "transformers"):  # ColumnTransformer-like
         try:
-            for name, trans, cols in obj.transformers:  # type: ignore[attr-defined]
+            for name, trans, cols in est.transformers:  # type: ignore[attr-defined]
                 yield trans
                 if hasattr(trans, "transformers"):
                     for inner in _walk_estimators(trans):
@@ -79,11 +76,9 @@ def expected_columns_from_model(model) -> List[str]:
     cols: List[str] = []
     for est in _walk_estimators(model):
         if hasattr(est, "transformers"):
-            # It's a ColumnTransformer
             try:
                 for _name, _trans, _cols in est.transformers:  # type: ignore[attr-defined]
                     if isinstance(_cols, (list, tuple, np.ndarray)):
-                        # string column names only
                         str_cols = [c for c in _cols if isinstance(c, str)]
                         cols.extend(str_cols)
             except Exception:
@@ -120,7 +115,6 @@ COLUMNS = _ordered_union(COLUMNS, win_cols)
 NUMERIC_COLUMNS: Set[str] = set(feature_meta.get("numeric_columns") or [])
 CATEGORICAL_COLUMNS: Set[str] = set(feature_meta.get("categorical_columns") or [])
 if not NUMERIC_COLUMNS and not CATEGORICAL_COLUMNS:
-    # Heuristics + known numerics from your error
     numeric_hints = ("area", "num_", "days_", "value", "gbp", "amount", "count")
     known_numerics = {"area_m2", "num_emails_thread", "days_to_first_reply", "quote_value_gbp"}
     for col in COLUMNS:
@@ -201,7 +195,7 @@ async def predict(req: Request):
         raise HTTPException(status_code=422, detail=f"Validation failed: {e}")
 
     try:
-        X = build_feature_row(q)  # <- always has ALL expected cols now
+        X = build_feature_row(q)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Feature build failed: {e}")
@@ -228,27 +222,29 @@ async def predict(req: Request):
         "columns_used": COLUMNS,
     }
 
+# --------- Training (structured payload from API) ----------
+class TrainItem(BaseModel):
+    messageId: str
+    attachmentId: str
+    downloadUrl: str
+    quotedAt: str
 
-# ensure you have your FastAPI app defined somewhere above:
-# app = FastAPI()
-
-class TrainRequest(BaseModel):
+class TrainPayload(BaseModel):
     tenantId: str
-    limit: int = 500
+    items: List[TrainItem] = []
 
 @app.post("/train")
-async def train(req: TrainRequest):
+async def train(payload: TrainPayload):
     """
-    Placeholder: trigger training on the last N quote PDFs for this tenant.
-    Replace the body with your real ingestion + training pipeline.
+    Placeholder training endpoint receiving concrete attachment URLs from the API.
+    Replace with:
+      - download each PDF from item.downloadUrl
+      - parse quotes
+      - fit models and persist to models/
     """
-    # TODO:
-    # 1) Pull last `req.limit` sent Gmail messages with PDF quote attachments (for req.tenantId)
-    # 2) Extract line items + prices
-    # 3) Fit/refresh models and persist artifacts
     return {
         "ok": True,
-        "tenantId": req.tenantId,
-        "trained_on": req.limit,
+        "tenantId": payload.tenantId,
+        "received_items": len(payload.items),
         "message": "Training job triggered (placeholder)."
     }
