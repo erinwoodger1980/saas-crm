@@ -740,22 +740,39 @@ router.post("/import", async (req, res) => {
 
       // Upsert EmailMessage (idempotent on (tenantId, provider, messageId))
       try {
-        await prisma.emailMessage.create({
-          data: {
-            tenantId,
-            provider: "gmail",
-            messageId: m.id,
-            threadId: thread.id,
-            direction: "inbound",
-            fromEmail: fromAddr,
-            toEmail: allRcpts.length ? allRcpts.join(", ") : null,
-            subject: subject || null,
-            snippet: snippet || null,
-            bodyText: bodyText || null,
-            sentAt: msg.internalDate ? new Date(Number(msg.internalDate)) : new Date(),
-            leadId: leadId || null,
-          },
-        });
+        await prisma.emailMessage.upsert({
+  where: {
+    tenantId_provider_messageId: {
+      tenantId,
+      provider: "gmail",
+      messageId: m.id,
+    },
+  },
+  update: {
+    threadId: thread.id,
+    fromEmail: fromAddr,
+    toEmail: allRcpts.length ? allRcpts.join(", ") : null,
+    subject: subject || null,
+    snippet: snippet || null,
+    bodyText: bodyText || null,
+    sentAt: msg.internalDate ? new Date(Number(msg.internalDate)) : new Date(),
+    leadId: leadId || null,
+  },
+  create: {
+    tenantId,
+    provider: "gmail",
+    messageId: m.id,
+    threadId: thread.id,
+    direction: "inbound",
+    fromEmail: fromAddr,
+    toEmail: allRcpts.length ? allRcpts.join(", ") : null,
+    subject: subject || null,
+    snippet: snippet || null,
+    bodyText: bodyText || null,
+    sentAt: msg.internalDate ? new Date(Number(msg.internalDate)) : new Date(),
+    leadId: leadId || null,
+  },
+});
       } catch {
         // already present
       }
