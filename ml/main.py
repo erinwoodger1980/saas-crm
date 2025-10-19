@@ -46,7 +46,7 @@ if os.path.exists(META_PATH):
 
 # --------- Introspect pipelines to recover expected input columns ----------
 def _walk_estimators(obj):
-    """Yield any nested estimators/transformers inside sklearn Pipelines/ColumnTransformers."""
+    """Yield nested estimators/transformers inside sklearn Pipelines/ColumnTransformers."""
     try:
         from sklearn.pipeline import Pipeline
         from sklearn.compose import ColumnTransformer
@@ -59,7 +59,7 @@ def _walk_estimators(obj):
                 yield inner
     elif hasattr(obj, "transformers"):  # ColumnTransformer-like
         try:
-            for name, trans, cols in est.transformers:  # type: ignore[attr-defined]
+            for _name, trans, _cols in obj.transformers:  # type: ignore[attr-defined]
                 yield trans
                 if hasattr(trans, "transformers"):
                     for inner in _walk_estimators(trans):
@@ -69,10 +69,6 @@ def _walk_estimators(obj):
 
 def expected_columns_from_model(model) -> List[str]:
     """Try to read the column names a ColumnTransformer was fit with."""
-    try:
-        from sklearn.compose import ColumnTransformer
-    except Exception:
-        return []
     cols: List[str] = []
     for est in _walk_estimators(model):
         if hasattr(est, "transformers"):
@@ -115,6 +111,7 @@ COLUMNS = _ordered_union(COLUMNS, win_cols)
 NUMERIC_COLUMNS: Set[str] = set(feature_meta.get("numeric_columns") or [])
 CATEGORICAL_COLUMNS: Set[str] = set(feature_meta.get("categorical_columns") or [])
 if not NUMERIC_COLUMNS and not CATEGORICAL_COLUMNS:
+    # Heuristics + known numerics
     numeric_hints = ("area", "num_", "days_", "value", "gbp", "amount", "count")
     known_numerics = {"area_m2", "num_emails_thread", "days_to_first_reply", "quote_value_gbp"}
     for col in COLUMNS:
@@ -222,29 +219,46 @@ async def predict(req: Request):
         "columns_used": COLUMNS,
     }
 
-# --------- Training (structured payload from API) ----------
+# --------- Training (accepts items from API ingest) ----------
 class TrainItem(BaseModel):
-    messageId: str
-    attachmentId: str
-    downloadUrl: str
-    quotedAt: str
+    url: str
+    filename: Optional[str] = None
+    messageId: Optional[str] = None
+    threadId: Optional[str] = None
+    subject: Optional[str] = None
+    sentAt: Optional[str] = None
 
 class TrainPayload(BaseModel):
-    tenantId: str
-    items: List[TrainItem] = []
+    items: Optional[List[TrainItem]] = None
+    tenantId: Optional[str] = None
+    limit: Optional[int] = 500
 
 @app.post("/train")
 async def train(payload: TrainPayload):
     """
-    Placeholder training endpoint receiving concrete attachment URLs from the API.
-    Replace with:
-      - download each PDF from item.downloadUrl
+    Accepts a list of signed attachment URLs (items[].url). Placeholder implementation:
+    just acknowledges receipt. Replace with:
+      - download each PDF from item.url
       - parse quotes
       - fit models and persist to models/
     """
+    items = payload.items or []
+
+    if not items:
+        if payload.tenantId:
+            # Back-compat: API may still call with tenantId/limit only
+            return {
+                "ok": True,
+                "tenantId": payload.tenantId,
+                "trained_on": int(payload.limit or 500),
+                "message": "Training job triggered (placeholder; no items provided).",
+            }
+        raise HTTPException(status_code=400, detail="No items provided")
+
+    # TODO: implement download/parse/train here.
+
     return {
         "ok": True,
-        "tenantId": payload.tenantId,
-        "received_items": len(payload.items),
-        "message": "Training job triggered (placeholder)."
+        "received": len(items),
+        "message": "Training job accepted (placeholder).",
     }
