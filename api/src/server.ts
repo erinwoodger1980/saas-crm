@@ -109,11 +109,6 @@ app.use("/public", publicRouter);
 /** public-signup exposes /public/signup and friends */
 app.use("/public", publicSignupRouter);
 
-/** ---------- ML proxy (no auth; read-only) ----------
- *  /ml/health and /ml/predict forward to your FastAPI service.
- *  Make sure ML_URL is set on Render (e.g. https://ml-web-tann.onrender.com)
- */
-app.use("/ml", mlProxyRouter);
 
 /** ---------- JWT decode middleware (Authorization header or jwt cookie) ---------- */
 app.use((req, _res, next) => {
@@ -288,9 +283,6 @@ app.use("/questionnaire/fill", requireAuth, questionnaireFillRouter);
 app.use("/internal/ml", mlInternalRouter);
 
 
-/** ---------- Public (no auth required) ---------- */
-app.use("/public", publicRouter);
-app.use("/public", publicSignupRouter);
 
 /** ---------- Auth required from here ---------- */
 app.use((req, _res, next) => {
