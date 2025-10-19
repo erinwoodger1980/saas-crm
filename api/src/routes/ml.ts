@@ -13,7 +13,6 @@ const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://
 router.post("/predict", async (req, res) => {
   try {
     const b = req.body ?? {};
-    // Normalize types & provide defaults to avoid 422s downstream
     const payload = {
       area_m2: typeof b.area_m2 === "string" ? Number(b.area_m2) : Number(b.area_m2 ?? 0),
       materials_grade: (b.materials_grade ?? "Standard").toString(),
@@ -42,7 +41,6 @@ router.post("/predict", async (req, res) => {
 
 /**
  * GET /ml/health
- * Simple health probe to the ML service root.
  */
 router.get("/health", async (_req, res) => {
   try {
@@ -55,14 +53,13 @@ router.get("/health", async (_req, res) => {
 
 /**
  * POST /ml/parse-quote
- * Body: { url: "https://api.joineryai.app/gmail/message/.../attachments/...?...jwt=<token>" }
- * Forwards a single attachment URL to the ML service to extract structured quote data.
+ * Body: { url: "https://.../gmail/message/.../attachments/...?...jwt=<token>" }
  */
 router.post("/parse-quote", async (req, res) => {
   try {
     if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
 
-    const { url } = req.body || {};
+    const { url, filename, quotedAt } = req.body || {};
     if (!url || typeof url !== "string") {
       return res.status(400).json({ error: "missing url" });
     }
@@ -70,7 +67,7 @@ router.post("/parse-quote", async (req, res) => {
     const f = await fetch(`${ML_URL}/parse-quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, filename, quotedAt }),
     });
 
     const text = await f.text();
@@ -90,7 +87,7 @@ router.post("/parse-quote", async (req, res) => {
 /**
  * POST /ml/train
  * 1) Calls /internal/ml/ingest-gmail to collect signed PDF URLs
- * 2) Maps to ML schema and sends { tenantId, items } to the ML server /train
+ * 2) Sends those items to the ML server /train
  */
 router.post("/train", async (req: any, res) => {
   try {
@@ -101,7 +98,6 @@ router.post("/train", async (req: any, res) => {
 
     const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 500), 500));
 
-    // Build a base to call our own API (works on Render and locally)
     const API_BASE =
       (process.env.APP_API_URL ||
         process.env.API_URL ||
@@ -109,12 +105,11 @@ router.post("/train", async (req: any, res) => {
         `http://localhost:${process.env.PORT || 4000}`)!
         .replace(/\/$/, "");
 
-    // 1) Collect items (signed attachment URLs) from our internal endpoint
+    // 1) Collect signed attachment URLs
     const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-gmail`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // forward the user's bearer token so the internal route sees the same tenant
         ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
       },
       body: JSON.stringify({ limit }),
@@ -124,29 +119,22 @@ router.post("/train", async (req: any, res) => {
     let ingestJson: any = {};
     try { ingestJson = ingestText ? JSON.parse(ingestText) : {}; } catch { ingestJson = { raw: ingestText }; }
 
-    if (!ingestResp.ok || !ingestJson?.ok) {
+    if (!ingestResp.ok) {
       return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
     }
 
-    // 2) Transform to ML schema: { messageId, attachmentId, downloadUrl, quotedAt }
-    const items = (Array.isArray(ingestJson.items) ? ingestJson.items : [])
-      .filter((it: any) => it.attachmentId && it.url)
-      .map((it: any) => ({
-        messageId: it.messageId,
-        attachmentId: it.attachmentId,
-        downloadUrl: it.url, // rename url -> downloadUrl
-        quotedAt: it.sentAt ? new Date(it.sentAt).toISOString() : new Date().toISOString(),
-      }));
+    // Map to ML schema: { messageId, attachmentId, url, filename?, quotedAt? }
+    const items = Array.isArray(ingestJson.items)
+      ? ingestJson.items.map((it: any) => ({
+          messageId: it.messageId,
+          attachmentId: it.attachmentId,
+          url: it.url ?? it.downloadUrl,            // <-- FIX: ML expects `url`
+          filename: it.filename ?? null,
+          quotedAt: it.sentAt ?? null,              // pass the Date header (if present)
+        }))
+      : [];
 
-    if (items.length === 0) {
-      return res.status(400).json({
-        error: "no_items",
-        detail: "No suitable PDF quote attachments found to train on.",
-        ingestCount: ingestJson.count ?? 0,
-      });
-    }
-
-    // 3) Send to ML service
+    // 2) Send to ML /train
     const trainResp = await fetch(`${ML_URL}/train`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
