@@ -6,3 +6,7 @@ numpy==1.26.4
 pandas==2.2.2
 xgboost==2.1.4
 psycopg[binary]==3.2.1
+pymupdf
+pytesseract
+pdf2image
+Pillow
