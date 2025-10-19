@@ -1,144 +1,159 @@
 # ml/pdf_parser.py
 from __future__ import annotations
+import io, re, json, urllib.request
 from typing import Dict, Any, List, Tuple
-import io, re
+from PIL import Image
 
-# We’ll try pypdf first (pure Python). If needed, you can later add pdfplumber or OCR.
+# Optional OCR deps (we'll import lazily so the module still loads without them)
 try:
-    from pypdf import PdfReader  # pip install pypdf
+    import fitz  # PyMuPDF
 except Exception:
-    PdfReader = None  # type: ignore
+    fitz = None
 
+def _download(url: str) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": "JoineryAI-ML/1.0"})
+    with urllib.request.urlopen(req, timeout=60) as rsp:
+        return rsp.read()
 
-def extract_text_from_pdf_bytes(data: bytes) -> str:
-    """
-    Extracts text from a PDF (bytes) using pypdf.
-    Returns a single string (may be empty if the PDF is fully graphical).
-    """
-    if not data:
+def _extract_text_pymupdf(pdf_bytes: bytes) -> str:
+    if not fitz:
+        return ""
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        parts: List[str] = []
+        for page in doc:
+            # textpage (raw) generally best for drawings with selectable text
+            t = page.get_text("text") or ""
+            if not t.strip():
+                t = page.get_text("blocks") or ""
+            parts.append(t)
+        return "\n".join(parts).strip()
+    except Exception:
         return ""
 
-    if PdfReader is None:
-        # pypdf not available
+def _ocr_pages(pdf_bytes: bytes, max_pages: int = 5) -> str:
+    """
+    OCR fallback: rasterize first few pages & run Tesseract (if available).
+    We keep it defensive so it won't crash if deps are missing.
+    """
+    try:
+        from pdf2image import convert_from_bytes
+        import pytesseract
+    except Exception:
         return ""
 
     try:
-        text_parts: List[str] = []
-        reader = PdfReader(io.BytesIO(data))
-        for page in reader.pages:
+        images: List[Image.Image] = convert_from_bytes(
+            pdf_bytes, fmt="png", first_page=1, last_page=max_pages, dpi=200
+        )
+        out: List[str] = []
+        for img in images:
             try:
-                t = page.extract_text() or ""
+                txt = pytesseract.image_to_string(img) or ""
+                if txt.strip():
+                    out.append(txt)
             except Exception:
-                t = ""
-            if t:
-                text_parts.append(t)
-        return "\n".join(text_parts).strip()
+                pass
+        return "\n".join(out).strip()
     except Exception:
         return ""
 
+_CURRENCY_SIGNS = r"(?:£|\$|€)"
+_NUM = r"(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d{2})?"
+TOTAL_PATTS = [
+    # common label + amount on same line
+    re.compile(rf"(?:grand\s*total|total\s*(?:due|amount)?|balance\s*due)\s*[:\-]?\s*{_CURRENCY_SIGNS}\s*({_NUM})", re.I),
+    re.compile(rf"{_CURRENCY_SIGNS}\s*({_NUM})\s*(?:grand\s*total|total\s*(?:due|amount)?|balance\s*due)", re.I),
+    # plain currency lines near the end (last resort)
+    re.compile(rf"{_CURRENCY_SIGNS}\s*({_NUM})"),
+]
 
-_money_pat = re.compile(
-    r"""
-    (?<![\w])            # not part of a longer word
-    (?:£|\$|€)?          # optional currency symbol
-    \s*
-    (?:\d{1,3}(?:,\d{3})*|\d+)   # 1,234 or 1234
-    (?:\.\d{2})?         # optional .00
-    (?![\w])             # not part of a longer word
-    """,
-    re.X,
-)
-
-
-def _to_number(s: str) -> float | None:
-    try:
-        v = s.replace(",", "").replace(" ", "")
-        # strip currency symbols
-        v = v.lstrip("£$€")
-        return float(v)
-    except Exception:
-        return None
-
-
-def parse_totals_from_text(text: str) -> Dict[str, Any]:
-    """
-    Very simple heuristics:
-      - scan lines for keywords like Total, Grand Total, Subtotal, VAT
-      - collect money values on those lines
-      - choose a final 'estimated_total' if we can spot a grand total / total
-    """
+def _detect_totals(text: str) -> Tuple[List[Dict[str, Any]], float | None]:
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    detected: List[Tuple[str, float]] = []  # (label, value)
+    detected: List[Dict[str, Any]] = []
 
-    KEYWORDS = [
-        ("grand_total", r"grand\s*total|amount\s*due|balance\s*due"),
-        ("total", r"total\b(?!\s*ex)"),
-        ("subtotal", r"\bsub\s*total|\bsubtotal"),
-        ("vat", r"\bvat\b|tax|tva|gst"),
-    ]
-    compiled = [(name, re.compile(pat, re.I)) for name, pat in KEYWORDS]
+    # try label-aware patterns first
+    for i, ln in enumerate(lines):
+        s = ln
+        for rx in TOTAL_PATTS[:2]:
+            m = rx.search(s)
+            if m:
+                amt = m.group(1)
+                try:
+                    val = float(amt.replace(",", ""))
+                    detected.append({"line": s, "value": val})
+                except Exception:
+                    pass
 
-    for ln in lines:
-        money_on_line = _money_pat.findall(ln)
-        if not money_on_line:
-            continue
-        lower = ln.lower()
+    # If still nothing, scan the last ~15 lines for any lone currency amounts
+    if not detected:
+        tail = lines[-15:]
+        for ln in tail:
+            for m in TOTAL_PATTS[2].finditer(ln):
+                amt = m.group(1)
+                try:
+                    val = float(amt.replace(",", ""))
+                    detected.append({"line": ln, "value": val})
+                except Exception:
+                    pass
 
-        for name, creg in compiled:
-            if creg.search(lower):
-                # Take the last money-looking token on the line (often the rightmost number)
-                val = _to_number(money_on_line[-1])
-                if val is not None:
-                    detected.append((name, val))
-                break
+    avg = None
+    if detected:
+        vals = [d["value"] for d in detected]
+        # choose the max as a heuristic for "grand total"
+        avg = max(vals) if vals else None
 
-    # choose an estimated_total
-    est = None
-    # prefer grand_total > total > subtotal (+vat if present)
-    gts = [v for (name, v) in detected if name == "grand_total"]
-    ts = [v for (name, v) in detected if name == "total"]
-    subs = [v for (name, v) in detected if name == "subtotal"]
-    vats = [v for (name, v) in detected if name == "vat"]
+    return detected, avg
 
-    if gts:
-        est = max(gts)
-    elif ts:
-        est = max(ts)
-    elif subs:
-        # crude: subtotal + largest VAT we saw
-        if vats:
-            est = max(subs) + max(vats)
+def parse_quote_pdf(url: str) -> Dict[str, Any]:
+    """
+    Download + parse a PDF quote.
+    Returns:
+      {
+        "currency": "£" | "$" | "€" | None,
+        "lines": [...maybe later...],
+        "detected_totals": [{"line": str, "value": float}, ...],
+        "estimated_total": float | None,
+        "confidence": 0..1,
+        "raw_text_len": int
+      }
+    """
+    pdf_bytes = _download(url)
+
+    # 1) try text extraction (PyMuPDF)
+    text = _extract_text_pymupdf(pdf_bytes)
+
+    # 2) if empty, OCR first few pages
+    if not text or len(text.strip()) < 10:
+        ocr_text = _ocr_pages(pdf_bytes, max_pages=5)
+        if len(ocr_text) > len(text):
+            text = ocr_text
+
+    # currency sign heuristic
+    currency = None
+    if "£" in text:
+        currency = "£"
+    elif "$" in text:
+        currency = "$"
+    elif "€" in text:
+        currency = "€"
+
+    detected_totals, estimated_total = _detect_totals(text)
+    confidence = 0.0
+    if estimated_total is not None:
+        # cheap heuristic: long enough text + totals found = higher confidence
+        if len(text) > 400:
+            confidence = 0.8
+        elif len(text) > 120:
+            confidence = 0.6
         else:
-            est = max(subs)
+            confidence = 0.4
 
-    out = {
-        "detected_totals": [{"label": name, "value": v} for (name, v) in detected],
-        "estimated_total": est,
-        "currency": _guess_currency(text),
-        "confidence": _confidence_from_detected(detected, est),
-        "lines": [],  # (line items can be added later)
+    return {
+        "currency": currency,
+        "lines": [],  # (optionally populate later with structured line items)
+        "detected_totals": detected_totals,
+        "estimated_total": estimated_total,
+        "confidence": confidence,
+        "raw_text_len": len(text or ""),
     }
-    return out
-
-
-def _guess_currency(text: str) -> str | None:
-    t = text[:10000]  # just sample
-    if "£" in t:
-        return "GBP"
-    if "€" in t:
-        return "EUR"
-    if "$" in t:
-        return "USD"
-    return None
-
-
-def _confidence_from_detected(detected: List[Tuple[str, float]], est: float | None) -> float:
-    # Tiny heuristic scoring
-    if est is None:
-        return 0.0
-    score = 0.4
-    if any(name == "grand_total" for name, _ in detected):
-        score += 0.4
-    if any(name == "vat" for name, _ in detected):
-        score += 0.1
-    return min(1.0, score)
