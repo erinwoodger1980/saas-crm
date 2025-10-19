@@ -38,6 +38,64 @@ router.get("/settings", async (req, res) => {
   }
   res.json(s);
 });
+/** Partial update for tenant settings (e.g. inboxWatchEnabled, inbox, questionnaire, quoteDefaults, brandName, links) */
+router.patch("/settings", async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const {
+    inboxWatchEnabled,
+    inbox,
+    questionnaire,
+    quoteDefaults,
+    brandName,
+    links,
+    introHtml,
+    website,
+    phone,
+    logoUrl,
+  } = req.body || {};
+
+  try {
+    // Ensure a row exists (mirrors your GET /settings bootstrap)
+    let existing = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!existing) {
+      existing = await prisma.tenantSettings.create({
+        data: {
+          tenantId,
+          slug: `tenant-${tenantId.slice(0, 6).toLowerCase()}`,
+          brandName: "Your Company",
+          introHtml:
+            "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
+          links: [],
+        },
+      });
+    }
+
+    // Whitelist fields
+    const update: any = { updatedAt: new Date() };
+    if (inboxWatchEnabled !== undefined) update.inboxWatchEnabled = !!inboxWatchEnabled;
+    if (inbox !== undefined) update.inbox = inbox;
+    if (questionnaire !== undefined) update.questionnaire = questionnaire;
+    if (quoteDefaults !== undefined) update.quoteDefaults = quoteDefaults;
+    if (brandName !== undefined) update.brandName = brandName || "Your Company";
+    if (links !== undefined) update.links = Array.isArray(links) ? links : [];
+    if (introHtml !== undefined) update.introHtml = introHtml ?? null;
+    if (website !== undefined) update.website = website ?? null;
+    if (phone !== undefined) update.phone = phone ?? null;
+    if (logoUrl !== undefined) update.logoUrl = logoUrl ?? null;
+
+    const saved = await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: update,
+    });
+
+    return res.json(saved);
+  } catch (e: any) {
+    console.error("[tenant/settings PATCH] failed:", e?.message || e);
+    return res.status(500).json({ error: "update_failed", detail: e?.message || String(e) });
+  }
+});
 
 /** Quick update: brand / website */
 router.patch("/settings/basic", async (req, res) => {

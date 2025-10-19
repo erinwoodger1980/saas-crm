@@ -86,5 +86,45 @@ router.post("/parse-quote", async (req, res) => {
     return res.status(500).json({ error: "internal_error" });
   }
 });
+/**
+ * POST /ml/train
+ * Imports the last 500 sent Gmail messages that have PDF quote attachments
+ * and sends them to the importer for training.
+ */
+router.post("/train", async (req, res) => {
+  try {
+    const auth = (req as any).auth;
+    if (!auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const origin = (process.env.APP_URL || "").replace(/\/$/, "");
+    const token = (req.headers.authorization || "").split(" ")[1] || "";
+
+    const r = await fetch(`${origin}/gmail/import`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        max: 500,
+        q: "in:sent filename:pdf quote",
+      }),
+    });
+
+    const bodyText = await r.text();
+    let json: any = {};
+    try {
+      json = bodyText ? JSON.parse(bodyText) : {};
+    } catch {
+      json = { raw: bodyText };
+    }
+
+    return res.status(r.status).json(json);
+  } catch (e: any) {
+    console.error("[ml/train] failed:", e);
+    return res.status(500).json({ error: "train_failed", detail: e?.message || String(e) });
+  }
+});
+
 
 export default router;
