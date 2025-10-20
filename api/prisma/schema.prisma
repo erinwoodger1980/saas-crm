@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("postgresql://joineryai_shadow_user:7zmNESACuFyK50AIvvIcRdKrJiJ38RLc@dpg-d3r0aher433s73e2rjtg-a.oregon-postgres.render.com/joineryai_shadow")
 }
 
 model Tenant {
@@ -32,6 +33,12 @@ model Tenant {
   UploadedFile          UploadedFile[]
   users                 User[]
   feedbacks             Feedback[]
+  tasks                 Task[]
+  automationRules       AutomationRule[]
+  notifications         Notification[]
+  streaks               Streak[]
+  activityLogs          ActivityLog[]
+  userPreferences       UserPreference[]
 }
 
 model User {
@@ -479,4 +486,192 @@ model Feedback {
   user   User?  @relation(fields: [userId], references: [id])
 
   @@index([tenantId, feature, createdAt])
+}
+
+// ==============================
+// Tasks, Rules, Notifications, Streaks
+// ==============================
+
+model Task {
+  id          String       @id @default(cuid())
+  tenantId    String
+  title       String
+  description String?      @db.Text
+  relatedType RelatedType
+  relatedId   String?
+  status      TaskStatus   @default(OPEN)
+  priority    TaskPriority @default(MEDIUM)
+  dueAt       DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  autocreated Boolean      @default(true)
+  meta        Json?
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignees TaskAssignee[]
+  subtasks  Subtask[]
+
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, relatedType, relatedId])
+}
+
+enum RelatedType {
+  LEAD
+  PROJECT
+  QUOTE
+  EMAIL
+  QUESTIONNAIRE
+  WORKSHOP
+  OTHER
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model TaskAssignee {
+  taskId String
+  userId String
+  role   AssigneeRole @default(OWNER)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+}
+
+enum AssigneeRole {
+  OWNER
+  FOLLOWER
+}
+
+model Subtask {
+  id     String        @id @default(cuid())
+  taskId String
+  title  String
+  status SubtaskStatus @default(OPEN)
+  order  Int           @default(0)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+enum SubtaskStatus {
+  OPEN
+  DONE
+}
+
+model AutomationRule {
+  id         String  @id @default(cuid())
+  tenantId   String
+  name       String
+  enabled    Boolean @default(true)
+  trigger    Json // e.g. { "type": "LEAD_STATUS_CHANGED", "to": "READY_TO_QUOTE" }
+  conditions Json?
+  actions    Json // e.g. { "createTask": {...}, "assignRoles":[...], "setDueInDays":2 }
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, enabled])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  tenantId  String
+  userId    String
+  type      NotificationType
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, readAt])
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_DUE_SOON
+  TASK_OVERDUE
+  MENTION
+  STREAK
+  SUMMARY
+}
+
+model Streak {
+  id               String    @id @default(cuid())
+  tenantId         String
+  userId           String
+  dayCount         Int       @default(0)
+  lastActivityDate DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+}
+
+model ActivityLog {
+  id        String         @id @default(cuid())
+  tenantId  String
+  entity    ActivityEntity
+  entityId  String
+  verb      ActivityVerb
+  actorId   String?
+  data      Json?
+  createdAt DateTime       @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entity, entityId])
+  @@index([tenantId, verb])
+}
+
+enum ActivityEntity {
+  TASK
+  RULE
+  PROJECT
+}
+
+enum ActivityVerb {
+  CREATED
+  ASSIGNED
+  STARTED
+  COMPLETED
+  REOPENED
+  OVERDUE
+  NUDGED
+}
+
+model UserPreference {
+  id            String @id @default(cuid())
+  tenantId      String
+  userId        String
+  notifications Json?
+  quietHours    Json?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
 }

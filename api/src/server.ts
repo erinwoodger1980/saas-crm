@@ -38,6 +38,11 @@ import featureFlagsRouter from "./routes/feature-flags";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
+import feedbackRouter from "./routes/feedback";
+import tasksRouter from "./routes/tasks";
+import eventsRouter from "./routes/events";
+import notificationsRouter from "./routes/notifications";
+import streaksRouter from "./routes/streaks";
 
 const app = express();
 
@@ -46,12 +51,10 @@ const app = express();
  * ---------------------------------------------------- */
 // Allow ?jwt=<token> on attachment fetches (for ML server)
 app.use((req, _res, next) => {
-  // only for our attachment endpoints
   const forAttachment =
     req.path.startsWith("/gmail/message/") && req.path.includes("/attachments/");
   if (!forAttachment) return next();
 
-  // if already authenticated (cookie or Authorization), carry on
   if ((req as any).auth) return next();
 
   const qJwt = (req.query.jwt as string | undefined) || undefined;
@@ -66,9 +69,14 @@ app.use((req, _res, next) => {
 });
 app.set("trust proxy", 1);
 
-/** ---------- CORS (allow cookies + Authorization header) ---------- */
+/** ---------- CORS (allow localhost + prod, no cookies) ---------- */
 const ORIGINS_RAW =
-  process.env.WEB_ORIGIN || process.env.ALLOWED_ORIGINS || "http://localhost:3000";
+  process.env.WEB_ORIGIN || process.env.ALLOWED_ORIGINS || [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://app.joineryai.app",
+    "https://www.joineryai.app",
+  ].join(",");
 
 const ALLOWED_ORIGINS = ORIGINS_RAW.split(",")
   .map((s) => s.trim())
@@ -76,7 +84,7 @@ const ALLOWED_ORIGINS = ORIGINS_RAW.split(",")
 
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true); // same-origin or server-to-server
+    if (!origin) return cb(null, true); // same-origin or server-to-server (curl, Postman)
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
 
     // Loose host match (helps with http/https discrepancies)
@@ -85,9 +93,14 @@ const corsOptions: cors.CorsOptions = {
 
     cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
-  credentials: true,
+  credentials: false, // ✅ no cookies — keeps requests "simple" and avoids extra preflights
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-tenant-id", // ✅ needed by web
+    "x-user-id",   // ✅ needed by web
+  ],
 };
 
 app.use(cors(corsOptions));
@@ -97,7 +110,7 @@ app.options(/.*/, cors(corsOptions)); // preflight for all routes
 app.post("/billing/webhook", express.raw({ type: "application/json" }), stripeWebhook);
 
 /** JSON parser comes after potential raw webhook route */
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "10mb" }));
 
 /** Quick probe to test CORS/headers from the browser */
 app.get("/api-check", (req, res) => {
@@ -113,7 +126,6 @@ app.use("/public", publicRouter);
 /** public-signup exposes /public/signup and friends */
 app.use("/public", publicSignupRouter);
 
-
 /** ---------- JWT decode middleware (Authorization header or jwt cookie) ---------- */
 app.use((req, _res, next) => {
   let token: string | null = null;
@@ -122,7 +134,7 @@ app.use((req, _res, next) => {
   const h = req.headers.authorization;
   if (h && h.startsWith("Bearer ")) token = h.slice(7);
 
-  // Fallback: jwt cookie
+  // Fallback: jwt cookie (we don't send it from web now, but keep compatibility)
   if (!token && req.headers.cookie) {
     const m = req.headers.cookie.match(/(?:^|;\s*)jwt=([^;]+)/);
     if (m) token = decodeURIComponent(m[1]);
@@ -178,8 +190,11 @@ app.get("/__debug/whoami", (req, res) => {
   });
 });
 
-/** Healthcheck */
+/** Healthchecks */
 app.get("/healthz", (_req, res) => res.send("ok"));
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, ts: new Date().toISOString() });
+});
 
 /** Small auth guard for protected routers */
 function requireAuth(req: any, res: any, next: any) {
@@ -288,15 +303,14 @@ app.use("/internal/ml", requireAuth, mlInternalRouter);
 app.use("/gmail", gmailAttachmentsRouter);
 app.use("/internal/ml", requireAuth, mlOpsRouter);
 app.use("/feature-flags", featureFlagsRouter);
-
-
-
-
+app.use("/feedback", feedbackRouter);
+app.use("/tasks", tasksRouter);
+app.use("/events", eventsRouter);
+app.use("/notifications", notificationsRouter);
+app.use("/streaks", streaksRouter);
 
 /** ---------- Auth required from here ---------- */
 app.use((req, _res, next) => {
-  // (your existing JWT decode middleware is already here above in your file;
-  // if not, keep as you have it. Key point: ensure req.auth is set before mlParseRouter.)
   next();
 });
 
