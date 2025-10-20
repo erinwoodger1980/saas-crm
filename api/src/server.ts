@@ -34,6 +34,7 @@ import mlInternalRouter from "./routes/ml-internal";
 import gmailAttachmentsRouter from "./routes/gmail-attachments";
 import mlSamples from "./routes/ml-samples";
 import mlOpsRouter from "./routes/ml-ops";
+import featureFlagsRouter from "./routes/feature-flags";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -286,6 +287,7 @@ app.use("/questionnaire/fill", requireAuth, questionnaireFillRouter);
 app.use("/internal/ml", requireAuth, mlInternalRouter);
 app.use("/gmail", gmailAttachmentsRouter);
 app.use("/internal/ml", requireAuth, mlOpsRouter);
+app.use("/feature-flags", featureFlagsRouter);
 
 
 
