@@ -1,10 +1,9 @@
 // saas-crm/api/prisma/seed-tasks.ts
-import "dotenv/config"; // <-- ensure DATABASE_URL is loaded even if Prisma skips .env
-import { PrismaClient, TaskStatus, TaskPriority, NotificationType } from "@prisma/client";
+import "dotenv/config"; // ensure DATABASE_URL is loaded
+import { prisma } from "../src/prisma"; // <-- use the shared Prisma instance
 import bcrypt from "bcrypt";
 
-const prisma = new PrismaClient();
-
+/* ---------------- Helpers ---------------- */
 async function ensureDemoTenantAndUsers() {
   // Prefer an existing tenant; otherwise create a demo one.
   let tenant = await prisma.tenant.findFirst();
@@ -23,7 +22,7 @@ async function ensureDemoTenantAndUsers() {
   const users = await prisma.user.findMany({
     where: { tenantId: tenant.id },
     take: 2,
-    orderBy: { id: "asc" }, // User has no createdAt; order by id
+    orderBy: { id: "asc" },
   });
 
   if (users.length >= 2) {
@@ -39,7 +38,7 @@ async function ensureDemoTenantAndUsers() {
         tenantId: tenant.id,
         email: "owner@example.com",
         name: "Owner User",
-        role: "owner",
+        role: "owner", // keep as-is to match your current schema
         passwordHash: hash,
       },
     }),
@@ -65,6 +64,7 @@ function daysFromNow(n: number) {
   return d;
 }
 
+/* ---------------- Seeds ---------------- */
 async function seedAutomationRules(tenantId: string) {
   const rules = [
     {
@@ -142,14 +142,17 @@ async function seedAutomationRules(tenantId: string) {
   }
 }
 
-async function seedTasksNotificationsStreaks(tenantId: string, users: { id: string; email: string }[]) {
+async function seedTasksNotificationsStreaks(
+  tenantId: string,
+  users: { id: string; email: string }[]
+) {
   const [u1, u2] = users;
 
   const tasksData = [
     {
       title: "Prepare quote",
-      status: TaskStatus.OPEN,
-      priority: TaskPriority.HIGH,
+      status: "OPEN",
+      priority: "HIGH",
       dueAt: daysFromNow(-1),
       assignees: [{ userId: u1.id, role: "OWNER" }],
       meta: { seed: true },
@@ -157,8 +160,8 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
     },
     {
       title: "Reply to client",
-      status: TaskStatus.OPEN,
-      priority: TaskPriority.HIGH,
+      status: "OPEN",
+      priority: "HIGH",
       dueAt: daysFromNow(0),
       assignees: [{ userId: u1.id, role: "OWNER" }],
       meta: { seed: true },
@@ -166,8 +169,8 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
     },
     {
       title: "Follow-up on quote",
-      status: TaskStatus.IN_PROGRESS,
-      priority: TaskPriority.MEDIUM,
+      status: "IN_PROGRESS",
+      priority: "MEDIUM",
       dueAt: daysFromNow(2),
       assignees: [{ userId: u2.id, role: "OWNER" }],
       meta: { seed: true },
@@ -176,8 +179,8 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
     },
     {
       title: "Scope review",
-      status: TaskStatus.DONE,
-      priority: TaskPriority.MEDIUM,
+      status: "DONE",
+      priority: "MEDIUM",
       dueAt: daysFromNow(-2),
       assignees: [{ userId: u2.id, role: "OWNER" }, { userId: u1.id, role: "FOLLOWER" }],
       meta: { seed: true },
@@ -186,8 +189,8 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
     },
     {
       title: "Raise PO / Confirm schedule",
-      status: TaskStatus.BLOCKED,
-      priority: TaskPriority.HIGH,
+      status: "BLOCKED",
+      priority: "HIGH",
       dueAt: daysFromNow(1),
       assignees: [{ userId: u1.id, role: "OWNER" }],
       meta: { seed: true, blockedOn: "Awaiting final measurements" },
@@ -195,8 +198,8 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
     },
     {
       title: "Workshop handoff",
-      status: TaskStatus.OPEN,
-      priority: TaskPriority.LOW,
+      status: "OPEN",
+      priority: "LOW",
       dueAt: daysFromNow(4),
       assignees: [{ userId: u2.id, role: "OWNER" }],
       meta: { seed: true },
@@ -209,8 +212,8 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
       data: {
         tenantId,
         title: t.title,
-        status: t.status,
-        priority: t.priority,
+        status: t.status as any,
+        priority: t.priority as any,
         dueAt: t.dueAt,
         startedAt: (t as any).startedAt ?? undefined,
         completedAt: (t as any).completedAt ?? undefined,
@@ -229,7 +232,7 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
       {
         tenantId,
         userId: u1.id,
-        type: NotificationType.TASK_ASSIGNED,
+        type: "TASK_ASSIGNED" as any,
         payload: { message: "You’ve been assigned: Prepare quote", seed: true } as any,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -237,7 +240,7 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
       {
         tenantId,
         userId: u1.id,
-        type: NotificationType.TASK_DUE_SOON,
+        type: "TASK_DUE_SOON" as any,
         payload: { message: "Reply to client is due today", seed: true } as any,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -245,7 +248,7 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
       {
         tenantId,
         userId: u1.id,
-        type: NotificationType.STREAK,
+        type: "STREAK" as any,
         payload: { message: "Streak +1 — nice!", seed: true } as any,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -260,11 +263,14 @@ async function seedTasksNotificationsStreaks(tenantId: string, users: { id: stri
   });
 }
 
+/* ---------------- Main ---------------- */
 async function main() {
-  console.log("⏳ Starting seed… (DATABASE_URL present: " + Boolean(process.env.DATABASE_URL) + ")");
+  console.log(
+    "⏳ Starting seed… (DATABASE_URL present: " + Boolean(process.env.DATABASE_URL) + ")"
+  );
   const { tenant, users } = await ensureDemoTenantAndUsers();
   await seedAutomationRules(tenant.id);
-  await seedTasksNotificationsStreaks(tenant.id, users);
+  await seedTasksNotificationsStreaks(tenant.id, users as any);
   console.log("✅ Seed complete:");
   console.log(`  Tenant: ${tenant.name} (${tenant.id})`);
   console.log(`  Users: ${users.map(u => `${u.email}`).join(", ")}`);
