@@ -227,40 +227,19 @@ export default function LeadModal({
         setEmailInput(email || "");
         setDescInput(description || "");
 
-        s// After fetching full lead + tasks list:
-setTasks(tlist?.items ?? []);
-if (s) setSettings(s);
+        // After fetching full lead + tasks list:
+        setTasks(tlist?.items ?? []);
+        if (s) setSettings(s);
 
-// Seed only for brand-new enquiries (idempotent on server)
-if (sUi === "NEW_ENQUIRY") {
-  await ensureTaskOnce("Review enquiry", { dueDays: 1, priority: "MEDIUM" });
-  await reloadTasks();
-}
-
-// Seed only if it doesn't already exist in the freshly fetched list
-async function ensureTaskOnce(
-  title: string,
-  opts?: { dueDays?: number; priority?: Task["priority"]; relatedType?: Task["relatedType"] }
-) {
-  if (!lead?.id) return;
-  const dueAt =
-    (opts?.dueDays ?? 0) > 0
-      ? new Date(Date.now() + (opts!.dueDays! * 86_400_000)).toISOString()
-      : undefined;
-
-  await apiFetch("/tasks/ensure", {
-    method: "POST",
-    headers: { ...authHeaders, "Content-Type": "application/json" },
-    json: {
-      title,
-      priority: opts?.priority ?? "MEDIUM",
-      relatedType: opts?.relatedType ?? "LEAD",
-      relatedId: lead.id,
-      dueAt,
-      meta: { source: "lead_modal_seed" },
-    },
-  });
-}
+        // Seed only for brand-new enquiries (idempotent on server)
+        if (sUi === "NEW_ENQUIRY") {
+          await ensureTaskOnce("Review enquiry", {
+            dueDays: 1,
+            priority: "MEDIUM",
+            existing: tlist?.items ?? [],
+          });
+          await reloadTasks();
+        }
       } finally {
         if (!stop) setLoading(false);
       }
@@ -476,38 +455,40 @@ async function ensureTaskOnce(
   const emailSnippet = pickFirst<string>(get(lead?.custom, "snippet"), get(lead?.custom, "summary"));
   const fromEmail = pickFirst<string>(get(lead?.custom, "fromEmail"), lead?.email);
   const openTasks = tasks.filter(t => t.status !== "DONE");
-const completedToday = tasks.filter(t =>
-  t.status === "DONE" &&
-  t.completedAt &&
-  new Date(t.completedAt).toDateString() === new Date().toDateString()
-);
-
-  /* ----------------------------- Render ----------------------------- */
+/* ----------------------------- Render ----------------------------- */
 
   if (!open || !lead) return null;
 
+  const openCount = openTasks.length;
+  const completedCount = tasks.length - openCount;
+  const progress = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
+
   return (
     <div
-      className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center"
+      className="fixed inset-0 z-[60] bg-gradient-to-br from-sky-500/30 via-indigo-700/20 to-rose-500/30 backdrop-blur flex items-center justify-center px-3 py-6"
       role="dialog"
       aria-modal="true"
       onClick={(e) => e.target === e.currentTarget && onOpenChange(false)}
     >
-      <div className="w-[min(1000px,92vw)] max-h-[88vh] overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className="relative w-[min(1000px,92vw)] max-h-[88vh] overflow-hidden rounded-3xl border border-white/30 bg-white/85 shadow-[0_32px_70px_-35px_rgba(30,64,175,0.45)] backdrop-blur-xl">
+        <div aria-hidden="true" className="pointer-events-none absolute -top-16 -left-10 h-52 w-52 rounded-full bg-sky-200/60 blur-3xl" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-rose-200/60 blur-3xl" />
         {/* Header */}
-        <div className="flex items-center gap-3 border-b px-4 sm:px-6 py-3">
-          <div className="inline-grid place-items-center h-9 w-9 rounded-xl bg-slate-100 text-[11px] font-semibold text-slate-700 border">
+        <div className="relative flex flex-wrap items-center gap-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-100 via-white to-rose-100 px-4 sm:px-6 py-4">
+          <div className="inline-grid place-items-center h-11 w-11 rounded-2xl bg-white/80 text-[12px] font-semibold text-slate-700 border border-sky-200 shadow-sm">
             {avatarText(lead.contactName)}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate font-semibold">{lead.contactName || lead.email || "Lead"}</div>
+            <div className="truncate text-lg font-semibold text-slate-800">
+              {lead.contactName || lead.email || "Lead"}
+            </div>
             <div className="text-xs text-slate-500 truncate">{lead.email || ""}</div>
           </div>
 
-          <label className="text-xs text-slate-500 mr-2">Status</label>
+          <label className="text-xs font-medium text-slate-600 mr-2">Status</label>
           <select
             value={uiStatus}
-            className="rounded-lg border px-2 py-1 text-sm"
+            className="rounded-xl border border-sky-200 bg-white/80 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm"
             onChange={(e) => {
               const nextUi = e.target.value as Lead["status"];
               setUiStatus(nextUi);
@@ -524,7 +505,7 @@ const completedToday = tasks.filter(t =>
 
           {showEstimateCta && (
             <button
-              className="ml-3 rounded-md bg-emerald-600 text-white px-3 py-1.5 text-sm hover:bg-emerald-700"
+              className="ml-2 rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 text-white px-4 py-2 text-sm font-semibold shadow hover:from-emerald-500 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200"
               onClick={createDraftEstimate}
               disabled={saving}
             >
@@ -533,7 +514,7 @@ const completedToday = tasks.filter(t =>
           )}
 
           <button
-            className="ml-2 rounded-lg border px-3 py-1.5 text-sm"
+            className="ml-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
             onClick={() => onOpenChange(false)}
             disabled={saving || loading}
           >
@@ -542,39 +523,49 @@ const completedToday = tasks.filter(t =>
         </div>
 
         {/* Actions */}
-        <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-2 border-b bg-slate-50/50">
-          <button className="rounded-md border px-3 py-1.5 text-sm hover:bg-white" onClick={rejectEnquiry} disabled={saving}>
-            ✕ Reject enquiry
+        <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-50 via-indigo-50 to-amber-50 text-slate-700">
+          <button
+            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
+            onClick={rejectEnquiry}
+            disabled={saving}
+          >
+            <span aria-hidden="true">🛑</span>
+            Gently decline enquiry
           </button>
 
           <button
-            className="rounded-md border px-3 py-1.5 text-sm hover:bg-white"
+            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
             onClick={sendQuestionnaire}
             disabled={busyTask || saving}
           >
-            📄 Send questionnaire
+            <span aria-hidden="true">📜</span>
+            Share discovery scroll
           </button>
 
           <button
-            className="rounded-md border px-3 py-1.5 text-sm hover:bg-white"
+            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
             onClick={requestSupplierPrice}
             disabled={busyTask}
           >
-            📨 Request supplier price
+            <span aria-hidden="true">🧞</span>
+            Request supplier magic
           </button>
         </div>
 
         {/* Body */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
           {/* Left – Details */}
-          <div className="md:col-span-2 border-r min-h-[60vh] overflow-auto p-4 sm:p-6 space-y-4">
-            <section className="rounded-xl border bg-white p-4 space-y-3">
-              <div className="text-sm font-medium text-slate-900">Details</div>
+          <div className="md:col-span-2 border-r border-sky-100/60 min-h-[60vh] overflow-auto bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 p-4 sm:p-6 space-y-4">
+            <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <span aria-hidden="true">✨</span>
+                Lead details
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="text-sm">
-                  <span className="block text-xs text-slate-500 mb-1">Name</span>
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Name</span>
                   <input
-                    className="w-full rounded-lg border px-3 py-2"
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
                     onBlur={() => {
@@ -586,9 +577,9 @@ const completedToday = tasks.filter(t =>
                 </label>
 
                 <label className="text-sm">
-                  <span className="block text-xs text-slate-500 mb-1">Email</span>
+                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Email</span>
                   <input
-                    className="w-full rounded-lg border px-3 py-2"
+                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
                     onBlur={() => {
@@ -601,9 +592,9 @@ const completedToday = tasks.filter(t =>
               </div>
 
               <label className="text-sm block">
-                <span className="block text-xs text-slate-500 mb-1">Client notes</span>
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Client notes</span>
                 <textarea
-                  className="w-full rounded-lg border px-3 py-2 min-h-28"
+                  className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-28 shadow-inner"
                   value={descInput}
                   onChange={(e) => setDescInput(e.target.value)}
                   onBlur={() => {
@@ -616,17 +607,20 @@ const completedToday = tasks.filter(t =>
             </section>
 
             {(emailSubject || emailSnippet || fromEmail) && (
-              <section className="rounded-xl border bg-white p-4">
-                <div className="text-sm font-medium text-slate-900">Email</div>
-                <div className="mt-2 text-sm text-slate-700 space-y-1">
+              <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <span aria-hidden="true">💌</span>
+                  Latest email
+                </div>
+                <div className="mt-3 text-sm text-slate-700 space-y-1">
                   {fromEmail && (
                     <div>
-                      <span className="text-slate-500">From:</span> {String(fromEmail)}
+                      <span className="text-slate-400">From:</span> {String(fromEmail)}
                     </div>
                   )}
                   {emailSubject && (
                     <div>
-                      <span className="text-slate-500">Subject:</span> {emailSubject}
+                      <span className="text-slate-400">Subject:</span> {emailSubject}
                     </div>
                   )}
                   {emailSnippet && <div className="text-slate-600">{emailSnippet}</div>}
@@ -635,23 +629,26 @@ const completedToday = tasks.filter(t =>
             )}
 
             {settings?.slug && settings?.questionnaire?.questions?.length ? (
-              <section className="rounded-xl border bg-white p-4">
-                <div className="text-sm font-medium text-slate-900">
+              <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <span aria-hidden="true">🧾</span>
                   {settings?.questionnaire?.title || "Questionnaire"}
                 </div>
-                <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                <ul className="mt-3 space-y-2 text-sm text-slate-700">
                   {settings.questionnaire.questions.map((q) => (
-                    <li key={q.id} className="list-disc ml-5">
+                    <li key={q.id} className="flex items-start gap-2">
+                      <span aria-hidden="true" className="text-amber-400">✷</span>
                       {q.label}
                     </li>
                   ))}
                 </ul>
                 <a
                   href={`${window.location.origin}/q/${settings.slug}/${encodeURIComponent(lead.id)}`}
-                  className="inline-block mt-3 text-sm underline text-blue-700"
+                  className="inline-flex items-center gap-1 mt-4 text-sm font-semibold text-sky-600 hover:text-sky-700"
                   target="_blank"
                   rel="noreferrer"
                 >
+                  <span aria-hidden="true">🔗</span>
                   Open public questionnaire
                 </a>
               </section>
@@ -659,18 +656,36 @@ const completedToday = tasks.filter(t =>
           </div>
 
           {/* Right – Tasks */}
-          <aside className="md:col-span-1 min-h-[60vh] overflow-auto p-4 sm:p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">Tasks</div>
-              <div className="text-xs text-slate-500">
-                {tasks.filter((t) => t.status !== "DONE").length} open
+          <aside className="md:col-span-1 min-h-[60vh] overflow-auto bg-gradient-to-br from-indigo-900/10 via-white to-rose-50 p-4 sm:p-6 space-y-4">
+            <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm backdrop-blur">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-semibold text-slate-900">
+                  <span aria-hidden="true">⭐</span>
+                  Task journey
+                </div>
+                <div className="text-xs text-slate-500">{openCount} open</div>
+              </div>
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                  <span>{completedCount} completed</span>
+                  <span>{progress}%</span>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 transition-all"
+                    style={{ width: `${progress}%` }}
+                    aria-hidden="true"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               {loading && <div className="text-sm text-slate-500">Loading…</div>}
               {!loading && tasks.length === 0 && (
-                <div className="text-sm text-slate-500">No tasks yet.</div>
+                <div className="rounded-2xl border border-dashed border-sky-200 bg-white/80 p-4 text-sm text-slate-500">
+                  No tasks yet—tap an action above to conjure the first step.
+                </div>
               )}
               {tasks.map((t) => {
                 const done = t.status === "DONE";
@@ -679,19 +694,43 @@ const completedToday = tasks.filter(t =>
                 return (
                   <div
                     key={t.id}
-                    className={`rounded-xl border p-3 bg-white flex items-start gap-3 ${doneToday ? "opacity-60" : ""}`}
+                    className={`rounded-2xl border border-slate-200/70 bg-white/85 p-4 shadow-sm backdrop-blur flex items-start gap-3 transition hover:border-sky-200 ${done ? "opacity-80" : ""} ${doneToday ? "ring-1 ring-emerald-200" : ""}`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={done}
-                      onChange={() => toggleTaskComplete(t)}
-                      className="mt-1"
-                      aria-label={`Complete ${t.title}`}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate">{done ? "✓ " : ""}{t.title}</div>
-                      <div className="mt-1 text-xs text-slate-600">
-                        {t.dueAt ? new Date(t.dueAt).toLocaleString() : "No due date"}
+                    <label className="mt-1 inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={done}
+                        onChange={() => toggleTaskComplete(t)}
+                        className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
+                        aria-label={`Complete ${t.title}`}
+                      />
+                    </label>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className={`font-semibold text-sm text-slate-800 ${done ? "line-through" : ""}`}>
+                          {t.title}
+                        </div>
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-sky-600">
+                          {t.status.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span className="inline-flex items-center gap-1">
+                          <span aria-hidden="true">⏰</span>
+                          {t.dueAt ? new Date(t.dueAt).toLocaleString() : "No due date"}
+                        </span>
+                        {t.priority && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-600">
+                            <span aria-hidden="true">🎯</span>
+                            {t.priority.toLowerCase()}
+                          </span>
+                        )}
+                        {t.relatedType && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-600">
+                            <span aria-hidden="true">🔗</span>
+                            {t.relatedType.toLowerCase()}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -700,7 +739,7 @@ const completedToday = tasks.filter(t =>
             </div>
 
             <div className="text-xs text-slate-500">
-              Tip: Completing a lead action will tick the task automatically.
+              Tip: Completing a lead action will sprinkle pixie dust on the matching task automatically.
             </div>
           </aside>
         </div>
