@@ -31,6 +31,7 @@ model Tenant {
   quotes                Quote[]
   UploadedFile          UploadedFile[]
   users                 User[]
+  feedbacks             Feedback[]
 }
 
 model User {
@@ -44,6 +45,7 @@ model User {
   Ms365TenantConnection Ms365TenantConnection[]
   passwordResetToken    PasswordResetToken?
   tenant                Tenant                  @relation(fields: [tenantId], references: [id])
+  feedbacks             Feedback[]
 }
 
 model Lead {
@@ -462,16 +464,19 @@ enum FileKind {
   SUPPLIER_QUOTE
   OTHER
 }
-// prisma/schema.prisma (append)
+
 model Feedback {
   id        String   @id @default(cuid())
   tenantId  String
-  userId    String
-  path      String
-  message   String
-  meta      Json?
+  userId    String?
+  feature   String // e.g. "quoteParserV2"
+  rating    Int? // 1–5 optional
+  comment   String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([tenantId, createdAt])
-  @@index([userId, createdAt])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, feature, createdAt])
 }
