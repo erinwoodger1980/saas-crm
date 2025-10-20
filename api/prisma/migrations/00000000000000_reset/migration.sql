@@ -1,9 +1,3 @@
--- Reset the schema so a previously failed run cannot block redeployments.
--- Safe because production has no tenant data yet and reset is intentional.
-DROP SCHEMA IF EXISTS "public" CASCADE;
-CREATE SCHEMA "public";
-SET search_path TO "public";
-
 -- CreateEnum
 CREATE TYPE "SubscriptionStatus" AS ENUM ('trialing', 'active', 'past_due', 'canceled', 'incomplete', 'incomplete_expired', 'paused');
 
@@ -783,3 +777,4 @@ ALTER TABLE "ActivityLog" ADD CONSTRAINT "ActivityLog_tenantId_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "UserPreference" ADD CONSTRAINT "UserPreference_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

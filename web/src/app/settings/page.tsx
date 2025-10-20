@@ -192,16 +192,28 @@ export default function SettingsPage() {
   }
 
   async function connectGmail() {
+    const fallbackBase = (
+      process.env.NEXT_PUBLIC_API_BASE ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:4000"
+    ).replace(/\/$/, "");
+
     try {
-      const r1 = await apiFetch<{ authUrl?: string }>("/gmail/auth-url").catch(() => null as any);
-      const url = r1?.authUrl;
-      if (url) { window.location.href = url; return; }
-      const r2 = await apiFetch<{ authUrl?: string }>("/gmail/connect").catch(() => null as any);
-      if (r2?.authUrl) { window.location.href = r2.authUrl; return; }
-      toast({ title: "Couldn’t start Gmail connect", description: "Auth URL not provided by API.", variant: "destructive" });
+      const resp = await apiFetch<{ authUrl?: string }>("/gmail/connect/start");
+      if (resp?.authUrl) {
+        window.location.href = resp.authUrl;
+        return;
+      }
     } catch (e: any) {
-      toast({ title: "Gmail connect failed", description: e?.message, variant: "destructive" });
+      console.error("Failed to fetch Gmail auth URL", e);
     }
+
+    if (typeof window !== "undefined") {
+      window.location.href = `${fallbackBase}/gmail/connect`;
+      return;
+    }
+
+    toast({ title: "Couldn’t start Gmail connect", description: "Auth URL not provided by API.", variant: "destructive" });
   }
 
   async function importNow(provider: "gmail" | "ms365") {
