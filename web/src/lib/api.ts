@@ -8,18 +8,23 @@ function sanitizeBase(v?: string | null): string {
   return val;
 }
 
-// Prefer URL (clean), then BASE as fallback
+// Prefer URL variants, then BASE fallback, then localhost
 export const API_BASE = sanitizeBase(
   (typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE)) || ""
+    (
+      process.env.NEXT_PUBLIC_API_BASE_URL || // ✅ new primary
+      process.env.NEXT_PUBLIC_API_URL ||      // legacy
+      process.env.NEXT_PUBLIC_API_BASE        // legacy
+    )) || ""
 );
 
 // TEMP: prove what the browser is using (remove after verifying)
 if (typeof window !== "undefined") {
-  console.log("[API_BASE]", JSON.stringify(API_BASE));
+  // eslint-disable-next-line no-console
+  console.log("[API_BASE]", API_BASE);
 }
 
-/* ---------------- JWT helpers ---------------- */
+/* ---------------- JWT helpers (kept) ---------------- */
 
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
@@ -35,7 +40,6 @@ export function setJwt(token: string) {
   try {
     localStorage.setItem("jwt", token);
   } catch {}
-  // Cookie is not used cross-domain, but keep it for localhost/subdomain cases
   const secure =
     typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `jwt=${encodeURIComponent(
@@ -63,10 +67,9 @@ export async function apiFetch<T = unknown>(
     : `${API_BASE}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
 
   const headers = new Headers(init.headers);
-  // Always send JSON unless caller overrides
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
 
-  // Attach JWT as Bearer (critical for cross-domain API on Render)
+  // Attach JWT as Bearer if present (optional)
   const token = getJwt();
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -78,8 +81,15 @@ export async function apiFetch<T = unknown>(
     if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   }
 
-  // Cookies are irrelevant cross-domain; leaving include is harmless
-  const res = await fetch(url, { ...init, headers, body, credentials: "include" });
+  // 🔑 Key change: do NOT include credentials by default (prevents CORS failures)
+  const res = await fetch(url, {
+    ...init,
+    mode: init.mode ?? "cors",
+    credentials: init.credentials ?? "omit",
+    headers,
+    body,
+  });
+
   const raw = await res.text();
   const json = raw ? safeJson(raw) : null;
 
@@ -112,7 +122,7 @@ export async function ensureDemoAuth(): Promise<boolean> {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
+      credentials: "omit", // 🔒 omit for cross-origin
       body: JSON.stringify({ email: "erin@acme.test", password: "secret12" }),
     });
     if (res.ok) {
@@ -126,7 +136,7 @@ export async function ensureDemoAuth(): Promise<boolean> {
 
   // Fallback: ask API to create demo tenant/user and return a token
   try {
-    const seeded = await fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" });
+    const seeded = await fetch(`${API_BASE}/seed`, { method: "POST", credentials: "omit" });
     if (seeded.ok) {
       const data = await seeded.json().catch(() => ({}));
       if (data?.jwt) {
