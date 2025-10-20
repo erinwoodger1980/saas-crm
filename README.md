@@ -30,3 +30,17 @@ npx prisma studio
 npm run dev
 # -> http://localhost:4000/healthz   should return "ok"
 # -> POST http://localhost:4000/seed  returns a { jwt, user, tenant }
+```
+
+### Clearing the historical Prisma migration failure
+
+Render (and other deploy shells) may still record the failed `20251020150829_reinit` migration. The deploy helper matches `main` and simply runs `prisma migrate deploy`, so you need to clear the failure once before normal deploys succeed.
+
+From the repository root:
+
+```bash
+npm run prisma:resolve-reinit
+npm --prefix api run prisma:deploy
+```
+
+The first command marks the old migration as rolled back using the API schema path; the second applies the current history.
