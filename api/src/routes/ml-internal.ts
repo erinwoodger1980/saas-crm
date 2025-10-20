@@ -3,15 +3,29 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { getAccessTokenForTenant, fetchMessage } from "../services/gmail";
-import { prisma } from "../db"; // <- ensure this exports a singleton PrismaClient
+import { prisma } from "../db"; // singleton PrismaClient
 
 type GmailMessageRef = { id: string; threadId?: string };
 type GmailListResponse = { messages?: GmailMessageRef[]; nextPageToken?: string };
 
 const router = Router();
 
+// External ML base URL
+const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000")
+  .trim()
+  .replace(/\/$/, "");
+
+// Our public API base (used for signed-URL building and internal calls)
+const API_BASE =
+  (process.env.APP_URL?.replace(/\/$/, "") ||
+    process.env.API_URL?.replace(/\/$/, "") ||
+    process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "") ||
+    "https://api.joineryai.app");
+
+// -----------------------------
+// POST /internal/ml/ingest-gmail
+// -----------------------------
 /**
- * POST /internal/ml/ingest-gmail
  * Body: { limit?: number }
  *
  * Finds recent Sent emails with PDF attachments and returns **signed URLs**
@@ -38,12 +52,6 @@ router.post("/ingest-gmail", async (req: any, res) => {
       url: string;
     };
     const out: Item[] = [];
-
-    const baseApi =
-      process.env.APP_URL?.replace(/\/$/, "") ||
-      process.env.API_URL?.replace(/\/$/, "") ||
-      process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "") ||
-      "https://api.joineryai.app";
 
     while (out.length < limit) {
       const searchUrl =
@@ -100,7 +108,7 @@ router.post("/ingest-gmail", async (req: any, res) => {
             { expiresIn: "15m" }
           );
           return (
-            `${baseApi}/gmail/message/` +
+            `${API_BASE}/gmail/message/` +
             `${encodeURIComponent(m.id)}/attachments/${encodeURIComponent(attachmentId)}` +
             `?jwt=${encodeURIComponent(token)}`
           );
@@ -129,8 +137,10 @@ router.post("/ingest-gmail", async (req: any, res) => {
   }
 });
 
+// -----------------------------
+// POST /internal/ml/save-samples
+// -----------------------------
 /**
- * POST /internal/ml/save-samples
  * Body: { items: Array<{ tenantId, messageId, attachmentId, url, quotedAt? }> }
  * Writes rows to MLTrainingSample via upsert on (tenantId, messageId, attachmentId).
  */
@@ -154,8 +164,7 @@ router.post("/save-samples", async (req: any, res) => {
         quotedAt: raw.quotedAt ? new Date(raw.quotedAt) : null,
       };
 
-      // NOTE: For compound unique constraints Prisma expects the
-      // concatenated field name: tenantId_messageId_attachmentId
+      // Compound unique on (tenantId, messageId, attachmentId)
       await prisma.mLTrainingSample.upsert({
         where: {
           tenantId_messageId_attachmentId: {
@@ -187,8 +196,10 @@ router.post("/save-samples", async (req: any, res) => {
   }
 });
 
+// -----------------------------
+// GET /internal/ml/samples
+// -----------------------------
 /**
- * GET /internal/ml/samples
  * Returns recent MLTrainingSample rows for the current tenant (verify writes).
  */
 router.get("/samples", async (req: any, res) => {
@@ -215,6 +226,135 @@ router.get("/samples", async (req: any, res) => {
   } catch (e: any) {
     console.error("[internal/ml/samples] failed:", e?.message || e);
     res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// -----------------------------
+// POST /internal/ml/collect-train-save
+// -----------------------------
+/**
+ * Body: { limit?: number }
+ *
+ * 1) Calls our own /internal/ml/ingest-gmail to collect signed PDF URLs
+ * 2) Upserts them into MLTrainingSample
+ * 3) Sends those items to the ML server /train
+ */
+router.post("/collect-train-save", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
+
+    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 50), 500));
+
+    // 1) Collect signed attachment URLs via our own endpoint
+    const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-gmail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+      },
+      body: JSON.stringify({ limit }),
+    });
+
+    const ingestText = await ingestResp.text();
+    let ingestJson: any = {};
+    try {
+      ingestJson = ingestText ? JSON.parse(ingestText) : {};
+    } catch {
+      ingestJson = { raw: ingestText };
+    }
+    if (!ingestResp.ok) {
+      return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
+    }
+
+    type Item = {
+      messageId: string;
+      attachmentId: string;
+      url: string;
+      filename?: string | null;
+      quotedAt?: string | null;
+    };
+
+    const items: Item[] = Array.isArray(ingestJson.items)
+      ? ingestJson.items
+          .filter((it: any) => it?.messageId && it?.attachmentId && it?.url)
+          .map((it: any) => ({
+            messageId: String(it.messageId),
+            attachmentId: String(it.attachmentId),
+            url: String(it.url),
+            filename: it.filename ?? null,
+            quotedAt: it.sentAt ?? null, // carry Date header if present
+          }))
+      : [];
+
+    // 2) Save to DB (upsert on tenantId+messageId+attachmentId)
+    let saved = 0;
+    for (const data of items) {
+      await prisma.mLTrainingSample.upsert({
+        where: {
+          tenantId_messageId_attachmentId: {
+            tenantId,
+            messageId: data.messageId,
+            attachmentId: data.attachmentId,
+          },
+        },
+        create: {
+          tenantId,
+          messageId: data.messageId,
+          attachmentId: data.attachmentId,
+          url: data.url,
+          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+        },
+        update: {
+          url: data.url,
+          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+        },
+      });
+      saved += 1;
+    }
+
+    // 3) Trigger ML /train
+    const trainResp = await fetch(`${ML_URL}/train`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenantId,
+        items: items.map((it) => ({
+          messageId: it.messageId,
+          attachmentId: it.attachmentId,
+          url: it.url,
+          filename: it.filename ?? null,
+          quotedAt: it.quotedAt ?? null,
+        })),
+      }),
+    });
+
+    const trainText = await trainResp.text();
+    let trainJson: any = {};
+    try {
+      trainJson = trainText ? JSON.parse(trainText) : {};
+    } catch {
+      trainJson = { raw: trainText };
+    }
+
+    if (!trainResp.ok) {
+      return res
+        .status(trainResp.status)
+        .json({ error: "ml_train_failed", detail: trainJson, saved });
+    }
+
+    return res.json({
+      ok: true,
+      tenantId,
+      requested: limit,
+      collected: items.length,
+      saved,
+      ml: trainJson,
+    });
+  } catch (e: any) {
+    console.error("[internal/ml/collect-train-save] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
   }
 });
 
