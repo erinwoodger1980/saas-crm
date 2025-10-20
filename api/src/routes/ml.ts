@@ -8,11 +8,11 @@ const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://
 
 // Build your API base once (same logic you used earlier)
 const API_BASE = (
-  process.env.APP_API_URL ||
-  process.env.API_URL ||
-  process.env.RENDER_EXTERNAL_URL ||
+  process.env.APP_API_URL ??
+  process.env.API_URL ??
+  process.env.RENDER_EXTERNAL_URL ??
   `http://localhost:${process.env.PORT || 4000}`
-)?.replace(/\/$/, "")!;
+).replace(/\/$/, "");
 
 function normalizeAttachmentUrl(u?: string | null): string | null {
   if (!u) return null;
