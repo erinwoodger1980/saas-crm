@@ -1,0 +1,1 @@
+-- placeholder: migration baseline_20251020103847 already applied on DB

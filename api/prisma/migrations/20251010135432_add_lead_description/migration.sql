@@ -1,2 +1,1 @@
--- AlterTable
-ALTER TABLE "Lead" ADD COLUMN     "description" TEXT;
+-- placeholder: migration 20251010135432_add_lead_description already applied on DB
