@@ -283,9 +283,9 @@ app.use("/auth/setup", authSetupRouter);
 app.use("/analytics/dashboard", requireAuth, analyticsDashboardRouter);
 app.use("/quote-defaults", requireAuth, quoteDefaultsRouter);
 app.use("/questionnaire/fill", requireAuth, questionnaireFillRouter);
-app.use("/internal/ml", mlInternalRouter);
+app.use("/internal/ml", requireAuth, mlInternalRouter);
 app.use("/gmail", gmailAttachmentsRouter);
-app.use("/internal/ml", mlOpsRouter);
+app.use("/internal/ml", requireAuth, mlOpsRouter);
 
 
 
