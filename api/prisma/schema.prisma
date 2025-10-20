@@ -203,6 +203,7 @@ model TenantSettings {
   quoteDefaults     Json?
   updatedAt         DateTime  @updatedAt
   createdAt         DateTime  @default(now())
+  beta            Json     @default("{}")
 }
 
 model FollowUpLog {
