@@ -5,7 +5,10 @@ import { ReactNode, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Toaster } from "@/components/ui/toaster";
 import AppShell from "./components/AppShell";
+import { TasksDrawer } from "@/components/tasks/TasksDrawer"; // <-- fixed import
+import { TasksButton } from "@/components/tasks/TasksButton";
 
+// Keep your existing env usage for DevAuth
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:4000";
 
@@ -44,6 +47,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           // ✅ Use the shared AppShell (sidebar + header + logos, no max-width cap)
           <AppShell>{children}</AppShell>
         )}
+<TasksButton />
 
         <Toaster />
       </body>

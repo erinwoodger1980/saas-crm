@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import LeadModal, { Lead } from "./LeadModal";
+import { on } from "@/lib/events"; // <-- NEW
 
 /* -------------------------------- Types -------------------------------- */
 
@@ -71,6 +72,11 @@ export default function LeadsPage() {
     })();
   }, []);
 
+  // 🔗 Listen for "open-lead" from the My Tasks drawer
+  useEffect(() => {
+    return on("open-lead", ({ leadId }) => openLeadById(leadId));
+  }, [grouped]); // grouped in deps so we can search current lists
+
   // periodic refresh + optional auto-import every 10 minutes
   useEffect(() => {
     const id = setInterval(async () => {
@@ -105,6 +111,30 @@ export default function LeadsPage() {
   function openLead(l: Lead) {
     setLeadPreview(l);
     setOpen(true);
+  }
+
+  // 🔍 Helper: open by id (search current buckets, else fetch)
+  async function openLeadById(leadId: string) {
+    let found: Lead | null = null;
+    (Object.keys(grouped) as LeadStatus[]).some((s) => {
+      const hit = grouped[s].find((x) => x.id === leadId);
+      if (hit) {
+        found = hit;
+        return true;
+      }
+      return false;
+    });
+
+    if (found) {
+      openLead(found);
+      return;
+    }
+    try {
+      const l = await apiFetch<Lead>(`/leads/${leadId}`);
+      if (l?.id) openLead(l);
+    } catch {
+      // ignore
+    }
   }
 
   // Normalize server buckets to new statuses and de-dupe by id
@@ -180,7 +210,6 @@ export default function LeadsPage() {
       await apiFetch(`/leads/${leadId}`, { method: "PATCH", json: { status: "REJECTED" } });
     } catch (e) {
       console.error("reject failed:", e);
-      // best-effort: refresh
       refreshGrouped();
     }
   }
@@ -199,7 +228,7 @@ export default function LeadsPage() {
   /* ------------------------------ Render ------------------------------ */
 
   return (
-    <div className="p-6 space-y-6">{/* keep simple page padding; layout handles sidebar/header */}
+    <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -290,15 +319,15 @@ export default function LeadsPage() {
               <LeadCard
                 key={lead.id}
                 lead={lead}
-                onOpen={() => openLead(lead)}            // status changes now happen in the modal
-                onReject={() => setRejected(lead.id)}    // only quick action left
+                onOpen={() => openLead(lead)}
+                onReject={() => setRejected(lead.id)}
               />
             ))}
           </div>
         )}
       </SectionCard>
 
-      {/* Modal */}
+           {/* Modal */}
       <LeadModal
         open={open}
         onOpenChange={(v) => {
@@ -306,15 +335,7 @@ export default function LeadsPage() {
           if (!v) setLeadPreview(null);
         }}
         leadPreview={leadPreview}
-        onAutoSave={async (id, patch) => {
-          // keep existing autosave (used for field edits); status changes are done inside modal UI
-          try {
-            await apiFetch(`/leads/${id}`, { method: "PATCH", json: patch });
-            await refreshGrouped();
-          } catch (e) {
-            console.error("autoSave failed:", e);
-          }
-        }}
+        onUpdated={refreshGrouped}
       />
     </div>
   );
