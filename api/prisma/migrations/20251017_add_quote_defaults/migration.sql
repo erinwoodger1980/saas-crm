@@ -1,1 +1,0 @@
--- placeholder: migration 20251017_add_quote_defaults already applied on DB

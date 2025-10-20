@@ -1,1 +1,0 @@
--- placeholder: migration 20251008111447_expand_lead_statuses already applied on DB

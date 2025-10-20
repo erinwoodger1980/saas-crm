@@ -1,1 +1,0 @@
--- placeholder: migration 000_baseline already applied on DB

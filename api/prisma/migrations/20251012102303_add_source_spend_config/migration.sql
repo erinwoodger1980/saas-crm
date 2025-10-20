@@ -1,1 +1,0 @@
--- placeholder: migration 20251012102303_add_source_spend_config already applied on DB

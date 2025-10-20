@@ -1,1 +1,0 @@
--- placeholder: migration 20251010133739_add_tenant_settings_fields already applied on DB
