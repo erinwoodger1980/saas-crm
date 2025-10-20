@@ -35,6 +35,14 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+if (!process.env.SHADOW_DATABASE_URL) {
+  console.warn(
+    'SHADOW_DATABASE_URL is not set; falling back to DATABASE_URL for this deploy run. ' +
+      'Configure SHADOW_DATABASE_URL with an empty Render database to avoid migration conflicts.',
+  );
+  process.env.SHADOW_DATABASE_URL = process.env.DATABASE_URL;
+}
+
 const schemaPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'prisma', 'schema.prisma');
 const migrationName = '20251020150829_reinit';
 
