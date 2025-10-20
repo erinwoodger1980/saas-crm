@@ -1,3 +1,10 @@
+-- Reset the schema so the migration can run even if previous attempts left partial tables.
+-- Safe at this point because the deploy script now wipes the database before rerunning when
+-- necessary and production does not yet contain tenant data.
+DROP SCHEMA IF EXISTS "public" CASCADE;
+CREATE SCHEMA "public";
+SET search_path TO "public";
+
 -- CreateEnum
 CREATE TYPE "SubscriptionStatus" AS ENUM ('trialing', 'active', 'past_due', 'canceled', 'incomplete', 'incomplete_expired', 'paused');
 
