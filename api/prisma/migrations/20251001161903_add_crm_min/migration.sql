@@ -1,1 +1,0 @@
--- placeholder: migration 20251001161903_add_crm_min already applied on DB

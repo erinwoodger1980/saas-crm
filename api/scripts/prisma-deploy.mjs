@@ -36,59 +36,41 @@ if (!process.env.DATABASE_URL) {
 }
 
 const schemaPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'prisma', 'schema.prisma');
-const migrationName = '20251020150829_reinit';
 
-console.log(`Checking for failed Prisma migration "${migrationName}"...`);
-
-const resolveExitCode = await run(
-  'npx',
-  ['prisma', 'migrate', 'resolve', '--rolled-back', migrationName, '--schema', schemaPath],
-  { ignoreFailure: true },
-);
-
-if (resolveExitCode !== 0) {
-  console.log(
-    `No failed migrations named "${migrationName}" were found or the migration was already resolved (exit code ${resolveExitCode}).`,
-  );
-} else {
-  console.log(`Marked migration "${migrationName}" as rolled back.`);
+async function runPrisma(args, options) {
+  return run('npx', ['prisma', ...args, '--schema', schemaPath], options);
 }
 
-const deployArgs = ['prisma', 'migrate', 'deploy', '--schema', schemaPath];
-const resetToggle = (process.env.PRISMA_RESET_ON_FAIL ?? '1').toLowerCase();
-const resetEnabled = !['0', 'false', 'no'].includes(resetToggle);
+const resetBeforeDeploy = ['1', 'true', 'yes'].includes((process.env.PRISMA_RESET_BEFORE_DEPLOY ?? '').toLowerCase());
+const resetOnFailure = ['1', 'true', 'yes'].includes((process.env.PRISMA_RESET_ON_FAIL ?? '1').toLowerCase());
 
-async function deployWithReset() {
-  console.log('Running prisma migrate deploy...');
+async function maybeReset(label) {
+  console.warn(`[prisma] ${label} (all data will be lost).`);
+  await runPrisma(['migrate', 'reset', '--force', '--skip-seed']);
+}
 
-  try {
-    await run('npx', deployArgs);
-    return;
-  } catch (error) {
-    if (!resetEnabled) {
-      console.error('[prisma] migrate deploy failed and automatic reset is disabled.');
-      throw error;
-    }
-
-    console.error('[prisma] migrate deploy failed:', error.message ?? error);
-  }
-
-  console.warn('[prisma] resetting schema before retrying deploy (all data will be lost).');
-
-  try {
-    await run('npx', ['prisma', 'migrate', 'reset', '--force', '--skip-seed', '--schema', schemaPath]);
-  } catch (error) {
-    console.error('[prisma] reset failed:', error.message ?? error);
-    throw error;
-  }
-
-  console.log('Running prisma migrate deploy after reset...');
-  await run('npx', deployArgs);
+if (resetBeforeDeploy) {
+  await maybeReset('resetting schema before deploy');
 }
 
 try {
-  await deployWithReset();
+  console.log('Running prisma migrate deploy...');
+  await runPrisma(['migrate', 'deploy']);
 } catch (error) {
-  console.error('[prisma] deploy failed even after schema reset:', error.message ?? error);
-  process.exit(1);
+  console.error('[prisma] migrate deploy failed:', error.message ?? error);
+
+  if (!resetOnFailure) {
+    console.error('[prisma] automatic reset on failure is disabled.');
+    process.exit(1);
+  }
+
+  await maybeReset('resetting schema after failed deploy');
+
+  try {
+    console.log('Running prisma migrate deploy after reset...');
+    await runPrisma(['migrate', 'deploy']);
+  } catch (retryError) {
+    console.error('[prisma] deploy failed even after schema reset:', retryError.message ?? retryError);
+    process.exit(1);
+  }
 }

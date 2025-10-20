@@ -1,1 +1,0 @@
--- placeholder: migration 20251001160600_init_joinery_mvp already applied on DB

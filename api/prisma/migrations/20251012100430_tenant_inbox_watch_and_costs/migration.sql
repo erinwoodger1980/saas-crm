@@ -1,1 +1,0 @@
--- placeholder: migration 20251012100430_tenant_inbox_watch_and_costs already applied on DB

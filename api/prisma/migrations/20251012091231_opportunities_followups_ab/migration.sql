@@ -1,1 +1,0 @@
--- placeholder: migration 20251012091231_opportunities_followups_ab already applied on DB
