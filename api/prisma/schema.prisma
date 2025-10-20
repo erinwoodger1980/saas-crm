@@ -462,3 +462,16 @@ enum FileKind {
   SUPPLIER_QUOTE
   OTHER
 }
+// prisma/schema.prisma (append)
+model Feedback {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  path      String
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+}
