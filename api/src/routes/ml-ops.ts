@@ -1,48 +1,44 @@
+// api/src/routes/ml-ops.ts
 import { Router } from "express";
-import type { Request, Response } from "express";
 import { prisma } from "../db";
 
 const router = Router();
 
-const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000")
-  .trim()
-  .replace(/\/$/, "");
-
-const API_BASE =
-  (process.env.APP_API_URL ||
-    process.env.API_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
-    `http://localhost:${process.env.PORT || 4000}`)!
-    .replace(/\/$/, "");
-
 /**
- * POST /internal/ml/collect-train-save
+ * POST /internal/ml/ops/collect-train-save
  * Body: { limit?: number }
  *
- * 1) Collect signed Gmail attachment URLs from /internal/ml/ingest-gmail
- * 2) Upsert into MLTrainingSample
- * 3) Trigger ML /train with { tenantId, items }
- * 4) Return summary
+ * 1) Calls /internal/ml/ingest-gmail to collect signed attachment URLs
+ * 2) Calls /ml/train to send those items to the ML service
+ * 3) Upserts items into MLTrainingSample
  */
-router.post("/collect-train-save", async (req: Request, res: Response) => {
+router.post("/ops/collect-train-save", async (req: any, res) => {
   try {
-    const tenantId = (req as any).auth?.tenantId as string | undefined;
-    if (!tenantId) {
-      return res.status(401).json({ error: "unauthorized" });
-    }
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
+    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 100), 500));
 
-    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 50), 500));
-    const authHeader = req.headers.authorization ? { Authorization: req.headers.authorization } : {};
+    const API_BASE =
+      (process.env.APP_API_URL ||
+        process.env.API_URL ||
+        process.env.RENDER_EXTERNAL_URL ||
+        `http://localhost:${process.env.PORT || 4000}`)!
+        .replace(/\/$/, "");
 
-    // 1) Collect signed URLs from our own API
+    // Build headers safely for fetch (avoid TS union issue)
+    const authHeaderValue = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined;
+
+    const headers = new Headers();
+    headers.set("Content-Type", "application/json");
+    if (authHeaderValue) headers.set("Authorization", authHeaderValue);
+
+    // 1) Collect items from Gmail
     const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-gmail`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers,
       body: JSON.stringify({ limit }),
     });
-
     const ingestText = await ingestResp.text();
     let ingestJson: any = {};
     try { ingestJson = ingestText ? JSON.parse(ingestText) : {}; } catch { ingestJson = { raw: ingestText }; }
@@ -51,78 +47,55 @@ router.post("/collect-train-save", async (req: Request, res: Response) => {
       return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
     }
 
-    // Normalize to our DB schema + ML schema
-    type Item = {
+    const items: Array<{
       messageId: string;
       attachmentId: string;
       url: string;
-      filename?: string | null;
-      quotedAt?: string | null;
-    };
-
-    const items: Item[] = Array.isArray(ingestJson.items)
-      ? ingestJson.items
-          .filter((it: any) => it?.messageId && it?.attachmentId && (it?.url || it?.downloadUrl))
-          .map((it: any) => ({
-            messageId: String(it.messageId),
-            attachmentId: String(it.attachmentId),
-            url: String(it.url ?? it.downloadUrl),
-            filename: it.filename ?? null,
-            quotedAt: it.sentAt ?? null,
-          }))
+      sentAt?: string | null;
+    }> = Array.isArray(ingestJson.items)
+      ? ingestJson.items.map((it: any) => ({
+          messageId: String(it.messageId || it.id),
+          attachmentId: String(it.attachmentId),
+          url: String(it.url || it.downloadUrl),
+          sentAt: it.sentAt ?? it.quotedAt ?? null,
+        }))
       : [];
 
-    // 2) Save to DB (upsert each; keeps filename/quotedAt fresh)
-    let upserts = 0;
-    for (const data of items) {
-      await prisma.mLTrainingSample.upsert({
-        where: {
-          // unique composite created in migration:
-          tenantId_messageId_attachmentId_url: {
-            tenantId,
-            messageId: data.messageId,
-            attachmentId: data.attachmentId,
-            url: data.url,
-          },
-        },
-        create: {
-          tenantId,
-          messageId: data.messageId,
-          attachmentId: data.attachmentId,
-          url: data.url,
-          filename: data.filename ?? null,
-          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-        },
-        update: {
-          filename: data.filename ?? null,
-          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-        },
-      });
-      upserts += 1;
-    }
-
-    // 3) Trigger ML /train with same items
-    const trainResp = await fetch(`${ML_URL}/train`, {
+    // 2) Trigger ML training via our /ml/train route (which itself calls the ML server)
+    const trainResp = await fetch(`${API_BASE}/ml/train`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tenantId,
-        items: items.map((it) => ({
-          messageId: it.messageId,
-          attachmentId: it.attachmentId,
-          url: it.url,
-          filename: it.filename ?? null,
-          quotedAt: it.quotedAt ?? null,
-        })),
-      }),
+      headers,
+      body: JSON.stringify({ limit: Math.min(limit, items.length || limit) }),
     });
-
     const trainText = await trainResp.text();
     let trainJson: any = {};
     try { trainJson = trainText ? JSON.parse(trainText) : {}; } catch { trainJson = { raw: trainText }; }
 
-    if (!trainResp.ok) {
-      return res.status(trainResp.status).json({ error: "ml_train_failed", detail: trainJson, saved: upserts });
+    // 3) Save samples to DB (upsert on unique compound key)
+    let saved = 0;
+    for (const it of items) {
+      await prisma.mLTrainingSample.upsert({
+        where: {
+          // ✅ correct unique input name
+          tenantId_messageId_attachmentId: {
+            tenantId,
+            messageId: it.messageId,
+            attachmentId: it.attachmentId,
+          },
+        },
+        create: {
+          tenantId,
+          messageId: it.messageId,
+          attachmentId: it.attachmentId,
+          url: it.url,
+          quotedAt: it.sentAt ? new Date(it.sentAt) : null,
+        },
+        update: {
+          url: it.url,
+          quotedAt: it.sentAt ? new Date(it.sentAt) : null,
+        },
+      });
+      saved += 1;
     }
 
     return res.json({
@@ -130,11 +103,11 @@ router.post("/collect-train-save", async (req: Request, res: Response) => {
       tenantId,
       requested: limit,
       collected: items.length,
-      saved: upserts,
+      saved,
       ml: trainJson,
     });
   } catch (e: any) {
-    console.error("[internal/ml/collect-train-save] failed:", e?.message || e);
+    console.error("[internal/ml/ops/collect-train-save] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
