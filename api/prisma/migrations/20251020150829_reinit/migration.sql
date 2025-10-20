@@ -31,11 +31,11 @@ BEGIN
   INTO beta_missing;
 
   IF beta_missing THEN
-    EXECUTE 'ALTER TABLE "TenantSettings" ADD COLUMN "beta" JSONB NOT NULL DEFAULT ''{}''::JSONB';
-  ELSE
-    EXECUTE 'ALTER TABLE "TenantSettings" ALTER COLUMN "beta" TYPE JSONB USING COALESCE("beta", ''{}''::JSONB)';
-    EXECUTE 'ALTER TABLE "TenantSettings" ALTER COLUMN "beta" SET DEFAULT ''{}''::JSONB';
+    EXECUTE 'ALTER TABLE "TenantSettings" ADD COLUMN "beta" JSONB DEFAULT ''{}''::JSONB';
   END IF;
 
   EXECUTE 'UPDATE "TenantSettings" SET "beta" = COALESCE("beta", ''{}''::JSONB)';
+  EXECUTE 'ALTER TABLE "TenantSettings" ALTER COLUMN "beta" TYPE JSONB USING COALESCE("beta", ''{}''::JSONB)';
+  EXECUTE 'ALTER TABLE "TenantSettings" ALTER COLUMN "beta" SET DEFAULT ''{}''::JSONB';
+  EXECUTE 'ALTER TABLE "TenantSettings" ALTER COLUMN "beta" SET NOT NULL';
 END $$;
