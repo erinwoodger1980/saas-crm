@@ -11,7 +11,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
-    "prisma:deploy": "sh -c 'prisma migrate deploy || (echo "[prisma] initial deploy failed, resetting schema" && prisma migrate reset --force --skip-seed && prisma migrate deploy)'"
+    "prisma:deploy": "node scripts/prisma-deploy.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",
