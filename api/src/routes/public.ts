@@ -29,16 +29,36 @@ function filterCustom(custom: any) {
   return out;
 }
 
-function uiStatusToDb(status: string): "NEW" | "CONTACTED" | "QUALIFIED" | "DISQUALIFIED" {
+function uiStatusToDb(status: string):
+  | "NEW"
+  | "INFO_REQUESTED"
+  | "DISQUALIFIED"
+  | "REJECTED"
+  | "READY_TO_QUOTE"
+  | "QUOTE_SENT"
+  | "WON"
+  | "LOST" {
   switch (status.toUpperCase()) {
-    case "NEW_ENQUIRY": return "NEW";
-    case "INFO_REQUESTED": return "CONTACTED";
-    case "READY_TO_QUOTE": return "QUALIFIED";
-    case "REJECTED": return "DISQUALIFIED";
-    case "QUOTE_SENT": return "QUALIFIED";
-    case "WON": return "QUALIFIED";
-    case "LOST": return "DISQUALIFIED";
-    default: return "NEW";
+    case "NEW_ENQUIRY":
+    case "NEW":
+      return "NEW";
+    case "INFO_REQUESTED":
+    case "CONTACTED":
+      return "INFO_REQUESTED";
+    case "DISQUALIFIED":
+      return "DISQUALIFIED";
+    case "REJECTED":
+      return "REJECTED";
+    case "READY_TO_QUOTE":
+      return "READY_TO_QUOTE";
+    case "QUOTE_SENT":
+      return "QUOTE_SENT";
+    case "WON":
+      return "WON";
+    case "LOST":
+      return "LOST";
+    default:
+      return "NEW";
   }
 }
 
@@ -119,7 +139,7 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
     const updated = await prisma.lead.update({
       where: { id },
       data: {
-        status: "QUALIFIED", // mapped from READY_TO_QUOTE
+        status: "READY_TO_QUOTE",
         custom: merged,
         nextAction: "Prepare quote",
         nextActionAt: new Date(),

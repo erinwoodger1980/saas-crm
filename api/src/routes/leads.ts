@@ -29,24 +29,39 @@ type UiStatus =
   | "WON"
   | "LOST";
 
-// Your legacy DB enum buckets kept for backward compat
-type DbStatus = "NEW" | "CONTACTED" | "QUALIFIED" | "DISQUALIFIED";
+// Stored enum values (supports both legacy + new names)
+type DbStatus =
+  | "NEW"
+  | "CONTACTED"
+  | "INFO_REQUESTED"
+  | "QUALIFIED"
+  | "DISQUALIFIED"
+  | "REJECTED"
+  | "READY_TO_QUOTE"
+  | "QUOTE_SENT"
+  | "WON"
+  | "LOST";
 
 function uiToDb(s: UiStatus): DbStatus {
   switch (s) {
     case "NEW_ENQUIRY":
       return "NEW";
     case "INFO_REQUESTED":
-      return "CONTACTED";
+      return "INFO_REQUESTED";
     case "READY_TO_QUOTE":
+      return "READY_TO_QUOTE";
     case "QUOTE_SENT":
+      return "QUOTE_SENT";
     case "WON":
-      return "QUALIFIED";
+      return "WON";
     case "REJECTED":
+      return "REJECTED";
     case "DISQUALIFIED":
-    case "LOST":
       return "DISQUALIFIED";
+    case "LOST":
+      return "LOST";
   }
+  return "NEW";
 }
 
 function dbToUi(db: string): UiStatus {
@@ -55,13 +70,32 @@ function dbToUi(db: string): UiStatus {
       return "NEW_ENQUIRY";
     case "CONTACTED":
       return "INFO_REQUESTED";
+    case "INFO_REQUESTED":
+      return "INFO_REQUESTED";
     case "QUALIFIED":
       return "READY_TO_QUOTE";
+    case "READY_TO_QUOTE":
+      return "READY_TO_QUOTE";
+    case "QUOTE_SENT":
+      return "QUOTE_SENT";
+    case "REJECTED":
+      return "REJECTED";
     case "DISQUALIFIED":
       return "DISQUALIFIED";
+    case "WON":
+      return "WON";
+    case "LOST":
+      return "LOST";
     default:
       return "NEW_ENQUIRY";
   }
+}
+
+function isTaskTableMissing(err: any) {
+  if (!err) return false;
+  if (err.code === "P2021") return true;
+  const msg = typeof err.message === "string" ? err.message : "";
+  return msg.includes("Task") && msg.includes("does not exist");
 }
 
 function monthStartUTC(d: Date) {
@@ -110,24 +144,32 @@ async function ensureTask(params: {
     where.title = title;
   }
 
-  const existing = await prisma.task.findFirst({ where });
-  if (existing) return existing;
+  try {
+    const existing = await prisma.task.findFirst({ where });
+    if (existing) return existing;
 
-  const dueAt =
-    dueInDays > 0 ? new Date(Date.now() + dueInDays * 24 * 3600 * 1000) : null;
+    const dueAt =
+      dueInDays > 0 ? new Date(Date.now() + dueInDays * 24 * 3600 * 1000) : null;
 
-  return prisma.task.create({
-    data: {
-      tenantId,
-      title,
-      relatedType: relatedType as any,
-      relatedId,
-      status: "OPEN" as any,
-      priority: priority as any,
-      dueAt: dueAt || undefined,
-      meta: metaKey ? ({ key: metaKey } as any) : ({} as any),
-    },
-  });
+    return await prisma.task.create({
+      data: {
+        tenantId,
+        title,
+        relatedType: relatedType as any,
+        relatedId,
+        status: "OPEN" as any,
+        priority: priority as any,
+        dueAt: dueAt || undefined,
+        meta: metaKey ? ({ key: metaKey } as any) : ({} as any),
+      },
+    });
+  } catch (err) {
+    if (isTaskTableMissing(err)) {
+      console.warn(`[leads] Task table missing – skipping ensureTask for "${title}"`);
+      return null;
+    }
+    throw err;
+  }
 }
 
 /**

@@ -6,6 +6,13 @@ import { prisma } from "../prisma";
 const router = Router();
 
 /** Utility to dedupe “generated” tasks for a lead */
+function isTaskTableMissing(err: any) {
+  if (!err) return false;
+  if (err.code === "P2021") return true;
+  const msg = typeof err.message === "string" ? err.message : "";
+  return msg.includes("Task") && msg.includes("does not exist");
+}
+
 async function ensureTaskOnce(opts: {
   tenantId: string;
   title: string;
@@ -18,32 +25,40 @@ async function ensureTaskOnce(opts: {
   const { tenantId, title, relatedType, relatedId, priority = "MEDIUM", dueInDays = 0, metaKey } =
     opts;
 
-  // If we pass a metaKey, use it to dedupe
-  const existing = await prisma.task.findFirst({
-    where: {
-      tenantId,
-      relatedType,
-      relatedId,
-      ...(metaKey ? { meta: { path: ["key"], equals: metaKey } as any } : {}),
-      title,
-    },
-  });
-  if (existing) return existing;
+  try {
+    // If we pass a metaKey, use it to dedupe
+    const existing = await prisma.task.findFirst({
+      where: {
+        tenantId,
+        relatedType,
+        relatedId,
+        ...(metaKey ? { meta: { path: ["key"], equals: metaKey } as any } : {}),
+        title,
+      },
+    });
+    if (existing) return existing;
 
-  const dueAt =
-    dueInDays > 0 ? new Date(Date.now() + dueInDays * 24 * 3600 * 1000) : undefined;
+    const dueAt =
+      dueInDays > 0 ? new Date(Date.now() + dueInDays * 24 * 3600 * 1000) : undefined;
 
-  return prisma.task.create({
-    data: {
-      tenantId,
-      title,
-      relatedType,
-      relatedId,
-      priority,
-      dueAt,
-      meta: metaKey ? ({ key: metaKey } as any) : ({} as any),
-    },
-  });
+    return await prisma.task.create({
+      data: {
+        tenantId,
+        title,
+        relatedType,
+        relatedId,
+        priority,
+        dueAt,
+        meta: metaKey ? ({ key: metaKey } as any) : ({} as any),
+      },
+    });
+  } catch (err) {
+    if (isTaskTableMissing(err)) {
+      console.warn(`[events] Task table missing – skipping ensureTaskOnce for "${title}"`);
+      return null;
+    }
+    throw err;
+  }
 }
 
 const EventSchema = z.discriminatedUnion("type", [
