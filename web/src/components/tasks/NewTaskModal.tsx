@@ -26,6 +26,7 @@ export function NewTaskModal({
     priority: "MEDIUM",
     dueAt: "", // datetime-local string
   });
+  const [assignToMe, setAssignToMe] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,8 +52,7 @@ export function NewTaskModal({
           priority: form.priority,
           // ✅ convert to ISO for the API’s z.string().datetime()
           dueAt: toIsoOrUndefined(form.dueAt),
-          // by default assign to the current user (owner)
-          assignees: userId ? [{ userId, role: "OWNER" }] : [],
+          assignees: assignToMe && userId ? [{ userId, role: "OWNER" as const }] : undefined,
         },
       });
       onClose();
@@ -130,6 +130,16 @@ export function NewTaskModal({
                 />
               </label>
             </div>
+
+            <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm font-semibold text-slate-600 shadow-inner">
+              <input
+                type="checkbox"
+                checked={assignToMe}
+                onChange={(e) => setAssignToMe(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
+              />
+              Assign to me (leave unchecked to keep unassigned)
+            </label>
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 pt-2">
