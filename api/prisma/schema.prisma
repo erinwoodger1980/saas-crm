@@ -202,6 +202,8 @@ model TenantSettings {
   inboxWatchEnabled Boolean   @default(false)
   quoteDefaults     Json?
   taskPlaybook      Json?     @default("{}")
+  questionnaireEmailSubject String?
+  questionnaireEmailBody    String?
   updatedAt         DateTime  @updatedAt
   createdAt         DateTime  @default(now())
   beta            Json     @default("{}")
