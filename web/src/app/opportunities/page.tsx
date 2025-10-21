@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from "react";
 import OpportunityModal from "./OpportunityModal";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
+import { DeskSurface } from "@/components/DeskSurface";
+import { useTenantBrand } from "@/lib/use-tenant-brand";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:4000";
@@ -38,6 +40,7 @@ export default function OpportunitiesPage() {
   const [grouped, setGrouped] = useState<Grouped>({} as Grouped);
   const [rows, setRows] = useState<Lead[]>([]);
   const [repliedIds, setRepliedIds] = useState<Set<string>>(new Set());
+  const { shortName } = useTenantBrand();
 
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
@@ -124,16 +127,18 @@ export default function OpportunitiesPage() {
     return (
       <button
         onClick={() => setTab(s)}
-        className={`rounded-full px-3 py-1 text-sm border transition ${
+        className={`group inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
           active
-            ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-            : "bg-white text-slate-700 hover:bg-slate-50"
+            ? "border-transparent bg-gradient-to-r from-amber-400 via-rose-400 to-pink-400 text-white shadow-[0_12px_28px_-14px_rgba(244,114,182,0.55)]"
+            : "border-amber-100/70 bg-white/70 text-slate-700 hover:border-amber-200 hover:bg-white"
         }`}
       >
         {STATUS_LABELS[s]}
         <span
-          className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs ${
-            active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+          className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
+            active
+              ? "bg-white/30 text-white"
+              : "bg-amber-50 text-amber-700 group-hover:bg-amber-100"
           }`}
         >
           {counts[s]}
@@ -143,115 +148,114 @@ export default function OpportunitiesPage() {
   };
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <header className="mb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Opportunities</h1>
-          <p className="text-sm text-slate-500">Follow up, replies, and A/B testing.</p>
-        </div>
-        <div className="text-[11px] text-slate-400">v0.1</div>
-      </header>
-
-      {/* Tabs */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        <TabButton s="QUOTE_SENT" />
-        <TabButton s="WON" />
-        <TabButton s="LOST" />
-      </div>
-
-      {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {/* QUOTE_SENT: Attention section */}
-      {tab === "QUOTE_SENT" && repliedNow.length > 0 && (
-        <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-[0_10px_30px_-20px_rgba(217,119,6,0.35)]">
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
-            Needs attention (replied)
+    <>
+      <DeskSurface variant="amber" innerClassName="space-y-6">
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div
+            className="inline-flex items-center gap-2 rounded-full border border-amber-200/70 bg-white/70 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm"
+            title="Follow up, replies, and A/B testing."
+          >
+            <span aria-hidden="true">🎯</span>
+            Opportunity desk
+            {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {repliedNow.map((l) => (
+        </header>
+
+        <div className="flex flex-wrap gap-2">
+          <TabButton s="QUOTE_SENT" />
+          <TabButton s="WON" />
+          <TabButton s="LOST" />
+        </div>
+
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {tab === "QUOTE_SENT" && repliedNow.length > 0 && (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-[0_10px_30px_-20px_rgba(217,119,6,0.35)]">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+              Needs attention (replied)
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {repliedNow.map((l) => (
+                <CardRow
+                  key={l.id}
+                  lead={l}
+                  accent="amber"
+                  statusLabel="Replied · Quote sent"
+                  onOpen={() => {
+                    setSelected(l);
+                    setOpen(true);
+                  }}
+                  actionArea={
+                    <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] text-amber-900">
+                      {STATUS_LABELS.QUOTE_SENT}
+                    </span>
+                  }
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className="space-y-2">
+          {(tab === "QUOTE_SENT" ? notReplied : rows).length === 0 ? (
+            <div className="rounded-xl border border-dashed border-amber-200 bg-white/70 py-10 text-center text-sm text-slate-500">
+              No opportunities in “{STATUS_LABELS[tab]}”.
+            </div>
+          ) : (
+            (tab === "QUOTE_SENT" ? notReplied : rows).map((l) => (
               <CardRow
                 key={l.id}
                 lead={l}
-                accent="amber"
-                statusLabel="Replied · Quote sent"
+                statusLabel={STATUS_LABELS[tab]}
                 onOpen={() => {
                   setSelected(l);
                   setOpen(true);
                 }}
                 actionArea={
-                  <span className="rounded-full bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 text-[11px]">
-                    {STATUS_LABELS.QUOTE_SENT}
+                  <span className="rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-700">
+                    {STATUS_LABELS[tab]}
                   </span>
                 }
               />
-            ))}
-          </div>
+            ))
+          )}
         </section>
-      )}
 
-      {/* Main list */}
-      <section className="space-y-2">
-        {(tab === "QUOTE_SENT" ? notReplied : rows).length === 0 ? (
-          <div className="rounded-xl border border-dashed bg-slate-50 py-10 text-center text-sm text-slate-500">
-            No opportunities in “{STATUS_LABELS[tab]}”.
-          </div>
-        ) : (
-          (tab === "QUOTE_SENT" ? notReplied : rows).map((l) => (
-            <CardRow
-              key={l.id}
-              lead={l}
-              statusLabel={STATUS_LABELS[tab]}
-              onOpen={() => {
-                setSelected(l);
-                setOpen(true);
-              }}
-              actionArea={
-                <span className="rounded-full bg-slate-100 text-slate-700 border px-2 py-0.5 text-[11px]">
-                  {STATUS_LABELS[tab]}
-                </span>
-              }
-            />
-          ))
-        )}
-      </section>
-
-      {/* Optional additional opps */}
-      {oppRows.length > 0 && (
-        <section className="mt-8">
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-            Opportunities (report)
-          </div>
-          <div className="grid grid-cols-1 gap-3">
-            {oppRows.map((o) => (
-              <div
-                key={o.id}
-                className="rounded-2xl border bg-white/90 p-4 shadow-[0_12px_30px_-18px_rgba(2,6,23,0.35)] flex items-start justify-between"
-              >
-                <div className="min-w-0">
-                  <div className="font-medium">{o.title}</div>
-                  <div className="text-xs text-slate-500">
-                    {o.lead?.contactName} {o.lead?.email ? `· ${o.lead.email}` : ""}
-                  </div>
-                </div>
-                <button
-                  onClick={() => planFollowUp(o.id)}
-                  className="rounded-md border bg-white px-3 py-2 text-sm hover:bg-slate-50"
-                  disabled={loadingPlan}
+        {oppRows.length > 0 && (
+          <section className="space-y-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+              Opportunities (report)
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              {oppRows.map((o) => (
+                <div
+                  key={o.id}
+                  className="flex items-start justify-between rounded-2xl border border-amber-100/70 bg-white/90 p-4 shadow-[0_12px_30px_-18px_rgba(2,6,23,0.35)]"
                 >
-                  {loadingPlan ? "Planning…" : "Plan follow-up"}
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+                  <div className="min-w-0">
+                    <div className="font-medium">{o.title}</div>
+                    <div className="text-xs text-slate-500">
+                      {o.lead?.contactName} {o.lead?.email ? `· ${o.lead.email}` : ""}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => planFollowUp(o.id)}
+                    className="rounded-full border border-amber-200/70 bg-white px-3 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-50"
+                    disabled={loadingPlan}
+                  >
+                    {loadingPlan ? "Planning…" : "Plan follow-up"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </DeskSurface>
 
-      {/* Modal */}
       {selected && (
         <OpportunityModal
           open={open}
@@ -265,7 +269,7 @@ export default function OpportunitiesPage() {
           onAfterSend={load}
         />
       )}
-    </div>
+    </>
   );
 }
 
