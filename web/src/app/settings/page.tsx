@@ -6,6 +6,10 @@ import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import {
+  DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+  DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+} from "@/lib/constants";
+import {
   DEFAULT_TASK_PLAYBOOK,
   MANUAL_TASK_KEYS,
   ManualTaskKey,
@@ -944,10 +948,39 @@ export default function SettingsPage() {
 
       {/* Questionnaire */}
       <Section title="Questionnaire" description="Pick the fields you want to ask on the public form." right={<Button size="sm" onClick={saveBrand}>Save</Button>}>
-        <div className="space-y-3">
-          {(s.questionnaire ?? []).map((q, i) => (
-            <div key={q.key + i} className="rounded-xl border p-3 bg-white hover:shadow-sm transition">
-              <div className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto_auto]">
+        <div className="space-y-5">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Field
+              label="Email subject"
+              hint="Placeholders: {{contactName}}, {{firstName}}, {{brandName}}, {{link}}"
+            >
+              <input
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                value={s.questionnaireEmailSubject ?? ""}
+                onChange={(e) => setS({ ...s, questionnaireEmailSubject: e.target.value })}
+                placeholder={DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT}
+              />
+            </Field>
+            <div className="lg:col-span-2">
+              <Field
+                label="Email body"
+                hint="Placeholders: {{contactName}}, {{firstName}}, {{brandName}}, {{link}}"
+              >
+                <textarea
+                  className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                  rows={6}
+                  value={s.questionnaireEmailBody ?? ""}
+                  onChange={(e) => setS({ ...s, questionnaireEmailBody: e.target.value })}
+                  placeholder={DEFAULT_QUESTIONNAIRE_EMAIL_BODY}
+                />
+              </Field>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {(s.questionnaire ?? []).map((q, i) => (
+              <div key={q.key + i} className="rounded-xl border p-3 bg-white hover:shadow-sm transition">
+                <div className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto_auto]">
                 <Field label="Key">
                   <input className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
                     value={q.key}
@@ -1030,6 +1063,7 @@ export default function SettingsPage() {
             <Button variant="ghost" onClick={() => setS({ ...s, questionnaire: defaultQuestions() })}>
               Reset to defaults
             </Button>
+          </div>
           </div>
         </div>
       </Section>
