@@ -1,7 +1,7 @@
 // web/src/app/leads/LeadModal.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 
@@ -131,7 +131,7 @@ export default function LeadModal({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   leadPreview: Lead | null;
-  onUpdated?: () => void;
+  onUpdated?: () => void | Promise<void>;
 }) {
   const ids = getAuthIdsFromJwt();
   const tenantId = ids?.tenantId || "";
@@ -253,33 +253,65 @@ export default function LeadModal({
 
   /* ----------------------------- Save helpers ----------------------------- */
 
-  async function saveStatus(nextUi: Lead["status"]) {
-    if (!lead?.id) return;
+  async function triggerOnUpdated() {
+    if (!onUpdated) return;
+    try {
+      await Promise.resolve(onUpdated());
+    } catch (err) {
+      console.error("onUpdated handler failed", err);
+    }
+  }
+
+  async function saveStatus(nextUi: Lead["status"]): Promise<boolean> {
+    if (!lead?.id) return false;
+
+    const prevServerStatus = lastSavedServerStatusRef.current;
+    const prevUiStatus =
+      prevServerStatus != null ? serverToUiStatus(prevServerStatus) : lead.status;
+
+    if (prevUiStatus === nextUi) {
+      return true;
+    }
+
     const nextServer = uiToServerStatus[nextUi];
-    if (lastSavedServerStatusRef.current === nextServer) return;
 
     setSaving(true);
     try {
-      await apiFetch(`/leads/${lead.id}`, {
+      const response = await apiFetch<{ lead?: any }>(`/leads/${lead.id}`, {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         json: { status: nextServer },
       });
-      lastSavedServerStatusRef.current = nextServer;
-      setLead((l) => (l ? { ...l, status: nextUi } : l));
-      setUiStatus(nextUi);
-      onUpdated?.();
 
-      // status-driven task seeds
-      if (nextUi === "READY_TO_QUOTE") {
+      const updatedRow = response?.lead ?? null;
+      const serverStatus = (updatedRow?.status as string | undefined) ?? nextServer;
+      lastSavedServerStatusRef.current = serverStatus;
+
+      const resolvedUi = serverToUiStatus(serverStatus);
+      setLead((current) => (current ? { ...current, status: resolvedUi } : current));
+      setUiStatus(resolvedUi);
+
+      if (prevUiStatus !== resolvedUi) {
+        await triggerOnUpdated();
+      }
+
+      if (resolvedUi === "READY_TO_QUOTE" && prevUiStatus !== "READY_TO_QUOTE") {
         await ensureTaskOnce("Create quote", { dueDays: 2, priority: "HIGH" });
         await reloadTasks();
       }
+
       toast("Saved. One step closer.");
+      return true;
     } catch (e: any) {
       console.error("status save failed", e?.message || e);
-      setUiStatus(serverToUiStatus(lastSavedServerStatusRef.current));
+      const fallbackUi =
+        prevServerStatus != null
+          ? serverToUiStatus(prevServerStatus)
+          : lead?.status || "NEW_ENQUIRY";
+      setUiStatus(fallbackUi);
+      setLead((current) => (current ? { ...current, status: fallbackUi } : current));
       alert(`Failed to save status: ${e?.message || "unknown error"}`);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -293,7 +325,24 @@ export default function LeadModal({
         headers: { ...authHeaders, "Content-Type": "application/json" },
         json: patch,
       });
-      onUpdated?.();
+      setLead((current) => {
+        if (!current) return current;
+        const next: Lead = { ...current };
+        if (Object.prototype.hasOwnProperty.call(patch, "contactName")) {
+          next.contactName = patch.contactName ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, "email")) {
+          next.email = patch.email ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, "description")) {
+          next.description = patch.description ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, "custom")) {
+          next.custom = patch.custom ?? null;
+        }
+        return next;
+      });
+      await triggerOnUpdated();
     } catch (e: any) {
       console.error("patch failed", e?.message || e);
       alert("Failed to save changes");
@@ -367,12 +416,13 @@ async function ensureTaskOnce(
     if (!lead?.id) return;
     setBusyTask(true);
     try {
-      // we don't create a "Send questionnaire" task; we create the follow-up the user will do later
-      await ensureTaskOnce("Review questionnaire", { dueDays: 2, priority: "MEDIUM" });
-
       // move to Info requested
       setUiStatus("INFO_REQUESTED");
-      await saveStatus("INFO_REQUESTED");
+      const saved = await saveStatus("INFO_REQUESTED");
+      if (!saved) return;
+
+      // we don't create a "Send questionnaire" task; we create the follow-up the user will do later
+      await ensureTaskOnce("Review questionnaire", { dueDays: 2, priority: "MEDIUM" });
 
       // open mailto with public link if we have a slug
       if (lead.email && settings?.slug) {
@@ -409,6 +459,12 @@ async function ensureTaskOnce(
     } finally {
       setBusyTask(false);
     }
+  }
+
+  async function handleStatusChange(event: ChangeEvent<HTMLSelectElement>) {
+    const nextUi = event.target.value as Lead["status"];
+    setUiStatus(nextUi);
+    await saveStatus(nextUi);
   }
 
   async function createDraftEstimate() {
@@ -489,11 +545,7 @@ async function ensureTaskOnce(
           <select
             value={uiStatus}
             className="rounded-xl border border-sky-200 bg-white/80 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm"
-            onChange={(e) => {
-              const nextUi = e.target.value as Lead["status"];
-              setUiStatus(nextUi);
-              saveStatus(nextUi);
-            }}
+            onChange={handleStatusChange}
             disabled={saving}
           >
             {(Object.keys(STATUS_LABELS) as Lead["status"][]).map((s) => (
