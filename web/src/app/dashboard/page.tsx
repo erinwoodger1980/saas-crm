@@ -8,6 +8,7 @@ import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import QuestionnaireDemo from "@/components/QuestionnaireDemo";
+import SourcePerformanceCard from "./SourcePerformanceCard";
 
 type DashboardData = {
   totalLeads: number;
@@ -131,6 +132,8 @@ export default function DashboardPage() {
           subtitle={nWin ? `from ${nWin} lead${nWin === 1 ? "" : "s"}` : undefined}
         />
       </div>
+
+      <SourcePerformanceCard />
 
       {/* Two columns: Pie + ML tester */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
