@@ -5,6 +5,24 @@ import * as cheerio from "cheerio";
 import { env } from "../env";
 import { DEFAULT_TASK_PLAYBOOK, normalizeTaskPlaybook } from "../task-playbook";
 
+const DEFAULT_DECLINE_EMAIL_TEMPLATE = {
+  subject: "Re: [Project Name or Address] – Quotation Request",
+  body: `Hi [Client’s Name],\n\nThank you so much for thinking of us for your project.\nAfter looking through the details, we’ve decided not to provide a quotation this time. It’s a lovely project, but it’s not quite the right fit for our current workload and focus.\n\nWe really appreciate you getting in touch and wish you every success moving forward. Please do keep us in mind for any future projects that might be a better match — we’d be very happy to take another look.\n\nAll the best,\n[Your Name]\n[Your Position]\n[Company Name]\n[Phone Number]\n[Email / Website]`,
+};
+
+function normalizeDeclineEmailTemplate(raw?: any) {
+  const subject =
+    raw && typeof raw.subject === "string" && raw.subject.trim().length
+      ? raw.subject
+      : DEFAULT_DECLINE_EMAIL_TEMPLATE.subject;
+  const body =
+    raw && typeof raw.body === "string" && raw.body.trim().length
+      ? raw.body
+      : DEFAULT_DECLINE_EMAIL_TEMPLATE.body;
+
+  return { subject, body };
+}
+
 const router = Router();
 
 /* ------------------------- helpers ------------------------- */
@@ -40,7 +58,10 @@ router.get("/settings", async (req, res) => {
   }
 
   const normalized = normalizeTaskPlaybook(s?.taskPlaybook as any);
-  res.json({ ...s, taskPlaybook: normalized });
+  const declineEmailTemplate = normalizeDeclineEmailTemplate(
+    (s?.beta as any)?.declineEmailTemplate
+  );
+  res.json({ ...s, taskPlaybook: normalized, declineEmailTemplate });
 });
 /** Partial update for tenant settings (e.g. inboxWatchEnabled, inbox, questionnaire, quoteDefaults, brandName, links) */
 async function updateSettings(req: any, res: any) {
@@ -59,6 +80,7 @@ async function updateSettings(req: any, res: any) {
     phone,
     logoUrl,
     taskPlaybook,
+    declineEmailTemplate,
   } = req.body || {};
 
   try {
@@ -92,13 +114,29 @@ async function updateSettings(req: any, res: any) {
     if (logoUrl !== undefined) update.logoUrl = logoUrl ?? null;
     if (taskPlaybook !== undefined) update.taskPlaybook = normalizeTaskPlaybook(taskPlaybook);
 
+    const existingBeta = (existing.beta as any) || {};
+    if (declineEmailTemplate !== undefined) {
+      const nextBeta = {
+        ...existingBeta,
+        declineEmailTemplate: normalizeDeclineEmailTemplate(declineEmailTemplate),
+      };
+      update.beta = nextBeta;
+    }
+
     const saved = await prisma.tenantSettings.update({
       where: { tenantId },
       data: update,
     });
 
     const normalized = normalizeTaskPlaybook(saved.taskPlaybook as any);
-    return res.json({ ...saved, taskPlaybook: normalized });
+    const declineTemplate = normalizeDeclineEmailTemplate(
+      (saved.beta as any)?.declineEmailTemplate
+    );
+    return res.json({
+      ...saved,
+      taskPlaybook: normalized,
+      declineEmailTemplate: declineTemplate,
+    });
   } catch (e: any) {
     console.error("[tenant/settings PATCH] failed:", e?.message || e);
     return res.status(500).json({ error: "update_failed", detail: e?.message || String(e) });
@@ -313,7 +351,10 @@ ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
       },
     });
 
-    res.json({ ok: true, settings: saved });
+    const declineTemplate = normalizeDeclineEmailTemplate(
+      (saved.beta as any)?.declineEmailTemplate
+    );
+    res.json({ ok: true, settings: { ...saved, declineEmailTemplate: declineTemplate } });
   } catch (e: any) {
     console.error("[tenant enrich] failed", e);
     res.status(500).json({ error: e?.message || "enrich failed" });
@@ -377,7 +418,10 @@ router.put("/settings", async (req, res) => {
         questionnaire: qSave ?? null,
       },
     });
-    res.json(updated);
+    const declineTemplate = normalizeDeclineEmailTemplate(
+      (updated.beta as any)?.declineEmailTemplate
+    );
+    res.json({ ...updated, declineEmailTemplate: declineTemplate });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || "save failed" });
   }
