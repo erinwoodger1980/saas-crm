@@ -4,6 +4,11 @@ import { prisma } from "../prisma";
 import * as cheerio from "cheerio";
 import { env } from "../env";
 import { DEFAULT_TASK_PLAYBOOK, normalizeTaskPlaybook } from "../task-playbook";
+import {
+  QuestionnaireField,
+  normalizeQuestionnaire,
+  prepareQuestionnaireForSave,
+} from "../lib/questionnaire";
 
 const DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT = "Questionnaire for your estimate";
 const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
@@ -20,6 +25,73 @@ function authTenantId(req: any): string | null {
 }
 function ensureHttps(u: string) {
   return /^https?:\/\//i.test(u) ? u : `https://${u}`;
+}
+
+function sanitizeSlug(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return cleaned || null;
+}
+
+async function syncLeadFieldDefs(tenantId: string, fields: QuestionnaireField[]) {
+  const workspaceFields = fields.filter((field) => field.showOnLead);
+  const showKeys = new Set(workspaceFields.map((field) => field.key));
+  const questionnaireKeys = new Set(fields.map((field) => field.key));
+
+  const existing = await prisma.leadFieldDef.findMany({
+    where: { tenantId },
+    select: { id: true, key: true, config: true },
+  });
+
+  const deletableIds = existing
+    .filter((row) => {
+      if (showKeys.has(row.key)) return false;
+      const cfg = (row.config as any) ?? null;
+      const managed = cfg?.managedBy === "questionnaire";
+      const isUnset = cfg == null || (typeof cfg === "object" && Object.keys(cfg).length === 0);
+      if (managed) return true;
+      if (isUnset && questionnaireKeys.has(row.key)) return true;
+      return false;
+    })
+    .map((row) => row.id);
+
+  if (deletableIds.length > 0) {
+    await prisma.leadFieldDef.deleteMany({ where: { id: { in: deletableIds } } });
+  }
+
+  let order = 0;
+  for (const field of workspaceFields) {
+    const config: Record<string, any> = { managedBy: "questionnaire" };
+    if (field.type === "select") {
+      config.options = field.options;
+    }
+    if (field.type === "number") {
+      config.kind = "number";
+    } else if (field.type === "date") {
+      config.kind = "date";
+    } else if (field.type === "source") {
+      config.kind = "source";
+    }
+
+    const data = {
+      label: field.label,
+      type: field.type,
+      required: field.required,
+      sortOrder: order++,
+      config,
+    } as const;
+
+    await prisma.leadFieldDef.upsert({
+      where: { tenantId_key: { tenantId, key: field.key } },
+      update: data,
+      create: { tenantId, key: field.key, ...data },
+    });
+  }
 }
 
 /* ============================================================
@@ -48,10 +120,12 @@ router.get("/settings", async (req, res) => {
     });
   }
 
-  const normalized = normalizeTaskPlaybook(s?.taskPlaybook as any);
+  const normalizedPlaybook = normalizeTaskPlaybook(s?.taskPlaybook as any);
+  const normalizedQuestionnaire = normalizeQuestionnaire((s as any)?.questionnaire ?? []);
   res.json({
     ...s,
-    taskPlaybook: normalized,
+    taskPlaybook: normalizedPlaybook,
+    questionnaire: normalizedQuestionnaire,
     questionnaireEmailSubject: s?.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
     questionnaireEmailBody: s?.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
   });
@@ -67,6 +141,7 @@ async function updateSettings(req: any, res: any) {
     questionnaire,
     quoteDefaults,
     brandName,
+    slug,
     links,
     introHtml,
     website,
@@ -98,11 +173,26 @@ async function updateSettings(req: any, res: any) {
 
     // Whitelist fields
     const update: any = { updatedAt: new Date() };
+    let sanitizedQuestionnaire: QuestionnaireField[] | null = null;
+
     if (inboxWatchEnabled !== undefined) update.inboxWatchEnabled = !!inboxWatchEnabled;
     if (inbox !== undefined) update.inbox = inbox;
-    if (questionnaire !== undefined) update.questionnaire = questionnaire;
+    if (questionnaire !== undefined) {
+      sanitizedQuestionnaire = normalizeQuestionnaire(questionnaire ?? []);
+      const prepared = prepareQuestionnaireForSave(sanitizedQuestionnaire);
+      update.questionnaire = prepared.length ? prepared : [];
+    }
     if (quoteDefaults !== undefined) update.quoteDefaults = quoteDefaults;
     if (brandName !== undefined) update.brandName = brandName || "Your Company";
+    if (slug !== undefined) {
+      const cleanedSlug = sanitizeSlug(slug);
+      if (!cleanedSlug) {
+        return res
+          .status(400)
+          .json({ error: "invalid_slug", detail: "Slug must contain letters, numbers or hyphens." });
+      }
+      update.slug = cleanedSlug;
+    }
     if (links !== undefined) update.links = Array.isArray(links) ? links : [];
     if (introHtml !== undefined) update.introHtml = introHtml ?? null;
     if (website !== undefined) update.website = website ?? null;
@@ -123,10 +213,16 @@ async function updateSettings(req: any, res: any) {
       data: update,
     });
 
-    const normalized = normalizeTaskPlaybook(saved.taskPlaybook as any);
+    if (sanitizedQuestionnaire) {
+      await syncLeadFieldDefs(tenantId, sanitizedQuestionnaire);
+    }
+
+    const normalizedPlaybook = normalizeTaskPlaybook(saved.taskPlaybook as any);
+    const normalizedQuestionnaire = normalizeQuestionnaire((saved as any).questionnaire ?? []);
     return res.json({
       ...saved,
-      taskPlaybook: normalized,
+      taskPlaybook: normalizedPlaybook,
+      questionnaire: normalizedQuestionnaire,
       questionnaireEmailSubject: saved.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
       questionnaireEmailBody: saved.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
     });
@@ -350,91 +446,6 @@ ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
   } catch (e: any) {
     console.error("[tenant enrich] failed", e);
     res.status(500).json({ error: e?.message || "enrich failed" });
-  }
-});
-
-/** Full save (incl. questionnaire) */
-router.put("/settings", async (req, res) => {
-  const tenantId = authTenantId(req);
-  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
-
-  const {
-    slug,
-    brandName,
-    introHtml,
-    website,
-    phone,
-    links,
-    logoUrl,
-    questionnaire,
-    questionnaireEmailSubject,
-    questionnaireEmailBody,
-  } = req.body || {};
-
-  if (!slug || !brandName) {
-    return res.status(400).json({ error: "slug and brandName required" });
-  }
-
-  let qSave: any = undefined;
-  if (Array.isArray(questionnaire)) {
-    qSave = questionnaire.map((f: any) => ({
-      id: String(f.id || crypto.randomUUID?.() || Date.now()),
-      key: String(f.key || "").trim(),
-      label: String(f.label || "").trim(),
-      type: String(f.type || "text"),
-      required: !!f.required,
-      options: Array.isArray(f.options) ? f.options.slice(0, 50) : undefined,
-    }));
-  }
-
-  try {
-    const updated = await prisma.tenantSettings.upsert({
-      where: { tenantId },
-      update: {
-        slug,
-        brandName,
-        introHtml: introHtml ?? null,
-        website: website ?? null,
-        phone: phone ?? null,
-        logoUrl: logoUrl ?? undefined,
-        links: Array.isArray(links) ? links : [],
-        ...(qSave ? { questionnaire: qSave } : {}),
-        questionnaireEmailSubject:
-          typeof questionnaireEmailSubject === "string" && questionnaireEmailSubject.trim()
-            ? questionnaireEmailSubject.trim()
-            : null,
-        questionnaireEmailBody:
-          typeof questionnaireEmailBody === "string" && questionnaireEmailBody.trim()
-            ? questionnaireEmailBody.trim()
-            : null,
-      },
-      create: {
-        tenantId,
-        slug,
-        brandName,
-        introHtml: introHtml ?? null,
-        website: website ?? null,
-        phone: phone ?? null,
-        logoUrl: logoUrl ?? undefined,
-        links: Array.isArray(links) ? links : [],
-        questionnaire: qSave ?? null,
-        questionnaireEmailSubject:
-          typeof questionnaireEmailSubject === "string" && questionnaireEmailSubject.trim()
-            ? questionnaireEmailSubject.trim()
-            : DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-        questionnaireEmailBody:
-          typeof questionnaireEmailBody === "string" && questionnaireEmailBody.trim()
-            ? questionnaireEmailBody.trim()
-            : DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-      },
-    });
-    res.json({
-      ...updated,
-      questionnaireEmailSubject: updated.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-      questionnaireEmailBody: updated.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-    });
-  } catch (e: any) {
-    res.status(400).json({ error: e?.message || "save failed" });
   }
 });
 

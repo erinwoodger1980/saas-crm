@@ -175,13 +175,13 @@ export default function LeadSourcePicker({
       {selectedInfo ? (
         <div className="mt-1 text-xs text-slate-600">
           Latest: <strong>{new Date(selectedInfo.month).toLocaleDateString()}</strong>
-          {" · "}Spend £{selectedInfo.spend.toFixed(0)}
+          {" · "}Budget £{selectedInfo.spend.toFixed(0)}
           {" · "}Leads {selectedInfo.leads}
-          {" · "}Sales {selectedInfo.conversions}
-          {" · "}CPL{" "}
-          {selectedInfo.cpl != null ? `£${selectedInfo.cpl.toFixed(0)}` : "–"}
-          {" · "}CPS{" "}
-          {selectedInfo.cps != null ? `£${selectedInfo.cps.toFixed(0)}` : "–"}
+          {" · "}Won {selectedInfo.conversions}
+          {" · "}Conversion{" "}
+          {selectedInfo.leads ? `${Math.round((selectedInfo.conversions / Math.max(selectedInfo.leads, 1)) * 100)}%` : "–"}
+          {" · "}Cost/lead {selectedInfo.cpl != null ? `£${selectedInfo.cpl.toFixed(0)}` : "–"}
+          {" · "}COA {selectedInfo.cps != null ? `£${selectedInfo.cps.toFixed(0)}` : "–"}
         </div>
       ) : selectVal !== NONE && (selectVal === CUSTOM ? customVal.trim() : selectVal) ? (
         <div className="mt-1 text-xs text-slate-500">
