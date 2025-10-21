@@ -40,11 +40,15 @@ export function setJwt(token: string) {
   try {
     localStorage.setItem("jwt", token);
   } catch {}
-  const secure =
-    typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `jwt=${encodeURIComponent(
-    token
-  )}; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
+
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  const cookieValue = encodeURIComponent(token);
+  const attributes = `Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
+
+  // Primary cookie used by middleware
+  document.cookie = `jid=${cookieValue}; ${attributes}`;
+  // Legacy cookie kept for backwards compatibility with API clients expecting "jwt"
+  document.cookie = `jwt=${cookieValue}; ${attributes}`;
 }
 
 export function clearJwt() {
@@ -52,7 +56,11 @@ export function clearJwt() {
   try {
     localStorage.removeItem("jwt");
   } catch {}
-  document.cookie = `jwt=; Path=/; Max-Age=0; SameSite=Lax`;
+
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  const attributes = `Path=/; Max-Age=0; SameSite=Lax${secure}`;
+  document.cookie = `jid=; ${attributes}`;
+  document.cookie = `jwt=; ${attributes}`;
 }
 
 /* ---------------- JSON fetch helper ---------------- */
