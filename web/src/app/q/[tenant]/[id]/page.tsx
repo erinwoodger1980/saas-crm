@@ -53,6 +53,11 @@ type PublicLead = {
   };
 };
 
+type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+const ITEM_COUNT = 3;
+const ITEM_INDICES = Array.from({ length: ITEM_COUNT }, (_, idx) => idx);
+
 function normalizeQuestions(raw: any): QField[] {
   const list = Array.isArray(raw) ? raw : [];
   return list
@@ -88,12 +93,19 @@ export default function PublicQuestionnairePage() {
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [lead, setLead] = useState<PublicLead["lead"] | null>(null);
-  const [answers, setAnswers] = useState<Record<string, any>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
-  const firstErrorRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>(null);
+  const [itemAnswers, setItemAnswers] = useState<Record<string, any>[]>(() =>
+    Array.from({ length: ITEM_COUNT }, () => ({}))
+  );
+  const [itemErrors, setItemErrors] = useState<Record<string, string>[]>(() =>
+    Array.from({ length: ITEM_COUNT }, () => ({}))
+  );
+  const [itemFiles, setItemFiles] = useState<File[][]>(() =>
+    Array.from({ length: ITEM_COUNT }, () => [])
+  );
+  const fieldRefs = useRef<Record<string, FieldElement | null>>({});
 
   useEffect(() => {
     if (!slug || !leadId) return;
@@ -109,7 +121,24 @@ export default function PublicQuestionnairePage() {
         if (!mounted) return;
         setSettings(s);
         setLead(l.lead);
-        setAnswers(l.lead?.custom ?? {});
+        const custom =
+          l.lead && typeof l.lead.custom === "object" && l.lead.custom !== null ? (l.lead.custom as any) : {};
+        const existingItems = Array.isArray(custom.items) ? custom.items : [];
+        setItemAnswers(
+          Array.from({ length: ITEM_COUNT }, (_, idx) => {
+            const existing = existingItems[idx];
+            if (existing && typeof existing === "object") {
+              const rest = { ...(existing as Record<string, any>) };
+              delete rest.photos;
+              delete rest.itemNumber;
+              return rest;
+            }
+            return {};
+          })
+        );
+        setItemErrors(Array.from({ length: ITEM_COUNT }, () => ({}) as Record<string, string>));
+        setItemFiles(Array.from({ length: ITEM_COUNT }, () => [] as File[]));
+        fieldRefs.current = {};
       } catch (e: any) {
         setBanner(e?.message || "Failed to load");
       } finally {
@@ -124,27 +153,87 @@ export default function PublicQuestionnairePage() {
     [settings]
   );
 
-  function set(k: string, v: any) {
-    setAnswers((prev) => ({ ...prev, [k]: v }));
+  const registerFieldRef = (fieldKey: string) => (el: FieldElement | null) => {
+    if (el) {
+      fieldRefs.current[fieldKey] = el;
+    } else {
+      delete fieldRefs.current[fieldKey];
+    }
+  };
+
+  const setItemField = (itemIndex: number, key: string, value: any) => {
+    setItemAnswers((prev) =>
+      prev.map((item, idx) => (idx === itemIndex ? { ...item, [key]: value } : item))
+    );
+    setItemErrors((prev) =>
+      prev.map((errs, idx) => {
+        if (idx !== itemIndex || !errs[key]) return errs;
+        const next = { ...errs };
+        delete next[key];
+        return next;
+      })
+    );
+  };
+
+  const handleItemFileChange = (itemIndex: number, fileList: FileList | null) => {
+    const next = fileList ? Array.from(fileList).slice(0, 1) : [];
+    setItemFiles((prev) => prev.map((files, idx) => (idx === itemIndex ? next : files)));
+  };
+
+  const clearItemFiles = (itemIndex: number) => {
+    setItemFiles((prev) => prev.map((files, idx) => (idx === itemIndex ? [] : files)));
+  };
+
+  const hasItemContent = (idx: number) => {
+    const item = itemAnswers[idx] ?? {};
+    const hasValues = Object.values(item).some((val) => !isEmptyValue(val));
+    const hasPhotos = (itemFiles[idx]?.length ?? 0) > 0;
+    return hasValues || hasPhotos;
+  };
+
+  function makeFieldKey(itemIndex: number, key: string) {
+    return `item-${itemIndex}-${key}`;
   }
 
   function validate(): boolean {
-    const next: Record<string, string> = {};
-    for (const q of questions) {
-      const val = answers[q.key];
-      if (q.required && (val === undefined || val === null || String(val).trim() === "")) {
-        next[q.key] = "This field is required.";
-      }
+    if (questions.length === 0) {
+      setItemErrors(Array.from({ length: ITEM_COUNT }, () => ({} as Record<string, string>)));
+      setBanner(null);
+      return true;
     }
-    setErrors(next);
 
-    // Focus + scroll to first invalid field
-    if (Object.keys(next).length > 0 && firstErrorRef.current) {
-      firstErrorRef.current.focus();
-      firstErrorRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    const next = Array.from({ length: ITEM_COUNT }, () => ({} as Record<string, string>));
+    let firstInvalidKey: string | null = null;
+
+    ITEM_INDICES.forEach((itemIdx) => {
+      const shouldValidate = itemIdx === 0 || hasItemContent(itemIdx);
+      if (!shouldValidate) return;
+
+      for (const q of questions) {
+        const val = itemAnswers[itemIdx]?.[q.key];
+        if (q.required && isEmptyValue(val)) {
+          next[itemIdx][q.key] = "This field is required.";
+          if (!firstInvalidKey) {
+            firstInvalidKey = makeFieldKey(itemIdx, q.key);
+          }
+        }
+      }
+    });
+
+    setItemErrors(next);
+
+    if (firstInvalidKey) {
+      const el = fieldRefs.current[firstInvalidKey];
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      setBanner("Please fix the highlighted fields.");
+      return false;
     }
-    setBanner(Object.keys(next).length ? "Please fix the highlighted fields." : null);
-    return Object.keys(next).length === 0;
+
+    setBanner(null);
+    return true;
   }
 
   async function filesToBase64(list: File[]): Promise<
@@ -176,10 +265,42 @@ export default function PublicQuestionnairePage() {
       setSubmitting(true);
       setBanner(null);
 
-      const uploads = await filesToBase64(files);
+      const generalUploads = await filesToBase64(files);
+      const rawItemUploads = await Promise.all(itemFiles.map((list) => filesToBase64(list)));
+      const itemUploads = rawItemUploads.map((uploads, idx) =>
+        uploads.map((upload, photoIdx) => {
+          const rawName = upload.filename?.trim() || "";
+          const label = `Item ${idx + 1}`;
+          const fallback = `${label} photo ${photoIdx + 1}.jpg`;
+          return {
+            ...upload,
+            filename: rawName ? `${label} - ${rawName}` : fallback,
+            itemIndex: idx + 1,
+          };
+        })
+      );
+
+      const itemsPayload = itemAnswers
+        .map((item, idx) => {
+          const trimmedEntries = Object.entries(item).filter(([, val]) => !isEmptyValue(val));
+          const photos = itemUploads[idx] ?? [];
+          if (trimmedEntries.length === 0 && photos.length === 0) {
+            return null;
+          }
+          const base = Object.fromEntries(trimmedEntries);
+          return {
+            itemNumber: idx + 1,
+            ...base,
+            photos,
+          };
+        })
+        .filter((item): item is Record<string, any> => item !== null);
+
+      const combinedUploads = [...generalUploads, ...itemUploads.flat()];
+
       await postJSON(`/public/leads/${encodeURIComponent(lead.id)}/submit-questionnaire`, {
-        answers,
-        uploads, // optional
+        answers: { items: itemsPayload },
+        uploads: combinedUploads,
       });
 
       router.push(`/q/thank-you?tenant=${encodeURIComponent(slug)}`);
@@ -262,65 +383,123 @@ export default function PublicQuestionnairePage() {
                   No questions yet.
                 </div>
               ) : (
-                questions.map((q, idx) => {
-                  const hasErr = !!errors[q.key];
-                  const commonProps = {
-                    ref: idx === 0 ? firstErrorRef : null,
-                    "aria-invalid": hasErr || undefined,
-                    "aria-describedby": hasErr ? `${q.key}-err` : undefined,
-                  } as any;
-
-                  const inputClass = `${baseInputClasses} ${hasErr ? "border-rose-300 focus:ring-rose-300" : ""}`;
-
-                  return (
-                    <div key={q.key} className="space-y-2">
-                      <label className="block text-sm font-medium text-slate-700">
-                        {q.label || q.key}
-                        {q.required ? <span className="text-rose-500"> *</span> : null}
-                      </label>
-
-                      {q.type === "textarea" ? (
-                        <textarea
-                          {...commonProps}
-                          className={`${inputClass} min-h-[140px]`}
-                          value={valueOrEmpty(answers[q.key])}
-                          onChange={(e) => set(q.key, e.target.value)}
-                        />
-                      ) : q.type === "select" ? (
-                        <select
-                          {...commonProps}
-                          className={inputClass}
-                          value={valueOrEmpty(answers[q.key])}
-                          onChange={(e) => set(q.key, e.target.value)}
-                        >
-                          <option value="">Select…</option>
-                          {(q.options ?? []).map((opt) => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          {...commonProps}
-                          type={q.type === "number" ? "number" : q.type === "date" ? "date" : "text"}
-                          className={inputClass}
-                          value={valueOrEmpty(answers[q.key])}
-                          onChange={(e) => set(q.key, e.target.value)}
-                        />
-                      )}
-
-                      {hasErr ? (
-                        <div id={`${q.key}-err`} className="text-xs text-rose-600">
-                          {errors[q.key]}
+                <div className="space-y-5">
+                  <p className="text-xs text-slate-500">
+                    Provide details for up to three items. Item 1 is required; you can leave Item 2 and Item 3 blank if you
+                    don&apos;t need them.
+                  </p>
+                  {ITEM_INDICES.map((itemIdx) => {
+                    const itemErr = itemErrors[itemIdx] ?? {};
+                    const sectionLabel = `Item ${itemIdx + 1}`;
+                    return (
+                      <div
+                        key={sectionLabel}
+                        className="space-y-4 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-5"
+                      >
+                        <div className="flex items-baseline justify-between">
+                          <h3 className="text-base font-semibold text-slate-900">{sectionLabel}</h3>
+                          {itemIdx > 0 ? (
+                            <span className="text-xs text-slate-400">Optional</span>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
-                  );
-                })
+
+                        <div className="space-y-4">
+                          {questions.map((q) => {
+                            const fieldId = makeFieldKey(itemIdx, q.key);
+                            const hasErr = !!itemErr[q.key];
+                            const inputClass = `${baseInputClasses} ${hasErr ? "border-rose-300 focus:ring-rose-300" : ""}`;
+                            const commonProps = {
+                              ref: registerFieldRef(fieldId),
+                              "aria-invalid": hasErr || undefined,
+                              "aria-describedby": hasErr ? `${fieldId}-err` : undefined,
+                            } as any;
+
+                            return (
+                              <div key={`${sectionLabel}-${q.key}`} className="space-y-2">
+                                <label className="block text-sm font-medium text-slate-700">
+                                  {q.label || q.key}
+                                  {q.required ? <span className="text-rose-500"> *</span> : null}
+                                </label>
+
+                                {q.type === "textarea" ? (
+                                  <textarea
+                                    {...commonProps}
+                                    className={`${inputClass} min-h-[140px]`}
+                                    value={valueOrEmpty(itemAnswers[itemIdx]?.[q.key])}
+                                    onChange={(e) => setItemField(itemIdx, q.key, e.target.value)}
+                                  />
+                                ) : q.type === "select" ? (
+                                  <select
+                                    {...commonProps}
+                                    className={inputClass}
+                                    value={valueOrEmpty(itemAnswers[itemIdx]?.[q.key])}
+                                    onChange={(e) => setItemField(itemIdx, q.key, e.target.value)}
+                                  >
+                                    <option value="">Select…</option>
+                                    {(q.options ?? []).map((opt) => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    {...commonProps}
+                                    type={q.type === "number" ? "number" : q.type === "date" ? "date" : "text"}
+                                    className={inputClass}
+                                    value={valueOrEmpty(itemAnswers[itemIdx]?.[q.key])}
+                                    onChange={(e) => setItemField(itemIdx, q.key, e.target.value)}
+                                  />
+                                )}
+
+                                {hasErr ? (
+                                  <div id={`${fieldId}-err`} className="text-xs text-rose-600">
+                                    {itemErr[q.key]}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="space-y-2 rounded-2xl border border-dashed border-slate-200 bg-white/60 px-4 py-4">
+                          <div className="text-sm font-medium text-slate-700">{sectionLabel} photo</div>
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-[rgb(var(--brand))]/10 px-4 py-2 text-sm font-medium text-[rgb(var(--brand))] transition hover:bg-[rgb(var(--brand))]/15">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              className="sr-only"
+                              onChange={(e) => handleItemFileChange(itemIdx, e.currentTarget.files)}
+                            />
+                            <span>Take or upload a photo</span>
+                          </label>
+                          {itemFiles[itemIdx]?.length ? (
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                              <span>
+                                {itemFiles[itemIdx].length} photo{itemFiles[itemIdx].length > 1 ? "s" : ""} ready to upload
+                              </span>
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-rose-500 hover:underline"
+                                onClick={() => clearItemFiles(itemIdx)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-400">
+                              Use your camera or photo library to add a reference image for this item.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
 
             <div className="space-y-3 rounded-2xl border border-slate-200/60 bg-white/70 px-4 py-4">
-              <div className="text-sm font-medium text-slate-700">Supporting files (photos, drawings)</div>
+              <div className="text-sm font-medium text-slate-700">Additional supporting files (optional)</div>
               <input
                 type="file"
                 multiple
@@ -362,6 +541,9 @@ export default function PublicQuestionnairePage() {
 }
 
 /* helpers */
+function isEmptyValue(v: any) {
+  return v === undefined || v === null || String(v).trim() === "";
+}
 function valueOrEmpty(v: any) { return v == null ? "" : String(v); }
 function Shell({ children }: { children: React.ReactNode }) {
   return (
