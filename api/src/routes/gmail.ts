@@ -184,31 +184,213 @@ function basicHeuristics(body: string) {
   return { email, phone, contactName };
 }
 
-async function extractLeadWithOpenAI(subject: string, body: string) {
+type BasicHeuristics = ReturnType<typeof basicHeuristics>;
+
+function heuristicsSuggestLead(subject: string, body: string, heur: BasicHeuristics) {
+  const haystack = `${subject}\n${body}`.toLowerCase();
+  const keywords = [
+    "quote",
+    "enquiry",
+    "inquiry",
+    "estimate",
+    "wardrobe",
+    "kitchen",
+    "alcove",
+    "cabinet",
+    "bespoke",
+    "joinery",
+    "carpentry",
+    "fitted",
+    "timber",
+    "stair",
+    "door",
+    "window",
+    "refurb",
+  ];
+  const hasKeyword = keywords.some((kw) => haystack.includes(kw));
+  const hasContact = Boolean(heur.email || heur.contactName || heur.phone);
+  const hasBody = body.trim().length > 40;
+  return hasKeyword && hasContact && hasBody;
+}
+
+function looksLikeNoise(subject: string, body: string) {
+  const haystack = `${subject}\n${body}`.toLowerCase();
+  const noiseIndicators = [
+    "unsubscribe",
+    "newsletter",
+    "privacy policy",
+    "terms and conditions",
+    "job application",
+    "curriculum vitae",
+    "resume",
+    "apply for",
+    "shipping",
+    "delivery",
+    "tracking number",
+    "invoice",
+    "payment received",
+    "receipt",
+    "password reset",
+    "two-factor",
+    "security alert",
+    "marketing",
+    "sale",
+    "discount",
+  ];
+  return noiseIndicators.some((word) => haystack.includes(word));
+}
+
+async function recordTrainingExample(params: {
+  tenantId: string;
+  provider: string;
+  messageId: string;
+  label: "accepted" | "rejected";
+  subject: string;
+  snippet: string;
+  from: string | null;
+  body: string;
+  ai: any;
+  heuristics: BasicHeuristics | null;
+  decidedBy: string;
+  reason: string;
+  confidence: number | null;
+  leadId?: string | null;
+}) {
+  try {
+    const { tenantId, provider, messageId } = params;
+    const existing = await prisma.leadTrainingExample.findFirst({
+      where: { tenantId, provider, messageId },
+      select: { id: true },
+    });
+
+    const truncatedBody = params.body.length > 4000 ? `${params.body.slice(0, 4000)}…` : params.body;
+    const payload = {
+      subject: params.subject,
+      snippet: params.snippet,
+      from: params.from,
+      body: truncatedBody,
+      ai: params.ai,
+      heuristics: params.heuristics,
+      decidedBy: params.decidedBy,
+      reason: params.reason,
+      confidence: params.confidence,
+      leadId: params.leadId || null,
+    };
+
+    if (existing) {
+      await prisma.leadTrainingExample.update({
+        where: { id: existing.id },
+        data: { label: params.label, extracted: payload },
+      });
+    } else {
+      await prisma.leadTrainingExample.create({
+        data: {
+          tenantId,
+          provider,
+          messageId,
+          label: params.label,
+          extracted: payload,
+        },
+      });
+    }
+  } catch (e: any) {
+    console.error("[gmail] failed to record training example", e?.message || e);
+  }
+}
+
+async function ensureLeadReviewTask(tenantId: string, leadId: string) {
+  const metaKey = `lead:${leadId}:review-enquiry`;
+  const existing = await prisma.task.findFirst({
+    where: {
+      tenantId,
+      relatedType: "LEAD" as any,
+      relatedId: leadId,
+      meta: { path: ["key"], equals: metaKey },
+    },
+    select: { id: true },
+  });
+  if (existing) return existing;
+
+  const dueAt = new Date(Date.now() + 24 * 3600 * 1000);
+  return prisma.task.create({
+    data: {
+      tenantId,
+      title: "Review enquiry",
+      relatedType: "LEAD" as any,
+      relatedId: leadId,
+      status: "OPEN" as any,
+      priority: "MEDIUM" as any,
+      dueAt,
+      autocreated: true,
+      meta: { key: metaKey, source: "gmail-import" } as any,
+    },
+  });
+}
+
+async function extractLeadWithOpenAI(
+  subject: string,
+  body: string,
+  opts: { snippet?: string; from?: string | null } = {},
+) {
   if (!env.OPENAI_API_KEY) return null;
   const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
-  const prompt = `You're a CRM intake assistant. Decide if this email is a sales enquiry/lead for a joinery/carpentry business.
-Extract fields in JSON. If not a lead, return {"isLead": false}.
+  const truncatedBody = (body || "").slice(0, 6000);
+  const snippet = opts.snippet || "";
+  const from = opts.from || "";
 
-Fields:
-- isLead: boolean
-- contactName: string|null
-- email: string|null
-- phone: string|null
-- projectType: string|null (short description, e.g. "fitted wardrobes")
-- nextAction: string|null (short verb phrase, e.g. "call back")
-- summary: string (1–2 sentence summary)
+  const systemPrompt = `You triage inbound emails for a bespoke joinery and carpentry business. Decide if an email is a genuine new sales enquiry from a potential customer.
 
-Email subject: ${subject}
-Email body:
-${body}`;
+Treat as NOT a lead if it is any of the following: marketing/newsletters, spam, job applications, vendor sales pitches, order confirmations, shipping or payment notifications, account/security alerts, internal staff messages, or anything unrelated to bespoke joinery/carpentry projects.
+
+Strong indicators of a lead include questions about quotes, measurements, site visits, bespoke furniture (e.g. wardrobes, alcove units, kitchens, staircases), fitting/installation, timber work, renovation, or requests for someone to get in touch.
+
+When unsure, err on the side of NOT a lead unless there is explicit interest in the company's services.`;
 
   const resp = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
     temperature: 0.1,
-    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: `Subject: ${subject || "(no subject)"}\nFrom: ${from || "unknown"}\nSnippet: ${snippet || "(no snippet)"}\nBody:\n${truncatedBody || "(empty)"}`,
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "lead_classification",
+        schema: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            isLead: {
+              type: "boolean",
+              description: "Whether this message is a genuine sales enquiry for bespoke joinery/carpentry services.",
+            },
+            confidence: {
+              type: "number",
+              description: "Confidence score between 0 and 1 for the lead decision.",
+              minimum: 0,
+              maximum: 1,
+            },
+            reason: {
+              type: "string",
+              description: "Short explanation supporting the decision.",
+            },
+            contactName: { type: ["string", "null"] },
+            email: { type: ["string", "null"] },
+            phone: { type: ["string", "null"] },
+            projectType: { type: ["string", "null"] },
+            nextAction: { type: ["string", "null"] },
+            summary: { type: ["string", "null"] },
+            tags: { type: "array", items: { type: "string" } },
+          },
+          required: ["isLead", "reason", "summary"],
+        },
+      },
+    },
   });
 
   const text = resp.choices[0]?.message?.content || "{}";
@@ -681,29 +863,100 @@ router.post("/import", async (req, res) => {
 
       // If new conversation and no lead yet → attempt AI/heuristics then create
       let createdLead = false;
-      if (!leadId) {
-        // Run AI + heuristics ONLY if this is a brand new ingest
-        let isLead = false;
-        let ai: any = null;
-        let heur = basicHeuristics(bodyText || "");
-        try {
-          ai = await extractLeadWithOpenAI(subject, bodyText);
-        } catch {}
-        isLead =
-          ai?.isLead ??
-          !!(heur.email || heur.contactName || /quote|estimate|enquiry|inquiry/i.test(subject));
+      let classification: {
+        isLead: boolean;
+        decidedBy: "openai" | "heuristics";
+        reason: string;
+        confidence: number | null;
+        ai: any;
+        heuristics: BasicHeuristics | null;
+        noiseFiltered: boolean;
+        leadId?: string | null;
+      } | null = null;
 
-        if (isLead) {
+      if (!leadId) {
+        const heur = basicHeuristics(bodyText || "");
+        let ai: any = null;
+        try {
+          ai = await extractLeadWithOpenAI(subject, bodyText || "", { snippet, from: fromHdr });
+        } catch (e: any) {
+          console.error("[gmail] openai classification failed:", e?.message || e);
+        }
+
+        const aiIsLead =
+          typeof ai?.isLead === "string"
+            ? ai.isLead.toLowerCase() === "true"
+            : typeof ai?.isLead === "boolean"
+            ? ai.isLead
+            : null;
+        const aiConfidence =
+          typeof ai?.confidence === "number"
+            ? Math.max(0, Math.min(1, Number(ai.confidence)))
+            : null;
+        const aiReason = typeof ai?.reason === "string" ? ai.reason : "";
+        const noise = looksLikeNoise(subject || "", bodyText || "");
+
+        let decidedBy: "openai" | "heuristics" = ai ? "openai" : "heuristics";
+        let isLeadCandidate = false;
+        let reason = aiReason;
+
+        if (aiIsLead === true && !noise) {
+          if ((aiConfidence ?? 0) >= 0.45 || heuristicsSuggestLead(subject || "", bodyText || "", heur)) {
+            isLeadCandidate = true;
+            reason = aiReason || "OpenAI classified this as a lead";
+          } else if (!reason) {
+            reason = "OpenAI suggested a lead but with low confidence";
+          }
+        } else if (aiIsLead === true && noise) {
+          reason = (aiReason || "OpenAI classified as lead") + " (flagged as noise)";
+        } else if (aiIsLead === false) {
+          isLeadCandidate = false;
+          reason = aiReason || "OpenAI classified this as not a lead";
+        }
+
+        if (aiIsLead === null || (aiConfidence ?? 0) < 0.45) {
+          if (heuristicsSuggestLead(subject || "", bodyText || "", heur) && !noise) {
+            isLeadCandidate = true;
+            const heurReason = "Heuristics detected enquiry keywords and contact details";
+            reason = reason ? `${reason}; ${heurReason}` : heurReason;
+            decidedBy = ai ? "openai" : "heuristics";
+          } else if (!reason) {
+            reason = "No strong indicators of a customer enquiry";
+          }
+        }
+
+        if (noise) {
+          isLeadCandidate = false;
+          reason = reason ? `${reason} (filtered as newsletter/spam)` : "Filtered as newsletter/spam";
+        }
+
+        classification = {
+          isLead: isLeadCandidate,
+          decidedBy,
+          reason,
+          confidence: aiConfidence,
+          ai,
+          heuristics: heur,
+          noiseFiltered: noise,
+        };
+
+        if (isLeadCandidate) {
           const contactName =
-            ai?.contactName ||
+            (typeof ai?.contactName === "string" && ai.contactName) ||
             heur.contactName ||
             (fromHdr?.match(/"?([^"<@]+)"?\s*<.*>/)?.[1] || null);
 
-          const email =
-            ai?.email ||
-            heur.email ||
-            fromAddr ||
-            null;
+          const emailCandidate =
+            (typeof ai?.email === "string" && ai.email) || heur.email || fromAddr || null;
+          const email = emailCandidate ? String(emailCandidate).toLowerCase() : null;
+
+          const aiDecision: Record<string, any> = {
+            decidedBy,
+            reason,
+            confidence: aiConfidence ?? null,
+            model: ai ? "openai" : "heuristics",
+          };
+          if (noise) aiDecision.noiseFiltered = true;
 
           const custom: Record<string, any> = {
             provider: "gmail",
@@ -711,11 +964,15 @@ router.post("/import", async (req, res) => {
             threadId: thread.threadId,
             subject: subject || null,
             from: fromHdr || null,
-            summary: ai?.summary || snippet || null,
+            summary: (typeof ai?.summary === "string" && ai.summary) || snippet || null,
             uiStatus: "NEW_ENQUIRY",
+            aiDecision,
           };
-          if (ai?.projectType) custom.projectType = ai.projectType;
-          if (heur.phone) custom.phone = heur.phone;
+          const phone = (typeof ai?.phone === "string" && ai.phone) || heur.phone;
+          if (phone) custom.phone = phone;
+          if (typeof ai?.projectType === "string" && ai.projectType) custom.projectType = ai.projectType;
+          if (Array.isArray(ai?.tags) && ai.tags.length) custom.tags = ai.tags;
+          if (typeof ai?.nextAction === "string" && ai.nextAction) custom.suggestedNextAction = ai.nextAction;
 
           const created = await prisma.lead.create({
             data: {
@@ -724,12 +981,49 @@ router.post("/import", async (req, res) => {
               contactName: contactName || (email ? email.split("@")?.[0] : "New Lead"),
               email,
               status: "NEW",
-              nextAction: ai?.nextAction || "Review enquiry",
+              nextAction: (typeof ai?.nextAction === "string" && ai.nextAction) || "Review enquiry",
               custom,
             },
           });
           leadId = created.id;
           createdLead = true;
+          classification.leadId = leadId;
+
+          await ensureLeadReviewTask(tenantId, leadId);
+
+          await recordTrainingExample({
+            tenantId,
+            provider: "gmail",
+            messageId: m.id,
+            label: "accepted",
+            subject,
+            snippet,
+            from: fromHdr,
+            body: bodyText || "",
+            ai,
+            heuristics: heur,
+            decidedBy,
+            reason,
+            confidence: aiConfidence,
+            leadId,
+          });
+        } else {
+          await recordTrainingExample({
+            tenantId,
+            provider: "gmail",
+            messageId: m.id,
+            label: "rejected",
+            subject,
+            snippet,
+            from: fromHdr,
+            body: bodyText || "",
+            ai,
+            heuristics: heur,
+            decidedBy,
+            reason,
+            confidence: aiConfidence,
+            leadId: null,
+          });
         }
       }
 
@@ -787,13 +1081,31 @@ router.post("/import", async (req, res) => {
       try {
         await prisma.emailIngest.update({
           where: { tenantId_provider_messageId: { tenantId, provider: "gmail", messageId: m.id } },
-          data: {
-            processedAt: new Date(),
-            leadId: leadId || null,
-            subject,
-            fromEmail: fromHdr,
-            snippet,
-          },
+          data: (() => {
+            const base: Record<string, any> = {
+              processedAt: new Date(),
+              leadId: leadId || null,
+              subject,
+              fromEmail: fromHdr,
+              snippet,
+            };
+            if (classification) {
+              const aiIsLead =
+                typeof classification.ai?.isLead === "string"
+                  ? classification.ai.isLead.toLowerCase() === "true"
+                  : typeof classification.ai?.isLead === "boolean"
+                  ? classification.ai.isLead
+                  : null;
+              if (aiIsLead !== null) {
+                base.aiPredictedIsLead = aiIsLead;
+              } else {
+                base.aiPredictedIsLead = classification.isLead;
+              }
+              base.userLabelIsLead = classification.isLead;
+              base.userLabeledAt = new Date();
+            }
+            return base;
+          })(),
         });
       } catch {}
 
