@@ -1,7 +1,7 @@
 // web/src/app/leads/LeadModal.tsx
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import {
@@ -11,6 +11,10 @@ import {
   TaskPlaybook,
   normalizeTaskPlaybook,
 } from "@/lib/task-playbook";
+import {
+  DeclineEmailTemplate,
+  normalizeDeclineEmailTemplate,
+} from "@/lib/decline-email";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -46,11 +50,16 @@ type Task = {
 
 type TenantSettings = {
   slug: string;
+  brandName?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  links?: { label: string; url: string }[] | null;
   questionnaire?: {
     title?: string;
     questions?: Array<{ id: string; label: string }>;
   };
   taskPlaybook?: TaskPlaybook;
+  declineEmailTemplate?: DeclineEmailTemplate | null;
 };
 
 const STATUS_LABELS: Record<Lead["status"], string> = {
@@ -137,6 +146,21 @@ function toIsoOrUndefined(localValue: string): string | undefined {
   return d.toISOString();
 }
 
+function cleanProjectLabel(value?: string | null) {
+  if (typeof value !== "string") return "your project";
+  const trimmed = value.trim();
+  if (!trimmed) return "your project";
+  const singleLine = trimmed.replace(/\s+/g, " ");
+  return singleLine.length > 80 ? `${singleLine.slice(0, 77)}…` : singleLine;
+}
+
+function applyTemplateReplacements(text: string, replacements: Record<string, string>) {
+  return Object.entries(replacements).reduce((acc, [token, value]) => {
+    const replacement = value ?? "";
+    return acc.replaceAll(token, replacement);
+  }, text);
+}
+
 /* ----------------------------- Component ----------------------------- */
 
 export default function LeadModal({
@@ -177,6 +201,10 @@ export default function LeadModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyTask, setBusyTask] = useState(false);
+  const [showDeclineDialog, setShowDeclineDialog] = useState(false);
+  const [declineSubject, setDeclineSubject] = useState("");
+  const [declineBody, setDeclineBody] = useState("");
+  const [declineSending, setDeclineSending] = useState(false);
   const [showTaskComposer, setShowTaskComposer] = useState(false);
   const [taskComposer, setTaskComposer] = useState({
     title: "",
@@ -195,6 +223,11 @@ export default function LeadModal({
     [uiStatus]
   );
 
+  const declineTemplate = useMemo(
+    () => normalizeDeclineEmailTemplate(settings?.declineEmailTemplate),
+    [settings?.declineEmailTemplate]
+  );
+
   useEffect(() => {
     if (open) return;
     setLead(null);
@@ -207,6 +240,10 @@ export default function LeadModal({
     setLoading(false);
     setSaving(false);
     setBusyTask(false);
+    setShowDeclineDialog(false);
+    setDeclineSubject("");
+    setDeclineBody("");
+    setDeclineSending(false);
     setShowTaskComposer(false);
     setTaskComposer({ title: "", description: "", priority: "MEDIUM", dueAt: "" });
     setTaskAssignToMe(true);
@@ -321,6 +358,9 @@ export default function LeadModal({
           setSettings({
             ...s,
             taskPlaybook: normalizeTaskPlaybook((s as any).taskPlaybook),
+            declineEmailTemplate: normalizeDeclineEmailTemplate(
+              (s as any).declineEmailTemplate ?? (s as any)?.beta?.declineEmailTemplate
+            ),
           });
         }
 
@@ -565,9 +605,81 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
   /* ----------------------------- Actions ----------------------------- */
 
-  async function rejectEnquiry() {
-    setUiStatus("REJECTED");
-    await saveStatus("REJECTED");
+  function buildDeclineEmail(template: DeclineEmailTemplate) {
+    const fallbackClientFromEmail =
+      (lead?.email || "")
+        .split("@")[0]
+        ?.replace(/[._]/g, " ")
+        .replace(/\s+/g, " ") || "";
+
+    const clientName =
+      (pickFirst<string>(lead?.contactName, fallbackClientFromEmail)?.trim() || "there").replace(
+        /^([a-z])/,
+        (m) => m.toUpperCase()
+      );
+
+    const projectRaw = pickFirst<string>(
+      get(lead?.custom, "projectName"),
+      get(lead?.custom, "projectAddress"),
+      get(lead?.custom, "project"),
+      get(lead?.custom, "projectType"),
+      get(lead?.custom, "subject"),
+      get(lead?.custom, "summary"),
+      lead?.description,
+      emailSubject,
+      emailSnippet
+    );
+    const projectName = cleanProjectLabel(projectRaw);
+
+    const primaryLink = settings?.links?.find((link) => link?.url?.trim());
+    const contactWebsite = pickFirst<string>(settings?.website, primaryLink?.url);
+
+    const replacements: Record<string, string> = {
+      "[Client’s Name]": clientName,
+      "[Client's Name]": clientName,
+      "[Project Name or Address]": projectName,
+      "[Company Name]": pickFirst<string>(settings?.brandName) || "",
+      "[Phone Number]": pickFirst<string>(settings?.phone) || "",
+      "[Email / Website]": contactWebsite || "",
+    };
+
+    const subject = applyTemplateReplacements(template.subject, replacements);
+    const body = applyTemplateReplacements(template.body, replacements);
+    return { subject, body };
+  }
+
+  function rejectEnquiry() {
+    if (!lead?.email) {
+      alert("Add the client's email address before sending a decline message.");
+      return;
+    }
+    const personalized = buildDeclineEmail(declineTemplate);
+    setDeclineSubject(personalized.subject);
+    setDeclineBody(personalized.body);
+    setShowDeclineDialog(true);
+  }
+
+  function closeDeclineDialog(force = false) {
+    if (!force && declineSending) return;
+    setShowDeclineDialog(false);
+    setDeclineSubject("");
+    setDeclineBody("");
+  }
+
+  async function sendDeclineEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!lead?.email) return;
+
+    setDeclineSending(true);
+    try {
+      openMailTo(lead.email, declineSubject || declineTemplate.subject, declineBody);
+      toast("Email draft ready in your mail app.");
+      closeDeclineDialog(true);
+      setUiStatus("REJECTED");
+      await saveStatus("REJECTED");
+    } finally {
+      setDeclineSending(false);
+    }
   }
 
   async function sendQuestionnaire() {
@@ -682,6 +794,67 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       aria-modal="true"
       onClick={(e) => e.target === e.currentTarget && onOpenChange(false)}
     >
+      {showDeclineDialog && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 px-4 py-6 backdrop-blur"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            e.stopPropagation();
+            closeDeclineDialog();
+          }}
+        >
+          <div
+            className="w-[min(560px,92vw)] rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-slate-800">Review decline email</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              We’ll open your email client with this message. Double-check the details, then hit send.
+            </p>
+            <form className="mt-4 space-y-4" onSubmit={sendDeclineEmail}>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Subject</span>
+                <input
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-inner"
+                  value={declineSubject}
+                  onChange={(e) => setDeclineSubject(e.target.value)}
+                  placeholder={declineTemplate.subject}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Message</span>
+                <textarea
+                  className="w-full min-h-[200px] rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-inner"
+                  value={declineBody}
+                  onChange={(e) => setDeclineBody(e.target.value)}
+                />
+              </label>
+              <p className="text-[11px] text-slate-500">
+                Placeholders such as [Client’s Name], [Project Name or Address], [Company Name], [Phone Number], and [Email /
+                Website] are filled automatically when possible.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50"
+                  onClick={() => closeDeclineDialog()}
+                  disabled={declineSending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-full bg-gradient-to-r from-rose-500 to-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:from-rose-600 hover:to-amber-600 focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:opacity-60"
+                  disabled={declineSending || saving}
+                >
+                  {declineSending ? "Preparing…" : "Open email"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       <div className="relative w-[min(1000px,92vw)] max-h-[88vh] overflow-hidden rounded-3xl border border-white/30 bg-white/85 shadow-[0_32px_70px_-35px_rgba(30,64,175,0.45)] backdrop-blur-xl">
         <div aria-hidden="true" className="pointer-events-none absolute -top-16 -left-10 h-52 w-52 rounded-full bg-sky-200/60 blur-3xl" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-rose-200/60 blur-3xl" />
@@ -736,6 +909,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
             onClick={rejectEnquiry}
             disabled={saving}
+            title="Gently declines the enquiry while keeping the door open for future projects."
           >
             <span aria-hidden="true">🛑</span>
             Gently decline enquiry
