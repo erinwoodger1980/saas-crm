@@ -1,17 +1,27 @@
 // web/src/app/tasks/owner/page.tsx
 import { Suspense } from "react";
 import OwnerDashboard from "@/components/tasks/OwnerDashboard";
+import { DeskSurface } from "@/components/DeskSurface";
+import { useTenantBrand } from "@/lib/use-tenant-brand";
 
 export const dynamic = "force-dynamic";
 
 export default function OwnerTasksPage() {
+  const { shortName } = useTenantBrand();
   return (
-    <div className="p-4 md:p-6">
-      <h1 className="text-2xl font-semibold mb-2">Owner Dashboard</h1>
-      <p className="text-sm text-gray-600 mb-4">Overdue, due today, unassigned, and blocked — with quick bulk actions.</p>
+    <DeskSurface variant="violet" innerClassName="space-y-6">
+      <header
+        className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200/70 bg-white/70 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm"
+        title="Overdue, due today, unassigned, and blocked — with quick bulk actions."
+      >
+        <span aria-hidden="true">✅</span>
+        Task desk
+        {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
+      </header>
+
       <Suspense fallback={<div>Loading…</div>}>
         <OwnerDashboard />
       </Suspense>
-    </div>
+    </DeskSurface>
   );
 }

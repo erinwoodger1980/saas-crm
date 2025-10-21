@@ -8,6 +8,8 @@ import LeadModal, { Lead } from "./LeadModal";
 import { on } from "@/lib/events";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import { useToast } from "@/components/ui/use-toast";
+import { DeskSurface } from "@/components/DeskSurface";
+import { useTenantBrand } from "@/lib/use-tenant-brand";
 
 /* -------------------------------- Types -------------------------------- */
 
@@ -56,6 +58,8 @@ export default function LeadsPage() {
     WON: [],
     LOST: [],
   };
+
+  const { shortName } = useTenantBrand();
 
   const [grouped, setGrouped] = useState<Grouped>(empty);
   const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
@@ -326,55 +330,44 @@ export default function LeadsPage() {
 
   return (
     <>
-      <div className="relative overflow-hidden rounded-[36px] border border-white/50 bg-gradient-to-br from-sky-100/70 via-white to-rose-100/60 shadow-[0_35px_80px_-45px_rgba(30,64,175,0.45)]">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-24 -left-28 h-64 w-64 rounded-full bg-sky-200/40 blur-3xl"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-28 -right-20 h-72 w-72 rounded-full bg-rose-200/40 blur-3xl"
-        />
-
-        <div className="relative z-10 space-y-6 p-6 sm:p-8">
-          <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-2 max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/70 bg-white/60 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm">
-                <span aria-hidden="true">✨</span>
-                Lead desk
-              </div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Leads</h1>
-              <p className="text-sm text-slate-600">
-                Capture and triage enquiries with a little Joinery pixie dust. Opportunities carry the quote journey through
-                to win.
-              </p>
+      <DeskSurface innerClassName="space-y-6">
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-2xl space-y-2">
+            <div
+              className="inline-flex items-center gap-2 rounded-full border border-sky-200/70 bg-white/60 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm"
+              title="Capture and triage enquiries with a little Joinery pixie dust. Opportunities carry the quote journey through to win."
+            >
+              <span aria-hidden="true">✨</span>
+              Lead desk
+              {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
             </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="ghost"
-                className="rounded-full bg-gradient-to-r from-sky-500 via-indigo-500 to-rose-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(37,99,235,0.55)] hover:from-sky-600 hover:via-indigo-600 hover:to-rose-500 hover:bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
-                type="button"
-                onClick={handleCreateLead}
-              >
-                + New Lead
-              </Button>
-              <Button
-                variant="ghost"
-                className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300"
-                type="button"
-                onClick={refreshGrouped}
-              >
-                Refresh
-              </Button>
-            </div>
-          </header>
+          </div>
 
           <div className="flex flex-wrap gap-2">
-            {ACTIVE_TABS.map((s) => {
-              const active = tab === s;
-              return (
-                <button
+            <Button
+              variant="ghost"
+              className="rounded-full bg-gradient-to-r from-sky-500 via-indigo-500 to-rose-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(37,99,235,0.55)] hover:from-sky-600 hover:via-indigo-600 hover:to-rose-500 hover:bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+              type="button"
+              onClick={handleCreateLead}
+            >
+              + New Lead
+            </Button>
+            <Button
+              variant="ghost"
+              className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300"
+              type="button"
+              onClick={refreshGrouped}
+            >
+              Refresh
+            </Button>
+          </div>
+        </header>
+
+        <div className="flex flex-wrap gap-2">
+          {ACTIVE_TABS.map((s) => {
+            const active = tab === s;
+            return (
+              <button
                   key={s}
                   onClick={() => setTab(s)}
                   className={`group inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
@@ -397,52 +390,51 @@ export default function LeadsPage() {
                 </button>
               );
             })}
-          </div>
-
-          <SectionCard
-            title="Inbox"
-            action={
-              <span className="text-xs font-medium text-slate-500">
-                {loading ? "Syncing…" : `${rows.length} in “${STATUS_LABELS[tab]}”`}
-              </span>
-            }
-          >
-            {error && (
-              <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-sm text-rose-700 shadow-sm">
-                {error}
-              </div>
-            )}
-
-            {loading ? (
-              <RowsSkeleton />
-            ) : rows.length === 0 ? (
-              <EmptyState
-                title={`No leads in “${STATUS_LABELS[tab]}”.`}
-                action={
-                  <button
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-white"
-                    onClick={refreshGrouped}
-                    type="button"
-                  >
-                    Refresh inbox
-                  </button>
-                }
-              />
-            ) : (
-              <div className="grid gap-3">
-                {rows.map((lead) => (
-                  <LeadCard
-                    key={lead.id}
-                    lead={lead}
-                    onOpen={() => openLead(lead)}
-                    onReject={() => setRejected(lead.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </SectionCard>
         </div>
-      </div>
+
+        <SectionCard
+          title="Inbox"
+          action={
+            <span className="text-xs font-medium text-slate-500">
+              {loading ? "Syncing…" : `${rows.length} in “${STATUS_LABELS[tab]}”`}
+            </span>
+          }
+        >
+          {error && (
+            <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-sm text-rose-700 shadow-sm">
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <RowsSkeleton />
+          ) : rows.length === 0 ? (
+            <EmptyState
+              title={`No leads in “${STATUS_LABELS[tab]}”.`}
+              action={
+                <button
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-white"
+                  onClick={refreshGrouped}
+                  type="button"
+                >
+                  Refresh inbox
+                </button>
+              }
+            />
+          ) : (
+            <div className="grid gap-3">
+              {rows.map((lead) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  onOpen={() => openLead(lead)}
+                  onReject={() => setRejected(lead.id)}
+                />
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      </DeskSurface>
 
       <LeadModal
         open={open}
