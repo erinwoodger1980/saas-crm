@@ -27,7 +27,7 @@ export default function OwnerDashboard() {
   const tenantId = ids?.tenantId || "";
   const userId = ids?.userId || "";
 
-  const [scope, setScope] = useState<"today" | "overdue">("today");
+  const [scope, setScope] = useState<"today" | "overdue" | "unassigned">("today");
   const [showFilters, setShowFilters] = useState(false);
   const [typeFilter, setTypeFilter] = useState<"" | Task["relatedType"]>("");
   const [q, setQ] = useState("");
@@ -48,7 +48,11 @@ export default function OwnerDashboard() {
       setSummary(s);
 
       const qs = new URLSearchParams({ status: "OPEN" });
-      qs.set("due", scope); // "today" or "overdue"
+      if (scope === "unassigned") {
+        qs.set("unassigned", "true");
+      } else {
+        qs.set("due", scope); // "today" or "overdue"
+      }
       if (typeFilter) qs.set("relatedType", typeFilter);
       if (q.trim()) qs.set("search", q.trim());
 
@@ -184,6 +188,10 @@ export default function OwnerDashboard() {
             className={`${chip} ${scope==="overdue" ? "bg-gradient-to-r from-rose-400 via-amber-300 to-emerald-300 text-white" : ""}`}
             onClick={()=>setScope("overdue")}
           >Overdue</button>
+          <button
+            className={`${chip} ${scope==="unassigned" ? "bg-gradient-to-r from-emerald-400 via-teal-300 to-sky-300 text-white" : ""}`}
+            onClick={()=>setScope("unassigned")}
+          >Unassigned</button>
         </div>
 
         <button className={rowBtn} onClick={()=>setShowFilters(v=>!v)} aria-expanded={showFilters}>

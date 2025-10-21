@@ -130,6 +130,13 @@ function toast(msg: string) {
   setTimeout(() => el.remove(), 1600);
 }
 
+function toIsoOrUndefined(localValue: string): string | undefined {
+  if (!localValue) return undefined;
+  const d = new Date(localValue);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d.toISOString();
+}
+
 /* ----------------------------- Component ----------------------------- */
 
 export default function LeadModal({
@@ -170,6 +177,16 @@ export default function LeadModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyTask, setBusyTask] = useState(false);
+  const [showTaskComposer, setShowTaskComposer] = useState(false);
+  const [taskComposer, setTaskComposer] = useState({
+    title: "",
+    description: "",
+    priority: "MEDIUM" as Task["priority"],
+    dueAt: "",
+  });
+  const [taskAssignToMe, setTaskAssignToMe] = useState(true);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [taskSaving, setTaskSaving] = useState(false);
 
   const lastSavedServerStatusRef = useRef<string | null>(null);
 
@@ -190,6 +207,11 @@ export default function LeadModal({
     setLoading(false);
     setSaving(false);
     setBusyTask(false);
+    setShowTaskComposer(false);
+    setTaskComposer({ title: "", description: "", priority: "MEDIUM", dueAt: "" });
+    setTaskAssignToMe(true);
+    setTaskError(null);
+    setTaskSaving(false);
   }, [open]);
 
   // keep preview visible immediately
@@ -420,6 +442,50 @@ export default function LeadModal({
       { headers: authHeaders }
     );
     setTasks(data.items || []);
+  }
+
+  function resetTaskComposer() {
+    setTaskComposer({ title: "", description: "", priority: "MEDIUM", dueAt: "" });
+    setTaskAssignToMe(true);
+    setTaskError(null);
+  }
+
+  async function createManualTask() {
+    if (!lead?.id) return;
+    if (!taskComposer.title.trim()) {
+      setTaskError("Title required");
+      return;
+    }
+
+    setTaskSaving(true);
+    setTaskError(null);
+    try {
+      await apiFetch("/tasks", {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        json: {
+          title: taskComposer.title.trim(),
+          description: taskComposer.description.trim() || undefined,
+          relatedType: "LEAD" as const,
+          relatedId: lead.id,
+          priority: taskComposer.priority,
+          dueAt: toIsoOrUndefined(taskComposer.dueAt),
+          assignees:
+            taskAssignToMe && userId
+              ? [{ userId, role: "OWNER" as const }]
+              : undefined,
+        },
+      });
+
+      toast("Task created");
+      resetTaskComposer();
+      setShowTaskComposer(false);
+      await reloadTasks();
+    } catch (e: any) {
+      setTaskError(e?.message || "Failed to create task");
+    } finally {
+      setTaskSaving(false);
+    }
   }
 
 function taskExists(list: Task[] | undefined, uniqueKey: string | undefined, title: string) {
@@ -822,6 +888,125 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm backdrop-blur">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-semibold text-slate-900">
+                  <span aria-hidden="true">➕</span>
+                  New task
+                </div>
+                <button
+                  type="button"
+                  className="rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm hover:bg-white"
+                  onClick={() => {
+                    if (showTaskComposer) {
+                      resetTaskComposer();
+                    }
+                    setShowTaskComposer((v) => !v);
+                  }}
+                >
+                  {showTaskComposer ? "Close" : "Add"}
+                </button>
+              </div>
+
+              {showTaskComposer && (
+                <form
+                  className="mt-4 space-y-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    createManualTask();
+                  }}
+                >
+                  {taskError && (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2 text-xs text-rose-600">
+                      {taskError}
+                    </div>
+                  )}
+
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Title
+                    <input
+                      type="text"
+                      value={taskComposer.title}
+                      onChange={(e) => setTaskComposer((prev) => ({ ...prev, title: e.target.value }))}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                      placeholder="e.g. Call the client"
+                      required
+                    />
+                  </label>
+
+                  <label className="block text-xs font-semibold text-slate-600">
+                    Description
+                    <textarea
+                      value={taskComposer.description}
+                      onChange={(e) => setTaskComposer((prev) => ({ ...prev, description: e.target.value }))}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200 min-h-[72px]"
+                      placeholder="Add context for the team"
+                    />
+                  </label>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Priority
+                      <select
+                        value={taskComposer.priority}
+                        onChange={(e) =>
+                          setTaskComposer((prev) => ({ ...prev, priority: e.target.value as Task["priority"] }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                      >
+                        {["LOW", "MEDIUM", "HIGH", "URGENT"].map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Due date & time
+                      <input
+                        type="datetime-local"
+                        value={taskComposer.dueAt}
+                        onChange={(e) => setTaskComposer((prev) => ({ ...prev, dueAt: e.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-600 shadow-inner">
+                    <input
+                      type="checkbox"
+                      checked={taskAssignToMe}
+                      onChange={(e) => setTaskAssignToMe(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
+                    />
+                    Assign to me (leave unchecked to keep unassigned)
+                  </label>
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-white"
+                      onClick={() => {
+                        resetTaskComposer();
+                        setShowTaskComposer(false);
+                      }}
+                      disabled={taskSaving}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 px-4 py-2 text-xs font-semibold text-white shadow-lg disabled:opacity-50"
+                      disabled={taskSaving}
+                    >
+                      {taskSaving ? "Saving…" : "Create"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
 
             <div className="space-y-3">
