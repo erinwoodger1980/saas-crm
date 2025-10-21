@@ -1,5 +1,6 @@
 "use client";
 import { useEffect } from "react";
+import { setJwt } from "@/lib/api";
 
 export default function DevAuth() {
   useEffect(() => {
@@ -11,7 +12,7 @@ export default function DevAuth() {
       .then((r) => r.json())
       .then((d) => {
         if (d?.jwt) {
-          localStorage.setItem("jwt", d.jwt);
+          setJwt(d.jwt);
           location.reload();
         }
       })

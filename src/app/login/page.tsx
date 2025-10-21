@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { setJwt } from "@/lib/api";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
@@ -18,17 +19,7 @@ function pickToken(json: any): string | null {
 
 /** Store token both in localStorage (for client fetches) and as a cookie (for middleware). */
 function storeAuth(token: string) {
-  try {
-    localStorage.setItem("jwt", token);
-  } catch {}
-  const secure =
-    typeof window !== "undefined" && window.location.protocol === "https:"
-      ? "; Secure"
-      : "";
-  // 30 days, SameSite=Lax so regular navigations carry it
-  document.cookie = `jwt=${encodeURIComponent(
-    token
-  )}; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
+  setJwt(token);
 }
 
 export default function LoginPage() {
@@ -41,9 +32,9 @@ export default function LoginPage() {
   const next = useMemo(() => {
     try {
       const url = new URL(window.location.href);
-      return url.searchParams.get("next") || "/leads";
+      return url.searchParams.get("next") || "/dashboard";
     } catch {
-      return "/leads";
+      return "/dashboard";
     }
   }, []);
 
