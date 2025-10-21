@@ -47,12 +47,14 @@ model User {
   email                 String                  @unique
   name                  String?
   role                  String                  @default("user")
+  isEarlyAdopter        Boolean                 @default(false)
   passwordHash          String
   GmailTenantConnection GmailTenantConnection[]
   Ms365TenantConnection Ms365TenantConnection[]
   passwordResetToken    PasswordResetToken?
   tenant                Tenant                  @relation(fields: [tenantId], references: [id])
-  feedbacks             Feedback[]
+  feedbacks             Feedback[]              @relation("FeedbackAuthor")
+  resolvedFeedbacks     Feedback[]              @relation("FeedbackResolver")
 }
 
 model Lead {
@@ -477,19 +479,30 @@ enum FileKind {
 }
 
 model Feedback {
-  id        String   @id @default(cuid())
-  tenantId  String
-  userId    String?
-  feature   String // e.g. "quoteParserV2"
-  rating    Int? // 1–5 optional
-  comment   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String          @id @default(cuid())
+  tenantId      String
+  userId        String?
+  feature       String // e.g. "quoteParserV2" or area slug
+  rating        Int? // 1–5 optional
+  comment       String?
+  sourceUrl     String?
+  status        FeedbackStatus  @default(OPEN)
+  resolvedAt    DateTime?
+  resolvedById  String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  user   User?  @relation(fields: [userId], references: [id])
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  user       User?  @relation("FeedbackAuthor", fields: [userId], references: [id])
+  resolvedBy User?  @relation("FeedbackResolver", fields: [resolvedById], references: [id])
 
   @@index([tenantId, feature, createdAt])
+  @@index([tenantId, status, createdAt])
+}
+
+enum FeedbackStatus {
+  OPEN
+  RESOLVED
 }
 
 // ==============================
