@@ -1,4 +1,6 @@
 // web/src/app/tasks/owner/page.tsx
+"use client";
+
 import { Suspense } from "react";
 import OwnerDashboard from "@/components/tasks/OwnerDashboard";
 import { DeskSurface } from "@/components/DeskSurface";
