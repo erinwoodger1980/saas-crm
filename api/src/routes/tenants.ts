@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import * as cheerio from "cheerio";
 import { env } from "../env";
 import { DEFAULT_TASK_PLAYBOOK, normalizeTaskPlaybook } from "../task-playbook";
+import { normalizeQuestionnaireFields, type QuestionnaireField } from "../lib/questionnaire";
 
 const DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT = "Questionnaire for your estimate";
 const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
@@ -20,6 +21,26 @@ function authTenantId(req: any): string | null {
 }
 function ensureHttps(u: string) {
   return /^https?:\/\//i.test(u) ? u : `https://${u}`;
+}
+
+function buildQuestionnairePayload(
+  input: unknown
+): QuestionnaireField[] | null | undefined {
+  if (input === undefined) return undefined;
+  if (input === null) return null;
+
+  if (Array.isArray(input)) {
+    return normalizeQuestionnaireFields(input);
+  }
+
+  if (input && typeof input === "object") {
+    const maybeQuestions = (input as { questions?: unknown }).questions;
+    if (Array.isArray(maybeQuestions)) {
+      return normalizeQuestionnaireFields(maybeQuestions);
+    }
+  }
+
+  return undefined;
 }
 
 /* ============================================================
@@ -100,7 +121,12 @@ async function updateSettings(req: any, res: any) {
     const update: any = { updatedAt: new Date() };
     if (inboxWatchEnabled !== undefined) update.inboxWatchEnabled = !!inboxWatchEnabled;
     if (inbox !== undefined) update.inbox = inbox;
-    if (questionnaire !== undefined) update.questionnaire = questionnaire;
+    if (questionnaire !== undefined) {
+      const normalizedQuestionnaire = buildQuestionnairePayload(questionnaire);
+      if (normalizedQuestionnaire !== undefined) {
+        update.questionnaire = normalizedQuestionnaire;
+      }
+    }
     if (quoteDefaults !== undefined) update.quoteDefaults = quoteDefaults;
     if (brandName !== undefined) update.brandName = brandName || "Your Company";
     if (links !== undefined) update.links = Array.isArray(links) ? links : [];
@@ -375,17 +401,7 @@ router.put("/settings", async (req, res) => {
     return res.status(400).json({ error: "slug and brandName required" });
   }
 
-  let qSave: any = undefined;
-  if (Array.isArray(questionnaire)) {
-    qSave = questionnaire.map((f: any) => ({
-      id: String(f.id || crypto.randomUUID?.() || Date.now()),
-      key: String(f.key || "").trim(),
-      label: String(f.label || "").trim(),
-      type: String(f.type || "text"),
-      required: !!f.required,
-      options: Array.isArray(f.options) ? f.options.slice(0, 50) : undefined,
-    }));
-  }
+  const qSave = buildQuestionnairePayload(questionnaire);
 
   try {
     const updated = await prisma.tenantSettings.upsert({
@@ -398,7 +414,7 @@ router.put("/settings", async (req, res) => {
         phone: phone ?? null,
         logoUrl: logoUrl ?? undefined,
         links: Array.isArray(links) ? links : [],
-        ...(qSave ? { questionnaire: qSave } : {}),
+        ...(qSave !== undefined ? { questionnaire: qSave } : {}),
         questionnaireEmailSubject:
           typeof questionnaireEmailSubject === "string" && questionnaireEmailSubject.trim()
             ? questionnaireEmailSubject.trim()

@@ -15,6 +15,7 @@ import {
   DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
   DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
 } from "@/lib/constants";
+import DeclineEnquiryButton from "./DeclineEnquiryButton";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -632,11 +633,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
   /* ----------------------------- Actions ----------------------------- */
 
-  async function rejectEnquiry() {
-    setUiStatus("REJECTED");
-    await saveStatus("REJECTED");
-  }
-
   async function sendQuestionnaire() {
     if (!lead?.id) return;
     setBusyTask(true);
@@ -908,14 +904,22 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-50 via-indigo-50 to-amber-50 text-slate-700">
-          <button
-            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
-            onClick={rejectEnquiry}
-            disabled={saving}
-          >
-            <span aria-hidden="true">🛑</span>
-            Gently decline enquiry
-          </button>
+          <DeclineEnquiryButton
+            lead={{
+              id: lead?.id || leadPreview?.id || "",
+              contactName: lead?.contactName ?? leadPreview?.contactName,
+              email: lead?.email ?? leadPreview?.email,
+              description: lead?.description ?? leadPreview?.description,
+              custom: (lead?.custom as any) ?? (leadPreview?.custom as any) ?? null,
+            }}
+            disabled={saving || loading}
+            authHeaders={authHeaders}
+            brandName={settings?.brandName ?? null}
+            onMarkedRejected={() => {
+              setUiStatus("REJECTED");
+              return saveStatus("REJECTED");
+            }}
+          />
 
           <button
             className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
