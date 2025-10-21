@@ -26,11 +26,13 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
 
 /* Types */
 type QField = {
+  id?: string;
   key: string;
   label: string;
-  type: "text" | "textarea" | "select" | "number";
+  type: "text" | "textarea" | "select" | "number" | "date" | "source";
   required?: boolean;
   options?: string[];
+  askInQuestionnaire?: boolean;
 };
 type TenantSettings = {
   tenantId: string;
@@ -50,6 +52,34 @@ type PublicLead = {
     custom: Record<string, any>;
   };
 };
+
+function normalizeQuestions(raw: any): QField[] {
+  const list = Array.isArray(raw) ? raw : [];
+  return list
+    .map((item: any) => {
+      if (!item || typeof item !== "object") return null;
+      const key = typeof item.key === "string" && item.key.trim() ? item.key.trim() : "";
+      if (!key) return null;
+      const label = typeof item.label === "string" && item.label.trim() ? item.label.trim() : key;
+      const typeRaw = typeof item.type === "string" && item.type.trim() ? item.type.trim() : "text";
+      const allowed: QField["type"][] = ["text", "textarea", "select", "number", "date", "source"];
+      const type = allowed.includes(typeRaw as QField["type"]) ? (typeRaw as QField["type"]) : "text";
+      const options =
+        type === "select" && Array.isArray(item.options)
+          ? item.options.map((opt: any) => String(opt || "").trim()).filter(Boolean)
+          : undefined;
+      return {
+        id: typeof item.id === "string" ? item.id : undefined,
+        key,
+        label,
+        type,
+        required: Boolean(item.required),
+        options,
+        askInQuestionnaire: item.askInQuestionnaire !== false,
+      } satisfies QField;
+    })
+    .filter((field): field is QField => Boolean(field?.key));
+}
 
 export default function PublicQuestionnairePage() {
   const router = useRouter();
@@ -90,7 +120,7 @@ export default function PublicQuestionnairePage() {
   }, [slug, leadId]);
 
   const questions: QField[] = useMemo(
-    () => (settings?.questionnaire ?? []).filter(Boolean),
+    () => normalizeQuestions((settings as any)?.questionnaire ?? []).filter((q) => q.askInQuestionnaire !== false),
     [settings]
   );
 
@@ -271,7 +301,7 @@ export default function PublicQuestionnairePage() {
                       ) : (
                         <input
                           {...commonProps}
-                          type={q.type === "number" ? "number" : "text"}
+                          type={q.type === "number" ? "number" : q.type === "date" ? "date" : "text"}
                           className={inputClass}
                           value={valueOrEmpty(answers[q.key])}
                           onChange={(e) => set(q.key, e.target.value)}

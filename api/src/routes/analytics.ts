@@ -8,6 +8,14 @@ function getAuth(req: any) {
   return { tenantId: req.auth?.tenantId as string | undefined };
 }
 
+function monthKeyUTC(date: Date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthStartUTC(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
 /**
  * GET /analytics/source-trends?months=6
  * Returns per-source monthly: leads, wins, spend, CPL, CPS
@@ -147,6 +155,90 @@ router.post("/budget-suggest", async (req, res) => {
   }));
 
   res.json({ recommendations: recs, months });
+});
+
+router.get("/source-performance", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const costs = await prisma.leadSourceCost.findMany({
+    where: { tenantId },
+    orderBy: [{ source: "asc" }, { month: "desc" }],
+  });
+
+  const latestBySource = new Map<string, typeof costs[number]>();
+  for (const cost of costs) {
+    const existing = latestBySource.get(cost.source);
+    if (!existing || cost.month > existing.month) {
+      latestBySource.set(cost.source, cost);
+    }
+  }
+
+  const latestEntries = Array.from(latestBySource.values());
+  if (latestEntries.length === 0) {
+    return res.json({ rows: [] });
+  }
+
+  const earliestMonth = latestEntries.reduce((min, entry) => (entry.month < min ? entry.month : min), latestEntries[0].month);
+  const latestMonth = latestEntries.reduce((max, entry) => (entry.month > max ? entry.month : max), latestEntries[0].month);
+
+  const leads = await prisma.lead.findMany({
+    where: {
+      tenantId,
+      capturedAt: {
+        gte: monthStartUTC(earliestMonth),
+        lt: new Date(Date.UTC(latestMonth.getUTCFullYear(), latestMonth.getUTCMonth() + 1, 1)),
+      },
+    },
+    select: { capturedAt: true, status: true, custom: true },
+  });
+
+  const stats: Record<string, { leads: number; wins: number }> = {};
+  const entryMeta = latestEntries.map((entry) => {
+    const normalizedSource = entry.source.trim().toLowerCase();
+    const mk = monthKeyUTC(entry.month);
+    const key = `${normalizedSource}::${mk}`;
+    stats[key] = { leads: 0, wins: 0 };
+    return { entry, normalizedSource, key, monthKey: mk };
+  });
+
+  for (const lead of leads) {
+    if (!lead.capturedAt) continue;
+    const capturedAt = new Date(lead.capturedAt);
+    const mk = monthKeyUTC(capturedAt);
+    const rawSource = ((lead.custom as any)?.source ?? "Unknown").toString();
+    const normalizedSource = rawSource.trim().toLowerCase();
+    const statKey = `${normalizedSource}::${mk}`;
+    const bucket = stats[statKey];
+    if (!bucket) continue;
+    bucket.leads += 1;
+    if (String(lead.status).toUpperCase() === "WON") bucket.wins += 1;
+  }
+
+  const rows = entryMeta
+    .map(({ entry, key }) => {
+      const bucket = stats[key] ?? { leads: 0, wins: 0 };
+      const budget = Number(entry.spend || 0);
+      const leadsCount = bucket.leads;
+      const winsCount = bucket.wins;
+      const conversionRate = leadsCount ? winsCount / leadsCount : null;
+      const costPerLead = leadsCount ? budget / leadsCount : null;
+      const costPerAcquisition = winsCount ? budget / winsCount : null;
+      return {
+        source: entry.source,
+        month: monthStartUTC(entry.month).toISOString(),
+        budget,
+        leads: leadsCount,
+        wins: winsCount,
+        conversionRate,
+        costPerLead,
+        costPerAcquisition,
+        scalable: entry.scalable,
+      };
+    })
+    .sort((a, b) => a.source.localeCompare(b.source));
+
+  res.json({ rows });
 });
 
 export default router;
