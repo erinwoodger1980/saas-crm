@@ -196,7 +196,41 @@ export default function LeadsPage() {
       if (!l?.id || seen.has(l.id)) return;
       seen.add(l.id);
       const s = mapLegacyToNew(l.status as string);
-      out[s].push({ ...l, status: s } as Lead);
+
+      const contactNameCandidate =
+        typeof l.contactName === "string" && l.contactName.trim() !== ""
+          ? l.contactName.trim()
+          : typeof l.contact?.name === "string" && l.contact.name.trim() !== ""
+            ? l.contact.name.trim()
+            : undefined;
+
+      const emailCandidate =
+        typeof l.email === "string" && l.email.trim() !== ""
+          ? l.email.trim()
+          : typeof l.contact?.email === "string" && l.contact.email.trim() !== ""
+            ? l.contact.email.trim()
+            : undefined;
+
+      const descriptionCandidate =
+        typeof l.description === "string" && l.description.trim() !== ""
+          ? l.description.trim()
+          : typeof l.custom?.description === "string" && l.custom.description.trim() !== ""
+            ? l.custom.description.trim()
+            : typeof l.custom?.bodyText === "string" && l.custom.bodyText.trim() !== ""
+              ? l.custom.bodyText.trim()
+              : undefined;
+
+      const normalized: Lead = {
+        ...(l as Lead),
+        id: l.id,
+        status: s,
+        contactName: contactNameCandidate ?? l.contactName ?? null,
+        email: emailCandidate ?? l.email ?? null,
+        custom: (l.custom ?? l.briefJson ?? null) as Lead["custom"],
+        description: descriptionCandidate ?? null,
+      };
+
+      out[s].push(normalized);
     };
 
     (g?.NEW || []).forEach(insert);
@@ -247,121 +281,169 @@ export default function LeadsPage() {
     });
   }, [grouped, tab]);
 
+  async function handleCreateLead() {
+    const input = prompt("Enter lead name:");
+    const contactName = input?.trim();
+    if (!contactName) return;
+    try {
+      const lead = await apiFetch<any>("/leads", {
+        method: "POST",
+        headers: buildAuthHeaders(),
+        json: { contactName, email: "", custom: { provider: "manual" } },
+      });
+      await refreshGrouped();
+      if (lead?.id) {
+        openLead({
+          id: lead.id,
+          contactName: lead.contactName ?? contactName,
+          email: lead.email ?? "",
+          status: (lead.status as LeadStatus) ?? "NEW_ENQUIRY",
+          custom: lead.custom ?? { provider: "manual" },
+          description:
+            (typeof lead.description === "string" && lead.description.trim() !== ""
+              ? lead.description.trim()
+              : typeof lead.custom?.description === "string"
+                ? lead.custom.description.trim()
+                : null) ?? null,
+        });
+      }
+      toast({
+        title: "Lead created",
+        description: `${lead?.contactName ?? contactName} added to your inbox.`,
+      });
+    } catch (e: any) {
+      const rawMessage = typeof e?.message === "string" ? e.message : "Please try again.";
+      const cleaned = rawMessage.replace(/\sfor\shttps?:\/\/\S+/, "").trim();
+      toast({
+        title: "Failed to create lead",
+        description: cleaned || "Please try again.",
+        variant: "destructive",
+      });
+    }
+  }
+
   /* ------------------------------ Render ------------------------------ */
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">Leads</h1>
-          <p className="text-sm text-slate-500">
-            Capture and triage enquiries. Quote lifecycle is managed in Opportunities.
-          </p>
-        </div>
+    <>
+      <div className="relative overflow-hidden rounded-[36px] border border-white/50 bg-gradient-to-br from-sky-100/70 via-white to-rose-100/60 shadow-[0_35px_80px_-45px_rgba(30,64,175,0.45)]">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 -left-28 h-64 w-64 rounded-full bg-sky-200/40 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-28 -right-20 h-72 w-72 rounded-full bg-rose-200/40 blur-3xl"
+        />
 
-        <div className="flex gap-2 items-center">
-          <Button
-            onClick={async () => {
-              const contactName = prompt("Enter lead name:");
-              if (!contactName) return;
-              try {
-                const lead = await apiFetch<any>("/leads", {
-                  method: "POST",
-                  headers: buildAuthHeaders(),
-                  json: { contactName, email: "", custom: { provider: "manual" } },
-                });
-                await refreshGrouped();
-                if (lead?.id) {
-                  openLead({
-                    id: lead.id,
-                    contactName: lead.contactName ?? contactName,
-                    email: lead.email ?? "",
-                    status: (lead.status as LeadStatus) ?? "NEW_ENQUIRY",
-                    custom: lead.custom ?? { provider: "manual" },
-                  });
+        <div className="relative z-10 space-y-6 p-6 sm:p-8">
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2 max-w-2xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200/70 bg-white/60 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm">
+                <span aria-hidden="true">✨</span>
+                Lead desk
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Leads</h1>
+              <p className="text-sm text-slate-600">
+                Capture and triage enquiries with a little Joinery pixie dust. Opportunities carry the quote journey through
+                to win.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="ghost"
+                className="rounded-full bg-gradient-to-r from-sky-500 via-indigo-500 to-rose-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(37,99,235,0.55)] hover:from-sky-600 hover:via-indigo-600 hover:to-rose-500 hover:bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+                type="button"
+                onClick={handleCreateLead}
+              >
+                + New Lead
+              </Button>
+              <Button
+                variant="ghost"
+                className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300"
+                type="button"
+                onClick={refreshGrouped}
+              >
+                Refresh
+              </Button>
+            </div>
+          </header>
+
+          <div className="flex flex-wrap gap-2">
+            {ACTIVE_TABS.map((s) => {
+              const active = tab === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => setTab(s)}
+                  className={`group inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+                    active
+                      ? "border-transparent bg-gradient-to-r from-sky-500 via-indigo-500 to-rose-500 text-white shadow-[0_14px_34px_-18px_rgba(37,99,235,0.6)]"
+                      : "border-slate-200/70 bg-white/70 text-slate-700 hover:border-slate-300 hover:bg-white"
+                  }`}
+                  type="button"
+                >
+                  <span>{STATUS_LABELS[s]}</span>
+                  <span
+                    className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
+                      active
+                        ? "bg-white/30 text-white"
+                        : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
+                    }`}
+                  >
+                    {grouped[s].length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <SectionCard
+            title="Inbox"
+            action={
+              <span className="text-xs font-medium text-slate-500">
+                {loading ? "Syncing…" : `${rows.length} in “${STATUS_LABELS[tab]}”`}
+              </span>
+            }
+          >
+            {error && (
+              <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-sm text-rose-700 shadow-sm">
+                {error}
+              </div>
+            )}
+
+            {loading ? (
+              <RowsSkeleton />
+            ) : rows.length === 0 ? (
+              <EmptyState
+                title={`No leads in “${STATUS_LABELS[tab]}”.`}
+                action={
+                  <button
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-white"
+                    onClick={refreshGrouped}
+                    type="button"
+                  >
+                    Refresh inbox
+                  </button>
                 }
-                toast({
-                  title: "Lead created",
-                  description: `${lead?.contactName ?? contactName} added to your inbox.`,
-                });
-              } catch (e: any) {
-                const rawMessage = typeof e?.message === "string" ? e.message : "Please try again.";
-                const cleaned = rawMessage.replace(/\sfor\shttps?:\/\/\S+/, "").trim();
-                toast({
-                  title: "Failed to create lead",
-                  description: cleaned || "Please try again.",
-                  variant: "destructive",
-                });
-              }
-            }}
-          >
-            + New Lead
-          </Button>
-          <Button variant="outline" onClick={refreshGrouped}>
-            Refresh
-          </Button>
+              />
+            ) : (
+              <div className="grid gap-3">
+                {rows.map((lead) => (
+                  <LeadCard
+                    key={lead.id}
+                    lead={lead}
+                    onOpen={() => openLead(lead)}
+                    onReject={() => setRejected(lead.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </SectionCard>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2">
-        {ACTIVE_TABS.map((s) => (
-          <button
-            key={s}
-            onClick={() => setTab(s)}
-            className={`rounded-full border px-3 py-1 text-sm transition ${
-              tab === s
-                ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                : "bg-white text-slate-700 hover:bg-slate-50"
-            }`}
-          >
-            {STATUS_LABELS[s]}
-            <span
-              className={`ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs ${
-                tab === s ? "bg-white/20" : "bg-slate-100 text-slate-600"
-              }`}
-            >
-              {grouped[s].length}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Card Section */}
-      <SectionCard
-        title="Inbox"
-        action={
-          <span className="text-xs text-slate-500">
-            {loading ? "Syncing…" : `${rows.length} in “${STATUS_LABELS[tab]}”`}
-          </span>
-        }
-      >
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <RowsSkeleton />
-        ) : rows.length === 0 ? (
-          <EmptyState title={`No leads in “${STATUS_LABELS[tab]}”.`} />
-        ) : (
-          <div className="grid gap-3">
-            {rows.map((lead) => (
-              <LeadCard
-                key={lead.id}
-                lead={lead}
-                onOpen={() => openLead(lead)}
-                onReject={() => setRejected(lead.id)}
-              />
-            ))}
-          </div>
-        )}
-      </SectionCard>
-
-      {/* Modal */}
       <LeadModal
         open={open}
         onOpenChange={(v) => {
@@ -371,7 +453,7 @@ export default function LeadsPage() {
         leadPreview={leadPreview}
         onUpdated={refreshGrouped}
       />
-    </div>
+    </>
   );
 }
 
@@ -387,30 +469,41 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border bg-white shadow-sm">
-      <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b">
-        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+    <section className="relative overflow-hidden rounded-3xl border border-sky-100/70 bg-white/80 shadow-[0_26px_60px_-38px_rgba(30,64,175,0.45)] backdrop-blur">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-24 -left-16 h-44 w-44 rounded-full bg-sky-200/35 blur-3xl" />
+        <div className="absolute -bottom-28 -right-14 h-52 w-52 rounded-full bg-amber-200/30 blur-3xl" />
+      </div>
+      <div className="relative z-10 flex items-center justify-between px-5 py-4 border-b border-sky-100/60">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <span aria-hidden="true">📥</span>
+          {title}
+        </h2>
         {action}
       </div>
-      <div className="p-4 sm:p-5">{children}</div>
+      <div className="relative z-10 p-5">{children}</div>
     </section>
   );
 }
 
 function EmptyState({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed bg-slate-50 py-10 text-center text-sm text-slate-500">
-      <div>{title}</div>
-      {action && <div className="mt-3">{action}</div>}
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-sky-200/70 bg-white/70 px-6 py-10 text-center text-sm text-slate-500 shadow-inner">
+      <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-lg">🌟</div>
+      <div className="text-sm font-medium text-slate-600">{title}</div>
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }
 
 function RowsSkeleton() {
   return (
-    <div className="space-y-2">
-      {[...Array(5)].map((_, i) => (
-        <div key={i} className="h-20 rounded-xl bg-slate-100 animate-pulse" />
+    <div className="space-y-3">
+      {[...Array(4)].map((_, i) => (
+        <div
+          key={i}
+          className="h-24 rounded-2xl border border-slate-200/60 bg-gradient-to-r from-slate-100/70 via-white/80 to-slate-100/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] animate-pulse"
+        />
       ))}
     </div>
   );
@@ -429,57 +522,69 @@ function LeadCard({
 }) {
   const subject = lead.custom?.subject as string | undefined;
   const summary = lead.custom?.summary as string | undefined;
+  const description =
+    typeof lead.description === "string" && lead.description.trim() !== ""
+      ? lead.description.trim()
+      : typeof lead.custom?.description === "string" && lead.custom.description.trim() !== ""
+        ? lead.custom.description.trim()
+        : typeof lead.custom?.bodyText === "string" && lead.custom.bodyText.trim() !== ""
+          ? lead.custom.bodyText.trim()
+          : undefined;
+  const statusLabel = STATUS_LABELS[lead.status as LeadStatus] || "—";
 
   return (
-    <div className="group rounded-xl border bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,.04)] hover:shadow-md transition">
-      <div className="flex items-start gap-3">
-        <button onClick={onOpen} className="flex-1 text-left min-w-0">
-          <div className="mb-1 flex items-center gap-2">
-            <span className="inline-grid place-items-center h-9 w-9 rounded-xl bg-slate-100 text-[11px] font-semibold text-slate-700 border">
+    <div className="group relative overflow-hidden rounded-2xl border border-sky-100/70 bg-white/85 p-4 shadow-[0_20px_45px_-36px_rgba(30,64,175,0.55)] backdrop-blur transition-transform hover:-translate-y-0.5 hover:shadow-[0_26px_60px_-32px_rgba(30,64,175,0.55)]">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-16 -right-24 h-40 w-40 rounded-full bg-sky-200/40 opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-80"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-16 -left-24 h-40 w-40 rounded-full bg-rose-200/35 opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-70"
+      />
+
+      <div className="relative z-10 flex items-start gap-3">
+        <button onClick={onOpen} className="flex-1 min-w-0 text-left" type="button">
+          <div className="flex items-center gap-3">
+            <span className="inline-grid h-10 w-10 place-items-center rounded-xl border border-sky-200/80 bg-white/70 text-[12px] font-semibold text-slate-700 shadow-sm">
               {avatarText(lead.contactName)}
             </span>
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium text-slate-900">
+              <div className="truncate text-sm font-semibold text-slate-900">
                 {lead.contactName || "Lead"}
               </div>
-              {lead.email && (
-                <div className="truncate text-xs text-slate-500">{lead.email}</div>
-              )}
+              {lead.email && <div className="truncate text-xs text-slate-500">{lead.email}</div>}
             </div>
           </div>
 
-          {(subject || summary || lead.custom?.description) && (
-            <div className="mt-1 space-y-1">
-              {subject && <div className="text-xs font-medium line-clamp-1">{subject}</div>}
-              {summary && (
-                <div className="text-[12px] text-slate-600 line-clamp-2">{summary}</div>
-              )}
-              {lead.custom?.description && (
-                <div className="text-[12px] text-slate-500 line-clamp-2 italic">
-                  {lead.custom.description}
-                </div>
+          {(subject || summary || description) && (
+            <div className="mt-2 space-y-1">
+              {subject && <div className="text-xs font-semibold text-slate-700 line-clamp-1">{subject}</div>}
+              {summary && <div className="text-[12px] text-slate-600 line-clamp-2">{summary}</div>}
+              {description && (
+                <div className="text-[12px] text-slate-500/90 italic line-clamp-2">{description}</div>
               )}
             </div>
           )}
         </button>
 
-        {/* Quick actions: Reject + status pill (read-only) */}
-        <div className="shrink-0 flex flex-col items-end gap-1">
+        <div className="shrink-0 flex flex-col items-end gap-2 text-right">
           <button
-            className="rounded-md border border-red-300 text-red-600 px-2 py-1 text-[11px] hover:bg-red-50"
+            className="rounded-full border border-rose-200/70 bg-rose-50/70 px-3 py-1 text-[11px] font-medium text-rose-600 shadow-sm transition hover:bg-rose-100"
             onClick={(e) => {
               e.stopPropagation();
               onReject();
             }}
+            type="button"
           >
             ✕ Reject
           </button>
 
           <span
-            className="mt-1 inline-flex items-center rounded-full border px-2 py-1 text-[11px] text-slate-700 bg-slate-50"
+            className="inline-flex items-center rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-[11px] font-medium text-slate-600 shadow-sm"
             title="Status (change inside the lead modal)"
           >
-            {STATUS_LABELS[lead.status as LeadStatus] || "—"}
+            {statusLabel}
           </span>
         </div>
       </div>

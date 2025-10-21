@@ -163,22 +163,66 @@ export default function LeadModal({
     [uiStatus]
   );
 
+  useEffect(() => {
+    if (open) return;
+    setLead(null);
+    setNameInput("");
+    setEmailInput("");
+    setDescInput("");
+    setTasks([]);
+    setUiStatus("NEW_ENQUIRY");
+    lastSavedServerStatusRef.current = null;
+    setLoading(false);
+    setSaving(false);
+    setBusyTask(false);
+  }, [open]);
+
   // keep preview visible immediately
   useEffect(() => {
     if (!leadPreview?.id) return;
-    setLead((prev) =>
-      !prev || prev.id !== leadPreview.id
-        ? {
-            id: leadPreview.id,
-            contactName: leadPreview.contactName ?? null,
-            email: leadPreview.email ?? null,
-            status: leadPreview.status ?? "NEW_ENQUIRY",
-            custom: leadPreview.custom ?? null,
-            description: leadPreview.description ?? null,
-          }
-        : prev
-    );
-  }, [leadPreview?.id]);
+
+    const previewDescription = (() => {
+      const raw =
+        (typeof leadPreview.description === "string" ? leadPreview.description : undefined) ??
+        (typeof leadPreview.custom?.description === "string" ? leadPreview.custom.description : undefined) ??
+        (typeof leadPreview.custom?.bodyText === "string" ? leadPreview.custom.bodyText : undefined);
+      return raw?.trim() ?? "";
+    })();
+    const hasPreviewDescription =
+      typeof leadPreview.description === "string" ||
+      typeof leadPreview.custom?.description === "string" ||
+      typeof leadPreview.custom?.bodyText === "string";
+
+    setLead((prev) => {
+      if (prev && prev.id === leadPreview.id) {
+        const next: Lead = {
+          ...prev,
+          contactName: leadPreview.contactName ?? prev.contactName ?? null,
+          email: leadPreview.email ?? prev.email ?? null,
+          custom: leadPreview.custom ?? prev.custom,
+          description: hasPreviewDescription
+            ? previewDescription || null
+            : prev.description ?? null,
+        };
+        return next;
+      }
+
+      const normalized: Lead = {
+        id: leadPreview.id,
+        contactName: leadPreview.contactName ?? null,
+        email: leadPreview.email ?? null,
+        status: leadPreview.status ?? "NEW_ENQUIRY",
+        custom: leadPreview.custom ?? null,
+        description: hasPreviewDescription ? previewDescription || null : null,
+      };
+
+      setNameInput(normalized.contactName ?? "");
+      setEmailInput(normalized.email ?? "");
+      setDescInput(previewDescription);
+
+      return normalized;
+    });
+  }, [leadPreview]);
 
   // load full lead + tasks + settings
   useEffect(() => {
@@ -209,7 +253,14 @@ export default function LeadModal({
           pickFirst<string>(row.email, get(row, "contact.email"), get(row, "custom.fromEmail"), leadPreview.email) ??
           null;
         const description =
-          pickFirst<string>(row.description, get(row, "custom.description"), get(row, "custom.bodyText")) ?? null;
+          pickFirst<string>(
+            row.description,
+            get(row, "custom.description"),
+            get(row, "custom.bodyText"),
+            leadPreview.description,
+            get(leadPreview, "custom.description"),
+            get(leadPreview, "custom.bodyText")
+          ) ?? null;
 
         const normalized: Lead = {
           id: row.id || leadPreview.id,
@@ -589,18 +640,20 @@ async function ensureTaskOnce(
             className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
             onClick={sendQuestionnaire}
             disabled={busyTask || saving}
+            title="Invite your client to share their project details."
           >
             <span aria-hidden="true">📜</span>
-            Share discovery scroll
+            Send client questionnaire
           </button>
 
           <button
             className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
             onClick={requestSupplierPrice}
             disabled={busyTask}
+            title="Ask your supplier for pricing — we’ll handle the magic behind the scenes"
           >
             <span aria-hidden="true">🧞</span>
-            Request supplier magic
+            Request supplier quote
           </button>
         </div>
 
