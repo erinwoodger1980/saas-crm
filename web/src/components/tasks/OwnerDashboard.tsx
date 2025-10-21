@@ -305,8 +305,8 @@ export default function OwnerDashboard() {
 
       {/* Sticky bulk footer */}
       {selectedIds.length > 0 && (
-        <div className="fixed bottom-4 right-4 left-4 md:left-auto md:w-auto z-[60]">
-          <div className="mx-auto md:ml-auto w-full md:w-auto rounded-3xl border border-white/40 bg-gradient-to-r from-sky-500/80 via-indigo-500/80 to-rose-500/80 p-4 shadow-[0_18px_45px_-25px_rgba(30,64,175,0.6)] backdrop-blur flex flex-wrap items-center gap-2 text-white">
+        <div className="fixed bottom-4 right-4 left-4 md:left-auto md:w-auto z-[999]">
+          <div className="mx-auto md:ml-auto md:mr-28 w-full md:w-auto rounded-3xl border border-white/40 bg-gradient-to-r from-sky-500/80 via-indigo-500/80 to-rose-500/80 p-4 shadow-[0_18px_45px_-25px_rgba(30,64,175,0.6)] backdrop-blur flex flex-wrap items-center gap-2 text-white">
             <span className="text-sm font-semibold">{selectedIds.length} selected</span>
             <button className="rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-white" onClick={bulkAssignToMe}>Assign to me</button>
             <button className="rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-white" onClick={()=>bulkSetDue(1)}>Due +1 day</button>
