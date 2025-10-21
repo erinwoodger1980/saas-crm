@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isAuthRoute = pathname?.startsWith("/login");
   const isPublicQuestionnaire = pathname?.startsWith("/q/");
-  const isPublicThankYou = pathname === "/thank-you";
+  const isPublicThankYou = pathname === "/thank-you" || pathname?.startsWith("/q/thank-you");
 
   return (
     <html lang="en" className="h-full">
