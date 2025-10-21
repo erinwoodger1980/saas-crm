@@ -1,6 +1,7 @@
 // api/src/routes/public.ts
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { normalizeQuestionnaire } from "../lib/questionnaire";
 
 const router = Router();
 
@@ -82,7 +83,7 @@ router.get("/tenant/by-slug/:slug", async (req, res) => {
     phone: (s as any).phone ?? null,
     logoUrl: (s as any).logoUrl ?? null,
     links: (s as any).links ?? [],
-    questionnaire: (s as any).questionnaire ?? [],
+    questionnaire: normalizeQuestionnaire((s as any).questionnaire ?? []),
   });
 });
 

@@ -20,11 +20,15 @@ import {
 
 /* ---------------- Types ---------------- */
 type QField = {
+  id?: string;
   key: string;
   label: string;
-  type: "text" | "textarea" | "select" | "number";
+  type: "text" | "textarea" | "select" | "number" | "date" | "source";
   required?: boolean;
   options?: string[];
+  askInQuestionnaire?: boolean;
+  showOnLead?: boolean;
+  sortOrder?: number;
 };
 type Settings = {
   tenantId: string;
@@ -90,13 +94,128 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 /* ---------------- Helpers ---------------- */
+const FIELD_TYPES: QField["type"][] = ["text", "textarea", "select", "number", "date", "source"];
+
+function makeFieldId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `field-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeQuestionnaire(raw: any): QField[] {
+  const list = Array.isArray(raw) ? raw : [];
+  return list
+    .map((item: any, idx: number) => {
+      if (!item || typeof item !== "object") return null;
+      const key = typeof item.key === "string" && item.key.trim() ? item.key.trim() : "";
+      if (!key) return null;
+      const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : makeFieldId();
+      const label = typeof item.label === "string" && item.label.trim() ? item.label.trim() : key;
+      const typeRaw = typeof item.type === "string" && item.type.trim() ? item.type.trim() : "text";
+      const type = FIELD_TYPES.includes(typeRaw as QField["type"]) ? (typeRaw as QField["type"]) : "text";
+      const required = Boolean(item.required);
+      const askInQuestionnaire = item.askInQuestionnaire === false ? false : true;
+      const showOnLead = Boolean(item.showOnLead);
+      const options =
+        type === "select" && Array.isArray(item.options)
+          ? item.options.map((opt: any) => String(opt || "").trim()).filter(Boolean)
+          : [];
+      const sortOrder =
+        typeof item.sortOrder === "number" && Number.isFinite(item.sortOrder) ? item.sortOrder : idx;
+      return { id, key, label, type, required, options, askInQuestionnaire, showOnLead, sortOrder } as QField;
+    })
+    .filter((field): field is QField => Boolean(field?.key))
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
+function serializeQuestionnaire(fields: QField[]): any[] {
+  return fields
+    .map((field, idx) => {
+      const key = field.key?.trim();
+      if (!key) return null;
+      const label = field.label?.trim() || key;
+      const type = FIELD_TYPES.includes(field.type) ? field.type : "text";
+      const options =
+        type === "select"
+          ? (field.options ?? []).map((opt) => opt.trim()).filter(Boolean)
+          : undefined;
+      return {
+        id: field.id || makeFieldId(),
+        key,
+        label,
+        type,
+        required: Boolean(field.required),
+        options,
+        askInQuestionnaire: field.askInQuestionnaire === false ? false : true,
+        showOnLead: Boolean(field.showOnLead),
+        sortOrder: idx,
+      };
+    })
+    .filter(Boolean);
+}
+
 function defaultQuestions(): QField[] {
-  return [
-    { key: "contactName", label: "Your name", type: "text", required: true },
-    { key: "email", label: "Email", type: "text", required: true },
-    { key: "projectType", label: "Project type", type: "select", options: ["Windows", "Doors", "Conservatory", "Other"] },
-    { key: "notes", label: "Notes", type: "textarea" },
-  ];
+  return normalizeQuestionnaire([
+    {
+      id: makeFieldId(),
+      key: "contactName",
+      label: "Your name",
+      type: "text",
+      required: true,
+      askInQuestionnaire: true,
+      showOnLead: false,
+    },
+    {
+      id: makeFieldId(),
+      key: "email",
+      label: "Email",
+      type: "text",
+      required: true,
+      askInQuestionnaire: true,
+      showOnLead: false,
+    },
+    {
+      id: makeFieldId(),
+      key: "projectType",
+      label: "Project type",
+      type: "select",
+      options: ["Windows", "Doors", "Conservatory", "Other"],
+      askInQuestionnaire: true,
+      showOnLead: true,
+    },
+    {
+      id: makeFieldId(),
+      key: "enquiryType",
+      label: "Type of enquiry",
+      type: "select",
+      options: ["Supply & install", "Supply only", "Service"],
+      askInQuestionnaire: false,
+      showOnLead: true,
+    },
+    {
+      id: makeFieldId(),
+      key: "source",
+      label: "Lead source",
+      type: "source",
+      askInQuestionnaire: false,
+      showOnLead: true,
+    },
+    {
+      id: makeFieldId(),
+      key: "quotedAt",
+      label: "Date quoted",
+      type: "date",
+      askInQuestionnaire: false,
+      showOnLead: true,
+    },
+    {
+      id: makeFieldId(),
+      key: "notes",
+      label: "Notes",
+      type: "textarea",
+      askInQuestionnaire: true,
+      showOnLead: false,
+    },
+  ]);
 }
 function initials(name?: string | null) {
   if (!name) return "JB";
@@ -232,10 +351,11 @@ export default function SettingsPage() {
       if (!ok) return;
       try {
         const data = await apiFetch<Settings>("/tenant/settings");
+        const normalizedQuestionnaire = normalizeQuestionnaire((data as any).questionnaire ?? defaultQuestions());
         setS({
           ...data,
           links: (data.links as any) ?? [],
-          questionnaire: (data.questionnaire as any) ?? defaultQuestions(),
+          questionnaire: normalizedQuestionnaire.length ? normalizedQuestionnaire : defaultQuestions(),
           introHtml: data.introHtml ?? "",
           taskPlaybook: normalizeTaskPlaybook((data as any).taskPlaybook),
           questionnaireEmailSubject:
@@ -264,20 +384,22 @@ export default function SettingsPage() {
   async function saveBrand() {
     if (!s) return;
     try {
+      const payloadQuestionnaire = serializeQuestionnaire(s.questionnaire ?? []);
       const updated = await apiFetch<Settings>("/tenant/settings", {
         method: "PUT",
         json: {
           ...s,
           taskPlaybook: playbook,
           links: s.links ?? [],
-          questionnaire: s.questionnaire ?? [],
+          questionnaire: payloadQuestionnaire,
         },
       });
       const normalizedPlaybook = normalizeTaskPlaybook((updated as any).taskPlaybook ?? playbook);
+      const normalizedQuestionnaire = normalizeQuestionnaire((updated as any).questionnaire ?? payloadQuestionnaire);
       setS({
         ...updated,
         links: (updated.links as any) ?? [],
-        questionnaire: (updated.questionnaire as any) ?? [],
+        questionnaire: normalizedQuestionnaire,
         taskPlaybook: normalizedPlaybook,
         questionnaireEmailSubject:
           typeof (updated as any).questionnaireEmailSubject === "string" && (updated as any).questionnaireEmailSubject
@@ -915,92 +1037,172 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-3">
-            {(s.questionnaire ?? []).map((q, i) => (
-              <div key={q.key + i} className="rounded-xl border p-3 bg-white hover:shadow-sm transition">
-                <div className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto_auto]">
-                <Field label="Key">
-                  <input className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
-                    value={q.key}
-                    onChange={(e) => {
-                      const next = [...(s.questionnaire ?? [])];
-                      next[i] = { ...next[i], key: e.target.value };
-                      setS({ ...s, questionnaire: next });
-                    }} />
-                </Field>
-                <Field label="Label">
-                  <input className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
-                    value={q.label}
-                    onChange={(e) => {
-                      const next = [...(s.questionnaire ?? [])];
-                      next[i] = { ...next[i], label: e.target.value };
-                      setS({ ...s, questionnaire: next });
-                    }} />
-                </Field>
-                <Field label="Type">
-                  <select className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
-                    value={q.type}
-                    onChange={(e) => {
-                      const next = [...(s.questionnaire ?? [])];
-                      next[i] = { ...next[i], type: e.target.value as QField["type"] };
-                      setS({ ...s, questionnaire: next });
-                    }}>
-                    <option value="text">text</option>
-                    <option value="textarea">textarea</option>
-                    <option value="select">select</option>
-                    <option value="number">number</option>
-                  </select>
-                </Field>
-                <div className="flex items-center gap-2">
-                  <input id={`req-${i}`} type="checkbox" className="h-4 w-4" checked={!!q.required}
-                    onChange={(e) => {
-                      const next = [...(s.questionnaire ?? [])];
-                      next[i] = { ...next[i], required: e.target.checked };
-                      setS({ ...s, questionnaire: next });
-                    }} />
-                  <label htmlFor={`req-${i}`} className="text-sm text-slate-700">Required</label>
-                </div>
-                <Button variant="secondary" onClick={() => {
-                  const next = [...(s.questionnaire ?? [])];
-                  next.splice(i, 1);
-                  setS({ ...s, questionnaire: next });
-                }}>
-                  Remove
-                </Button>
-              </div>
+            {(s.questionnaire ?? []).map((q, i) => {
+              const askClients = q.askInQuestionnaire !== false;
+              const showOnLead = !!q.showOnLead;
+              const cardKey = q.id || `${q.key}-${i}`;
+              return (
+                <div key={cardKey} className="rounded-xl border p-3 bg-white hover:shadow-sm transition">
+                  <div className="grid items-end gap-2 lg:grid-cols-[1fr_1fr_1fr_auto]">
+                    <Field label="Key">
+                      <input
+                        className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                        value={q.key}
+                        onChange={(e) => {
+                          const next = [...(s.questionnaire ?? [])];
+                          next[i] = { ...next[i], key: e.target.value };
+                          setS({ ...s, questionnaire: next });
+                        }}
+                      />
+                    </Field>
+                    <Field label="Label">
+                      <input
+                        className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                        value={q.label}
+                        onChange={(e) => {
+                          const next = [...(s.questionnaire ?? [])];
+                          next[i] = { ...next[i], label: e.target.value };
+                          setS({ ...s, questionnaire: next });
+                        }}
+                      />
+                    </Field>
+                    <Field label="Type">
+                      <select
+                        className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                        value={q.type}
+                        onChange={(e) => {
+                          const nextType = e.target.value as QField["type"];
+                          const next = [...(s.questionnaire ?? [])];
+                          next[i] = {
+                            ...next[i],
+                            type: nextType,
+                            options: nextType === "select" ? next[i].options ?? [] : [],
+                            ...(nextType === "source"
+                              ? { showOnLead: true, askInQuestionnaire: false }
+                              : {}),
+                          };
+                          setS({ ...s, questionnaire: next });
+                        }}
+                      >
+                        {FIELD_TYPES.map((type) => (
+                          <option key={type} value={type}>
+                            {type}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <div className="flex flex-wrap items-center justify-end gap-3 pb-2">
+                      <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={!!q.required}
+                          onChange={(e) => {
+                            const next = [...(s.questionnaire ?? [])];
+                            next[i] = { ...next[i], required: e.target.checked };
+                            setS({ ...s, questionnaire: next });
+                          }}
+                        />
+                        <span>Required</span>
+                      </label>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          const next = [...(s.questionnaire ?? [])];
+                          next.splice(i, 1);
+                          setS({ ...s, questionnaire: next });
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
 
-              {q.type === "select" && (
-                <div className="mt-3">
-                  <Field label="Options (comma-separated)">
-                    <input className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
-                      value={(q.options ?? []).join(", ")}
-                      onChange={(e) => {
-                        const opts = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-                        const next = [...(s.questionnaire ?? [])];
-                        next[i] = { ...next[i], options: opts };
-                        setS({ ...s, questionnaire: next });
-                      }} />
-                  </Field>
+                  <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-600">
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={askClients}
+                        onChange={(e) => {
+                          const next = [...(s.questionnaire ?? [])];
+                          next[i] = { ...next[i], askInQuestionnaire: e.target.checked };
+                          setS({ ...s, questionnaire: next });
+                        }}
+                      />
+                      <span>Ask on client questionnaire</span>
+                    </label>
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={showOnLead}
+                        onChange={(e) => {
+                          const next = [...(s.questionnaire ?? [])];
+                          next[i] = { ...next[i], showOnLead: e.target.checked };
+                          setS({ ...s, questionnaire: next });
+                        }}
+                      />
+                      <span>Show in lead workspace</span>
+                    </label>
+                  </div>
+
+                  {q.type === "select" && (
+                    <div className="mt-3">
+                      <Field label="Options (comma-separated)">
+                        <input
+                          className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                          value={(q.options ?? []).join(", ")}
+                          onChange={(e) => {
+                            const opts = e.target.value
+                              .split(",")
+                              .map((s) => s.trim())
+                              .filter(Boolean);
+                            const next = [...(s.questionnaire ?? [])];
+                            next[i] = { ...next[i], options: opts };
+                            setS({ ...s, questionnaire: next });
+                          }}
+                        />
+                      </Field>
+                    </div>
+                  )}
+
+                  {q.type === "source" && (
+                    <p className="mt-3 text-xs text-slate-500">
+                      Links to the lead source picker so you can track budgets and conversion performance per source.
+                    </p>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
+              );
+            })}
+          </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() =>
-              setS({
-                ...s,
-                questionnaire: [
-                  ...(s.questionnaire ?? []),
-                  { key: `field${(s.questionnaire?.length ?? 0) + 1}`, label: "New field", type: "text" },
-                ],
-              })
-            }>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const nextId = makeFieldId();
+                setS({
+                  ...s,
+                  questionnaire: [
+                    ...(s.questionnaire ?? []),
+                    {
+                      id: nextId,
+                      key: `field${(s.questionnaire?.length ?? 0) + 1}`,
+                      label: "New field",
+                      type: "text",
+                      askInQuestionnaire: true,
+                      showOnLead: false,
+                    },
+                  ],
+                });
+              }}
+            >
               Add field
             </Button>
             <Button variant="ghost" onClick={() => setS({ ...s, questionnaire: defaultQuestions() })}>
               Reset to defaults
             </Button>
-          </div>
           </div>
         </div>
       </Section>
@@ -1069,7 +1271,7 @@ export default function SettingsPage() {
       </Section>
 
       {/* Lead Source Costs */}
-      <Section title="Lead Source Costs" description="Track monthly spend and results by source.">
+      <Section title="Lead Source Costs" description="Track monthly budget and results by source.">
         {/* Editor */}
         <div className="rounded-xl border bg-white p-3 mb-4">
           <div className="grid gap-2 sm:grid-cols-[1.2fr_1.1fr_repeat(3,0.8fr)_auto] items-end">
@@ -1082,7 +1284,7 @@ export default function SettingsPage() {
               <input type="date" className="rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
                 value={costDraft.month} onChange={(e) => setCostDraft({ ...costDraft, month: e.target.value })} />
             </Field>
-            <Field label="Spend">
+            <Field label="Budget">
               <input type="number" className="rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
                 value={costDraft.spend} onChange={(e) => setCostDraft({ ...costDraft, spend: e.target.value })} />
             </Field>
@@ -1110,7 +1312,7 @@ export default function SettingsPage() {
               <tr>
                 <th className="text-left px-3 py-2">Month</th>
                 <th className="text-left px-3 py-2">Source</th>
-                <th className="text-right px-3 py-2">Spend</th>
+                <th className="text-right px-3 py-2">Budget</th>
                 <th className="text-right px-3 py-2">Leads</th>
                 <th className="text-right px-3 py-2">Sales</th>
                 <th className="text-center px-3 py-2">Scalable</th>
