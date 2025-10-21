@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useCurrentUser } from "@/lib/use-current-user";
 
 type NavItem = {
   href: string;
@@ -11,7 +12,7 @@ type NavItem = {
   icon?: React.ReactNode;
 };
 
-const NAV: NavItem[] = [
+const BASE_NAV: NavItem[] = [
   { href: "/", label: "Dashboard" },
   { href: "/leads", label: "Leads" },
   { href: "/opportunities", label: "Opportunities" },
@@ -19,9 +20,29 @@ const NAV: NavItem[] = [
   { href: "/reports", label: "Reports" },
 ];
 
+const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "developer"]);
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { user } = useCurrentUser();
+
+  const navItems = useMemo(() => {
+    const items = [...BASE_NAV];
+    const roleKey = (user?.role || "").toLowerCase();
+    if (roleKey && FEEDBACK_ROLES.has(roleKey)) {
+      if (!items.some((item) => item.href === "/feedback")) {
+        items.push({ href: "/feedback", label: "Feedback" });
+      }
+    }
+    return items;
+  }, [user]);
+
+  const accountLabel = useMemo(() => {
+    if (!user) return "Account";
+    if (user.name && user.name.trim().length) return user.name;
+    return user.email;
+  }, [user]);
 
   return (
     <div className="min-h-screen flex bg-slate-50">
@@ -58,7 +79,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="mt-2 px-2">
           <ul className="space-y-1">
-            {NAV.map((item) => {
+            {navItems.map((item) => {
               const active =
                 item.href === "/"
                   ? pathname === "/"
@@ -91,7 +112,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <span className="font-medium">Joinery AI</span>
           <span className="mx-2">·</span>
           <span>Ask about sales, pipeline, timecards...</span>
-          <div className="ml-auto">Account</div>
+          <div className="ml-auto flex items-center gap-3">
+            {user?.isEarlyAdopter && (
+              <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 border border-blue-200">
+                Early access
+              </span>
+            )}
+            <span className="text-slate-700 font-medium">{accountLabel}</span>
+          </div>
         </header>
         <main className="p-6">{children}</main>
       </div>
