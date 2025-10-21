@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DeskSurface } from "@/components/DeskSurface";
+import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import QuestionnaireDemo from "@/components/QuestionnaireDemo";
 
@@ -24,6 +26,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const { shortName } = useTenantBrand();
 
   // --- ML tester state ---
   const [area, setArea] = useState<number>(12);
@@ -99,14 +102,20 @@ export default function DashboardPage() {
   const nWin = data.ml?.sampleSizes.win ?? 0;
 
   return (
-    <main className="p-6 space-y-6">
-      <h1 className="text-2xl font-semibold mb-2">📊 Dashboard Overview</h1>
-      <p className="text-slate-600 text-sm mb-4">
-        Quick snapshot of your pipeline plus a live ML prediction tester.
-      </p>
+    <DeskSurface variant="indigo" innerClassName="space-y-8">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div
+          className="inline-flex items-center gap-2 rounded-full border border-indigo-200/70 bg-white/70 px-3 py-1 text-xs font-medium uppercase tracking-[0.25em] text-slate-500 shadow-sm"
+          title="Quick snapshot of your pipeline plus a live ML prediction tester."
+        >
+          <span aria-hidden="true">📊</span>
+          Insights desk
+          {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
+        </div>
+      </header>
 
       {/* Top metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Metric title="Total Leads" value={data.totalLeads} />
         <Metric title="New This Month" value={data.monthLeads} />
         <Metric title="Disqualified" value={data.disqualified} />
@@ -124,9 +133,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Two columns: Pie + ML tester */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4">Disqualification Reasons</h2>
+          <h2 className="mb-4 text-lg font-semibold">Disqualification Reasons</h2>
           {reasonData.length ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
@@ -139,20 +148,15 @@ export default function DashboardPage() {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-slate-500 text-sm">No disqualified leads yet.</p>
+            <p className="text-sm text-slate-500">No disqualified leads yet.</p>
           )}
         </Card>
-        {/* Questionnaire + ML demo */}
-<QuestionnaireDemo />
 
-        {/* ML Prediction tester */}
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4">🔮 Price & Win Probability (ML)</h2>
-          <p className="text-sm text-slate-600 mb-4">
-            Try a quick prediction using your trained model.
-          </p>
+          <h2 className="mb-4 text-lg font-semibold">🔮 Price & Win Probability (ML)</h2>
+          <p className="mb-4 text-sm text-slate-600">Try a quick prediction using your trained model.</p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <label className="block">
               <div className="text-xs text-slate-600 mb-1">Area (m²)</div>
               <input
@@ -205,12 +209,13 @@ export default function DashboardPage() {
           )}
 
           <div className="mt-3 text-[11px] text-slate-500">
-            This calls <code>/ml/predict</code> on your API; if unavailable it falls back to{" "}
-            <code>NEXT_PUBLIC_ML_URL</code>.
+            This calls <code>/ml/predict</code> on your API; if unavailable it falls back to <code>NEXT_PUBLIC_ML_URL</code>.
           </div>
         </Card>
       </div>
-    </main>
+
+      <QuestionnaireDemo />
+    </DeskSurface>
   );
 }
 
