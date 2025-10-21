@@ -16,6 +16,7 @@ import {
   DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
 } from "@/lib/constants";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
+import DeclineEnquiryButton from "./DeclineEnquiryButton";
 
 /* ----------------------------- Types ----------------------------- */
 
