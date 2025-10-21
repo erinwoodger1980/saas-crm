@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import * as cheerio from "cheerio";
 import { env } from "../env";
 import { DEFAULT_TASK_PLAYBOOK, normalizeTaskPlaybook } from "../task-playbook";
+import { normalizeDeclineEmailTemplate } from "../decline-email";
 
 const DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT = "Questionnaire for your estimate";
 const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
@@ -61,6 +62,7 @@ async function updateSettings(req: any, res: any) {
   const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
+  const body = req.body || {};
   const {
     inboxWatchEnabled,
     inbox,
@@ -118,18 +120,26 @@ async function updateSettings(req: any, res: any) {
       update.questionnaireEmailBody = val || null;
     }
 
+    const existingBeta = (existing.beta as any) || {};
+    if (declineEmailTemplate !== undefined) {
+      const nextBeta = {
+        ...existingBeta,
+        declineEmailTemplate: normalizeDeclineEmailTemplate(declineEmailTemplate),
+      };
+      update.beta = nextBeta;
+    }
+
     const saved = await prisma.tenantSettings.update({
       where: { tenantId },
       data: update,
     });
 
     const normalized = normalizeTaskPlaybook(saved.taskPlaybook as any);
-    return res.json({
-      ...saved,
-      taskPlaybook: normalized,
-      questionnaireEmailSubject: saved.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-      questionnaireEmailBody: saved.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-    });
+    const response: any = { ...saved, taskPlaybook: normalized };
+    response.declineEmailTemplate = normalizeDeclineEmailTemplate(
+      (saved.beta as any)?.declineEmailTemplate
+    );
+    return res.json(response);
   } catch (e: any) {
     console.error("[tenant/settings PATCH] failed:", e?.message || e);
     return res.status(500).json({ error: "update_failed", detail: e?.message || String(e) });
@@ -346,7 +356,10 @@ ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
       },
     });
 
-    res.json({ ok: true, settings: saved });
+    const declineTemplate = normalizeDeclineEmailTemplate(
+      (saved.beta as any)?.declineEmailTemplate
+    );
+    res.json({ ok: true, settings: { ...saved, declineEmailTemplate: declineTemplate } });
   } catch (e: any) {
     console.error("[tenant enrich] failed", e);
     res.status(500).json({ error: e?.message || "enrich failed" });
