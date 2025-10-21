@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import LeadModal, { Lead } from "./LeadModal";
-import { on } from "@/lib/events"; // <-- NEW
+import { on } from "@/lib/events";
+import { getAuthIdsFromJwt } from "@/lib/auth";
+import { useToast } from "@/components/ui/use-toast";
 
 /* -------------------------------- Types -------------------------------- */
 
@@ -63,6 +65,13 @@ export default function LeadsPage() {
   // modal
   const [open, setOpen] = useState(false);
   const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
+  const { toast } = useToast();
+
+  const buildAuthHeaders = (): HeadersInit | undefined => {
+    const ids = getAuthIdsFromJwt();
+    if (!ids?.tenantId || !ids?.userId) return undefined;
+    return { "x-tenant-id": ids.tenantId, "x-user-id": ids.userId };
+  };
 
   useEffect(() => {
     (async () => {
@@ -83,9 +92,14 @@ export default function LeadsPage() {
       const auto = localStorage.getItem("autoImportInbox") === "true";
       try {
         if (auto) {
+          const headers = buildAuthHeaders();
           await Promise.allSettled([
-            apiFetch("/gmail/import", { method: "POST", json: { max: 10, q: "newer_than:30d" } }),
-            apiFetch("/ms365/import", { method: "POST", json: { max: 10 } }),
+            apiFetch("/gmail/import", {
+              method: "POST",
+              headers,
+              json: { max: 10, q: "newer_than:30d" },
+            }),
+            apiFetch("/ms365/import", { method: "POST", headers, json: { max: 10 } }),
           ]);
         }
       } finally {
@@ -98,7 +112,9 @@ export default function LeadsPage() {
   async function refreshGrouped() {
     setLoading(true);
     try {
-      const data = await apiFetch<Grouped>("/leads/grouped");
+      const data = await apiFetch<Grouped>("/leads/grouped", {
+        headers: buildAuthHeaders(),
+      });
       setGrouped(normaliseToNewStatuses(data));
       setError(null);
     } catch (e: any) {
@@ -130,7 +146,9 @@ export default function LeadsPage() {
       return;
     }
     try {
-      const l = await apiFetch<Lead>(`/leads/${leadId}`);
+      const l = await apiFetch<Lead>(`/leads/${leadId}`, {
+        headers: buildAuthHeaders(),
+      });
       if (l?.id) openLead(l);
     } catch {
       // ignore
@@ -207,7 +225,11 @@ export default function LeadsPage() {
       return next;
     });
     try {
-      await apiFetch(`/leads/${leadId}`, { method: "PATCH", json: { status: "REJECTED" } });
+      await apiFetch(`/leads/${leadId}`, {
+        method: "PATCH",
+        headers: buildAuthHeaders(),
+        json: { status: "REJECTED" },
+      });
     } catch (e) {
       console.error("reject failed:", e);
       refreshGrouped();
@@ -246,10 +268,11 @@ export default function LeadsPage() {
               try {
                 const lead = await apiFetch<any>("/leads", {
                   method: "POST",
+                  headers: buildAuthHeaders(),
                   json: { contactName, email: "", custom: { provider: "manual" } },
                 });
                 await refreshGrouped();
-                if (lead?.id)
+                if (lead?.id) {
                   openLead({
                     id: lead.id,
                     contactName: lead.contactName ?? contactName,
@@ -257,8 +280,19 @@ export default function LeadsPage() {
                     status: (lead.status as LeadStatus) ?? "NEW_ENQUIRY",
                     custom: lead.custom ?? { provider: "manual" },
                   });
+                }
+                toast({
+                  title: "Lead created",
+                  description: `${lead?.contactName ?? contactName} added to your inbox.`,
+                });
               } catch (e: any) {
-                alert("Failed to create lead: " + (e?.message || "unknown error"));
+                const rawMessage = typeof e?.message === "string" ? e.message : "Please try again.";
+                const cleaned = rawMessage.replace(/\sfor\shttps?:\/\/\S+/, "").trim();
+                toast({
+                  title: "Failed to create lead",
+                  description: cleaned || "Please try again.",
+                  variant: "destructive",
+                });
               }
             }}
           >
@@ -327,7 +361,7 @@ export default function LeadsPage() {
         )}
       </SectionCard>
 
-           {/* Modal */}
+      {/* Modal */}
       <LeadModal
         open={open}
         onOpenChange={(v) => {
