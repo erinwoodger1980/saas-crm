@@ -4,6 +4,13 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
+import {
+  DEFAULT_TASK_PLAYBOOK,
+  ManualTaskKey,
+  TaskRecipe,
+  TaskPlaybook,
+  normalizeTaskPlaybook,
+} from "@/lib/task-playbook";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -27,12 +34,14 @@ export type Lead = {
 type Task = {
   id: string;
   title: string;
+  description?: string | null;
   status: "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   relatedType?: "LEAD" | "PROJECT" | "QUOTE" | "EMAIL" | "QUESTIONNAIRE" | "WORKSHOP" | "OTHER";
   relatedId?: string | null;
   dueAt?: string | null;
   completedAt?: string | null;
+  meta?: { key?: string } | null;
 };
 
 type TenantSettings = {
@@ -41,6 +50,7 @@ type TenantSettings = {
     title?: string;
     questions?: Array<{ id: string; label: string }>;
   };
+  taskPlaybook?: TaskPlaybook;
 };
 
 const STATUS_LABELS: Record<Lead["status"], string> = {
@@ -147,6 +157,11 @@ export default function LeadModal({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [settings, setSettings] = useState<TenantSettings | null>(null);
 
+  const playbook = useMemo(
+    () => normalizeTaskPlaybook(settings?.taskPlaybook ?? DEFAULT_TASK_PLAYBOOK),
+    [settings?.taskPlaybook]
+  );
+
   // editable fields
   const [nameInput, setNameInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
@@ -229,17 +244,15 @@ export default function LeadModal({
 
         // After fetching full lead + tasks list:
         setTasks(tlist?.items ?? []);
-        if (s) setSettings(s);
-
-        // Seed only for brand-new enquiries (idempotent on server)
-        if (sUi === "NEW_ENQUIRY") {
-          await ensureTaskOnce("Review enquiry", {
-            dueDays: 1,
-            priority: "MEDIUM",
-            existing: tlist?.items ?? [],
+        if (s) {
+          setSettings({
+            ...s,
+            taskPlaybook: normalizeTaskPlaybook((s as any).taskPlaybook),
           });
-          await reloadTasks();
         }
+
+        const seeded = await ensureStatusTasks(sUi, tlist?.items ?? []);
+        if (seeded) await reloadTasks();
       } finally {
         if (!stop) setLoading(false);
       }
@@ -295,9 +308,9 @@ export default function LeadModal({
         await triggerOnUpdated();
       }
 
-      if (resolvedUi === "READY_TO_QUOTE" && prevUiStatus !== "READY_TO_QUOTE") {
-        await ensureTaskOnce("Create quote", { dueDays: 2, priority: "HIGH" });
-        await reloadTasks();
+      if (prevUiStatus !== resolvedUi) {
+        const seeded = await ensureStatusTasks(resolvedUi);
+        if (seeded) await reloadTasks();
       }
 
       toast("Saved. One step closer.");
@@ -358,45 +371,73 @@ export default function LeadModal({
     setTasks(data.items || []);
   }
 
-// Replace both hasTask + ensureTaskOnce with this pair
-function taskExists(list: Task[] | undefined, leadId: string | undefined, title: string) {
-  if (!list || !leadId) return false;
-  const t = title.trim().toLowerCase();
-  return list.some(
-    (x) =>
-      x.relatedType === "LEAD" &&
-      x.relatedId === leadId &&
-      x.status !== "CANCELLED" &&
-      x.title.trim().toLowerCase() === t
-  );
+function taskExists(list: Task[] | undefined, uniqueKey: string | undefined, title: string) {
+  if (!list || list.length === 0) return false;
+  const normalizedTitle = title.trim().toLowerCase();
+  return list.some((task) => {
+    const metaKey = typeof task.meta === "object" ? (task.meta as any)?.key : undefined;
+    if (uniqueKey && metaKey) return metaKey === uniqueKey;
+    if (uniqueKey) return false;
+    return task.title.trim().toLowerCase() === normalizedTitle;
+  });
 }
 
-async function ensureTaskOnce(
-  title: string,
-  opts?: Partial<Task> & { dueDays?: number; relatedType?: Task["relatedType"]; existing?: Task[] }
+async function ensureRecipeTask(
+  recipe: TaskRecipe | undefined,
+  overrides?: { existing?: Task[]; relatedType?: Task["relatedType"]; relatedId?: string | null; uniqueSuffix?: string }
 ) {
-  if (!lead?.id) return;
-  const exists = taskExists(opts?.existing ?? tasks, lead?.id, title);
-  if (exists) return;
+  if (!lead?.id || !recipe || recipe.active === false) return false;
+
+  const relatedType = overrides?.relatedType ?? recipe.relatedType ?? "LEAD";
+  const relatedId =
+    overrides?.relatedId ?? (relatedType === "LEAD" ? lead.id : overrides?.relatedId ?? lead.id);
+  const suffix = overrides?.uniqueSuffix ?? relatedId ?? lead.id;
+  const uniqueKey = `${recipe.id}:${relatedType}:${suffix}`;
+  if (taskExists(overrides?.existing ?? tasks, uniqueKey, recipe.title)) return false;
 
   const dueAt =
-    (opts?.dueDays ?? 0) > 0
-      ? new Date(Date.now() + (opts!.dueDays! * 86_400_000)).toISOString()
+    typeof recipe.dueInDays === "number" && recipe.dueInDays > 0
+      ? new Date(Date.now() + recipe.dueInDays * 86_400_000).toISOString()
+      : undefined;
+
+  const assignees =
+    recipe.autoAssign === "ACTOR" && userId
+      ? [{ userId, role: "OWNER" as const }]
       : undefined;
 
   await apiFetch("/tasks", {
     method: "POST",
     headers: { ...authHeaders, "Content-Type": "application/json" },
     json: {
-      title,
-      priority: opts?.priority ?? "MEDIUM",
-      relatedType: opts?.relatedType ?? "LEAD",
-      relatedId: lead.id,
+      title: recipe.title,
+      description: recipe.description || undefined,
+      priority: recipe.priority ?? "MEDIUM",
+      relatedType,
+      relatedId: relatedId ?? undefined,
       dueAt,
-      assignees: [{ userId, role: "OWNER" }],
-      meta: { source: "lead_modal_seed" },
+      meta: { key: uniqueKey, source: "playbook" },
+      assignees,
     },
   });
+
+  return true;
+}
+
+async function ensureManualTask(
+  key: ManualTaskKey,
+  overrides?: { existing?: Task[]; relatedType?: Task["relatedType"]; relatedId?: string | null }
+) {
+  await ensureRecipeTask(playbook.manual[key], overrides);
+}
+
+async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
+  const recipes = playbook.status[status] || [];
+  let created = false;
+  for (const recipe of recipes) {
+    const made = await ensureRecipeTask(recipe, { existing, uniqueSuffix: lead?.id });
+    created = created || !!made;
+  }
+  return created;
 }
 
   async function toggleTaskComplete(t: Task) {
@@ -421,8 +462,8 @@ async function ensureTaskOnce(
       const saved = await saveStatus("INFO_REQUESTED");
       if (!saved) return;
 
-      // we don't create a "Send questionnaire" task; we create the follow-up the user will do later
-      await ensureTaskOnce("Review questionnaire", { dueDays: 2, priority: "MEDIUM" });
+      // ensure follow-up from playbook
+      await ensureManualTask("questionnaire_followup");
 
       // open mailto with public link if we have a slug
       if (lead.email && settings?.slug) {
@@ -444,7 +485,7 @@ async function ensureTaskOnce(
     if (!lead?.id) return;
     setBusyTask(true);
     try {
-      await ensureTaskOnce("Chase supplier price", { dueDays: 3, priority: "MEDIUM" });
+      await ensureManualTask("supplier_followup");
 
       const supplier = prompt("Supplier email (optional):");
       if (supplier) {
@@ -481,12 +522,10 @@ async function ensureTaskOnce(
         },
       });
 
-      await ensureTaskOnce("Complete draft estimate", {
-        priority: "HIGH",
+      await ensureManualTask("quote_draft_complete", {
         relatedType: "QUOTE",
         relatedId: quote?.id,
-        dueDays: 1,
-      } as any);
+      });
 
       await reloadTasks();
       toast("Draft estimate created.");

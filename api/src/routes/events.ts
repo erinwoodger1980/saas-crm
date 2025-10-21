@@ -2,64 +2,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
+import { ensureTaskFromRecipe, loadTaskPlaybook } from "../task-playbook";
 
 const router = Router();
-
-/** Utility to dedupe “generated” tasks for a lead */
-function isTaskTableMissing(err: any) {
-  if (!err) return false;
-  if (err.code === "P2021") return true;
-  const msg = typeof err.message === "string" ? err.message : "";
-  return msg.includes("Task") && msg.includes("does not exist");
-}
-
-async function ensureTaskOnce(opts: {
-  tenantId: string;
-  title: string;
-  relatedType: "LEAD" | "QUOTE";
-  relatedId: string;
-  priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-  dueInDays?: number;
-  metaKey?: string; // stable key for idempotency
-}) {
-  const { tenantId, title, relatedType, relatedId, priority = "MEDIUM", dueInDays = 0, metaKey } =
-    opts;
-
-  try {
-    // If we pass a metaKey, use it to dedupe
-    const existing = await prisma.task.findFirst({
-      where: {
-        tenantId,
-        relatedType,
-        relatedId,
-        ...(metaKey ? { meta: { path: ["key"], equals: metaKey } as any } : {}),
-        title,
-      },
-    });
-    if (existing) return existing;
-
-    const dueAt =
-      dueInDays > 0 ? new Date(Date.now() + dueInDays * 24 * 3600 * 1000) : undefined;
-
-    return await prisma.task.create({
-      data: {
-        tenantId,
-        title,
-        relatedType,
-        relatedId,
-        priority,
-        dueAt,
-        meta: metaKey ? ({ key: metaKey } as any) : ({} as any),
-      },
-    });
-  } catch (err) {
-    if (isTaskTableMissing(err)) {
-      console.warn(`[events] Task table missing – skipping ensureTaskOnce for "${title}"`);
-      return null;
-    }
-    throw err;
-  }
-}
 
 const EventSchema = z.discriminatedUnion("type", [
   z.object({
@@ -94,46 +39,63 @@ router.post("/ingest", async (req, res) => {
   const e = EventSchema.parse(req.body);
 
   try {
+    const playbook = await loadTaskPlaybook(e.tenantId);
     switch (e.type) {
       case "LEAD_CREATED": {
-        // Create “Review enquiry”
-        await ensureTaskOnce({
-          tenantId: e.tenantId,
-          title: "Review enquiry",
-          relatedType: "LEAD",
-          relatedId: e.leadId,
-          priority: "MEDIUM",
-          dueInDays: 0,
-          metaKey: `lead:${e.leadId}:review-enquiry`,
-        });
+        const recipes = playbook.status.NEW_ENQUIRY || [];
+        for (const recipe of recipes) {
+          await ensureTaskFromRecipe({
+            tenantId: e.tenantId,
+            recipe,
+            relatedId: e.leadId,
+            relatedType: recipe.relatedType ?? "LEAD",
+            uniqueKey: `${recipe.id}:${e.leadId}`,
+          });
+        }
         break;
       }
 
       case "QUESTIONNAIRE_SUBMITTED": {
-        await ensureTaskOnce({
-          tenantId: e.tenantId,
-          title: "Review questionnaire",
-          relatedType: "LEAD",
-          relatedId: e.leadId,
-          priority: "MEDIUM",
-          dueInDays: 0,
-          metaKey: `lead:${e.leadId}:review-questionnaire`,
-        });
+        const recipe = playbook.manual["questionnaire_followup"];
+        if (recipe) {
+          await ensureTaskFromRecipe({
+            tenantId: e.tenantId,
+            recipe,
+            relatedId: e.leadId,
+            relatedType: recipe.relatedType ?? "LEAD",
+            uniqueKey: `${recipe.id}:${e.leadId}`,
+          });
+        }
         break;
       }
 
       case "LEAD_STATUS_CHANGED": {
         const to = (e.to || "").toUpperCase();
-        if (to === "READY_TO_QUOTE" || to === "QUALIFIED") {
-          await ensureTaskOnce({
-            tenantId: e.tenantId,
-            title: "Create quote",
-            relatedType: "LEAD",
-            relatedId: e.leadId,
-            priority: "HIGH",
-            dueInDays: 1,
-            metaKey: `lead:${e.leadId}:create-quote`,
-          });
+        const map: Record<string, keyof typeof playbook.status> = {
+          NEW: "NEW_ENQUIRY",
+          NEW_ENQUIRY: "NEW_ENQUIRY",
+          CONTACTED: "INFO_REQUESTED",
+          INFO_REQUESTED: "INFO_REQUESTED",
+          QUALIFIED: "READY_TO_QUOTE",
+          READY_TO_QUOTE: "READY_TO_QUOTE",
+          QUOTE_SENT: "QUOTE_SENT",
+          REJECTED: "REJECTED",
+          DISQUALIFIED: "DISQUALIFIED",
+          WON: "WON",
+          LOST: "LOST",
+        };
+        const target = map[to];
+        if (target) {
+          const recipes = playbook.status[target] || [];
+          for (const recipe of recipes) {
+            await ensureTaskFromRecipe({
+              tenantId: e.tenantId,
+              recipe,
+              relatedId: e.leadId,
+              relatedType: recipe.relatedType ?? "LEAD",
+              uniqueKey: `${recipe.id}:${e.leadId}`,
+            });
+          }
         }
         break;
       }
@@ -149,15 +111,16 @@ router.post("/ingest", async (req, res) => {
           leadId = q?.leadId || undefined;
         }
         if (leadId) {
-          await ensureTaskOnce({
-            tenantId: e.tenantId,
-            title: "Follow up on quote",
-            relatedType: "LEAD",
-            relatedId: leadId,
-            priority: "MEDIUM",
-            dueInDays: 3,
-            metaKey: `lead:${leadId}:followup-quote`,
-          });
+          const recipes = playbook.status.QUOTE_SENT || [];
+          for (const recipe of recipes) {
+            await ensureTaskFromRecipe({
+              tenantId: e.tenantId,
+              recipe,
+              relatedId: leadId,
+              relatedType: recipe.relatedType ?? "LEAD",
+              uniqueKey: `${recipe.id}:${leadId}`,
+            });
+          }
         }
         break;
       }

@@ -7,6 +7,7 @@ import { ReactNode } from "react";
 const nav = [
   { href: "/dashboard", label: "Dashboard", emoji: "🧭" },
   { href: "/leads", label: "Leads", emoji: "📬" },
+  { href: "/tasks/owner", label: "Tasks", emoji: "✅" },
   { href: "/opportunities", label: "Opportunities", emoji: "🎯" },
   { href: "/workshop", label: "Workshop", emoji: "🛠️" },
   { href: "/settings", label: "Settings", emoji: "⚙️" },
