@@ -9,9 +9,9 @@ r.post("/seed-data", async (req, res) => {
 
   // 3 leads
   const leads = await prisma.$transaction([
-    prisma.lead.create({ data: { tenantId: a.tenantId, createdById: a.userId, contactName: "Acme Windows", email: "acme@example.com", status: "QUALIFIED" } }),
-    prisma.lead.create({ data: { tenantId: a.tenantId, createdById: a.userId, contactName: "Wealden Joinery", email: "wealden@example.com", status: "QUALIFIED" } }),
-    prisma.lead.create({ data: { tenantId: a.tenantId, createdById: a.userId, contactName: "Landmark Timber", email: "landmark@example.com", status: "CONTACTED" } }),
+    prisma.lead.create({ data: { tenantId: a.tenantId, createdById: a.userId, contactName: "Acme Windows", email: "acme@example.com", status: "READY_TO_QUOTE" } }),
+    prisma.lead.create({ data: { tenantId: a.tenantId, createdById: a.userId, contactName: "Wealden Joinery", email: "wealden@example.com", status: "QUOTE_SENT" } }),
+    prisma.lead.create({ data: { tenantId: a.tenantId, createdById: a.userId, contactName: "Landmark Timber", email: "landmark@example.com", status: "INFO_REQUESTED" } }),
   ]);
 
   // 3 opportunities (2 won this month, 1 open)
