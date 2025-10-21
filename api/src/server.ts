@@ -217,10 +217,15 @@ async function ensureDevData() {
       data: {
         tenantId: tenant.id,
         email: demoEmail,
-        name: "Demo User",
+        name: "Wealden Joinery",
         role: "owner",
         passwordHash,
       },
+    });
+  } else if (!user.name || user.name === "Demo User") {
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { name: "Wealden Joinery" },
     });
   }
 

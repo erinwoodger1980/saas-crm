@@ -9,6 +9,17 @@ const router = Router();
 // use the SAME secret as the JWT middleware in server.ts
 const JWT_SECRET = env.APP_JWT_SECRET;
 
+function splitName(fullName?: string | null) {
+  if (!fullName) return { firstName: null as string | null, lastName: null as string | null };
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { firstName: null as string | null, lastName: null as string | null };
+  const [first, ...rest] = parts;
+  return {
+    firstName: first || null,
+    lastName: rest.length ? rest.join(" ") : null,
+  };
+}
+
 /**
  * POST /auth/login
  * body: { email, password }
@@ -47,8 +58,18 @@ router.post("/login", async (req, res) => {
     // you can also drop it in a cookie if you want
     // res.cookie("jwt", token, { httpOnly: false, sameSite: "lax", secure: true });
 
+    const { firstName, lastName } = splitName(user.name);
+
     return res.json({
-      user: { id: user.id, email: user.email, tenantId: user.tenantId, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        tenantId: user.tenantId,
+        role: user.role,
+        name: user.name,
+        firstName,
+        lastName,
+      },
       jwt: token,
     });
   } catch (e: any) {
@@ -80,9 +101,55 @@ router.post("/dev-seed", async (_req, res) => {
       { expiresIn: "12h" }
     );
 
-    return res.json({ ok: true, tenantId: tenant.id, userId: user.id, email, jwt: token });
+    const { firstName, lastName } = splitName(user.name);
+
+    return res.json({
+      ok: true,
+      tenantId: tenant.id,
+      userId: user.id,
+      email,
+      jwt: token,
+      user: {
+        id: user.id,
+        email: user.email,
+        tenantId: user.tenantId,
+        role: user.role,
+        name: user.name,
+        firstName,
+        lastName,
+      },
+    });
   } catch (e: any) {
     console.error("[auth/dev-seed] failed:", e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+router.get("/me", async (req, res) => {
+  const auth = (req as any).auth;
+  if (!auth?.userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: auth.userId },
+      select: { id: true, email: true, tenantId: true, role: true, name: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "not_found" });
+    }
+
+    const { firstName, lastName } = splitName(user.name);
+
+    return res.json({
+      ...user,
+      firstName,
+      lastName,
+    });
+  } catch (e: any) {
+    console.error("[auth/me] failed:", e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
