@@ -765,15 +765,66 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     () => (lead?.custom && typeof lead.custom === "object" ? (lead.custom as Record<string, any>) : {}),
     [lead?.custom]
   );
-  const questionnaireResponses = useMemo(
-    () =>
-      questionnaireFields.map((field) => {
-        const key = field.key ?? field.id ?? "";
-        const value = key ? formatAnswer(customData?.[key]) : null;
-        return { field, value };
-      }),
-    [customData, questionnaireFields]
-  );
+  const questionnaireResponses = useMemo(() => {
+    const responses: Array<{ field: QuestionnaireField; value: string | null }> = [];
+    const seen = new Set<string>();
+
+    questionnaireFields.forEach((field) => {
+      const key = field.key ?? field.id ?? "";
+      if (!key) return;
+      seen.add(key);
+      responses.push({ field, value: formatAnswer(customData?.[key]) });
+    });
+
+    const IGNORED_CUSTOM_KEYS = new Set([
+      "provider",
+      "messageId",
+      "subject",
+      "summary",
+      "snippet",
+      "body",
+      "full",
+      "from",
+      "fromEmail",
+      "uiStatus",
+      "questionnaireSubmittedAt",
+      "uploads",
+      "aiFeedback",
+    ]);
+
+    const humanizeKey = (key: string): string => {
+      return key
+        .replace(/[_\-]+/g, " ")
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/^\w|\s\w/g, (c) => c.toUpperCase());
+    };
+
+    Object.keys(customData || {})
+      .filter((key) =>
+        typeof key === "string" &&
+        key &&
+        !seen.has(key) &&
+        !IGNORED_CUSTOM_KEYS.has(key)
+      )
+      .forEach((key) => {
+        const value = formatAnswer(customData?.[key]);
+        if (value == null) return;
+        responses.push({
+          field: {
+            id: key,
+            key,
+            label: humanizeKey(key),
+            required: false,
+            type: undefined,
+          },
+          value,
+        });
+      });
+
+    return responses;
+  }, [customData, questionnaireFields]);
   const questionnaireUploads = useMemo(() => {
     const uploads = Array.isArray((customData as any)?.uploads) ? (customData as any).uploads : [];
     return uploads
