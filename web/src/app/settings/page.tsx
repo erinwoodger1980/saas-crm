@@ -5,6 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import {
+  DEFAULT_TASK_PLAYBOOK,
+  MANUAL_TASK_KEYS,
+  ManualTaskKey,
+  TaskPlaybook,
+  TaskRecipe,
+  normalizeTaskPlaybook,
+} from "@/lib/task-playbook";
 
 /* ---------------- Types ---------------- */
 type QField = {
@@ -24,6 +32,7 @@ type Settings = {
   logoUrl?: string | null;
   links?: { label: string; url: string }[] | null;
   questionnaire?: QField[] | null;
+  taskPlaybook?: TaskPlaybook | null;
 };
 type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number };
 type CostRow = {
@@ -93,6 +102,97 @@ function firstOfMonthISO(d = new Date()) {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
 
+const STATUS_ORDER = [
+  "NEW_ENQUIRY",
+  "INFO_REQUESTED",
+  "DISQUALIFIED",
+  "REJECTED",
+  "READY_TO_QUOTE",
+  "QUOTE_SENT",
+  "WON",
+  "LOST",
+] as const;
+type StatusKey = (typeof STATUS_ORDER)[number];
+
+const STATUS_COPY: Record<StatusKey, { title: string; blurb: string; emoji: string }> = {
+  NEW_ENQUIRY: {
+    title: "New enquiry",
+    blurb: "First-response follow-ups to keep leads warm.",
+    emoji: "✨",
+  },
+  INFO_REQUESTED: {
+    title: "Info requested",
+    blurb: "Remind the team to chase questionnaires and replies.",
+    emoji: "📬",
+  },
+  DISQUALIFIED: {
+    title: "Disqualified",
+    blurb: "Archive or hand-off steps for non-fit enquiries.",
+    emoji: "🚫",
+  },
+  REJECTED: {
+    title: "Rejected",
+    blurb: "Closing notes or tidy-up admin when you decline work.",
+    emoji: "🙅",
+  },
+  READY_TO_QUOTE: {
+    title: "Ready to quote",
+    blurb: "Tasks that keep estimates moving swiftly.",
+    emoji: "📐",
+  },
+  QUOTE_SENT: {
+    title: "Quote sent",
+    blurb: "Automated nudges to follow up on proposals.",
+    emoji: "📨",
+  },
+  WON: {
+    title: "Won",
+    blurb: "Hand-off steps once a deal is secured.",
+    emoji: "🏆",
+  },
+  LOST: {
+    title: "Lost",
+    blurb: "Optional aftercare, feedback or tidy-up tasks.",
+    emoji: "🧹",
+  },
+};
+
+const MANUAL_COPY: Record<ManualTaskKey, { title: string; blurb: string; emoji: string }> = {
+  questionnaire_followup: {
+    title: "Questionnaire sent",
+    blurb: "Add tasks after sharing or receiving your discovery form.",
+    emoji: "🧾",
+  },
+  supplier_followup: {
+    title: "Supplier request",
+    blurb: "Remind yourself to chase supplier prices or replies.",
+    emoji: "🤝",
+  },
+  quote_draft_complete: {
+    title: "Draft estimate created",
+    blurb: "Ensure the draft gets polished and sent.",
+    emoji: "📝",
+  },
+};
+
+const PRIORITY_OPTIONS: Array<TaskRecipe["priority"]> = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+const RELATED_TYPE_OPTIONS: Array<TaskRecipe["relatedType"]> = [
+  "LEAD",
+  "PROJECT",
+  "QUOTE",
+  "EMAIL",
+  "QUESTIONNAIRE",
+  "WORKSHOP",
+  "OTHER",
+];
+
+function generateId(prefix: string) {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /* ============================================================
    Page
 ============================================================ */
@@ -117,6 +217,9 @@ export default function SettingsPage() {
   });
   const [savingCost, setSavingCost] = useState(false);
 
+  const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
+  const [savingPlaybook, setSavingPlaybook] = useState(false);
+
   useEffect(() => {
     (async () => {
       const ok = await ensureDemoAuth();
@@ -128,7 +231,9 @@ export default function SettingsPage() {
           links: (data.links as any) ?? [],
           questionnaire: (data.questionnaire as any) ?? defaultQuestions(),
           introHtml: data.introHtml ?? "",
+          taskPlaybook: normalizeTaskPlaybook((data as any).taskPlaybook),
         });
+        setPlaybook(normalizeTaskPlaybook((data as any).taskPlaybook));
         const inboxCfg = await apiFetch<InboxCfg>("/tenant/inbox");
         setInbox(inboxCfg);
         const costRows = await apiFetch<CostRow[]>("/tenant/costs");
@@ -147,13 +252,21 @@ export default function SettingsPage() {
     try {
       const updated = await apiFetch<Settings>("/tenant/settings", {
         method: "PUT",
-        json: { ...s, links: s.links ?? [], questionnaire: s.questionnaire ?? [] },
+        json: {
+          ...s,
+          taskPlaybook: playbook,
+          links: s.links ?? [],
+          questionnaire: s.questionnaire ?? [],
+        },
       });
+      const normalizedPlaybook = normalizeTaskPlaybook((updated as any).taskPlaybook ?? playbook);
       setS({
         ...updated,
         links: (updated.links as any) ?? [],
         questionnaire: (updated.questionnaire as any) ?? [],
+        taskPlaybook: normalizedPlaybook,
       });
+      setPlaybook(normalizedPlaybook);
       toast({ title: "Settings saved" });
     } catch (e: any) {
       toast({ title: "Save failed", description: e?.message || "unknown", variant: "destructive" });
@@ -170,8 +283,15 @@ export default function SettingsPage() {
         method: "POST",
         json: { website: s.website },
       });
-      const merged = { ...s, ...res.settings, questionnaire: s.questionnaire };
+      const normalizedPlaybook = normalizeTaskPlaybook((res.settings as any).taskPlaybook ?? playbook);
+      const merged = {
+        ...s,
+        ...res.settings,
+        questionnaire: s.questionnaire,
+        taskPlaybook: normalizedPlaybook,
+      };
       setS(merged);
+      setPlaybook(normalizedPlaybook);
       toast({ title: "Branding imported", description: "Logo, links and intro updated." });
     } catch (e: any) {
       toast({ title: "Couldn’t pull branding", description: e?.message || "Please check the website URL.", variant: "destructive" });
@@ -278,6 +398,92 @@ export default function SettingsPage() {
       await refreshCosts();
     } catch (e: any) {
       toast({ title: "Delete failed", description: e?.message || "Could not delete.", variant: "destructive" });
+    }
+  }
+
+  function updateStatusRecipe(status: StatusKey, index: number, patch: Partial<TaskRecipe>) {
+    setPlaybook((prev) => {
+      const nextStatus = { ...prev.status };
+      const items = [...(nextStatus[status] || [])];
+      if (!items[index]) return prev;
+      items[index] = { ...items[index], ...patch };
+      nextStatus[status] = items;
+      return { ...prev, status: nextStatus };
+    });
+  }
+
+  function addStatusRecipe(status: StatusKey) {
+    const fresh: TaskRecipe = {
+      id: generateId(`status-${status.toLowerCase()}`),
+      title: "New follow-up",
+      dueInDays: 1,
+      priority: "MEDIUM",
+      relatedType: "LEAD",
+      active: true,
+    };
+    setPlaybook((prev) => {
+      const nextStatus = { ...prev.status };
+      const items = [...(nextStatus[status] || [])];
+      items.push(fresh);
+      nextStatus[status] = items;
+      return { ...prev, status: nextStatus };
+    });
+  }
+
+  function removeStatusRecipe(status: StatusKey, index: number) {
+    setPlaybook((prev) => {
+      const nextStatus = { ...prev.status };
+      const items = [...(nextStatus[status] || [])];
+      items.splice(index, 1);
+      nextStatus[status] = items;
+      return { ...prev, status: nextStatus };
+    });
+  }
+
+  function updateManualRecipeField(key: ManualTaskKey, patch: Partial<TaskRecipe>) {
+    setPlaybook((prev) => {
+      const current = prev.manual[key] ?? {
+        id: generateId(`manual-${key}`),
+        title: "",
+        active: true,
+        priority: "MEDIUM",
+        relatedType: "LEAD",
+      };
+      return {
+        ...prev,
+        manual: {
+          ...prev.manual,
+          [key]: { ...current, ...patch },
+        },
+      };
+    });
+  }
+
+  function resetPlaybook() {
+    const defaults = normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK);
+    setPlaybook(defaults);
+    setS((prev) => (prev ? { ...prev, taskPlaybook: defaults } : prev));
+  }
+
+  async function saveTaskPlaybook() {
+    setSavingPlaybook(true);
+    try {
+      const updated = await apiFetch<Settings>("/tenant/settings", {
+        method: "PATCH",
+        json: { taskPlaybook: playbook },
+      });
+      const normalized = normalizeTaskPlaybook((updated as any).taskPlaybook ?? playbook);
+      setPlaybook(normalized);
+      setS((prev) => (prev ? { ...prev, taskPlaybook: normalized } : prev));
+      toast({ title: "Task playbook saved" });
+    } catch (e: any) {
+      toast({
+        title: "Couldn’t save playbook",
+        description: e?.message || "unknown",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPlaybook(false);
     }
   }
 
@@ -424,6 +630,226 @@ export default function SettingsPage() {
           </div>
         </Section>
       </div>
+
+      <Section
+        title="Task playbook"
+        description="Decide which tasks spring to life when statuses change or when you trigger key actions."
+        right={
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={resetPlaybook}>
+              Reset
+            </Button>
+            <Button size="sm" onClick={saveTaskPlaybook} disabled={savingPlaybook}>
+              {savingPlaybook ? "Saving…" : "Save playbook"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-6">
+          <div>
+            <div className="mb-3 text-sm font-semibold text-slate-600">Lead status journeys</div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {STATUS_ORDER.map((status) => {
+                const recipes = playbook.status[status] || [];
+                const copy = STATUS_COPY[status];
+                return (
+                  <div key={status} className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                          <span aria-hidden="true">{copy.emoji}</span>
+                          {copy.title}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">{copy.blurb}</p>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => addStatusRecipe(status)}>
+                        Add follow-up
+                      </Button>
+                    </div>
+                    <div className="space-y-3">
+                      {recipes.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-xs text-slate-500">
+                          No automatic tasks for this stage yet.
+                        </div>
+                      )}
+                      {recipes.map((recipe, idx) => (
+                        <div key={recipe.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm space-y-3">
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <Field label="Task title">
+                              <input
+                                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                                value={recipe.title}
+                                onChange={(e) => updateStatusRecipe(status, idx, { title: e.target.value })}
+                              />
+                            </Field>
+                            <Field label="Due after (days)" hint="0 = immediately">
+                              <input
+                                type="number"
+                                min={0}
+                                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                                value={recipe.dueInDays ?? ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const parsed = raw === "" ? undefined : Math.max(0, Number(raw));
+                                  updateStatusRecipe(status, idx, {
+                                    dueInDays: typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined,
+                                  });
+                                }}
+                              />
+                            </Field>
+                            <Field label="Priority">
+                              <select
+                                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                                value={recipe.priority ?? "MEDIUM"}
+                                onChange={(e) =>
+                                  updateStatusRecipe(status, idx, {
+                                    priority: e.target.value as TaskRecipe["priority"],
+                                  })
+                                }
+                              >
+                                {PRIORITY_OPTIONS.map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt.toLowerCase()}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <Field label="Related record">
+                              <select
+                                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                                value={recipe.relatedType ?? "LEAD"}
+                                onChange={(e) =>
+                                  updateStatusRecipe(status, idx, {
+                                    relatedType: e.target.value as TaskRecipe["relatedType"],
+                                  })
+                                }
+                              >
+                                {RELATED_TYPE_OPTIONS.map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt.toLowerCase()}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <label className="inline-flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={recipe.active !== false}
+                                onChange={(e) => updateStatusRecipe(status, idx, { active: e.target.checked })}
+                              />
+                              Active
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => removeStatusRecipe(status, idx)}
+                              className="font-semibold text-rose-500 hover:text-rose-600"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 text-sm font-semibold text-slate-600">Action triggers</div>
+            <div className="grid gap-4 md:grid-cols-3">
+              {MANUAL_TASK_KEYS.map((key) => {
+                const recipe = playbook.manual[key];
+                const copy = MANUAL_COPY[key];
+                return (
+                  <div key={key} className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                          <span aria-hidden="true">{copy.emoji}</span>
+                          {copy.title}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">{copy.blurb}</p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-xs text-slate-500">
+                        <input
+                          type="checkbox"
+                          checked={recipe?.active !== false}
+                          onChange={(e) => updateManualRecipeField(key, { active: e.target.checked })}
+                        />
+                        Active
+                      </label>
+                    </div>
+                    <div className="space-y-3">
+                      <Field label="Task title">
+                        <input
+                          className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                          value={recipe?.title ?? ""}
+                          onChange={(e) => updateManualRecipeField(key, { title: e.target.value })}
+                        />
+                      </Field>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Due after (days)" hint="0 = immediately">
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                            value={recipe?.dueInDays ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const parsed = raw === "" ? undefined : Math.max(0, Number(raw));
+                              updateManualRecipeField(key, {
+                                dueInDays: typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined,
+                              });
+                            }}
+                          />
+                        </Field>
+                        <Field label="Priority">
+                          <select
+                            className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                            value={recipe?.priority ?? "MEDIUM"}
+                            onChange={(e) =>
+                              updateManualRecipeField(key, {
+                                priority: e.target.value as TaskRecipe["priority"],
+                              })
+                            }
+                          >
+                            {PRIORITY_OPTIONS.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt.toLowerCase()}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </div>
+                      <Field label="Related record">
+                        <select
+                          className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                          value={recipe?.relatedType ?? "LEAD"}
+                          onChange={(e) =>
+                            updateManualRecipeField(key, {
+                              relatedType: e.target.value as TaskRecipe["relatedType"],
+                            })
+                          }
+                        >
+                          {RELATED_TYPE_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt.toLowerCase()}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </Section>
 
       {/* Questionnaire */}
       <Section title="Questionnaire" description="Pick the fields you want to ask on the public form." right={<Button size="sm" onClick={saveBrand}>Save</Button>}>
