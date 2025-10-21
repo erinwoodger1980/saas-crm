@@ -4,6 +4,7 @@ import "./globals.css";
 import { ReactNode, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import AppShell from "../components/AppShell";
+import FeedbackWidget from "@/components/FeedbackWidget";
 import { setJwt } from "@/lib/api";
 
 const API_BASE =
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
         <DevAuth />
         {shouldWrapWithShell ? <AppShell>{children}</AppShell> : children}
+        <FeedbackWidget />
       </body>
     </html>
   );
