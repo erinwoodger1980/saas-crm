@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 import { env } from "../env";
 import OpenAI from "openai";
+import { load } from "cheerio";
 
 const router = Router();
 
@@ -64,6 +65,43 @@ function decodeMimeStr(input: string) {
     return b.toString("utf8");
   } catch {
     return input;
+  }
+}
+
+function normalizePlainText(input: string) {
+  if (!input) return "";
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[\t ]{2,}/g, " ")
+    .trim();
+}
+
+function htmlToPlainText(html: string) {
+  if (!html) return "";
+  try {
+    const $ = load(html);
+    $("br").replaceWith("\n");
+    $("p").each((_, el) => {
+      const $el = $(el);
+      const text = $el.text();
+      if (text && !/\n$/.test(text)) {
+        $el.append("\n\n");
+      }
+    });
+    $("li").each((_, el) => {
+      const $el = $(el);
+      $el.prepend("- ");
+      $el.append("\n");
+    });
+    const text = $.root().text();
+    return normalizePlainText(text);
+  } catch {
+    return normalizePlainText(html.replace(/<[^>]+>/g, " "));
   }
 }
 
@@ -158,8 +196,11 @@ function extractBodyAndAttachments(msg: any): {
 
   walk(msg.payload);
   if (!bodyText && msg.payload?.body?.data) bodyText = decodeMimeStr(msg.payload.body.data);
+  if (!bodyText && bodyHtml) bodyText = htmlToPlainText(bodyHtml);
+  bodyText = normalizePlainText(bodyText);
+  if (!bodyText && bodyHtml) bodyText = htmlToPlainText(bodyHtml);
 
-  return { bodyText: bodyText.trim(), bodyHtml, attachments };
+  return { bodyText, bodyHtml, attachments };
 }
 
 async function getMessagePlainText(accessToken: string, id: string) {
@@ -844,6 +885,7 @@ router.post("/import", async (req, res) => {
 
       const { bodyText } = extractBodyAndAttachments(msg);
       const snippet = msg.snippet || "";
+      const bodyForAnalysis = bodyText || snippet || "";
       const threadId = msg.threadId || null;
 
       // Upsert EmailThread
@@ -875,10 +917,10 @@ router.post("/import", async (req, res) => {
       } | null = null;
 
       if (!leadId) {
-        const heur = basicHeuristics(bodyText || "");
+        const heur = basicHeuristics(bodyForAnalysis);
         let ai: any = null;
         try {
-          ai = await extractLeadWithOpenAI(subject, bodyText || "", { snippet, from: fromHdr });
+          ai = await extractLeadWithOpenAI(subject, bodyForAnalysis, { snippet, from: fromHdr });
         } catch (e: any) {
           console.error("[gmail] openai classification failed:", e?.message || e);
         }
@@ -894,14 +936,14 @@ router.post("/import", async (req, res) => {
             ? Math.max(0, Math.min(1, Number(ai.confidence)))
             : null;
         const aiReason = typeof ai?.reason === "string" ? ai.reason : "";
-        const noise = looksLikeNoise(subject || "", bodyText || "");
+        const noise = looksLikeNoise(subject || "", bodyForAnalysis);
 
         let decidedBy: "openai" | "heuristics" = ai ? "openai" : "heuristics";
         let isLeadCandidate = false;
         let reason = aiReason;
 
         if (aiIsLead === true && !noise) {
-          if ((aiConfidence ?? 0) >= 0.45 || heuristicsSuggestLead(subject || "", bodyText || "", heur)) {
+          if ((aiConfidence ?? 0) >= 0.45 || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur)) {
             isLeadCandidate = true;
             reason = aiReason || "OpenAI classified this as a lead";
           } else if (!reason) {
@@ -915,7 +957,7 @@ router.post("/import", async (req, res) => {
         }
 
         if (aiIsLead === null || (aiConfidence ?? 0) < 0.45) {
-          if (heuristicsSuggestLead(subject || "", bodyText || "", heur) && !noise) {
+          if (heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) && !noise) {
             isLeadCandidate = true;
             const heurReason = "Heuristics detected enquiry keywords and contact details";
             reason = reason ? `${reason}; ${heurReason}` : heurReason;
@@ -999,7 +1041,7 @@ router.post("/import", async (req, res) => {
             subject,
             snippet,
             from: fromHdr,
-            body: bodyText || "",
+            body: bodyForAnalysis,
             ai,
             heuristics: heur,
             decidedBy,
@@ -1016,7 +1058,7 @@ router.post("/import", async (req, res) => {
             subject,
             snippet,
             from: fromHdr,
-            body: bodyText || "",
+            body: bodyForAnalysis,
             ai,
             heuristics: heur,
             decidedBy,
