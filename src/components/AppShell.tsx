@@ -49,12 +49,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="flex items-center px-5 py-4">
           <Link href="/" className="flex items-center gap-3" aria-label="Go to dashboard">
             <Image
-              src="/logo-full.png"
+              src="/joinery-ai-logo.png"
               alt="Joinery AI"
-              width={148}
-              height={32}
+              width={40}
+              height={40}
+              className="h-10 w-10 rounded-full"
               priority
             />
+            <span className="text-base font-semibold text-slate-900">Joinery AI</span>
           </Link>
         </div>
         <Separator />
