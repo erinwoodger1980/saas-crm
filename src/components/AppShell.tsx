@@ -9,9 +9,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart } from "lucide-react";
 import { useCurrentUser } from "@/lib/use-current-user";
+import { clearJwt } from "@/lib/api";
 
 const nav = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Mail },
   { href: "/opportunities", label: "Opportunities", icon: RadioTower },
   { href: "/workshop", label: "Workshop", icon: Wrench },
@@ -47,7 +48,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       {/* Sidebar */}
       <aside className="bg-white border-r">
         <div className="flex items-center px-5 py-4">
-          <Link href="/" className="flex items-center gap-3" aria-label="Go to dashboard">
+          <Link href="/dashboard" className="flex items-center gap-3" aria-label="Go to dashboard">
             <Image
               src="/joinery-ai-logo.png"
               alt="Joinery AI"
@@ -103,7 +104,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { localStorage.removeItem("jwt"); location.href="/login"; }}>
+              <DropdownMenuItem
+                onClick={() => {
+                  clearJwt();
+                  location.href = "/login";
+                }}
+              >
                 Log out
               </DropdownMenuItem>
             </DropdownMenuContent>

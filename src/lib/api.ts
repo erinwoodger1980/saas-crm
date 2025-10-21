@@ -1,4 +1,4 @@
-// web/src/lib/api.ts
+// API utilities for browser-side data fetching and auth storage
 
 /** Base API URL (from env or default localhost) */
 const API_BASE =
@@ -6,6 +6,8 @@ const API_BASE =
     (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL) &&
     (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL)!.replace(/\/$/, "")) ||
   "http://localhost:4000";
+
+export const AUTH_COOKIE_NAME = "jid";
 
 /** Read/write JWT in localStorage (browser only) */
 export function getJwt(): string | null {
@@ -25,15 +27,26 @@ export function setJwt(token: string) {
       ? "; Secure"
       : "";
   // 30 days, SameSite=Lax keeps it on normal navigations
-  document.cookie = `jwt=${encodeURIComponent(
-    token
-  )}; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
+  const cookieValue = encodeURIComponent(token);
+  const commonAttributes = `Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
+  document.cookie = `${AUTH_COOKIE_NAME}=${cookieValue}; ${commonAttributes}`;
+  // Maintain legacy cookie for any downstream services still expecting "jwt"
+  document.cookie = `jwt=${cookieValue}; ${commonAttributes}`;
+}
+
+export function clearJwt() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem("jwt");
+  } catch {}
+  document.cookie = `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0`;
+  document.cookie = "jwt=; Path=/; Max-Age=0";
 }
 
 /** Generic fetch wrapper that injects JWT, includes cookies, and handles JSON */
 export async function apiFetch<T = any>(
   path: string,
-  init: RequestInit & { body?: any } = {}
+  init: Omit<RequestInit, "body"> & { body?: any } = {}
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
   const token = getJwt();

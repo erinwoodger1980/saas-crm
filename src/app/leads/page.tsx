@@ -458,16 +458,18 @@ export default function LeadsPage() {
       >
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="inline-flex size-8 items-center justify-center rounded-full bg-slate-100 text-sm font-medium">
-                {avatarText(form?.contactName ?? previewLead?.contactName)}
-              </span>
-              <input
-                className="w-full max-w-full rounded-md border p-2 text-base outline-none focus:ring-2"
-                placeholder="Name"
-                value={form?.contactName ?? ""}
-                onChange={(e) => setForm((f) => (f ? { ...f, contactName: e.target.value } : f))}
-              />
+            <DialogTitle>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex size-8 items-center justify-center rounded-full bg-slate-100 text-sm font-medium">
+                  {avatarText(form?.contactName ?? previewLead?.contactName)}
+                </span>
+                <input
+                  className="w-full max-w-full rounded-md border p-2 text-base outline-none focus:ring-2"
+                  placeholder="Name"
+                  value={form?.contactName ?? ""}
+                  onChange={(e) => setForm((f) => (f ? { ...f, contactName: e.target.value } : f))}
+                />
+              </div>
             </DialogTitle>
             <DialogDescription>Full details for this lead.</DialogDescription>
           </DialogHeader>
@@ -543,38 +545,40 @@ export default function LeadsPage() {
             )}
           </div>
 
-          <DialogFooter className="mt-2 gap-2">
-            {selectedId && (
-              <>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    const target =
-                      details ?? previewLead ?? (grouped.NEW.find((l) => l.id === selectedId) as Lead | undefined);
-                    if (target) sendFeedback(target, true);
-                  }}
-                >
-                  ✓ Confirm
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    const target =
-                      details ?? previewLead ?? (grouped.NEW.find((l) => l.id === selectedId) as Lead | undefined);
-                    if (target) sendFeedback(target, false);
-                  }}
-                >
-                  ✕ Reject
-                </Button>
-              </>
-            )}
-            <div className="flex-1" />
-            <Button onClick={() => setOpen(false)} className="btn">
-              Close
-            </Button>
-            <Button disabled={saving || !form} onClick={saveEdits} className="btn btn-primary">
-              {saving ? "Saving…" : "Save"}
-            </Button>
+          <DialogFooter>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {selectedId && (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const target =
+                        details ?? previewLead ?? (grouped.NEW.find((l) => l.id === selectedId) as Lead | undefined);
+                      if (target) sendFeedback(target, true);
+                    }}
+                  >
+                    ✓ Confirm
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      const target =
+                        details ?? previewLead ?? (grouped.NEW.find((l) => l.id === selectedId) as Lead | undefined);
+                      if (target) sendFeedback(target, false);
+                    }}
+                  >
+                    ✕ Reject
+                  </Button>
+                </>
+              )}
+              <div className="flex-1" />
+              <Button onClick={() => setOpen(false)} className="btn">
+                Close
+              </Button>
+              <Button disabled={saving || !form} onClick={saveEdits} className="btn btn-primary">
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

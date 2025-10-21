@@ -10,23 +10,25 @@ const PUBLIC_EXACT = new Set([
   "/signup",
   "/forgot-password",
   "/reset-password",
-  "/policy/terms",
-  "/policy/privacy",
+  "/thank-you",
   "/favicon.ico",
   "/robots.txt",
   "/sitemap.xml",
   "/manifest.json",
 ]);
 
-const PUBLIC_PREFIXES = ["/_next", "/api", "/policy", "/assets", "/public"];
+const PUBLIC_PREFIXES = ["/_next", "/api", "/policy", "/public", "/assets"];
 
 const PROTECTED_PREFIXES = [
+  "/app",
   "/dashboard",
   "/leads",
   "/opportunities",
-  "/workshop",
-  "/reports",
-  "/account",
+  "/tasks",
+  "/settings",
+  "/billing",
+  "/q",
+  "/setup",
 ];
 
 function isPublicPath(pathname: string) {
