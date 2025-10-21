@@ -221,13 +221,20 @@ async function ensureDevData() {
         name: "Wealden Joinery",
         role: "owner",
         passwordHash,
+        isEarlyAdopter: true,
       },
     });
-  } else if (!user.name || user.name === "Demo User") {
-    user = await prisma.user.update({
-      where: { id: user.id },
-      data: { name: "Wealden Joinery" },
-    });
+  } else {
+    const nextName = !user.name || user.name === "Demo User" ? "Wealden Joinery" : user.name;
+    if (user.name !== nextName || !user.isEarlyAdopter) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          name: nextName,
+          isEarlyAdopter: true,
+        },
+      });
+    }
   }
 
   return { tenant, user };
