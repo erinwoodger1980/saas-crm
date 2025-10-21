@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { gmailSend, getAccessTokenForTenant, gmailFetchAttachment } from "../services/gmail";
-import { env } from "../env";
+import { UiStatus, loadTaskPlaybook, ensureTaskFromRecipe, TaskPlaybook } from "../task-playbook";
 
 const router = Router();
 
@@ -26,17 +26,6 @@ function getAuth(req: any) {
     email: (req.auth?.email as string | undefined) ?? headerString(req, "x-user-email"),
   };
 }
-
-// UI statuses used by the web
-type UiStatus =
-  | "NEW_ENQUIRY"
-  | "INFO_REQUESTED"
-  | "DISQUALIFIED"
-  | "REJECTED"
-  | "READY_TO_QUOTE"
-  | "QUOTE_SENT"
-  | "WON"
-  | "LOST";
 
 // Stored enum values (supports both legacy + new names)
 type DbStatus =
@@ -100,13 +89,6 @@ function dbToUi(db: string): UiStatus {
   }
 }
 
-function isTaskTableMissing(err: any) {
-  if (!err) return false;
-  if (err.code === "P2021") return true;
-  const msg = typeof err.message === "string" ? err.message : "";
-  return msg.includes("Task") && msg.includes("does not exist");
-}
-
 function monthStartUTC(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0));
 }
@@ -114,72 +96,6 @@ function monthStartUTC(d: Date) {
 /* ------------------------------------------------------------------ */
 /* Task helpers                                                        */
 /* ------------------------------------------------------------------ */
-
-type RelatedType =
-  | "LEAD"
-  | "PROJECT"
-  | "QUOTE"
-  | "EMAIL"
-  | "QUESTIONNAIRE"
-  | "WORKSHOP"
-  | "OTHER";
-
-/**
- * Idempotently ensure a task exists (used for proactive creation on status transitions).
- * We de-dupe by (tenantId, relatedType, relatedId, meta.key) if provided, otherwise by title+related.
- */
-async function ensureTask(params: {
-  tenantId: string;
-  title: string;
-  relatedType: RelatedType;
-  relatedId: string;
-  priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-  dueInDays?: number;
-  metaKey?: string; // stable key for idempotency
-}) {
-  const { tenantId, title, relatedType, relatedId, priority = "MEDIUM", dueInDays = 0, metaKey } =
-    params;
-
-  const where: any = {
-    tenantId,
-    relatedType: relatedType as any,
-    relatedId,
-  };
-
-  if (metaKey) {
-    // Prisma JSON path filter
-    where.meta = { path: ["key"], equals: metaKey };
-  } else {
-    where.title = title;
-  }
-
-  try {
-    const existing = await prisma.task.findFirst({ where });
-    if (existing) return existing;
-
-    const dueAt =
-      dueInDays > 0 ? new Date(Date.now() + dueInDays * 24 * 3600 * 1000) : null;
-
-    return await prisma.task.create({
-      data: {
-        tenantId,
-        title,
-        relatedType: relatedType as any,
-        relatedId,
-        status: "OPEN" as any,
-        priority: priority as any,
-        dueAt: dueAt || undefined,
-        meta: metaKey ? ({ key: metaKey } as any) : ({} as any),
-      },
-    });
-  } catch (err) {
-    if (isTaskTableMissing(err)) {
-      console.warn(`[leads] Task table missing – skipping ensureTask for "${title}"`);
-      return null;
-    }
-    throw err;
-  }
-}
 
 /**
  * Create follow-up tasks when status transitions happen.
@@ -190,46 +106,21 @@ async function handleStatusTransition(opts: {
   leadId: string;
   prevUi: UiStatus | null;
   nextUi: UiStatus;
+  actorId?: string | null;
+  playbook?: TaskPlaybook;
 }) {
-  const { tenantId, leadId, prevUi, nextUi } = opts;
+  const { tenantId, leadId, nextUi } = opts;
+  const playbook = opts.playbook ?? (await loadTaskPlaybook(tenantId));
+  const recipes = playbook.status[nextUi] || [];
 
-  // NEW_ENQUIRY -> create "Review enquiry"
-  if (!prevUi && nextUi === "NEW_ENQUIRY") {
-    await ensureTask({
+  for (const recipe of recipes) {
+    await ensureTaskFromRecipe({
       tenantId,
-      title: "Review enquiry",
-      relatedType: "LEAD",
+      recipe,
       relatedId: leadId,
-      priority: "MEDIUM",
-      dueInDays: 1,
-      metaKey: `lead:${leadId}:review-enquiry`,
-    });
-    return;
-  }
-
-  // Any -> READY_TO_QUOTE -> create "Create quote"
-  if (nextUi === "READY_TO_QUOTE" && prevUi !== "READY_TO_QUOTE") {
-    await ensureTask({
-      tenantId,
-      title: "Create quote",
-      relatedType: "LEAD",
-      relatedId: leadId,
-      priority: "HIGH",
-      dueInDays: 1,
-      metaKey: `lead:${leadId}:create-quote`,
-    });
-  }
-
-  // Any -> QUOTE_SENT -> create "Follow up on quote"
-  if (nextUi === "QUOTE_SENT" && prevUi !== "QUOTE_SENT") {
-    await ensureTask({
-      tenantId,
-      title: "Follow up on quote",
-      relatedType: "LEAD",
-      relatedId: leadId,
-      priority: "MEDIUM",
-      dueInDays: 3,
-      metaKey: `lead:${leadId}:followup-quote`,
+      relatedType: recipe.relatedType ?? "LEAD",
+      uniqueKey: `${recipe.id}:${leadId}`,
+      actorId: opts.actorId ?? null,
     });
   }
 }
@@ -331,6 +222,8 @@ router.post("/", async (req, res) => {
 
   const uiStatus: UiStatus = status || "NEW_ENQUIRY";
 
+  const playbook = await loadTaskPlaybook(tenantId);
+
   const lead = await prisma.lead.create({
     data: {
       tenantId,
@@ -344,7 +237,7 @@ router.post("/", async (req, res) => {
   });
 
   // Proactive first task
-  await handleStatusTransition({ tenantId, leadId: lead.id, prevUi: null, nextUi: uiStatus });
+  await handleStatusTransition({ tenantId, leadId: lead.id, prevUi: null, nextUi: uiStatus, actorId: userId, playbook });
 
   res.json(lead);
 });
@@ -392,7 +285,9 @@ router.patch("/:id", async (req, res) => {
   const updated = await prisma.lead.update({ where: { id }, data });
 
   if (nextUi !== prevUi) {
-    await handleStatusTransition({ tenantId, leadId: id, prevUi, nextUi });
+    const actorId = (req.auth?.userId as string | undefined) ?? null;
+    const playbook = await loadTaskPlaybook(tenantId);
+    await handleStatusTransition({ tenantId, leadId: id, prevUi, nextUi, actorId, playbook });
   }
 
   // Adjust source conversions when toggling WON on/off (optional; keep if you used this before)
@@ -526,15 +421,15 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
       },
     });
 
-    // Proactive task: Review questionnaire
-    await ensureTask({
+    const playbook = await loadTaskPlaybook(tenantId);
+    const recipe = playbook.manual?.questionnaire_followup ?? null;
+
+    await ensureTaskFromRecipe({
       tenantId,
-      title: "Review questionnaire",
-      relatedType: "QUESTIONNAIRE",
+      recipe,
       relatedId: id,
-      priority: "MEDIUM",
-      dueInDays: 0,
-      metaKey: `lead:${id}:review-questionnaire`,
+      relatedType: recipe?.relatedType ?? "QUESTIONNAIRE",
+      uniqueKey: `manual:questionnaire_followup:${id}`,
     });
 
     return res.json({ ok: true });
@@ -700,14 +595,15 @@ router.post("/seed-demo", async (req, res) => {
     },
   });
 
-  // Ensure “Review enquiry”
-  await ensureTask({
+  const playbook = await loadTaskPlaybook(tenantId);
+  const nextUi: UiStatus = "NEW_ENQUIRY";
+  await handleStatusTransition({
     tenantId,
-    title: "Review enquiry",
-    relatedType: "LEAD",
-    relatedId: lead.id,
-    dueInDays: 0,
-    metaKey: `lead:${lead.id}:review-enquiry`,
+    leadId: lead.id,
+    prevUi: null,
+    nextUi,
+    actorId: userId,
+    playbook,
   });
 
   res.json({ ok: true, lead });
