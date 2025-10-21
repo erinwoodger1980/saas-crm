@@ -1,7 +1,7 @@
 // web/src/app/leads/LeadModal.tsx
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import {
@@ -15,7 +15,7 @@ import {
   DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
   DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
 } from "@/lib/constants";
-import DeclineEnquiryButton from "./DeclineEnquiryButton";
+import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -56,6 +56,21 @@ type QuestionnaireField = {
   required?: boolean;
   type?: string;
   options?: string[];
+  askInQuestionnaire?: boolean;
+  showOnLead?: boolean;
+  sortOrder?: number;
+};
+
+type NormalizedQuestionnaireField = {
+  id: string;
+  key: string;
+  label: string;
+  required: boolean;
+  type: string;
+  options: string[];
+  askInQuestionnaire: boolean;
+  showOnLead: boolean;
+  sortOrder: number;
 };
 
 type TenantSettings = {
@@ -136,31 +151,59 @@ function avatarText(name?: string | null) {
   return (p[0][0] + (p[1]?.[0] || p[0][1] || "")).toUpperCase();
 }
 
+const FIELD_TYPES = new Set(["text", "textarea", "select", "number", "date", "source"]);
+
 function normalizeQuestionnaireFields(
   config: TenantSettings["questionnaire"]
-): QuestionnaireField[] {
+): NormalizedQuestionnaireField[] {
   if (!config) return [];
   const list = Array.isArray(config) ? config : config?.questions ?? [];
   return list
-    .map((raw) => {
+    .map((raw, idx) => {
       if (!raw || typeof raw !== "object") return null;
       const key = typeof raw.key === "string" && raw.key.trim() ? raw.key.trim() : undefined;
-      const id = typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : undefined;
+      if (!key) return null;
+      const id = typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : key;
       const label =
         (typeof raw.label === "string" && raw.label.trim()) ||
         key ||
         id ||
-        undefined;
+        "Field";
+      const typeRaw = typeof raw.type === "string" && raw.type.trim() ? raw.type.trim() : "text";
+      const type = FIELD_TYPES.has(typeRaw) ? typeRaw : "text";
+      const required = Boolean((raw as any).required);
+      const askInQuestionnaire =
+        (raw as any).askInQuestionnaire !== undefined
+          ? Boolean((raw as any).askInQuestionnaire)
+          : true;
+      const showOnLead =
+        (raw as any).showOnLead !== undefined
+          ? Boolean((raw as any).showOnLead)
+          : Boolean((raw as any).showInternally || (raw as any).workspace);
+      const options =
+        type === "select" && Array.isArray(raw.options)
+          ? raw.options
+              .map((opt) => (typeof opt === "string" ? opt.trim() : ""))
+              .filter(Boolean)
+          : [];
+      const sortOrder =
+        typeof (raw as any).sortOrder === "number" && Number.isFinite((raw as any).sortOrder)
+          ? (raw as any).sortOrder
+          : idx;
       return {
-        id: id ?? key,
-        key: key ?? id,
+        id,
+        key,
         label,
-        required: Boolean((raw as any).required),
-        type: typeof raw.type === "string" ? raw.type : undefined,
-        options: Array.isArray(raw.options) ? raw.options : undefined,
-      } as QuestionnaireField;
+        required,
+        type,
+        options,
+        askInQuestionnaire,
+        showOnLead,
+        sortOrder,
+      } as NormalizedQuestionnaireField;
     })
-    .filter((item): item is QuestionnaireField => Boolean(item?.key));
+    .filter((item): item is NormalizedQuestionnaireField => Boolean(item?.key))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 function formatAnswer(value: any): string | null {
@@ -255,6 +298,7 @@ export default function LeadModal({
   const [taskAssignToMe, setTaskAssignToMe] = useState(true);
   const [taskError, setTaskError] = useState<string | null>(null);
   const [taskSaving, setTaskSaving] = useState(false);
+  const [customDraft, setCustomDraft] = useState<Record<string, string>>({});
 
   const lastSavedServerStatusRef = useRef<string | null>(null);
 
@@ -280,6 +324,22 @@ export default function LeadModal({
     setTaskAssignToMe(true);
     setTaskError(null);
     setTaskSaving(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const body = document.body;
+    const prevOverflow = body.style.overflow;
+    const prevPadding = body.style.paddingRight;
+    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
+    body.style.overflow = "hidden";
+    if (scrollBarWidth > 0) {
+      body.style.paddingRight = `${scrollBarWidth}px`;
+    }
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPadding;
+    };
   }, [open]);
 
   // keep preview visible immediately
@@ -492,7 +552,20 @@ export default function LeadModal({
           next.description = patch.description ?? null;
         }
         if (Object.prototype.hasOwnProperty.call(patch, "custom")) {
-          next.custom = patch.custom ?? null;
+          const customPatch = patch.custom;
+          if (customPatch && typeof customPatch === "object" && !Array.isArray(customPatch)) {
+            const prev =
+              current.custom && typeof current.custom === "object"
+                ? { ...(current.custom as Record<string, any>) }
+                : {};
+            const merged = { ...prev };
+            Object.entries(customPatch).forEach(([k, v]) => {
+              merged[k] = v ?? null;
+            });
+            next.custom = merged;
+          } else {
+            next.custom = customPatch ?? null;
+          }
         }
         return next;
       });
@@ -501,6 +574,41 @@ export default function LeadModal({
       console.error("patch failed", e?.message || e);
       alert("Failed to save changes");
     }
+  }
+
+  async function saveCustomField(field: NormalizedQuestionnaireField, rawValue: string) {
+    if (!field.key) return;
+    let value: any = rawValue;
+    if (field.type === "number") {
+      const trimmed = rawValue.trim();
+      value = trimmed === "" ? null : Number(trimmed);
+      if (value != null && Number.isNaN(value)) {
+        value = null;
+      }
+    } else if (field.type === "date") {
+      value = rawValue ? rawValue : null;
+    } else {
+      const trimmed = rawValue.trim();
+      value = trimmed ? trimmed : null;
+    }
+
+    const normalizeForCompare = (val: any) => {
+      if (val === undefined || val === null || val === "") return null;
+      if (field.type === "number") {
+        const num = Number(val);
+        return Number.isNaN(num) ? null : num;
+      }
+      if (field.type === "date") {
+        return String(val).slice(0, 10);
+      }
+      return String(val);
+    };
+
+    const currentNormalized = normalizeForCompare(customData?.[field.key]);
+    const nextNormalized = normalizeForCompare(value);
+    if (currentNormalized === nextNormalized) return;
+
+    await savePatch({ custom: { [field.key]: value } });
   }
 
   async function reloadTasks() {
@@ -757,18 +865,56 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     () => normalizeQuestionnaireFields(settings?.questionnaire ?? null),
     [settings?.questionnaire]
   );
+  const workspaceFields = useMemo(
+    () => questionnaireFields.filter((field) => field.showOnLead),
+    [questionnaireFields]
+  );
   const customData = useMemo(
     () => (lead?.custom && typeof lead.custom === "object" ? (lead.custom as Record<string, any>) : {}),
     [lead?.custom]
   );
+  useEffect(() => {
+    if (!lead?.id) {
+      setCustomDraft({});
+      return;
+    }
+    const next: Record<string, string> = {};
+    workspaceFields.forEach((field) => {
+      const key = field.key;
+      if (!key) return;
+      const raw = customData?.[key];
+      if (raw === undefined || raw === null) {
+        next[key] = "";
+        return;
+      }
+      if (field.type === "date") {
+        const iso =
+          typeof raw === "string"
+            ? raw
+            : raw instanceof Date
+            ? raw.toISOString()
+            : String(raw ?? "");
+        next[key] = iso.slice(0, 10);
+        return;
+      }
+      next[key] =
+        typeof raw === "string"
+          ? raw
+          : Array.isArray(raw)
+          ? raw.map((item) => String(item ?? "")).join(", ")
+          : String(raw ?? "");
+    });
+    setCustomDraft(next);
+  }, [lead?.id, customData, workspaceFields]);
   const questionnaireResponses = useMemo(() => {
-    const responses: Array<{ field: QuestionnaireField; value: string | null }> = [];
+    const responses: Array<{ field: NormalizedQuestionnaireField; value: string | null }> = [];
     const seen = new Set<string>();
 
     questionnaireFields.forEach((field) => {
-      const key = field.key ?? field.id ?? "";
+      const key = field.key;
       if (!key) return;
       seen.add(key);
+      if (!field.askInQuestionnaire) return;
       responses.push({ field, value: formatAnswer(customData?.[key]) });
     });
 
@@ -813,7 +959,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             key,
             label: humanizeKey(key),
             required: false,
-            type: undefined,
+            type: "text",
+            options: [],
+            askInQuestionnaire: true,
+            showOnLead: false,
+            sortOrder: Number.MAX_SAFE_INTEGER,
           },
           value,
         });
@@ -854,7 +1004,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       aria-modal="true"
       onClick={(e) => e.target === e.currentTarget && onOpenChange(false)}
     >
-      <div className="relative w-[min(1000px,92vw)] max-h-[88vh] overflow-hidden rounded-3xl border border-white/30 bg-white/85 shadow-[0_32px_70px_-35px_rgba(30,64,175,0.45)] backdrop-blur-xl">
+        <div className="relative flex h-[min(88vh,calc(100vh-3rem))] w-[min(1000px,92vw)] max-h-[88vh] flex-col overflow-hidden rounded-3xl border border-white/30 bg-white/85 shadow-[0_32px_70px_-35px_rgba(30,64,175,0.45)] backdrop-blur-xl">
         <div aria-hidden="true" className="pointer-events-none absolute -top-16 -left-10 h-52 w-52 rounded-full bg-sky-200/60 blur-3xl" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-rose-200/60 blur-3xl" />
         {/* Header */}
@@ -943,9 +1093,10 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         </div>
 
         {/* Body */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
           {/* Left – Details */}
-          <div className="md:col-span-2 border-r border-sky-100/60 min-h-[60vh] overflow-auto bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 p-4 sm:p-6 space-y-4">
+          <div className="md:col-span-2 border-r border-sky-100/60 min-h-[60vh] bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 p-4 sm:p-6 space-y-4">
             <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <span aria-hidden="true">✨</span>
@@ -995,6 +1146,132 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 />
               </label>
             </section>
+
+            {workspaceFields.length > 0 && (
+              <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <span aria-hidden="true">🗂️</span>
+                  Lead workspace fields
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {workspaceFields.map((field) => {
+                    const key = field.key;
+                    if (!key) return null;
+                    const value = customDraft[key] ?? "";
+                    const label = field.label || key;
+                    const baseClasses =
+                      "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200";
+
+                    if (field.type === "source") {
+                      return (
+                        <div key={key} className="space-y-1">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+                          <LeadSourcePicker
+                            leadId={lead.id}
+                            value={typeof customData?.[key] === "string" ? customData[key] : null}
+                            onSaved={(next) => {
+                              const nextStr = next ?? "";
+                              setCustomDraft((prev) => ({ ...prev, [key]: nextStr }));
+                              setLead((current) => {
+                                if (!current) return current;
+                                const prevCustom =
+                                  current.custom && typeof current.custom === "object"
+                                    ? { ...(current.custom as Record<string, any>) }
+                                    : {};
+                                prevCustom[key] = next ?? null;
+                                return { ...current, custom: prevCustom };
+                              });
+                            }}
+                          />
+                        </div>
+                      );
+                    }
+
+                    if (field.type === "textarea") {
+                      return (
+                        <label key={key} className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            {label}
+                            {field.required ? <span className="text-rose-500"> *</span> : null}
+                          </span>
+                          <textarea
+                            className={`${baseClasses} min-h-28`}
+                            value={value}
+                            onChange={(e) => setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                            onBlur={(e) => saveCustomField(field, e.target.value)}
+                          />
+                        </label>
+                      );
+                    }
+
+                    if (field.type === "select") {
+                      return (
+                        <label key={key} className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            {label}
+                            {field.required ? <span className="text-rose-500"> *</span> : null}
+                          </span>
+                          <select
+                            className={baseClasses}
+                            value={value}
+                            onChange={(e) => {
+                              const nextVal = e.target.value;
+                              setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
+                              saveCustomField(field, nextVal);
+                            }}
+                          >
+                            <option value="">Select…</option>
+                            {field.options.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      );
+                    }
+
+                    if (field.type === "date") {
+                      return (
+                        <label key={key} className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            {label}
+                            {field.required ? <span className="text-rose-500"> *</span> : null}
+                          </span>
+                          <input
+                            type="date"
+                            className={baseClasses}
+                            value={value}
+                            onChange={(e) => {
+                              const nextVal = e.target.value;
+                              setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
+                              saveCustomField(field, nextVal);
+                            }}
+                          />
+                        </label>
+                      );
+                    }
+
+                    const inputType = field.type === "number" ? "number" : "text";
+                    return (
+                      <label key={key} className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          {label}
+                          {field.required ? <span className="text-rose-500"> *</span> : null}
+                        </span>
+                        <input
+                          type={inputType}
+                          className={baseClasses}
+                          value={value}
+                          onChange={(e) => setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                          onBlur={(e) => saveCustomField(field, e.target.value)}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {(emailSubject || emailSnippet || fromEmail) && (
               <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
@@ -1309,6 +1586,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
               Tip: Completing a lead action will sprinkle pixie dust on the matching task automatically.
             </div>
           </aside>
+        </div>
         </div>
       </div>
     </div>

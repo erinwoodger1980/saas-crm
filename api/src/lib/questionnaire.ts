@@ -1,32 +1,6 @@
 import { randomUUID } from "crypto";
 
-export type QuestionnaireFieldType =
-  | "text"
-  | "textarea"
-  | "select"
-  | "number"
-  | "email"
-  | "phone"
-  | "checkbox"
-  | "multi_select"
-  | string;
-
-export type QuestionnaireOptionInput =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | { value?: unknown; label?: unknown };
-
-export type QuestionnaireFieldInput = {
-  id?: unknown;
-  key?: unknown;
-  label?: unknown;
-  type?: unknown;
-  required?: unknown;
-  options?: unknown;
-};
+export type QuestionnaireFieldType = "text" | "textarea" | "select" | "number" | "date" | "source";
 
 export type QuestionnaireField = {
   id: string;
@@ -34,111 +8,105 @@ export type QuestionnaireField = {
   label: string;
   type: QuestionnaireFieldType;
   required: boolean;
-  options?: string[];
+  options: string[];
+  askInQuestionnaire: boolean;
+  showOnLead: boolean;
+  sortOrder: number;
 };
 
-function normalizeOption(option: QuestionnaireOptionInput, index: number): string {
-  if (typeof option === "string") {
-    return option.trim();
-  }
+const FIELD_TYPES: QuestionnaireFieldType[] = ["text", "textarea", "select", "number", "date", "source"];
 
-  if (typeof option === "number" || typeof option === "boolean") {
-    return option.toString();
-  }
-
-  if (option && typeof option === "object") {
-    const valueRaw = (option as { value?: unknown }).value;
-    const labelRaw = (option as { label?: unknown }).label;
-    const value = typeof valueRaw === "string" ? valueRaw.trim() : undefined;
-    const label = typeof labelRaw === "string" ? labelRaw.trim() : undefined;
-
-    if (value) return value;
-    if (label) return label;
-  }
-
-  return "";
-}
-
-function normalizeKey(raw: unknown, fallback: string): string {
-  if (typeof raw !== "string") return fallback;
-  const trimmed = raw.trim();
-  return trimmed || fallback;
-}
-
-function normalizeType(raw: unknown): QuestionnaireFieldType {
-  if (typeof raw !== "string") return "text";
-  const trimmed = raw.trim();
-  if (!trimmed) return "text";
-
-  const allowed = new Set([
-    "text",
-    "textarea",
-    "select",
-    "number",
-    "email",
-    "phone",
-    "checkbox",
-    "multi_select",
-  ]);
-
-  return allowed.has(trimmed) ? (trimmed as QuestionnaireFieldType) : trimmed;
-}
-
-export function normalizeQuestionnaireField(
-  input: QuestionnaireFieldInput,
-  index: number
-): QuestionnaireField | null {
-  if (!input || typeof input !== "object") return null;
-
-  const fallbackKey = `field_${index + 1}`;
-  const idRaw = (input as { id?: unknown }).id;
-  const labelRaw = (input as { label?: unknown }).label;
-
-  const key = normalizeKey((input as { key?: unknown }).key, fallbackKey);
-  const label = normalizeKey(labelRaw, key || fallbackKey);
-  const idSource =
-    typeof idRaw === "string" && idRaw.trim() ? idRaw.trim() : key || safeRandomId(index);
-
-  const type = normalizeType((input as { type?: unknown }).type);
-  const required = Boolean((input as { required?: unknown }).required);
-
-  const optionsRaw = (input as { options?: unknown }).options;
-  const options = Array.isArray(optionsRaw)
-    ? optionsRaw
-        .slice(0, 50)
-        .map((opt: unknown, optIndex: number) =>
-          normalizeOption(opt as QuestionnaireOptionInput, optIndex)
-        )
-        .map((value) => value.trim())
-        .filter((value): value is string => value.length > 0)
-    : undefined;
-
-  const field: QuestionnaireField = {
-    id: idSource || fallbackKey,
-    key,
-    label,
-    type,
-    required,
-  };
-
-  if (options && options.length > 0) {
-    field.options = options;
-  }
-
-  return field;
-}
-
-function safeRandomId(index: number): string {
+function makeId() {
   try {
     return randomUUID();
   } catch {
-    return `field_${Date.now()}_${index}`;
+    return `field-${Math.random().toString(36).slice(2, 10)}`;
   }
 }
 
-export function normalizeQuestionnaireFields(input: unknown): QuestionnaireField[] {
-  if (!Array.isArray(input)) return [];
-  return input
-    .map((item, index) => normalizeQuestionnaireField(item as QuestionnaireFieldInput, index))
+function toArray(raw: any): any[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "object" && Array.isArray(raw.questions)) return raw.questions;
+  return [];
+}
+
+function sanitizeType(value: any): QuestionnaireFieldType {
+  const str = typeof value === "string" ? value.trim().toLowerCase() : "";
+  const match = FIELD_TYPES.find((t) => t === str);
+  return match ?? "text";
+}
+
+export function normalizeQuestionnaire(raw: any): QuestionnaireField[] {
+  const seenKeys = new Set<string>();
+  const list = toArray(raw);
+
+  const normalized = list
+    .map((item: any, idx: number) => {
+      if (!item || typeof item !== "object") return null;
+
+      const keyRaw = typeof item.key === "string" ? item.key : typeof item.id === "string" ? item.id : "";
+      const key = keyRaw.trim();
+      if (!key) return null;
+      if (seenKeys.has(key)) return null;
+      seenKeys.add(key);
+
+      const idRaw = typeof item.id === "string" && item.id.trim() ? item.id.trim() : null;
+      const id = idRaw || makeId();
+
+      const labelRaw = typeof item.label === "string" && item.label.trim() ? item.label.trim() : key;
+      const type = sanitizeType(item.type);
+      const required = Boolean(item.required);
+      const askInQuestionnaire = item.askInQuestionnaire === false ? false : true;
+      const showOnLead = item.showOnLead !== undefined
+        ? Boolean(item.showOnLead)
+        : Boolean((item as any).showInternally || (item as any).workspace);
+
+      const options =
+        type === "select"
+          ? Array.isArray(item.options)
+            ? item.options
+                .map((opt: unknown) =>
+                  typeof opt === "string" ? opt.trim() : String(opt ?? "").trim(),
+                )
+                .filter(Boolean)
+            : []
+          : [];
+
+      const sortOrder =
+        typeof item.sortOrder === "number" && Number.isFinite(item.sortOrder)
+          ? item.sortOrder
+          : idx;
+
+      return {
+        id,
+        key,
+        label: labelRaw,
+        type,
+        required,
+        options,
+        askInQuestionnaire,
+        showOnLead,
+        sortOrder,
+      } as QuestionnaireField;
+    })
     .filter((item): item is QuestionnaireField => Boolean(item));
+
+  normalized.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+  return normalized.map((field, idx) => ({ ...field, sortOrder: idx }));
+}
+
+export function prepareQuestionnaireForSave(fields: QuestionnaireField[]): any[] {
+  return fields.map((field, idx) => ({
+    id: field.id,
+    key: field.key,
+    label: field.label,
+    type: field.type,
+    required: field.required,
+    options: field.type === "select" ? field.options : undefined,
+    askInQuestionnaire: field.askInQuestionnaire,
+    showOnLead: field.showOnLead,
+    sortOrder: idx,
+  }));
 }
