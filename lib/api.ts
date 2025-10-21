@@ -33,13 +33,16 @@ export function clearAuth() {
  * apiFetch<T> — JSON helper that always sends Authorization header.
  * Redirects to /login on 401 with ?next=<current-path>.
  */
+type ApiFetchOptions = {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: any;
+  json?: any;
+};
+
 export async function apiFetch<T>(
   path: string,
-  opts: {
-    method?: string;
-    headers?: Record<string, string>;
-    body?: any;
-  } = {}
+  opts: ApiFetchOptions = {}
 ): Promise<T> {
   const token = getJwt();
   const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
@@ -48,7 +51,11 @@ export async function apiFetch<T>(
     ...(opts.headers || {}),
   };
 
-  if (opts.body !== undefined && !(opts.body instanceof FormData)) {
+  const hasJsonBody = Object.prototype.hasOwnProperty.call(opts, "json");
+
+  if (hasJsonBody) {
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+  } else if (opts.body !== undefined && !(opts.body instanceof FormData)) {
     headers["Content-Type"] = headers["Content-Type"] || "application/json";
   }
 
@@ -56,14 +63,19 @@ export async function apiFetch<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
+  let body: BodyInit | null | undefined = null;
+  if (hasJsonBody) {
+    body = JSON.stringify(opts.json);
+  } else if (opts.body instanceof FormData || typeof opts.body === "string") {
+    body = opts.body as any;
+  } else if (opts.body !== undefined) {
+    body = JSON.stringify(opts.body);
+  }
+
   const res = await fetch(url, {
     method: opts.method || "GET",
     headers,
-    // only stringify plain bodies; let FormData pass through
-    body:
-      opts.body === undefined || opts.body instanceof FormData
-        ? (opts.body as any)
-        : JSON.stringify(opts.body),
+    body,
     // CORS: we don’t **need** credentials when using Authorization header,
     // but leaving it ‘include’ is safe locally too.
     credentials: "include",

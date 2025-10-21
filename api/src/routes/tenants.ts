@@ -3,6 +3,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import * as cheerio from "cheerio";
 import { env } from "../env";
+import { DEFAULT_TASK_PLAYBOOK, normalizeTaskPlaybook } from "../task-playbook";
 
 const router = Router();
 
@@ -33,13 +34,16 @@ router.get("/settings", async (req, res) => {
         introHtml:
           "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
         links: [],
+        taskPlaybook: DEFAULT_TASK_PLAYBOOK,
       },
     });
   }
-  res.json(s);
+
+  const normalized = normalizeTaskPlaybook(s?.taskPlaybook as any);
+  res.json({ ...s, taskPlaybook: normalized });
 });
 /** Partial update for tenant settings (e.g. inboxWatchEnabled, inbox, questionnaire, quoteDefaults, brandName, links) */
-router.patch("/settings", async (req, res) => {
+async function updateSettings(req: any, res: any) {
   const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
@@ -54,6 +58,7 @@ router.patch("/settings", async (req, res) => {
     website,
     phone,
     logoUrl,
+    taskPlaybook,
   } = req.body || {};
 
   try {
@@ -68,6 +73,7 @@ router.patch("/settings", async (req, res) => {
           introHtml:
             "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
           links: [],
+          taskPlaybook: DEFAULT_TASK_PLAYBOOK,
         },
       });
     }
@@ -84,18 +90,23 @@ router.patch("/settings", async (req, res) => {
     if (website !== undefined) update.website = website ?? null;
     if (phone !== undefined) update.phone = phone ?? null;
     if (logoUrl !== undefined) update.logoUrl = logoUrl ?? null;
+    if (taskPlaybook !== undefined) update.taskPlaybook = normalizeTaskPlaybook(taskPlaybook);
 
     const saved = await prisma.tenantSettings.update({
       where: { tenantId },
       data: update,
     });
 
-    return res.json(saved);
+    const normalized = normalizeTaskPlaybook(saved.taskPlaybook as any);
+    return res.json({ ...saved, taskPlaybook: normalized });
   } catch (e: any) {
     console.error("[tenant/settings PATCH] failed:", e?.message || e);
     return res.status(500).json({ error: "update_failed", detail: e?.message || String(e) });
   }
-});
+}
+
+router.patch("/settings", updateSettings);
+router.put("/settings", updateSettings);
 
 /** Quick update: brand / website */
 router.patch("/settings/basic", async (req, res) => {
