@@ -4,6 +4,23 @@ import { prisma } from "../prisma";
 import * as cheerio from "cheerio";
 import { env } from "../env";
 import { DEFAULT_TASK_PLAYBOOK, normalizeTaskPlaybook } from "../task-playbook";
+import { normalizeDeclineEmailTemplate } from "../decline-email";
+import type { DeclineEmailTemplate } from "../decline-email";
+
+type SettingsUpdatePayload = {
+  inboxWatchEnabled?: boolean;
+  inbox?: any;
+  questionnaire?: any;
+  quoteDefaults?: any;
+  brandName?: string | null;
+  links?: Array<{ label: string; url: string }> | null;
+  introHtml?: string | null;
+  website?: string | null;
+  phone?: string | null;
+  logoUrl?: string | null;
+  taskPlaybook?: any;
+  declineEmailTemplate?: Partial<DeclineEmailTemplate> | null;
+};
 
 const DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT = "Questionnaire for your estimate";
 const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
@@ -49,18 +66,18 @@ router.get("/settings", async (req, res) => {
   }
 
   const normalized = normalizeTaskPlaybook(s?.taskPlaybook as any);
-  res.json({
-    ...s,
-    taskPlaybook: normalized,
-    questionnaireEmailSubject: s?.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-    questionnaireEmailBody: s?.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-  });
+  const response: any = { ...s, taskPlaybook: normalized };
+  response.declineEmailTemplate = normalizeDeclineEmailTemplate(
+    (s?.beta as any)?.declineEmailTemplate
+  );
+  res.json(response);
 });
 /** Partial update for tenant settings (e.g. inboxWatchEnabled, inbox, questionnaire, quoteDefaults, brandName, links) */
 async function updateSettings(req: any, res: any) {
   const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
+  const body = (req.body || {}) as SettingsUpdatePayload;
   const {
     inboxWatchEnabled,
     inbox,
@@ -73,9 +90,8 @@ async function updateSettings(req: any, res: any) {
     phone,
     logoUrl,
     taskPlaybook,
-    questionnaireEmailSubject,
-    questionnaireEmailBody,
-  } = req.body || {};
+    declineEmailTemplate: declineEmailTemplateInput,
+  } = body;
 
   try {
     // Ensure a row exists (mirrors your GET /settings bootstrap)
@@ -118,18 +134,26 @@ async function updateSettings(req: any, res: any) {
       update.questionnaireEmailBody = val || null;
     }
 
+    const existingBeta = (existing.beta as any) || {};
+    if (declineEmailTemplateInput !== undefined) {
+      const nextBeta = {
+        ...existingBeta,
+        declineEmailTemplate: normalizeDeclineEmailTemplate(declineEmailTemplateInput),
+      };
+      update.beta = nextBeta;
+    }
+
     const saved = await prisma.tenantSettings.update({
       where: { tenantId },
       data: update,
     });
 
     const normalized = normalizeTaskPlaybook(saved.taskPlaybook as any);
-    return res.json({
-      ...saved,
-      taskPlaybook: normalized,
-      questionnaireEmailSubject: saved.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-      questionnaireEmailBody: saved.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-    });
+    const response: any = { ...saved, taskPlaybook: normalized };
+    response.declineEmailTemplate = normalizeDeclineEmailTemplate(
+      (saved.beta as any)?.declineEmailTemplate
+    );
+    return res.json(response);
   } catch (e: any) {
     console.error("[tenant/settings PATCH] failed:", e?.message || e);
     return res.status(500).json({ error: "update_failed", detail: e?.message || String(e) });
@@ -346,7 +370,10 @@ ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
       },
     });
 
-    res.json({ ok: true, settings: saved });
+    const declineTemplate = normalizeDeclineEmailTemplate(
+      (saved.beta as any)?.declineEmailTemplate
+    );
+    res.json({ ok: true, settings: { ...saved, declineEmailTemplate: declineTemplate } });
   } catch (e: any) {
     console.error("[tenant enrich] failed", e);
     res.status(500).json({ error: e?.message || "enrich failed" });
@@ -428,11 +455,10 @@ router.put("/settings", async (req, res) => {
             : DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
       },
     });
-    res.json({
-      ...updated,
-      questionnaireEmailSubject: updated.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-      questionnaireEmailBody: updated.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-    });
+    const declineTemplate = normalizeDeclineEmailTemplate(
+      (updated.beta as any)?.declineEmailTemplate
+    );
+    res.json({ ...updated, declineEmailTemplate: declineTemplate });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || "save failed" });
   }

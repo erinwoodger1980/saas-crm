@@ -17,6 +17,11 @@ import {
   TaskRecipe,
   normalizeTaskPlaybook,
 } from "@/lib/task-playbook";
+import {
+  DEFAULT_DECLINE_EMAIL_TEMPLATE,
+  normalizeDeclineEmailTemplate,
+  type DeclineEmailTemplate,
+} from "@/lib/decline-email";
 
 /* ---------------- Types ---------------- */
 type QField = {
@@ -37,8 +42,7 @@ type Settings = {
   links?: { label: string; url: string }[] | null;
   questionnaire?: QField[] | null;
   taskPlaybook?: TaskPlaybook | null;
-  questionnaireEmailSubject?: string | null;
-  questionnaireEmailBody?: string | null;
+  declineEmailTemplate?: DeclineEmailTemplate | null;
 };
 type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number };
 type CostRow = {
@@ -225,6 +229,10 @@ export default function SettingsPage() {
 
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
   const [savingPlaybook, setSavingPlaybook] = useState(false);
+  const [declineDraft, setDeclineDraft] = useState<DeclineEmailTemplate>(
+    DEFAULT_DECLINE_EMAIL_TEMPLATE
+  );
+  const [savingDecline, setSavingDecline] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -238,16 +246,16 @@ export default function SettingsPage() {
           questionnaire: (data.questionnaire as any) ?? defaultQuestions(),
           introHtml: data.introHtml ?? "",
           taskPlaybook: normalizeTaskPlaybook((data as any).taskPlaybook),
-          questionnaireEmailSubject:
-            typeof (data as any).questionnaireEmailSubject === "string" && (data as any).questionnaireEmailSubject
-              ? (data as any).questionnaireEmailSubject
-              : DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-          questionnaireEmailBody:
-            typeof (data as any).questionnaireEmailBody === "string" && (data as any).questionnaireEmailBody
-              ? (data as any).questionnaireEmailBody
-              : DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+          declineEmailTemplate: normalizeDeclineEmailTemplate(
+            (data as any).declineEmailTemplate ?? (data as any)?.beta?.declineEmailTemplate
+          ),
         });
         setPlaybook(normalizeTaskPlaybook((data as any).taskPlaybook));
+        setDeclineDraft(
+          normalizeDeclineEmailTemplate(
+            (data as any).declineEmailTemplate ?? (data as any)?.beta?.declineEmailTemplate
+          )
+        );
         const inboxCfg = await apiFetch<InboxCfg>("/tenant/inbox");
         setInbox(inboxCfg);
         const costRows = await apiFetch<CostRow[]>("/tenant/costs");
@@ -274,21 +282,18 @@ export default function SettingsPage() {
         },
       });
       const normalizedPlaybook = normalizeTaskPlaybook((updated as any).taskPlaybook ?? playbook);
+      const normalizedDecline = normalizeDeclineEmailTemplate(
+        (updated as any).declineEmailTemplate ?? (updated as any)?.beta?.declineEmailTemplate
+      );
       setS({
         ...updated,
         links: (updated.links as any) ?? [],
         questionnaire: (updated.questionnaire as any) ?? [],
         taskPlaybook: normalizedPlaybook,
-        questionnaireEmailSubject:
-          typeof (updated as any).questionnaireEmailSubject === "string" && (updated as any).questionnaireEmailSubject
-            ? (updated as any).questionnaireEmailSubject
-            : DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-        questionnaireEmailBody:
-          typeof (updated as any).questionnaireEmailBody === "string" && (updated as any).questionnaireEmailBody
-            ? (updated as any).questionnaireEmailBody
-            : DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+        declineEmailTemplate: normalizedDecline,
       });
       setPlaybook(normalizedPlaybook);
+      setDeclineDraft(normalizedDecline);
       toast({ title: "Settings saved" });
     } catch (e: any) {
       toast({ title: "Save failed", description: e?.message || "unknown", variant: "destructive" });
@@ -311,16 +316,7 @@ export default function SettingsPage() {
         ...res.settings,
         questionnaire: s.questionnaire,
         taskPlaybook: normalizedPlaybook,
-        questionnaireEmailSubject:
-          typeof (res.settings as any).questionnaireEmailSubject === "string" &&
-          (res.settings as any).questionnaireEmailSubject
-            ? (res.settings as any).questionnaireEmailSubject
-            : s.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-        questionnaireEmailBody:
-          typeof (res.settings as any).questionnaireEmailBody === "string" &&
-          (res.settings as any).questionnaireEmailBody
-            ? (res.settings as any).questionnaireEmailBody
-            : s.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+        declineEmailTemplate: s.declineEmailTemplate,
       };
       setS(merged);
       setPlaybook(normalizedPlaybook);
@@ -519,6 +515,34 @@ export default function SettingsPage() {
     }
   }
 
+  function resetDeclineTemplate() {
+    setDeclineDraft({ ...DEFAULT_DECLINE_EMAIL_TEMPLATE });
+  }
+
+  async function saveDeclineTemplate() {
+    setSavingDecline(true);
+    try {
+      const updated = await apiFetch<Settings>("/tenant/settings", {
+        method: "PATCH",
+        json: { declineEmailTemplate: declineDraft },
+      });
+      const normalized = normalizeDeclineEmailTemplate(
+        (updated as any).declineEmailTemplate ?? (updated as any)?.beta?.declineEmailTemplate
+      );
+      setDeclineDraft(normalized);
+      setS((prev) => (prev ? { ...prev, declineEmailTemplate: normalized } : prev));
+      toast({ title: "Decline email saved" });
+    } catch (e: any) {
+      toast({
+        title: "Couldn’t save decline email",
+        description: e?.message || "unknown",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingDecline(false);
+    }
+  }
+
   /* ---------------- Derived ---------------- */
   const logoPreview = useMemo(() => {
     const url = s?.logoUrl?.trim();
@@ -662,6 +686,45 @@ export default function SettingsPage() {
           </div>
         </Section>
       </div>
+
+      <Section
+        title="Gently decline email"
+        description="Customise the message that appears when you gently decline an enquiry."
+        right={
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={resetDeclineTemplate}>
+              Reset
+            </Button>
+            <Button size="sm" onClick={saveDeclineTemplate} disabled={savingDecline}>
+              {savingDecline ? "Saving…" : "Save email"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <Field label="Subject">
+            <input
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+              value={declineDraft.subject}
+              onChange={(e) => setDeclineDraft({ ...declineDraft, subject: e.target.value })}
+            />
+          </Field>
+          <Field
+            label="Message"
+            hint="Use placeholders like [Client’s Name], [Project Name or Address], [Company Name], [Phone Number], and [Email / Website]."
+          >
+            <textarea
+              className="min-h-[180px] w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+              value={declineDraft.body}
+              onChange={(e) => setDeclineDraft({ ...declineDraft, body: e.target.value })}
+            />
+          </Field>
+          <p className="text-[11px] text-slate-500">
+            We’ll automatically fill in client and company details when you use this template, and you’ll have a chance to
+            review the email before it sends.
+          </p>
+        </div>
+      </Section>
 
       <Section
         title="Task playbook"
