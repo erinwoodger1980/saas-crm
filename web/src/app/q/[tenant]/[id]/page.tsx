@@ -152,7 +152,7 @@ export default function PublicQuestionnairePage() {
         uploads, // optional
       });
 
-      router.push("/thank-you");
+      router.push(`/q/thank-you?tenant=${encodeURIComponent(slug)}`);
     } catch (e: any) {
       setBanner(e?.message || "Submit failed");
     } finally {
@@ -164,147 +164,169 @@ export default function PublicQuestionnairePage() {
   if (!slug || !leadId) return <Shell><div className="text-sm text-slate-600">Preparing…</div></Shell>;
   if (loading) return <Shell><div className="text-sm text-slate-600">Loading…</div></Shell>;
 
+  const baseInputClasses =
+    "w-full rounded-2xl border border-slate-200/70 bg-white/95 px-4 py-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-[rgb(var(--brand))]/40";
+  const cardClasses =
+    "rounded-3xl border border-white/70 bg-white/85 p-6 shadow-[0_24px_70px_-35px_rgba(30,64,175,0.35)] backdrop-blur";
+  const brandName = settings?.brandName || "Your company";
+  const websiteHref = settings?.website || "#";
+
   return (
     <Shell>
-      {settings && (
-        <>
-          <div className="flex items-center gap-3 mb-2">
-            {settings.logoUrl ? (
-              <img
-                src={settings.logoUrl}
-                alt={`${settings.brandName} logo`}
-                className="h-12 w-12 rounded-md border object-contain bg-white"
+      <div className="space-y-8">
+        {settings && (
+          <section className={`${cardClasses} space-y-4`}>
+            <div className="flex flex-wrap items-center gap-4">
+              {settings.logoUrl ? (
+                <img
+                  src={settings.logoUrl}
+                  alt={`${brandName} logo`}
+                  className="h-16 w-16 rounded-2xl border border-slate-200/70 bg-white object-contain"
+                />
+              ) : (
+                <div className="grid h-16 w-16 place-items-center rounded-2xl border border-slate-200/70 bg-white text-sm font-semibold text-slate-400">
+                  {brandName.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0">
+                <h1 className="text-2xl font-semibold text-slate-900">
+                  {brandName} · Project questionnaire
+                </h1>
+                {settings.phone ? (
+                  <p className="text-sm text-slate-500">{settings.phone}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {settings.introHtml ? (
+              <div
+                className="prose prose-sm max-w-none text-slate-700"
+                dangerouslySetInnerHTML={{ __html: settings.introHtml }}
               />
             ) : (
-              <div className="h-12 w-12 rounded-md border grid place-items-center text-slate-400 bg-white">
-                Logo
-              </div>
+              <p className="text-sm text-slate-600">
+                Tell us a little about your project and we’ll be in touch with next steps.
+              </p>
             )}
-            <h1 className="text-2xl font-semibold">
-              {settings.brandName || "Company"} – Project Questionnaire
-            </h1>
+          </section>
+        )}
+
+        {banner ? (
+          <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm text-amber-800 shadow">
+            {banner}
           </div>
-          <div className="h-px bg-slate-200 mb-6" />
-          {settings.introHtml ? (
-            <div
-              className="prose prose-sm max-w-none mb-6 text-slate-700"
-              dangerouslySetInnerHTML={{ __html: settings.introHtml }}
-            />
-          ) : null}
-        </>
-      )}
+        ) : null}
 
-      {banner ? (
-        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {banner}
-        </div>
-      ) : null}
-
-      {lead ? (
-        <form onSubmit={onSubmit} className="space-y-6 max-w-2xl">
-          <fieldset className="rounded-xl border bg-white p-4 space-y-4">
-            <legend className="px-1 text-sm font-medium text-slate-700">
-              Your project details
-            </legend>
-
-            {questions.length === 0 ? (
-              <div className="text-sm text-slate-500">No questions yet.</div>
-            ) : (
-              questions.map((q, idx) => {
-                const hasErr = !!errors[q.key];
-                const commonProps = {
-                  ref: idx === 0 ? firstErrorRef : null,
-                  "aria-invalid": hasErr || undefined,
-                  "aria-describedby": hasErr ? `${q.key}-err` : undefined,
-                } as any;
-
-                return (
-                  <div key={q.key} className="space-y-1.5">
-                    <label className="block text-sm text-slate-700">
-                      {q.label || q.key}
-                      {q.required ? <span className="text-red-500"> *</span> : null}
-                    </label>
-
-                    {q.type === "textarea" ? (
-                      <textarea
-                        {...commonProps}
-                        className={`input min-h-[120px] ${hasErr ? "border-red-300 focus:ring-red-300" : ""}`}
-                        value={valueOrEmpty(answers[q.key])}
-                        onChange={(e) => set(q.key, e.target.value)}
-                      />
-                    ) : q.type === "select" ? (
-                      <select
-                        {...commonProps}
-                        className={`input ${hasErr ? "border-red-300 focus:ring-red-300" : ""}`}
-                        value={valueOrEmpty(answers[q.key])}
-                        onChange={(e) => set(q.key, e.target.value)}
-                      >
-                        <option value="">Select…</option>
-                        {(q.options ?? []).map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        {...commonProps}
-                        type={q.type === "number" ? "number" : "text"}
-                        className={`input ${hasErr ? "border-red-300 focus:ring-red-300" : ""}`}
-                        value={valueOrEmpty(answers[q.key])}
-                        onChange={(e) => set(q.key, e.target.value)}
-                      />
-                    )}
-
-                    {hasErr ? (
-                      <div id={`${q.key}-err`} className="text-xs text-red-600">
-                        {errors[q.key]}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-          </fieldset>
-
-          {/* Uploads */}
-          <fieldset className="rounded-xl border bg-white p-4 space-y-2">
-            <legend className="px-1 text-sm font-medium text-slate-700">
-              Supporting files (photos, drawings)
-            </legend>
-            <input
-              type="file"
-              multiple
-              onChange={(e) => setFiles(Array.from(e.currentTarget.files || []))}
-            />
-            {!!files.length && (
-              <div className="text-xs text-slate-600">
-                {files.length} file{files.length > 1 ? "s" : ""} selected
-              </div>
-            )}
-            <div className="text-xs text-slate-500">
-              Max few files for now; we’ll attach them to your enquiry.
+        {lead ? (
+          <form onSubmit={onSubmit} className={`${cardClasses} space-y-6 max-w-3xl`}>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Your project details</h2>
+              <p className="text-sm text-slate-500">
+                We’ll use this to prepare your estimate and follow up with any questions.
+              </p>
             </div>
-          </fieldset>
 
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-md bg-[rgb(var(--brand))] text-white px-4 py-2 text-sm font-medium disabled:opacity-60"
-            >
-              {submitting ? "Submitting…" : "Submit"}
-            </button>
-            <a href={settings?.website || "#"} className="rounded-md border px-4 py-2 text-sm">
-              Cancel
-            </a>
-          </div>
-        </form>
-      ) : (
-        <div className="text-sm text-red-600">Unknown lead.</div>
-      )}
+            <div className="space-y-5">
+              {questions.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white/60 px-4 py-6 text-sm text-slate-500">
+                  No questions yet.
+                </div>
+              ) : (
+                questions.map((q, idx) => {
+                  const hasErr = !!errors[q.key];
+                  const commonProps = {
+                    ref: idx === 0 ? firstErrorRef : null,
+                    "aria-invalid": hasErr || undefined,
+                    "aria-describedby": hasErr ? `${q.key}-err` : undefined,
+                  } as any;
 
-      <style jsx global>{`
-        .input { @apply w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2; }
-      `}</style>
+                  const inputClass = `${baseInputClasses} ${hasErr ? "border-rose-300 focus:ring-rose-300" : ""}`;
+
+                  return (
+                    <div key={q.key} className="space-y-2">
+                      <label className="block text-sm font-medium text-slate-700">
+                        {q.label || q.key}
+                        {q.required ? <span className="text-rose-500"> *</span> : null}
+                      </label>
+
+                      {q.type === "textarea" ? (
+                        <textarea
+                          {...commonProps}
+                          className={`${inputClass} min-h-[140px]`}
+                          value={valueOrEmpty(answers[q.key])}
+                          onChange={(e) => set(q.key, e.target.value)}
+                        />
+                      ) : q.type === "select" ? (
+                        <select
+                          {...commonProps}
+                          className={inputClass}
+                          value={valueOrEmpty(answers[q.key])}
+                          onChange={(e) => set(q.key, e.target.value)}
+                        >
+                          <option value="">Select…</option>
+                          {(q.options ?? []).map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          {...commonProps}
+                          type={q.type === "number" ? "number" : "text"}
+                          className={inputClass}
+                          value={valueOrEmpty(answers[q.key])}
+                          onChange={(e) => set(q.key, e.target.value)}
+                        />
+                      )}
+
+                      {hasErr ? (
+                        <div id={`${q.key}-err`} className="text-xs text-rose-600">
+                          {errors[q.key]}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-2xl border border-slate-200/60 bg-white/70 px-4 py-4">
+              <div className="text-sm font-medium text-slate-700">Supporting files (photos, drawings)</div>
+              <input
+                type="file"
+                multiple
+                className="text-sm"
+                onChange={(e) => setFiles(Array.from(e.currentTarget.files || []))}
+              />
+              {!!files.length && (
+                <div className="text-xs text-slate-600">
+                  {files.length} file{files.length > 1 ? "s" : ""} selected
+                </div>
+              )}
+              <div className="text-xs text-slate-500">
+                We’ll attach them to your enquiry. High-res photos and drawings are welcome.
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-full bg-[rgb(var(--brand))] px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitting ? "Submitting…" : "Send questionnaire"}
+              </button>
+              <a
+                href={websiteHref}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/80 px-6 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:bg-white"
+              >
+                Back to {brandName}
+              </a>
+            </div>
+          </form>
+        ) : (
+          <div className={`${cardClasses} text-sm text-rose-600`}>Unknown lead.</div>
+        )}
+      </div>
     </Shell>
   );
 }
@@ -313,8 +335,12 @@ export default function PublicQuestionnairePage() {
 function valueOrEmpty(v: any) { return v == null ? "" : String(v); }
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="max-w-3xl mx-auto p-6">{children}</div>
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-100 via-white to-slate-200 text-slate-900">
+      <div aria-hidden className="pointer-events-none absolute -left-32 top-[-10%] h-72 w-72 rounded-full bg-[rgb(var(--brand))/0.12] blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -right-24 bottom-[-15%] h-80 w-80 rounded-full bg-indigo-200/20 blur-3xl" />
+      <div className="relative mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
+        <div className="space-y-10">{children}</div>
+      </div>
     </div>
   );
 }

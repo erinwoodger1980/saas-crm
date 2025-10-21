@@ -15,6 +15,9 @@ import {
   DeclineEmailTemplate,
   normalizeDeclineEmailTemplate,
 } from "@/lib/decline-email";
+  DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+  DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+} from "@/lib/constants";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -48,6 +51,15 @@ type Task = {
   meta?: { key?: string } | null;
 };
 
+type QuestionnaireField = {
+  id?: string;
+  key?: string;
+  label?: string;
+  required?: boolean;
+  type?: string;
+  options?: string[];
+};
+
 type TenantSettings = {
   slug: string;
   brandName?: string | null;
@@ -60,6 +72,10 @@ type TenantSettings = {
   };
   taskPlaybook?: TaskPlaybook;
   declineEmailTemplate?: DeclineEmailTemplate | null;
+  questionnaire?: { title?: string; questions?: QuestionnaireField[] } | QuestionnaireField[] | null;
+  taskPlaybook?: TaskPlaybook;
+  questionnaireEmailSubject?: string | null;
+  questionnaireEmailBody?: string | null;
 };
 
 const STATUS_LABELS: Record<Lead["status"], string> = {
@@ -129,6 +145,60 @@ function avatarText(name?: string | null) {
   if (!name) return "?";
   const p = name.trim().split(/\s+/);
   return (p[0][0] + (p[1]?.[0] || p[0][1] || "")).toUpperCase();
+}
+
+function normalizeQuestionnaireFields(
+  config: TenantSettings["questionnaire"]
+): QuestionnaireField[] {
+  if (!config) return [];
+  const list = Array.isArray(config) ? config : config?.questions ?? [];
+  return list
+    .map((raw) => {
+      if (!raw || typeof raw !== "object") return null;
+      const key = typeof raw.key === "string" && raw.key.trim() ? raw.key.trim() : undefined;
+      const id = typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : undefined;
+      const label =
+        (typeof raw.label === "string" && raw.label.trim()) ||
+        key ||
+        id ||
+        undefined;
+      return {
+        id: id ?? key,
+        key: key ?? id,
+        label,
+        required: Boolean((raw as any).required),
+        type: typeof raw.type === "string" ? raw.type : undefined,
+        options: Array.isArray(raw.options) ? raw.options : undefined,
+      } as QuestionnaireField;
+    })
+    .filter((item): item is QuestionnaireField => Boolean(item?.key));
+}
+
+function formatAnswer(value: any): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((v) => (v === null || v === undefined ? "" : String(v).trim()))
+      .filter(Boolean)
+      .join(", ");
+    return joined || null;
+  }
+  if (value instanceof Date) {
+    return value.toLocaleString();
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  const str = String(value);
+  return str.trim() ? str : null;
 }
 function toast(msg: string) {
   const el = document.createElement("div");
@@ -697,11 +767,31 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       // open mailto with public link if we have a slug
       if (lead.email && settings?.slug) {
         const link = `${window.location.origin}/q/${settings.slug}/${encodeURIComponent(lead.id)}`;
-        const body =
-          `Hi${lead.contactName ? " " + lead.contactName : ""},\n\n` +
-          `Please fill in this short questionnaire so we can prepare your estimate:\n${link}\n\n` +
-          `Thanks!`;
-        openMailTo(lead.email, "Questionnaire for your estimate", body);
+        const contactName = (lead.contactName || "").trim();
+        const firstName = contactName.split(/\s+/)[0] || "";
+        const brandName = (settings?.brandName || "Our team").trim() || "Our team";
+        const subjectTemplate =
+          (settings?.questionnaireEmailSubject && settings.questionnaireEmailSubject.trim()) ||
+          DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT;
+        const bodyTemplate =
+          (settings?.questionnaireEmailBody && settings.questionnaireEmailBody.trim()) ||
+          DEFAULT_QUESTIONNAIRE_EMAIL_BODY;
+
+        const replacements = {
+          contactName: contactName || firstName || "there",
+          firstName: firstName || "there",
+          brandName,
+          company: brandName,
+          link,
+        } as Record<string, string>;
+
+        const subject = (renderTemplate(subjectTemplate, replacements).trim() || DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT).
+          replace(/\s+/g, " ");
+        let body = renderTemplate(bodyTemplate, replacements).trim();
+        if (!body.includes(link)) {
+          body = body ? `${body}\n\n${link}` : link;
+        }
+        openMailTo(lead.email, subject, body);
       }
       await reloadTasks();
       toast("Questionnaire sent. Follow-up added.");
@@ -773,11 +863,100 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     window.open(url, "_blank");
   }
 
+  function renderTemplate(template: string, values: Record<string, string>): string {
+    return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => values[key] ?? "");
+  }
+
   /* ----------------------------- Email context ----------------------------- */
 
   const emailSubject = pickFirst<string>(get(lead?.custom, "subject"));
   const emailSnippet = pickFirst<string>(get(lead?.custom, "snippet"), get(lead?.custom, "summary"));
   const fromEmail = pickFirst<string>(get(lead?.custom, "fromEmail"), lead?.email);
+  const questionnaireFields = useMemo(
+    () => normalizeQuestionnaireFields(settings?.questionnaire ?? null),
+    [settings?.questionnaire]
+  );
+  const customData = useMemo(
+    () => (lead?.custom && typeof lead.custom === "object" ? (lead.custom as Record<string, any>) : {}),
+    [lead?.custom]
+  );
+  const questionnaireResponses = useMemo(() => {
+    const responses: Array<{ field: QuestionnaireField; value: string | null }> = [];
+    const seen = new Set<string>();
+
+    questionnaireFields.forEach((field) => {
+      const key = field.key ?? field.id ?? "";
+      if (!key) return;
+      seen.add(key);
+      responses.push({ field, value: formatAnswer(customData?.[key]) });
+    });
+
+    const IGNORED_CUSTOM_KEYS = new Set([
+      "provider",
+      "messageId",
+      "subject",
+      "summary",
+      "snippet",
+      "body",
+      "full",
+      "from",
+      "fromEmail",
+      "uiStatus",
+      "questionnaireSubmittedAt",
+      "uploads",
+      "aiFeedback",
+    ]);
+
+    const humanizeKey = (key: string): string => {
+      return key
+        .replace(/[_\-]+/g, " ")
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/^\w|\s\w/g, (c) => c.toUpperCase());
+    };
+
+    Object.keys(customData || {})
+      .filter((key) =>
+        typeof key === "string" &&
+        key &&
+        !seen.has(key) &&
+        !IGNORED_CUSTOM_KEYS.has(key)
+      )
+      .forEach((key) => {
+        const value = formatAnswer(customData?.[key]);
+        if (value == null) return;
+        responses.push({
+          field: {
+            id: key,
+            key,
+            label: humanizeKey(key),
+            required: false,
+            type: undefined,
+          },
+          value,
+        });
+      });
+
+    return responses;
+  }, [customData, questionnaireFields]);
+  const questionnaireUploads = useMemo(() => {
+    const uploads = Array.isArray((customData as any)?.uploads) ? (customData as any).uploads : [];
+    return uploads
+      .map((item: any) => ({
+        filename: typeof item?.filename === "string" && item.filename.trim() ? item.filename.trim() : "Attachment",
+        mimeType: typeof item?.mimeType === "string" && item.mimeType.trim() ? item.mimeType : "application/octet-stream",
+        base64: typeof item?.base64 === "string" ? item.base64 : "",
+        sizeKB: typeof item?.sizeKB === "number" ? item.sizeKB : null,
+        addedAt: typeof item?.addedAt === "string" ? item.addedAt : null,
+      }))
+      .filter((item) => item.base64);
+  }, [customData]);
+  const questionnaireSubmittedAt = useMemo(() => {
+    const raw = (customData as any)?.questionnaireSubmittedAt;
+    if (typeof raw === "string" && raw) return raw;
+    return null;
+  }, [customData]);
   const openTasks = tasks.filter(t => t.status !== "DONE");
 /* ----------------------------- Render ----------------------------- */
 
@@ -1012,31 +1191,89 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
               </section>
             )}
 
-            {settings?.slug && settings?.questionnaire?.questions?.length ? (
+            {(settings?.slug || questionnaireFields.length > 0) && (
               <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <span aria-hidden="true">🧾</span>
-                  {settings?.questionnaire?.title || "Questionnaire"}
+                  {(Array.isArray(settings?.questionnaire) ? null : settings?.questionnaire?.title) || "Questionnaire"}
                 </div>
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  {settings.questionnaire.questions.map((q) => (
-                    <li key={q.id} className="flex items-start gap-2">
-                      <span aria-hidden="true" className="text-amber-400">✷</span>
-                      {q.label}
-                    </li>
-                  ))}
-                </ul>
-                <a
-                  href={`${window.location.origin}/q/${settings.slug}/${encodeURIComponent(lead.id)}`}
-                  className="inline-flex items-center gap-1 mt-4 text-sm font-semibold text-sky-600 hover:text-sky-700"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <span aria-hidden="true">🔗</span>
-                  Open public questionnaire
-                </a>
+
+                {questionnaireSubmittedAt ? (
+                  <div className="mt-2 text-xs text-slate-500">
+                    Submitted {new Date(questionnaireSubmittedAt).toLocaleString()}
+                  </div>
+                ) : null}
+
+                <div className="mt-4 space-y-3">
+                  {questionnaireResponses.length ? (
+                    <dl className="space-y-3">
+                      {questionnaireResponses.map(({ field, value }, idx) => (
+                        <div key={field.key ?? field.id ?? idx} className="rounded-xl border border-slate-200/70 bg-white/70 p-3">
+                          <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            {field.label || field.key || field.id}
+                            {field.required ? <span className="text-rose-500"> *</span> : null}
+                          </dt>
+                          <dd className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
+                            {value ?? <span className="text-slate-400">Not provided</span>}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-white/60 p-3 text-sm text-slate-500">
+                      Waiting for the client to complete the form.
+                    </div>
+                  )}
+
+                  {questionnaireUploads.length ? (
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Attachments
+                      </div>
+                      <ul className="space-y-2 text-sm">
+                        {questionnaireUploads.map((file, idx) => {
+                          const dataUrl = `data:${file.mimeType};base64,${file.base64}`;
+                          return (
+                            <li key={`${file.filename}-${idx}`} className="flex flex-wrap items-center gap-2">
+                              <a
+                                href={dataUrl}
+                                download={file.filename}
+                                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white"
+                              >
+                                <span aria-hidden="true">📎</span>
+                                {file.filename}
+                              </a>
+                              {typeof file.sizeKB === "number" && (
+                                <span className="text-xs text-slate-500">{file.sizeKB.toLocaleString()} KB</span>
+                              )}
+                              {file.addedAt && (
+                                <span className="text-xs text-slate-400">
+                                  added {new Date(file.addedAt).toLocaleDateString()}
+                                </span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+
+                {settings?.slug ? (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <a
+                      href={`/q/${settings.slug}/${encodeURIComponent(lead.id)}`}
+                      className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white/80 px-3 py-1.5 text-sm font-semibold text-sky-600 shadow-sm hover:bg-white"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span aria-hidden="true">🔗</span>
+                      Open public questionnaire
+                    </a>
+                  </div>
+                ) : null}
               </section>
-            ) : null}
+            )}
           </div>
 
           {/* Right – Tasks */}

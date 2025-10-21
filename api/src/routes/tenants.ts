@@ -7,6 +7,13 @@ import { DEFAULT_TASK_PLAYBOOK, normalizeTaskPlaybook } from "../task-playbook";
 import { normalizeDeclineEmailTemplate } from "../decline-email";
 import type { DeclineEmailTemplate } from "../decline-email";
 
+const DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT = "Questionnaire for your estimate";
+const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
+  "Hi {{contactName}},\n\n" +
+  "Please fill in this short questionnaire so we can prepare your estimate:\n" +
+  "{{link}}\n\n" +
+  "Thanks,\n{{brandName}}";
+
 const router = Router();
 
 /* ------------------------- helpers ------------------------- */
@@ -37,6 +44,8 @@ router.get("/settings", async (req, res) => {
           "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
         links: [],
         taskPlaybook: DEFAULT_TASK_PLAYBOOK,
+        questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+        questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
       },
     });
   }
@@ -47,6 +56,12 @@ router.get("/settings", async (req, res) => {
     (s?.beta as any)?.declineEmailTemplate
   );
   res.json(response);
+  res.json({
+    ...s,
+    taskPlaybook: normalized,
+    questionnaireEmailSubject: s?.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+    questionnaireEmailBody: s?.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+  });
 });
 /** Partial update for tenant settings (e.g. inboxWatchEnabled, inbox, questionnaire, quoteDefaults, brandName, links) */
 async function updateSettings(req: any, res: any) {
@@ -70,6 +85,9 @@ async function updateSettings(req: any, res: any) {
   } = body as typeof body & {
     declineEmailTemplate?: Partial<DeclineEmailTemplate> | null;
   };
+    questionnaireEmailSubject,
+    questionnaireEmailBody,
+  } = req.body || {};
 
   try {
     // Ensure a row exists (mirrors your GET /settings bootstrap)
@@ -84,6 +102,8 @@ async function updateSettings(req: any, res: any) {
             "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
           links: [],
           taskPlaybook: DEFAULT_TASK_PLAYBOOK,
+          questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+          questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
         },
       });
     }
@@ -101,6 +121,14 @@ async function updateSettings(req: any, res: any) {
     if (phone !== undefined) update.phone = phone ?? null;
     if (logoUrl !== undefined) update.logoUrl = logoUrl ?? null;
     if (taskPlaybook !== undefined) update.taskPlaybook = normalizeTaskPlaybook(taskPlaybook);
+    if (questionnaireEmailSubject !== undefined) {
+      const val = typeof questionnaireEmailSubject === "string" ? questionnaireEmailSubject.trim() : "";
+      update.questionnaireEmailSubject = val || null;
+    }
+    if (questionnaireEmailBody !== undefined) {
+      const val = typeof questionnaireEmailBody === "string" ? questionnaireEmailBody.trim() : "";
+      update.questionnaireEmailBody = val || null;
+    }
 
     const existingBeta = (existing.beta as any) || {};
     if (declineEmailTemplateInput !== undefined) {
@@ -122,6 +150,12 @@ async function updateSettings(req: any, res: any) {
       (saved.beta as any)?.declineEmailTemplate
     );
     return res.json(response);
+    return res.json({
+      ...saved,
+      taskPlaybook: normalized,
+      questionnaireEmailSubject: saved.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+      questionnaireEmailBody: saved.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+    });
   } catch (e: any) {
     console.error("[tenant/settings PATCH] failed:", e?.message || e);
     return res.status(500).json({ error: "update_failed", detail: e?.message || String(e) });
@@ -333,6 +367,8 @@ ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
         logoUrl: enriched.logoUrl,
         links: enriched.links || [],
         introHtml: enriched.introSuggestion || null,
+        questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+        questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
       },
     });
 
@@ -360,6 +396,8 @@ router.put("/settings", async (req, res) => {
     links,
     logoUrl,
     questionnaire,
+    questionnaireEmailSubject,
+    questionnaireEmailBody,
   } = req.body || {};
 
   if (!slug || !brandName) {
@@ -390,6 +428,14 @@ router.put("/settings", async (req, res) => {
         logoUrl: logoUrl ?? undefined,
         links: Array.isArray(links) ? links : [],
         ...(qSave ? { questionnaire: qSave } : {}),
+        questionnaireEmailSubject:
+          typeof questionnaireEmailSubject === "string" && questionnaireEmailSubject.trim()
+            ? questionnaireEmailSubject.trim()
+            : null,
+        questionnaireEmailBody:
+          typeof questionnaireEmailBody === "string" && questionnaireEmailBody.trim()
+            ? questionnaireEmailBody.trim()
+            : null,
       },
       create: {
         tenantId,
@@ -401,12 +447,25 @@ router.put("/settings", async (req, res) => {
         logoUrl: logoUrl ?? undefined,
         links: Array.isArray(links) ? links : [],
         questionnaire: qSave ?? null,
+        questionnaireEmailSubject:
+          typeof questionnaireEmailSubject === "string" && questionnaireEmailSubject.trim()
+            ? questionnaireEmailSubject.trim()
+            : DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+        questionnaireEmailBody:
+          typeof questionnaireEmailBody === "string" && questionnaireEmailBody.trim()
+            ? questionnaireEmailBody.trim()
+            : DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
       },
     });
     const declineTemplate = normalizeDeclineEmailTemplate(
       (updated.beta as any)?.declineEmailTemplate
     );
     res.json({ ...updated, declineEmailTemplate: declineTemplate });
+    res.json({
+      ...updated,
+      questionnaireEmailSubject: updated.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+      questionnaireEmailBody: updated.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+    });
   } catch (e: any) {
     res.status(400).json({ error: e?.message || "save failed" });
   }
