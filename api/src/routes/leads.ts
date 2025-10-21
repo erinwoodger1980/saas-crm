@@ -10,11 +10,20 @@ const router = Router();
 /* Helpers: auth + status mapping                                      */
 /* ------------------------------------------------------------------ */
 
+function headerString(req: any, key: string): string | undefined {
+  const raw = req.headers?.[key];
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) return raw[0];
+  return typeof raw === "string" ? raw : undefined;
+}
+
 function getAuth(req: any) {
   return {
-    tenantId: req.auth?.tenantId as string | undefined,
-    userId: req.auth?.userId as string | undefined,
-    email: req.auth?.email as string | undefined,
+    tenantId:
+      (req.auth?.tenantId as string | undefined) ?? headerString(req, "x-tenant-id"),
+    userId:
+      (req.auth?.userId as string | undefined) ?? headerString(req, "x-user-id"),
+    email: (req.auth?.email as string | undefined) ?? headerString(req, "x-user-email"),
   };
 }
 
