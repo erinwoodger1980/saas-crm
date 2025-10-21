@@ -4,97 +4,163 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
+import clsx from "clsx";
+import {
+  LayoutDashboard,
+  Mail,
+  CheckSquare,
+  Target,
+  Wrench,
+  Settings,
+  Sparkles,
+  ArrowRight,
+} from "lucide-react";
+
 import { useTenantBrand } from "@/lib/use-tenant-brand";
+import { Button } from "@/components/ui/button";
 
 const nav = [
-  { href: "/dashboard", label: "Dashboard", emoji: "🧭" },
-  { href: "/leads", label: "Leads", emoji: "📬" },
-  { href: "/tasks/owner", label: "Tasks", emoji: "✅" },
-  { href: "/opportunities", label: "Opportunities", emoji: "🎯" },
-  { href: "/workshop", label: "Workshop", emoji: "🛠️" },
-  { href: "/settings", label: "Settings", emoji: "⚙️" },
-];
+  { href: "/dashboard", label: "Dashboard", description: "Pulse & KPIs", icon: LayoutDashboard },
+  { href: "/leads", label: "Leads", description: "Inbox & replies", icon: Mail },
+  { href: "/tasks/owner", label: "Tasks", description: "Personal queue", icon: CheckSquare },
+  { href: "/opportunities", label: "Opportunities", description: "Quotes to win", icon: Target },
+  { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
+  { href: "/settings", label: "Settings", description: "Brand & automations", icon: Settings },
+] as const;
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { brandName, shortName } = useTenantBrand();
+  const { brandName, shortName, logoUrl, initials } = useTenantBrand();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+    <div className="relative min-h-screen bg-slate-50">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[320px] bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_70%)]"
+      />
+
       {/* Top header */}
-      <header className="sticky top-0 z-40 border-b bg-white/80 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-screen-2xl items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-              <Image
-                src="/logo-full.png"
-                alt="Joinery AI Logo"
-                width={40}
-                height={40}
-                className="h-full w-full object-contain"
-                priority
-              />
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_35px_-24px_rgba(15,23,42,0.65)]">
+                {logoUrl ? (
+                  <Image
+                    src={logoUrl}
+                    alt={`${brandName} logo`}
+                    fill
+                    className="object-cover"
+                    sizes="44px"
+                    priority
+                    unoptimized
+                  />
+                ) : (
+                  <span className="text-sm font-semibold text-slate-700">{initials}</span>
+                )}
+              </div>
+              <span className="absolute -bottom-1 -right-1 rounded-full border border-white bg-emerald-500 px-1.5 py-[2px] text-[10px] font-semibold uppercase tracking-[0.2em] text-white shadow-sm">
+                Live
+              </span>
             </div>
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold tracking-tight text-slate-800">{brandName}</div>
-              <div className="text-[11px] uppercase tracking-[0.25em] text-slate-400">Workspace</div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.45em] text-slate-400">Workspace</p>
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-semibold text-slate-900">{brandName}</span>
+                <span className="hidden items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600 sm:inline-flex">
+                  <Sparkles className="h-3 w-3" />
+                  Flow
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-xs text-slate-500">
-            <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1 font-medium text-slate-600 shadow-sm">
-              Hey, <span className="text-slate-800">{shortName || brandName}</span>
-            </span>
-            <span className="rounded-full border border-slate-200/80 bg-white px-3 py-1 font-medium text-slate-500 shadow-sm">v0.1</span>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-2 text-xs text-slate-500 md:flex">
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-600 shadow-sm">
+                <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+                Copilot ready
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-500 shadow-sm">
+                Hey, <span className="text-slate-700">{shortName || brandName}</span>
+              </span>
+            </div>
+
+            <Button
+              asChild
+              size="sm"
+              className="rounded-full bg-slate-900 px-4 text-xs font-semibold uppercase tracking-[0.2em] text-white shadow-[0_16px_40px_-26px_rgba(15,23,42,0.8)] hover:bg-slate-800"
+            >
+              <Link href="/settings">Workspace settings</Link>
+            </Button>
           </div>
         </div>
       </header>
 
       {/* Main grid */}
-      <div className="mx-auto grid max-w-screen-2xl gap-8 px-6 py-8 md:grid-cols-[260px_minmax(0,1fr)]">
-        {/* Sidebar */}
-        <aside className="md:sticky md:top-[80px] md:self-start">
-          <div className="rounded-2xl border bg-white p-6 shadow-[0_8px_30px_rgba(2,6,23,0.06)]">
-            {/* MUCH bigger full logo with hover highlight */}
-            <div className="group mb-6 flex justify-center">
-              <div className="relative inline-flex items-center justify-center rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200/70 transition-all duration-300 hover:bg-blue-50/40 hover:shadow-[0_12px_30px_-12px_rgba(37,99,235,0.35)] hover:ring-blue-300/60">
-                <Image
-                  src="/logo-full.png"
-                  alt="Joinery AI Logo"
-                  width={224}
-                  height={112}
-                  className="h-28 w-auto object-contain transition-transform duration-300 group-hover:scale-[1.02] md:h-[7.5rem]"
-                  priority
-                />
+      <div className="relative mx-auto grid max-w-screen-2xl gap-8 px-6 py-10 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="md:sticky md:top-[112px] md:self-start">
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 shadow-[0_30px_80px_-48px_rgba(15,23,42,0.45)]">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-32 left-1/2 h-48 w-[160%] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_70%)]"
+            />
+            <div className="relative p-6">
+              <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white/70 p-5 shadow-sm">
+                <p className="text-[11px] uppercase tracking-[0.4em] text-slate-400">Command center</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">Navigate your workflow</p>
+                <p className="mt-1 text-xs text-slate-500">Everything from new enquiries to workshop scheduling.</p>
+              </div>
+
+              <nav className="space-y-1.5">
+                {nav.map((item) => {
+                  const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={clsx(
+                        "group relative flex items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm transition-all",
+                        active
+                          ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
+                          : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          "flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          active
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                      </span>
+                      <span className="flex flex-col leading-tight">
+                        <span className="font-semibold">{item.label}</span>
+                        <span className="text-xs text-slate-400">{item.description}</span>
+                      </span>
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              <div className="mt-8 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-5 text-sm text-slate-600">
+                <p className="font-semibold text-slate-900">Need a quick win?</p>
+                <p className="mt-1 text-xs text-slate-500">Drop into My Tasks to see what’s next for the team.</p>
+                <Link
+                  href="/tasks/owner"
+                  className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-blue-600 transition-colors hover:text-blue-800"
+                >
+                  Open tasks
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
               </div>
             </div>
-
-            {/* Nav with subtle hover shadow + highlight */}
-            <nav className="space-y-2">
-              {nav.map((n) => {
-                const active = pathname === n.href || pathname?.startsWith(n.href + "/");
-                return (
-                  <Link
-                    key={n.href}
-                    href={n.href}
-                    className={[
-                      "flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium transition-all",
-                      "ring-1",
-                      active
-                        ? "bg-slate-900 text-white ring-slate-900 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.45)]"
-                        : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 hover:shadow-[0_8px_24px_-14px_rgba(2,6,23,0.35)]",
-                    ].join(" ")}
-                  >
-                    <span className="text-lg">{n.emoji}</span>
-                    <span>{n.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
           </div>
         </aside>
 
-        {/* Content area */}
-        <main className="min-w-0">{children}</main>
+        <main className="min-w-0 space-y-6">{children}</main>
       </div>
     </div>
   );
