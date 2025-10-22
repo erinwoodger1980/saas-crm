@@ -34,6 +34,8 @@ type Settings = {
   tenantId: string;
   slug: string;
   brandName: string;
+  ownerFirstName?: string | null;
+  ownerLastName?: string | null;
   introHtml?: string | null;
   website?: string | null;
   phone?: string | null;
@@ -683,9 +685,27 @@ export default function SettingsPage() {
                 value={s.brandName || ""} onChange={(e) => setS({ ...s, brandName: e.target.value })} />
             </Field>
 
+            <Field label="Your first name" hint="Used in greetings across the workspace.">
+              <input
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                value={s.ownerFirstName || ""}
+                onChange={(e) => setS({ ...s, ownerFirstName: e.target.value })}
+                placeholder="Erin"
+              />
+            </Field>
+
             <Field label="Public slug" hint="Used for your public questionnaire link.">
               <input className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
                 value={s.slug || ""} onChange={(e) => setS({ ...s, slug: e.target.value })} />
+            </Field>
+
+            <Field label="Your last name">
+              <input
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                value={s.ownerLastName || ""}
+                onChange={(e) => setS({ ...s, ownerLastName: e.target.value })}
+                placeholder="Larkin"
+              />
             </Field>
 
             <Field label="Website">

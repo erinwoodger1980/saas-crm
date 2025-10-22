@@ -27,6 +27,28 @@ function ensureHttps(u: string) {
   return /^https?:\/\//i.test(u) ? u : `https://${u}`;
 }
 
+function toPlainObject(value: any): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return { ...value };
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return { ...parsed };
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return {};
+}
+
+function cleanOptionalString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
 function sanitizeSlug(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value
@@ -122,12 +144,17 @@ router.get("/settings", async (req, res) => {
 
   const normalizedPlaybook = normalizeTaskPlaybook(s?.taskPlaybook as any);
   const normalizedQuestionnaire = normalizeQuestionnaire((s as any)?.questionnaire ?? []);
+  const beta = toPlainObject((s as any)?.beta);
+  const ownerFirstName = cleanOptionalString(beta.ownerFirstName);
+  const ownerLastName = cleanOptionalString(beta.ownerLastName);
   res.json({
     ...s,
     taskPlaybook: normalizedPlaybook,
     questionnaire: normalizedQuestionnaire,
     questionnaireEmailSubject: s?.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
     questionnaireEmailBody: s?.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+    ownerFirstName,
+    ownerLastName,
   });
 });
 /** Partial update for tenant settings (e.g. inboxWatchEnabled, inbox, questionnaire, quoteDefaults, brandName, links) */
@@ -150,6 +177,8 @@ async function updateSettings(req: any, res: any) {
     taskPlaybook,
     questionnaireEmailSubject,
     questionnaireEmailBody,
+    ownerFirstName,
+    ownerLastName,
   } = req.body || {};
 
   try {
@@ -173,6 +202,9 @@ async function updateSettings(req: any, res: any) {
 
     // Whitelist fields
     const update: any = { updatedAt: new Date() };
+    const existingBeta = toPlainObject(existing?.beta);
+    const nextBeta = { ...existingBeta };
+    let betaChanged = false;
     let sanitizedQuestionnaire: QuestionnaireField[] | null = null;
 
     if (inboxWatchEnabled !== undefined) update.inboxWatchEnabled = !!inboxWatchEnabled;
@@ -208,6 +240,23 @@ async function updateSettings(req: any, res: any) {
       update.questionnaireEmailBody = val || null;
     }
 
+    if (ownerFirstName !== undefined) {
+      betaChanged = true;
+      const val = cleanOptionalString(ownerFirstName);
+      if (val) nextBeta.ownerFirstName = val;
+      else delete nextBeta.ownerFirstName;
+    }
+    if (ownerLastName !== undefined) {
+      betaChanged = true;
+      const val = cleanOptionalString(ownerLastName);
+      if (val) nextBeta.ownerLastName = val;
+      else delete nextBeta.ownerLastName;
+    }
+
+    if (betaChanged) {
+      update.beta = nextBeta;
+    }
+
     const saved = await prisma.tenantSettings.update({
       where: { tenantId },
       data: update,
@@ -219,12 +268,17 @@ async function updateSettings(req: any, res: any) {
 
     const normalizedPlaybook = normalizeTaskPlaybook(saved.taskPlaybook as any);
     const normalizedQuestionnaire = normalizeQuestionnaire((saved as any).questionnaire ?? []);
+    const savedBeta = toPlainObject((saved as any)?.beta);
+    const savedOwnerFirstName = cleanOptionalString(savedBeta.ownerFirstName);
+    const savedOwnerLastName = cleanOptionalString(savedBeta.ownerLastName);
     return res.json({
       ...saved,
       taskPlaybook: normalizedPlaybook,
       questionnaire: normalizedQuestionnaire,
       questionnaireEmailSubject: saved.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
       questionnaireEmailBody: saved.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+      ownerFirstName: savedOwnerFirstName,
+      ownerLastName: savedOwnerLastName,
     });
   } catch (e: any) {
     console.error("[tenant/settings PATCH] failed:", e?.message || e);

@@ -33,7 +33,7 @@ const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "develop
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { brandName, shortName, logoUrl, initials } = useTenantBrand();
+  const { brandName, shortName, logoUrl, initials, ownerFirstName, ownerLastName } = useTenantBrand();
   const { user } = useCurrentUser();
 
   const navItems = useMemo(() => {
@@ -51,6 +51,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
     return items;
   }, [user]);
+
+  const userFirstName = user?.firstName?.trim() || null;
+  const userLastName = user?.lastName?.trim() || null;
+  const ownerDisplayName = [ownerFirstName, ownerLastName].filter(Boolean).join(" ").trim();
+  const userDisplayName = [userFirstName, userLastName].filter(Boolean).join(" ").trim();
+  const greetingName = ownerDisplayName || userFirstName || userDisplayName || shortName || brandName;
 
   return (
     <div className="relative min-h-screen bg-slate-50">
@@ -102,7 +108,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 Copilot ready
               </span>
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-500 shadow-sm">
-                Hey, <span className="text-slate-700">{shortName || brandName}</span>
+                Hey, <span className="text-slate-700">{greetingName}</span>
               </span>
               {user?.isEarlyAdopter && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-medium text-blue-700 shadow-sm">
@@ -131,10 +137,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
               className="pointer-events-none absolute -top-32 left-1/2 h-48 w-[160%] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_70%)]"
             />
             <div className="relative p-6">
-              <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white/70 p-5 shadow-sm">
-                <p className="text-[11px] uppercase tracking-[0.4em] text-slate-400">Command center</p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">Navigate your workflow</p>
-                <p className="mt-1 text-xs text-slate-500">Everything from new enquiries to workshop scheduling.</p>
+              <div className="mb-6 flex items-center justify-center rounded-2xl border border-slate-200/80 bg-white/70 p-6 shadow-sm">
+                <Image
+                  src="/logo-full.png"
+                  alt={`${brandName} full logo`}
+                  width={240}
+                  height={64}
+                  className="h-16 w-auto"
+                  priority
+                />
               </div>
 
               <nav className="space-y-1.5">
