@@ -147,6 +147,7 @@ router.get("/settings", async (req, res) => {
   const beta = toPlainObject((s as any)?.beta);
   const ownerFirstName = cleanOptionalString(beta.ownerFirstName);
   const ownerLastName = cleanOptionalString(beta.ownerLastName);
+  const aiLearning = toPlainObject(beta.aiFollowupLearning);
   res.json({
     ...s,
     taskPlaybook: normalizedPlaybook,
@@ -155,6 +156,10 @@ router.get("/settings", async (req, res) => {
     questionnaireEmailBody: s?.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
     ownerFirstName,
     ownerLastName,
+    aiFollowupLearning: {
+      crossTenantOptIn: aiLearning.crossTenantOptIn !== false,
+      lastUpdatedISO: aiLearning.lastUpdatedISO || null,
+    },
   });
 });
 /** Partial update for tenant settings (e.g. inboxWatchEnabled, inbox, questionnaire, quoteDefaults, brandName, links) */
@@ -179,6 +184,7 @@ async function updateSettings(req: any, res: any) {
     questionnaireEmailBody,
     ownerFirstName,
     ownerLastName,
+    aiFollowupLearning,
   } = req.body || {};
 
   try {
@@ -253,6 +259,21 @@ async function updateSettings(req: any, res: any) {
       else delete nextBeta.ownerLastName;
     }
 
+    if (aiFollowupLearning !== undefined) {
+      betaChanged = true;
+      const requested = toPlainObject(aiFollowupLearning);
+      const previous = toPlainObject(existingBeta.aiFollowupLearning);
+      const optIn = requested.crossTenantOptIn === false ? false : true;
+      const changed = previous.crossTenantOptIn !== optIn;
+      nextBeta.aiFollowupLearning = {
+        ...previous,
+        crossTenantOptIn: optIn,
+        lastUpdatedISO: changed
+          ? new Date().toISOString()
+          : previous.lastUpdatedISO || new Date().toISOString(),
+      };
+    }
+
     if (betaChanged) {
       update.beta = nextBeta;
     }
@@ -271,6 +292,7 @@ async function updateSettings(req: any, res: any) {
     const savedBeta = toPlainObject((saved as any)?.beta);
     const savedOwnerFirstName = cleanOptionalString(savedBeta.ownerFirstName);
     const savedOwnerLastName = cleanOptionalString(savedBeta.ownerLastName);
+    const savedAiLearning = toPlainObject(savedBeta.aiFollowupLearning);
     return res.json({
       ...saved,
       taskPlaybook: normalizedPlaybook,
@@ -279,6 +301,10 @@ async function updateSettings(req: any, res: any) {
       questionnaireEmailBody: saved.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
       ownerFirstName: savedOwnerFirstName,
       ownerLastName: savedOwnerLastName,
+      aiFollowupLearning: {
+        crossTenantOptIn: savedAiLearning.crossTenantOptIn !== false,
+        lastUpdatedISO: savedAiLearning.lastUpdatedISO || null,
+      },
     });
   } catch (e: any) {
     console.error("[tenant/settings PATCH] failed:", e?.message || e);
