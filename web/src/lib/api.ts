@@ -72,10 +72,6 @@ export function getJwt(): string | null {
     } catch {
       // Ignore write failures (private mode, disabled storage, etc.)
     }
-    if (token !== lastCookieJwt) {
-      lastCookieJwt = token;
-      emitJwtChange(token);
-    }
     return token;
   }
 

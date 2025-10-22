@@ -35,6 +35,8 @@ type Settings = {
   tenantId: string;
   slug: string;
   brandName: string;
+  ownerFirstName?: string | null;
+  ownerLastName?: string | null;
   introHtml?: string | null;
   website?: string | null;
   phone?: string | null;
@@ -493,6 +495,80 @@ export default function SettingsPage() {
     }
   }
 
+  /* ---------------- Actions: Profile ---------------- */
+  async function saveProfile() {
+    if (!user || !profileDirty) return;
+    setSavingProfile(true);
+
+    const nextFirst = profileFirstName.trim();
+    const nextLast = profileLastName.trim();
+    const optimisticName = [nextFirst, nextLast].filter(Boolean).join(" ") || null;
+    const previousUser = user;
+
+    mutateCurrentUser(
+      (prev) =>
+        prev
+          ? {
+              ...prev,
+              firstName: nextFirst || null,
+              lastName: nextLast || null,
+              name: optimisticName,
+            }
+          : prev,
+      false,
+    );
+
+    try {
+      const updated = await apiFetch<CurrentUser>("/auth/me", {
+        method: "PATCH",
+        json: { firstName: profileFirstName, lastName: profileLastName },
+      });
+      mutateCurrentUser(updated, false);
+      toast({ title: "Profile updated" });
+    } catch (e: any) {
+      mutateCurrentUser(previousUser, false);
+      toast({
+        title: "Couldn’t update profile",
+        description: e?.message || "unknown",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  /* ---------------- Actions: Early access ---------------- */
+  async function updateEarlyAccess(next: boolean) {
+    if (!user) return;
+    setUpdatingEarlyAccess(true);
+
+    const previous = user;
+    mutateCurrentUser((prev) => (prev ? { ...prev, isEarlyAdopter: next } : prev), false);
+
+    try {
+      const updated = await apiFetch<CurrentUser>("/auth/me", {
+        method: "PATCH",
+        json: { isEarlyAdopter: next },
+      });
+      mutateCurrentUser(updated, false);
+      toast({
+        title: next ? "Early access enabled" : "Early access disabled",
+        description: next
+          ? "You’ll see the feedback button and upcoming previews."
+          : "We’ll hide early adopter tools for now.",
+      });
+    } catch (e: any) {
+      mutateCurrentUser(previous, false);
+      toast({
+        title: "Couldn’t update early access",
+        description: e?.message || "unknown",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingEarlyAccess(false);
+    }
+  }
+
   /* ---------------- Actions: Brand ---------------- */
   async function saveBrand() {
     if (!s) return;
@@ -861,9 +937,27 @@ export default function SettingsPage() {
                 value={s.brandName || ""} onChange={(e) => setS({ ...s, brandName: e.target.value })} />
             </Field>
 
+            <Field label="Your first name" hint="Used in greetings across the workspace.">
+              <input
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                value={s.ownerFirstName || ""}
+                onChange={(e) => setS({ ...s, ownerFirstName: e.target.value })}
+                placeholder="Erin"
+              />
+            </Field>
+
             <Field label="Public slug" hint="Used for your public questionnaire link.">
               <input className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
                 value={s.slug || ""} onChange={(e) => setS({ ...s, slug: e.target.value })} />
+            </Field>
+
+            <Field label="Your last name">
+              <input
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+                value={s.ownerLastName || ""}
+                onChange={(e) => setS({ ...s, ownerLastName: e.target.value })}
+                placeholder="Larkin"
+              />
             </Field>
 
             <Field label="Website">

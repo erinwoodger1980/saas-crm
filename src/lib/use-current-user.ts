@@ -19,31 +19,6 @@ const fetcher = (path: string) => apiFetch<CurrentUser>(path);
 export function useCurrentUser() {
   const [jwt, setJwt] = useState<string | null>(() => (typeof window !== "undefined" ? getJwt() : null));
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const syncJwt = () => {
-      setJwt(getJwt());
-    };
-
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key && event.key !== "jwt") return;
-      syncJwt();
-    };
-
-    window.addEventListener("storage", handleStorage);
-    window.addEventListener(JWT_EVENT_NAME, syncJwt as EventListener);
-
-    syncJwt();
-
-    return () => {
-      window.removeEventListener("storage", handleStorage);
-      window.removeEventListener(JWT_EVENT_NAME, syncJwt as EventListener);
-    };
-  }, []);
-
-  const hasJwt = !!jwt;
-
   const { data, error, isValidating, mutate } = useSWR<CurrentUser>(
     hasJwt ? "/auth/me" : null,
     fetcher,
