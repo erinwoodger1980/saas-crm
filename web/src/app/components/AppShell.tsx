@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ReactNode } from "react";
+import { ReactNode, useMemo } from "react";
 import clsx from "clsx";
 import {
   LayoutDashboard,
@@ -17,9 +17,10 @@ import {
 } from "lucide-react";
 
 import { useTenantBrand } from "@/lib/use-tenant-brand";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
 
-const nav = [
+const BASE_NAV = [
   { href: "/dashboard", label: "Dashboard", description: "Pulse & KPIs", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", description: "Inbox & replies", icon: Mail },
   { href: "/tasks/owner", label: "Tasks", description: "Personal queue", icon: CheckSquare },
@@ -28,9 +29,28 @@ const nav = [
   { href: "/settings", label: "Settings", description: "Brand & automations", icon: Settings },
 ] as const;
 
+const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "developer"]);
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { brandName, shortName, logoUrl, initials } = useTenantBrand();
+  const { user } = useCurrentUser();
+
+  const navItems = useMemo(() => {
+    const items = [...BASE_NAV];
+    const roleKey = (user?.role || "").toLowerCase();
+    if (roleKey && FEEDBACK_ROLES.has(roleKey)) {
+      if (!items.some((item) => item.href === "/feedback")) {
+        items.push({
+          href: "/feedback",
+          label: "Feedback",
+          description: "Early access notes",
+          icon: Sparkles,
+        });
+      }
+    }
+    return items;
+  }, [user]);
 
   return (
     <div className="relative min-h-screen bg-slate-50">
@@ -84,6 +104,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-500 shadow-sm">
                 Hey, <span className="text-slate-700">{shortName || brandName}</span>
               </span>
+              {user?.isEarlyAdopter && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-medium text-blue-700 shadow-sm">
+                  Early access
+                </span>
+              )}
             </div>
 
             <Button
@@ -113,7 +138,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </div>
 
               <nav className="space-y-1.5">
-                {nav.map((item) => {
+                {navItems.map((item) => {
                   const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
                   return (
                     <Link

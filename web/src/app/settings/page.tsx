@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { useCurrentUser, type CurrentUser } from "@/lib/use-current-user";
 import {
   DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
   DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
@@ -323,11 +324,16 @@ function generateId(prefix: string) {
 ============================================================ */
 export default function SettingsPage() {
   const { toast } = useToast();
+  const { user, mutate: mutateCurrentUser } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
+  const [updatingEarlyAccess, setUpdatingEarlyAccess] = useState(false);
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
 
   // Costs
   const [costs, setCosts] = useState<CostRow[]>([]);
@@ -344,6 +350,38 @@ export default function SettingsPage() {
 
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
   const [savingPlaybook, setSavingPlaybook] = useState(false);
+
+  const derivedFirstName = useMemo(() => {
+    const direct = user?.firstName?.trim();
+    if (direct) return direct;
+    const fallback = user?.name?.trim();
+    if (!fallback) return "";
+    const parts = fallback.split(/\s+/).filter(Boolean);
+    if (!parts.length) return "";
+    return parts[0];
+  }, [user?.firstName, user?.name]);
+
+  const derivedLastName = useMemo(() => {
+    const direct = user?.lastName?.trim();
+    if (direct) return direct;
+    const fallback = user?.name?.trim();
+    if (!fallback) return "";
+    const parts = fallback.split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) return "";
+    return parts.slice(1).join(" ");
+  }, [user?.lastName, user?.name]);
+
+  useEffect(() => {
+    setProfileFirstName(derivedFirstName);
+    setProfileLastName(derivedLastName);
+  }, [derivedFirstName, derivedLastName]);
+
+  const profileDirty = useMemo(() => {
+    if (!user) return false;
+    const nextFirst = profileFirstName.trim();
+    const nextLast = profileLastName.trim();
+    return nextFirst !== derivedFirstName || nextLast !== derivedLastName;
+  }, [user, profileFirstName, profileLastName, derivedFirstName, derivedLastName]);
 
   useEffect(() => {
     (async () => {
@@ -379,6 +417,80 @@ export default function SettingsPage() {
       }
     })();
   }, [toast]);
+
+  /* ---------------- Actions: Profile ---------------- */
+  async function saveProfile() {
+    if (!user || !profileDirty) return;
+    setSavingProfile(true);
+
+    const nextFirst = profileFirstName.trim();
+    const nextLast = profileLastName.trim();
+    const optimisticName = [nextFirst, nextLast].filter(Boolean).join(" ") || null;
+    const previousUser = user;
+
+    mutateCurrentUser(
+      (prev) =>
+        prev
+          ? {
+              ...prev,
+              firstName: nextFirst || null,
+              lastName: nextLast || null,
+              name: optimisticName,
+            }
+          : prev,
+      false,
+    );
+
+    try {
+      const updated = await apiFetch<CurrentUser>("/auth/me", {
+        method: "PATCH",
+        json: { firstName: profileFirstName, lastName: profileLastName },
+      });
+      mutateCurrentUser(updated, false);
+      toast({ title: "Profile updated" });
+    } catch (e: any) {
+      mutateCurrentUser(previousUser, false);
+      toast({
+        title: "Couldn’t update profile",
+        description: e?.message || "unknown",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  /* ---------------- Actions: Early access ---------------- */
+  async function updateEarlyAccess(next: boolean) {
+    if (!user) return;
+    setUpdatingEarlyAccess(true);
+
+    const previous = user;
+    mutateCurrentUser((prev) => (prev ? { ...prev, isEarlyAdopter: next } : prev), false);
+
+    try {
+      const updated = await apiFetch<CurrentUser>("/auth/me", {
+        method: "PATCH",
+        json: { isEarlyAdopter: next },
+      });
+      mutateCurrentUser(updated, false);
+      toast({
+        title: next ? "Early access enabled" : "Early access disabled",
+        description: next
+          ? "You’ll see the feedback button and upcoming previews."
+          : "We’ll hide early adopter tools for now.",
+      });
+    } catch (e: any) {
+      mutateCurrentUser(previous, false);
+      toast({
+        title: "Couldn’t update early access",
+        description: e?.message || "unknown",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingEarlyAccess(false);
+    }
+  }
 
   /* ---------------- Actions: Brand ---------------- */
   async function saveBrand() {
@@ -664,6 +776,71 @@ export default function SettingsPage() {
           <Button onClick={saveBrand}>Save All</Button>
         </div>
       </div>
+
+      <Section
+        title="Profile"
+        description="Update how your name appears across the workspace."
+        right={
+          <Button
+            size="sm"
+            onClick={saveProfile}
+            disabled={!user || savingProfile || !profileDirty}
+          >
+            {savingProfile ? "Saving…" : "Save profile"}
+          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="First name">
+            <input
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+              value={profileFirstName}
+              onChange={(e) => setProfileFirstName(e.target.value)}
+              placeholder="Erin"
+            />
+          </Field>
+          <Field label="Last name">
+            <input
+              className="w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none focus:ring-2"
+              value={profileLastName}
+              onChange={(e) => setProfileLastName(e.target.value)}
+              placeholder="Callahan"
+            />
+          </Field>
+        </div>
+      </Section>
+
+      <Section
+        title="Early access"
+        description="Control whether you see experimental tools and the floating feedback widget."
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-2xl space-y-1">
+            <div className="text-sm font-semibold text-slate-700">Enable early adopter tools</div>
+            <p className="text-xs text-slate-500">
+              Turn this on to pin the “Give feedback” button to every page and unlock early feature previews.
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={!!user?.isEarlyAdopter}
+              disabled={!user || updatingEarlyAccess}
+              onChange={(e) => updateEarlyAccess(e.target.checked)}
+            />
+            <span>
+              {updatingEarlyAccess
+                ? "Saving…"
+                : user
+                  ? user.isEarlyAdopter
+                    ? "On"
+                    : "Off"
+                  : "Loading…"}
+            </span>
+          </label>
+        </div>
+      </Section>
 
       {/* Brand */}
       <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-6">

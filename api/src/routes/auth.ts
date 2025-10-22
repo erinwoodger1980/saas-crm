@@ -169,4 +169,103 @@ router.get("/me", async (req, res) => {
   }
 });
 
+router.patch("/me", async (req, res) => {
+  const auth = (req as any).auth;
+  if (!auth?.userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  const body = (req.body || {}) as {
+    isEarlyAdopter?: unknown;
+    firstName?: unknown;
+    lastName?: unknown;
+  };
+
+  const hasEarlyAccessUpdate = Object.prototype.hasOwnProperty.call(body, "isEarlyAdopter");
+  const hasFirstNameUpdate = Object.prototype.hasOwnProperty.call(body, "firstName");
+  const hasLastNameUpdate = Object.prototype.hasOwnProperty.call(body, "lastName");
+
+  if (!hasEarlyAccessUpdate && !hasFirstNameUpdate && !hasLastNameUpdate) {
+    return res.status(400).json({ error: "invalid_payload" });
+  }
+
+  if (hasEarlyAccessUpdate && typeof body.isEarlyAdopter !== "boolean") {
+    return res.status(400).json({ error: "invalid_payload" });
+  }
+
+  let nextFirstName: string | null | undefined;
+  if (hasFirstNameUpdate) {
+    if (body.firstName === null) {
+      nextFirstName = null;
+    } else if (typeof body.firstName === "string") {
+      const trimmed = body.firstName.trim();
+      nextFirstName = trimmed ? trimmed : null;
+    } else {
+      return res.status(400).json({ error: "invalid_payload" });
+    }
+  }
+
+  let nextLastName: string | null | undefined;
+  if (hasLastNameUpdate) {
+    if (body.lastName === null) {
+      nextLastName = null;
+    } else if (typeof body.lastName === "string") {
+      const trimmed = body.lastName.trim();
+      nextLastName = trimmed ? trimmed : null;
+    } else {
+      return res.status(400).json({ error: "invalid_payload" });
+    }
+  }
+
+  try {
+    const data: { isEarlyAdopter?: boolean; name?: string | null } = {};
+
+    if (hasEarlyAccessUpdate) {
+      data.isEarlyAdopter = body.isEarlyAdopter as boolean;
+    }
+
+    if (hasFirstNameUpdate || hasLastNameUpdate) {
+      const existing = await prisma.user.findUnique({
+        where: { id: auth.userId },
+        select: { name: true },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: "not_found" });
+      }
+
+      const currentParts = splitName(existing.name);
+      const finalFirst = nextFirstName !== undefined ? nextFirstName : currentParts.firstName;
+      const finalLast = nextLastName !== undefined ? nextLastName : currentParts.lastName;
+      const combined = [finalFirst, finalLast].filter(Boolean).join(" ");
+      data.name = combined ? combined : null;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: auth.userId },
+      data,
+      select: {
+        id: true,
+        email: true,
+        tenantId: true,
+        role: true,
+        name: true,
+        isEarlyAdopter: true,
+      },
+    });
+
+    const { firstName, lastName } = splitName(updated.name);
+
+    return res.json({
+      ...updated,
+      firstName,
+      lastName,
+    });
+  } catch (e: any) {
+    console.error("[auth/me:patch] failed:", e?.message || e);
+    if (e?.code === "P2025") return res.status(404).json({ error: "not_found" });
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
 export default router;
