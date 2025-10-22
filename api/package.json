@@ -11,7 +11,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
-    "prisma:deploy": "node scripts/prisma-deploy.mjs"
+    "prisma:deploy": "node scripts/prisma-deploy.mjs",
+    "prisma:resolve:ead": "prisma migrate resolve --rolled-back 20251021173644_early_adopter_feedback --schema ./prisma/schema.prisma",
+    "postinstall": "node scripts/prisma-postinstall.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",

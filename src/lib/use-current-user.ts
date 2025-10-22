@@ -10,6 +10,7 @@ export type CurrentUser = {
   role?: string | null;
   firstName?: string | null;
   lastName?: string | null;
+  isEarlyAdopter?: boolean | null;
 };
 
 const fetcher = (path: string) => apiFetch<CurrentUser>(path);
