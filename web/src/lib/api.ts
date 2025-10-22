@@ -145,17 +145,32 @@ export async function apiFetch<T = unknown>(
     body,
   });
 
-  const raw = await res.text();
-  const json = raw ? safeJson(raw) : null;
+  const text = await res.text();
+  const parsed = text ? safeJson(text) : null;
 
   if (!res.ok) {
-    const msg = (json as any)?.error || (json as any)?.message || `Request failed ${res.status}`;
-    const e = new Error(`${msg} for ${url}`) as any;
-    e.status = res.status;
-    e.body = raw;
-    throw e;
+    const details = parsed ?? (text || null);
+    const msg =
+      (details && typeof details === "object"
+        ? (details as any).error || (details as any).message
+        : null) ||
+      (typeof details === "string" && details.trim() ? details : null) ||
+      `Request failed ${res.status} ${res.statusText}`;
+
+    const error = new Error(`${msg} for ${url}`) as Error & {
+      status?: number;
+      details?: any;
+      response?: Response;
+      body?: string | null;
+    };
+    error.status = res.status;
+    error.details = details;
+    error.response = res;
+    error.body = text || null;
+    throw error;
   }
-  return (json as T) ?? ({} as T);
+
+  return (parsed as T) ?? ({} as T);
 }
 
 function safeJson(t: string) {
