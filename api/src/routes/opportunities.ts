@@ -29,7 +29,7 @@ router.get("/:id/followups", async (req: any, res: any) => {
 
   const logs = await prisma.followUpLog.findMany({
     where: { tenantId, leadId: id },
-    orderBy: { sentAt: "desc" },
+    orderBy: [{ scheduledFor: "desc" }, { sentAt: "desc" }],
   });
 
   res.json({ logs });
@@ -52,10 +52,20 @@ router.post("/:id/send-followup", async (req: any, res: any) => {
     }
     if (!lead.email) return res.status(400).json({ error: "lead has no email" });
 
-    const { variant = "A", subject, body } = (req.body || {}) as {
+    const {
+      variant = "A",
+      subject,
+      body,
+      suggestionId,
+      plan,
+      rationale,
+    } = (req.body || {}) as {
       variant?: string;
       subject?: string;
       body?: string;
+      suggestionId?: string;
+      plan?: any;
+      rationale?: string;
     };
     if (!subject || !body) return res.status(400).json({ error: "subject and body required" });
 
@@ -125,14 +135,24 @@ router.post("/:id/send-followup", async (req: any, res: any) => {
     });
 
     // Follow-up log + next action
-    await prisma.followUpLog.create({
+    const metadata: Record<string, any> = {};
+    if (suggestionId) metadata.suggestionId = suggestionId;
+    if (plan) metadata.plan = plan;
+    if (rationale) metadata.rationale = rationale;
+
+    const log = await prisma.followUpLog.create({
       data: {
         tenantId,
         leadId: id,
         variant: String(variant || "A"),
         subject,
         body,
-        delayDays: null,
+        delayDays:
+          typeof plan?.email?.delayDays === "number" && Number.isFinite(plan.email.delayDays)
+            ? Math.round(plan.email.delayDays)
+            : null,
+        channel: "email",
+        metadata: Object.keys(metadata).length ? metadata : undefined,
       },
     });
 
@@ -144,7 +164,12 @@ router.post("/:id/send-followup", async (req: any, res: any) => {
       },
     });
 
-    return res.json({ ok: true, threadId: providerThreadId, messageId: (sent as any).id });
+    return res.json({
+      ok: true,
+      threadId: providerThreadId,
+      messageId: (sent as any).id,
+      logId: log.id,
+    });
   } catch (e: any) {
     console.error("[opportunities send-followup] failed:", e);
     return res.status(500).json({ error: e?.message || "send failed" });
@@ -287,6 +312,100 @@ Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
     });
   } catch (e: any) {
     console.error("[opportunities next-followup] failed:", e);
+    res.status(500).json({ error: e?.message || "failed" });
+  }
+});
+
+router.post("/:id/schedule-call", async (req: any, res: any) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const id = String(req.params.id);
+    const lead = await prisma.lead.findUnique({ where: { id } });
+    if (!lead || lead.tenantId !== tenantId) {
+      return res.status(404).json({ error: "not found" });
+    }
+
+    const {
+      scheduledForISO,
+      callDelayDays,
+      script,
+      reason,
+      suggestionId,
+      priority = "HIGH",
+    } = req.body || {};
+
+    const target = scheduledForISO
+      ? new Date(String(scheduledForISO))
+      : new Date(Date.now() + Math.max(1, Number(callDelayDays) || 2) * 24 * 60 * 60 * 1000);
+    if (!target || Number.isNaN(target.getTime())) {
+      return res.status(400).json({ error: "invalid schedule" });
+    }
+    if (target.getTime() < Date.now() - 5 * 60 * 1000) {
+      return res.status(400).json({ error: "schedule must be in the future" });
+    }
+
+    const callTitle = `Call ${lead.contactName || "lead"} about their quote`;
+    const meta: Record<string, any> = {
+      channel: "phone",
+      origin: "ai-followup",
+    };
+    if (suggestionId) meta.suggestionId = suggestionId;
+    if (reason) meta.reason = reason;
+    if (script) meta.script = script;
+    if (callDelayDays !== undefined) meta.callDelayDays = callDelayDays;
+
+    const task = await prisma.task.create({
+      data: {
+        tenantId,
+        title: callTitle,
+        relatedType: "LEAD" as any,
+        relatedId: id,
+        dueAt: target,
+        priority: String(priority || "HIGH") as any,
+        autocreated: true,
+        meta,
+        assignees: userId
+          ? {
+              create: [{ userId, role: "OWNER" as any }],
+            }
+          : undefined,
+      },
+    });
+
+    const delayFromNow = Math.max(0, Math.round((target.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+    const callDelayNumber = Number(callDelayDays);
+    const logMeta: Record<string, any> = {
+      ...meta,
+      taskId: task.id,
+    };
+
+    await prisma.followUpLog.create({
+      data: {
+        tenantId,
+        leadId: id,
+        variant: "CALL",
+        subject: callTitle,
+        body: script || "Call lead to discuss their quote",
+        delayDays: Number.isFinite(callDelayNumber) ? Math.round(callDelayNumber) : delayFromNow,
+        channel: "phone",
+        scheduledFor: target,
+        metadata: logMeta,
+      },
+    });
+
+    await prisma.lead.update({
+      where: { id },
+      data: {
+        nextAction: "Phone follow-up scheduled",
+        nextActionAt: target,
+      },
+    });
+
+    res.json({ ok: true, scheduledForISO: target.toISOString(), taskId: task.id });
+  } catch (e: any) {
+    console.error("[opportunities schedule-call] failed:", e);
     res.status(500).json({ error: e?.message || "failed" });
   }
 });
