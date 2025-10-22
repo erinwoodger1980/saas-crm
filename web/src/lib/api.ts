@@ -26,6 +26,20 @@ if (typeof window !== "undefined") {
 
 /* ---------------- JWT helpers (kept) ---------------- */
 
+export const JWT_EVENT_NAME = "joinery:jwt-change";
+
+function emitJwtChange(token: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    const event = new CustomEvent(JWT_EVENT_NAME, { detail: { token } });
+    window.dispatchEvent(event);
+  } catch {
+    // Ignore environments where CustomEvent is unavailable
+  }
+}
+
+let lastCookieJwt: string | null = null;
+
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
   let token: string | null = null;
@@ -69,6 +83,8 @@ export function setJwt(token: string) {
   try {
     localStorage.setItem("jwt", token);
   } catch {}
+  lastCookieJwt = token;
+  emitJwtChange(token);
 
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   const cookieValue = encodeURIComponent(token);
@@ -85,6 +101,8 @@ export function clearJwt() {
   try {
     localStorage.removeItem("jwt");
   } catch {}
+  lastCookieJwt = null;
+  emitJwtChange(null);
 
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   const attributes = `Path=/; Max-Age=0; SameSite=Lax${secure}`;

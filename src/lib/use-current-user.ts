@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { apiFetch, getJwt } from "./api";
+import { JWT_EVENT_NAME, apiFetch, getJwt, clearJwt } from "./api";
 
 export type CurrentUser = {
   id: string;
@@ -16,7 +17,7 @@ export type CurrentUser = {
 const fetcher = (path: string) => apiFetch<CurrentUser>(path);
 
 export function useCurrentUser() {
-  const hasJwt = typeof window !== "undefined" ? !!getJwt() : false;
+  const [jwt, setJwt] = useState<string | null>(() => (typeof window !== "undefined" ? getJwt() : null));
 
   const { data, error, isValidating, mutate } = useSWR<CurrentUser>(
     hasJwt ? "/auth/me" : null,
@@ -25,6 +26,14 @@ export function useCurrentUser() {
       revalidateOnFocus: false,
     },
   );
+
+  useEffect(() => {
+    const status = (error as any)?.status;
+    if (status === 401) {
+      clearJwt();
+      setJwt(null);
+    }
+  }, [error]);
 
   return {
     user: data ?? null,

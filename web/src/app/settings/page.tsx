@@ -390,6 +390,7 @@ export default function SettingsPage() {
       const ok = await ensureDemoAuth();
       if (!ok) return;
       try {
+        await mutateCurrentUser();
         const data = await apiFetch<Settings>("/tenant/settings");
         const normalizedQuestionnaire = normalizeQuestionnaire((data as any).questionnaire ?? defaultQuestions());
         setS({
@@ -418,7 +419,81 @@ export default function SettingsPage() {
         setLoading(false);
       }
     })();
-  }, [toast]);
+  }, [mutateCurrentUser, toast]);
+
+  /* ---------------- Actions: Profile ---------------- */
+  async function saveProfile() {
+    if (!user || !profileDirty) return;
+    setSavingProfile(true);
+
+    const nextFirst = profileFirstName.trim();
+    const nextLast = profileLastName.trim();
+    const optimisticName = [nextFirst, nextLast].filter(Boolean).join(" ") || null;
+    const previousUser = user;
+
+    mutateCurrentUser(
+      (prev) =>
+        prev
+          ? {
+              ...prev,
+              firstName: nextFirst || null,
+              lastName: nextLast || null,
+              name: optimisticName,
+            }
+          : prev,
+      false,
+    );
+
+    try {
+      const updated = await apiFetch<CurrentUser>("/auth/me", {
+        method: "PATCH",
+        json: { firstName: profileFirstName, lastName: profileLastName },
+      });
+      mutateCurrentUser(updated, false);
+      toast({ title: "Profile updated" });
+    } catch (e: any) {
+      mutateCurrentUser(previousUser, false);
+      toast({
+        title: "Couldn’t update profile",
+        description: e?.message || "unknown",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  /* ---------------- Actions: Early access ---------------- */
+  async function updateEarlyAccess(next: boolean) {
+    if (!user) return;
+    setUpdatingEarlyAccess(true);
+
+    const previous = user;
+    mutateCurrentUser((prev) => (prev ? { ...prev, isEarlyAdopter: next } : prev), false);
+
+    try {
+      const updated = await apiFetch<CurrentUser>("/auth/me", {
+        method: "PATCH",
+        json: { isEarlyAdopter: next },
+      });
+      mutateCurrentUser(updated, false);
+      toast({
+        title: next ? "Early access enabled" : "Early access disabled",
+        description: next
+          ? "You’ll see the feedback button and upcoming previews."
+          : "We’ll hide early adopter tools for now.",
+      });
+    } catch (e: any) {
+      mutateCurrentUser(previous, false);
+      toast({
+        title: "Couldn’t update early access",
+        description: e?.message || "unknown",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingEarlyAccess(false);
+    }
+  }
 
   /* ---------------- Actions: Profile ---------------- */
   async function saveProfile() {
