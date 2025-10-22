@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import useSWR from "swr";
+
 import { JWT_EVENT_NAME, apiFetch, getJwt, clearJwt } from "./api";
 
 export type CurrentUser = {
@@ -34,6 +35,7 @@ export function useCurrentUser() {
     window.addEventListener("storage", handleStorage);
     window.addEventListener(JWT_EVENT_NAME, syncJwt as EventListener);
 
+    // Initial sync in case the token changes between render and effect
     syncJwt();
 
     return () => {

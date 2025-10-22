@@ -8,11 +8,62 @@ const API_BASE =
   "http://localhost:4000";
 
 export const AUTH_COOKIE_NAME = "jid";
+export const JWT_EVENT_NAME = "joinery:jwt-change";
+
+function emitJwtChange(token: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    const event = new CustomEvent(JWT_EVENT_NAME, { detail: { token } });
+    window.dispatchEvent(event);
+  } catch {
+    // Ignore environments where CustomEvent is unavailable
+  }
+}
 
 /** Read/write JWT in localStorage (browser only) */
+let lastCookieJwt: string | null = null;
+
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("jwt");
+
+  let token: string | null = null;
+
+  try {
+    token = localStorage.getItem("jwt");
+  } catch {
+    token = null;
+  }
+
+  if (token) return token;
+
+  const cookie = typeof document !== "undefined" ? document.cookie : "";
+
+  const extract = (name: string) => {
+    const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+    if (!match) return null;
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  };
+
+  token = extract(AUTH_COOKIE_NAME) || extract("jwt");
+
+  if (token) {
+    try {
+      localStorage.setItem("jwt", token);
+    } catch {
+      // Ignore write failures (private mode, disabled storage, etc.)
+    }
+    if (token !== lastCookieJwt) {
+      lastCookieJwt = token;
+      emitJwtChange(token);
+    }
+    return token;
+  }
+
+  return null;
 }
 
 export function setJwt(token: string) {
@@ -20,6 +71,8 @@ export function setJwt(token: string) {
   try {
     localStorage.setItem("jwt", token);
   } catch {}
+  lastCookieJwt = token;
+  emitJwtChange(token);
 
   // Also set a cookie so the API (and Next middleware) can read it
   const secure =
@@ -39,6 +92,8 @@ export function clearJwt() {
   try {
     localStorage.removeItem("jwt");
   } catch {}
+  lastCookieJwt = null;
+  emitJwtChange(null);
   document.cookie = `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0`;
   document.cookie = "jwt=; Path=/; Max-Age=0";
 }

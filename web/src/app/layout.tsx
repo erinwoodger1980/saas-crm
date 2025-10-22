@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Toaster } from "@/components/ui/toaster";
 import AppShell from "./components/AppShell";
 import { TasksButton } from "@/components/tasks/TasksButton";
+import FeedbackWidget from "@/components/FeedbackWidget";
 
 // Keep your existing env usage for DevAuth
 const API_BASE =
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         )}
 
         {shouldUseShell && <TasksButton />}
+        <FeedbackWidget />
 
         <Toaster />
       </body>

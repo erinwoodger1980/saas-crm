@@ -26,13 +26,60 @@ if (typeof window !== "undefined") {
 
 /* ---------------- JWT helpers (kept) ---------------- */
 
+export const JWT_EVENT_NAME = "joinery:jwt-change";
+
+function emitJwtChange(token: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    const event = new CustomEvent(JWT_EVENT_NAME, { detail: { token } });
+    window.dispatchEvent(event);
+  } catch {
+    // Ignore environments where CustomEvent is unavailable
+  }
+}
+
+let lastCookieJwt: string | null = null;
+
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
+  let token: string | null = null;
+
   try {
-    return localStorage.getItem("jwt");
+    token = localStorage.getItem("jwt");
   } catch {
-    return null;
+    token = null;
   }
+
+  if (token) return token;
+
+  const cookie = typeof document !== "undefined" ? document.cookie : "";
+
+  const extract = (name: string) => {
+    const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+    if (!match) return null;
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  };
+
+  token = extract("jid") || extract("jwt");
+
+  if (token) {
+    try {
+      localStorage.setItem("jwt", token);
+    } catch {
+      // Ignore write failures (private mode, disabled storage, etc.)
+    }
+    if (token !== lastCookieJwt) {
+      lastCookieJwt = token;
+      emitJwtChange(token);
+    }
+    return token;
+  }
+
+  return null;
 }
 
 export function setJwt(token: string) {
@@ -40,6 +87,8 @@ export function setJwt(token: string) {
   try {
     localStorage.setItem("jwt", token);
   } catch {}
+  lastCookieJwt = token;
+  emitJwtChange(token);
 
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   const cookieValue = encodeURIComponent(token);
@@ -56,6 +105,8 @@ export function clearJwt() {
   try {
     localStorage.removeItem("jwt");
   } catch {}
+  lastCookieJwt = null;
+  emitJwtChange(null);
 
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   const attributes = `Path=/; Max-Age=0; SameSite=Lax${secure}`;
