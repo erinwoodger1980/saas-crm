@@ -33,7 +33,7 @@ const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "develop
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { brandName, shortName, logoUrl, initials } = useTenantBrand();
+  const { brandName, shortName, logoUrl, initials, ownerFirstName, ownerLastName } = useTenantBrand();
   const { user } = useCurrentUser();
 
   const navItems = useMemo(() => {
@@ -51,6 +51,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
     return items;
   }, [user]);
+
+  const userFirstName = user?.firstName?.trim() || null;
+  const userLastName = user?.lastName?.trim() || null;
+  const ownerDisplayName = [ownerFirstName, ownerLastName].filter(Boolean).join(" ").trim();
+  const userDisplayName = [userFirstName, userLastName].filter(Boolean).join(" ").trim();
+  const greetingName = ownerDisplayName || userFirstName || userDisplayName || shortName || brandName;
 
   return (
     <div className="relative min-h-screen bg-slate-50">
@@ -102,7 +108,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 Copilot ready
               </span>
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-500 shadow-sm">
-                Hey, <span className="text-slate-700">{shortName || brandName}</span>
+                Hey, <span className="text-slate-700">{greetingName}</span>
               </span>
               {user?.isEarlyAdopter && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-medium text-blue-700 shadow-sm">
@@ -138,6 +144,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </div>
 
               <nav className="space-y-1.5">
+                <div className="flex items-center justify-center pb-2">
+                  <Image
+                    src="/logo-full.png"
+                    alt={`${brandName} full logo`}
+                    width={180}
+                    height={48}
+                    className="h-12 w-auto"
+                    priority
+                  />
+                </div>
                 {navItems.map((item) => {
                   const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
                   return (
