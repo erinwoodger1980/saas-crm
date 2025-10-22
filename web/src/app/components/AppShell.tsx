@@ -67,25 +67,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Top header */}
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-screen-2xl items-center justify-between px-6">
-          <div className="flex items-center gap-4">
+        <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-6 px-6 py-4">
+          <div className="flex items-center gap-6">
             <div className="relative">
-              <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_35px_-24px_rgba(15,23,42,0.65)]">
+              <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-[36px] border border-slate-200/80 bg-white shadow-[0_30px_60px_-36px_rgba(15,23,42,0.65)]">
                 {logoUrl ? (
                   <Image
                     src={logoUrl}
                     alt={`${brandName} logo`}
                     fill
                     className="object-cover"
-                    sizes="44px"
+                    sizes="96px"
                     priority
                     unoptimized
                   />
                 ) : (
-                  <span className="text-sm font-semibold text-slate-700">{initials}</span>
+                  <span className="text-2xl font-semibold text-slate-700">{initials}</span>
                 )}
               </div>
-              <span className="absolute -bottom-1 -right-1 rounded-full border border-white bg-emerald-500 px-1.5 py-[2px] text-[10px] font-semibold uppercase tracking-[0.2em] text-white shadow-sm">
+              <span className="absolute -bottom-2 -right-2 rounded-full border border-white bg-emerald-500 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-white shadow-sm">
                 Live
               </span>
             </div>
@@ -130,27 +130,35 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main grid */}
       <div className="relative mx-auto grid max-w-screen-2xl gap-8 px-6 py-10 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="md:sticky md:top-[112px] md:self-start">
+        <aside className="md:sticky md:top-[160px] md:self-start">
           <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 shadow-[0_30px_80px_-48px_rgba(15,23,42,0.45)]">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -top-32 left-1/2 h-48 w-[160%] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_70%)]"
             />
-            <div className="relative flex flex-col gap-8 p-6">
-              <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-6">
-                <div className="mx-auto w-[220px] sm:w-[260px]">
-                  <Image
-                    src="/logo-full.png"
-                    alt={`${brandName} full logo`}
-                    width={320}
-                    height={96}
-                    className="h-auto w-full"
-                    priority
-                  />
-                </div>
+            <div className="relative p-6">
+              <div className="mb-6 flex items-center justify-center rounded-2xl border border-slate-200/80 bg-white/70 p-6 shadow-sm">
+                <Image
+                  src="/logo-full.png"
+                  alt={`${brandName} full logo`}
+                  width={240}
+                  height={64}
+                  className="h-16 w-auto"
+                  priority
+                />
               </div>
 
               <nav className="space-y-1.5">
+                <div className="flex items-center justify-center pb-2">
+                  <Image
+                    src="/logo-full.png"
+                    alt={`${brandName} full logo`}
+                    width={180}
+                    height={48}
+                    className="h-12 w-auto"
+                    priority
+                  />
+                </div>
                 {navItems.map((item) => {
                   const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
                   return (
