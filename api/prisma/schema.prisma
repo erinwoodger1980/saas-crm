@@ -226,9 +226,13 @@ model FollowUpLog {
   messageId String?
   provider  String?
   threadId  String?
+  channel   String   @default("email")
+  scheduledFor DateTime?
+  metadata  Json?
   lead      Lead     @relation(fields: [leadId], references: [id])
 
   @@index([tenantId, leadId, sentAt])
+  @@index([tenantId, channel, sentAt])
 }
 
 model LeadSourceCost {
