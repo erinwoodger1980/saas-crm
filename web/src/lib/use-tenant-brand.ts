@@ -4,6 +4,8 @@ import { apiFetch } from "./api";
 type TenantSettings = {
   brandName?: string | null;
   logoUrl?: string | null;
+  ownerFirstName?: string | null;
+  ownerLastName?: string | null;
 };
 
 function toInitials(name: string): string {
@@ -32,12 +34,16 @@ export function useTenantBrand() {
   const logoUrl = data?.logoUrl?.trim() || null;
   const initials = toInitials(brandName);
   const shortName = toShortName(brandName);
+  const ownerFirstName = data?.ownerFirstName?.trim() || null;
+  const ownerLastName = data?.ownerLastName?.trim() || null;
 
   return {
     brandName,
     shortName,
     logoUrl,
     initials,
+    ownerFirstName,
+    ownerLastName,
     settings: data,
     isLoading,
     isValidating,
