@@ -19,7 +19,7 @@ const fetcher = (path: string) => apiFetch<CurrentUser>(path);
 export function useCurrentUser() {
   const hasJwt = typeof window !== "undefined" ? !!getJwt() : false;
 
-  const { data, error, isValidating, mutate } = useSWR<CurrentUser>(
+  const { data, error, isValidating } = useSWR<CurrentUser>(
     hasJwt ? "/auth/me" : null,
     fetcher,
     {
@@ -31,6 +31,5 @@ export function useCurrentUser() {
     user: data ?? null,
     error,
     isLoading: hasJwt && !data && !error && isValidating,
-    mutate,
   };
 }
