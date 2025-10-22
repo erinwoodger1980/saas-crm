@@ -36,22 +36,27 @@ if (!process.env.DATABASE_URL) {
 }
 
 const schemaPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'prisma', 'schema.prisma');
-const migrationName = '20251020150829_reinit';
+const migrationsToResolve = [
+  '20251020150829_reinit',
+  '20251021173644_early_adopter_feedback',
+];
 
-console.log(`Checking for failed Prisma migration "${migrationName}"...`);
+for (const migrationName of migrationsToResolve) {
+  console.log(`Checking for failed Prisma migration "${migrationName}"...`);
 
-const resolveExitCode = await run(
-  'npx',
-  ['prisma', 'migrate', 'resolve', '--rolled-back', migrationName, '--schema', schemaPath],
-  { ignoreFailure: true },
-);
-
-if (resolveExitCode !== 0) {
-  console.log(
-    `No failed migrations named "${migrationName}" were found or the migration was already resolved (exit code ${resolveExitCode}).`,
+  const resolveExitCode = await run(
+    'npx',
+    ['prisma', 'migrate', 'resolve', '--rolled-back', migrationName, '--schema', schemaPath],
+    { ignoreFailure: true },
   );
-} else {
-  console.log(`Marked migration "${migrationName}" as rolled back.`);
+
+  if (resolveExitCode !== 0) {
+    console.log(
+      `No failed migrations named "${migrationName}" were found or the migration was already resolved (exit code ${resolveExitCode}).`,
+    );
+  } else {
+    console.log(`Marked migration "${migrationName}" as rolled back.`);
+  }
 }
 
 console.log('Running prisma migrate deploy...');
