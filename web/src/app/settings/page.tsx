@@ -46,6 +46,7 @@ type Settings = {
   taskPlaybook?: TaskPlaybook | null;
   questionnaireEmailSubject?: string | null;
   questionnaireEmailBody?: string | null;
+  aiFollowupLearning?: { crossTenantOptIn: boolean; lastUpdatedISO?: string | null } | null;
 };
 type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number };
 type CostRow = {
@@ -57,6 +58,26 @@ type CostRow = {
   leads: number;
   conversions: number;
   scalable: boolean;
+};
+
+type AiFollowupInsight = {
+  optIn: boolean;
+  summary?: string;
+  sampleSize?: number;
+  variants?: {
+    variant: string;
+    sampleSize: number;
+    replyRate?: number;
+    conversionRate?: number;
+    avgDelayDays?: number | null;
+    successScore?: number;
+  }[];
+  call?: {
+    sampleSize?: number;
+    avgDelayDays?: number | null;
+    conversionRate?: number | null;
+  };
+  lastUpdatedISO?: string | null;
 };
 
 /* ---------------- Small UI bits ---------------- */
@@ -352,6 +373,8 @@ export default function SettingsPage() {
 
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
   const [savingPlaybook, setSavingPlaybook] = useState(false);
+  const [aiInsights, setAiInsights] = useState<AiFollowupInsight | null>(null);
+  const [savingAiLearning, setSavingAiLearning] = useState(false);
 
   const derivedFirstName = useMemo(() => {
     const direct = user?.firstName?.trim();
@@ -372,6 +395,14 @@ export default function SettingsPage() {
     if (parts.length <= 1) return "";
     return parts.slice(1).join(" ");
   }, [user?.lastName, user?.name]);
+
+  const aiOptIn = s?.aiFollowupLearning?.crossTenantOptIn !== false;
+  const aiLastUpdated = s?.aiFollowupLearning?.lastUpdatedISO || null;
+
+  function formatPercent(value?: number) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return "–";
+    return `${Math.round(value * 100)}%`;
+  }
 
   useEffect(() => {
     setProfileFirstName(derivedFirstName);
@@ -407,12 +438,32 @@ export default function SettingsPage() {
             typeof (data as any).questionnaireEmailBody === "string" && (data as any).questionnaireEmailBody
               ? (data as any).questionnaireEmailBody
               : DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+          aiFollowupLearning:
+            (data as any).aiFollowupLearning ?? ({ crossTenantOptIn: true, lastUpdatedISO: null } as Settings["aiFollowupLearning"]),
         });
         setPlaybook(normalizeTaskPlaybook((data as any).taskPlaybook));
         const inboxCfg = await apiFetch<InboxCfg>("/tenant/inbox");
         setInbox(inboxCfg);
         const costRows = await apiFetch<CostRow[]>("/tenant/costs");
         setCosts(costRows);
+        try {
+          const insights = await apiFetch<AiFollowupInsight>("/ai/followup/learning");
+          setAiInsights(insights);
+          setS((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  aiFollowupLearning: {
+                    crossTenantOptIn: insights.optIn,
+                    lastUpdatedISO:
+                      insights.lastUpdatedISO ?? prev.aiFollowupLearning?.lastUpdatedISO ?? null,
+                  },
+                }
+              : prev,
+          );
+        } catch {
+          setAiInsights(null);
+        }
       } catch (e: any) {
         toast({ title: "Failed to load settings", description: e?.message, variant: "destructive" });
       } finally {
@@ -651,6 +702,70 @@ export default function SettingsPage() {
       toast({ title: "Failed to save inbox settings", description: e?.message, variant: "destructive" });
     } finally {
       setSavingInbox(false);
+    }
+  }
+
+  async function updateAiLearning(next: boolean) {
+    if (!s) return;
+    setSavingAiLearning(true);
+    const previousOptIn = aiOptIn;
+    const previousStamp = aiLastUpdated;
+
+    setS((prev) =>
+      prev
+        ? {
+            ...prev,
+            aiFollowupLearning: {
+              crossTenantOptIn: next,
+              lastUpdatedISO: prev.aiFollowupLearning?.lastUpdatedISO ?? previousStamp ?? null,
+            },
+          }
+        : prev,
+    );
+
+    try {
+      await apiFetch("/tenant/settings", {
+        method: "PATCH",
+        json: { aiFollowupLearning: { crossTenantOptIn: next } },
+      });
+      const refreshed = await apiFetch<AiFollowupInsight>("/ai/followup/learning");
+      setAiInsights(refreshed);
+      setS((prev) =>
+        prev
+          ? {
+              ...prev,
+              aiFollowupLearning: {
+                crossTenantOptIn: next,
+                lastUpdatedISO: refreshed?.lastUpdatedISO ?? new Date().toISOString(),
+              },
+            }
+          : prev,
+      );
+      toast({
+        title: next ? "AI learning enabled" : "AI learning paused",
+        description: next
+          ? "We’ll keep improving follow-ups across the network."
+          : "We’ve stopped learning from your workspace.",
+      });
+    } catch (e: any) {
+      setS((prev) =>
+        prev
+          ? {
+              ...prev,
+              aiFollowupLearning: {
+                crossTenantOptIn: previousOptIn,
+                lastUpdatedISO: previousStamp ?? prev.aiFollowupLearning?.lastUpdatedISO ?? null,
+              },
+            }
+          : prev,
+      );
+      toast({
+        title: "Couldn’t update AI learning",
+        description: e?.message || "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingAiLearning(false);
     }
   }
 
@@ -1508,31 +1623,89 @@ export default function SettingsPage() {
         </div>
 
         {/* Machine Learning */}
-        <div className="mt-6 border-t pt-4">
-          <h3 className="text-lg font-semibold mb-2">Machine Learning</h3>
-          <p className="text-sm text-gray-500 mb-4">Train the model using the last 500 sent quote emails with PDF attachments.</p>
+        <div className="mt-6 border-t pt-4 space-y-4">
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Machine Learning</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Train the model using the last 500 sent quote emails with PDF attachments.
+            </p>
 
-          <Button
-            onClick={async () => {
-              try {
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/ml/train`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${localStorage.getItem("jwt")}`,
-                  },
-                });
-                const json = await res.json();
-                if (!res.ok) throw new Error(json?.error || "Training failed");
-                alert(`✅ Model training started.\n${json.message || "Training triggered."}`);
-              } catch (err: any) {
-                console.error("Train model failed:", err);
-                alert(`❌ ${err.message || "Failed to trigger training"}`);
-              }
-            }}
-          >
-            ✨ Train Model
-          </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/ml/train`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${localStorage.getItem("jwt")}`,
+                    },
+                  });
+                  const json = await res.json();
+                  if (!res.ok) throw new Error(json?.error || "Training failed");
+                  alert(`✅ Model training started.\n${json.message || "Training triggered."}`);
+                } catch (err: any) {
+                  console.error("Train model failed:", err);
+                  alert(`❌ ${err.message || "Failed to trigger training"}`);
+                }
+              }}
+            >
+              ✨ Train Model
+            </Button>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700">AI follow-up learning</h4>
+                <p className="text-xs text-slate-500">
+                  Share anonymous conversion data so JoineryAI can tune follow-up timing across every tenant.
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={aiOptIn}
+                  onChange={(e) => updateAiLearning(e.target.checked)}
+                  disabled={savingAiLearning}
+                />
+                <span>{savingAiLearning ? "Saving…" : aiOptIn ? "Opted in" : "Opted out"}</span>
+              </label>
+            </div>
+
+            {aiInsights ? (
+              <div className="mt-3 space-y-2 text-xs text-slate-600">
+                {aiInsights.summary && <div className="text-slate-700">{aiInsights.summary}</div>}
+                {aiInsights.variants && aiInsights.variants.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {aiInsights.variants.slice(0, 2).map((stat) => (
+                      <span
+                        key={stat.variant}
+                        className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600"
+                      >
+                        Variant {stat.variant}: {formatPercent(stat.replyRate)} replies · {formatPercent(stat.conversionRate)} won
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {typeof aiInsights.call?.avgDelayDays === "number" && aiInsights.call.avgDelayDays !== null && (
+                  <div className="text-[10px] text-slate-500">
+                    Phone follow-ups average {Math.round(aiInsights.call.avgDelayDays)} day
+                    {Math.round(aiInsights.call.avgDelayDays) === 1 ? "" : "s"} after an email with
+                    {" "}
+                    {formatPercent(aiInsights.call.conversionRate)} positive replies.
+                  </div>
+                )}
+                <div className="text-[10px] text-slate-400">
+                  Last updated {aiInsights.lastUpdatedISO ? new Date(aiInsights.lastUpdatedISO).toLocaleString() : "recently"}.
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 text-xs text-slate-500">
+                Gathering performance data from recent follow-ups…
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
