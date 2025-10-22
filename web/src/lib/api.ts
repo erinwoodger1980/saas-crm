@@ -28,11 +28,40 @@ if (typeof window !== "undefined") {
 
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
+  let token: string | null = null;
+
   try {
-    return localStorage.getItem("jwt");
+    token = localStorage.getItem("jwt");
   } catch {
-    return null;
+    token = null;
   }
+
+  if (token) return token;
+
+  const cookie = typeof document !== "undefined" ? document.cookie : "";
+
+  const extract = (name: string) => {
+    const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+    if (!match) return null;
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  };
+
+  token = extract("jid") || extract("jwt");
+
+  if (token) {
+    try {
+      localStorage.setItem("jwt", token);
+    } catch {
+      // Ignore write failures (private mode, disabled storage, etc.)
+    }
+    return token;
+  }
+
+  return null;
 }
 
 export function setJwt(token: string) {
