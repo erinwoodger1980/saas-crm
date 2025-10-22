@@ -36,10 +36,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-const prismaDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'prisma');
-const schemaPath = path.join(prismaDir, 'schema.prisma');
-const migrationsDir = path.join(prismaDir, 'migrations');
-
+const schemaPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'prisma', 'schema.prisma');
 const migrationsToResolve = [
   '20251020150829_reinit',
   '20251021173644_early_adopter_feedback',
@@ -60,26 +57,6 @@ for (const migrationName of migrationsToResolve) {
     );
   } else {
     console.log(`Marked migration "${migrationName}" as rolled back.`);
-  }
-
-  const sqlFilePath = path.join(migrationsDir, migrationName, 'migration.sql');
-  if (existsSync(sqlFilePath)) {
-    console.log(`Executing migration script for "${migrationName}" to align database schema...`);
-    await run('npx', ['prisma', 'db', 'execute', '--schema', schemaPath, '--file', sqlFilePath]);
-  } else {
-    console.warn(
-      `Skipping execution for "${migrationName}" because ${sqlFilePath} could not be found.`,
-    );
-  }
-
-  const appliedExitCode = await run(
-    'npx',
-    ['prisma', 'migrate', 'resolve', '--applied', migrationName, '--schema', schemaPath],
-    { ignoreFailure: true },
-  );
-
-  if (appliedExitCode === 0) {
-    console.log(`Marked migration "${migrationName}" as applied.`);
   }
 }
 
