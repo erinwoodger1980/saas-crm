@@ -67,6 +67,7 @@ router.post("/login", async (req, res) => {
         tenantId: user.tenantId,
         role: user.role,
         name: user.name,
+        isEarlyAdopter: user.isEarlyAdopter,
         firstName,
         lastName,
       },
@@ -91,7 +92,13 @@ router.post("/dev-seed", async (_req, res) => {
     if (!user) {
       const passwordHash = await bcrypt.hash("secret12", 10);
       user = await prisma.user.create({
-        data: { email, passwordHash, tenantId: tenant.id, role: "owner" },
+        data: {
+          email,
+          passwordHash,
+          tenantId: tenant.id,
+          role: "owner",
+          isEarlyAdopter: true,
+        },
       });
     }
 
@@ -115,6 +122,7 @@ router.post("/dev-seed", async (_req, res) => {
         tenantId: user.tenantId,
         role: user.role,
         name: user.name,
+        isEarlyAdopter: user.isEarlyAdopter,
         firstName,
         lastName,
       },
@@ -134,7 +142,14 @@ router.get("/me", async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: auth.userId },
-      select: { id: true, email: true, tenantId: true, role: true, name: true },
+      select: {
+        id: true,
+        email: true,
+        tenantId: true,
+        role: true,
+        name: true,
+        isEarlyAdopter: true,
+      },
     });
 
     if (!user) {
