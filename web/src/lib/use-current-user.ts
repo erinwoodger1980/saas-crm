@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+
 import { apiFetch, getJwt } from "./api";
 
 export type CurrentUser = {
