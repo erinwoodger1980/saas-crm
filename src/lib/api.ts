@@ -135,7 +135,16 @@ export async function apiFetch<T = any>(
     const msg =
       (details && (details.error || details.message)) ||
       `Request failed ${res.status} ${res.statusText}`;
-    throw new Error(`${msg} for ${url}`);
+
+    const error = new Error(`${msg} for ${url}`) as Error & {
+      status?: number;
+      details?: any;
+      response?: Response;
+    };
+    error.status = res.status;
+    error.details = details;
+    error.response = res;
+    throw error;
   }
 
   // Gracefully handle empty responses
