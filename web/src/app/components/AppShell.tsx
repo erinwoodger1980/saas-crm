@@ -136,8 +136,29 @@ export default function AppShell({ children }: { children: ReactNode }) {
               aria-hidden="true"
               className="pointer-events-none absolute -top-32 left-1/2 h-48 w-[160%] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_70%)]"
             />
-            <div className="relative flex flex-col gap-8 p-6">
+            <div className="relative p-6">
+              <div className="mb-6 flex items-center justify-center rounded-2xl border border-slate-200/80 bg-white/70 p-6 shadow-sm">
+                <Image
+                  src="/logo-full.png"
+                  alt={`${brandName} full logo`}
+                  width={240}
+                  height={64}
+                  className="h-16 w-auto"
+                  priority
+                />
+              </div>
+
               <nav className="space-y-1.5">
+                <div className="flex items-center justify-center pb-2">
+                  <Image
+                    src="/logo-full.png"
+                    alt={`${brandName} full logo`}
+                    width={180}
+                    height={48}
+                    className="h-12 w-auto"
+                    priority
+                  />
+                </div>
                 {navItems.map((item) => {
                   const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
                   return (
