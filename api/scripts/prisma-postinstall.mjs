@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// Skip during emergency deploys
+if (process.env.PRISMA_MIGRATE_SKIP === '1') {
+  console.log('Skipping prisma migrate deploy due to PRISMA_MIGRATE_SKIP=1');
+  process.exit(0);
+}
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
