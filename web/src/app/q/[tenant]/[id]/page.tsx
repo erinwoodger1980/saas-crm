@@ -55,9 +55,6 @@ type PublicLead = {
 
 type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
-const ITEM_COUNT = 3;
-const ITEM_INDICES = Array.from({ length: ITEM_COUNT }, (_, idx) => idx);
-
 function normalizeQuestions(raw: any): QField[] {
   const list = Array.isArray(raw) ? raw : [];
   return list
@@ -96,15 +93,13 @@ export default function PublicQuestionnairePage() {
   const [banner, setBanner] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
-  const [itemAnswers, setItemAnswers] = useState<Record<string, any>[]>(() =>
-    Array.from({ length: ITEM_COUNT }, () => ({}))
-  );
-  const [itemErrors, setItemErrors] = useState<Record<string, string>[]>(() =>
-    Array.from({ length: ITEM_COUNT }, () => ({}))
-  );
-  const [itemFiles, setItemFiles] = useState<File[][]>(() =>
-    Array.from({ length: ITEM_COUNT }, () => [])
-  );
+  const [itemAnswers, setItemAnswers] = useState<Record<string, any>[]>(() => [
+    {} as Record<string, any>,
+  ]);
+  const [itemErrors, setItemErrors] = useState<Record<string, string>[]>(() => [
+    {} as Record<string, string>,
+  ]);
+  const [itemFiles, setItemFiles] = useState<File[][]>(() => [[]]);
   const fieldRefs = useRef<Record<string, FieldElement | null>>({});
 
   useEffect(() => {
@@ -124,20 +119,21 @@ export default function PublicQuestionnairePage() {
         const custom =
           l.lead && typeof l.lead.custom === "object" && l.lead.custom !== null ? (l.lead.custom as any) : {};
         const existingItems = Array.isArray(custom.items) ? custom.items : [];
-        setItemAnswers(
-          Array.from({ length: ITEM_COUNT }, (_, idx) => {
-            const existing = existingItems[idx];
-            if (existing && typeof existing === "object") {
-              const rest = { ...(existing as Record<string, any>) };
-              delete rest.photos;
-              delete rest.itemNumber;
-              return rest;
-            }
-            return {};
-          })
-        );
-        setItemErrors(Array.from({ length: ITEM_COUNT }, () => ({}) as Record<string, string>));
-        setItemFiles(Array.from({ length: ITEM_COUNT }, () => [] as File[]));
+        const answers = existingItems.map((existing) => {
+          if (existing && typeof existing === "object") {
+            const rest = { ...(existing as Record<string, any>) };
+            delete rest.photos;
+            delete rest.itemNumber;
+            return rest;
+          }
+          return {} as Record<string, any>;
+        });
+        if (!answers.length) {
+          answers.push({} as Record<string, any>);
+        }
+        setItemAnswers(answers);
+        setItemErrors(Array.from({ length: answers.length }, () => ({} as Record<string, string>)));
+        setItemFiles(Array.from({ length: answers.length }, () => [] as File[]));
         fieldRefs.current = {};
       } catch (e: any) {
         setBanner(e?.message || "Failed to load");
@@ -184,6 +180,17 @@ export default function PublicQuestionnairePage() {
     setItemFiles((prev) => prev.map((files, idx) => (idx === itemIndex ? [] : files)));
   };
 
+  const addItem = () => {
+    setItemAnswers((prev) => {
+      const last = prev[prev.length - 1] ?? {};
+      const entries = Object.entries(last).filter(([key]) => !key.toLowerCase().includes("size"));
+      const base = Object.fromEntries(entries) as Record<string, any>;
+      return [...prev, base];
+    });
+    setItemErrors((prev) => [...prev, {} as Record<string, string>]);
+    setItemFiles((prev) => [...prev, [] as File[]]);
+  };
+
   const hasItemContent = (idx: number) => {
     const item = itemAnswers[idx] ?? {};
     const hasValues = Object.values(item).some((val) => !isEmptyValue(val));
@@ -197,15 +204,15 @@ export default function PublicQuestionnairePage() {
 
   function validate(): boolean {
     if (questions.length === 0) {
-      setItemErrors(Array.from({ length: ITEM_COUNT }, () => ({} as Record<string, string>)));
+      setItemErrors(itemAnswers.map(() => ({} as Record<string, string>)));
       setBanner(null);
       return true;
     }
 
-    const next = Array.from({ length: ITEM_COUNT }, () => ({} as Record<string, string>));
+    const next = itemAnswers.map(() => ({} as Record<string, string>));
     let firstInvalidKey: string | null = null;
 
-    ITEM_INDICES.forEach((itemIdx) => {
+    itemAnswers.forEach((_, itemIdx) => {
       const shouldValidate = itemIdx === 0 || hasItemContent(itemIdx);
       if (!shouldValidate) return;
 
@@ -385,10 +392,10 @@ export default function PublicQuestionnairePage() {
               ) : (
                 <div className="space-y-5">
                   <p className="text-xs text-slate-500">
-                    Provide details for up to three items. Item 1 is required; you can leave Item 2 and Item 3 blank if you
-                    don&apos;t need them.
+                    Start with the first item. Use the button below to add more items—new items copy your previous answers
+                    (except the size) so you can tweak what&apos;s different.
                   </p>
-                  {ITEM_INDICES.map((itemIdx) => {
+                  {itemAnswers.map((_, itemIdx) => {
                     const itemErr = itemErrors[itemIdx] ?? {};
                     const sectionLabel = `Item ${itemIdx + 1}`;
                     return (
@@ -494,6 +501,19 @@ export default function PublicQuestionnairePage() {
                       </div>
                     );
                   })}
+                  <div>
+                    <button
+                      type="button"
+                      onClick={addItem}
+                      className={[
+                        "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2",
+                        "text-sm font-medium text-[rgb(var(--brand))] transition hover:bg-[rgb(var(--brand))]/10",
+                      ].join(" ")}
+                    >
+                      <span className="text-base leading-none">+</span>
+                      <span>Add another item</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
