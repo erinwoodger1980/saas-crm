@@ -12,7 +12,41 @@ export const AUTH_COOKIE_NAME = "jid";
 /** Read/write JWT in localStorage (browser only) */
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("jwt");
+
+  let token: string | null = null;
+
+  try {
+    token = localStorage.getItem("jwt");
+  } catch {
+    token = null;
+  }
+
+  if (token) return token;
+
+  const cookie = typeof document !== "undefined" ? document.cookie : "";
+
+  const extract = (name: string) => {
+    const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+    if (!match) return null;
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  };
+
+  token = extract(AUTH_COOKIE_NAME) || extract("jwt");
+
+  if (token) {
+    try {
+      localStorage.setItem("jwt", token);
+    } catch {
+      // Ignore write failures (private mode, disabled storage, etc.)
+    }
+    return token;
+  }
+
+  return null;
 }
 
 export function setJwt(token: string) {
