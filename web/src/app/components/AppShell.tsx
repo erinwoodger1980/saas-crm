@@ -33,7 +33,7 @@ const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "develop
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { brandName, shortName, logoUrl, initials } = useTenantBrand();
+  const { brandName, shortName, logoUrl, initials, ownerFirstName, ownerLastName } = useTenantBrand();
   const { user } = useCurrentUser();
 
   const navItems = useMemo(() => {
@@ -52,6 +52,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return items;
   }, [user]);
 
+  const userFirstName = user?.firstName?.trim() || null;
+  const userLastName = user?.lastName?.trim() || null;
+  const ownerDisplayName = [ownerFirstName, ownerLastName].filter(Boolean).join(" ").trim();
+  const userDisplayName = [userFirstName, userLastName].filter(Boolean).join(" ").trim();
+  const greetingName = ownerDisplayName || userFirstName || userDisplayName || shortName || brandName;
+
   return (
     <div className="relative min-h-screen bg-slate-50">
       <div
@@ -61,25 +67,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Top header */}
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-screen-2xl items-center justify-between px-6">
-          <div className="flex items-center gap-4">
+        <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-6 px-6 py-4">
+          <div className="flex items-center gap-6">
             <div className="relative">
-              <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_18px_35px_-24px_rgba(15,23,42,0.65)]">
+              <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-[36px] border border-slate-200/80 bg-white shadow-[0_30px_60px_-36px_rgba(15,23,42,0.65)]">
                 {logoUrl ? (
                   <Image
                     src={logoUrl}
                     alt={`${brandName} logo`}
                     fill
                     className="object-cover"
-                    sizes="44px"
+                    sizes="96px"
                     priority
                     unoptimized
                   />
                 ) : (
-                  <span className="text-sm font-semibold text-slate-700">{initials}</span>
+                  <span className="text-2xl font-semibold text-slate-700">{initials}</span>
                 )}
               </div>
-              <span className="absolute -bottom-1 -right-1 rounded-full border border-white bg-emerald-500 px-1.5 py-[2px] text-[10px] font-semibold uppercase tracking-[0.2em] text-white shadow-sm">
+              <span className="absolute -bottom-2 -right-2 rounded-full border border-white bg-emerald-500 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-white shadow-sm">
                 Live
               </span>
             </div>
@@ -102,7 +108,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 Copilot ready
               </span>
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-500 shadow-sm">
-                Hey, <span className="text-slate-700">{shortName || brandName}</span>
+                Hey, <span className="text-slate-700">{greetingName}</span>
               </span>
               {user?.isEarlyAdopter && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-medium text-blue-700 shadow-sm">
@@ -124,19 +130,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main grid */}
       <div className="relative mx-auto grid max-w-screen-2xl gap-8 px-6 py-10 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="md:sticky md:top-[112px] md:self-start">
+        <aside className="md:sticky md:top-[160px] md:self-start">
           <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 shadow-[0_30px_80px_-48px_rgba(15,23,42,0.45)]">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -top-32 left-1/2 h-48 w-[160%] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_70%)]"
             />
-            <div className="relative p-6">
-              <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white/70 p-5 shadow-sm">
-                <p className="text-[11px] uppercase tracking-[0.4em] text-slate-400">Command center</p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">Navigate your workflow</p>
-                <p className="mt-1 text-xs text-slate-500">Everything from new enquiries to workshop scheduling.</p>
-              </div>
-
+            <div className="relative flex flex-col gap-8 p-6">
               <nav className="space-y-1.5">
                 {navItems.map((item) => {
                   const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
@@ -170,7 +170,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 })}
               </nav>
 
-              <div className="mt-8 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-5 text-sm text-slate-600">
+              <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-5 text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">Need a quick win?</p>
                 <p className="mt-1 text-xs text-slate-500">Drop into My Tasks to see what’s next for the team.</p>
                 <Link
