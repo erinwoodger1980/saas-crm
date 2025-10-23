@@ -98,6 +98,8 @@ async function syncLeadFieldDefs(tenantId: string, fields: QuestionnaireField[])
       config.kind = "date";
     } else if (field.type === "source") {
       config.kind = "source";
+    } else if (field.type === "file") {
+      config.kind = "file";
     }
 
     const data = {

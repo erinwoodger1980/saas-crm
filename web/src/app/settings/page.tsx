@@ -8,6 +8,7 @@ import {
   DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
   DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
 } from "@/lib/constants";
+import SourceCosts from "./SourceCosts";
 import {
   DEFAULT_TASK_PLAYBOOK,
   MANUAL_TASK_KEYS,
@@ -22,7 +23,7 @@ type QField = {
   id?: string;
   key: string;
   label: string;
-  type: "text" | "textarea" | "select" | "number" | "date" | "source";
+  type: "text" | "textarea" | "select" | "number" | "date" | "source" | "file";
   required?: boolean;
   options?: string[];
   askInQuestionnaire?: boolean;
@@ -115,7 +116,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 /* ---------------- Helpers ---------------- */
-const FIELD_TYPES: QField["type"][] = ["text", "textarea", "select", "number", "date", "source"];
+const FIELD_TYPES: QField["type"][] = ["text", "textarea", "select", "number", "date", "source", "file"];
 
 function makeFieldId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -200,6 +201,8 @@ export default function SettingsPage() {
         await mutateCurrentUser();
         const data = await apiFetch<Settings>("/tenant/settings");
         setS(data);
+        // initialize inbox
+        if ((data as any)?.inbox) setInbox((data as any).inbox as InboxCfg);
         // initialize questionnaire editor from settings
         setQFields(normalizeQuestionnaire((data as any)?.questionnaire ?? []));
         // initialize profile name fields from current user (if available)
@@ -258,6 +261,7 @@ export default function SettingsPage() {
         introHtml: s.introHtml,
         website: s.website,
         phone: s.phone,
+        inbox,
         questionnaire: serializeQuestionnaire(qFields),
       } as any;
 
@@ -269,6 +273,18 @@ export default function SettingsPage() {
       toast({ title: "Failed to save settings", description: e?.message, variant: "destructive" });
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function saveInbox() {
+    setSavingInbox(true);
+    try {
+      await apiFetch("/tenant/settings", { method: "PATCH", json: { inbox } });
+      toast({ title: "Inbox settings saved" });
+    } catch (e: any) {
+      toast({ title: "Failed to save inbox", description: e?.message || "" , variant: "destructive" });
+    } finally {
+      setSavingInbox(false);
     }
   }
 
@@ -451,6 +467,30 @@ export default function SettingsPage() {
             </Button>
           </div>
         </div>
+      </Section>
+
+      <Section title="Inbox & Integrations" description="Enable Gmail or Microsoft 365 ingestion">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={inbox.gmail} onChange={(e) => setInbox((p) => ({ ...p, gmail: e.target.checked }))} />
+            <span>Gmail</span>
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={inbox.ms365} onChange={(e) => setInbox((p) => ({ ...p, ms365: e.target.checked }))} />
+            <span>Microsoft 365</span>
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <span className="text-xs text-slate-500">Poll interval (minutes)</span>
+            <input type="number" value={inbox.intervalMinutes} onChange={(e) => setInbox((p) => ({ ...p, intervalMinutes: Number(e.target.value || 10) }))} className="w-24 rounded-md border px-2 py-1" />
+          </label>
+        </div>
+        <div className="mt-3">
+          <Button onClick={saveInbox} disabled={savingInbox}>{savingInbox ? "Saving…" : "Save inbox"}</Button>
+        </div>
+      </Section>
+
+      <Section title="Source costs">
+        <SourceCosts />
       </Section>
 
       <Section title="Early Access">
