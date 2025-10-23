@@ -2,15 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { API_BASE } from "@/lib/api";
 
-/* Public API helper (no auth) */
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:4000";
-
+/* -------- Tiny public fetch helpers (no auth cookie required) -------- */
 async function getJSON<T>(path: string): Promise<T> {
   const url = `${API_BASE}${path}`;
   const r = await fetch(url);
-  if (!r.ok) throw new Error(await r.text().catch(() => r.statusText));
+  if (!r.ok) throw new Error((await r.text().catch(() => null)) || r.statusText);
   return (await r.json()) as T;
 }
 async function postJSON<T>(path: string, body: unknown): Promise<T> {
@@ -20,11 +18,11 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(await r.text().catch(() => r.statusText));
+  if (!r.ok) throw new Error((await r.text().catch(() => null)) || r.statusText);
   return (await r.json()) as T;
 }
 
-/* Types */
+/* ---------------- Types ---------------- */
 type QField = {
   id?: string;
   key: string;
@@ -55,85 +53,102 @@ type PublicLead = {
 
 type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
+type ItemPayload = {
+  itemNumber: number;
+  photos: { filename: string; mimeType: string; base64: string; itemIndex: number }[];
+} & Record<string, any>;
+/* ---------------- Normalizers ---------------- */
 function normalizeQuestions(raw: any): QField[] {
+  const out: QField[] = [];
   const list = Array.isArray(raw) ? raw : [];
-  return list
-    .map((item: any) => {
-      if (!item || typeof item !== "object") return null;
-      const key = typeof item.key === "string" && item.key.trim() ? item.key.trim() : "";
-      if (!key) return null;
-      const label = typeof item.label === "string" && item.label.trim() ? item.label.trim() : key;
-      const typeRaw = typeof item.type === "string" && item.type.trim() ? item.type.trim() : "text";
-      const allowed: QField["type"][] = ["text", "textarea", "select", "number", "date", "source"];
-      const type = allowed.includes(typeRaw as QField["type"]) ? (typeRaw as QField["type"]) : "text";
-      const options =
-        type === "select" && Array.isArray(item.options)
-          ? item.options.map((opt: any) => String(opt || "").trim()).filter(Boolean)
-          : undefined;
-      return {
-        id: typeof item.id === "string" ? item.id : undefined,
-        key,
-        label,
-        type,
-        required: Boolean(item.required),
-        options,
-        askInQuestionnaire: item.askInQuestionnaire !== false,
-      } satisfies QField;
-    })
-    .filter((field): field is QField => Boolean(field?.key));
+
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+
+    const key = typeof item.key === "string" && item.key.trim() ? item.key.trim() : "";
+    if (!key) continue;
+
+    const label = typeof item.label === "string" && item.label.trim() ? item.label.trim() : key;
+    const typeRaw = typeof item.type === "string" && item.type.trim() ? item.type.trim() : "text";
+    const allowed: QField["type"][] = ["text", "textarea", "select", "number", "date", "source"];
+    const type = allowed.includes(typeRaw as QField["type"]) ? (typeRaw as QField["type"]) : "text";
+
+    const options =
+      type === "select" && Array.isArray(item.options)
+        ? item.options.map((opt: any) => String(opt || "").trim()).filter(Boolean)
+        : undefined;
+
+    out.push({
+      id: typeof item.id === "string" ? item.id : undefined,
+      key,
+      label,
+      type,
+      required: Boolean(item.required),
+      options,
+      askInQuestionnaire: item.askInQuestionnaire !== false,
+    });
+  }
+
+  return out;
 }
 
+/* ============================ Page ============================ */
 export default function PublicQuestionnairePage() {
   const router = useRouter();
-  const { tenant: slug = "", id: leadId = "" } = useParams<{ tenant: string; id: string }>() ?? {};
+  const { tenant: slug = "", id: leadId = "" } = (useParams() as { tenant?: string; id?: string }) ?? {};
 
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [lead, setLead] = useState<PublicLead["lead"] | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Global additional files (not per-item)
   const [files, setFiles] = useState<File[]>([]);
-  const [itemAnswers, setItemAnswers] = useState<Record<string, any>[]>(() => [
-    {} as Record<string, any>,
-  ]);
-  const [itemErrors, setItemErrors] = useState<Record<string, string>[]>(() => [
-    {} as Record<string, string>,
-  ]);
-  const [itemFiles, setItemFiles] = useState<File[][]>(() => [[]]);
+
+  // Per-item states
+  const [itemAnswers, setItemAnswers] = useState<Record<string, any>[]>([{}]);
+  const [itemErrors, setItemErrors] = useState<Record<string, string>[]>([{}]);
+  const [itemFiles, setItemFiles] = useState<File[][]>([[]]);
+
   const fieldRefs = useRef<Record<string, FieldElement | null>>({});
 
+  /* ---------------- Load settings & lead ---------------- */
   useEffect(() => {
     if (!slug || !leadId) return;
     let mounted = true;
+
     (async () => {
       try {
         setBanner(null);
         setLoading(true);
+
         const [s, l] = await Promise.all([
           getJSON<TenantSettings>(`/public/tenant/by-slug/${encodeURIComponent(slug)}`),
           getJSON<PublicLead>(`/public/leads/${encodeURIComponent(leadId)}`),
         ]);
         if (!mounted) return;
+
         setSettings(s);
         setLead(l.lead);
-        const custom =
-          l.lead && typeof l.lead.custom === "object" && l.lead.custom !== null ? (l.lead.custom as any) : {};
-        const existingItems = Array.isArray(custom.items) ? custom.items : [];
-        const answers = existingItems.map((existing) => {
+
+        // Pre-fill items from existing custom.items (if any)
+        const custom = (l.lead && typeof l.lead.custom === "object" && l.lead.custom) || {};
+        const existingItems = Array.isArray((custom as any).items) ? (custom as any).items : [];
+        const answers = existingItems.map((existing: any) => {
           if (existing && typeof existing === "object") {
-            const rest = { ...(existing as Record<string, any>) };
-            delete rest.photos;
-            delete rest.itemNumber;
-            return rest;
+            const copy = { ...(existing as Record<string, any>) };
+            delete copy.photos;
+            delete copy.itemNumber;
+            return copy;
           }
-          return {} as Record<string, any>;
+          return {};
         });
-        if (!answers.length) {
-          answers.push({} as Record<string, any>);
-        }
+        if (!answers.length) answers.push({});
+
         setItemAnswers(answers);
-        setItemErrors(Array.from({ length: answers.length }, () => ({} as Record<string, string>)));
-        setItemFiles(Array.from({ length: answers.length }, () => [] as File[]));
+        setItemErrors(Array.from({ length: answers.length }, () => ({})));
+        setItemFiles(Array.from({ length: answers.length }, () => []));
         fieldRefs.current = {};
       } catch (e: any) {
         setBanner(e?.message || "Failed to load");
@@ -141,29 +156,30 @@ export default function PublicQuestionnairePage() {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+
+    return () => {
+      mounted = false;
+    };
   }, [slug, leadId]);
 
+  /* ---------------- Derived ---------------- */
   const questions: QField[] = useMemo(
     () => normalizeQuestions((settings as any)?.questionnaire ?? []).filter((q) => q.askInQuestionnaire !== false),
     [settings]
   );
 
-  const registerFieldRef = (fieldKey: string) => (el: FieldElement | null) => {
-    if (el) {
-      fieldRefs.current[fieldKey] = el;
-    } else {
-      delete fieldRefs.current[fieldKey];
-    }
-  };
+  /* ---------------- Refs & field helpers ---------------- */
+  const registerFieldRef = (fieldKey: string) =>
+    (el: FieldElement | null) => {
+      if (el) fieldRefs.current[fieldKey] = el;
+      else delete fieldRefs.current[fieldKey];
+    };
 
   const setItemField = (itemIndex: number, key: string, value: any) => {
-    setItemAnswers((prev) =>
-      prev.map((item, idx) => (idx === itemIndex ? { ...item, [key]: value } : item))
-    );
+    setItemAnswers((prev) => prev.map((it, i) => (i === itemIndex ? { ...it, [key]: value } : it)));
     setItemErrors((prev) =>
-      prev.map((errs, idx) => {
-        if (idx !== itemIndex || !errs[key]) return errs;
+      prev.map((errs, i) => {
+        if (i !== itemIndex || !errs[key]) return errs;
         const next = { ...errs };
         delete next[key];
         return next;
@@ -173,38 +189,36 @@ export default function PublicQuestionnairePage() {
 
   const handleItemFileChange = (itemIndex: number, fileList: FileList | null) => {
     const next = fileList ? Array.from(fileList).slice(0, 1) : [];
-    setItemFiles((prev) => prev.map((files, idx) => (idx === itemIndex ? next : files)));
+    setItemFiles((prev) => prev.map((arr, i) => (i === itemIndex ? next : arr)));
   };
-
   const clearItemFiles = (itemIndex: number) => {
-    setItemFiles((prev) => prev.map((files, idx) => (idx === itemIndex ? [] : files)));
+    setItemFiles((prev) => prev.map((arr, i) => (i === itemIndex ? [] : arr)));
   };
 
   const addItem = () => {
     setItemAnswers((prev) => {
       const last = prev[prev.length - 1] ?? {};
-      const entries = Object.entries(last).filter(([key]) => !key.toLowerCase().includes("size"));
-      const base = Object.fromEntries(entries) as Record<string, any>;
+      const entries = Object.entries(last).filter(([k]) => !k.toLowerCase().includes("size"));
+      const base = Object.fromEntries(entries);
       return [...prev, base];
     });
-    setItemErrors((prev) => [...prev, {} as Record<string, string>]);
-    setItemFiles((prev) => [...prev, [] as File[]]);
+    setItemErrors((prev) => [...prev, {}]);
+    setItemFiles((prev) => [...prev, []]);
   };
 
   const hasItemContent = (idx: number) => {
     const item = itemAnswers[idx] ?? {};
-    const hasValues = Object.values(item).some((val) => !isEmptyValue(val));
+    const hasValues = Object.values(item).some((v) => !isEmptyValue(v));
     const hasPhotos = (itemFiles[idx]?.length ?? 0) > 0;
     return hasValues || hasPhotos;
   };
 
-  function makeFieldKey(itemIndex: number, key: string) {
-    return `item-${itemIndex}-${key}`;
-  }
+  const makeFieldKey = (itemIndex: number, key: string) => `item-${itemIndex}-${key}`;
 
+  /* ---------------- Validation ---------------- */
   function validate(): boolean {
     if (questions.length === 0) {
-      setItemErrors(itemAnswers.map(() => ({} as Record<string, string>)));
+      setItemErrors(itemAnswers.map(() => ({})));
       setBanner(null);
       return true;
     }
@@ -220,9 +234,7 @@ export default function PublicQuestionnairePage() {
         const val = itemAnswers[itemIdx]?.[q.key];
         if (q.required && isEmptyValue(val)) {
           next[itemIdx][q.key] = "This field is required.";
-          if (!firstInvalidKey) {
-            firstInvalidKey = makeFieldKey(itemIdx, q.key);
-          }
+          if (!firstInvalidKey) firstInvalidKey = makeFieldKey(itemIdx, q.key);
         }
       }
     });
@@ -243,6 +255,7 @@ export default function PublicQuestionnairePage() {
     return true;
   }
 
+  /* ---------------- File helpers ---------------- */
   async function filesToBase64(list: File[]): Promise<
     Array<{ filename: string; mimeType: string; base64: string }>
   > {
@@ -262,6 +275,7 @@ export default function PublicQuestionnairePage() {
     return Promise.all(reads);
   }
 
+  /* ---------------- Submit ---------------- */
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!settings || !lead) return;
@@ -287,27 +301,24 @@ export default function PublicQuestionnairePage() {
         })
       );
 
-      const itemsPayload = itemAnswers
-        .map((item, idx) => {
-          const trimmedEntries = Object.entries(item).filter(([, val]) => !isEmptyValue(val));
-          const photos = itemUploads[idx] ?? [];
-          if (trimmedEntries.length === 0 && photos.length === 0) {
-            return null;
-          }
-          const base = Object.fromEntries(trimmedEntries);
-          return {
-            itemNumber: idx + 1,
-            ...base,
-            photos,
-          };
-        })
-        .filter((item): item is Record<string, any> => item !== null);
+      const itemsPayload: ItemPayload[] = itemAnswers
+  .map((item, idx) => {
+    const trimmedEntries = Object.entries(item).filter(([, val]) => !isEmptyValue(val));
+    const photos = itemUploads[idx] ?? [];
+    if (trimmedEntries.length === 0 && photos.length === 0) return null;
 
-      const combinedUploads = [...generalUploads, ...itemUploads.flat()];
+    const base = Object.fromEntries(trimmedEntries);
+    return {
+      itemNumber: idx + 1,
+      ...base,
+      photos,
+    };
+  })
+  .filter((item): item is ItemPayload => item !== null);
 
       await postJSON(`/public/leads/${encodeURIComponent(lead.id)}/submit-questionnaire`, {
         answers: { items: itemsPayload },
-        uploads: combinedUploads,
+        uploads: [...generalUploads, ...itemUploads.flat()],
       });
 
       router.push(`/q/thank-you?tenant=${encodeURIComponent(slug)}`);
@@ -318,7 +329,7 @@ export default function PublicQuestionnairePage() {
     }
   }
 
-  /* UI */
+  /* ---------------- UI ---------------- */
   if (!slug || !leadId) return <Shell><div className="text-sm text-slate-600">Preparing…</div></Shell>;
   if (loading) return <Shell><div className="text-sm text-slate-600">Loading…</div></Shell>;
 
@@ -336,6 +347,7 @@ export default function PublicQuestionnairePage() {
           <section className={`${cardClasses} space-y-4`}>
             <div className="flex flex-wrap items-center gap-4">
               {settings.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={settings.logoUrl}
                   alt={`${brandName} logo`}
@@ -392,12 +404,14 @@ export default function PublicQuestionnairePage() {
               ) : (
                 <div className="space-y-5">
                   <p className="text-xs text-slate-500">
-                    Start with the first item. Use the button below to add more items—new items copy your previous answers
+                    Start with the first item. Use the button below to add more items — new items copy your previous answers
                     (except the size) so you can tweak what&apos;s different.
                   </p>
+
                   {itemAnswers.map((_, itemIdx) => {
                     const itemErr = itemErrors[itemIdx] ?? {};
                     const sectionLabel = `Item ${itemIdx + 1}`;
+
                     return (
                       <div
                         key={sectionLabel}
@@ -405,9 +419,7 @@ export default function PublicQuestionnairePage() {
                       >
                         <div className="flex items-baseline justify-between">
                           <h3 className="text-base font-semibold text-slate-900">{sectionLabel}</h3>
-                          {itemIdx > 0 ? (
-                            <span className="text-xs text-slate-400">Optional</span>
-                          ) : null}
+                          {itemIdx > 0 ? <span className="text-xs text-slate-400">Optional</span> : null}
                         </div>
 
                         <div className="space-y-4">
@@ -444,7 +456,9 @@ export default function PublicQuestionnairePage() {
                                   >
                                     <option value="">Select…</option>
                                     {(q.options ?? []).map((opt) => (
-                                      <option key={opt} value={opt}>{opt}</option>
+                                      <option key={opt} value={opt}>
+                                        {opt}
+                                      </option>
                                     ))}
                                   </select>
                                 ) : (
@@ -482,7 +496,8 @@ export default function PublicQuestionnairePage() {
                           {itemFiles[itemIdx]?.length ? (
                             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                               <span>
-                                {itemFiles[itemIdx].length} photo{itemFiles[itemIdx].length > 1 ? "s" : ""} ready to upload
+                                {itemFiles[itemIdx].length} photo{itemFiles[itemIdx].length > 1 ? "s" : ""} ready to
+                                upload
                               </span>
                               <button
                                 type="button"
@@ -501,6 +516,7 @@ export default function PublicQuestionnairePage() {
                       </div>
                     );
                   })}
+
                   <div>
                     <button
                       type="button"
@@ -560,11 +576,15 @@ export default function PublicQuestionnairePage() {
   );
 }
 
-/* helpers */
+/* ---------------- Small helpers ---------------- */
 function isEmptyValue(v: any) {
   return v === undefined || v === null || String(v).trim() === "";
 }
-function valueOrEmpty(v: any) { return v == null ? "" : String(v); }
+function valueOrEmpty(v: any) {
+  return v == null ? "" : String(v);
+}
+
+/* ---------------- Shell layout ---------------- */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-100 via-white to-slate-200 text-slate-900">

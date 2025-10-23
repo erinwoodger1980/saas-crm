@@ -1,8 +1,8 @@
+// web/src/app/billing/success/success-client.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+import { apiFetch, setJwt } from "@/lib/api";
 
 type Status = {
   name: string;
@@ -20,27 +20,23 @@ export default function SuccessClient() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // capture ?setup_jwt=... after Stripe redirect
+    // Capture ?setup_jwt=... after Stripe redirect (if present)
     try {
-      const urlJwt = new URLSearchParams(window.location.search).get("setup_jwt");
-      if (urlJwt) localStorage.setItem("jwt", urlJwt);
-    } catch {}
+      const token = new URLSearchParams(window.location.search).get("setup_jwt");
+      if (token) {
+        // persist for future and let apiFetch see it
+        localStorage.setItem("jwt", token);
+        setJwt(token);
+      }
+    } catch {
+      // ignore
+    }
 
     (async () => {
+      setLoading(true);
+      setError(null);
       try {
-        const token = localStorage.getItem("jwt");
-        const res = await fetch(`${API_BASE}/billing/status`, {
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          cache: "no-store",
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(j?.error || `status ${res.status}`);
-        }
-        const j = (await res.json()) as Status;
+        const j = await apiFetch<Status>("/billing/status");
         setStatus(j);
       } catch (e: any) {
         setError(e?.message || String(e));
@@ -69,19 +65,36 @@ export default function SuccessClient() {
 
       {status && (
         <div className="rounded-xl border p-4">
-          <div className="mb-2"><span className="text-gray-500">Tenant:</span> {status.name}</div>
-          <div className="mb-2"><span className="text-gray-500">Status:</span> {status.subscriptionStatus ?? "—"}</div>
-          <div className="mb-2"><span className="text-gray-500">Plan:</span> {status.plan ?? "—"}</div>
-          <div className="mb-2"><span className="text-gray-500">Trial ends:</span> {trialText ?? "—"}</div>
+          <div className="mb-2">
+            <span className="text-gray-500">Tenant:</span> {status.name}
+          </div>
+          <div className="mb-2">
+            <span className="text-gray-500">Status:</span>{" "}
+            {status.subscriptionStatus ?? "—"}
+          </div>
+          <div className="mb-2">
+            <span className="text-gray-500">Plan:</span> {status.plan ?? "—"}
+          </div>
+          <div className="mb-2">
+            <span className="text-gray-500">Trial ends:</span>{" "}
+            {trialText ?? "—"}
+          </div>
           {status.discountCodeUsed && (
-            <div className="mb-2"><span className="text-gray-500">Promotion:</span> {status.discountCodeUsed}</div>
+            <div className="mb-2">
+              <span className="text-gray-500">Promotion:</span>{" "}
+              {status.discountCodeUsed}
+            </div>
           )}
         </div>
       )}
 
       <div className="mt-6 flex gap-3">
-        <a href="/dashboard" className="rounded-xl bg-black px-5 py-3 text-white">Go to Dashboard</a>
-        <a href="/setup" className="rounded-xl border px-5 py-3">Continue Setup</a>
+        <a href="/dashboard" className="rounded-xl bg-black px-5 py-3 text-white">
+          Go to Dashboard
+        </a>
+        <a href="/setup" className="rounded-xl border px-5 py-3">
+          Continue Setup
+        </a>
       </div>
     </main>
   );

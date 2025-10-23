@@ -1,9 +1,9 @@
 // web/src/app/billing/page.tsx
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
 const FOUNDERS_CODE = process.env.NEXT_PUBLIC_FOUNDERS_PROMO_CODE || "";
 
 export default function BillingPage() {
@@ -18,10 +18,10 @@ export default function BillingPage() {
     return (customCode || "").trim() || undefined;
   }, [useFounders, customCode]);
 
-  // (Optional) show discounted example pricing for transparency
+  // (Optional) example pricing display
   const display = useMemo(() => {
     const rrpMonthly = 625;
-    const rrpAnnualMonthly = 468.75; // per month equivalent
+    const rrpAnnualMonthly = 468.75; // per-month equivalent when billed yearly
     const foundersPct = 0.6; // 60% off
     const payPct = useFounders && promoToSend ? 1 - foundersPct : 1;
 
@@ -36,29 +36,14 @@ export default function BillingPage() {
     setLoading(true);
     setErr(null);
     try {
-      // Get your auth token however you store it (cookie or localStorage)
-      // In your app you already issue a dev JWT via /seed; adjust as needed.
-      const token = localStorage.getItem("jwt") || ""; // replace if you’re using cookies
-
-      const res = await fetch(`${API_BASE}/billing/checkout`, {
+      const { url } = await apiFetch<{ url: string }>("/billing/checkout", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
+        json: {
           plan,
-          // Send the code explicitly; server will also auto-apply if missing
+          // Send the code explicitly; server can also auto-apply if applicable
           promotionCode: promoToSend,
-        }),
+        },
       });
-
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error || `Checkout failed (${res.status})`);
-      }
-
-      const { url } = await res.json();
       if (!url) throw new Error("No checkout URL returned");
       window.location.href = url;
     } catch (e: any) {
@@ -69,12 +54,14 @@ export default function BillingPage() {
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <h1 className="text-2xl font-semibold mb-4">Choose your plan</h1>
+      <h1 className="mb-4 text-2xl font-semibold">Choose your plan</h1>
 
       <section className="mb-6 grid grid-cols-2 gap-3">
         <button
           onClick={() => setPlan("monthly")}
-          className={`rounded-2xl border p-4 text-left ${plan === "monthly" ? "border-black" : "border-gray-300"}`}
+          className={`rounded-2xl border p-4 text-left ${
+            plan === "monthly" ? "border-black" : "border-gray-300"
+          }`}
         >
           <div className="text-lg font-medium">Monthly</div>
           <div className="mt-1 text-sm text-gray-600">
@@ -91,7 +78,9 @@ export default function BillingPage() {
 
         <button
           onClick={() => setPlan("annual")}
-          className={`rounded-2xl border p-4 text-left ${plan === "annual" ? "border-black" : "border-gray-300"}`}
+          className={`rounded-2xl border p-4 text-left ${
+            plan === "annual" ? "border-black" : "border-gray-300"
+          }`}
         >
           <div className="text-lg font-medium">Annual</div>
           <div className="mt-1 text-sm text-gray-600">
@@ -99,7 +88,8 @@ export default function BillingPage() {
             {useFounders && promoToSend ? (
               <div className="mt-1">
                 <span className="inline-block rounded-full border px-2 py-0.5 text-xs">
-                  Founders: £{display.annualNowMonthly.toFixed(2)} / mo (£{display.annualNowTotal.toFixed(2)} / yr)
+                  Founders: £{display.annualNowMonthly.toFixed(2)} / mo (£
+                  {display.annualNowTotal.toFixed(2)} / yr)
                 </span>
               </div>
             ) : null}
@@ -114,8 +104,8 @@ export default function BillingPage() {
             checked={useFounders}
             onChange={(e) => setUseFounders(e.target.checked)}
           />
-          <span>Apply founders discount</span>
         </label>
+        <span className="ml-2">Apply founders discount</span>
 
         <div className="mt-3">
           <label className="text-sm text-gray-600">Promotion code</label>
@@ -143,7 +133,11 @@ export default function BillingPage() {
         disabled={loading}
         className="rounded-xl bg-black px-5 py-3 text-white disabled:opacity-60"
       >
-        {loading ? "Redirecting…" : plan === "annual" ? "Continue with Annual" : "Continue with Monthly"}
+        {loading
+          ? "Redirecting…"
+          : plan === "annual"
+          ? "Continue with Annual"
+          : "Continue with Monthly"}
       </button>
     </main>
   );
