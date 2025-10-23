@@ -495,6 +495,8 @@ export default function PublicQuestionnairePage() {
                                   <div>
                                     <input
                                       type="file"
+                                      accept="image/*"
+                                      capture="environment"
                                       className="text-sm"
                                       onChange={(e) => setItemQuestionFile(itemIdx, q.key, e.currentTarget.files)}
                                     />
@@ -613,6 +615,8 @@ export default function PublicQuestionnairePage() {
               <div className="text-sm font-medium text-slate-700">Additional supporting files (optional)</div>
               <input
                 type="file"
+                accept="image/*,application/pdf"
+                capture="environment"
                 multiple
                 className="text-sm"
                 onChange={(e) => setFiles(Array.from(e.currentTarget.files || []))}
