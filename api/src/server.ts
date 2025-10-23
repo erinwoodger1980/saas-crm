@@ -77,19 +77,36 @@ app.use((req, _res, next) => {
 app.set("trust proxy", 1);
 
 /** ---------- CORS (allow localhost + prod, WITH cookies) ---------- */
-const allowedOrigins = env.WEB_ORIGIN;
+const rawConfiguredOrigins =
+  (Array.isArray((env as any).WEB_ORIGIN)
+    ? (env as any).WEB_ORIGIN
+    : String((env as any).WEB_ORIGIN || "")
+  ) as string | string[];
+
+const configuredOrigins = (Array.isArray(rawConfiguredOrigins)
+  ? rawConfiguredOrigins
+  : String(rawConfiguredOrigins)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+) as string[];
+
+const defaultOrigins = [
+  "https://joineryai.app",
+  "https://www.joineryai.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
+
+const allowedOriginsSet = new Set<string>([...defaultOrigins, ...configuredOrigins]);
+
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
-    // allow same-origin / server-to-server
-    if (!origin) return cb(null, true);
-
-    if (!allowedOrigins.length) return cb(null, true);
-
-    if (allowedOrigins.includes(origin)) return cb(null, true);
+    if (!origin) return cb(null, true); // same-origin / curl / Postman
 
     const norm = origin.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    const match = allowedOrigins.some((o) =>
-      o.replace(/^https?:\/\//, "").replace(/\/$/, "") === norm,
+    const match = [...allowedOriginsSet].some(
+      (o) => o.replace(/^https?:\/\//, "").replace(/\/$/, "") === norm
     );
     if (match) return cb(null, true);
 
@@ -121,7 +138,7 @@ app.get("/api-check", (req, res) => {
   res.json({
     ok: true,
     originReceived: req.headers.origin || null,
-    allowList: allowedOrigins,
+    allowList: [...allowedOriginsSet],
   });
 });
 
@@ -195,8 +212,22 @@ app.get("/__debug/whoami", (req, res) => {
   res.json({
     auth: (req as any).auth ?? null,
     sawAuthHeader: !!req.headers.authorization,
-    hasJwtCookie: !!(req as any).cookies?.jauth || !!(req.headers.cookie || "").match(/(?:^|;\s*)jwt=/),
+    hasJwtCookie:
+      !!(req as any).cookies?.jauth || !!(req.headers.cookie || "").match(/(?:^|;\s*)jwt=/),
   });
+});
+
+/** 🔎 Cookie sanity tester */
+app.get("/__debug/set-test-cookie", (_req, res) => {
+  res.cookie("jauth", "TEST", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    domain: ".joineryai.app",
+    path: "/",
+    maxAge: 10 * 60 * 1000,
+  });
+  res.json({ ok: true });
 });
 
 /** Healthchecks */
@@ -233,7 +264,6 @@ async function ensureDevData() {
         role: "owner",
         passwordHash,
         isEarlyAdopter: true,
-        signupCompleted: true,
       },
     });
   } else {

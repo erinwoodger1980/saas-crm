@@ -1,6 +1,6 @@
 // web/src/lib/api.ts
 
-/** Sanitize + resolve the API base from envs */
+/** Resolve API base from envs (must include http/https) */
 function sanitizeBase(v?: string | null): string {
   const raw = (v ?? "").trim();
   const val = (raw || "http://localhost:4000").replace(/\/+$/g, "");
@@ -8,115 +8,44 @@ function sanitizeBase(v?: string | null): string {
   return val;
 }
 
-// Prefer URL variants, then BASE fallback, then localhost
+/** Safe read of env (no Node types needed) */
+function readPublicEnv(keys: string[]): string | undefined {
+  const g: any = globalThis as any;
+  // Next injects env at build; we read via globalThis to keep TS happy without @types/node
+  for (const k of keys) {
+    const val =
+      g?.process?.env?.[k] ??
+      (typeof window !== "undefined" ? (window as any)[k] : undefined);
+    if (typeof val === "string" && val.trim()) return val;
+  }
+  return undefined;
+}
+
+/** Prefer URL variants, then BASE fallback, then localhost */
 export const API_BASE = sanitizeBase(
-  (typeof process !== "undefined" &&
-    (
-      process.env.NEXT_PUBLIC_API_ORIGIN ||
-      process.env.NEXT_PUBLIC_API_BASE_URL || // ✅ new primary
-      process.env.NEXT_PUBLIC_API_URL ||      // legacy
-      process.env.NEXT_PUBLIC_API_BASE        // legacy
-    )) || ""
+  readPublicEnv([
+    "NEXT_PUBLIC_API_ORIGIN",     // optional
+    "NEXT_PUBLIC_API_BASE_URL",   // primary
+    "NEXT_PUBLIC_API_URL",        // legacy
+    "NEXT_PUBLIC_API_BASE",       // legacy
+  ]) || ""
 );
 
-// TEMP: prove what the browser is using (remove after verifying)
+// TEMP: log which API the browser will hit (remove when happy)
 if (typeof window !== "undefined") {
   // eslint-disable-next-line no-console
   console.log("[API_BASE]", API_BASE);
 }
 
-/* ---------------- JWT helpers (kept) ---------------- */
-
-export const JWT_EVENT_NAME = "joinery:jwt-change";
-
-function emitJwtChange(token: string | null) {
-  if (typeof window === "undefined") return;
-  try {
-    const event = new CustomEvent(JWT_EVENT_NAME, { detail: { token } });
-    window.dispatchEvent(event);
-  } catch {
-    // Ignore environments where CustomEvent is unavailable
-  }
-}
-
-let lastCookieJwt: string | null = null;
-
-export function getJwt(): string | null {
-  if (typeof window === "undefined") return null;
-  let token: string | null = null;
-
-  try {
-    token = localStorage.getItem("jwt");
-  } catch {
-    token = null;
-  }
-
-  if (token) return token;
-
-  const cookie = typeof document !== "undefined" ? document.cookie : "";
-
-  const extract = (name: string) => {
-    const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
-    if (!match) return null;
-    try {
-      return decodeURIComponent(match[1]);
-    } catch {
-      return match[1];
-    }
-  };
-
-  token = extract("jid") || extract("jwt");
-
-  if (token) {
-    try {
-      localStorage.setItem("jwt", token);
-    } catch {
-      // Ignore write failures (private mode, disabled storage, etc.)
-    }
-    return token;
-  }
-
-  return null;
-}
-
-export function setJwt(token: string) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem("jwt", token);
-  } catch {}
-  lastCookieJwt = token;
-  emitJwtChange(token);
-
-  const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  const cookieValue = encodeURIComponent(token);
-  const attributes = `Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
-
-  // Primary cookie used by middleware
-  document.cookie = `jid=${cookieValue}; ${attributes}`;
-  // Legacy cookie kept for backwards compatibility with API clients expecting "jwt"
-  document.cookie = `jwt=${cookieValue}; ${attributes}`;
-}
-
-export function clearJwt() {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.removeItem("jwt");
-  } catch {}
-  lastCookieJwt = null;
-  emitJwtChange(null);
-
-  const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  const attributes = `Path=/; Max-Age=0; SameSite=Lax${secure}`;
-  document.cookie = `jid=; ${attributes}`;
-  document.cookie = `jwt=; ${attributes}`;
-}
-
-/* ---------------- JSON fetch helper ---------------- */
+/* ------------------------------------------------------------------ */
+/* JSON fetch helper (cookie-first: credentials: 'include' by default) */
+/* ------------------------------------------------------------------ */
 
 export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit & { json?: unknown } = {}
 ): Promise<T> {
+  // Normalize path for matching and URL building
   const cleanPath = (path || "").trim();
   const normalizedForMatch = (() => {
     if (!cleanPath) return "";
@@ -125,9 +54,7 @@ export async function apiFetch<T = unknown>(
       return ((asUrl.pathname || "/").replace(/\/$/, "")) || "/";
     } catch {
       const withoutQuery = cleanPath.split("?")[0];
-      const prefixed = withoutQuery.startsWith("/")
-        ? withoutQuery
-        : `/${withoutQuery}`;
+      const prefixed = withoutQuery.startsWith("/") ? withoutQuery : `/${withoutQuery}`;
       return prefixed.replace(/\/$/, "") || "/";
     }
   })();
@@ -141,29 +68,27 @@ export async function apiFetch<T = unknown>(
   const headers = new Headers(init.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
 
-  // Attach JWT as Bearer if present (optional)
-  const token = getJwt();
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
+  // Only attach JSON body if caller provided `json`
   let body: BodyInit | null | undefined = init.body as any;
   if (init.json !== undefined) {
     body = JSON.stringify(init.json);
     if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   }
 
-  // 🔑 Key change: do NOT include credentials by default (prevents CORS failures)
+  // IMPORTANT: include credentials to send/receive HttpOnly cookies (jauth)
   const res = await fetch(url, {
     ...init,
     mode: init.mode ?? "cors",
-    credentials: init.credentials ?? "omit",
+    credentials: init.credentials ?? "include",
     headers,
     body,
   });
 
+  // Read once, then parse
   const text = await res.text();
   const parsed = text ? safeJson(text) : null;
+
+  // Pick the best error message we can
   const details = parsed ?? (text || null);
   const msg =
     (details && typeof details === "object"
@@ -172,13 +97,12 @@ export async function apiFetch<T = unknown>(
     (typeof details === "string" && details.trim() ? details : null) ||
     `Request failed ${res.status} ${res.statusText}`;
 
+  // Handle auth expiry consistently
   if (res.status === 401) {
-    clearJwt();
+    // On client, if `/auth/me` fails, push to /login (prevents loops)
     if (typeof window !== "undefined" && isAuthMeRequest) {
       const alreadyOnLogin = window.location.pathname.startsWith("/login");
-      if (!alreadyOnLogin) {
-        window.location.href = "/login";
-      }
+      if (!alreadyOnLogin) window.location.href = "/login";
     }
 
     const error = new Error(`${msg} for ${url}`) as Error & {
@@ -219,42 +143,40 @@ function safeJson(t: string) {
   }
 }
 
-/* ---------------- Dev helper: ensureDemoAuth ---------------- */
+/* -------------------------------------------------------------- */
+/* Dev helper: ensureDemoAuth (cookie-first, no localStorage JWT)  */
+/* -------------------------------------------------------------- */
 
 export async function ensureDemoAuth(): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  if (getJwt()) return true;
 
-  // Try real login first (works if demo user exists)
+  // 1) If we already have a valid cookie session, this will pass.
   try {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const meRes = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+    if (meRes.ok) {
+      const me = await meRes.json().catch(() => null);
+      if (me && typeof me === "object" && (me as any).email) return true;
+    }
+  } catch {
+    // fall through to attempt login
+  }
+
+  // 2) Try a demo login (credentials included so the cookie can be set)
+  try {
+    const loginRes = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "omit", // 🔒 omit for cross-origin
-      body: JSON.stringify({ email: "erin@acme.test", password: "secret12" }),
+      credentials: "include", // 🔑 receive HttpOnly cookie from API
+      body: JSON.stringify({ email: "erin@acme.test", password: "Password123!" }),
     });
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}));
-      const token = data?.token || data?.jwt;
-      if (token) {
-        setJwt(token);
-        return true;
-      }
+    if (loginRes.ok) {
+      // Verify cookie-based session
+      const meRes = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+      if (meRes.ok) return true;
     }
-  } catch {}
-
-  // Fallback: ask API to create demo tenant/user and return a token
-  try {
-    const seeded = await fetch(`${API_BASE}/seed`, { method: "POST", credentials: "omit" });
-    if (seeded.ok) {
-      const data = await seeded.json().catch(() => ({}));
-      const token = data?.token || data?.jwt;
-      if (token) {
-        setJwt(token);
-        return true;
-      }
-    }
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   return false;
 }
