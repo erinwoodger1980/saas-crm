@@ -21,13 +21,17 @@ export default function LoginPage() {
     try {
       const loginEmail = email.trim();
       const loginPassword = password;
-      const res = await apiFetch<{ token?: string; jwt?: string }>("/auth/login", {
+      const res = await apiFetch<{ jwt: string }>("/auth/login", {
         method: "POST",
         json: { email: loginEmail, password: loginPassword },
       });
-      const authToken = res?.token || res?.jwt || null;
-      setJwt(authToken);
-      router.push("/dashboard");
+      const authToken = res?.token || res?.jwt;
+      if (authToken) {
+        setJwt(authToken);
+        router.push("/dashboard");
+      } else {
+        throw new Error("Invalid login response");
+      }
     } catch (err: any) {
       console.error(err);
       setError("Invalid email or password");

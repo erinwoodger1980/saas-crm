@@ -4,7 +4,6 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 import { env } from "../env";
 import { normalizeEmail } from "../lib/email";
-import { setAuthCookie } from "../lib/auth-cookie";
 
 const router = Router();
 
@@ -45,6 +44,14 @@ router.post("/complete", async (req, res) => {
     };
     const loginJwt = jwt.sign(loginPayload, env.APP_JWT_SECRET, {
       expiresIn: "12h",
+    });
+
+    // cookie is optional — the web app stores it in localStorage too
+    res.cookie("jwt", loginJwt, {
+      httpOnly: false,
+      sameSite: "lax",
+      secure: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
     setAuthCookie(res, loginJwt);
 

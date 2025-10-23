@@ -6,7 +6,6 @@ import fetch from "node-fetch";
 import { env } from "./env";
 import { prisma } from "./prisma";
 import { normalizeEmail } from "./lib/email";
-import { COOKIE_NAME, setAuthCookie } from "./lib/auth-cookie";
 
 /* Routers */
 import authRouter from "./routes/auth";
@@ -101,7 +100,7 @@ app.use((req, _res, next) => {
 });
 app.set("trust proxy", 1);
 
-/** ---------- CORS (allow localhost + prod, with credentials) ---------- */
+/** ---------- CORS (allow localhost + prod, no cookies) ---------- */
 const allowedOrigins = env.WEB_ORIGIN;
 
 const corsOptions: cors.CorsOptions = {
@@ -258,6 +257,7 @@ async function ensureDevData() {
         role: "owner",
         passwordHash,
         isEarlyAdopter: true,
+        signupCompleted: true,
       },
     });
   } else {
@@ -291,7 +291,6 @@ app.post("/seed", async (_req, res) => {
       env.APP_JWT_SECRET,
       { expiresIn: "12h" }
     );
-    setAuthCookie(res, jwtToken);
     res.json({ ...out, token: jwtToken, jwt: jwtToken });
   } catch (err: any) {
     console.error("[seed] failed:", err);
@@ -324,7 +323,6 @@ app.post("/auth/dev-login", async (req, res) => {
       { expiresIn: "12h" }
     );
 
-    setAuthCookie(res, token);
     return res.json({ token, jwt: token });
   } catch (err: any) {
     console.error("[dev-login] failed:", err);

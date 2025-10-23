@@ -60,7 +60,9 @@ export default function SetupClient() {
         json: { setup_jwt: token, password },
       });
 
-      const authToken = issuedToken || jwt || null;
+      const authToken = issuedToken || jwt;
+
+      if (!authToken) throw new Error("No token returned");
       setJwt(authToken);
 
       // Cleanup the one-time token

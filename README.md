@@ -5,6 +5,8 @@ Mono-repo with:
 - `api/` — Express + Prisma + Postgres
 - `web/` — Next.js 15 (App Router, Turbopack, Tailwind + shadcn/ui)
 
+> Includes a post-Stripe onboarding flow that issues signup tokens, prompts new admins to set a password immediately, and redirects them into the app once complete.
+
 ---
 
 ## Auth cookies

@@ -16,10 +16,10 @@ export const API_BASE = sanitizeBase(
   (typeof process !== "undefined" &&
     (
       process.env.NEXT_PUBLIC_API_ORIGIN ||
-      process.env.NEXT_PUBLIC_API_BASE_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      process.env.NEXT_PUBLIC_API_BASE
-    )) || "",
+      process.env.NEXT_PUBLIC_API_BASE_URL || // ✅ new primary
+      process.env.NEXT_PUBLIC_API_URL ||      // legacy
+      process.env.NEXT_PUBLIC_API_BASE        // legacy
+    )) || ""
 );
 
 export const JWT_EVENT_NAME = "joinery:jwt-change";
@@ -92,9 +92,26 @@ export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit & { json?: unknown } = {},
 ): Promise<T> {
-  const cleanPath = normalizePath(path);
-  const isAbsolute = /^https?:/i.test(path);
-  const url = isAbsolute ? path : `${API_BASE}${cleanPath}`;
+  const cleanPath = (path || "").trim();
+  const normalizedForMatch = (() => {
+    if (!cleanPath) return "";
+    try {
+      const asUrl = new URL(cleanPath);
+      return ((asUrl.pathname || "/").replace(/\/$/, "")) || "/";
+    } catch {
+      const withoutQuery = cleanPath.split("?")[0];
+      const prefixed = withoutQuery.startsWith("/")
+        ? withoutQuery
+        : `/${withoutQuery}`;
+      return prefixed.replace(/\/$/, "") || "/";
+    }
+  })();
+  const isAuthMeRequest = normalizedForMatch === "/auth/me";
+
+  const isAbsolute = /^https?:/i.test(cleanPath);
+  const url = isAbsolute
+    ? cleanPath
+    : `${API_BASE}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
 
   const headers = new Headers(init.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
@@ -121,39 +138,40 @@ export async function apiFetch<T = unknown>(
     mode: init.mode ?? "cors",
   });
 
-  const rawText = await response.text();
-  const parsed = rawText ? safeJson(rawText) : null;
-  const details = parsed ?? (rawText || null);
+  const text = await res.text();
+  const parsed = text ? safeJson(text) : null;
+  const details = parsed ?? (text || null);
+  const msg =
+    (details && typeof details === "object"
+      ? (details as any).error || (details as any).message
+      : null) ||
+    (typeof details === "string" && details.trim() ? details : null) ||
+    `Request failed ${res.status} ${res.statusText}`;
 
-  if (response.status === 401) {
-    clearJwt({ skipServer: true });
-    if (typeof window !== "undefined") {
+  if (res.status === 401) {
+    clearJwt();
+    if (typeof window !== "undefined" && isAuthMeRequest) {
       const alreadyOnLogin = window.location.pathname.startsWith("/login");
       if (!alreadyOnLogin) {
         window.location.href = "/login";
       }
     }
-    const error = new Error(`Unauthorized for ${url}`) as Error & {
+
+    const error = new Error(`${msg} for ${url}`) as Error & {
       status?: number;
       details?: any;
       response?: Response;
       body?: string | null;
     };
-    error.status = response.status;
+    error.status = res.status;
     error.details = details;
-    error.response = response;
-    error.body = rawText || null;
+    error.response = res;
+    error.body = text || null;
     throw error;
   }
 
-  if (!response.ok) {
-    const message =
-      (details && typeof details === "object"
-        ? (details as any).error || (details as any).message
-        : null) ||
-      (typeof details === "string" && details.trim() ? details : null) ||
-      `Request failed ${response.status} ${response.statusText}`;
-    const error = new Error(`${message} for ${url}`) as Error & {
+  if (!res.ok) {
+    const error = new Error(`${msg} for ${url}`) as Error & {
       status?: number;
       details?: any;
       response?: Response;
@@ -184,36 +202,35 @@ export async function ensureDemoAuth(): Promise<boolean> {
   // Already have a marker
   if (getJwt()) return true;
 
-  const loginResponse = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ email: "erin@acme.test", password: "secret12" }),
-  }).catch(() => null);
-
-  if (loginResponse && loginResponse.ok) {
-    try {
-      const data = await loginResponse.json();
-      const token = data?.token || data?.jwt || null;
-      setJwt(token);
-    } catch {
-      setJwt();
+  // Try real login first (works if demo user exists)
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "omit", // 🔒 omit for cross-origin
+      body: JSON.stringify({ email: "erin@acme.test", password: "secret12" }),
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const token = data?.token || data?.jwt;
+      if (token) {
+        setJwt(token);
+        return true;
+      }
     }
     return true;
   }
 
-  const seedResponse = await fetch(`${API_BASE}/seed`, {
-    method: "POST",
-    credentials: "include",
-  }).catch(() => null);
-
-  if (seedResponse && seedResponse.ok) {
-    try {
-      const data = await seedResponse.json();
-      const token = data?.token || data?.jwt || null;
-      setJwt(token);
-    } catch {
-      setJwt();
+  // Fallback: ask API to create demo tenant/user and return a token
+  try {
+    const seeded = await fetch(`${API_BASE}/seed`, { method: "POST", credentials: "omit" });
+    if (seeded.ok) {
+      const data = await seeded.json().catch(() => ({}));
+      const token = data?.token || data?.jwt;
+      if (token) {
+        setJwt(token);
+        return true;
+      }
     }
     return true;
   }
