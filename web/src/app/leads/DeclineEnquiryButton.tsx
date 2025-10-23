@@ -208,19 +208,13 @@ export default function DeclineEnquiryButton({
     };
     if (jwt) headers.Authorization = `Bearer ${jwt}`;
 
-    const response = await fetch(`${API_BASE}/mail/send`, {
+    // apiFetch will throw on non-ok responses and supports sending custom headers
+    await apiFetch(`${API_BASE}/mail/send`, {
       method: "POST",
       headers,
       credentials: "omit",
-      body: JSON.stringify({
-        to: lead.email,
-        subject,
-        text: body,
-      }),
+      json: { to: lead.email, subject, text: body },
     });
-    if (!response.ok) {
-      throw new Error(`Mail send failed (${response.status})`);
-    }
   }
 
   async function markLeadRejected() {
