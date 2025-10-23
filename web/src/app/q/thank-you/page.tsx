@@ -3,9 +3,7 @@
 import { Suspense } from "react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:4000";
+import { API_BASE } from "@/lib/api";
 
 async function getJSON<T>(path: string): Promise<T> {
   const url = `${API_BASE}${path}`;
