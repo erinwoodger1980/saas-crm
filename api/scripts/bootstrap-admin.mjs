@@ -8,44 +8,51 @@ async function main() {
   const password = process.argv[3] || "Password123!";
   const name = process.argv[4] || "Erin Woodger";
 
-  // 1) Tenant
-  const tenant = await prisma.tenant.upsert({
-    where: { slug: "acme" },
-    create: { name: "ACME Ltd", slug: "acme", active: true },
-    update: {},
-  });
+  // 1) TENANT: try to find by name; if not found, create with minimal fields
+  let tenant = await prisma.tenant.findFirst({ where: { name: "ACME Ltd" } });
+  if (!tenant) {
+    tenant = await prisma.tenant.create({
+      data: {
+        name: "ACME Ltd",
+        // include only fields we are sure exist; avoid slug/plan/etc.
+        // active is often present, but if your schema doesn't have it, remove the line below.
+        // active: true,
+      },
+    });
+  }
 
-  // 2) User (admin + early adopter)
-  const passwordHash = await bcrypt.hash(password, 10);
-
-  // Try to satisfy different schema shapes:
-  const data = {
-    email,
-    name,
-    tenantId: tenant.id,
-    passwordHash,
-    signupCompleted: true,
-    // If your schema has role/roles/type/earlyAdopter, these will no-op if not present:
-    role: "ADMIN",
-    type: "EARLY_ADOPTER",
-    earlyAdopter: true,
-    roles: ["ADMIN", "EARLY_ADOPTER"],
-  };
-
-  const user = await prisma.user.upsert({
-    where: { email },
-    create: data,
-    update: {
-      ...data,
-      // don’t overwrite password if already set
-      passwordHash: undefined,
-    },
-  });
+  // 2) USER: find by email; if not found, create with minimal required fields
+  let user = await prisma.user.findFirst({ where: { email } });
+  if (!user) {
+    const passwordHash = await bcrypt.hash(password, 10);
+    user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        tenantId: tenant.id,
+        passwordHash,               // assumes password auth exists
+        // signupCompleted: true,    // uncomment ONLY if your schema has this field
+        // role/type/roles/earlyAdopter intentionally omitted to avoid validation errors
+      },
+    });
+  } else {
+    // Ensure the user is linked to the tenant and (optionally) has a password
+    const update = {};
+    if (!user.tenantId) update.tenantId = tenant.id;
+    // If you want to force-set a password for an existing user, uncomment below:
+    // update.passwordHash = await bcrypt.hash(password, 10);
+    if (Object.keys(update).length) {
+      user = await prisma.user.update({ where: { id: user.id }, data: update });
+    }
+  }
 
   console.log("✅ Bootstrapped:");
-  console.log({ tenant: { id: tenant.id, name: tenant.name }, user: { id: user.id, email: user.email } });
+  console.log({
+    tenant: { id: tenant.id, name: tenant.name },
+    user: { id: user.id, email: user.email, tenantId: user.tenantId },
+  });
 }
 
 main()
-  .catch(e => { console.error(e); process.exit(1); })
+  .catch((e) => { console.error(e); process.exit(1); })
   .finally(async () => { await prisma.$disconnect(); });

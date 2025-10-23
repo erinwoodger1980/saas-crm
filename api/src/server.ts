@@ -1,5 +1,7 @@
+// api/src/server.ts
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import fetch from "node-fetch";
@@ -51,6 +53,7 @@ const app = express();
 /* ------------------------------------------------------
  * Core app setup
  * ---------------------------------------------------- */
+
 // Allow ?jwt=<token> on attachment fetches (for ML server)
 app.use((req, _res, next) => {
   const forAttachment =
@@ -69,47 +72,49 @@ app.use((req, _res, next) => {
   }
   next();
 });
+
+/** Trust proxy so Secure cookies work behind Render/Cloudflare */
 app.set("trust proxy", 1);
 
-/** ---------- CORS (allow localhost + prod, no cookies) ---------- */
+/** ---------- CORS (allow localhost + prod, WITH cookies) ---------- */
 const allowedOrigins = env.WEB_ORIGIN;
-
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true); // same-origin or server-to-server (curl, Postman)
+    // allow same-origin / server-to-server
+    if (!origin) return cb(null, true);
+
     if (!allowedOrigins.length) return cb(null, true);
+
     if (allowedOrigins.includes(origin)) return cb(null, true);
 
-    const normalized = origin
-      .replace(/^https?:\/\//, "")
-      .replace(/\/$/, "");
+    const norm = origin.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const match = allowedOrigins.some((o) =>
-      o.replace(/^https?:\/\//, "").replace(/\/$/, "") === normalized,
+      o.replace(/^https?:\/\//, "").replace(/\/$/, "") === norm,
     );
     if (match) return cb(null, true);
 
     cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
-  credentials: false, // ✅ no cookies — keeps requests "simple" and avoids extra preflights
+  credentials: true, // ✅ allow cookies
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
     "X-Tenant-Id",
     "X-User-Id",
-    "x-tenant-id", // legacy lowercase header variant
-    "x-user-id", // legacy lowercase header variant
+    "x-tenant-id",
+    "x-user-id",
   ],
 };
-
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions)); // preflight for all routes
 
 /** ---------- Stripe webhook (raw body) BEFORE express.json() ---------- */
 app.post("/billing/webhook", express.raw({ type: "application/json" }), stripeWebhook);
 
-/** JSON parser comes after potential raw webhook route */
+/** Parsers */
 app.use(express.json({ limit: "10mb" }));
+app.use(cookieParser());
 
 /** Quick probe to test CORS/headers from the browser */
 app.get("/api-check", (req, res) => {
@@ -125,15 +130,20 @@ app.use("/public", publicRouter);
 /** public-signup exposes /public/signup and friends */
 app.use("/public", publicSignupRouter);
 
-/** ---------- JWT decode middleware (Authorization header or jwt cookie) ---------- */
+/** ---------- JWT decode middleware (Authorization header OR cookies) ---------- */
 app.use((req, _res, next) => {
   let token: string | null = null;
 
-  // Authorization: Bearer <token>
+  // 1) Authorization: Bearer <token>
   const h = req.headers.authorization;
   if (h && h.startsWith("Bearer ")) token = h.slice(7);
 
-  // Fallback: jwt cookie (we don't send it from web now, but keep compatibility)
+  // 2) Cookie: jauth=<token> (preferred)
+  if (!token && (req as any).cookies?.jauth) {
+    token = (req as any).cookies.jauth;
+  }
+
+  // 3) Legacy cookie name: jwt
   if (!token && req.headers.cookie) {
     const m = req.headers.cookie.match(/(?:^|;\s*)jwt=([^;]+)/);
     if (m) token = decodeURIComponent(m[1]);
@@ -185,7 +195,7 @@ app.get("/__debug/whoami", (req, res) => {
   res.json({
     auth: (req as any).auth ?? null,
     sawAuthHeader: !!req.headers.authorization,
-    hasJwtCookie: !!(req.headers.cookie || "").match(/(?:^|;\s*)jwt=/),
+    hasJwtCookie: !!(req as any).cookies?.jauth || !!(req.headers.cookie || "").match(/(?:^|;\s*)jwt=/),
   });
 });
 
