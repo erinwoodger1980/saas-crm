@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "postinstall": "npm rebuild lightningcss || true"
+  "dev": "next dev",
+  "build": "npm run check:no-localhost && next build",
+  "start": "next start",
+  "lint": "next lint",
+  "postinstall": "npm rebuild lightningcss || true",
+  "check:no-localhost": "node -e \"const {execSync}=require('child_process'); try{ execSync('grep -R \"localhost:4000\" web/src && exit 1',{stdio:'inherit'}); }catch(e){}\""
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

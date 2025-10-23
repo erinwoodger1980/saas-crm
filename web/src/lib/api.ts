@@ -3,39 +3,20 @@
 /** Resolve API base from envs (must include http/https) */
 // --- Safe env access without Node typings ---
 
-function readEnv(name: string): string | "" {
-  try {
-    const v = (typeof process !== "undefined" && process?.env?.[name]) || "";
-    return typeof v === "string" ? v.trim() : "";
-  } catch {
-    return "";
-  }
-}
 // minimal declaration so TS stops complaining without @types/node
 declare const process: { env?: Record<string, string | undefined> };
-function sanitizeBase(v?: string | null): string {
-  const raw = (v ?? "").trim();
-  const val = (raw || "http://localhost:4000").replace(/\/+$/g, "");
-  if (!/^https?:\/\//i.test(val)) throw new Error("API base must include http/https");
-  return val;
-}
 
 /**
- * Read at BUILD time so Next can inline the value.
- * Keep all legacy keys for safety.
+ * Single source of truth for the browser app to know the API base.
+ * Keep empty string as a safe fallback (prevents accidentally hitting localhost in prod).
  */
-export const API_BASE = sanitizeBase(
-  readEnv("NEXT_PUBLIC_API_ORIGIN") ||
-  readEnv("NEXT_PUBLIC_API_BASE_URL") ||
-  readEnv("NEXT_PUBLIC_API_URL") ||
-  readEnv("NEXT_PUBLIC_API_BASE") ||
-  ""
-);
+export const API_BASE = (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_BASE
+  ? String(process.env.NEXT_PUBLIC_API_BASE)
+  : "").replace(/\/+$/g, "");
 
-// TEMP: log which API the browser will hit (remove when happy)
-if (typeof window !== "undefined") {
+if (!API_BASE && typeof window !== "undefined") {
   // eslint-disable-next-line no-console
-  console.log("[API_BASE]", API_BASE);
+  console.warn("API_BASE is empty; set NEXT_PUBLIC_API_BASE in your env.");
 }
 
 /* ------------------------------------------------------------------ */
