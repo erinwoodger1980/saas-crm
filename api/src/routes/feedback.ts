@@ -84,6 +84,8 @@ router.post("/", async (req: any, res) => {
 router.get("/", async (req: any, res) => {
   try {
     const auth = req.auth;
+    console.debug("[GET /feedback] auth:", auth ? { tenantId: auth.tenantId, userId: auth.userId } : null);
+    console.debug("[GET /feedback] query:", req.query);
     if (!auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const feature = req.query.feature as string | undefined;
@@ -118,7 +120,7 @@ router.get("/", async (req: any, res) => {
 
     res.json({ ok: true, count: items.length, averageRating: avg, items });
   } catch (e: any) {
-    console.error("[GET /feedback] failed:", e?.message || e);
+    console.error("[GET /feedback] failed:", e?.message || e, e?.stack || "no stack");
     res.status(500).json({ error: "internal_error" });
   }
 });
