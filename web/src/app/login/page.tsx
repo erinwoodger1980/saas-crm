@@ -19,12 +19,15 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await apiFetch<{ jwt: string }>("/auth/login", {
+      const loginEmail = email.trim();
+      const loginPassword = password;
+      const res = await apiFetch<{ token?: string; jwt?: string }>("/auth/login", {
         method: "POST",
-        json: { email, password },
+        json: { email: loginEmail, password: loginPassword },
       });
-      if (res?.jwt) {
-        setJwt(res.jwt);
+      const authToken = res?.token || res?.jwt;
+      if (authToken) {
+        setJwt(authToken);
         router.push("/dashboard");
       } else {
         throw new Error("Invalid login response");

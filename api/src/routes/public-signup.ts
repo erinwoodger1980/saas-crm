@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import Stripe from "stripe";
 import { prisma } from "../prisma";
 import { env } from "../env";
+import { normalizeEmail } from "../lib/email";
 
 const router = Router();
 
@@ -49,13 +50,15 @@ router.post("/signup", async (req, res) => {
   try {
     const { company, email, password, plan, promotionCode } = (req.body || {}) as {
       company?: string;
-      email?: string;
+      email?: unknown;
       password?: string;
       plan?: string;
       promotionCode?: string;
     };
 
-    if (!company || !email || !plan) {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!company || !normalizedEmail || !plan) {
       return say(res, 400, "company, email and plan are required");
     }
 
@@ -71,7 +74,9 @@ router.post("/signup", async (req, res) => {
     }
 
     /* 2) Find-or-create Admin user */
-    let user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+    });
     if (!user) {
       const passwordHash = await bcrypt.hash(
         password || Math.random().toString(36).slice(2),
@@ -80,7 +85,7 @@ router.post("/signup", async (req, res) => {
       user = await prisma.user.create({
         data: {
           tenantId: tenant.id,
-          email,
+          email: normalizedEmail,
           role: "owner",
           passwordHash,
           name: `${company} Admin`,
@@ -99,7 +104,7 @@ router.post("/signup", async (req, res) => {
     let customerId = tenant.stripeCustomerId || null;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email,
+        email: normalizedEmail,
         name: company,
         metadata: { tenantId: tenant.id, userId: user.id },
       });

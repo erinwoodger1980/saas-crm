@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 import { env } from "../env";
+import { normalizeEmail } from "../lib/email";
 
 const router = Router();
 
@@ -35,11 +36,15 @@ router.post("/complete", async (req, res) => {
     const passwordHash = await bcrypt.hash(String(password), 10);
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
 
-    const loginJwt = jwt.sign(
-      { userId: user.id, tenantId, email: user.email, role: user.role },
-      env.APP_JWT_SECRET,
-      { expiresIn: "12h" }
-    );
+    const loginPayload = {
+      userId: user.id,
+      tenantId,
+      email: user.email,
+      role: user.role,
+    };
+    const loginJwt = jwt.sign(loginPayload, env.APP_JWT_SECRET, {
+      expiresIn: "12h",
+    });
 
     // cookie is optional — the web app stores it in localStorage too
     res.cookie("jwt", loginJwt, {
@@ -49,7 +54,7 @@ router.post("/complete", async (req, res) => {
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
-    return res.json({ jwt: loginJwt });
+    return res.json({ token: loginJwt, jwt: loginJwt });
   } catch (e: any) {
     console.error("[auth/setup/complete]", e);
     return res.status(500).json({ error: "internal_error" });
@@ -64,9 +69,12 @@ router.post("/complete", async (req, res) => {
 router.post("/request-reset", async (req, res) => {
   try {
     const { email } = req.body || {};
-    if (!email) return res.status(400).json({ error: "missing_email" });
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) return res.status(400).json({ error: "missing_email" });
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+    });
     // reply 200 even if not found (don’t leak)
     if (!user) return res.json({ ok: true });
 
@@ -79,7 +87,7 @@ router.post("/request-reset", async (req, res) => {
     // TODO: swap console.log with your email provider (Resend/Postmark/etc.)
     const appUrl = (process.env.APP_URL || "https://joineryai.app").replace(/\/+$/,'');
     const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}`;
-    console.log(`[reset-link] Send to ${email}: ${resetUrl}`);
+    console.log(`[reset-link] Send to ${normalizedEmail}: ${resetUrl}`);
 
     return res.json({ ok: true });
   } catch (e: any) {

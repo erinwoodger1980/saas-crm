@@ -117,7 +117,23 @@ export async function apiFetch<T = unknown>(
   init: RequestInit & { json?: unknown } = {}
 ): Promise<T> {
   const cleanPath = (path || "").trim();
-  const url = cleanPath.startsWith("http")
+  const normalizedForMatch = (() => {
+    if (!cleanPath) return "";
+    try {
+      const asUrl = new URL(cleanPath);
+      return ((asUrl.pathname || "/").replace(/\/$/, "")) || "/";
+    } catch {
+      const withoutQuery = cleanPath.split("?")[0];
+      const prefixed = withoutQuery.startsWith("/")
+        ? withoutQuery
+        : `/${withoutQuery}`;
+      return prefixed.replace(/\/$/, "") || "/";
+    }
+  })();
+  const isAuthMeRequest = normalizedForMatch === "/auth/me";
+
+  const isAbsolute = /^https?:/i.test(cleanPath);
+  const url = isAbsolute
     ? cleanPath
     : `${API_BASE}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
 
@@ -147,16 +163,37 @@ export async function apiFetch<T = unknown>(
 
   const text = await res.text();
   const parsed = text ? safeJson(text) : null;
+  const details = parsed ?? (text || null);
+  const msg =
+    (details && typeof details === "object"
+      ? (details as any).error || (details as any).message
+      : null) ||
+    (typeof details === "string" && details.trim() ? details : null) ||
+    `Request failed ${res.status} ${res.statusText}`;
+
+  if (res.status === 401) {
+    clearJwt();
+    if (typeof window !== "undefined" && isAuthMeRequest) {
+      const alreadyOnLogin = window.location.pathname.startsWith("/login");
+      if (!alreadyOnLogin) {
+        window.location.href = "/login";
+      }
+    }
+
+    const error = new Error(`${msg} for ${url}`) as Error & {
+      status?: number;
+      details?: any;
+      response?: Response;
+      body?: string | null;
+    };
+    error.status = res.status;
+    error.details = details;
+    error.response = res;
+    error.body = text || null;
+    throw error;
+  }
 
   if (!res.ok) {
-    const details = parsed ?? (text || null);
-    const msg =
-      (details && typeof details === "object"
-        ? (details as any).error || (details as any).message
-        : null) ||
-      (typeof details === "string" && details.trim() ? details : null) ||
-      `Request failed ${res.status} ${res.statusText}`;
-
     const error = new Error(`${msg} for ${url}`) as Error & {
       status?: number;
       details?: any;
@@ -197,8 +234,9 @@ export async function ensureDemoAuth(): Promise<boolean> {
     });
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
-      if (data?.jwt) {
-        setJwt(data.jwt);
+      const token = data?.token || data?.jwt;
+      if (token) {
+        setJwt(token);
         return true;
       }
     }
@@ -209,8 +247,9 @@ export async function ensureDemoAuth(): Promise<boolean> {
     const seeded = await fetch(`${API_BASE}/seed`, { method: "POST", credentials: "omit" });
     if (seeded.ok) {
       const data = await seeded.json().catch(() => ({}));
-      if (data?.jwt) {
-        setJwt(data.jwt);
+      const token = data?.token || data?.jwt;
+      if (token) {
+        setJwt(token);
         return true;
       }
     }
