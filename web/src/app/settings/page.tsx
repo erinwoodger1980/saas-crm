@@ -416,9 +416,20 @@ export default function SettingsPage() {
                 <select
                   className="rounded-2xl border bg-white/95 px-3 py-2 text-sm"
                   value={f.type}
-                  onChange={(e) =>
-                    setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, type: e.target.value as any } : p)))
-                  }
+                  onChange={(e) => {
+                    const newType = e.target.value as QField["type"];
+                    setQFields((prev) =>
+                      prev.map((p, i) =>
+                        i === idx
+                          ? {
+                              ...p,
+                              type: newType,
+                              options: newType === "select" ? (p.options ?? []) : p.options,
+                            }
+                          : p
+                      )
+                    );
+                  }}
                 >
                   {FIELD_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -436,6 +447,45 @@ export default function SettingsPage() {
                   />
                   Required
                 </label>
+                {f.type === "select" ? (
+                  <div className="w-full mt-2 flex flex-wrap items-center gap-2">
+                    {(f.options ?? []).map((opt, optIdx) => (
+                      <div key={optIdx} className="inline-flex items-center gap-2">
+                        <input
+                          className="rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                          value={opt}
+                          onChange={(e) =>
+                            setQFields((prev) =>
+                              prev.map((p, i) =>
+                                i === idx
+                                  ? { ...p, options: (p.options ?? []).map((o, j) => (j === optIdx ? e.target.value : o)) }
+                                  : p
+                              )
+                            )
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="text-sm text-rose-500"
+                          onClick={() =>
+                            setQFields((prev) =>
+                              prev.map((p, i) => (i === idx ? { ...p, options: (p.options ?? []).filter((_, j) => j !== optIdx) } : p))
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-sm text-[rgb(var(--brand))]"
+                      onClick={() => setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, options: [...(p.options ?? []), ""] } : p)))}
+                    >
+                      Add option
+                    </button>
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   className="text-sm text-rose-500"
