@@ -1,5 +1,8 @@
 // web/src/lib/api.ts
 
+const STORAGE_KEY = "jwt";
+const SESSION_SENTINEL = "__cookie_session__";
+
 /** Sanitize + resolve the API base from envs */
 function sanitizeBase(v?: string | null): string {
   const raw = (v ?? "").trim();
@@ -8,7 +11,7 @@ function sanitizeBase(v?: string | null): string {
   return val;
 }
 
-// Prefer URL variants, then BASE fallback, then localhost
+// Prefer explicit origin envs, then legacy fallbacks, then localhost
 export const API_BASE = sanitizeBase(
   (typeof process !== "undefined" &&
     (
@@ -18,14 +21,6 @@ export const API_BASE = sanitizeBase(
       process.env.NEXT_PUBLIC_API_BASE        // legacy
     )) || ""
 );
-
-// TEMP: prove what the browser is using (remove after verifying)
-if (typeof window !== "undefined") {
-  // eslint-disable-next-line no-console
-  console.log("[API_BASE]", API_BASE);
-}
-
-/* ---------------- JWT helpers (kept) ---------------- */
 
 export const JWT_EVENT_NAME = "joinery:jwt-change";
 
@@ -39,83 +34,63 @@ function emitJwtChange(token: string | null) {
   }
 }
 
-let lastCookieJwt: string | null = null;
+function storeValue(value: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (value === null) {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(STORAGE_KEY, value);
+    }
+  } catch {
+    // Ignore storage failures (Safari private mode, etc.)
+  }
+}
 
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
-  let token: string | null = null;
-
   try {
-    token = localStorage.getItem("jwt");
+    return window.localStorage.getItem(STORAGE_KEY);
   } catch {
-    token = null;
+    return null;
   }
-
-  if (token) return token;
-
-  const cookie = typeof document !== "undefined" ? document.cookie : "";
-
-  const extract = (name: string) => {
-    const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
-    if (!match) return null;
-    try {
-      return decodeURIComponent(match[1]);
-    } catch {
-      return match[1];
-    }
-  };
-
-  token = extract("jid") || extract("jwt");
-
-  if (token) {
-    try {
-      localStorage.setItem("jwt", token);
-    } catch {
-      // Ignore write failures (private mode, disabled storage, etc.)
-    }
-    return token;
-  }
-
-  return null;
 }
 
-export function setJwt(token: string) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem("jwt", token);
-  } catch {}
-  lastCookieJwt = token;
-  emitJwtChange(token);
-
-  const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  const cookieValue = encodeURIComponent(token);
-  const attributes = `Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
-
-  // Primary cookie used by middleware
-  document.cookie = `jid=${cookieValue}; ${attributes}`;
-  // Legacy cookie kept for backwards compatibility with API clients expecting "jwt"
-  document.cookie = `jwt=${cookieValue}; ${attributes}`;
+export function setJwt(token?: string | null) {
+  const value = token && token.trim() ? token : SESSION_SENTINEL;
+  storeValue(value);
+  emitJwtChange(value);
 }
 
-export function clearJwt() {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.removeItem("jwt");
-  } catch {}
-  lastCookieJwt = null;
+export function clearJwt(options?: { skipServer?: boolean }) {
+  storeValue(null);
   emitJwtChange(null);
 
-  const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  const attributes = `Path=/; Max-Age=0; SameSite=Lax${secure}`;
-  document.cookie = `jid=; ${attributes}`;
-  document.cookie = `jwt=; ${attributes}`;
+  if (options?.skipServer) return;
+
+  if (typeof window !== "undefined") {
+    const url = `${API_BASE}/auth/logout`;
+    fetch(url, { method: "POST", credentials: "include" }).catch(() => {
+      // ignore network issues when clearing the cookie
+    });
+  }
 }
 
-/* ---------------- JSON fetch helper ---------------- */
+function shouldAttachAuthorization(token: string | null) {
+  if (!token) return false;
+  if (token === SESSION_SENTINEL) return false;
+  return token.includes(".");
+}
+
+function normalizePath(path: string) {
+  const clean = (path || "").trim();
+  if (!clean) return "/";
+  return clean.startsWith("/") ? clean : `/${clean}`;
+}
 
 export async function apiFetch<T = unknown>(
   path: string,
-  init: RequestInit & { json?: unknown } = {}
+  init: RequestInit & { json?: unknown } = {},
 ): Promise<T> {
   const cleanPath = (path || "").trim();
   const normalizedForMatch = (() => {
@@ -141,25 +116,26 @@ export async function apiFetch<T = unknown>(
   const headers = new Headers(init.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
 
-  // Attach JWT as Bearer if present (optional)
+  if (init.json !== undefined) {
+    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  }
+
   const token = getJwt();
-  if (token && !headers.has("Authorization")) {
+  if (shouldAttachAuthorization(token) && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
   let body: BodyInit | null | undefined = init.body as any;
   if (init.json !== undefined) {
     body = JSON.stringify(init.json);
-    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   }
 
-  // 🔑 Key change: do NOT include credentials by default (prevents CORS failures)
-  const res = await fetch(url, {
+  const response = await fetch(url, {
     ...init,
-    mode: init.mode ?? "cors",
-    credentials: init.credentials ?? "omit",
     headers,
     body,
+    credentials: init.credentials ?? "include",
+    mode: init.mode ?? "cors",
   });
 
   const text = await res.text();
@@ -201,28 +177,29 @@ export async function apiFetch<T = unknown>(
       response?: Response;
       body?: string | null;
     };
-    error.status = res.status;
+    error.status = response.status;
     error.details = details;
-    error.response = res;
-    error.body = text || null;
+    error.response = response;
+    error.body = rawText || null;
     throw error;
   }
 
+  if (!rawText) return {} as T;
   return (parsed as T) ?? ({} as T);
 }
 
-function safeJson(t: string) {
+function safeJson(payload: string) {
   try {
-    return JSON.parse(t);
+    return JSON.parse(payload);
   } catch {
     return null;
   }
 }
 
-/* ---------------- Dev helper: ensureDemoAuth ---------------- */
-
 export async function ensureDemoAuth(): Promise<boolean> {
   if (typeof window === "undefined") return false;
+
+  // Already have a marker
   if (getJwt()) return true;
 
   // Try real login first (works if demo user exists)
@@ -241,7 +218,8 @@ export async function ensureDemoAuth(): Promise<boolean> {
         return true;
       }
     }
-  } catch {}
+    return true;
+  }
 
   // Fallback: ask API to create demo tenant/user and return a token
   try {
@@ -254,7 +232,8 @@ export async function ensureDemoAuth(): Promise<boolean> {
         return true;
       }
     }
-  } catch {}
+    return true;
+  }
 
   return false;
 }

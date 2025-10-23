@@ -16,13 +16,12 @@ function DevAuth() {
     if (localStorage.getItem("jwt")) return;
 
     // Create demo tenant+user and stash JWT for local dev
-    fetch(`${API_BASE}/seed`, { method: "POST" })
-      .then(r => r.json())
-      .then(d => {
-        if (d?.jwt) {
-          setJwt(d.jwt);
-          location.reload();
-        }
+    fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" })
+      .then((r) => (r.ok ? r.json().catch(() => ({})) : Promise.reject(r)))
+      .then((d) => {
+        const token = d?.jwt || d?.token || null;
+        setJwt(token);
+        location.reload();
       })
       .catch(err => console.error("Auto-seed failed:", err));
   }, []);

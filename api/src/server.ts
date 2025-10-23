@@ -48,9 +48,38 @@ import streaksRouter from "./routes/streaks";
 
 const app = express();
 
+function parseCookieHeader(header?: string) {
+  const list: Record<string, string> = {};
+  if (!header) return list;
+
+  const pairs = header.split(/;\s*/);
+  for (const part of pairs) {
+    if (!part) continue;
+    const eqIndex = part.indexOf("=");
+    if (eqIndex < 0) continue;
+    const key = part.slice(0, eqIndex).trim();
+    if (!key) continue;
+    const valueRaw = part.slice(eqIndex + 1);
+    try {
+      list[key] = decodeURIComponent(valueRaw);
+    } catch {
+      list[key] = valueRaw;
+    }
+  }
+  return list;
+}
+
 /* ------------------------------------------------------
  * Core app setup
  * ---------------------------------------------------- */
+// Populate req.cookies for downstream middleware (without pulling in cookie-parser)
+app.use((req, _res, next) => {
+  const existing = (req as any).cookies || {};
+  const parsed = parseCookieHeader(req.headers.cookie);
+  (req as any).cookies = { ...parsed, ...existing };
+  next();
+});
+
 // Allow ?jwt=<token> on attachment fetches (for ML server)
 app.use((req, _res, next) => {
   const forAttachment =
@@ -90,7 +119,7 @@ const corsOptions: cors.CorsOptions = {
 
     cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
-  credentials: false, // ✅ no cookies — keeps requests "simple" and avoids extra preflights
+  credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
@@ -133,10 +162,15 @@ app.use((req, _res, next) => {
   const h = req.headers.authorization;
   if (h && h.startsWith("Bearer ")) token = h.slice(7);
 
-  // Fallback: jwt cookie (we don't send it from web now, but keep compatibility)
-  if (!token && req.headers.cookie) {
-    const m = req.headers.cookie.match(/(?:^|;\s*)jwt=([^;]+)/);
-    if (m) token = decodeURIComponent(m[1]);
+  // Fallback: cookie (primary: jauth, legacy: jwt)
+  if (!token) {
+    const cookies = (req as any).cookies || {};
+    const cookieToken = cookies[COOKIE_NAME];
+    if (cookieToken) {
+      token = cookieToken;
+    } else if (cookies.jwt) {
+      token = cookies.jwt;
+    }
   }
 
   if (token) {

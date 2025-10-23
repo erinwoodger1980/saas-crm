@@ -18,8 +18,8 @@ function DevAuth() {
     if (typeof window === "undefined") return;
     if (localStorage.getItem("jwt")) return;
 
-    fetch(`${API_BASE}/seed`, { method: "POST" })
-      .then((r) => r.json())
+    fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" })
+      .then((r) => (r.ok ? r.json().catch(() => ({})) : Promise.reject(r)))
       .then((d) => {
         const token = d?.token || d?.jwt;
         if (token) {

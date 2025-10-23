@@ -18,8 +18,8 @@ function pickToken(json: any): string | null {
 }
 
 /** Store token both in localStorage (for client fetches) and as a cookie (for middleware). */
-function storeAuth(token: string) {
-  setJwt(token);
+function storeAuth(token?: string | null) {
+  setJwt(token ?? null);
 }
 
 export default function LoginPage() {
@@ -48,6 +48,7 @@ export default function LoginPage() {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
@@ -83,7 +84,10 @@ export default function LoginPage() {
     setDebugBody(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/seed`, { method: "POST" });
+      const res = await fetch(`${API_URL}/seed`, {
+        method: "POST",
+        credentials: "include",
+      });
       const json = await res.json();
       const token = pickToken(json);
       if (!res.ok || !token) {

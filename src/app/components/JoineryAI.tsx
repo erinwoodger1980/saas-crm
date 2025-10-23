@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 
-export default function JoineryAI({ apiBase, jwt }:{ apiBase:string; jwt:string }) {
+export default function JoineryAI({ apiBase, jwt }:{ apiBase:string; jwt?: string }) {
   const [q,setQ] = useState("");
   const [log,setLog] = useState<{role:"you"|"ai", text:string}[]>([]);
 
@@ -10,9 +10,12 @@ export default function JoineryAI({ apiBase, jwt }:{ apiBase:string; jwt:string 
     if(!question) return;
     setLog(l=>[...l,{role:"you",text:question}]);
     setQ("");
+    const headers: Record<string, string> = { "Content-Type":"application/json" };
+    if (jwt) headers.Authorization = `Bearer ${jwt}`;
     const res = await fetch(`${apiBase}/ai/chat`, {
       method:"POST",
-      headers:{ "Content-Type":"application/json", Authorization:`Bearer ${jwt}` },
+      headers,
+      credentials: "include",
       body: JSON.stringify({ question })
     });
     const j = await res.json();

@@ -181,8 +181,8 @@ router.post("/login", async (req, res) => {
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "12h" });
 
-    // you can also drop it in a cookie if you want
-    // res.cookie("jwt", token, { httpOnly: false, sameSite: "lax", secure: true });
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "12h" });
+    setAuthCookie(res, token);
 
     const { firstName, lastName } = splitName(user.name);
     const responseUser = {
@@ -419,6 +419,11 @@ router.get("/me", async (req, res) => {
     console.error("[auth/me] failed:", e);
     return res.status(500).json({ error: "internal_error" });
   }
+});
+
+router.post("/logout", (_req, res) => {
+  clearAuthCookie(res);
+  return res.json({ ok: true });
 });
 
 router.patch("/me", async (req, res) => {

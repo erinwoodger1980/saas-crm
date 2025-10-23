@@ -3,7 +3,7 @@
 
 import { useState, useMemo } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+import { apiFetch } from "@/lib/api";
 const FOUNDERS_CODE = process.env.NEXT_PUBLIC_FOUNDERS_PROMO_CODE || "";
 
 export default function BillingPage() {
@@ -36,29 +36,14 @@ export default function BillingPage() {
     setLoading(true);
     setErr(null);
     try {
-      // Get your auth token however you store it (cookie or localStorage)
-      // In your app you already issue a dev JWT via /seed; adjust as needed.
-      const token = localStorage.getItem("jwt") || ""; // replace if you’re using cookies
-
-      const res = await fetch(`${API_BASE}/billing/checkout`, {
+      const { url } = await apiFetch<{ url?: string }>("/billing/checkout", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
+        json: {
           plan,
           // Send the code explicitly; server will also auto-apply if missing
           promotionCode: promoToSend,
-        }),
+        },
       });
-
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error || `Checkout failed (${res.status})`);
-      }
-
-      const { url } = await res.json();
       if (!url) throw new Error("No checkout URL returned");
       window.location.href = url;
     } catch (e: any) {

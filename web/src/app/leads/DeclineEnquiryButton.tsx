@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch, API_BASE, getJwt } from "@/lib/api";
+import { apiFetch, API_BASE } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import {
   DEFAULT_DECLINE_EMAIL_TEMPLATE,
@@ -201,17 +201,15 @@ export default function DeclineEnquiryButton({
 
   async function sendMailViaBackend(subject: string, body: string) {
     if (!lead.email) throw new Error("Lead has no email address.");
-    const jwt = getJwt();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(effectiveHeaders ?? {}),
     };
-    if (jwt) headers.Authorization = `Bearer ${jwt}`;
 
     const response = await fetch(`${API_BASE}/mail/send`, {
       method: "POST",
       headers,
-      credentials: "omit",
+      credentials: "include",
       body: JSON.stringify({
         to: lead.email,
         subject,
