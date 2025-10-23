@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import fetch from "node-fetch";
 import { env } from "./env";
 import { prisma } from "./prisma";
+import { normalizeEmail } from "./lib/email";
 
 /* Routers */
 import authRouter from "./routes/auth";
@@ -211,13 +212,16 @@ async function ensureDevData() {
   }
 
   const demoEmail = "erin@acme.test";
-  let user = await prisma.user.findUnique({ where: { email: demoEmail } });
+  const normalizedDemoEmail = normalizeEmail(demoEmail) || demoEmail;
+  let user = await prisma.user.findFirst({
+    where: { email: { equals: normalizedDemoEmail, mode: "insensitive" } },
+  });
   if (!user) {
     const passwordHash = await bcrypt.hash("secret12", 10);
     user = await prisma.user.create({
       data: {
         tenantId: tenant.id,
-        email: demoEmail,
+        email: normalizedDemoEmail,
         name: "Wealden Joinery",
         role: "owner",
         passwordHash,
@@ -265,9 +269,12 @@ app.post("/seed", async (_req, res) => {
 /** Dev login (local only) */
 app.post("/auth/dev-login", async (req, res) => {
   try {
-    const email = req.body.email || "erin@acme.test";
+    const requestedEmail = normalizeEmail((req.body || {}).email);
+    const email = requestedEmail || "erin@acme.test";
     const tenant = await prisma.tenant.findFirst({ where: { name: "Demo Tenant" } });
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+    });
 
     if (!tenant || !user) {
       return res.status(404).json({ error: "demo tenant or user not found" });

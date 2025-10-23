@@ -19,9 +19,11 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
+      const loginEmail = email.trim();
+      const loginPassword = password;
       const res = await apiFetch<{ jwt: string }>("/auth/login", {
         method: "POST",
-        json: { email, password },
+        json: { email: loginEmail, password: loginPassword },
       });
       if (res?.jwt) {
         setJwt(res.jwt);
