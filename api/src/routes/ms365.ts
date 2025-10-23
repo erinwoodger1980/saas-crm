@@ -101,6 +101,7 @@ router.get("/ms365/callback", async (req, res) => {
           name,
           role: "owner",
           passwordHash,
+          signupCompleted: true,
           // Optionally persist tokens for later Graph calls
           // msAccessToken: access_token,
           // msRefreshToken: refresh_token,

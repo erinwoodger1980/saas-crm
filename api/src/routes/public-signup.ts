@@ -1,10 +1,8 @@
 // api/src/routes/public-signup.ts
 import { Router } from "express";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import Stripe from "stripe";
 import { prisma } from "../prisma";
-import { env } from "../env";
 import { normalizeEmail } from "../lib/email";
 
 const router = Router();
@@ -17,13 +15,13 @@ function mustGet(name: string) {
   return v;
 }
 
-const STRIPE_SECRET_KEY = mustGet("STRIPE_SECRET_KEY");      // sk_test_...
-const PRICE_MONTHLY     = mustGet("STRIPE_PRICE_MONTHLY");   // price_...
-const PRICE_ANNUAL      = mustGet("STRIPE_PRICE_ANNUAL");    // price_...
-const APP_URL           = mustGet("APP_URL");                // e.g. https://joineryai.app
+const STRIPE_SECRET_KEY = mustGet("STRIPE_SECRET_KEY"); // sk_test_...
+const PRICE_MONTHLY = mustGet("STRIPE_PRICE_MONTHLY"); // price_...
+const PRICE_ANNUAL = mustGet("STRIPE_PRICE_ANNUAL"); // price_...
+const WEB_ORIGIN = mustGet("WEB_ORIGIN"); // e.g. https://www.joineryai.app
 
-if (!/^https?:\/\//i.test(APP_URL)) {
-  throw new Error(`APP_URL must be absolute (http/https). Got: ${APP_URL}`);
+if (!/^https?:\/\//i.test(WEB_ORIGIN)) {
+  throw new Error(`WEB_ORIGIN must be absolute (http/https). Got: ${WEB_ORIGIN}`);
 }
 
 // use SDK’s pinned version (don’t pass apiVersion literal to avoid TS churn)
@@ -39,7 +37,7 @@ const say = (res: any, status: number, error: string, extra?: any) =>
  * body: {
  *   company: string,
  *   email: string,
- *   password?: string,           // optional; we auto-generate if omitted
+ *   password?: string,           // optional; if provided we complete signup immediately
  *   plan: "monthly" | "annual",
  *   promotionCode?: string       // optional code users may have
  * }
@@ -78,27 +76,17 @@ router.post("/signup", async (req, res) => {
       where: { email: { equals: normalizedEmail, mode: "insensitive" } },
     });
     if (!user) {
-      const passwordHash = await bcrypt.hash(
-        password || Math.random().toString(36).slice(2),
-        10
-      );
       user = await prisma.user.create({
         data: {
           tenantId: tenant.id,
           email: normalizedEmail,
           role: "owner",
-          passwordHash,
+          passwordHash: password ? await bcrypt.hash(password, 10) : null,
+          signupCompleted: Boolean(password),
           name: `${company} Admin`,
         },
       });
     }
-
-    /* 3) Short-lived JWT to finish setup after Stripe redirect */
-    const setupToken = jwt.sign(
-      { userId: user.id, tenantId: tenant.id, email: user.email, role: user.role },
-      env.APP_JWT_SECRET,
-      { expiresIn: "30m" }
-    );
 
     /* 4) Ensure Stripe Customer (re-use if present) */
     let customerId = tenant.stripeCustomerId || null;
@@ -147,12 +135,10 @@ router.post("/signup", async (req, res) => {
 
     /* 7) Checkout Session — success URL includes setup_jwt AND we
           also store setup_jwt in metadata as a fallback for recovery */
-    const successUrl = `${APP_URL}/signup/thank-you?session_id={CHECKOUT_SESSION_ID}&setup_jwt=${encodeURIComponent(
-      setupToken
-    )}`;
-    const cancelUrl = `${APP_URL}/signup`;
+    const successUrl = `${WEB_ORIGIN.replace(/\/+$/, "")}/signup/success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${WEB_ORIGIN.replace(/\/+$/, "")}/signup/cancelled`;
 
-    console.log("[signup] using APP_URL =", APP_URL);
+    console.log("[signup] using WEB_ORIGIN =", WEB_ORIGIN);
     console.log("[signup] success_url:", successUrl, "cancel_url:", cancelUrl);
 
     const session = await stripe.checkout.sessions.create({
@@ -168,11 +154,13 @@ router.post("/signup", async (req, res) => {
         : { allow_promotion_codes: true }),
       success_url: successUrl,
       cancel_url: cancelUrl,
+      client_reference_id: user.id,
       metadata: {
         tenantId: tenant.id,
         userId: user.id,
         plan: planNorm,
-        setup_jwt: setupToken, // <-- fallback path used by /public/checkout-session
+        email: normalizedEmail,
+        company,
       },
     });
 
@@ -193,24 +181,10 @@ router.post("/signup", async (req, res) => {
  * Client calls: /public/checkout-session?session_id=cs_123
  * Returns: { setup_jwt: string }
  */
-router.get("/checkout-session", async (req, res) => {
-  try {
-    const id = String(req.query.session_id || "");
-    if (!id) return say(res, 400, "missing session_id");
-
-    const s = await stripe.checkout.sessions.retrieve(id, { expand: ["customer"] });
-    const setupJwt =
-      (s.metadata as any)?.setup_jwt ||
-      // defensive: if you ever copy this to customer metadata
-      (s.customer && typeof s.customer === "object" && (s.customer as any).metadata?.setup_jwt) ||
-      null;
-
-    if (!setupJwt) return say(res, 404, "setup_jwt_not_found");
-    return res.json({ setup_jwt: setupJwt });
-  } catch (e: any) {
-    console.error("[public/checkout-session] failed:", e?.message || e);
-    return say(res, 500, "internal_error");
-  }
+router.get("/checkout-session", (_req, res) => {
+  return res
+    .status(410)
+    .json({ error: "deprecated", message: "Use /auth/issue-signup-token with session_id." });
 });
 
 export default router;

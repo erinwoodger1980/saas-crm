@@ -2,6 +2,8 @@
 import express, { Router } from "express";
 import Stripe from "stripe";
 import { prisma } from "../prisma";
+import { normalizeEmail } from "../lib/email";
+import { generateSignupToken, signupTokenExpiresAt } from "../lib/crypto";
 
 const router = Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -116,14 +118,116 @@ export const webhook = async (req: express.Request, res: express.Response) => {
     switch (event.type) {
       case "checkout.session.completed": {
         const cs = event.data.object as Stripe.Checkout.Session;
-        const customerId = cs.customer as string;
-        if (customerId) {
-          await prisma.tenant.updateMany({
-            where: { stripeCustomerId: customerId },
+        const session = await stripe.checkout.sessions.retrieve(cs.id, { expand: ["customer"] });
+
+        const metadata = (session.metadata || {}) as Record<string, unknown>;
+        const metadataTenantId = typeof metadata.tenantId === "string" ? metadata.tenantId : undefined;
+        const metadataUserId = typeof metadata.userId === "string" ? metadata.userId : undefined;
+        const metadataCompany = typeof metadata.company === "string" ? metadata.company : undefined;
+
+        const customerId =
+          typeof session.customer === "string"
+            ? session.customer
+            : session.customer && typeof session.customer === "object"
+            ? (session.customer as Stripe.Customer).id
+            : null;
+
+        const emailCandidate =
+          metadata.email ||
+          session.customer_details?.email ||
+          session.customer_email ||
+          (session.customer && typeof session.customer === "object"
+            ? (session.customer as Stripe.Customer).email
+            : undefined);
+
+        const customerEmail = normalizeEmail(emailCandidate);
+
+        let tenant = metadataTenantId
+          ? await prisma.tenant.findUnique({ where: { id: metadataTenantId } })
+          : null;
+
+        if (!tenant && metadataCompany) {
+          tenant = await prisma.tenant.findFirst({ where: { name: metadataCompany } });
+        }
+
+        if (!tenant && customerId) {
+          tenant = await prisma.tenant.findFirst({ where: { stripeCustomerId: customerId } });
+        }
+
+        if (!tenant) {
+          tenant = await prisma.tenant.create({
+            data: {
+              name: metadataCompany || customerEmail || `Tenant ${cs.id}`,
+              stripeCustomerId: customerId || undefined,
+            },
+          });
+        } else if (customerId && tenant.stripeCustomerId !== customerId) {
+          tenant = await prisma.tenant.update({
+            where: { id: tenant.id },
+            data: { stripeCustomerId: customerId },
+          });
+        }
+
+        let user = metadataUserId
+          ? await prisma.user.findUnique({ where: { id: metadataUserId } })
+          : null;
+
+        if (!user && customerEmail) {
+          user = await prisma.user.findFirst({
+            where: { email: { equals: customerEmail, mode: "insensitive" } },
+          });
+        }
+
+        if (!user && customerEmail) {
+          user = await prisma.user.create({
+            data: {
+              tenantId: tenant.id,
+              email: customerEmail,
+              role: "owner",
+              passwordHash: null,
+              signupCompleted: false,
+              name: metadataCompany ? `${metadataCompany} Admin` : null,
+            },
+          });
+        }
+
+        if (user && user.tenantId !== tenant.id) {
+          user = await prisma.user.update({
+            where: { id: user.id },
+            data: { tenantId: tenant.id },
+          });
+        }
+
+        if (user && !user.signupCompleted) {
+          const existingToken = await prisma.signupToken.findFirst({
+            where: {
+              userId: user.id,
+              consumedAt: null,
+              expiresAt: { gt: new Date() },
+            },
+          });
+          if (!existingToken) {
+            const token = generateSignupToken();
+            await prisma.signupToken.deleteMany({ where: { userId: user.id } });
+            await prisma.signupToken.create({
+              data: {
+                userId: user.id,
+                token,
+                expiresAt: signupTokenExpiresAt(),
+              },
+            });
+          }
+        }
+
+        const discountId =
+          (session.total_details as any)?.breakdown?.discounts?.[0]?.discount?.id ?? null;
+
+        if (tenant) {
+          await prisma.tenant.update({
+            where: { id: tenant.id },
             data: {
               subscriptionStatus: "trialing",
-              discountCodeUsed:
-                (cs.total_details as any)?.breakdown?.discounts?.[0]?.discount?.id ?? null,
+              discountCodeUsed: discountId,
             },
           });
         }
