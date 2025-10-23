@@ -17,7 +17,7 @@ type QField = {
   id?: string;
   key: string;
   label: string;
-  type: "text" | "textarea" | "select" | "number" | "date" | "source";
+  type: "text" | "textarea" | "select" | "number" | "date" | "source" | "file";
   required?: boolean;
   options?: string[];
   askInQuestionnaire?: boolean;
@@ -60,7 +60,7 @@ function normalizeQuestions(raw: any): QField[] {
 
     const label = typeof item.label === "string" && item.label.trim() ? item.label.trim() : key;
     const typeRaw = typeof item.type === "string" && item.type.trim() ? item.type.trim() : "text";
-    const allowed: QField["type"][] = ["text", "textarea", "select", "number", "date", "source"];
+  const allowed: QField["type"][] = ["text", "textarea", "select", "number", "date", "source", "file"];
     const type = allowed.includes(typeRaw as QField["type"]) ? (typeRaw as QField["type"]) : "text";
 
     const options =
@@ -100,6 +100,8 @@ export default function PublicQuestionnairePage() {
   const [itemAnswers, setItemAnswers] = useState<Record<string, any>[]>([{}]);
   const [itemErrors, setItemErrors] = useState<Record<string, string>[]>([{}]);
   const [itemFiles, setItemFiles] = useState<File[][]>([[]]);
+  // Per-item, per-question file uploads (for questions of type 'file')
+  const [itemQuestionFiles, setItemQuestionFiles] = useState<Record<string, File[]>[]>([{}]);
 
   const fieldRefs = useRef<Record<string, FieldElement | null>>({});
 
@@ -138,7 +140,8 @@ export default function PublicQuestionnairePage() {
 
         setItemAnswers(answers);
         setItemErrors(Array.from({ length: answers.length }, () => ({})));
-        setItemFiles(Array.from({ length: answers.length }, () => []));
+  setItemFiles(Array.from({ length: answers.length }, () => []));
+  setItemQuestionFiles(Array.from({ length: answers.length }, () => ({})));
         fieldRefs.current = {};
       } catch (e: any) {
         setBanner(e?.message || "Failed to load");
@@ -185,6 +188,24 @@ export default function PublicQuestionnairePage() {
     setItemFiles((prev) => prev.map((arr, i) => (i === itemIndex ? [] : arr)));
   };
 
+  const setItemQuestionFile = (itemIndex: number, key: string, fileList: FileList | null) => {
+    const nextFiles = fileList ? Array.from(fileList) : [];
+    setItemQuestionFiles((prev) => prev.map((rec, i) => (i === itemIndex ? { ...(rec ?? {}), [key]: nextFiles } : rec)));
+    // also clear any previous answer error for that key
+    setItemErrors((prev) =>
+      prev.map((errs, i) => {
+        if (i !== itemIndex || !errs[key]) return errs;
+        const next = { ...errs };
+        delete next[key];
+        return next;
+      })
+    );
+  };
+
+  const clearItemQuestionFiles = (itemIndex: number, key: string) => {
+    setItemQuestionFiles((prev) => prev.map((rec, i) => (i === itemIndex ? { ...(rec ?? {}), [key]: [] } : rec)));
+  };
+
   const addItem = () => {
     setItemAnswers((prev) => {
       const last = prev[prev.length - 1] ?? {};
@@ -222,7 +243,9 @@ export default function PublicQuestionnairePage() {
 
       for (const q of questions) {
         const val = itemAnswers[itemIdx]?.[q.key];
-        if (q.required && isEmptyValue(val)) {
+        // if file question, check itemQuestionFiles
+        const fileVal = q.type === "file" ? (itemQuestionFiles[itemIdx]?.[q.key] ?? []) : null;
+        if (q.required && (q.type === "file" ? (Array.isArray(fileVal) ? fileVal.length === 0 : true) : isEmptyValue(val))) {
           next[itemIdx][q.key] = "This field is required.";
           if (!firstInvalidKey) firstInvalidKey = makeFieldKey(itemIdx, q.key);
         }
@@ -291,10 +314,41 @@ export default function PublicQuestionnairePage() {
         })
       );
 
+      // Convert per-question file uploads to base64 and include alongside general uploads
+      const rawItemQuestionUploads = await Promise.all(
+        itemQuestionFiles.map(async (rec, idx) => {
+          if (!rec || typeof rec !== "object") return [];
+          const keys = Object.keys(rec);
+          const all: Array<{ filename: string; mimeType: string; base64: string; itemIndex?: number; qKey?: string }> = [];
+          for (const key of keys) {
+            const fl = rec[key] ?? [];
+            if (!Array.isArray(fl) || fl.length === 0) continue;
+            const conv = await filesToBase64(fl);
+            for (let i = 0; i < conv.length; i++) {
+              const c = conv[i];
+              const rawName = c.filename?.trim() || "";
+              const label = `Item ${idx + 1} - ${key}`;
+              const fallback = `${label} file ${i + 1}`;
+              all.push({ filename: rawName ? `${label} - ${rawName}` : fallback, mimeType: c.mimeType, base64: c.base64, itemIndex: idx + 1, qKey: key });
+            }
+          }
+          return all;
+        })
+      );
+      const itemQuestionUploads = rawItemQuestionUploads.map((a) => a || []);
+
       const itemsPayload: ItemPayload[] = itemAnswers
   .map((item, idx) => {
     const trimmedEntries = Object.entries(item).filter(([, val]) => !isEmptyValue(val));
     const photos = itemUploads[idx] ?? [];
+    // include per-question file references as separate fields if present
+    const questionFiles = itemQuestionUploads[idx] ?? [];
+    for (const qf of questionFiles) {
+      // attach as a field like `${qKey}Files` containing filenames (metadata stored in uploads)
+      const k = `${qf.qKey}Files`;
+      const existing = Array.isArray((item as any)[k]) ? (item as any)[k] : [];
+      (item as any)[k] = [...existing, qf.filename];
+    }
     if (trimmedEntries.length === 0 && photos.length === 0) return null;
 
     const base = Object.fromEntries(trimmedEntries);
@@ -306,9 +360,16 @@ export default function PublicQuestionnairePage() {
   })
   .filter((item): item is ItemPayload => item !== null);
 
+      // flatten uploads: general, per-item photos, per-question files
+      const flattenedUploads = [
+        ...generalUploads,
+        ...itemUploads.flat(),
+        ...itemQuestionUploads.flat().map((u) => ({ filename: u.filename, mimeType: u.mimeType, base64: u.base64 })),
+      ];
+
       await postJSON(`/public/leads/${encodeURIComponent(lead.id)}/submit-questionnaire`, {
         answers: { items: itemsPayload },
-        uploads: [...generalUploads, ...itemUploads.flat()],
+        uploads: flattenedUploads,
       });
 
       router.push(`/q/thank-you?tenant=${encodeURIComponent(slug)}`);
@@ -430,7 +491,31 @@ export default function PublicQuestionnairePage() {
                                   {q.required ? <span className="text-rose-500"> *</span> : null}
                                 </label>
 
-                                {q.type === "textarea" ? (
+                                {q.type === "file" ? (
+                                  <div>
+                                    <input
+                                      type="file"
+                                      className="text-sm"
+                                      onChange={(e) => setItemQuestionFile(itemIdx, q.key, e.currentTarget.files)}
+                                    />
+                                    {Array.isArray(itemQuestionFiles[itemIdx]?.[q.key]) && itemQuestionFiles[itemIdx][q.key].length ? (
+                                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                                        <span>
+                                          {itemQuestionFiles[itemIdx][q.key].length} file{itemQuestionFiles[itemIdx][q.key].length > 1 ? "s" : ""} ready to upload
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className="text-xs font-medium text-rose-500 hover:underline"
+                                          onClick={() => clearItemQuestionFiles(itemIdx, q.key)}
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs text-slate-400">Attach a file for this question.</div>
+                                    )}
+                                  </div>
+                                ) : q.type === "textarea" ? (
                                   <textarea
                                     {...commonProps}
                                     className={`${inputClass} min-h-[140px]`}
