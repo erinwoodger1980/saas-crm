@@ -1,6 +1,16 @@
 // web/src/lib/api.ts
 
 /** Resolve API base from envs (must include http/https) */
+// --- Safe env access without Node typings ---
+
+function readEnv(name: string): string | "" {
+  try {
+    const v = (typeof process !== "undefined" && process?.env?.[name]) || "";
+    return typeof v === "string" ? v.trim() : "";
+  } catch {
+    return "";
+  }
+}
 // minimal declaration so TS stops complaining without @types/node
 declare const process: { env?: Record<string, string | undefined> };
 function sanitizeBase(v?: string | null): string {
@@ -15,10 +25,10 @@ function sanitizeBase(v?: string | null): string {
  * Keep all legacy keys for safety.
  */
 export const API_BASE = sanitizeBase(
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  process.env.NEXT_PUBLIC_API_ORIGIN ||
+  readEnv("NEXT_PUBLIC_API_ORIGIN") ||
+  readEnv("NEXT_PUBLIC_API_BASE_URL") ||
+  readEnv("NEXT_PUBLIC_API_URL") ||
+  readEnv("NEXT_PUBLIC_API_BASE") ||
   ""
 );
 
