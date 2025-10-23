@@ -12,6 +12,7 @@ function sanitizeBase(v?: string | null): string {
 export const API_BASE = sanitizeBase(
   (typeof process !== "undefined" &&
     (
+      process.env.NEXT_PUBLIC_API_ORIGIN ||
       process.env.NEXT_PUBLIC_API_BASE_URL || // ✅ new primary
       process.env.NEXT_PUBLIC_API_URL ||      // legacy
       process.env.NEXT_PUBLIC_API_BASE        // legacy

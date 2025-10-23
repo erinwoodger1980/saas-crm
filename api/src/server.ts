@@ -223,6 +223,7 @@ async function ensureDevData() {
         role: "owner",
         passwordHash,
         isEarlyAdopter: true,
+        signupCompleted: true,
       },
     });
   } else {
