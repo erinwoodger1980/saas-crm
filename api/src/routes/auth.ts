@@ -2,13 +2,135 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import Stripe from "stripe";
 import { env } from "../env"; // ← use the same env wrapper as server.ts
 import { normalizeEmail } from "../lib/email";
+import { generateSignupToken, signupTokenExpiresAt, hashPassword } from "../lib/crypto";
 
 const router = Router();
 
 // use the SAME secret as the JWT middleware in server.ts
 const JWT_SECRET = env.APP_JWT_SECRET;
+
+const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").trim();
+if (!STRIPE_SECRET_KEY) {
+  throw new Error("Missing STRIPE_SECRET_KEY env for auth routes");
+}
+const stripe = new Stripe(STRIPE_SECRET_KEY);
+
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const RATE_LIMIT_MAX = 5;
+const issueSignupRate = new Map<string, { count: number; resetAt: number }>();
+
+function enforceRateLimit(key: string) {
+  const now = Date.now();
+  const entry = issueSignupRate.get(key);
+  if (!entry || entry.resetAt <= now) {
+    issueSignupRate.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) {
+    throw new Error("rate_limited");
+  }
+  entry.count += 1;
+}
+
+async function resolveTenantAndUserFromSession(sessionId: string) {
+  const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["customer"] });
+
+  if (session.status !== "complete") {
+    throw new Error("session_incomplete");
+  }
+
+  const metadata = (session.metadata || {}) as Record<string, unknown>;
+  const metadataTenantId = typeof metadata.tenantId === "string" ? metadata.tenantId : undefined;
+  const metadataUserId = typeof metadata.userId === "string" ? metadata.userId : undefined;
+  const metadataCompany = typeof metadata.company === "string" ? metadata.company : undefined;
+
+  const customerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : session.customer && typeof session.customer === "object"
+      ? (session.customer as Stripe.Customer).id
+      : null;
+
+  const emailCandidate =
+    metadata.email ||
+    session.customer_details?.email ||
+    session.customer_email ||
+    (session.customer && typeof session.customer === "object"
+      ? (session.customer as Stripe.Customer).email
+      : undefined);
+
+  const customerEmail = normalizeEmail(emailCandidate);
+
+  let tenant = metadataTenantId
+    ? await prisma.tenant.findUnique({ where: { id: metadataTenantId } })
+    : null;
+
+  if (!tenant && metadataCompany) {
+    tenant = await prisma.tenant.findFirst({ where: { name: metadataCompany } });
+  }
+
+  if (!tenant && customerId) {
+    tenant = await prisma.tenant.findFirst({ where: { stripeCustomerId: customerId } });
+  }
+
+  if (!tenant) {
+    tenant = await prisma.tenant.create({
+      data: {
+        name: metadataCompany || customerEmail || `Tenant ${session.id}`,
+        stripeCustomerId: customerId || undefined,
+      },
+    });
+  } else if (customerId && tenant.stripeCustomerId !== customerId) {
+    tenant = await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: { stripeCustomerId: customerId },
+    });
+  }
+
+  let user = metadataUserId
+    ? await prisma.user.findUnique({ where: { id: metadataUserId } })
+    : null;
+
+  if (!user && customerEmail) {
+    user = await prisma.user.findFirst({
+      where: { email: { equals: customerEmail, mode: "insensitive" } },
+    });
+  }
+
+  if (!user) {
+    if (!customerEmail) {
+      throw new Error("missing_email");
+    }
+    user = await prisma.user.create({
+      data: {
+        tenantId: tenant.id,
+        email: customerEmail,
+        role: "owner",
+        passwordHash: null,
+        signupCompleted: false,
+        name: metadataCompany ? `${metadataCompany} Admin` : null,
+      },
+    });
+  }
+
+  if (user.tenantId !== tenant.id) {
+    user = await prisma.user.update({ where: { id: user.id }, data: { tenantId: tenant.id } });
+  }
+
+  if (user.signupCompleted && user.passwordHash) {
+    return { tenant, user, alreadyCompleted: true } as const;
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { signupCompleted: false, passwordHash: user.passwordHash ?? null },
+  });
+
+  return { tenant, user, alreadyCompleted: false, session, customerEmail } as const;
+}
 
 function splitName(fullName?: string | null) {
   if (!fullName) return { firstName: null as string | null, lastName: null as string | null };
@@ -85,6 +207,122 @@ router.post("/login", async (req, res) => {
   }
 });
 
+router.post("/issue-signup-token", async (req, res) => {
+  try {
+    const ip = (req.ip || req.headers["x-forwarded-for"] || "unknown").toString();
+    try {
+      enforceRateLimit(ip);
+    } catch {
+      return res.status(429).json({ error: "rate_limited" });
+    }
+
+    const { session_id } = req.body || {};
+    if (!session_id || typeof session_id !== "string") {
+      return res.status(400).json({ error: "invalid_session_id" });
+    }
+
+    const { user, alreadyCompleted } = await resolveTenantAndUserFromSession(session_id);
+
+    if (alreadyCompleted) {
+      return res.status(400).json({ error: "signup_already_completed" });
+    }
+
+    await prisma.signupToken.deleteMany({ where: { userId: user.id } });
+    const token = generateSignupToken();
+    const expiresAt = signupTokenExpiresAt();
+    await prisma.signupToken.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt,
+      },
+    });
+
+    return res.json({ token });
+  } catch (e: any) {
+    const message = e?.message || "internal_error";
+    if (message === "session_incomplete") {
+      return res.status(400).json({ error: "session_incomplete" });
+    }
+    if (message === "missing_email") {
+      return res.status(400).json({ error: "missing_email" });
+    }
+    if (e?.raw?.code === "resource_missing" || e?.statusCode === 404) {
+      return res.status(400).json({ error: "invalid_session_id" });
+    }
+    console.error("[auth/issue-signup-token] failed:", e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+router.post("/set-password", async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ error: "invalid_token" });
+    }
+    if (typeof password !== "string" || password.length < 8) {
+      return res.status(400).json({ error: "password_too_short" });
+    }
+
+    const signupToken = await prisma.signupToken.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+
+    if (!signupToken || !signupToken.user) {
+      return res.status(400).json({ error: "token_invalid" });
+    }
+
+    if (signupToken.consumedAt) {
+      return res.status(400).json({ error: "token_consumed" });
+    }
+
+    if (signupToken.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({ error: "token_expired" });
+    }
+
+    const passwordHash = await hashPassword(password);
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: signupToken.userId },
+        data: { passwordHash, signupCompleted: true },
+      }),
+      prisma.signupToken.update({
+        where: { token },
+        data: { consumedAt: new Date() },
+      }),
+      prisma.signupToken.deleteMany({
+        where: { userId: signupToken.userId, token: { not: token } },
+      }),
+    ]);
+
+    const loginJwt = jwt.sign(
+      {
+        userId: signupToken.user.id,
+        tenantId: signupToken.user.tenantId,
+        email: signupToken.user.email,
+        role: signupToken.user.role,
+      },
+      JWT_SECRET,
+      { expiresIn: "12h" }
+    );
+
+    res.cookie("jwt", loginJwt, {
+      httpOnly: false,
+      sameSite: "lax",
+      secure: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json({ jwt: loginJwt });
+  } catch (e: any) {
+    console.error("[auth/set-password] failed:", e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
 /**
  * POST /auth/dev-seed  (local helper)
  */
@@ -107,6 +345,7 @@ router.post("/dev-seed", async (_req, res) => {
           tenantId: tenant.id,
           role: "owner",
           isEarlyAdopter: true,
+          signupCompleted: true,
         },
       });
     }
