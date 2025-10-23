@@ -14,12 +14,11 @@ export default function DevAuth() {
 
     // automatically create demo tenant + user (local only)
     fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" })
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json().catch(() => ({})) : Promise.reject(r)))
       .then((d) => {
-        if (d?.jwt) {
-          setJwt(d.jwt);
-          location.reload();
-        }
+        const token = d?.token || d?.jwt || null;
+        setJwt(token);
+        location.reload();
       })
       .catch((err) => console.error("Auto seed failed", err));
   }, []);

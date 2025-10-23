@@ -52,13 +52,16 @@ export default function SetupClient() {
 
     setLoading(true);
     try {
-      const { jwt } = await apiFetch<{ jwt: string }>("/auth/setup/complete", {
+      const { token: issuedToken, jwt } = await apiFetch<{
+        token?: string;
+        jwt?: string;
+      }>("/auth/setup/complete", {
         method: "POST",
         json: { setup_jwt: token, password },
       });
 
-      if (!jwt) throw new Error("No token returned");
-      setJwt(jwt);
+      const authToken = issuedToken || jwt || null;
+      setJwt(authToken);
 
       // Cleanup the one-time token
       try {

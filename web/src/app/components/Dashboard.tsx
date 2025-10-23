@@ -1,8 +1,12 @@
 "use client";
 import useSWR from "swr";
 
-export default function Dashboard({ apiBase, jwt }:{ apiBase:string; jwt:string }) {
-  const fetcher = (u:string)=>fetch(u,{headers:{Authorization:`Bearer ${jwt}`}}).then(r=>r.json());
+export default function Dashboard({ apiBase, jwt }:{ apiBase:string; jwt?: string }) {
+  const fetcher = (u:string)=>{
+    const headers: Record<string, string> = {};
+    if (jwt) headers.Authorization = `Bearer ${jwt}`;
+    return fetch(u,{ headers, credentials: "include" }).then(r=>r.json());
+  };
   const { data: sales } = useSWR(`${apiBase}/reports/sales`, fetcher);
 
   return (

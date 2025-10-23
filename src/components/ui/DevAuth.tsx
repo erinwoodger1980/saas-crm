@@ -8,13 +8,12 @@ export default function DevAuth() {
     if (localStorage.getItem("jwt")) return;
 
     // automatically create demo tenant + user in dev
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE}/seed`, { method: "POST" })
-      .then((r) => r.json())
+    fetch(`${process.env.NEXT_PUBLIC_API_BASE}/seed`, { method: "POST", credentials: "include" })
+      .then((r) => (r.ok ? r.json().catch(() => ({})) : Promise.reject(r)))
       .then((d) => {
-        if (d?.jwt) {
-          setJwt(d.jwt);
-          location.reload();
-        }
+        const token = d?.jwt || d?.token || null;
+        setJwt(token);
+        location.reload();
       })
       .catch((err) => console.error("Auto seed failed", err));
   }, []);

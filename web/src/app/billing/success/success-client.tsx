@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+import { apiFetch, setJwt } from "@/lib/api";
 
 type Status = {
   name: string;
@@ -23,24 +22,12 @@ export default function SuccessClient() {
     // capture ?setup_jwt=... after Stripe redirect
     try {
       const urlJwt = new URLSearchParams(window.location.search).get("setup_jwt");
-      if (urlJwt) localStorage.setItem("jwt", urlJwt);
+      if (urlJwt) setJwt(urlJwt);
     } catch {}
 
     (async () => {
       try {
-        const token = localStorage.getItem("jwt");
-        const res = await fetch(`${API_BASE}/billing/status`, {
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          cache: "no-store",
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(j?.error || `status ${res.status}`);
-        }
-        const j = (await res.json()) as Status;
+        const j = await apiFetch<Status>("/billing/status", { cache: "no-store" });
         setStatus(j);
       } catch (e: any) {
         setError(e?.message || String(e));

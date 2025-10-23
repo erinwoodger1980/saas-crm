@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import AppShell from "./components/AppShell";
 import { TasksButton } from "@/components/tasks/TasksButton";
 import FeedbackWidget from "@/components/FeedbackWidget";
+import { setJwt } from "@/lib/api";
 
 // Keep your existing env usage for DevAuth
 const API_BASE =
@@ -17,13 +18,12 @@ function DevAuth() {
     if (typeof window === "undefined") return;
     if (localStorage.getItem("jwt")) return;
 
-    fetch(`${API_BASE}/seed`, { method: "POST" })
-      .then((r) => r.json())
+    fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" })
+      .then((r) => (r.ok ? r.json().catch(() => ({})) : Promise.reject(r)))
       .then((d) => {
-        if (d?.jwt) {
-          localStorage.setItem("jwt", d.jwt);
-          location.reload();
-        }
+        const token = d?.token || d?.jwt || null;
+        setJwt(token);
+        location.reload();
       })
       .catch((err) => console.error("Auto-seed failed:", err));
   }, []);

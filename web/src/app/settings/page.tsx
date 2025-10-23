@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch, ensureDemoAuth } from "@/lib/api";
+import { API_BASE, apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useCurrentUser, type CurrentUser } from "@/lib/use-current-user";
@@ -770,11 +770,7 @@ export default function SettingsPage() {
   }
 
   async function connectGmail() {
-    const fallbackBase = (
-      process.env.NEXT_PUBLIC_API_BASE ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      "http://localhost:4000"
-    ).replace(/\/$/, "");
+    const fallbackBase = API_BASE;
 
     try {
       const resp = await apiFetch<{ authUrl?: string }>("/gmail/connect/start");
@@ -1633,16 +1629,10 @@ export default function SettingsPage() {
             <Button
               onClick={async () => {
                 try {
-                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/ml/train`, {
+                  const json = await apiFetch<{ message?: string }>("/ml/train", {
                     method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${localStorage.getItem("jwt")}`,
-                    },
                   });
-                  const json = await res.json();
-                  if (!res.ok) throw new Error(json?.error || "Training failed");
-                  alert(`✅ Model training started.\n${json.message || "Training triggered."}`);
+                  alert(`✅ Model training started.\n${json?.message || "Training triggered."}`);
                 } catch (err: any) {
                   console.error("Train model failed:", err);
                   alert(`❌ ${err.message || "Failed to trigger training"}`);

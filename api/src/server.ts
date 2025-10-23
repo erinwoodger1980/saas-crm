@@ -5,6 +5,8 @@ import bcrypt from "bcrypt";
 import fetch from "node-fetch";
 import { env } from "./env";
 import { prisma } from "./prisma";
+import { normalizeEmail } from "./lib/email";
+import { COOKIE_NAME, setAuthCookie } from "./lib/auth-cookie";
 
 /* Routers */
 import authRouter from "./routes/auth";
@@ -47,9 +49,38 @@ import streaksRouter from "./routes/streaks";
 
 const app = express();
 
+function parseCookieHeader(header?: string) {
+  const list: Record<string, string> = {};
+  if (!header) return list;
+
+  const pairs = header.split(/;\s*/);
+  for (const part of pairs) {
+    if (!part) continue;
+    const eqIndex = part.indexOf("=");
+    if (eqIndex < 0) continue;
+    const key = part.slice(0, eqIndex).trim();
+    if (!key) continue;
+    const valueRaw = part.slice(eqIndex + 1);
+    try {
+      list[key] = decodeURIComponent(valueRaw);
+    } catch {
+      list[key] = valueRaw;
+    }
+  }
+  return list;
+}
+
 /* ------------------------------------------------------
  * Core app setup
  * ---------------------------------------------------- */
+// Populate req.cookies for downstream middleware (without pulling in cookie-parser)
+app.use((req, _res, next) => {
+  const existing = (req as any).cookies || {};
+  const parsed = parseCookieHeader(req.headers.cookie);
+  (req as any).cookies = { ...parsed, ...existing };
+  next();
+});
+
 // Allow ?jwt=<token> on attachment fetches (for ML server)
 app.use((req, _res, next) => {
   const forAttachment =
@@ -70,37 +101,34 @@ app.use((req, _res, next) => {
 });
 app.set("trust proxy", 1);
 
-/** ---------- CORS (allow localhost + prod, no cookies) ---------- */
-const ORIGINS_RAW =
-  process.env.WEB_ORIGIN || process.env.ALLOWED_ORIGINS || [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://app.joineryai.app",
-    "https://www.joineryai.app",
-  ].join(",");
-
-const ALLOWED_ORIGINS = ORIGINS_RAW.split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+/** ---------- CORS (allow localhost + prod, with credentials) ---------- */
+const allowedOrigins = env.WEB_ORIGIN;
 
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
     if (!origin) return cb(null, true); // same-origin or server-to-server (curl, Postman)
-    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    if (!allowedOrigins.length) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
 
-    // Loose host match (helps with http/https discrepancies)
-    const host = origin.replace(/^https?:\/\//, "");
-    if (ALLOWED_ORIGINS.some((o) => o.includes(host))) return cb(null, true);
+    const normalized = origin
+      .replace(/^https?:\/\//, "")
+      .replace(/\/$/, "");
+    const match = allowedOrigins.some((o) =>
+      o.replace(/^https?:\/\//, "").replace(/\/$/, "") === normalized,
+    );
+    if (match) return cb(null, true);
 
     cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
-  credentials: false, // ✅ no cookies — keeps requests "simple" and avoids extra preflights
+  credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
-    "x-tenant-id", // ✅ needed by web
-    "x-user-id",   // ✅ needed by web
+    "X-Tenant-Id",
+    "X-User-Id",
+    "x-tenant-id", // legacy lowercase header variant
+    "x-user-id", // legacy lowercase header variant
   ],
 };
 
@@ -118,7 +146,7 @@ app.get("/api-check", (req, res) => {
   res.json({
     ok: true,
     originReceived: req.headers.origin || null,
-    allowList: ALLOWED_ORIGINS,
+    allowList: allowedOrigins,
   });
 });
 
@@ -135,10 +163,15 @@ app.use((req, _res, next) => {
   const h = req.headers.authorization;
   if (h && h.startsWith("Bearer ")) token = h.slice(7);
 
-  // Fallback: jwt cookie (we don't send it from web now, but keep compatibility)
-  if (!token && req.headers.cookie) {
-    const m = req.headers.cookie.match(/(?:^|;\s*)jwt=([^;]+)/);
-    if (m) token = decodeURIComponent(m[1]);
+  // Fallback: cookie (primary: jauth, legacy: jwt)
+  if (!token) {
+    const cookies = (req as any).cookies || {};
+    const cookieToken = cookies[COOKIE_NAME];
+    if (cookieToken) {
+      token = cookieToken;
+    } else if (cookies.jwt) {
+      token = cookies.jwt;
+    }
   }
 
   if (token) {
@@ -211,13 +244,16 @@ async function ensureDevData() {
   }
 
   const demoEmail = "erin@acme.test";
-  let user = await prisma.user.findUnique({ where: { email: demoEmail } });
+  const normalizedDemoEmail = normalizeEmail(demoEmail) || demoEmail;
+  let user = await prisma.user.findFirst({
+    where: { email: { equals: normalizedDemoEmail, mode: "insensitive" } },
+  });
   if (!user) {
     const passwordHash = await bcrypt.hash("secret12", 10);
     user = await prisma.user.create({
       data: {
         tenantId: tenant.id,
-        email: demoEmail,
+        email: normalizedDemoEmail,
         name: "Wealden Joinery",
         role: "owner",
         passwordHash,
@@ -255,7 +291,8 @@ app.post("/seed", async (_req, res) => {
       env.APP_JWT_SECRET,
       { expiresIn: "12h" }
     );
-    res.json({ ...out, jwt: jwtToken });
+    setAuthCookie(res, jwtToken);
+    res.json({ ...out, token: jwtToken, jwt: jwtToken });
   } catch (err: any) {
     console.error("[seed] failed:", err);
     res.status(500).json({ error: err?.message ?? "seed failed" });
@@ -265,9 +302,12 @@ app.post("/seed", async (_req, res) => {
 /** Dev login (local only) */
 app.post("/auth/dev-login", async (req, res) => {
   try {
-    const email = req.body.email || "erin@acme.test";
+    const requestedEmail = normalizeEmail((req.body || {}).email);
+    const email = requestedEmail || "erin@acme.test";
     const tenant = await prisma.tenant.findFirst({ where: { name: "Demo Tenant" } });
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+    });
 
     if (!tenant || !user) {
       return res.status(404).json({ error: "demo tenant or user not found" });
@@ -284,7 +324,8 @@ app.post("/auth/dev-login", async (req, res) => {
       { expiresIn: "12h" }
     );
 
-    return res.json({ token });
+    setAuthCookie(res, token);
+    return res.json({ token, jwt: token });
   } catch (err: any) {
     console.error("[dev-login] failed:", err);
     res.status(500).json({ error: err?.message || "dev-login failed" });

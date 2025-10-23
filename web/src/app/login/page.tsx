@@ -19,16 +19,15 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await apiFetch<{ jwt: string }>("/auth/login", {
+      const loginEmail = email.trim();
+      const loginPassword = password;
+      const res = await apiFetch<{ token?: string; jwt?: string }>("/auth/login", {
         method: "POST",
-        json: { email, password },
+        json: { email: loginEmail, password: loginPassword },
       });
-      if (res?.jwt) {
-        setJwt(res.jwt);
-        router.push("/dashboard");
-      } else {
-        throw new Error("Invalid login response");
-      }
+      const authToken = res?.token || res?.jwt || null;
+      setJwt(authToken);
+      router.push("/dashboard");
     } catch (err: any) {
       console.error(err);
       setError("Invalid email or password");

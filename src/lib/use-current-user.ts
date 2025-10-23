@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import useSWR from "swr";
 
-import { JWT_EVENT_NAME, apiFetch, getJwt, clearJwt } from "./api";
+import { JWT_EVENT_NAME, apiFetch, clearJwt } from "./api";
 
 export type CurrentUser = {
   id: string;
@@ -18,61 +18,44 @@ export type CurrentUser = {
 const fetcher = (path: string) => apiFetch<CurrentUser>(path);
 
 export function useCurrentUser() {
-  const [jwt, setStoredJwt] = useState<string | null>(() =>
-    typeof window !== "undefined" ? getJwt() : null,
-  );
+  const { data, error, isValidating, mutate } = useSWR<CurrentUser>("/auth/me", fetcher, {
+    revalidateOnFocus: false,
+    shouldRetryOnError: false,
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const syncJwt = () => {
-      setStoredJwt(getJwt());
-    };
-
-    const handleJwtEvent = (event: Event) => {
-      const custom = event as CustomEvent<{ token?: string | null }>;
-      const token = custom?.detail?.token ?? null;
-      setStoredJwt(token ?? getJwt());
+    const trigger = () => {
+      void mutate();
     };
 
     const handleStorage = (event: StorageEvent) => {
       if (event.key === "jwt") {
-        setStoredJwt(event.newValue);
+        void mutate();
       }
     };
 
-    syncJwt();
-    window.addEventListener(JWT_EVENT_NAME, handleJwtEvent as EventListener);
+    window.addEventListener(JWT_EVENT_NAME, trigger as EventListener);
     window.addEventListener("storage", handleStorage);
 
     return () => {
-      window.removeEventListener(JWT_EVENT_NAME, handleJwtEvent as EventListener);
+      window.removeEventListener(JWT_EVENT_NAME, trigger as EventListener);
       window.removeEventListener("storage", handleStorage);
     };
-  }, []);
-
-  const hasJwt = !!jwt;
-
-  const { data, error, isValidating, mutate } = useSWR<CurrentUser>(
-    hasJwt ? "/auth/me" : null,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-    },
-  );
+  }, [mutate]);
 
   useEffect(() => {
-    const status = (error as any)?.status;
+    const status = (error as any)?.status ?? (error as any)?.response?.status;
     if (status === 401) {
-      clearJwt();
-      setStoredJwt(null);
+      clearJwt({ skipServer: true });
     }
   }, [error]);
 
   return {
     user: data ?? null,
     error,
-    isLoading: hasJwt && !data && !error && isValidating,
+    isLoading: !data && !error && isValidating,
     mutate,
   };
 }

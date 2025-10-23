@@ -1,6 +1,7 @@
 // api/src/routes/dev-auth.ts
 import { Router } from "express";
 import jwt from "jsonwebtoken";
+import { setAuthCookie } from "../lib/auth-cookie";
 
 const router = Router();
 
@@ -28,6 +29,7 @@ router.post("/dev-login", (req, res) => {
     { expiresIn: "7d" }
   );
 
+  setAuthCookie(res, token);
   return res.json({ token });
 });
 

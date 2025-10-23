@@ -7,6 +7,10 @@ Mono-repo with:
 
 ---
 
+## Auth cookies
+
+The API issues a `jauth` cookie for browser sessions. In production it is flagged `HttpOnly`, `Secure`, `SameSite=None` and scoped to `.joineryai.app` so both `joineryai.app` and subdomains share the token. In local development the cookie falls back to `SameSite=Lax` without the `Secure` flag so it can be set over `http://localhost`. Ensure `WEB_ORIGIN` in the API environment includes the web app origins so CORS accepts credentialed requests.
+
 ## Quick start (local)
 
 > Requires: Node 20+, npm, Postgres 14+ (or Docker), and **Prisma** (installed via `devDependencies`).

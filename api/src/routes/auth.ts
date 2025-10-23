@@ -3,6 +3,8 @@ import { prisma } from "../prisma";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { env } from "../env"; // ← use the same env wrapper as server.ts
+import { normalizeEmail } from "../lib/email";
+import { clearAuthCookie, setAuthCookie } from "../lib/auth-cookie";
 
 const router = Router();
 
@@ -23,55 +25,58 @@ function splitName(fullName?: string | null) {
 /**
  * POST /auth/login
  * body: { email, password }
- * returns: { user, jwt }
+ * returns: { token, user } (also returns legacy `jwt` alias)
  */
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = (req.body || {}) as {
-      email?: string;
-      password?: string;
+      email?: unknown;
+      password?: unknown;
     };
 
-    if (!email || !password) {
+    const normalizedEmail = normalizeEmail(email);
+    const passwordString = typeof password === "string" ? password : "";
+
+    if (!normalizedEmail || !passwordString) {
       return res.status(400).json({ error: "email and password required" });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+    });
     if (!user || !user.passwordHash) {
       return res.status(401).json({ error: "invalid credentials" });
     }
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
+    const ok = await bcrypt.compare(passwordString, user.passwordHash);
     if (!ok) return res.status(401).json({ error: "invalid credentials" });
 
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        tenantId: user.tenantId,
-        email: user.email,
-        role: user.role,
-      },
-      JWT_SECRET,
-      { expiresIn: "12h" }
-    );
+    const tokenPayload = {
+      userId: user.id,
+      tenantId: user.tenantId,
+      email: user.email,
+      role: user.role,
+    };
 
-    // you can also drop it in a cookie if you want
-    // res.cookie("jwt", token, { httpOnly: false, sameSite: "lax", secure: true });
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "12h" });
+    setAuthCookie(res, token);
 
     const { firstName, lastName } = splitName(user.name);
+    const responseUser = {
+      id: user.id,
+      email: user.email,
+      tenantId: user.tenantId,
+      role: user.role,
+      name: user.name,
+      isEarlyAdopter: user.isEarlyAdopter,
+      firstName,
+      lastName,
+    };
 
     return res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        tenantId: user.tenantId,
-        role: user.role,
-        name: user.name,
-        isEarlyAdopter: user.isEarlyAdopter,
-        firstName,
-        lastName,
-      },
-      jwt: token,
+      token,
+      jwt: token, // keep legacy key for existing clients
+      user: responseUser,
     });
   } catch (e: any) {
     console.error("[auth/login] failed:", e);
@@ -88,12 +93,15 @@ router.post("/dev-seed", async (_req, res) => {
     if (!tenant) tenant = await prisma.tenant.create({ data: { name: "Acme" } });
 
     const email = "erin@acme.test";
-    let user = await prisma.user.findUnique({ where: { email } });
+    const normalizedEmail = normalizeEmail(email) || email;
+    let user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+    });
     if (!user) {
       const passwordHash = await bcrypt.hash("secret12", 10);
       user = await prisma.user.create({
         data: {
-          email,
+          email: normalizedEmail,
           passwordHash,
           tenantId: tenant.id,
           role: "owner",
@@ -102,11 +110,15 @@ router.post("/dev-seed", async (_req, res) => {
       });
     }
 
-    const token = jwt.sign(
-      { userId: user.id, tenantId: tenant.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: "12h" }
-    );
+    const tokenPayload = {
+      userId: user.id,
+      tenantId: tenant.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "12h" });
+    setAuthCookie(res, token);
 
     const { firstName, lastName } = splitName(user.name);
 
@@ -115,6 +127,7 @@ router.post("/dev-seed", async (_req, res) => {
       tenantId: tenant.id,
       userId: user.id,
       email,
+      token,
       jwt: token,
       user: {
         id: user.id,
@@ -167,6 +180,11 @@ router.get("/me", async (req, res) => {
     console.error("[auth/me] failed:", e);
     return res.status(500).json({ error: "internal_error" });
   }
+});
+
+router.post("/logout", (_req, res) => {
+  clearAuthCookie(res);
+  return res.json({ ok: true });
 });
 
 router.patch("/me", async (req, res) => {
