@@ -21,7 +21,7 @@ export default function LoginPage() {
     try {
       const loginEmail = email.trim();
       const loginPassword = password;
-      const res = await apiFetch<{ token?: string; jwt?: string }>("/auth/login", {
+      const res = await apiFetch<{ jwt: string }>("/auth/login", {
         method: "POST",
         json: { email: loginEmail, password: loginPassword },
       });
