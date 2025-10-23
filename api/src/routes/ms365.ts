@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { prisma } from "../prisma";
 import { env } from "../env";
+import { normalizeEmail } from "../lib/email";
 
 const router = Router();
 
@@ -68,11 +69,12 @@ router.get("/ms365/callback", async (req, res) => {
     const payloadJson = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8"));
 
     // Common places for email/name in MS id_token
-    const email: string =
+    const rawEmail: string =
       payloadJson.email ||
       payloadJson.preferred_username ||
       payloadJson.upn ||
       "";
+    const email = normalizeEmail(rawEmail);
     const name: string = payloadJson.name || (email ? email.split("@")[0] : "User");
 
     if (!email) {
@@ -87,7 +89,9 @@ router.get("/ms365/callback", async (req, res) => {
     }
 
     // ---------- Find-or-create user; ensure it belongs to msTenant ----------
-    let user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+    });
     if (!user) {
       const passwordHash = await bcrypt.hash("oauth-ms365", 10); // placeholder
       user = await prisma.user.create({

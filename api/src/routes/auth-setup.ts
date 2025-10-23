@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 import { env } from "../env";
+import { normalizeEmail } from "../lib/email";
 
 const router = Router();
 
@@ -64,9 +65,12 @@ router.post("/complete", async (req, res) => {
 router.post("/request-reset", async (req, res) => {
   try {
     const { email } = req.body || {};
-    if (!email) return res.status(400).json({ error: "missing_email" });
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) return res.status(400).json({ error: "missing_email" });
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+    });
     // reply 200 even if not found (don’t leak)
     if (!user) return res.json({ ok: true });
 
@@ -79,7 +83,7 @@ router.post("/request-reset", async (req, res) => {
     // TODO: swap console.log with your email provider (Resend/Postmark/etc.)
     const appUrl = (process.env.APP_URL || "https://joineryai.app").replace(/\/+$/,'');
     const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}`;
-    console.log(`[reset-link] Send to ${email}: ${resetUrl}`);
+    console.log(`[reset-link] Send to ${normalizedEmail}: ${resetUrl}`);
 
     return res.json({ ok: true });
   } catch (e: any) {
