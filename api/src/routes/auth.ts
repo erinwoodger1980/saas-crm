@@ -1,3 +1,4 @@
+// api/src/routes/auth.ts
 import { Router } from "express";
 import { prisma } from "../prisma";
 import bcrypt from "bcrypt";
@@ -9,8 +10,20 @@ import { generateSignupToken, signupTokenExpiresAt, hashPassword } from "../lib/
 
 const router = Router();
 
-// use the SAME secret as the JWT middleware in server.ts
+// JWT secret must match server.ts middleware
 const JWT_SECRET = env.APP_JWT_SECRET;
+
+// Cookie constants
+const COOKIE_NAME = "jauth";
+const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7d
+const COOKIE_OPTS = {
+  httpOnly: true as const,
+  secure: true as const,           // required with SameSite=None
+  sameSite: "none" as const,       // allow cross-site (web <-> api subdomains)
+  domain: ".joineryai.app",        // works for root + subdomains
+  path: "/" as const,
+  maxAge: COOKIE_MAX_AGE,
+};
 
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").trim();
 if (!STRIPE_SECRET_KEY) {
@@ -146,7 +159,7 @@ function splitName(fullName?: string | null) {
 /**
  * POST /auth/login
  * body: { email, password }
- * returns: { token, user } (also returns legacy `jwt` alias)
+ * returns: { ok, token, user } and sets HttpOnly cookie
  */
 router.post("/login", async (req, res) => {
   try {
@@ -179,10 +192,10 @@ router.post("/login", async (req, res) => {
       role: user.role,
     };
 
-    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "12h" });
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "7d" });
 
-    // you can also drop it in a cookie if you want
-    // res.cookie("jwt", token, { httpOnly: false, sameSite: "lax", secure: true });
+    // ✅ Set HttpOnly cookie for browser session
+    res.cookie(COOKIE_NAME, token, COOKIE_OPTS);
 
     const { firstName, lastName } = splitName(user.name);
     const responseUser = {
@@ -197,12 +210,32 @@ router.post("/login", async (req, res) => {
     };
 
     return res.json({
-      token,
-      jwt: token, // keep legacy key for existing clients
+      ok: true,
+      token,       // legacy
+      jwt: token,  // legacy alias
       user: responseUser,
     });
   } catch (e: any) {
     console.error("[auth/login] failed:", e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * POST /auth/logout
+ * Clears the auth cookie
+ */
+router.post("/logout", async (_req, res) => {
+  try {
+    res.clearCookie(COOKIE_NAME, {
+      domain: ".joineryai.app",
+      path: "/",
+      secure: true,
+      sameSite: "none",
+    });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[auth/logout] failed:", e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
@@ -306,17 +339,13 @@ router.post("/set-password", async (req, res) => {
         role: signupToken.user.role,
       },
       JWT_SECRET,
-      { expiresIn: "12h" }
+      { expiresIn: "7d" }
     );
 
-    res.cookie("jwt", loginJwt, {
-      httpOnly: false,
-      sameSite: "lax",
-      secure: true,
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    // ✅ Set the same HttpOnly cookie after completing signup
+    res.cookie(COOKIE_NAME, loginJwt, COOKIE_OPTS);
 
-    return res.json({ jwt: loginJwt });
+    return res.json({ ok: true, jwt: loginJwt });
   } catch (e: any) {
     console.error("[auth/set-password] failed:", e);
     return res.status(500).json({ error: "internal_error" });
