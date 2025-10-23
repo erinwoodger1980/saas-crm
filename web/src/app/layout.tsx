@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import AppShell from "./components/AppShell";
 import { TasksButton } from "@/components/tasks/TasksButton";
 import FeedbackWidget from "@/components/FeedbackWidget";
+import { setJwt } from "@/lib/api";
 
 // Keep your existing env usage for DevAuth
 const API_BASE =
@@ -20,8 +21,9 @@ function DevAuth() {
     fetch(`${API_BASE}/seed`, { method: "POST" })
       .then((r) => r.json())
       .then((d) => {
-        if (d?.jwt) {
-          localStorage.setItem("jwt", d.jwt);
+        const token = d?.token || d?.jwt;
+        if (token) {
+          setJwt(token);
           location.reload();
         }
       })

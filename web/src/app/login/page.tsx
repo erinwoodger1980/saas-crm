@@ -25,8 +25,9 @@ export default function LoginPage() {
         method: "POST",
         json: { email: loginEmail, password: loginPassword },
       });
-      if (res?.jwt) {
-        setJwt(res.jwt);
+      const authToken = res?.token || res?.jwt;
+      if (authToken) {
+        setJwt(authToken);
         router.push("/dashboard");
       } else {
         throw new Error("Invalid login response");

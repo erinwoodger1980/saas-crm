@@ -72,26 +72,21 @@ app.use((req, _res, next) => {
 app.set("trust proxy", 1);
 
 /** ---------- CORS (allow localhost + prod, no cookies) ---------- */
-const ORIGINS_RAW =
-  process.env.WEB_ORIGIN || process.env.ALLOWED_ORIGINS || [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://app.joineryai.app",
-    "https://www.joineryai.app",
-  ].join(",");
-
-const ALLOWED_ORIGINS = ORIGINS_RAW.split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+const allowedOrigins = env.WEB_ORIGIN;
 
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
     if (!origin) return cb(null, true); // same-origin or server-to-server (curl, Postman)
-    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    if (!allowedOrigins.length) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
 
-    // Loose host match (helps with http/https discrepancies)
-    const host = origin.replace(/^https?:\/\//, "");
-    if (ALLOWED_ORIGINS.some((o) => o.includes(host))) return cb(null, true);
+    const normalized = origin
+      .replace(/^https?:\/\//, "")
+      .replace(/\/$/, "");
+    const match = allowedOrigins.some((o) =>
+      o.replace(/^https?:\/\//, "").replace(/\/$/, "") === normalized,
+    );
+    if (match) return cb(null, true);
 
     cb(new Error(`CORS: origin not allowed: ${origin}`));
   },
@@ -100,8 +95,10 @@ const corsOptions: cors.CorsOptions = {
   allowedHeaders: [
     "Content-Type",
     "Authorization",
-    "x-tenant-id", // ✅ needed by web
-    "x-user-id",   // ✅ needed by web
+    "X-Tenant-Id",
+    "X-User-Id",
+    "x-tenant-id", // legacy lowercase header variant
+    "x-user-id", // legacy lowercase header variant
   ],
 };
 
@@ -119,7 +116,7 @@ app.get("/api-check", (req, res) => {
   res.json({
     ok: true,
     originReceived: req.headers.origin || null,
-    allowList: ALLOWED_ORIGINS,
+    allowList: allowedOrigins,
   });
 });
 
@@ -259,7 +256,7 @@ app.post("/seed", async (_req, res) => {
       env.APP_JWT_SECRET,
       { expiresIn: "12h" }
     );
-    res.json({ ...out, jwt: jwtToken });
+    res.json({ ...out, token: jwtToken, jwt: jwtToken });
   } catch (err: any) {
     console.error("[seed] failed:", err);
     res.status(500).json({ error: err?.message ?? "seed failed" });
@@ -291,7 +288,7 @@ app.post("/auth/dev-login", async (req, res) => {
       { expiresIn: "12h" }
     );
 
-    return res.json({ token });
+    return res.json({ token, jwt: token });
   } catch (err: any) {
     console.error("[dev-login] failed:", err);
     res.status(500).json({ error: err?.message || "dev-login failed" });
