@@ -47,6 +47,9 @@ function sanitizeUrl(value: unknown): string | null {
 router.post("/", async (req: any, res) => {
   try {
     const auth = req.auth;
+    // Debug: log incoming auth and body for visibility in server logs (safe-ish info)
+    console.debug("[POST /feedback] auth:", auth ? { tenantId: auth.tenantId, userId: auth.userId } : null);
+    console.debug("[POST /feedback] body:", req.body);
     if (!auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const { feature, rating, comment, sourceUrl } = req.body || {};
@@ -72,7 +75,7 @@ router.post("/", async (req: any, res) => {
 
     res.json({ ok: true, feedback: row });
   } catch (e: any) {
-    console.error("[POST /feedback] failed:", e?.message || e);
+    console.error("[POST /feedback] failed:", e?.message || e, e?.stack || "no stack");
     res.status(500).json({ error: "internal_error" });
   }
 });
