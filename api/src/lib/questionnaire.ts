@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 
-export type QuestionnaireFieldType = "text" | "textarea" | "select" | "number" | "date" | "source";
+export type QuestionnaireFieldType = "text" | "textarea" | "select" | "number" | "date" | "source" | "file";
 
 export type QuestionnaireField = {
   id: string;
@@ -14,7 +14,7 @@ export type QuestionnaireField = {
   sortOrder: number;
 };
 
-const FIELD_TYPES: QuestionnaireFieldType[] = ["text", "textarea", "select", "number", "date", "source"];
+const FIELD_TYPES: QuestionnaireFieldType[] = ["text", "textarea", "select", "number", "date", "source", "file"];
 
 function makeId() {
   try {
