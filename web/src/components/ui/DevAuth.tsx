@@ -1,6 +1,6 @@
 "use client";
 import { useEffect } from "react";
-import { API_BASE, setJwt } from "@/lib/api";
+import { API_BASE, setJwt, apiFetch } from "@/lib/api";
 
 export default function DevAuth() {
   useEffect(() => {
@@ -13,16 +13,18 @@ export default function DevAuth() {
     if (localStorage.getItem("jwt")) return;
 
     // automatically create demo tenant + user (local only)
-    fetch(`${API_BASE}/seed`, { method: "POST", credentials: "omit" })
-      .then((r) => r.json())
-      .then((d) => {
+    (async () => {
+      try {
+        const d = await apiFetch<any>("/seed", { method: "POST", credentials: "omit" });
         const token = d?.token || d?.jwt;
         if (token) {
           setJwt(token);
           location.reload();
         }
-      })
-      .catch((err) => console.error("Auto seed failed", err));
+      } catch (err) {
+        console.error("Auto seed failed", err);
+      }
+    })();
   }, []);
 
   return null;

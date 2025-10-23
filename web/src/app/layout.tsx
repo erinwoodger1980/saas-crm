@@ -7,23 +7,26 @@ import { Toaster } from "@/components/ui/toaster";
 import AppShell from "./components/AppShell";
 import { TasksButton } from "@/components/tasks/TasksButton";
 import FeedbackWidget from "@/components/FeedbackWidget";
-import { API_BASE, setJwt } from "@/lib/api";
+import { API_BASE, setJwt, apiFetch } from "@/lib/api";
 
 function DevAuth() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (localStorage.getItem("jwt")) return;
 
-    fetch(`${API_BASE}/seed`, { method: "POST" })
-      .then((r) => r.json())
-      .then((d) => {
+    // use apiFetch so credentials and API_BASE are resolved consistently
+    (async () => {
+      try {
+  const d = await apiFetch<any>("/seed", { method: "POST", credentials: "omit" });
         const token = d?.token || d?.jwt;
         if (token) {
           setJwt(token);
           location.reload();
         }
-      })
-      .catch((err) => console.error("Auto-seed failed:", err));
+      } catch (err) {
+        console.error("Auto-seed failed:", err);
+      }
+    })();
   }, []);
   return null;
 }

@@ -181,25 +181,15 @@ export async function ensureDemoAuth(): Promise<boolean> {
 
   // Already logged in?
   try {
-    const meRes = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
-    if (meRes.ok) {
-      const me = await meRes.json().catch(() => null);
-      if (me && (me as any).email) return true;
-    }
+    const me = await apiFetch<any>('/auth/me');
+    if (me && me.email) return true;
   } catch {}
 
   // Attempt demo login (cookie will be set by API)
   try {
-    const loginRes = await fetch(`${API_BASE}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email: "erin@acme.test", password: "Password123!" }),
-    });
-    if (loginRes.ok) {
-      const meRes = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
-      if (meRes.ok) return true;
-    }
+    await apiFetch('/auth/login', { method: 'POST', json: { email: 'erin@acme.test', password: 'Password123!' } });
+    const me = await apiFetch<any>('/auth/me');
+    if (me && me.email) return true;
   } catch {}
 
   return false;
