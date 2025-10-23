@@ -189,6 +189,8 @@ export default function SettingsPage() {
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [qFields, setQFields] = useState<QField[]>([]);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -198,6 +200,11 @@ export default function SettingsPage() {
         await mutateCurrentUser();
         const data = await apiFetch<Settings>("/tenant/settings");
         setS(data);
+        // initialize questionnaire editor from settings
+        setQFields(normalizeQuestionnaire((data as any)?.questionnaire ?? []));
+        // initialize profile name fields from current user (if available)
+        setProfileFirstName(user?.firstName ?? "");
+        setProfileLastName(user?.lastName ?? "");
       } catch (e: any) {
         toast({ title: "Failed to load settings", description: e?.message, variant: "destructive" });
       } finally {
@@ -215,11 +222,53 @@ export default function SettingsPage() {
         json: { firstName: profileFirstName, lastName: profileLastName },
       });
       mutateCurrentUser(updated, false);
+        // also persist owner names to tenant settings so they show up in company profile
+        try {
+          await apiFetch("/tenant/settings", {
+            method: "PATCH",
+            json: { ownerFirstName: profileFirstName, ownerLastName: profileLastName },
+          });
+          setS((prev) => (prev ? { ...prev, ownerFirstName: profileFirstName, ownerLastName: profileLastName } : prev));
+        } catch (err) {
+          // Not fatal — show a toast but keep profile updated
+          toast({ title: "Profile updated (owner name not saved)", description: String((err as any)?.message || "") });
+        }
       toast({ title: "Profile updated" });
     } catch (e: any) {
       toast({ title: "Couldn’t update profile", description: e?.message, variant: "destructive" });
     } finally {
       setSavingProfile(false);
+    }
+  }
+
+  // keep profile fields synced if user changes externally
+  useEffect(() => {
+    setProfileFirstName(user?.firstName ?? "");
+    setProfileLastName(user?.lastName ?? "");
+  }, [user?.firstName, user?.lastName]);
+
+  async function saveSettings() {
+    if (!s) return;
+    setSavingSettings(true);
+    try {
+      const payload = {
+        brandName: s.brandName,
+        ownerFirstName: s.ownerFirstName,
+        ownerLastName: s.ownerLastName,
+        introHtml: s.introHtml,
+        website: s.website,
+        phone: s.phone,
+        questionnaire: serializeQuestionnaire(qFields),
+      } as any;
+
+      const updated = await apiFetch<Settings>("/tenant/settings", { method: "PATCH", json: payload });
+      setS(updated);
+      setQFields(normalizeQuestionnaire((updated as any)?.questionnaire ?? []));
+      toast({ title: "Settings saved" });
+    } catch (e: any) {
+      toast({ title: "Failed to save settings", description: e?.message, variant: "destructive" });
+    } finally {
+      setSavingSettings(false);
     }
   }
 
@@ -256,19 +305,11 @@ export default function SettingsPage() {
   /* Machine Learning section */
   async function trainModel() {
     try {
-      const res = await fetch(`${API_BASE}/ml/train`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("jwt")}`,
-        },
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Training failed");
-      alert(`✅ Model training started.\n${json.message || "Training triggered."}`);
+      const json = await apiFetch<{ message?: string; error?: string }>("/ml/train", { method: "POST" });
+      alert(`✅ Model training started.\n${json?.message || "Training triggered."}`);
     } catch (err: any) {
       console.error("Train model failed:", err);
-      alert(`❌ ${err.message || "Failed to trigger training"}`);
+      alert(`❌ ${err?.message || "Failed to trigger training"}`);
     }
   }
 
@@ -281,11 +322,135 @@ export default function SettingsPage() {
         <Button onClick={saveProfile}>Save Profile</Button>
       </div>
 
-      <Section title="Machine Learning">
-        <p className="text-sm text-slate-600 mb-4">
-          Train the model using recent quote emails.
-        </p>
-        <Button onClick={trainModel}>✨ Train Model</Button>
+      <Section title="Company profile" description="Edit basic company and owner details">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Field label="Company name">
+            <input
+              className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+              value={s.brandName ?? ""}
+              onChange={(e) => setS((prev) => (prev ? { ...prev, brandName: e.target.value } : prev))}
+            />
+          </Field>
+          <Field label="Website">
+            <input
+              className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+              value={s.website ?? ""}
+              onChange={(e) => setS((prev) => (prev ? { ...prev, website: e.target.value } : prev))}
+            />
+          </Field>
+          <Field label="Owner first name">
+            <input
+              className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+              value={profileFirstName}
+              onChange={(e) => setProfileFirstName(e.target.value)}
+            />
+          </Field>
+          <Field label="Owner last name">
+            <input
+              className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+              value={profileLastName}
+              onChange={(e) => setProfileLastName(e.target.value)}
+            />
+          </Field>
+          <Field label="Phone">
+            <input
+              className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+              value={s.phone ?? ""}
+              onChange={(e) => setS((prev) => (prev ? { ...prev, phone: e.target.value } : prev))}
+            />
+          </Field>
+          <Field label="Intro HTML" hint="Optional HTML shown on the public questionnaire">
+            <textarea
+              className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm min-h-[80px]"
+              value={s.introHtml ?? ""}
+              onChange={(e) => setS((prev) => (prev ? { ...prev, introHtml: e.target.value } : prev))}
+            />
+          </Field>
+        </div>
+        <div className="mt-4 flex gap-2">
+          <Button onClick={saveSettings} disabled={savingSettings}>
+            {savingSettings ? "Saving settings…" : "Save settings"}
+          </Button>
+        </div>
+      </Section>
+
+      <Section title="Questionnaire" description="Manage the public questionnaire fields">
+        <div className="space-y-3">
+          {qFields.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/60 px-4 py-6 text-sm text-slate-500">
+              No questions yet.
+            </div>
+          ) : (
+            qFields.map((f, idx) => (
+              <div key={f.id || idx} className="flex flex-wrap items-center gap-2">
+                <input
+                  className="w-36 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                  value={f.key}
+                  onChange={(e) =>
+                    setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, key: e.target.value } : p)))
+                  }
+                />
+                <input
+                  className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                  value={f.label}
+                  onChange={(e) =>
+                    setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, label: e.target.value } : p)))
+                  }
+                />
+                <select
+                  className="rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                  value={f.type}
+                  onChange={(e) =>
+                    setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, type: e.target.value as any } : p)))
+                  }
+                >
+                  {FIELD_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!f.required}
+                    onChange={(e) =>
+                      setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, required: e.target.checked } : p)))
+                    }
+                  />
+                  Required
+                </label>
+                <button
+                  type="button"
+                  className="text-sm text-rose-500"
+                  onClick={() => setQFields((prev) => prev.filter((_, i) => i !== idx))}
+                >
+                  Remove
+                </button>
+              </div>
+            ))
+          )}
+
+          <div>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setQFields((prev) => [
+                  ...prev,
+                  { id: makeFieldId(), key: `field_${prev.length + 1}`, label: `Field ${prev.length + 1}`, type: "text" },
+                ])
+              }
+            >
+              Add question
+            </Button>
+          </div>
+
+          <div className="mt-3">
+            <Button onClick={saveSettings} disabled={savingSettings}>
+              {savingSettings ? "Saving settings…" : "Save questionnaire"}
+            </Button>
+          </div>
+        </div>
       </Section>
 
       <Section title="Early Access">
