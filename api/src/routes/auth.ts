@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { env } from "../env"; // ← use the same env wrapper as server.ts
+import { normalizeEmail } from "../lib/email";
 
 const router = Router();
 
@@ -28,20 +29,25 @@ function splitName(fullName?: string | null) {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = (req.body || {}) as {
-      email?: string;
-      password?: string;
+      email?: unknown;
+      password?: unknown;
     };
 
-    if (!email || !password) {
+    const normalizedEmail = normalizeEmail(email);
+    const passwordString = typeof password === "string" ? password : "";
+
+    if (!normalizedEmail || !passwordString) {
       return res.status(400).json({ error: "email and password required" });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+    });
     if (!user || !user.passwordHash) {
       return res.status(401).json({ error: "invalid credentials" });
     }
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
+    const ok = await bcrypt.compare(passwordString, user.passwordHash);
     if (!ok) return res.status(401).json({ error: "invalid credentials" });
 
     const token = jwt.sign(
@@ -88,12 +94,15 @@ router.post("/dev-seed", async (_req, res) => {
     if (!tenant) tenant = await prisma.tenant.create({ data: { name: "Acme" } });
 
     const email = "erin@acme.test";
-    let user = await prisma.user.findUnique({ where: { email } });
+    const normalizedEmail = normalizeEmail(email) || email;
+    let user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+    });
     if (!user) {
       const passwordHash = await bcrypt.hash("secret12", 10);
       user = await prisma.user.create({
         data: {
-          email,
+          email: normalizedEmail,
           passwordHash,
           tenantId: tenant.id,
           role: "owner",
