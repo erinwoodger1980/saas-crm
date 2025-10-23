@@ -40,6 +40,7 @@ async function ensureDemoTenantAndUsers() {
         name: "Owner User",
         role: "owner", // keep as-is to match your current schema
         passwordHash: hash,
+        signupCompleted: true,
       },
     }),
     prisma.user.upsert({
@@ -51,6 +52,7 @@ async function ensureDemoTenantAndUsers() {
         name: "Sales User",
         role: "sales",
         passwordHash: hash,
+        signupCompleted: true,
       },
     }),
   ]);
