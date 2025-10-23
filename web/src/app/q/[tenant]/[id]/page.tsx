@@ -2,24 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, apiFetch } from "@/lib/api";
 
 /* -------- Tiny public fetch helpers (no auth cookie required) -------- */
 async function getJSON<T>(path: string): Promise<T> {
-  const url = `${API_BASE}${path}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error((await r.text().catch(() => null)) || r.statusText);
-  return (await r.json()) as T;
+  return apiFetch<T>(path, { credentials: "omit" });
 }
 async function postJSON<T>(path: string, body: unknown): Promise<T> {
-  const url = `${API_BASE}${path}`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error((await r.text().catch(() => null)) || r.statusText);
-  return (await r.json()) as T;
+  return apiFetch<T>(path, { method: "POST", json: body, credentials: "omit" });
 }
 
 /* ---------------- Types ---------------- */
