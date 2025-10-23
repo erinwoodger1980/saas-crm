@@ -13,11 +13,12 @@ export default function DevAuth() {
     if (localStorage.getItem("jwt")) return;
 
     // automatically create demo tenant + user (local only)
-    fetch(`${API_BASE}/seed`, { method: "POST", credentials: "include" })
+    fetch(`${API_BASE}/seed`, { method: "POST", credentials: "omit" })
       .then((r) => r.json())
       .then((d) => {
-        if (d?.jwt) {
-          setJwt(d.jwt);
+        const token = d?.token || d?.jwt;
+        if (token) {
+          setJwt(token);
           location.reload();
         }
       })

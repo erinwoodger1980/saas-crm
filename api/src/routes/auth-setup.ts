@@ -36,11 +36,15 @@ router.post("/complete", async (req, res) => {
     const passwordHash = await bcrypt.hash(String(password), 10);
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
 
-    const loginJwt = jwt.sign(
-      { userId: user.id, tenantId, email: user.email, role: user.role },
-      env.APP_JWT_SECRET,
-      { expiresIn: "12h" }
-    );
+    const loginPayload = {
+      userId: user.id,
+      tenantId,
+      email: user.email,
+      role: user.role,
+    };
+    const loginJwt = jwt.sign(loginPayload, env.APP_JWT_SECRET, {
+      expiresIn: "12h",
+    });
 
     // cookie is optional — the web app stores it in localStorage too
     res.cookie("jwt", loginJwt, {
@@ -50,7 +54,7 @@ router.post("/complete", async (req, res) => {
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
-    return res.json({ jwt: loginJwt });
+    return res.json({ token: loginJwt, jwt: loginJwt });
   } catch (e: any) {
     console.error("[auth/setup/complete]", e);
     return res.status(500).json({ error: "internal_error" });

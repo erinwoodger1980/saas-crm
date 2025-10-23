@@ -24,7 +24,7 @@ function splitName(fullName?: string | null) {
 /**
  * POST /auth/login
  * body: { email, password }
- * returns: { user, jwt }
+ * returns: { token, user } (also returns legacy `jwt` alias)
  */
 router.post("/login", async (req, res) => {
   try {
@@ -50,34 +50,34 @@ router.post("/login", async (req, res) => {
     const ok = await bcrypt.compare(passwordString, user.passwordHash);
     if (!ok) return res.status(401).json({ error: "invalid credentials" });
 
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        tenantId: user.tenantId,
-        email: user.email,
-        role: user.role,
-      },
-      JWT_SECRET,
-      { expiresIn: "12h" }
-    );
+    const tokenPayload = {
+      userId: user.id,
+      tenantId: user.tenantId,
+      email: user.email,
+      role: user.role,
+    };
+
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "12h" });
 
     // you can also drop it in a cookie if you want
     // res.cookie("jwt", token, { httpOnly: false, sameSite: "lax", secure: true });
 
     const { firstName, lastName } = splitName(user.name);
+    const responseUser = {
+      id: user.id,
+      email: user.email,
+      tenantId: user.tenantId,
+      role: user.role,
+      name: user.name,
+      isEarlyAdopter: user.isEarlyAdopter,
+      firstName,
+      lastName,
+    };
 
     return res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        tenantId: user.tenantId,
-        role: user.role,
-        name: user.name,
-        isEarlyAdopter: user.isEarlyAdopter,
-        firstName,
-        lastName,
-      },
-      jwt: token,
+      token,
+      jwt: token, // keep legacy key for existing clients
+      user: responseUser,
     });
   } catch (e: any) {
     console.error("[auth/login] failed:", e);
@@ -111,11 +111,14 @@ router.post("/dev-seed", async (_req, res) => {
       });
     }
 
-    const token = jwt.sign(
-      { userId: user.id, tenantId: tenant.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: "12h" }
-    );
+    const tokenPayload = {
+      userId: user.id,
+      tenantId: tenant.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "12h" });
 
     const { firstName, lastName } = splitName(user.name);
 
@@ -124,6 +127,7 @@ router.post("/dev-seed", async (_req, res) => {
       tenantId: tenant.id,
       userId: user.id,
       email,
+      token,
       jwt: token,
       user: {
         id: user.id,
