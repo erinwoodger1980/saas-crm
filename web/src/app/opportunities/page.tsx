@@ -1,4 +1,3 @@
-// web/src/app/opportunities/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -6,9 +5,6 @@ import OpportunityModal from "./OpportunityModal";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:4000";
 
 type LeadStatus = "QUOTE_SENT" | "WON" | "LOST";
 type Lead = {
@@ -75,9 +71,8 @@ export default function OpportunitiesPage() {
 
     // 3) Optional extra opp cards
     try {
-      const res = await fetch(`${API_BASE}/reports/opportunities`, { credentials: "include" });
-      const d = await res.json();
-      setOppRows(d.opportunities || []);
+      const res = await apiFetch<{ opportunities?: Opp[] }>("/reports/opportunities");
+      setOppRows(res.opportunities || []);
     } catch {
       setOppRows([]);
     }
@@ -111,11 +106,9 @@ export default function OpportunitiesPage() {
   async function planFollowUp(id: string) {
     setLoadingPlan(true);
     try {
-      await fetch(`${API_BASE}/opportunities/${id}/next-followup`, {
+      await apiFetch(`/opportunities/${id}/next-followup`, {
         method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        json: {}, // keep body explicit
       });
     } finally {
       setLoadingPlan(false);

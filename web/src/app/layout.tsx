@@ -7,11 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import AppShell from "./components/AppShell";
 import { TasksButton } from "@/components/tasks/TasksButton";
 import FeedbackWidget from "@/components/FeedbackWidget";
-import { setJwt } from "@/lib/api";
-
-// Keep your existing env usage for DevAuth
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:4000";
+import { API_BASE, setJwt } from "@/lib/api";
 
 function DevAuth() {
   useEffect(() => {
@@ -34,12 +30,25 @@ function DevAuth() {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+
   const isAuthRoute = pathname?.startsWith("/login");
   const isPublicQuestionnaire = pathname?.startsWith("/q/");
-  const isPublicThankYou = pathname === "/thank-you" || pathname?.startsWith("/q/thank-you");
-  const isMarketingRoute = pathname === "/" || pathname?.startsWith("/policy");
-  const shouldUseShell = !(isAuthRoute || isPublicQuestionnaire || isPublicThankYou || isMarketingRoute);
-  const shouldRunDevAuth = !(isPublicQuestionnaire || isPublicThankYou || isMarketingRoute);
+  const isPublicThankYou =
+    pathname === "/thank-you" || pathname?.startsWith("/q/thank-you");
+  const isMarketingRoute =
+    pathname === "/" || pathname?.startsWith("/policy");
+
+  const shouldUseShell = !(
+    isAuthRoute ||
+    isPublicQuestionnaire ||
+    isPublicThankYou ||
+    isMarketingRoute
+  );
+  const shouldRunDevAuth = !(
+    isPublicQuestionnaire ||
+    isPublicThankYou ||
+    isMarketingRoute
+  );
 
   return (
     <html lang="en" className="h-full">
@@ -47,7 +56,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {shouldRunDevAuth && <DevAuth />}
 
         {shouldUseShell ? (
-          // ✅ Use the shared AppShell (sidebar + header + logos, no max-width cap)
           <AppShell>{children}</AppShell>
         ) : (
           children
