@@ -24,6 +24,7 @@ export type Lead = {
   id: string;
   contactName?: string | null;
   email?: string | null;
+  quoteId?: string | null;
   status:
     | "NEW_ENQUIRY"
     | "INFO_REQUESTED"
@@ -443,6 +444,7 @@ export default function LeadModal({
           status: sUi,
           custom: row.custom ?? row.briefJson ?? null,
           description,
+          quoteId: (row as any)?.quoteId ?? null,
         };
         setLead(normalized);
         setUiStatus(sUi);
@@ -969,6 +971,34 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   }
 
+  async function openQuoteBuilder() {
+    if (!lead?.id) return;
+    setSaving(true);
+    try {
+      let qid: string | null = lead.quoteId || null;
+      if (!qid) {
+        const q = await apiFetch<any>("/quotes", {
+          method: "POST",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          json: {
+            leadId: lead.id,
+            title: `Estimate for ${lead.contactName || lead.email || "Lead"}`,
+          },
+        });
+        qid = q?.id || null;
+      }
+      if (qid) {
+        window.location.href = `/settings/ai-training/quotes/${encodeURIComponent(qid)}`;
+      } else {
+        alert("Couldn't open quote builder – no quote id");
+      }
+    } catch (e) {
+      alert("Failed to open quote builder");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function openMailTo(to: string, subject: string, body?: string) {
     const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}${
       body ? `&body=${encodeURIComponent(body)}` : ""
@@ -1190,6 +1220,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
               Create Draft Estimate
             </button>
           )}
+
+          <button
+            className="ml-2 rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 text-white px-4 py-2 text-sm font-semibold shadow hover:from-indigo-600 hover:to-sky-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            onClick={openQuoteBuilder}
+            title="Open the quote builder for this lead"
+            disabled={saving}
+          >
+            Open Quote Builder
+          </button>
 
           <button
             className="ml-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"

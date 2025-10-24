@@ -497,4 +497,12 @@ app.use((err: any, _req: any, res: any, _next: any) => {
 /** Start server */
 app.listen(env.PORT, () => {
   console.log(`API running at http://localhost:${env.PORT}`);
+  const mlEnv = ((process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "").trim());
+  if (!mlEnv) {
+    console.warn("[ml] ML_URL not set; ML proxy will default to http://localhost:8000 (dev only)");
+  } else if (process.env.NODE_ENV === "production" && /(localhost|127\.0\.0\.1)/i.test(mlEnv)) {
+    console.warn(`[ml] ML_URL is '${mlEnv}' which points to localhost in production — update your API env to the deployed ML service URL.`);
+  } else {
+    console.log(`[ml] ML proxy target: ${mlEnv}`);
+  }
 });
