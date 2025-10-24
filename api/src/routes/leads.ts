@@ -443,6 +443,18 @@ router.get("/:id", async (req, res) => {
 /* Send questionnaire (email link). Does NOT create a task.           */
 /* ------------------------------------------------------------------ */
 
+// prefer a single clean absolute origin for links in emails
+function pickWebOrigin(): string {
+  const raw = String(process.env.WEB_ORIGIN || "").trim();
+  const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  // Prefer the first entry that already includes http/https
+  const withScheme = parts.find((p) => /^https?:\/\//i.test(p));
+  let base = withScheme || parts[0] || String(process.env.APP_URL || process.env.WEB_APP_URL || "").trim();
+  if (!base) base = "https://www.joineryai.app";
+  if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
+  return base.replace(/\/+$/, "");
+}
+
 router.post("/:id/request-info", async (req, res) => {
   try {
     const { tenantId, email: fromEmail } = getAuth(req);
@@ -453,8 +465,8 @@ router.post("/:id/request-info", async (req, res) => {
     if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
     if (!lead.email) return res.status(400).json({ error: "lead has no email" });
 
-    const WEB_ORIGIN = process.env.WEB_ORIGIN || "http://localhost:3000";
-    const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+  const WEB_ORIGIN = pickWebOrigin();
+  const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
     const slug = ts?.slug || ("tenant-" + tenantId.slice(0, 6));
     const qUrl = `${WEB_ORIGIN}/q/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`;
 
@@ -619,8 +631,8 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
       env.APP_JWT_SECRET,
       { expiresIn: "90d" }
     );
-    const WEB_ORIGIN = process.env.WEB_ORIGIN || "http://localhost:3000";
-    const uploadUrl = `${WEB_ORIGIN}/sup/${encodeURIComponent(slug)}/${encodeURIComponent(token)}`;
+  const WEB_ORIGIN = pickWebOrigin();
+  const uploadUrl = `${WEB_ORIGIN}/sup/${encodeURIComponent(slug)}/${encodeURIComponent(token)}`;
 
     const sub = subject || `Quote request for ${lead.contactName || "lead"} (${lead.id.slice(0, 8)})`;
     const bodyText =
