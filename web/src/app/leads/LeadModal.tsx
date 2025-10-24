@@ -738,6 +738,17 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     const url = t.status === "DONE" ? `/tasks/${t.id}/reopen` : `/tasks/${t.id}/complete`;
     await apiFetch(url, { method: "POST", headers: authHeaders });
     await reloadTasks();
+    // The server may promote the lead (accept on review). Refresh lead status to reflect immediately.
+    if (lead?.id) {
+      try {
+        const one = await apiFetch<{ lead?: any } | any>(`/leads/${lead.id}`, { headers: authHeaders });
+        const row = (one && "lead" in one ? one.lead : one) ?? {};
+        const sUi = serverToUiStatus(row.status);
+        setUiStatus(sUi);
+        setLead((prev) => (prev ? { ...prev, status: sUi } : prev));
+        await triggerOnUpdated();
+      } catch {}
+    }
   }
 
   /* ----------------------------- Actions ----------------------------- */
@@ -1062,22 +1073,24 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-50 via-indigo-50 to-amber-50 text-slate-700">
-          <DeclineEnquiryButton
-            lead={{
-              id: lead?.id || leadPreview?.id || "",
-              contactName: lead?.contactName ?? leadPreview?.contactName,
-              email: lead?.email ?? leadPreview?.email,
-              description: lead?.description ?? leadPreview?.description,
-              custom: (lead?.custom as any) ?? (leadPreview?.custom as any) ?? null,
-            }}
-            disabled={saving || loading}
-            authHeaders={authHeaders}
-            brandName={settings?.brandName ?? null}
-            onMarkedRejected={() => {
-              setUiStatus("REJECTED");
-              return saveStatus("REJECTED");
-            }}
-          />
+          {uiStatus === "NEW_ENQUIRY" && (
+            <DeclineEnquiryButton
+              lead={{
+                id: lead?.id || leadPreview?.id || "",
+                contactName: lead?.contactName ?? leadPreview?.contactName,
+                email: lead?.email ?? leadPreview?.email,
+                description: lead?.description ?? leadPreview?.description,
+                custom: (lead?.custom as any) ?? (leadPreview?.custom as any) ?? null,
+              }}
+              disabled={saving || loading}
+              authHeaders={authHeaders}
+              brandName={settings?.brandName ?? null}
+              onMarkedRejected={() => {
+                setUiStatus("REJECTED");
+                return saveStatus("REJECTED");
+              }}
+            />
+          )}
 
           <button
             className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"

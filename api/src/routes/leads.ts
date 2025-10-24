@@ -361,6 +361,31 @@ router.patch("/:id", async (req, res) => {
     } catch (e) {
       console.warn("[leads] status→training log failed:", (e as any)?.message || e);
     }
+
+    // Auto-complete the initial "Review enquiry" task when moving off NEW_ENQUIRY
+    try {
+      if (prevUi === "NEW_ENQUIRY" && nextUi !== "NEW_ENQUIRY") {
+        const key = `status:new-review:${id}`;
+        const reviewTask = await prisma.task.findFirst({
+          where: {
+            tenantId,
+            relatedType: "LEAD" as any,
+            relatedId: id,
+            status: { notIn: ["DONE", "CANCELLED"] as any },
+            meta: { path: ["key"], equals: key } as any,
+          },
+          select: { id: true },
+        });
+        if (reviewTask) {
+          await prisma.task.update({
+            where: { id: reviewTask.id },
+            data: { status: "DONE" as any, completedAt: new Date(), updatedById: actorId ?? undefined },
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[leads] auto-complete review task failed:", (e as any)?.message || e);
+    }
   }
 
   // Adjust source conversions when toggling WON on/off (optional; keep if you used this before)

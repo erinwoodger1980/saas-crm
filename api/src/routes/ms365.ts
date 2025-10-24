@@ -346,7 +346,7 @@ function heuristicsSuggestLead(subject: string, body: string, heur: ReturnType<t
   ];
   const hasKeyword = keywords.some((kw) => haystack.includes(kw));
   const hasContact = Boolean(heur.email || heur.contactName || heur.phone);
-  const hasBody = body.trim().length > 40;
+  const hasBody = body.trim().length > 10;
   return hasKeyword && hasContact && hasBody;
 }
 
@@ -450,6 +450,11 @@ router.post("/import", async (req, res) => {
   const max = Math.max(1, Math.min(Number(req.body?.max || 5), 20)); // 1..20
 
   try {
+    // Fetch tenant inbox settings once per import (recall-first flag)
+    const settings = await prisma.tenantSettings.findUnique({ where: { tenantId }, select: { inbox: true } });
+    const inbox = (settings?.inbox as any) || {};
+    const recallFirst = !!(inbox.recallFirst || inbox.neverMiss);
+
     const accessToken = await getAccessTokenForTenant(tenantId);
 
     // List recent Inbox messages (most recent first)
@@ -534,10 +539,11 @@ router.post("/import", async (req, res) => {
       // Classify if no lead exists yet
       let createdLead = false;
       if (!leadId) {
-        const heur = basicHeuristics(bodyText || snippet);
+        const bodyForAnalysis = bodyText || snippet || "";
+        const heur = basicHeuristics(bodyForAnalysis);
         let ai: any = null;
         try {
-          ai = await extractLeadWithOpenAI(subject, bodyText || snippet, { snippet, from: String(msg.from?.emailAddress?.name || fromAddr || "") });
+          ai = await extractLeadWithOpenAI(subject, bodyForAnalysis, { snippet, from: String(msg.from?.emailAddress?.name || fromAddr || "") });
         } catch (e: any) {
           console.error("[ms365] openai classification failed:", e?.message || e);
         }
@@ -546,14 +552,15 @@ router.post("/import", async (req, res) => {
           typeof ai?.isLead === "string" ? ai.isLead.toLowerCase() === "true" : typeof ai?.isLead === "boolean" ? ai.isLead : null;
         const aiConfidence = typeof ai?.confidence === "number" ? Math.max(0, Math.min(1, Number(ai.confidence))) : null;
         const aiReason = typeof ai?.reason === "string" ? ai.reason : "";
-        const noise = looksLikeNoise(subject || "", bodyText || snippet || "");
+        const noise = looksLikeNoise(subject || "", bodyForAnalysis);
+        const subjectLeadSignal = /\b(quote|estimate|enquiry|inquiry|request)\b/i.test(subject || "");
 
         let decidedBy: "openai" | "heuristics" = ai ? "openai" : "heuristics";
         let isLeadCandidate = false;
         let reason = aiReason;
 
         if (aiIsLead === true && !noise) {
-          if ((aiConfidence ?? 0) >= 0.6 || heuristicsSuggestLead(subject || "", bodyText || snippet || "", heur)) {
+          if ((aiConfidence ?? 0) >= 0.45 || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || subjectLeadSignal) {
             isLeadCandidate = true;
             reason = aiReason || "OpenAI classified this as a lead";
           } else if (!reason) {
@@ -566,14 +573,23 @@ router.post("/import", async (req, res) => {
           reason = aiReason || "OpenAI classified this as not a lead";
         }
 
-        if (aiIsLead === null || (aiConfidence ?? 0) < 0.6) {
-          if (heuristicsSuggestLead(subject || "", bodyText || snippet || "", heur) && !noise) {
+        if (aiIsLead === null || (aiConfidence ?? 0) < 0.45) {
+          if ((heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || subjectLeadSignal) && !noise) {
             isLeadCandidate = true;
             const heurReason = "Heuristics detected enquiry keywords and contact details";
             reason = reason ? `${reason}; ${heurReason}` : heurReason;
             decidedBy = ai ? "openai" : "heuristics";
           } else if (!reason) {
             reason = "No strong indicators of a customer enquiry";
+          }
+        }
+
+        // Recall-first mode: if enabled, prefer creating a lead unless clearly noise
+        if (!isLeadCandidate && recallFirst && !noise) {
+          if (subjectLeadSignal || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || (fromAddr && (subject || bodyForAnalysis))) {
+            isLeadCandidate = true;
+            decidedBy = ai ? "openai" : "heuristics";
+            reason = reason ? `${reason}; recall-first enabled` : "recall-first enabled";
           }
         }
 
@@ -634,7 +650,7 @@ router.post("/import", async (req, res) => {
                   subject: subject || undefined,
                   snippet,
                   from: fromAddr || undefined,
-                  body: (bodyText || "").slice(0, 4000),
+                  body: (bodyForAnalysis || "").slice(0, 4000),
                   decidedBy,
                   reason,
                   confidence: aiConfidence ?? null,
@@ -649,7 +665,7 @@ router.post("/import", async (req, res) => {
                   subject: subject || undefined,
                   snippet,
                   from: fromAddr || undefined,
-                  body: (bodyText || "").slice(0, 4000),
+                  body: (bodyForAnalysis || "").slice(0, 4000),
                   decidedBy,
                   reason,
                   confidence: aiConfidence ?? null,
@@ -677,7 +693,7 @@ router.post("/import", async (req, res) => {
                   subject: subject || undefined,
                   snippet,
                   from: fromAddr || undefined,
-                  body: (bodyText || "").slice(0, 4000),
+                  body: (bodyForAnalysis || "").slice(0, 4000),
                   reason: aiReason || undefined,
                   confidence: aiConfidence ?? null,
                 },
@@ -691,7 +707,7 @@ router.post("/import", async (req, res) => {
                   subject: subject || undefined,
                   snippet,
                   from: fromAddr || undefined,
-                  body: (bodyText || "").slice(0, 4000),
+                  body: (bodyForAnalysis || "").slice(0, 4000),
                   reason: aiReason || undefined,
                   confidence: aiConfidence ?? null,
                 },

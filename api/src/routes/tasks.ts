@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
+import { logEvent, logInsight } from "../services/training";
 
 const router = Router();
 
@@ -328,8 +329,12 @@ router.post("/:id/complete", async (req, res) => {
   const id = req.params.id;
   const actorId = resolveUserId(req);
 
-  const found = await prisma.task.findFirst({ where: { id, tenantId }, select: { id: true } });
-  if (!found) return res.status(404).json({ error: "task_not_found" });
+  // Fetch the task so we know what it relates to
+  const taskRow = await prisma.task.findFirst({
+    where: { id, tenantId },
+    select: { id: true, title: true, relatedType: true, relatedId: true, meta: true },
+  });
+  if (!taskRow) return res.status(404).json({ error: "task_not_found" });
 
   const task = await prisma.task.update({
     where: { id },
@@ -368,6 +373,85 @@ router.post("/:id/complete", async (req, res) => {
         payload: { message: "On a roll—keep it going." } as any,
       },
     });
+  }
+
+  // Special behavior: Completing the review task = accept the lead
+  try {
+    const isLeadReview =
+      (taskRow.relatedType as any) === "LEAD" &&
+      (
+        (typeof taskRow.meta === "object" && taskRow.meta && (taskRow.meta as any).key === `status:new-review:${taskRow.relatedId}`) ||
+        (typeof taskRow.title === "string" && taskRow.title.trim().toLowerCase() === "review enquiry")
+      );
+
+    if (isLeadReview && taskRow.relatedId) {
+      // Load current lead to check status
+      const lead = await prisma.lead.findFirst({ where: { id: taskRow.relatedId, tenantId } });
+      if (lead) {
+        const prevCustom = ((lead.custom as any) || {}) as Record<string, any>;
+        const prevUi = (prevCustom.uiStatus as string) || lead.status;
+        const prevUiNorm = String(prevUi).toUpperCase() === "NEW" ? "NEW_ENQUIRY" : (String(prevUi).toUpperCase() as any);
+
+        // If still in NEW_ENQUIRY, move to READY_TO_QUOTE to mark acceptance
+        const shouldPromote = prevUiNorm === "NEW_ENQUIRY";
+        let nextUi: "READY_TO_QUOTE" | null = null;
+        if (shouldPromote) nextUi = "READY_TO_QUOTE";
+
+        if (nextUi) {
+          await prisma.lead.update({
+            where: { id: lead.id },
+            data: { status: "READY_TO_QUOTE" as any, custom: { ...prevCustom, uiStatus: nextUi } },
+          });
+
+          // Label originating ingests positively and log insights for transparency
+          try {
+            await prisma.emailIngest.updateMany({
+              where: { tenantId, leadId: lead.id },
+              data: { userLabelIsLead: true, userLabeledAt: new Date() },
+            });
+
+            const ingests = await prisma.emailIngest.findMany({
+              where: { tenantId, leadId: lead.id },
+              select: { provider: true, messageId: true },
+              take: 20,
+            });
+
+            if (ingests.length > 0) {
+              for (const g of ingests) {
+                if (!g.provider || !g.messageId) continue;
+                await logInsight({
+                  tenantId,
+                  module: "lead_classifier",
+                  inputSummary: `email:${g.provider}:${g.messageId}`,
+                  decision: "accepted",
+                  confidence: null,
+                  userFeedback: { byTask: true, taskId: task.id, kind: "review_enquiry_complete", actorId },
+                });
+              }
+            } else {
+              await logInsight({
+                tenantId,
+                module: "lead_classifier",
+                inputSummary: `lead:${lead.id}:READY_TO_QUOTE`,
+                decision: "accepted",
+                confidence: null,
+                userFeedback: { byTask: true, taskId: task.id, kind: "review_enquiry_complete", actorId },
+              });
+            }
+
+            await logEvent({
+              tenantId,
+              module: "lead_classifier",
+              kind: "FEEDBACK",
+              payload: { source: "task_complete", taskId: task.id, leadId: lead.id, decision: "accepted" },
+              actorId,
+            });
+          } catch {}
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[tasks:complete] accept-on-review failed:", (e as any)?.message || e);
   }
 
   res.json(task);
