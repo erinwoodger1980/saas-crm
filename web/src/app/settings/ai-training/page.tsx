@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { apiFetch, API_BASE } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
 // Using a native range input instead of a custom Slider to avoid extra deps
 
 const MODULES = [
@@ -50,6 +51,7 @@ function formatDate(s?: string | null) {
 
 export default function AiTrainingPage() {
   const { user } = useCurrentUser();
+  const { toast } = useToast();
   const [moduleId, setModuleId] = useState<typeof MODULES[number]["id"]>("lead_classifier");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +140,7 @@ export default function AiTrainingPage() {
       await apiFetch(`/ml/feedback`, { method: "POST", json: payload });
       // Optimistic: mark userFeedback locally
       setInsights((prev) => prev.map((row) => (row.id === i.id ? { ...row, userFeedback: { ...(row.userFeedback || {}), thumbs: ok } } : row)));
+      toast({ title: "Feedback saved", description: moduleId === "lead_classifier" ? "Recorded and linked to email ingest." : "Recorded for retraining.", duration: 2500 });
     } catch (e: any) {
       setError(e?.message || "Could not send feedback");
     } finally {
@@ -204,6 +207,29 @@ export default function AiTrainingPage() {
             )}
             {insights.map((i) => {
               const thumbs = i.userFeedback?.thumbs as boolean | undefined;
+              // Derive a source link when inputSummary encodes an email reference
+              let sourceEl: ReactNode = null;
+              if (i.inputSummary && i.inputSummary.startsWith("email:")) {
+                const parts = i.inputSummary.split(":");
+                const provider = parts[1];
+                const messageId = parts.slice(2).join(":");
+                if (provider === "gmail" && API_BASE) {
+                  const href = `${API_BASE}/gmail/message/${encodeURIComponent(messageId)}`;
+                  sourceEl = (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-slate-500 underline hover:text-slate-700"
+                    >
+                      View email (JSON)
+                    </a>
+                  );
+                } else {
+                  sourceEl = <span className="text-xs text-slate-400">Source: {provider} {messageId.slice(0, 8)}…</span>;
+                }
+              }
+
               return (
                 <div key={i.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
@@ -211,6 +237,7 @@ export default function AiTrainingPage() {
                     <div className="text-xs text-slate-500">{formatDate(i.createdAt)}</div>
                   </div>
                   <div className="mt-1 text-xs text-slate-600">{i.inputSummary || "(no summary)"}</div>
+                  {sourceEl && <div className="mt-1">{sourceEl}</div>}
                   {typeof i.confidence === "number" && (
                     <div className="mt-1 text-xs text-slate-500">Confidence: {(i.confidence * 100).toFixed(0)}%</div>
                   )}
