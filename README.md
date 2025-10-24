@@ -40,3 +40,33 @@ npx prisma studio
 npm run dev
 # -> http://localhost:4000/healthz   should return "ok"
 # -> POST http://localhost:4000/seed  returns a { jwt, user, tenant }
+
+### 2) Web
+
+```bash
+cd web
+npm i
+npm run dev
+# -> http://localhost:3000
+```
+
+Login locally using the token from `POST /seed` (paste in the app’s dev login if present), or hit `/auth/dev-login` from the API.
+
+---
+
+## AI Training (status)
+
+- Dashboard at `/settings/ai-training` (early adopters only) shows recent decisions per module, threshold controls, and feedback.
+- Gmail and MS365 imports log transparent decisions to `TrainingInsights` with `inputSummary = email:<provider>:<id>`.
+- Clicking Preview shows a normalized email view with subject/from/date/body and attachments.
+- Thumbs up/down feeds back into the system; for the lead classifier it also marks `EmailIngest.userLabelIsLead` and upserts a `LeadTrainingExample`.
+
+Endpoints of note:
+
+- API
+	- `GET /ml/insights?module=lead_classifier&limit=50`
+	- `POST /ml/feedback` with `{ module, insightId, correct, reason, isLead }`
+	- `POST /gmail/import`, `POST /ms365/import`
+	- `GET /gmail/message/:id`, `GET /ms365/message/:id`
+
+If ML tables are not present in your DB yet, the API responds gracefully with empty sets; run migrations or deploy the provided SQL migration to enable full functionality.

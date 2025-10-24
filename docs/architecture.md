@@ -280,3 +280,44 @@ Use optimistic updates; call APIs above. Ensure only early adopters or admins se
 - Log everything to TrainingInsights/TrainingEvent first; wire models second
 - Add small, idempotent migrations; keep API surfaces minimal and versionable
 - Write integration tests for each route happy path + 401, 403, and basic validation
+
+---
+
+## Implementation status (2025-10-24)
+
+The following ML transparency and training features are implemented and live in the repo:
+
+- TrainingInsights / ModelOverride / TrainingEvent tables with tenant relations and indexes.
+- Endpoints under `/ml`:
+  - `GET /ml/insights?module=…&limit=…` returns items + params; resilient if tables are missing.
+  - `POST /ml/params/set` to set per-module parameters (e.g., `lead.threshold`).
+  - `POST /ml/model/reset`, `POST /ml/model/retrain` log TrainingEvents (placeholders for real jobs).
+  - `POST /ml/feedback` accepts `{ module, insightId, correct?, correctedLabel?, reason?, isLead? }` and merges userFeedback; for `lead_classifier` also maps to `EmailIngest.userLabelIsLead` and persists a `LeadTrainingExample`.
+
+- Gmail ingest and classification:
+  - `POST /gmail/import` pulls recent messages, classifies with OpenAI + heuristics, creates Leads and Tasks when appropriate, upserts `EmailThread`/`EmailMessage`/`EmailIngest`.
+  - Logs `TrainingInsights` with `inputSummary = email:gmail:<messageId>` and `decision = accepted|rejected`.
+  - `GET /gmail/message/:id` and attachments endpoints provide normalized JSON and signed content for previews.
+
+- Microsoft 365 (Outlook) parity:
+  - `POST /ms365/import` fetches Inbox via Microsoft Graph, mirrors Gmail flow (classification, persistence, lead creation).
+  - Logs `TrainingInsights` with `inputSummary = email:ms365:<messageId>` and `decision = accepted|rejected`.
+  - `GET /ms365/message/:id` returns normalized JSON for previews; attachments supported via `/ms365/message/:id/attachments/:attachmentId`.
+
+- Web UI (Next.js): `/settings/ai-training`
+  - Module tabs, threshold control, retrain/reset actions.
+  - Recent decisions list with thumbs feedback (persists to TrainingInsights + training examples for lead classifier).
+  - Source link + inline preview for Gmail and MS365 messages (subject/from/date/body and attachments).
+  - Filters (provider/decision), limit selector (50/100/200), and a summary pill (✓ accepted / ✕ rejected / total).
+
+### Operational notes
+
+- The API is resilient when ML tables are not yet migrated: it returns empty arrays or friendly errors instead of 500.
+- Background inbox watcher triggers `/gmail/import` and `/ms365/import` per-tenant according to `TenantSettings.inbox.intervalMinutes`.
+- Use `POST /seed` locally to get a demo tenant and JWT quickly.
+
+### Quick checks
+
+1) Visit `/settings/ai-training` in the web app; you should see the dashboard (EA-gated).
+2) Trigger Gmail/MS365 imports; watch new insights appear with correct providers.
+3) Click 👍/👎 on a decision; refresh to verify persistence and that the corresponding `EmailIngest.userLabelIsLead` and `LeadTrainingExample` are updated for lead classifier.
