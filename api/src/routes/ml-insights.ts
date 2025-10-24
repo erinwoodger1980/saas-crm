@@ -75,7 +75,7 @@ router.post("/model/retrain", async (req: any, res) => {
   }
 });
 
-export default router;
+// (export moved to bottom to ensure all routes are registered before export)
 
 // POST /ml/feedback { module, insightId, correct?, correctedLabel?, reason?, isLead? }
 router.post("/feedback", async (req: any, res) => {
@@ -109,3 +109,5 @@ router.post("/feedback", async (req: any, res) => {
     return res.status(500).json({ error: "internal_error" });
   }
 });
+
+export default router;

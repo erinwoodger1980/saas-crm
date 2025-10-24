@@ -187,32 +187,39 @@ export async function applyFeedback(opts: {
               snippet = em.snippet ?? null;
             }
 
-            await (prisma as any).leadTrainingExample.upsert({
-              where: { tenantId_provider_messageId: { tenantId, provider, messageId } as any },
-              update: {
-                label: opts.feedback.isLead ? "accepted" : "rejected",
-                extracted: {
-                  subject: subject || undefined,
-                  snippet: snippet || undefined,
-                  from: from || undefined,
-                  body: (body || "").slice(0, 4000),
-                  reason: opts.feedback.reason || null,
+            // LeadTrainingExample does not have a composite unique constraint; emulate upsert
+            const existingLTE = await (prisma as any).leadTrainingExample.findFirst({
+              where: { tenantId, provider, messageId },
+              select: { id: true },
+            });
+
+            const extracted = {
+              subject: subject || undefined,
+              snippet: snippet || undefined,
+              from: from || undefined,
+              body: (body || "").slice(0, 4000),
+              reason: opts.feedback.reason || null,
+            } as any;
+
+            if (existingLTE?.id) {
+              await (prisma as any).leadTrainingExample.update({
+                where: { id: existingLTE.id },
+                data: {
+                  label: opts.feedback.isLead ? "accepted" : "rejected",
+                  extracted,
                 },
-              },
-              create: {
-                tenantId,
-                provider,
-                messageId,
-                label: opts.feedback.isLead ? "accepted" : "rejected",
-                extracted: {
-                  subject: subject || undefined,
-                  snippet: snippet || undefined,
-                  from: from || undefined,
-                  body: (body || "").slice(0, 4000),
-                  reason: opts.feedback.reason || null,
+              });
+            } else {
+              await (prisma as any).leadTrainingExample.create({
+                data: {
+                  tenantId,
+                  provider,
+                  messageId,
+                  label: opts.feedback.isLead ? "accepted" : "rejected",
+                  extracted,
                 },
-              },
-            } as any);
+              });
+            }
           } catch (e) {
             console.warn("[training] applyFeedback -> training example upsert failed:", (e as any)?.message || e);
           }
