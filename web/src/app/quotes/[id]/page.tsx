@@ -31,6 +31,7 @@ export default function QuoteBuilderPage() {
   const [lead, setLead] = useState<any | null>(null);
 
   const [margins, setMargins] = useState<number>(0.25);
+  const [pricingMode, setPricingMode] = useState<"ml" | "margin">("ml");
   const [mapping, setMapping] = useState<Record<string, string | "">>({});
   const [savingMap, setSavingMap] = useState(false);
   const [pricingBusy, setPricingBusy] = useState<"margin" | "ml" | null>(null);
@@ -45,7 +46,7 @@ export default function QuoteBuilderPage() {
         apiFetch<any>(`/quotes/${id}`),
         apiFetch<any>(`/tenant/settings`),
       ]);
-      setQuote(q);
+  setQuote(q);
       // Normalize questionnaire to only client-facing fields
       const normalizeFields = (cfg: any): Array<{ key: string; label: string }> => {
         if (!cfg) return [];
@@ -87,11 +88,13 @@ export default function QuoteBuilderPage() {
         setLead(null);
       }
 
-      // Default margin from quote if available
+      // Default margin and pricing mode from quote if available
       if (q?.markupDefault != null) {
         const m = Number(q.markupDefault);
         if (isFinite(m)) setMargins(m);
       }
+      const mode = (q?.meta as any)?.pricingMode;
+      if (mode === "margin" || mode === "ml") setPricingMode(mode);
     } catch (e: any) {
       setError(e?.message || "Failed to load quote");
     } finally {
@@ -157,6 +160,20 @@ export default function QuoteBuilderPage() {
     }
   }
 
+  async function savePreference(nextMode: "ml" | "margin") {
+    try {
+      setPricingMode(nextMode);
+      await apiFetch(`/quotes/${id}/preference`, { method: "PATCH", json: { pricingMode: nextMode, margin: margins } });
+    } catch (e: any) {
+      setError(e?.message || "Failed to save preference");
+    }
+  }
+
+  async function applyPreferredPricing() {
+    if (pricingMode === "ml") return priceByML();
+    return priceByMargin();
+  }
+
   const lineCount = quote?.lines?.length || 0;
 
   return (
@@ -214,6 +231,20 @@ export default function QuoteBuilderPage() {
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <h3 className="text-sm font-semibold text-slate-900">Pricing</h3>
               <div className="mt-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-slate-700">Preferred</label>
+                  <select
+                    className="h-8 rounded-md border px-2 text-sm"
+                    value={pricingMode}
+                    onChange={(e) => savePreference(e.target.value as any)}
+                  >
+                    <option value="ml">ML estimate (default)</option>
+                    <option value="margin">Purchase-in (apply margin)</option>
+                  </select>
+                  <Button size="sm" variant="outline" onClick={applyPreferredPricing}>
+                    Apply now
+                  </Button>
+                </div>
                 <div className="flex items-center gap-2">
                   <label className="text-sm text-slate-700">Margin</label>
                   <Input
