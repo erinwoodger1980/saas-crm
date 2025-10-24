@@ -61,6 +61,9 @@ export default function AiTrainingPage() {
   const [saving, setSaving] = useState(false);
   const [openPreviewId, setOpenPreviewId] = useState<string | null>(null);
   const [previews, setPreviews] = useState<Record<string, { loading: boolean; data?: any; error?: string }>>({});
+  const [limit, setLimit] = useState<number>(50);
+  const [providerFilter, setProviderFilter] = useState<"all" | "gmail" | "ms365" | "other">("all");
+  const [decisionFilter, setDecisionFilter] = useState<"all" | "accepted" | "rejected" | "other">("all");
 
   const isEA = !!user?.isEarlyAdopter;
 
@@ -70,7 +73,7 @@ export default function AiTrainingPage() {
     setError(null);
     (async () => {
       try {
-        const data = await apiFetch<InsightsResponse>(`/ml/insights?module=${moduleId}&limit=50`);
+        const data = await apiFetch<InsightsResponse>(`/ml/insights?module=${moduleId}&limit=${limit}`);
         if (!cancel) {
           setInsights(data.items || []);
           setParams(data.params || []);
@@ -87,13 +90,42 @@ export default function AiTrainingPage() {
     return () => {
       cancel = true;
     };
-  }, [moduleId]);
+  }, [moduleId, limit]);
 
   const avgConf = useMemo(() => {
     const xs = insights.map((i) => i.confidence).filter((x): x is number => typeof x === "number");
     if (!xs.length) return null;
     return xs.reduce((a, b) => a + b, 0) / xs.length;
   }, [insights]);
+
+  const filteredInsights = useMemo(() => {
+    const getProvider = (i: Insight) => {
+      if (!i.inputSummary || !i.inputSummary.startsWith("email:")) return "other" as const;
+      const p = i.inputSummary.split(":")[1];
+      return (p === "gmail" || p === "ms365") ? (p as "gmail" | "ms365") : "other";
+    };
+    return insights.filter((i) => {
+      const prov = getProvider(i);
+      const dec = (i.decision || "").toLowerCase();
+      const provOk = providerFilter === "all" || prov === providerFilter;
+      const decOk =
+        decisionFilter === "all" ||
+        (decisionFilter === "accepted" && dec === "accepted") ||
+        (decisionFilter === "rejected" && dec === "rejected") ||
+        (decisionFilter === "other" && dec !== "accepted" && dec !== "rejected");
+      return provOk && decOk;
+    });
+  }, [insights, providerFilter, decisionFilter]);
+
+  const summary = useMemo(() => {
+    const s = { total: filteredInsights.length, accepted: 0, rejected: 0 };
+    for (const i of filteredInsights) {
+      const d = (i.decision || "").toLowerCase();
+      if (d === "accepted") s.accepted++;
+      else if (d === "rejected") s.rejected++;
+    }
+    return s;
+  }, [filteredInsights]);
 
   async function saveThreshold() {
     setSaving(true);
@@ -193,6 +225,14 @@ export default function AiTrainingPage() {
             {m.label}
           </Button>
         ))}
+        <div className="ml-auto flex items-center gap-2">
+          <label className="text-xs text-slate-600">Limit</label>
+          <select className="rounded-md border px-2 py-1 text-xs" value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
+            {[50, 100, 200].map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {!isEA && (
@@ -226,13 +266,30 @@ export default function AiTrainingPage() {
         </div>
 
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="mb-3 text-sm font-medium text-slate-700">Recent decisions</p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-slate-700">Recent decisions</p>
+            <div className="flex items-center gap-2">
+              <select className="rounded-md border px-2 py-1 text-xs" value={providerFilter} onChange={(e) => setProviderFilter(e.target.value as any)}>
+                <option value="all">All providers</option>
+                <option value="gmail">Gmail</option>
+                <option value="ms365">MS365</option>
+                <option value="other">Other</option>
+              </select>
+              <select className="rounded-md border px-2 py-1 text-xs" value={decisionFilter} onChange={(e) => setDecisionFilter(e.target.value as any)}>
+                <option value="all">All decisions</option>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+                <option value="other">Other</option>
+              </select>
+              <Badge variant="secondary" className="text-xs">{summary.accepted} ✓ / {summary.rejected} ✕ / {summary.total} total</Badge>
+            </div>
+          </div>
           <div className="max-h-[420px] space-y-2 overflow-auto pr-2">
             {loading && <div className="text-sm text-slate-500">Loading…</div>}
-            {!loading && insights.length === 0 && (
+            {!loading && filteredInsights.length === 0 && (
               <div className="text-sm text-slate-500">No insights yet.</div>
             )}
-            {insights.map((i) => {
+            {filteredInsights.map((i) => {
               const thumbs = i.userFeedback?.thumbs as boolean | undefined;
               // Derive a source link when inputSummary encodes an email reference
               let sourceEl: ReactNode = null;
