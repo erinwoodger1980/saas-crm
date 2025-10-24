@@ -5,26 +5,25 @@ import { ReactNode, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import AppShell from "../components/AppShell";
 import FeedbackWidget from "@/components/FeedbackWidget";
-import { setJwt } from "@/lib/api";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:4000";
+import { ensureDemoAuth } from "@/lib/api";
 
 function DevAuth() {
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const host = window.location.hostname;
+    // Only try auto-auth on localhost during development
+    if (!(host === "localhost" || host === "127.0.0.1")) return;
     if (localStorage.getItem("jwt")) return;
 
-    // Create demo tenant+user and stash JWT for local dev
-    fetch(`${API_BASE}/seed`, { method: "POST" })
-      .then(r => r.json())
-      .then(d => {
-        if (d?.jwt) {
-          setJwt(d.jwt);
-          location.reload();
-        }
-      })
-      .catch(err => console.error("Auto-seed failed:", err));
+    (async () => {
+      try {
+        const ok = await ensureDemoAuth();
+        if (ok) location.reload();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("ensureDemoAuth failed:", err);
+      }
+    })();
   }, []);
 
   return null;

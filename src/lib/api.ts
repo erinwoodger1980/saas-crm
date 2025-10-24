@@ -1,11 +1,27 @@
 // API utilities for browser-side data fetching and auth storage
 
-/** Base API URL (from env or default localhost) */
-const API_BASE =
-  (typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL) &&
-    (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL)!.replace(/\/$/, "")) ||
-  "http://localhost:4000";
+// minimal declaration so TS stops complaining without @types/node
+declare const process: { env?: Record<string, string | undefined> };
+
+/**
+ * Single source of truth for the browser app to know the API base.
+ * Rules:
+ * - Prefer NEXT_PUBLIC_API_BASE (set per environment)
+ * - If not set and running on localhost, use http://localhost:4000 (dev convenience only)
+ * - Otherwise, empty string so fetches go to same-origin "/api" via rewrites/proxy
+ */
+export const API_BASE = (() => {
+  const fromEnv = (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_BASE) ||
+                  (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_URL);
+  if (fromEnv) return String(fromEnv).replace(/\/+$/g, "");
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://localhost:4000";
+    }
+  }
+  return "";
+})();
 
 export const AUTH_COOKIE_NAME = "jid";
 export const JWT_EVENT_NAME = "joinery:jwt-change";
@@ -97,27 +113,36 @@ export function clearJwt() {
 /** Generic fetch wrapper that injects JWT, includes cookies, and handles JSON */
 export async function apiFetch<T = any>(
   path: string,
-  init: Omit<RequestInit, "body"> & { body?: any } = {}
+  init: (RequestInit & { json?: unknown }) | Omit<RequestInit, "body"> & { body?: any } = {}
 ): Promise<T> {
-  const url = `${API_BASE}${path}`;
+  const cleanPath = (path || "").trim();
+  const isAbsolute = /^https?:/i.test(cleanPath);
+  const base = API_BASE || "/api";
+  const url = isAbsolute
+    ? cleanPath
+    : `${base}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
   const token = getJwt();
 
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(init.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  const headers = new Headers(init.headers as any);
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
 
-  const body =
-    init.body && typeof init.body !== "string"
-      ? JSON.stringify(init.body)
-      : (init.body as any);
+  let body: BodyInit | null | undefined = (init as any).body;
+  if ((init as any).json !== undefined) {
+    body = JSON.stringify((init as any).json);
+    if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  } else if (body && typeof body !== "string" && !(body instanceof FormData)) {
+    // Back-compat: allow plain objects via body
+    try { body = JSON.stringify(body); } catch {}
+  }
 
   const res = await fetch(url, {
-    ...init,
+    ...(init as RequestInit),
+    mode: (init as RequestInit).mode ?? "cors",
+    credentials: (init as RequestInit).credentials ?? "include",
     headers,
     body,
-    credentials: "include", // <-- send cookies with every request
   });
 
   if (!res.ok) {
@@ -149,7 +174,11 @@ export async function apiFetch<T = any>(
 
   // Gracefully handle empty responses
   const text = await res.text();
-  return (text ? JSON.parse(text) : ({} as T)) as T;
+  try {
+    return (text ? JSON.parse(text) : ({} as T)) as T;
+  } catch {
+    return ({} as T);
+  }
 }
 
 /**
@@ -162,41 +191,36 @@ export async function ensureDemoAuth(): Promise<boolean> {
   if (typeof window === "undefined") return false;
   if (getJwt()) return true;
 
-  // 1) Try to log in
+  // 1) Try login
   try {
-    const login = await fetch(`${API_BASE}/auth/login`, {
+    const data = await apiFetch<any>("/auth/login", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email: "erin@acme.test", password: "secret12" }),
+      json: { email: "erin@acme.test", password: "secret12" },
     });
-    if (login.ok) {
-      const data = await login.json().catch(() => ({}));
-      if (data?.jwt) {
-        setJwt(data.jwt);
-        return true;
-      }
+    if (data?.jwt) {
+      setJwt(data.jwt);
+      return true;
     }
-  } catch {
-    // fall through
-  }
+  } catch {}
 
-  // 2) Seed a demo tenant+user and store JWT
+  // 2) Seed and store JWT
   try {
-    const seeded = await fetch(`${API_BASE}/seed`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (seeded.ok) {
-      const data = await seeded.json().catch(() => ({}));
-      if (data?.jwt) {
-        setJwt(data.jwt);
-        return true;
-      }
+    const data = await apiFetch<any>("/seed", { method: "POST" });
+    if (data?.jwt) {
+      setJwt(data.jwt);
+      return true;
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
+
+  // 3) Dev login fallback
+  try {
+    const out = await apiFetch<any>("/auth/dev-login", { method: "POST", json: { email: "erin@acme.test" } });
+    if (out?.token) {
+      setJwt(out.token);
+      const me = await apiFetch<any>("/auth/me");
+      if (me?.email) return true;
+    }
+  } catch {}
 
   return false;
 }
