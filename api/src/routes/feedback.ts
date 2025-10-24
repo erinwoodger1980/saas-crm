@@ -60,6 +60,90 @@ function featureFromUrl(url: string | null | undefined): string | null {
   }
 }
 
+/** Ensure Feedback enum/table exist in DB (idempotent best-effort).
+ *  This is a safety net for live environments where migration may lag.
+ */
+async function ensureFeedbackSchema() {
+  // Check if table exists
+  try {
+    await prisma.$queryRawUnsafe(`SELECT 1 FROM "Feedback" LIMIT 1`);
+    return; // exists
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    // fall through to attempt creation when relation missing
+    if (!/does not exist|invalid reference|undefined table|42P01|P2021/i.test(msg)) {
+      // Different error; do not try to create schema.
+      throw e;
+    }
+  }
+
+  // Create enum type if missing, then table and indexes. These DDL statements are idempotent.
+  try {
+    await prisma.$executeRawUnsafe(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'FeedbackStatus') THEN
+          CREATE TYPE "FeedbackStatus" AS ENUM ('OPEN','RESOLVED');
+        END IF;
+      END $$;
+    `);
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Feedback" (
+        "id" TEXT PRIMARY KEY,
+        "tenantId" TEXT NOT NULL,
+        "userId" TEXT,
+        "feature" TEXT NOT NULL,
+        "rating" INTEGER,
+        "comment" TEXT,
+        "sourceUrl" TEXT,
+        "status" "FeedbackStatus" NOT NULL DEFAULT 'OPEN',
+        "resolvedAt" TIMESTAMP,
+        "resolvedById" TEXT,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+        "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `);
+
+    // FKs (best-effort; may fail if already exist)
+    await prisma.$executeRawUnsafe(`
+      DO $$ BEGIN
+        BEGIN
+          ALTER TABLE "Feedback" ADD CONSTRAINT "Feedback_tenantId_fkey"
+            FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL; END;
+
+        BEGIN
+          ALTER TABLE "Feedback" ADD CONSTRAINT "Feedback_userId_fkey"
+            FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL;
+        EXCEPTION WHEN duplicate_object THEN NULL; END;
+
+        BEGIN
+          ALTER TABLE "Feedback" ADD CONSTRAINT "Feedback_resolvedById_fkey"
+            FOREIGN KEY ("resolvedById") REFERENCES "User"("id") ON DELETE SET NULL;
+        EXCEPTION WHEN duplicate_object THEN NULL; END;
+      END $$;
+    `);
+
+    // Indexes
+    await prisma.$executeRawUnsafe(`
+      DO $$ BEGIN
+        BEGIN
+          CREATE INDEX IF NOT EXISTS "Feedback_tenantId_feature_createdAt_idx"
+            ON "Feedback" ("tenantId", "feature", "createdAt");
+        EXCEPTION WHEN duplicate_table THEN NULL; END;
+
+        BEGIN
+          CREATE INDEX IF NOT EXISTS "Feedback_tenantId_status_createdAt_idx"
+            ON "Feedback" ("tenantId", "status", "createdAt");
+        EXCEPTION WHEN duplicate_table THEN NULL; END;
+      END $$;
+    `);
+  } catch (e) {
+    // Last resort: swallow to let caller handle the original request outcome
+    console.warn("[feedback] ensureFeedbackSchema failed:", (e as any)?.message || e);
+  }
+}
+
 // POST /feedback  { feature: string, rating?: number, comment?: string, sourceUrl?: string }
 router.post("/", async (req: any, res) => {
   try {
@@ -83,25 +167,49 @@ router.post("/", async (req: any, res) => {
       return res.status(400).json({ error: "rating_must_be_1_to_5" });
     }
 
-    const row = await prisma.feedback.create({
-      data: {
-        tenantId: auth.tenantId,
-        userId: auth.userId ?? null,
-        feature: sanitizeFeature(featureFinal),
-        rating: rating ?? null,
-        comment: comment ? String(comment).slice(0, 5000) : null,
-        sourceUrl: sanitizeUrl(sourceUrl),
-        status: FeedbackStatus.OPEN,
-      },
-      select: FEEDBACK_SELECT,
-    });
+    let row;
+    try {
+      row = await prisma.feedback.create({
+        data: {
+          tenantId: auth.tenantId,
+          userId: auth.userId ?? null,
+          feature: sanitizeFeature(featureFinal),
+          rating: rating ?? null,
+          comment: comment ? String(comment).slice(0, 5000) : null,
+          sourceUrl: sanitizeUrl(sourceUrl),
+          status: FeedbackStatus.OPEN,
+        },
+        select: FEEDBACK_SELECT,
+      });
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      // If table is missing in live DB, create it on the fly and retry once
+      if (/does not exist|relation .* feedback|P2021|42P01/i.test(msg)) {
+        await ensureFeedbackSchema();
+        row = await prisma.feedback.create({
+          data: {
+            tenantId: auth.tenantId,
+            userId: auth.userId ?? null,
+            feature: sanitizeFeature(featureFinal),
+            rating: rating ?? null,
+            comment: comment ? String(comment).slice(0, 5000) : null,
+            sourceUrl: sanitizeUrl(sourceUrl),
+            status: FeedbackStatus.OPEN,
+          },
+          select: FEEDBACK_SELECT,
+        });
+      } else {
+        throw e;
+      }
+    }
 
     res.json({ ok: true, feedback: row });
   } catch (e: any) {
     const msg = e?.message || String(e);
     const code = e?.code || e?.name;
     console.error("[POST /feedback] failed:", msg);
-    if (code === "P2021" || /does not exist/i.test(msg)) {
+    // If it still fails after ensure, surface as unavailable to UI
+    if (code === "P2021" || /does not exist|42P01/i.test(msg)) {
       return res.status(503).json({ error: "feedback_unavailable" });
     }
     res.status(500).json({ error: "internal_error" });
