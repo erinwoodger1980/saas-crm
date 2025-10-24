@@ -120,14 +120,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
               >
                 <Link href="/settings">Workspace settings</Link>
               </Button>
-              <Button
-                asChild
-                size="sm"
-                variant="outline"
-                className="rounded-full border-slate-300 bg-white px-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 hover:bg-slate-50"
-              >
-                <Link href="/ai-training">AI training</Link>
-              </Button>
+              {user?.isEarlyAdopter && (
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full border-slate-300 bg-white px-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 hover:bg-slate-50"
+                >
+                  <Link href="/settings/ai-training">AI training</Link>
+                </Button>
+              )}
             </div>
           </div>
         </div>
