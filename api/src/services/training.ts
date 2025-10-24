@@ -242,8 +242,15 @@ export async function resetModel(opts: { tenantId: string; module: ModuleName; a
   return { ok: true } as const;
 }
 
-export async function retrainModel(opts: { tenantId: string; module: ModuleName; actorId?: string | null }) {
-  // No-op placeholder; enqueue async retraining job here
-  await logEvent({ tenantId: opts.tenantId, module: opts.module, kind: "RETRAIN", payload: {}, actorId: opts.actorId });
+export async function retrainModel(opts: { tenantId: string; module: ModuleName; actorId?: string | null; insightIds?: string[] }) {
+  // No-op placeholder; enqueue async retraining job here. If insightIds provided,
+  // constrain examples to the selected insights for targeted retraining.
+  await logEvent({
+    tenantId: opts.tenantId,
+    module: opts.module,
+    kind: "RETRAIN",
+    payload: { selectionSize: Array.isArray(opts.insightIds) ? opts.insightIds.length : 0, insightIds: opts.insightIds ?? [] },
+    actorId: opts.actorId,
+  });
   return { ok: true } as const;
 }

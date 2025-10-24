@@ -60,14 +60,17 @@ router.post("/model/reset", async (req: any, res) => {
   }
 });
 
-// POST /ml/model/retrain { module }
+// POST /ml/model/retrain { module, insightIds? }
 router.post("/model/retrain", async (req: any, res) => {
   const auth = req.auth;
   if (!auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
   const module = (req.body?.module as string | undefined) || undefined;
   if (!module) return res.status(400).json({ error: "invalid_payload" });
   try {
-    const out = await retrainModel({ tenantId: auth.tenantId, module, actorId: auth.userId });
+    const insightIds = Array.isArray(req.body?.insightIds)
+      ? (req.body.insightIds as any[]).filter((x) => typeof x === "string")
+      : undefined;
+    const out = await retrainModel({ tenantId: auth.tenantId, module, actorId: auth.userId, insightIds });
     res.json(out);
   } catch (e: any) {
     console.error("[POST /ml/model/retrain] failed:", e?.message || e);
