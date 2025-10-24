@@ -17,7 +17,7 @@ const PUBLIC_EXACT = new Set([
   "/manifest.json",
 ]);
 
-const PUBLIC_PREFIXES = ["/_next", "/api", "/policy", "/public", "/assets"];
+const PUBLIC_PREFIXES = ["/_next", "/api", "/policy", "/public", "/assets", "/q"];
 
 const PROTECTED_PREFIXES = [
   "/app",
@@ -27,7 +27,6 @@ const PROTECTED_PREFIXES = [
   "/tasks",
   "/settings",
   "/billing",
-  "/q",
   "/setup",
 ];
 

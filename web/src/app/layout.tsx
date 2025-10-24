@@ -64,8 +64,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           children
         )}
 
-        {shouldUseShell && <TasksButton />}
-        <FeedbackWidget />
+  {shouldUseShell && <TasksButton />}
+  {shouldUseShell && <FeedbackWidget />}
 
         <Toaster />
       </body>
