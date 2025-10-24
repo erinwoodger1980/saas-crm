@@ -118,6 +118,8 @@ export default function FeedbackWidget() {
         setError("Please sign in to send feedback.");
       } else if (details?.error === "feature_required") {
         setError("Missing feature tag. Please try again from the page you were on.");
+      } else if (details?.error === "feedback_unavailable") {
+        setError("Feedback is temporarily unavailable while we update the database. Please try again shortly.");
       } else {
         const message = err?.message || "Something went wrong";
         setError(message);
