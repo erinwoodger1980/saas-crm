@@ -106,7 +106,7 @@ export async function applyFeedback(opts: {
   try {
     const existing = await (prisma as any).trainingInsights.findFirst({
       where: { id: insightId, tenantId },
-      select: { id: true, userFeedback: true, module: true },
+      select: { id: true, userFeedback: true, module: true, inputSummary: true },
     });
     if (!existing) return { ok: false as const, error: "not_found" };
 
@@ -124,6 +124,86 @@ export async function applyFeedback(opts: {
       payload: { insightId, feedback: opts.feedback },
       actorId: opts.actorId ?? null,
     });
+
+    // Optional: map lead_classifier thumbs to EmailIngest for learning continuity
+    try {
+      if (module === "lead_classifier" && typeof (opts.feedback?.isLead) === "boolean") {
+        const summary = (existing as any).inputSummary as string | null;
+        if (summary && summary.startsWith("email:")) {
+          const parts = summary.split(":");
+          const provider = parts[1];
+          const messageId = parts.slice(2).join(":");
+
+          // Upsert EmailIngest to persist the user label
+          await (prisma as any).emailIngest.upsert({
+            where: { tenantId_provider_messageId: { tenantId, provider, messageId } },
+            update: {
+              processedAt: new Date(),
+              userLabelIsLead: !!opts.feedback.isLead,
+              userLabeledAt: new Date(),
+            },
+            create: {
+              tenantId,
+              provider,
+              messageId,
+              processedAt: new Date(),
+              userLabelIsLead: !!opts.feedback.isLead,
+              userLabeledAt: new Date(),
+            },
+          });
+
+          // Also persist/update a training example for this message
+          try {
+            let subject: string | null = undefined as any;
+            let body: string | null = undefined as any;
+            let from: string | null = undefined as any;
+            let snippet: string | null = undefined as any;
+
+            const em = await (prisma as any).emailMessage.findFirst({
+              where: { tenantId, provider, messageId },
+              select: { subject: true, bodyText: true, fromEmail: true, snippet: true },
+            });
+            if (em) {
+              subject = em.subject ?? null;
+              body = em.bodyText ?? null;
+              from = em.fromEmail ?? null;
+              snippet = em.snippet ?? null;
+            }
+
+            await (prisma as any).leadTrainingExample.upsert({
+              where: { tenantId_provider_messageId: { tenantId, provider, messageId } as any },
+              update: {
+                label: opts.feedback.isLead ? "accepted" : "rejected",
+                extracted: {
+                  subject: subject || undefined,
+                  snippet: snippet || undefined,
+                  from: from || undefined,
+                  body: (body || "").slice(0, 4000),
+                  reason: opts.feedback.reason || null,
+                },
+              },
+              create: {
+                tenantId,
+                provider,
+                messageId,
+                label: opts.feedback.isLead ? "accepted" : "rejected",
+                extracted: {
+                  subject: subject || undefined,
+                  snippet: snippet || undefined,
+                  from: from || undefined,
+                  body: (body || "").slice(0, 4000),
+                  reason: opts.feedback.reason || null,
+                },
+              },
+            } as any);
+          } catch (e) {
+            console.warn("[training] applyFeedback -> training example upsert failed:", (e as any)?.message || e);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[training] applyFeedback -> email ingest mapping failed:", (e as any)?.message || e);
+    }
 
     return { ok: true as const };
   } catch (e) {
