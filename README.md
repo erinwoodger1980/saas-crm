@@ -9,6 +9,14 @@ Mono-repo with:
 
 ---
 
+## Copilot project setup prompt (architecture)
+
+This repository includes a multi-layer ML design across Gmail/MS365 ingest, quotation building, estimation, and sales assistance. For GitHub Copilot and other AI tools, use the architecture brief in `docs/architecture.md` as the single source of truth when generating code, schemas, and APIs.
+
+• Start here: docs/architecture.md
+
+---
+
 ## Quick start (local)
 
 > Requires: Node 20+, npm, Postgres 14+ (or Docker), and **Prisma** (installed via `devDependencies`).
