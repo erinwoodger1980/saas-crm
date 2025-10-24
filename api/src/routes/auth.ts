@@ -19,11 +19,13 @@ const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 const isProd = process.env.NODE_ENV === "production";
 const cookieDomain = isProd ? ".joineryai.app" : undefined;
 const COOKIE_OPTS = {
-  httpOnly: true as const,
-  secure: isProd as const, // require Secure only in production
-  sameSite: (isProd ? "none" : "lax") as const,
+  httpOnly: true,
+  // require Secure only in production; sameSite must be 'none' in prod for cross-site cookies
+  secure: isProd,
+  // narrow the type so it matches Express' CookieOptions.sameSite union
+  sameSite: (isProd ? "none" : "lax") as "none" | "lax",
   ...(cookieDomain ? { domain: cookieDomain } : {}),
-  path: "/" as const,
+  path: "/",
   maxAge: COOKIE_MAX_AGE,
 };
 
