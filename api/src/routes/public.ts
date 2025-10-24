@@ -2,6 +2,9 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { normalizeQuestionnaire } from "../lib/questionnaire";
+import jwt from "jsonwebtoken";
+import { env } from "../env";
+import { prisma } from "../prisma";
 
 const router = Router();
 
@@ -152,6 +155,113 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
     console.error("[public submit-questionnaire] failed:", e);
     return res.status(500).json({ error: e?.message || "submit failed" });
   }
+});
+
+/* ---------- PUBLIC: supplier RFQ (view + upload) ---------- */
+
+function verifySupplierToken(raw: string): null | { tenantId: string; leadId: string; email: string; rfqId: string } {
+  try {
+    const decoded: any = jwt.verify(raw, env.APP_JWT_SECRET);
+    const t = typeof decoded?.t === "string" ? decoded.t : null;
+    const l = typeof decoded?.l === "string" ? decoded.l : null;
+    const e = typeof decoded?.e === "string" ? decoded.e : null;
+    const r = typeof decoded?.r === "string" ? decoded.r : null;
+    if (t && l && e && r) return { tenantId: t, leadId: l, email: e, rfqId: r };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// GET /public/supplier/rfq/:token
+router.get("/supplier/rfq/:token", async (req, res) => {
+  const token = String(req.params.token || "");
+  const claims = verifySupplierToken(token);
+  if (!claims) return res.status(401).json({ error: "invalid_token" });
+
+  const lead = await prisma.lead.findFirst({ where: { id: claims.leadId, tenantId: claims.tenantId } });
+  if (!lead) return res.status(404).json({ error: "not_found" });
+
+  const custom = (lead.custom as any) || {};
+  const rfqs: any[] = Array.isArray(custom.supplierRfqs) ? custom.supplierRfqs : [];
+  const entry = rfqs.find((r) => r?.rfqId === claims.rfqId && typeof r?.supplierEmail === "string");
+
+  res.json({
+    ok: true,
+    lead: { id: lead.id, contactName: lead.contactName },
+    supplierEmail: claims.email,
+    rfqId: claims.rfqId,
+    alreadyUploaded: !!entry?.uploadedAt,
+  });
+});
+
+// POST /public/supplier/rfq/:token/upload
+// Body: { files: [{ filename, mimeType, base64 }] }
+router.post("/supplier/rfq/:token/upload", async (req, res) => {
+  const token = String(req.params.token || "");
+  const claims = verifySupplierToken(token);
+  if (!claims) return res.status(401).json({ error: "invalid_token" });
+
+  const files = Array.isArray(req.body?.files) ? (req.body.files as any[]) : [];
+  if (!files.length) return res.status(400).json({ error: "no_files" });
+
+  const lead = await prisma.lead.findFirst({ where: { id: claims.leadId, tenantId: claims.tenantId } });
+  if (!lead) return res.status(404).json({ error: "not_found" });
+
+  // Ensure a draft Quote exists for this supplier RFQ on first upload
+  let quoteId: string | null = null;
+  const custom = ((lead.custom as any) || {}) as any;
+  const rfqs: any[] = Array.isArray(custom.supplierRfqs) ? custom.supplierRfqs : [];
+  const idx = rfqs.findIndex((r) => r?.rfqId === claims.rfqId);
+  if (idx >= 0 && rfqs[idx]?.quoteId) quoteId = String(rfqs[idx].quoteId);
+
+  if (!quoteId) {
+    const q = await prisma.quote.create({
+      data: {
+        tenantId: claims.tenantId,
+        leadId: lead.id,
+        title: `Supplier Quote — ${claims.email}`,
+        status: "DRAFT" as any,
+      },
+      select: { id: true },
+    });
+    quoteId = q.id;
+  }
+
+  // Save files as UploadedFile rows
+  const saved = [] as any[];
+  for (const f of files) {
+    const filename = typeof f?.filename === "string" && f.filename.trim() ? f.filename.trim() : "attachment";
+    const mimeType = typeof f?.mimeType === "string" && f.mimeType.trim() ? f.mimeType : "application/octet-stream";
+    const b64 = typeof f?.base64 === "string" ? f.base64 : "";
+    if (!b64) continue;
+    const row = await prisma.uploadedFile.create({
+      data: {
+        tenantId: claims.tenantId,
+        quoteId: quoteId!,
+        kind: "SUPPLIER_QUOTE" as any,
+        name: filename,
+        path: `inline:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+        mimeType,
+        sizeBytes: Math.floor((Buffer.from(b64, "base64").length) || 0),
+      },
+      select: { id: true, name: true, mimeType: true, sizeBytes: true },
+    });
+    saved.push(row);
+  }
+
+  // Update RFQ entry
+  if (idx >= 0) {
+    rfqs[idx] = { ...(rfqs[idx] || {}), quoteId, uploadedAt: new Date().toISOString() };
+  } else {
+    rfqs.push({ rfqId: claims.rfqId, supplierEmail: claims.email, quoteId, uploadedAt: new Date().toISOString() });
+  }
+  await prisma.lead.update({
+    where: { id: lead.id },
+    data: { custom: { ...custom, supplierRfqs: rfqs } },
+  });
+
+  res.json({ ok: true, files: saved, quoteId });
 });
 
 export default router;
