@@ -4,6 +4,9 @@ import { prisma } from "../prisma";
 import { gmailSend, getAccessTokenForTenant, gmailFetchAttachment } from "../services/gmail";
 import { logInsight, logEvent } from "../services/training";
 import { UiStatus, loadTaskPlaybook, ensureTaskFromRecipe, TaskPlaybook } from "../task-playbook";
+import jwt from "jsonwebtoken";
+import { env } from "../env";
+import { randomUUID } from "crypto";
 
 const router = Router();
 
@@ -607,10 +610,22 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
       Object.entries(fields).forEach(([k, v]) => lines.push(`- ${k}: ${v ?? "-"}`));
     }
 
+    // Create a public supplier upload link (JWT token with limited claims)
+    const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const slug = ts?.slug || ("tenant-" + tenantId.slice(0, 6));
+    const rfqId = randomUUID();
+    const token = jwt.sign(
+      { t: tenantId, l: id, e: to, r: rfqId },
+      env.APP_JWT_SECRET,
+      { expiresIn: "90d" }
+    );
+    const WEB_ORIGIN = process.env.WEB_ORIGIN || "http://localhost:3000";
+    const uploadUrl = `${WEB_ORIGIN}/sup/${encodeURIComponent(slug)}/${encodeURIComponent(token)}`;
+
     const sub = subject || `Quote request for ${lead.contactName || "lead"} (${lead.id.slice(0, 8)})`;
     const bodyText =
       `Hi,\n\nPlease provide a price for the following enquiry.\n\n` +
-      `${lines.join("\n")}\n\nThanks,\n${fromEmail || "CRM"}`;
+      `${lines.join("\n")}\n\nUpload your quote here: ${uploadUrl}\n\nThanks,\n${fromEmail || "CRM"}`;
 
     const boundary = "mixed_" + Math.random().toString(36).slice(2);
     const fromHeader = fromEmail || "me";
@@ -649,6 +664,8 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
 
     // Breadcrumb
     const safeCustom = ((lead.custom as any) || {}) as Record<string, any>;
+    const rfqs: any[] = Array.isArray((safeCustom as any).supplierRfqs) ? (safeCustom as any).supplierRfqs : [];
+    rfqs.push({ rfqId, supplierEmail: to, uploadUrl, tokenPreview: token.slice(0, 16) + "…", createdAt: new Date().toISOString() });
     await prisma.lead.update({
       where: { id },
       data: {
@@ -656,6 +673,7 @@ router.post("/:id/request-supplier-quote", async (req, res) => {
           ...safeCustom,
           lastSupplierEmailTo: to,
           lastSupplierEmailSubject: sub,
+          supplierRfqs: rfqs,
         },
       },
     });
