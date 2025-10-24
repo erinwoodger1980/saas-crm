@@ -79,19 +79,36 @@ export async function setParam(opts: {
 }
 
 export async function getInsights(tenantId: string, module?: ModuleName, limit = 100) {
-  return (prisma as any).trainingInsights.findMany({
-    where: { tenantId, ...(module ? { module } : {}) },
-    orderBy: { createdAt: "desc" },
-    take: Math.min(Math.max(limit, 1), 200),
-  });
+  try {
+    return await (prisma as any).trainingInsights.findMany({
+      where: { tenantId, ...(module ? { module } : {}) },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(Math.max(limit, 1), 200),
+    });
+  } catch (e: any) {
+    // Graceful fallback when table doesn't exist in the current DB (e.g. prod before migration)
+    const code = e?.code || e?.name;
+    if (code === "P2021" || /does not exist/i.test(String(e?.message || ""))) {
+      return [];
+    }
+    throw e;
+  }
 }
 
 export async function listParams(tenantId: string, module?: ModuleName) {
-  return (prisma as any).modelOverride.findMany({
-    where: { tenantId, ...(module ? { module } : {}) },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
+  try {
+    return await (prisma as any).modelOverride.findMany({
+      where: { tenantId, ...(module ? { module } : {}) },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+  } catch (e: any) {
+    const code = e?.code || e?.name;
+    if (code === "P2021" || /does not exist/i.test(String(e?.message || ""))) {
+      return [];
+    }
+    throw e;
+  }
 }
 
 export async function applyFeedback(opts: {

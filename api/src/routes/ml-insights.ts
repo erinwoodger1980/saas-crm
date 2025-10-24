@@ -15,7 +15,13 @@ router.get("/insights", async (req: any, res) => {
     const params = await listParams(auth.tenantId, module);
     res.json({ ok: true, items, params });
   } catch (e: any) {
-    console.error("[GET /ml/insights] failed:", e?.message || e);
+    const msg = e?.message || String(e);
+    const code = e?.code || e?.name;
+    // If underlying tables are missing, respond gracefully with empty arrays
+    if (code === "P2021" || /does not exist/i.test(msg)) {
+      return res.json({ ok: true, items: [], params: [] });
+    }
+    console.error("[GET /ml/insights] failed:", msg);
     res.status(500).json({ error: "internal_error" });
   }
 });
