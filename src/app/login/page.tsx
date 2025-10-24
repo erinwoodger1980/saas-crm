@@ -1,10 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { setJwt } from "@/lib/api";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:4000";
+import { apiFetch, setJwt } from "@/lib/api";
 
 function pickToken(json: any): string | null {
   return (
@@ -45,26 +42,12 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const text = await res.text();
-      let json: any = {};
-      try {
-        json = text ? JSON.parse(text) : {};
-      } catch {}
+      const json = await apiFetch<any>("/auth/login", { method: "POST", json: { email, password } });
       const token = pickToken(json);
 
-      if (!res.ok || !token) {
-        setErr(
-          json?.error ||
-            json?.message ||
-            `Login failed (${res.status}) — see response below`
-        );
-        setDebugBody(text || "(empty response)");
+      if (!token) {
+        setErr(json?.error || json?.message || `Login failed — see response below`);
+        setDebugBody(JSON.stringify(json, null, 2));
         setLoading(false);
         return;
       }
@@ -83,11 +66,10 @@ export default function LoginPage() {
     setDebugBody(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/seed`, { method: "POST" });
-      const json = await res.json();
+      const json = await apiFetch<any>("/seed", { method: "POST" });
       const token = pickToken(json);
-      if (!res.ok || !token) {
-        setErr(json?.error || `Seed failed (${res.status})`);
+      if (!token) {
+        setErr(json?.error || `Seed failed`);
         setDebugBody(JSON.stringify(json, null, 2));
         setLoading(false);
         return;
