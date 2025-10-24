@@ -366,8 +366,24 @@ export default function QuoteBuilderPage() {
               <h3 className="text-sm font-semibold text-slate-900">Supplier files</h3>
               <ul className="mt-2 list-inside list-disc text-sm text-slate-700">
                 {(quote?.supplierFiles || []).map((f: any) => (
-                  <li key={f.id} className="truncate">
-                    {f.name} <span className="text-slate-400">({f.mimeType || ""}, {f.sizeBytes || 0} bytes)</span>
+                  <li key={f.id} className="flex items-center justify-between gap-2 truncate py-1">
+                    <div className="min-w-0 truncate">
+                      {f.name} <span className="text-slate-400">({f.mimeType || ""}, {f.sizeBytes || 0} bytes)</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const out = await apiFetch<{ ok: boolean; url: string }>(`/quotes/${id}/files/${encodeURIComponent(f.id)}/signed`);
+                          if (out?.url) window.open(out.url, "_blank");
+                        } catch (e: any) {
+                          setError(e?.message || "Could not open file");
+                        }
+                      }}
+                    >
+                      View
+                    </Button>
                   </li>
                 ))}
                 {(!quote?.supplierFiles || quote.supplierFiles.length === 0) && (
