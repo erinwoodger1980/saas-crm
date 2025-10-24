@@ -29,6 +29,7 @@ export default function SupplierUploadPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -39,6 +40,16 @@ export default function SupplierUploadPage() {
         const data = await getJSON<RFQInfo>(`/public/supplier/rfq/${encodeURIComponent(token)}`);
         if (!mounted) return;
         setInfo(data);
+        // Prefetch a session token so we can link to the dashboard
+        try {
+          const sess = await postJSON<{ ok: boolean; sessionToken: string }>(
+            `/public/supplier/session-from/${encodeURIComponent(token)}`,
+            {}
+          );
+          if (sess?.sessionToken) setSessionToken(sess.sessionToken);
+        } catch {
+          // non-fatal
+        }
       } catch (e: any) {
         setBanner(e?.message || "Link invalid or expired");
       } finally {
@@ -91,7 +102,21 @@ export default function SupplierUploadPage() {
   if (done) return renderShell(
     <div className="space-y-3 rounded-3xl border bg-white/90 p-6 shadow">
       <div className="text-lg font-semibold">Thanks!</div>
-      <div className="text-sm text-slate-600">Your quote has been uploaded. You may now close this page.</div>
+      <div className="text-sm text-slate-600">
+        Your quote has been uploaded.
+        {" "}
+        If you are quoting off a specification, please confirm any lead times and delivery terms in your notes.
+      </div>
+      {sessionToken ? (
+        <div className="pt-2">
+          <button
+            onClick={() => router.push(`/sup/${encodeURIComponent(tenant)}/me/${encodeURIComponent(sessionToken)}`)}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            Go to my dashboard
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 
@@ -115,6 +140,9 @@ export default function SupplierUploadPage() {
           <div className="text-xs text-slate-600">{files.length} file(s) ready</div>
         )}
         <div className="text-xs text-slate-500">PDF or images are fine. Max 10MB each recommended.</div>
+        <div className="text-xs text-slate-500">
+          Tip: If your price is based on an alternative spec, mention lead times and delivery terms so we can compare fairly.
+        </div>
       </div>
       <div>
         <button
@@ -124,6 +152,15 @@ export default function SupplierUploadPage() {
         >
           {uploading ? "Uploading…" : "Upload quote"}
         </button>
+        {sessionToken ? (
+          <button
+            type="button"
+            onClick={() => router.push(`/sup/${encodeURIComponent(tenant)}/me/${encodeURIComponent(sessionToken)}`)}
+            className="ml-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            View my dashboard
+          </button>
+        ) : null}
       </div>
     </form>
   );
