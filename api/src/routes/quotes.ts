@@ -153,7 +153,8 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       `http://localhost:${process.env.PORT || 4000}`
     ).replace(/\/$/, "");
 
-    const created: any[] = [];
+  const created: any[] = [];
+  const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }>= [];
     for (const f of quote.supplierFiles) {
       // Only attempt to parse PDFs
       if (!/pdf$/i.test(f.mimeType || "") && !/\.pdf$/i.test(f.name || "")) continue;
@@ -169,7 +170,8 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       let parsed: any = {};
       try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
       if (!resp.ok) {
-        // Keep going for other files
+        // Keep going for other files, but record the failure
+        fails.push({ fileId: f.id, name: f.name, status: resp.status, error: parsed });
         continue;
       }
 
@@ -197,8 +199,12 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       }
     }
 
-    // Optionally: recalc totals later when pricing applied
-    return res.json({ ok: true, created: created.length });
+    // If everything failed or produced no lines, surface an error
+    if (created.length === 0) {
+      return res.status(502).json({ error: "parse_failed", created: 0, fails });
+    }
+
+    return res.json({ ok: true, created: created.length, fails: fails.length });
   } catch (e: any) {
     console.error("[/quotes/:id/parse] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });

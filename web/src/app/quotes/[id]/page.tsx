@@ -121,10 +121,16 @@ export default function QuoteBuilderPage() {
     setParsing(true);
     setError(null);
     try {
-      await apiFetch(`/quotes/${id}/parse`, { method: "POST" });
+      const out = await apiFetch<any>(`/quotes/${id}/parse`, { method: "POST" });
+      if (typeof out?.created === "number" && out.created === 0) {
+        setError("No lines parsed. Check the PDF is a supplier quote and that ML is online.");
+      }
       await loadAll();
     } catch (e: any) {
-      setError(e?.message || "Parse failed");
+      const msg = e?.details?.error === "parse_failed"
+        ? "Parse failed: ML service unavailable or file not parsable."
+        : (e?.message || "Parse failed");
+      setError(msg);
     } finally {
       setParsing(false);
     }
