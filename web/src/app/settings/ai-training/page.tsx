@@ -59,6 +59,8 @@ export default function AiTrainingPage() {
   const [params, setParams] = useState<ParamRow[]>([]);
   const [threshold, setThreshold] = useState<number>(0.6);
   const [saving, setSaving] = useState(false);
+  const [openPreviewId, setOpenPreviewId] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<Record<string, { loading: boolean; data?: any; error?: string }>>({});
 
   const isEA = !!user?.isEarlyAdopter;
 
@@ -146,6 +148,31 @@ export default function AiTrainingPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function togglePreview(i: Insight) {
+    if (!i.inputSummary || !i.inputSummary.startsWith("email:")) return;
+    const id = i.id;
+    const parts = i.inputSummary.split(":");
+    const provider = parts[1];
+    const messageId = parts.slice(2).join(":");
+    const already = previews[id];
+
+    if (openPreviewId === id) {
+      setOpenPreviewId(null);
+      return;
+    }
+
+    if (!already || (!already.data && !already.loading)) {
+      setPreviews((p) => ({ ...p, [id]: { loading: true } }));
+      try {
+        const msg = await apiFetch<any>(`/${provider}/message/${encodeURIComponent(messageId)}`);
+        setPreviews((p) => ({ ...p, [id]: { loading: false, data: msg } }));
+      } catch (e: any) {
+        setPreviews((p) => ({ ...p, [id]: { loading: false, error: e?.message || "Failed to load message" } }));
+      }
+    }
+    setOpenPreviewId(id);
   }
 
   return (
@@ -237,7 +264,53 @@ export default function AiTrainingPage() {
                     <div className="text-xs text-slate-500">{formatDate(i.createdAt)}</div>
                   </div>
                   <div className="mt-1 text-xs text-slate-600">{i.inputSummary || "(no summary)"}</div>
-                  {sourceEl && <div className="mt-1">{sourceEl}</div>}
+                  {sourceEl && (
+                    <div className="mt-1 flex items-center gap-3">
+                      {sourceEl}
+                      {i.inputSummary?.startsWith("email:") && (
+                        <Button size="sm" variant="outline" onClick={() => togglePreview(i)}>
+                          {openPreviewId === i.id ? "Hide" : "Preview"}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {openPreviewId === i.id && (
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800">
+                      {previews[i.id]?.loading && <div>Loading preview…</div>}
+                      {previews[i.id]?.error && <div className="text-rose-600">{previews[i.id]?.error}</div>}
+                      {previews[i.id]?.data && (
+                        <div className="space-y-2">
+                          <div className="font-semibold">{previews[i.id].data.subject || "(no subject)"}</div>
+                          <div className="text-slate-600">From: {previews[i.id].data.from || "—"}</div>
+                          <div className="text-slate-600">Date: {formatDate(previews[i.id].data.date || null)}</div>
+                          <div className="whitespace-pre-wrap rounded-md bg-white p-2 text-[12px] text-slate-800">
+                            {previews[i.id].data.bodyText || previews[i.id].data.snippet || "(no content)"}
+                          </div>
+                          {Array.isArray(previews[i.id].data.attachments) && previews[i.id].data.attachments.length > 0 && (
+                            <div className="pt-1">
+                              <div className="mb-1 font-medium">Attachments</div>
+                              <ul className="list-disc space-y-1 pl-5">
+                                {previews[i.id].data.attachments.map((a: any) => {
+                                  const parts = (i.inputSummary || "").split(":");
+                                  const provider = parts[1];
+                                  const messageId = parts.slice(2).join(":");
+                                  const attachmentId = a.attachmentId || a.id;
+                                  const href = `${API_BASE}/${provider}/message/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`;
+                                  return (
+                                    <li key={attachmentId}>
+                                      <a className="text-blue-600 hover:underline" href={href} target="_blank" rel="noreferrer">
+                                        {a.filename || a.name || "attachment"}
+                                      </a>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {typeof i.confidence === "number" && (
                     <div className="mt-1 text-xs text-slate-500">Confidence: {(i.confidence * 100).toFixed(0)}%</div>
                   )}
