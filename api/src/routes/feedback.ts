@@ -98,7 +98,12 @@ router.post("/", async (req: any, res) => {
 
     res.json({ ok: true, feedback: row });
   } catch (e: any) {
-    console.error("[POST /feedback] failed:", e?.message || e, e?.stack || "no stack");
+    const msg = e?.message || String(e);
+    const code = e?.code || e?.name;
+    console.error("[POST /feedback] failed:", msg);
+    if (code === "P2021" || /does not exist/i.test(msg)) {
+      return res.status(503).json({ error: "feedback_unavailable" });
+    }
     res.status(500).json({ error: "internal_error" });
   }
 });
@@ -143,7 +148,12 @@ router.get("/", async (req: any, res) => {
 
     res.json({ ok: true, count: items.length, averageRating: avg, items });
   } catch (e: any) {
-    console.error("[GET /feedback] failed:", e?.message || e, e?.stack || "no stack");
+    const msg = e?.message || String(e);
+    const code = e?.code || e?.name;
+    console.error("[GET /feedback] failed:", msg);
+    if (code === "P2021" || /does not exist/i.test(msg)) {
+      return res.json({ ok: true, count: 0, averageRating: null, items: [] });
+    }
     res.status(500).json({ error: "internal_error" });
   }
 });
@@ -188,7 +198,12 @@ router.patch("/:id", async (req: any, res) => {
 
     res.json({ ok: true, feedback: updated });
   } catch (e: any) {
-    console.error("[PATCH /feedback/:id] failed:", e?.message || e);
+    const msg = e?.message || String(e);
+    const code = e?.code || e?.name;
+    console.error("[PATCH /feedback/:id] failed:", msg);
+    if (code === "P2021" || /does not exist/i.test(msg)) {
+      return res.status(404).json({ error: "not_found" });
+    }
     res.status(500).json({ error: "internal_error" });
   }
 });
