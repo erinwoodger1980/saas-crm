@@ -1,6 +1,5 @@
 // api/src/routes/public.ts
 import { Router } from "express";
-import { prisma } from "../prisma";
 import { normalizeQuestionnaire } from "../lib/questionnaire";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
@@ -173,6 +172,24 @@ function verifySupplierToken(raw: string): null | { tenantId: string; leadId: st
   }
 }
 
+function signSupplierSessionToken(tenantId: string, email: string): string {
+  return jwt.sign({ t: tenantId, e: email, scope: "supplier" }, env.APP_JWT_SECRET, {
+    expiresIn: "90d",
+  });
+}
+function verifySupplierSessionToken(raw: string): null | { tenantId: string; email: string } {
+  try {
+    const decoded: any = jwt.verify(raw, env.APP_JWT_SECRET);
+    const t = typeof decoded?.t === "string" ? decoded.t : null;
+    const e = typeof decoded?.e === "string" ? decoded.e : null;
+    const scope = decoded?.scope;
+    if (t && e && scope === "supplier") return { tenantId: t, email: e };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // GET /public/supplier/rfq/:token
 router.get("/supplier/rfq/:token", async (req, res) => {
   const token = String(req.params.token || "");
@@ -262,6 +279,74 @@ router.post("/supplier/rfq/:token/upload", async (req, res) => {
   });
 
   res.json({ ok: true, files: saved, quoteId });
+});
+
+// POST /public/supplier/session-from/:rfqToken
+router.post("/supplier/session-from/:token", async (req, res) => {
+  const token = String(req.params.token || "");
+  const claims = verifySupplierToken(token);
+  if (!claims) return res.status(401).json({ error: "invalid_token" });
+  const sessionToken = signSupplierSessionToken(claims.tenantId, claims.email);
+  res.json({ ok: true, sessionToken });
+});
+
+// GET /public/supplier/list?token=...
+router.get("/supplier/list", async (req, res) => {
+  const token = String((req.query?.token as string) || "");
+  const sess = verifySupplierSessionToken(token);
+  if (!sess) return res.status(401).json({ error: "invalid_token" });
+
+  // Fetch leads for this tenant; filter RFQs by supplier email
+  const leads = await prisma.lead.findMany({
+    where: { tenantId: sess.tenantId },
+    select: { id: true, contactName: true, custom: true },
+    orderBy: { capturedAt: "desc" },
+    take: 500,
+  });
+
+  const entries: Array<{ leadId: string; leadName: string; rfqId: string; createdAt?: string; uploadedAt?: string; quoteId?: string | null }> = [];
+  for (const l of leads) {
+    const c: any = (l.custom as any) || {};
+    const rfqs: any[] = Array.isArray(c.supplierRfqs) ? c.supplierRfqs : [];
+    for (const r of rfqs) {
+      if (!r || typeof r !== "object") continue;
+      if (String(r.supplierEmail || "").toLowerCase() !== sess.email.toLowerCase()) continue;
+      entries.push({
+        leadId: l.id,
+        leadName: l.contactName || l.id,
+        rfqId: String(r.rfqId || ""),
+        createdAt: typeof r.createdAt === "string" ? r.createdAt : undefined,
+        uploadedAt: typeof r.uploadedAt === "string" ? r.uploadedAt : undefined,
+        quoteId: r.quoteId ? String(r.quoteId) : null,
+      });
+    }
+  }
+
+  // Attach quote status where available
+  const quoteIds = entries.map((e) => e.quoteId).filter((v): v is string => !!v);
+  const uniqueQuoteIds = Array.from(new Set(quoteIds));
+  const quotes = uniqueQuoteIds.length
+    ? await prisma.quote.findMany({ where: { id: { in: uniqueQuoteIds } }, select: { id: true, status: true, totalGBP: true, title: true } })
+    : [];
+  const quoteMap = new Map(quotes.map((q) => [q.id, q]));
+
+  const items = entries.map((e) => {
+    const q = e.quoteId ? quoteMap.get(e.quoteId) : null;
+    const uploadToken = jwt.sign({ t: sess.tenantId, l: e.leadId, e: sess.email, r: e.rfqId }, env.APP_JWT_SECRET, { expiresIn: "90d" });
+    return {
+      leadId: e.leadId,
+      leadName: e.leadName,
+      rfqId: e.rfqId,
+      createdAt: e.createdAt || null,
+      uploadedAt: e.uploadedAt || null,
+      quoteId: e.quoteId || null,
+      quoteStatus: q?.status || null,
+      quoteTitle: q?.title || null,
+      uploadToken,
+    };
+  });
+
+  res.json({ ok: true, items });
 });
 
 export default router;
