@@ -34,8 +34,12 @@ router.get("/", requireAuth, async (req: any, res) => {
     where: { tenantId },
     orderBy: { createdAt: "desc" },
     select: {
-      id: true, title: true, status: true, totalGBP: true,
-      createdAt: true, leadId: true,
+      id: true,
+      title: true,
+      status: true,
+      totalGBP: true,
+      createdAt: true,
+      leadId: true,
     },
   });
   res.json(rows);
@@ -155,17 +159,32 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
   const created: any[] = [];
   const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }>= [];
+    const TIMEOUT_MS = Math.max(2000, Number(process.env.ML_TIMEOUT_MS || 10000));
     for (const f of quote.supplierFiles) {
       // Only attempt to parse PDFs
       if (!/pdf$/i.test(f.mimeType || "") && !/\.pdf$/i.test(f.name || "")) continue;
       const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "30m" });
       const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
 
-      const resp = await fetch(`${API_BASE}/ml/parse-quote`, {
+      // Bound the time spent waiting on ML by using an AbortController
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+      let resp: Response;
+      try {
+        resp = await fetch(`${API_BASE}/ml/parse-quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: req.headers.authorization || "" },
         body: JSON.stringify({ url, filename: f.name || undefined }),
-      });
+        signal: ctl.signal as any,
+      } as any);
+      } catch (err: any) {
+        clearTimeout(t);
+        const msg = err?.name === "AbortError" ? `timeout_${TIMEOUT_MS}ms` : err?.message || String(err);
+        fails.push({ fileId: f.id, name: f.name, status: 504, error: { error: msg } });
+        continue;
+      } finally {
+        clearTimeout(t);
+      }
       const text = await resp.text();
       let parsed: any = {};
       try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }

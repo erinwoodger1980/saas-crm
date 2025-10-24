@@ -1,10 +1,24 @@
 // api/src/routes/ml.ts
 import { Router } from "express";
 
+// Small helper to enforce an upper-bound on ML requests
+function withTimeout(signal: AbortSignal | undefined, ms: number) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(new Error(`timeout_${ms}ms`)), ms);
+  const onAbort = () => ctl.abort(new Error("aborted"));
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
+  const cleanup = () => {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
+  };
+  return { signal: ctl.signal, cleanup } as const;
+}
+
 const router = Router();
 const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000")
   .trim()
   .replace(/\/$/, "");
+const ML_TIMEOUT_MS = Math.max(1000, Number(process.env.ML_TIMEOUT_MS || 10000));
 
 // Build your API base once (same logic you used earlier)
 const API_BASE = (
@@ -45,11 +59,14 @@ router.post("/predict", async (req, res) => {
       region: (b.region ?? "uk").toString(),
     };
 
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
     const r = await fetch(`${ML_URL}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal,
     });
+    cleanup();
 
     const text = await r.text();
     let json: any = {};
@@ -87,11 +104,14 @@ router.post("/parse-quote", async (req, res) => {
     const safeUrl = normalizeAttachmentUrl(url);
     if (!safeUrl) return res.status(400).json({ error: "missing url" });
 
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
     const f = await fetch(`${ML_URL}/parse-quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: safeUrl, filename, quotedAt }),
+      signal,
     });
+    cleanup();
 
     const text = await f.text();
     let json: any = {};
@@ -102,8 +122,14 @@ router.post("/parse-quote", async (req, res) => {
     }
     return res.json(json);
   } catch (e: any) {
-    console.error("[ml proxy] /parse-quote failed:", e?.message || e);
-    return res.status(500).json({ error: "internal_error" });
+    const msg = e?.message || String(e);
+    const isTimeout = /timeout_/i.test(msg) || /The operation was aborted/i.test(msg);
+    if (isTimeout) {
+      console.warn(`[ml proxy] /parse-quote timed out after ${ML_TIMEOUT_MS}ms`);
+      return res.status(504).json({ error: "ml_timeout", timeoutMs: ML_TIMEOUT_MS });
+    }
+    console.error("[ml proxy] /parse-quote failed:", msg);
+    return res.status(502).json({ error: "ml_unreachable", detail: msg });
   }
 });
 
