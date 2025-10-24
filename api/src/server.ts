@@ -5,6 +5,8 @@ import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import fetch from "node-fetch";
+import fs from "fs";
+import path from "path";
 import { env } from "./env";
 import { prisma } from "./prisma";
 import { normalizeEmail } from "./lib/email";
@@ -244,6 +246,54 @@ app.get("/__debug/set-test-cookie", (_req, res) => {
 app.get("/healthz", (_req, res) => res.send("ok"));
 app.get("/health", (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
+});
+
+/** Storage health: verifies UPLOAD_DIR exists and is writable */
+app.get("/health/storage", (_req, res) => {
+  const configured = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+  const resolved = path.isAbsolute(configured)
+    ? configured
+    : path.join(process.cwd(), configured);
+
+  let exists = false;
+  let writable = false;
+  let testFileOk = false;
+  let error: string | null = null;
+
+  try {
+    // Ensure directory exists
+    fs.mkdirSync(resolved, { recursive: true });
+    exists = fs.existsSync(resolved);
+    try {
+      fs.accessSync(resolved, fs.constants.W_OK);
+      writable = true;
+    } catch {
+      writable = false;
+    }
+
+    if (writable) {
+      try {
+        const probe = path.join(resolved, `.probe_${Date.now()}.tmp`);
+        fs.writeFileSync(probe, "ok");
+        fs.unlinkSync(probe);
+        testFileOk = true;
+      } catch (e: any) {
+        error = e?.message || String(e);
+      }
+    }
+  } catch (e: any) {
+    error = e?.message || String(e);
+  }
+
+  res.json({
+    ok: exists && (writable || testFileOk),
+    uploadDir: configured,
+    resolved,
+    exists,
+    writable,
+    testFileOk,
+    error,
+  });
 });
 
 /** Small auth guard for protected routers */
@@ -497,6 +547,15 @@ app.use((err: any, _req: any, res: any, _next: any) => {
 /** Start server */
 app.listen(env.PORT, () => {
   console.log(`API running at http://localhost:${env.PORT}`);
+  // Log storage config
+  const configuredUpload = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+  const resolvedUpload = path.isAbsolute(configuredUpload)
+    ? configuredUpload
+    : path.join(process.cwd(), configuredUpload);
+  try { fs.mkdirSync(resolvedUpload, { recursive: true }); } catch {}
+  let writable = true;
+  try { fs.accessSync(resolvedUpload, fs.constants.W_OK); } catch { writable = false; }
+  console.log(`[storage] UPLOAD_DIR -> ${resolvedUpload} (writable=${writable})`);
   const mlEnv = ((process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "").trim());
   if (!mlEnv) {
     console.warn("[ml] ML_URL not set; ML proxy will default to http://localhost:8000 (dev only)");
