@@ -251,7 +251,8 @@ function heuristicsSuggestLead(subject: string, body: string, heur: BasicHeurist
   ];
   const hasKeyword = keywords.some((kw) => haystack.includes(kw));
   const hasContact = Boolean(heur.email || heur.contactName || heur.phone);
-  const hasBody = body.trim().length > 40;
+  // Relaxed to avoid missing short-but-obvious enquiries (recall-first)
+  const hasBody = body.trim().length > 10;
   return hasKeyword && hasContact && hasBody;
 }
 
@@ -937,14 +938,15 @@ router.post("/import", async (req, res) => {
             ? Math.max(0, Math.min(1, Number(ai.confidence)))
             : null;
         const aiReason = typeof ai?.reason === "string" ? ai.reason : "";
-        const noise = looksLikeNoise(subject || "", bodyForAnalysis);
+  const noise = looksLikeNoise(subject || "", bodyForAnalysis);
+  const subjectLeadSignal = /\b(quote|estimate|enquiry|inquiry|request)\b/i.test(subject || "");
 
         let decidedBy: "openai" | "heuristics" = ai ? "openai" : "heuristics";
         let isLeadCandidate = false;
         let reason = aiReason;
 
         if (aiIsLead === true && !noise) {
-          if ((aiConfidence ?? 0) >= 0.6 || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur)) {
+          if ((aiConfidence ?? 0) >= 0.45 || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || subjectLeadSignal) {
             isLeadCandidate = true;
             reason = aiReason || "OpenAI classified this as a lead";
           } else if (!reason) {
@@ -957,8 +959,8 @@ router.post("/import", async (req, res) => {
           reason = aiReason || "OpenAI classified this as not a lead";
         }
 
-        if (aiIsLead === null || (aiConfidence ?? 0) < 0.6) {
-          if (heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) && !noise) {
+        if (aiIsLead === null || (aiConfidence ?? 0) < 0.45) {
+          if ((heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || subjectLeadSignal) && !noise) {
             isLeadCandidate = true;
             const heurReason = "Heuristics detected enquiry keywords and contact details";
             reason = reason ? `${reason}; ${heurReason}` : heurReason;
