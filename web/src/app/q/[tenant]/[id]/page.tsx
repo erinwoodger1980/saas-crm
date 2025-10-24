@@ -21,6 +21,7 @@ type QField = {
   required?: boolean;
   options?: string[];
   askInQuestionnaire?: boolean;
+  internalOnly?: boolean;
 };
 type TenantSettings = {
   tenantId: string;
@@ -76,6 +77,7 @@ function normalizeQuestions(raw: any): QField[] {
       required: Boolean(item.required),
       options,
       askInQuestionnaire: item.askInQuestionnaire !== false,
+      internalOnly: item.internalOnly === true,
     });
   }
 
@@ -157,7 +159,8 @@ export default function PublicQuestionnairePage() {
 
   /* ---------------- Derived ---------------- */
   const questions: QField[] = useMemo(
-    () => normalizeQuestions((settings as any)?.questionnaire ?? []).filter((q) => q.askInQuestionnaire !== false),
+    () => normalizeQuestions((settings as any)?.questionnaire ?? [])
+      .filter((q) => q.askInQuestionnaire !== false && q.internalOnly !== true),
     [settings]
   );
 

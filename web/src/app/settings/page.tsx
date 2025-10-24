@@ -29,6 +29,9 @@ type QField = {
   options?: string[];
   askInQuestionnaire?: boolean;
   showOnLead?: boolean;
+  internalOnly?: boolean;
+  visibleAfterOrder?: boolean;
+  group?: string;
   sortOrder?: number;
 };
 type Settings = {
@@ -138,13 +141,16 @@ function normalizeQuestionnaire(raw: any): QField[] {
       const required = Boolean(item.required);
       const askInQuestionnaire = item.askInQuestionnaire === false ? false : true;
       const showOnLead = Boolean(item.showOnLead);
+      const internalOnly = item.internalOnly === true;
+      const visibleAfterOrder = item.visibleAfterOrder === true;
+      const group = typeof item.group === "string" && item.group.trim() ? item.group.trim() : undefined;
       const options =
         type === "select" && Array.isArray(item.options)
           ? item.options.map((opt: any) => String(opt || "").trim()).filter(Boolean)
           : [];
       const sortOrder =
         typeof item.sortOrder === "number" && Number.isFinite(item.sortOrder) ? item.sortOrder : idx;
-      return { id, key, label, type, required, options, askInQuestionnaire, showOnLead, sortOrder } as QField;
+      return { id, key, label, type, required, options, askInQuestionnaire, showOnLead, internalOnly, visibleAfterOrder, group, sortOrder } as QField;
     })
     .filter((field): field is QField => Boolean(field?.key))
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
@@ -170,6 +176,9 @@ function serializeQuestionnaire(fields: QField[]): any[] {
         options,
         askInQuestionnaire: field.askInQuestionnaire === false ? false : true,
         showOnLead: Boolean(field.showOnLead),
+        internalOnly: field.internalOnly === true ? true : undefined,
+        visibleAfterOrder: field.visibleAfterOrder === true ? true : undefined,
+        group: field.group && field.group.trim() ? field.group.trim() : undefined,
         sortOrder: idx,
       };
     })
@@ -500,6 +509,60 @@ export default function SettingsPage() {
                   />
                   Required
                 </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={f.askInQuestionnaire !== false && !f.internalOnly}
+                    onChange={(e) =>
+                      setQFields((prev) =>
+                        prev.map((p, i) =>
+                          i === idx ? { ...p, askInQuestionnaire: e.target.checked, internalOnly: e.target.checked ? false : p.internalOnly } : p
+                        )
+                      )
+                    }
+                  />
+                  Show on public form
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!f.showOnLead}
+                    onChange={(e) =>
+                      setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, showOnLead: e.target.checked } : p)))
+                    }
+                  />
+                  Show in lead
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!f.internalOnly}
+                    onChange={(e) =>
+                      setQFields((prev) =>
+                        prev.map((p, i) =>
+                          i === idx ? { ...p, internalOnly: e.target.checked, askInQuestionnaire: e.target.checked ? false : p.askInQuestionnaire } : p
+                        )
+                      )
+                    }
+                  />
+                  Internal-only
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!f.visibleAfterOrder}
+                    onChange={(e) =>
+                      setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, visibleAfterOrder: e.target.checked } : p)))
+                    }
+                  />
+                  Show after order (WON)
+                </label>
+                <input
+                  className="w-40 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                  placeholder="Group (optional)"
+                  value={f.group || ""}
+                  onChange={(e) => setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, group: e.target.value } : p)))}
+                />
                 {f.type === "select" ? (
                   <div className="w-full mt-2 flex flex-wrap items-center gap-2">
                     {(f.options ?? []).map((opt, optIdx) => (

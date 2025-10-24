@@ -11,6 +11,9 @@ export type QuestionnaireField = {
   options: string[];
   askInQuestionnaire: boolean;
   showOnLead: boolean;
+  internalOnly?: boolean;
+  visibleAfterOrder?: boolean;
+  group?: string | null;
   sortOrder: number;
 };
 
@@ -61,6 +64,11 @@ export function normalizeQuestionnaire(raw: any): QuestionnaireField[] {
       const showOnLead = item.showOnLead !== undefined
         ? Boolean(item.showOnLead)
         : Boolean((item as any).showInternally || (item as any).workspace);
+      const internalOnly = item.internalOnly === true;
+      const visibleAfterOrder = item.visibleAfterOrder === true;
+      const group = typeof (item as any).group === "string" && (item as any).group.trim()
+        ? (item as any).group.trim()
+        : null;
 
       const options =
         type === "select"
@@ -87,6 +95,9 @@ export function normalizeQuestionnaire(raw: any): QuestionnaireField[] {
         options,
         askInQuestionnaire,
         showOnLead,
+        internalOnly,
+        visibleAfterOrder,
+        group,
         sortOrder,
       } as QuestionnaireField;
     })
@@ -107,6 +118,9 @@ export function prepareQuestionnaireForSave(fields: QuestionnaireField[]): any[]
     options: field.type === "select" ? field.options : undefined,
     askInQuestionnaire: field.askInQuestionnaire,
     showOnLead: field.showOnLead,
+    internalOnly: field.internalOnly === true ? true : undefined,
+    visibleAfterOrder: field.visibleAfterOrder === true ? true : undefined,
+    group: field.group || undefined,
     sortOrder: idx,
   }));
 }
