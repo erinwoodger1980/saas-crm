@@ -213,8 +213,8 @@ export default function AiTrainingPage() {
                 const parts = i.inputSummary.split(":");
                 const provider = parts[1];
                 const messageId = parts.slice(2).join(":");
-                if (provider === "gmail" && API_BASE) {
-                  const href = `${API_BASE}/gmail/message/${encodeURIComponent(messageId)}`;
+                if (API_BASE && (provider === "gmail" || provider === "ms365")) {
+                  const href = `${API_BASE}/${provider}/message/${encodeURIComponent(messageId)}`;
                   sourceEl = (
                     <a
                       href={href}

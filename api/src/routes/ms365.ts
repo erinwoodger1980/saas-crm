@@ -203,6 +203,66 @@ router.get(["/message/:id/attachments/:attachmentId", "/message/:id/attachments/
 });
 
 /**
+ * Return full message details in a normalized JSON shape
+ */
+router.get("/message/:id", async (req: any, res) => {
+  // Optional JWT via query for signed URLs (parity with gmail route)
+  try {
+    const qJwt = (req.query.jwt as string | undefined) || undefined;
+    if (qJwt && !req.auth) {
+      const decoded = jwt.verify(qJwt, env.APP_JWT_SECRET) as any;
+      (req as any).auth = { tenantId: decoded.tenantId, userId: decoded.userId, email: decoded.email };
+    }
+  } catch {}
+
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const messageId = String(req.params.id);
+    const accessToken = await getAccessTokenForTenant(tenantId);
+    const url = `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(messageId)}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,body,bodyPreview,hasAttachments`;
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const j: any = await r.json();
+    if (!r.ok) return res.status(r.status).json(j);
+
+    const subject: string = j.subject || "";
+    const from: string | null = (j.from?.emailAddress?.name || j.from?.emailAddress?.address || "") || null;
+    const date: string | null = j.receivedDateTime || null;
+    const isHtml = String(j.body?.contentType || "").toLowerCase() === "html";
+    const bodyHtml: string | undefined = isHtml ? String(j.body?.content || "") : undefined;
+    const bodyText: string = isHtml ? htmlToPlainText(bodyHtml || "") : normalizePlainText(String(j.body?.content || j.bodyPreview || ""));
+
+    let attachments: Array<{ id: string; name: string; contentType?: string; size?: number }> = [];
+    if (j.hasAttachments) {
+      try {
+        const attUrl = `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(messageId)}/attachments?$top=50`;
+        const ar = await fetch(attUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+        const aj: any = await ar.json();
+        if (ar.ok && Array.isArray(aj.value)) {
+          attachments = aj.value.map((a: any) => ({ id: a.id, name: a.name, contentType: a.contentType, size: a.size }));
+        }
+      } catch {}
+    }
+
+    return res.json({
+      id: j.id,
+      subject,
+      from,
+      date,
+      snippet: (j.bodyPreview || "").slice(0, 160),
+      bodyText,
+      bodyHtml: bodyHtml || undefined,
+      attachments,
+      threadId: j.conversationId || null,
+    });
+  } catch (e: any) {
+    console.error("[ms365] /message failed", e);
+    return res.status(500).json({ error: e?.message || "failed" });
+  }
+});
+
+/**
  * ==============================
  * Import inbound mail from MS365
  * ==============================
