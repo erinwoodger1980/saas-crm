@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
 import { env } from "../env";
 import OpenAI from "openai";
+import { logInsight } from "../services/training";
 import { load } from "cheerio";
 
 const router = Router();
@@ -982,7 +983,7 @@ router.post("/import", async (req, res) => {
           noiseFiltered: noise,
         };
 
-        if (isLeadCandidate) {
+  if (isLeadCandidate) {
           const contactName =
             (typeof ai?.contactName === "string" && ai.contactName) ||
             heur.contactName ||
@@ -1049,6 +1050,19 @@ router.post("/import", async (req, res) => {
             confidence: aiConfidence,
             leadId,
           });
+
+          // Log transparent training insight (accepted)
+          try {
+            await logInsight({
+              tenantId,
+              module: "lead_classifier",
+              inputSummary: `email:gmail:${m.id}`,
+              decision: "accepted",
+              confidence: aiConfidence ?? null,
+            });
+          } catch (e) {
+            console.warn("[gmail] logInsight accepted failed:", (e as any)?.message || e);
+          }
         } else {
           await recordTrainingExample({
             tenantId,
@@ -1066,6 +1080,19 @@ router.post("/import", async (req, res) => {
             confidence: aiConfidence,
             leadId: null,
           });
+
+          // Log transparent training insight (rejected)
+          try {
+            await logInsight({
+              tenantId,
+              module: "lead_classifier",
+              inputSummary: `email:gmail:${m.id}`,
+              decision: "rejected",
+              confidence: aiConfidence ?? null,
+            });
+          } catch (e) {
+            console.warn("[gmail] logInsight rejected failed:", (e as any)?.message || e);
+          }
         }
       }
 
