@@ -361,6 +361,100 @@ router.post("/collect-train-save", async (req: any, res) => {
 
 export default router;
 // -----------------------------
+// POST /internal/ml/save-train-from-uploaded
+// -----------------------------
+/**
+ * Body: { uploadedFileIds: string[] }
+ *
+ * For a set of already-uploaded supplier quote files, this will:
+ * 1) Build signed file URLs accessible to the ML service via our /files route
+ * 2) Upsert rows into MLTrainingSample (so we retain provenance/history)
+ * 3) Trigger the ML service /train with those items
+ */
+router.post("/save-train-from-uploaded", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const ids = Array.isArray(req.body?.uploadedFileIds)
+      ? (req.body.uploadedFileIds as any[]).map((x) => String(x)).filter(Boolean)
+      : [];
+    if (!ids.length) return res.status(400).json({ error: "no_files" });
+
+    const files = await prisma.uploadedFile.findMany({
+      where: { tenantId, id: { in: ids } },
+      select: { id: true, name: true, uploadedAt: true },
+    });
+    if (!files.length) return res.status(404).json({ error: "not_found" });
+
+    // Build signed URLs via our public files router
+    const token = jwt.sign(
+      { tenantId, userId: "system", email: "system@local" },
+      env.APP_JWT_SECRET,
+      { expiresIn: "30m" }
+    );
+
+    type Item = {
+      messageId: string;
+      attachmentId: string;
+      url: string;
+      filename?: string | null;
+      quotedAt?: string | null;
+    };
+
+    const items: Item[] = files.map((f) => ({
+      messageId: `uploaded:${f.id}`,
+      attachmentId: f.id,
+      url: `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`,
+      filename: f.name || null,
+      quotedAt: f.uploadedAt ? new Date(f.uploadedAt as any).toISOString() : null,
+    }));
+
+    // Save to DB (upsert on tenantId+messageId+attachmentId)
+    let saved = 0;
+    for (const it of items) {
+      await prisma.mLTrainingSample.upsert({
+        where: {
+          tenantId_messageId_attachmentId: {
+            tenantId,
+            messageId: it.messageId,
+            attachmentId: it.attachmentId,
+          },
+        },
+        create: {
+          tenantId,
+          messageId: it.messageId,
+          attachmentId: it.attachmentId,
+          url: it.url,
+          quotedAt: it.quotedAt ? new Date(it.quotedAt) : null,
+        },
+        update: {
+          url: it.url,
+          quotedAt: it.quotedAt ? new Date(it.quotedAt) : null,
+        },
+      });
+      saved += 1;
+    }
+
+    // Trigger ML /train with these items (acts as a signal; ML service may also read DB)
+    const trainResp = await fetch(`${ML_URL}/train`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenantId, items }),
+    });
+
+    const trainText = await trainResp.text();
+    let trainJson: any = {};
+    try { trainJson = trainText ? JSON.parse(trainText) : {}; } catch { trainJson = { raw: trainText }; }
+    if (!trainResp.ok) return res.status(trainResp.status).json({ error: "ml_train_failed", detail: trainJson, saved });
+
+    return res.json({ ok: true, tenantId, saved, ml: trainJson });
+  } catch (e: any) {
+    console.error("[/internal/ml/save-train-from-uploaded] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+// -----------------------------
 // POST /internal/ml/ingest-ms365
 // -----------------------------
 /**
