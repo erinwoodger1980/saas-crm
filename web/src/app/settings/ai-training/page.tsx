@@ -1,6 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+} from "recharts";
 import { apiFetch, API_BASE } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
@@ -125,6 +135,23 @@ export default function AiTrainingPage() {
       else if (d === "rejected") s.rejected++;
     }
     return s;
+  }, [filteredInsights]);
+
+  const trendData = useMemo(() => {
+    // Aggregate accepted/rejected counts by date (YYYY-MM-DD)
+    const byDate = new Map<string, { date: string; accepted: number; rejected: number }>();
+    for (const i of filteredInsights) {
+      const d = i.createdAt ? new Date(i.createdAt) : null;
+      if (!d || Number.isNaN(d.getTime())) continue;
+      const key = d.toISOString().slice(0, 10);
+      if (!byDate.has(key)) byDate.set(key, { date: key, accepted: 0, rejected: 0 });
+      const row = byDate.get(key)!;
+      const dec = (i.decision || "").toLowerCase();
+      if (dec === "accepted") row.accepted += 1;
+      else if (dec === "rejected") row.rejected += 1;
+    }
+    // Sort ascending by date
+    return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
   }, [filteredInsights]);
 
   function parseEmailRef(inputSummary?: string | null): { provider: string; messageId: string } | null {
@@ -301,6 +328,7 @@ export default function AiTrainingPage() {
       {error && <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
 
       <div className="grid gap-6 md:grid-cols-2">
+        {/* Left: Controls */}
         <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-slate-700">Sensitivity threshold</p>
@@ -322,7 +350,41 @@ export default function AiTrainingPage() {
           </div>
         </div>
 
+        {/* Right: Trend + Recent decisions */}
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-medium text-slate-700">Decision trend</p>
+              <span className="text-xs text-slate-500">by day</span>
+            </div>
+            <div className="h-40 w-full">
+              {trendData.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-xs text-slate-500">No data yet</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="acceptedFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="rejectedFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                    <YAxis allowDecimals={false} width={24} tick={{ fontSize: 10 }} />
+                    <Tooltip wrapperClassName="!text-xs" />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Area type="monotone" dataKey="accepted" stroke="#10b981" fillOpacity={1} fill="url(#acceptedFill)" />
+                    <Area type="monotone" dataKey="rejected" stroke="#ef4444" fillOpacity={1} fill="url(#rejectedFill)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium text-slate-700">Recent decisions</p>
             <div className="flex items-center gap-2">
