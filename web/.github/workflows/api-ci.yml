@@ -41,30 +41,34 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: api/package-lock.json
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
       - name: Install deps
         working-directory: api
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Prisma generate
         working-directory: api
-        run: npx prisma generate
+        run: pnpm exec prisma generate
 
       - name: Prepare DB (push schema)
         working-directory: api
-        run: npx prisma db push
+        run: pnpm exec prisma db push
 
       # If you have a build script, keep this. If not, do a typecheck.
       - name: Typecheck
         working-directory: api
-        run: npx tsc -p tsconfig.json --noEmit
+        run: pnpm exec tsc -p tsconfig.json --noEmit
 
       - name: Lint (optional)
         working-directory: api
-        run: npm run lint || echo "No lint script"
+        run: pnpm run lint || echo "No lint script"
 
       - name: Tests (optional)
         working-directory: api
-        run: npm test || echo "No tests"
+        run: pnpm test || echo "No tests"
