@@ -116,9 +116,27 @@ router.post("/:id/send-followup", async (req: any, res: any) => {
       },
     });
 
-    // 4) Log an outbound EmailMessage
-    await prisma.emailMessage.create({
-      data: {
+    // 4) Log an outbound EmailMessage (idempotent on (tenantId, provider, messageId))
+    await prisma.emailMessage.upsert({
+      where: {
+        tenantId_provider_messageId: {
+          tenantId,
+          provider: "gmail",
+          messageId: (sent as any).id,
+        },
+      },
+      update: {
+        threadId: threadRow.id,
+        direction: "outbound",
+        fromEmail: fromEmail || null,
+        toEmail: lead.email,
+        subject,
+        snippet: null,
+        bodyText: body,
+        sentAt: new Date(),
+        leadId: id,
+      },
+      create: {
         tenantId,
         provider: "gmail",
         messageId: (sent as any).id,
