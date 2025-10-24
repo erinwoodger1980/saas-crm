@@ -840,6 +840,11 @@ router.post("/import", async (req, res) => {
   const q = (req.body?.q as string | undefined) || "newer_than:30d";
 
   try {
+    // Fetch tenant inbox settings once per import (recall-first flag)
+    const settings = await prisma.tenantSettings.findUnique({ where: { tenantId }, select: { inbox: true } });
+    const inbox = (settings?.inbox as any) || {};
+    const recallFirst = !!(inbox.recallFirst || inbox.neverMiss);
+
     const accessToken = await getAccessTokenForTenant(tenantId);
 
     // List messages
@@ -918,7 +923,7 @@ router.post("/import", async (req, res) => {
         leadId?: string | null;
       } | null = null;
 
-      if (!leadId) {
+        if (!leadId) {
         const heur = basicHeuristics(bodyForAnalysis);
         let ai: any = null;
         try {
@@ -967,6 +972,15 @@ router.post("/import", async (req, res) => {
             decidedBy = ai ? "openai" : "heuristics";
           } else if (!reason) {
             reason = "No strong indicators of a customer enquiry";
+          }
+        }
+
+        // Recall-first mode: if enabled, prefer creating a lead unless clearly noise.
+        if (!isLeadCandidate && recallFirst && !noise) {
+          if (subjectLeadSignal || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || (fromAddr && (subject || bodyForAnalysis))) {
+            isLeadCandidate = true;
+            decidedBy = ai ? "openai" : "heuristics";
+            reason = reason ? `${reason}; recall-first enabled` : "recall-first enabled";
           }
         }
 
