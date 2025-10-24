@@ -4,6 +4,8 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { prisma } from "../prisma";
+import jwt from "jsonwebtoken";
+import { env } from "../env";
 
 const router = Router();
 
@@ -91,3 +93,154 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
 });
 
 export default router;
+/**
+ * POST /quotes/:id/parse
+ * For each supplier file, generate a signed download URL and forward to /ml/parse-quote.
+ * Create QuoteLine rows from parsed output.
+ */
+router.post("/:id/parse", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { supplierFiles: true } });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    // Build base URL for serving files
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
+
+    const created: any[] = [];
+    for (const f of quote.supplierFiles) {
+      // Only attempt to parse PDFs
+      if (!/pdf$/i.test(f.mimeType || "") && !/\.pdf$/i.test(f.name || "")) continue;
+      const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "30m" });
+      const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
+
+      const resp = await fetch(`${API_BASE}/ml/parse-quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: req.headers.authorization || "" },
+        body: JSON.stringify({ url, filename: f.name || undefined }),
+      });
+      const text = await resp.text();
+      let parsed: any = {};
+      try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
+      if (!resp.ok) {
+        // Keep going for other files
+        continue;
+      }
+
+      const lines = Array.isArray(parsed?.lines) ? parsed.lines : [];
+      for (const ln of lines) {
+        const description = String(ln.description || ln.item || ln.name || f.name || "Line");
+        const qty = Number(ln.qty ?? ln.quantity ?? 1) || 1;
+        const unit = Number(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
+        const currency = String(parsed.currency || ln.currency || quote.currency || "GBP").toUpperCase();
+        const row = await prisma.quoteLine.create({
+          data: {
+            quoteId: quote.id,
+            supplier: (parsed?.supplier || undefined) as any,
+            sku: typeof ln.sku === "string" ? ln.sku : undefined,
+            description,
+            qty,
+            unitPrice: new prisma.Prisma.Decimal(unit),
+            currency,
+            deliveryShareGBP: new prisma.Prisma.Decimal(0),
+            lineTotalGBP: new prisma.Prisma.Decimal(0),
+            meta: parsed ? { source: "ml-parse", raw: ln } : undefined,
+          },
+        });
+        created.push(row);
+      }
+    }
+
+    // Optionally: recalc totals later when pricing applied
+    return res.json({ ok: true, created: created.length });
+  } catch (e: any) {
+    console.error("[/quotes/:id/parse] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * PATCH /quotes/:id/lines/map
+ * Body: { mappings: Array<{ lineId, questionKey }> } to map lines to questionnaire items.
+ */
+router.patch("/:id/lines/map", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const q = await prisma.quote.findFirst({ where: { id, tenantId } });
+    if (!q) return res.status(404).json({ error: "not_found" });
+    const mappings: Array<{ lineId: string; questionKey: string | null }> = Array.isArray(req.body?.mappings) ? req.body.mappings : [];
+    for (const m of mappings) {
+      if (!m?.lineId) continue;
+      await prisma.quoteLine.update({ where: { id: m.lineId }, data: { meta: { set: { ...(req.body?.meta || {}), questionKey: m.questionKey || null } } } as any });
+    }
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[/quotes/:id/lines/map] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * POST /quotes/:id/price
+ * Body: { method: "margin" | "ml", margin?: number }
+ */
+router.post("/:id/price", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true, tenant: true, lead: true } });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+    const method = String(req.body?.method || "margin");
+    const margin = Number(req.body?.margin ?? quote.markupDefault ?? 0.25);
+
+    if (method === "margin") {
+      // apply simple margin over supplier unitPrice
+      let totalGBP = 0;
+      for (const ln of quote.lines) {
+        const cost = Number(ln.unitPrice) * Number(ln.qty);
+        const sellUnit = Number(ln.unitPrice) * (1 + margin);
+        const sellTotal = sellUnit * Number(ln.qty);
+        totalGBP += sellTotal;
+        await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(ln.meta as any || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "margin", margin } } } as any });
+      }
+      await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new prisma.Prisma.Decimal(totalGBP), markupDefault: new prisma.Prisma.Decimal(margin) } });
+      return res.json({ ok: true, method, margin, totalGBP });
+    }
+
+    if (method === "ml") {
+      // Call ML to get an estimated total based on questionnaire answers; then scale per-line proportions by cost
+      const API_BASE = (
+        process.env.APP_API_URL || process.env.API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`
+      ).replace(/\/$/, "");
+      const features: any = (quote.lead?.custom as any) || {};
+      const mlResp = await fetch(`${API_BASE}/ml/predict`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(features) });
+      let ml: any = {};
+      try { ml = await mlResp.json(); } catch {}
+      const predictedTotal = Number(ml?.predicted_total ?? 0) || 0;
+      const costSum = quote.lines.reduce((s, ln) => s + Number(ln.unitPrice) * Number(ln.qty), 0);
+      const scale = costSum > 0 && predictedTotal > 0 ? predictedTotal / costSum : 1;
+      let totalGBP = 0;
+      for (const ln of quote.lines) {
+        const costUnit = Number(ln.unitPrice);
+        const sellUnit = costUnit * scale;
+        const sellTotal = sellUnit * Number(ln.qty);
+        totalGBP += sellTotal;
+        await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(ln.meta as any || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "ml", scale, predictedTotal } } } as any });
+      }
+      await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new prisma.Prisma.Decimal(totalGBP) } });
+      return res.json({ ok: true, method, predictedTotal, totalGBP });
+    }
+
+    return res.status(400).json({ error: "invalid_method" });
+  } catch (e: any) {
+    console.error("[/quotes/:id/price] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});

@@ -1,5 +1,7 @@
 // api/src/routes/public.ts
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
 import { normalizeQuestionnaire } from "../lib/questionnaire";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
@@ -245,20 +247,33 @@ router.post("/supplier/rfq/:token/upload", async (req, res) => {
     quoteId = q.id;
   }
 
-  // Save files as UploadedFile rows
+  // Save files as UploadedFile rows (persist to disk so ML can parse)
   const saved = [] as any[];
+  const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+  try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch {}
   for (const f of files) {
     const filename = typeof f?.filename === "string" && f.filename.trim() ? f.filename.trim() : "attachment";
     const mimeType = typeof f?.mimeType === "string" && f.mimeType.trim() ? f.mimeType : "application/octet-stream";
     const b64 = typeof f?.base64 === "string" ? f.base64 : "";
     if (!b64) continue;
+    const safeName = filename.replace(/[^\w.\-]+/g, "_");
+    const stamp = Date.now();
+    const diskName = `${stamp}__${safeName}`;
+    const absPath = path.join(UPLOAD_DIR, diskName);
+    try {
+      const buf = Buffer.from(b64, "base64");
+      fs.writeFileSync(absPath, buf);
+    } catch (e) {
+      console.error("[supplier/upload] failed to write file", e);
+      continue;
+    }
     const row = await prisma.uploadedFile.create({
       data: {
         tenantId: claims.tenantId,
         quoteId: quoteId!,
         kind: "SUPPLIER_QUOTE" as any,
         name: filename,
-        path: `inline:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+        path: path.relative(process.cwd(), absPath),
         mimeType,
         sizeBytes: Math.floor((Buffer.from(b64, "base64").length) || 0),
       },
