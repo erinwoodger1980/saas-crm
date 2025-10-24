@@ -6,11 +6,8 @@ type PageSearchParams = {
 
 export const dynamic = "force-dynamic";
 
-export default function SignupSuccessPage({
-  searchParams,
-}: {
-  searchParams?: PageSearchParams;
-}) {
+export default function SignupSuccessPage(props: any) {
+  const searchParams = (props?.searchParams as PageSearchParams) || {};
   const sessionId = searchParams?.session_id ?? "";
 
   return <SignupSuccessClient sessionId={sessionId} />;

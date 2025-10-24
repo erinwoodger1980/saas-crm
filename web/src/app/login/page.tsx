@@ -25,7 +25,7 @@ export default function LoginPage() {
         method: "POST",
         json: { email: loginEmail, password: loginPassword },
       });
-      const authToken = res?.token || res?.jwt;
+  const authToken = res?.jwt;
       if (authToken) {
         setJwt(authToken);
         router.push("/dashboard");
