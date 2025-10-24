@@ -438,6 +438,53 @@ model MLTrainingSample {
 }
 
 /// *
+///  * ============== ML Training Visibility ==============
+model TrainingInsights {
+  id           String   @id @default(cuid())
+  tenantId     String
+  module       String   // lead_classifier | quote_builder | estimator | sales_assistant
+  inputSummary String?
+  decision     String?
+  confidence   Float?
+  userFeedback Json?
+  lastUpdated  DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, module, createdAt])
+}
+
+model ModelOverride {
+  id          String   @id @default(cuid())
+  tenantId    String
+  module      String
+  key         String
+  value       Json
+  reason      String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, module, key])
+}
+
+model TrainingEvent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  module    String
+  kind      String   // FEEDBACK | RETRAIN | RESET | PARAM_CHANGE
+  payload   Json
+  actorId   String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, module, kind, createdAt])
+}
+
+/// *
 ///  * =========================
 ///  * Enums
 ///  * =========================

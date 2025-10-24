@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { logEvent, logInsight } from "../services/training";
 
 /**
  * Minimal schema (no migration needed right now) — we will store
@@ -116,6 +117,16 @@ router.post("/feedback", async (req, res) => {
       } catch (e) {
         console.error("[leads-ai] failed to upsert training example:", e);
       }
+
+      // Log a transparent training insight
+      await logInsight({
+        tenantId,
+        module: "lead_classifier",
+        inputSummary: `email:${provider}:${messageId}`,
+        decision: isLead ? "accepted" : "rejected",
+        confidence: null,
+        userFeedback: { isLead, reason: reason || null },
+      });
     }
 
     // Optionally tag the Lead with a small flag so UI can reflect it quickly
@@ -137,6 +148,14 @@ router.post("/feedback", async (req, res) => {
     }
 
     // (Optional) persist a separate training row later. Keeping it light now.
+
+    await logEvent({
+      tenantId,
+      module: "lead_classifier",
+      kind: "FEEDBACK",
+      payload: { messageId, isLead, leadId: leadId || null },
+      actorId: userId,
+    });
 
     return res.json({ ok: true });
   } catch (e: any) {
