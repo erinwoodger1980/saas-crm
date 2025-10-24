@@ -79,4 +79,39 @@ router.post("/toggle", async (req, res) => {
   res.json({ ok: true, enabled });
 });
 
+/**
+ * POST /settings/inbox/recall
+ * body: { recallFirst?: boolean, neverMiss?: boolean }
+ * Stores the flag in TenantSettings.inbox JSON.
+ */
+router.post("/recall", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const recallFirst = req.body && typeof req.body.recallFirst === "boolean" ? req.body.recallFirst : undefined;
+  const neverMiss = req.body && typeof req.body.neverMiss === "boolean" ? req.body.neverMiss : undefined;
+  if (recallFirst === undefined && neverMiss === undefined) {
+    return res.status(400).json({ error: "invalid_payload" });
+  }
+
+  const existing = await prisma.tenantSettings.findUnique({ where: { tenantId }, select: { inbox: true, slug: true, brandName: true } });
+  const inbox = { ...(existing?.inbox as any) };
+  if (recallFirst !== undefined) inbox.recallFirst = recallFirst;
+  if (neverMiss !== undefined) inbox.neverMiss = neverMiss;
+
+  const updated = await prisma.tenantSettings.upsert({
+    where: { tenantId },
+    update: { inbox },
+    create: {
+      tenantId,
+      slug: existing?.slug || tenantId.slice(0, 8),
+      brandName: existing?.brandName || "Your Brand",
+      inbox,
+    },
+    select: { inbox: true },
+  });
+
+  res.json({ ok: true, inbox: updated.inbox });
+});
+
 export default router;
