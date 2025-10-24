@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { gmailSend, getAccessTokenForTenant, gmailFetchAttachment } from "../services/gmail";
+import { logInsight, logEvent } from "../services/training";
 import { UiStatus, loadTaskPlaybook, ensureTaskFromRecipe, TaskPlaybook } from "../task-playbook";
 
 const router = Router();
@@ -310,6 +311,56 @@ router.patch("/:id", async (req, res) => {
         });
       }
     } catch {}
+
+    // Also log transparent training insights so the AI Training page reflects this acceptance/rejection
+    try {
+      const becameAccepted = positive.includes(nextUi);
+      const becameRejected = negative.includes(nextUi);
+      if (becameAccepted || becameRejected) {
+        const decision = becameAccepted ? "accepted" : "rejected";
+
+        // Link to originating emails if any; else log against the lead itself
+        const ingests = await prisma.emailIngest.findMany({
+          where: { tenantId, leadId: id },
+          select: { provider: true, messageId: true },
+          take: 20,
+        });
+
+        if (ingests.length > 0) {
+          for (const g of ingests) {
+            if (!g.provider || !g.messageId) continue;
+            await logInsight({
+              tenantId,
+              module: "lead_classifier",
+              inputSummary: `email:${g.provider}:${g.messageId}`,
+              decision,
+              confidence: null,
+              userFeedback: { byStatusChange: true, status: nextUi, actorId },
+            });
+          }
+        } else {
+          await logInsight({
+            tenantId,
+            module: "lead_classifier",
+            inputSummary: `lead:${id}:${nextUi}`,
+            decision,
+            confidence: null,
+            userFeedback: { byStatusChange: true, status: nextUi, actorId },
+          });
+        }
+
+        // Audit trail event
+        await logEvent({
+          tenantId,
+          module: "lead_classifier",
+          kind: "FEEDBACK",
+          payload: { source: "lead_status_change", leadId: id, to: nextUi, from: prevUi, decision },
+          actorId,
+        });
+      }
+    } catch (e) {
+      console.warn("[leads] status→training log failed:", (e as any)?.message || e);
+    }
   }
 
   // Adjust source conversions when toggling WON on/off (optional; keep if you used this before)
