@@ -16,6 +16,7 @@ import {
   TaskPlaybook,
   TaskRecipe,
   normalizeTaskPlaybook,
+  type UiStatus,
 } from "@/lib/task-playbook";
 
 /* ---------------- Types ---------------- */
@@ -192,6 +193,7 @@ export default function SettingsPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [qFields, setQFields] = useState<QField[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
 
   useEffect(() => {
     (async () => {
@@ -205,7 +207,9 @@ export default function SettingsPage() {
         if ((data as any)?.inbox) setInbox((data as any).inbox as InboxCfg);
         // initialize questionnaire editor from settings
         setQFields(normalizeQuestionnaire((data as any)?.questionnaire ?? []));
-        // initialize profile name fields from current user (if available)
+  // initialize task playbook editor
+  setPlaybook(normalizeTaskPlaybook((data as any)?.taskPlaybook ?? DEFAULT_TASK_PLAYBOOK));
+  // initialize profile name fields from current user (if available)
         setProfileFirstName(user?.firstName ?? "");
         setProfileLastName(user?.lastName ?? "");
       } catch (e: any) {
@@ -263,17 +267,66 @@ export default function SettingsPage() {
         phone: s.phone,
         inbox,
         questionnaire: serializeQuestionnaire(qFields),
+        taskPlaybook: playbook,
       } as any;
 
       const updated = await apiFetch<Settings>("/tenant/settings", { method: "PATCH", json: payload });
       setS(updated);
       setQFields(normalizeQuestionnaire((updated as any)?.questionnaire ?? []));
+      setPlaybook(normalizeTaskPlaybook((updated as any)?.taskPlaybook ?? DEFAULT_TASK_PLAYBOOK));
       toast({ title: "Settings saved" });
     } catch (e: any) {
       toast({ title: "Failed to save settings", description: e?.message, variant: "destructive" });
     } finally {
       setSavingSettings(false);
     }
+  }
+
+  // ---- Task Playbook editor helpers ----
+  const STATUS_KEYS: UiStatus[] = [
+    "NEW_ENQUIRY",
+    "INFO_REQUESTED",
+    "DISQUALIFIED",
+    "REJECTED",
+    "READY_TO_QUOTE",
+    "QUOTE_SENT",
+    "WON",
+    "LOST",
+  ];
+
+  function updateStatusRecipe(status: UiStatus, idx: number, patch: Partial<TaskRecipe>) {
+    setPlaybook((prev) => {
+      const list = (prev.status[status] || []).slice();
+      list[idx] = { ...list[idx], ...patch } as TaskRecipe;
+      return { ...prev, status: { ...prev.status, [status]: list } };
+    });
+  }
+
+  function addStatusRecipe(status: UiStatus) {
+    setPlaybook((prev) => {
+      const list = (prev.status[status] || []).slice();
+      const next: TaskRecipe = {
+        id: `${status.toLowerCase()}-${list.length + 1}`,
+        title: "New task",
+        dueInDays: 1,
+        priority: "MEDIUM",
+        relatedType: "LEAD",
+        active: true,
+      };
+      return { ...prev, status: { ...prev.status, [status]: [...list, next] } };
+    });
+  }
+
+  function removeStatusRecipe(status: UiStatus, idx: number) {
+    setPlaybook((prev) => {
+      const list = (prev.status[status] || []).slice();
+      list.splice(idx, 1);
+      return { ...prev, status: { ...prev.status, [status]: list } };
+    });
+  }
+
+  function updateManualRecipe(key: ManualTaskKey, patch: Partial<TaskRecipe>) {
+    setPlaybook((prev) => ({ ...prev, manual: { ...prev.manual, [key]: { ...prev.manual[key], ...patch } } }));
   }
 
   async function saveInbox() {
@@ -514,6 +567,117 @@ export default function SettingsPage() {
           <div className="mt-3">
             <Button onClick={saveSettings} disabled={savingSettings}>
               {savingSettings ? "Saving settings…" : "Save questionnaire"}
+            </Button>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Task playbook" description="Define the tasks to create for each stage and the quick-add actions">
+        <div className="space-y-6">
+          {STATUS_KEYS.map((status) => (
+            <div key={status} className="rounded-xl border bg-white/70 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-sm font-semibold text-slate-800">{status.replace(/_/g, " ")}</div>
+                <button
+                  type="button"
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                  onClick={() => addStatusRecipe(status)}
+                >
+                  Add task
+                </button>
+              </div>
+              {(playbook.status[status] || []).length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-200 bg-white/60 p-3 text-xs text-slate-500">
+                  No tasks yet for this stage.
+                </div>
+              ) : (
+                (playbook.status[status] || []).map((r, idx) => (
+                  <div key={r.id || idx} className="mb-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto_auto_auto]">
+                    <input
+                      className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                      value={r.title}
+                      onChange={(e) => updateStatusRecipe(status, idx, { title: e.target.value })}
+                    />
+                    <input
+                      type="number"
+                      className="w-28 rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                      value={r.dueInDays ?? 1}
+                      onChange={(e) => updateStatusRecipe(status, idx, { dueInDays: Number(e.target.value || 0) })}
+                    />
+                    <select
+                      className="w-32 rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                      value={r.priority || "MEDIUM"}
+                      onChange={(e) => updateStatusRecipe(status, idx, { priority: e.target.value as any })}
+                    >
+                      {(["LOW", "MEDIUM", "HIGH", "URGENT"] as const).map((p) => (
+                        <option key={p} value={p}>{p.toLowerCase()}</option>
+                      ))}
+                    </select>
+                    <label className="inline-flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={r.active !== false}
+                        onChange={(e) => updateStatusRecipe(status, idx, { active: e.target.checked })}
+                      />
+                      Active
+                    </label>
+                    <button
+                      type="button"
+                      className="text-sm text-rose-600"
+                      onClick={() => removeStatusRecipe(status, idx)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          ))}
+
+          <div className="rounded-xl border bg-white/70 p-3">
+            <div className="mb-2 text-sm font-semibold text-slate-800">Quick-add tasks</div>
+            <div className="space-y-2">
+              {(MANUAL_TASK_KEYS as readonly ManualTaskKey[]).map((key) => {
+                const r = playbook.manual[key];
+                return (
+                  <div key={key} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto_auto]">
+                    <input
+                      className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                      value={r.title}
+                      onChange={(e) => updateManualRecipe(key, { title: e.target.value })}
+                    />
+                    <input
+                      type="number"
+                      className="w-28 rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                      value={r.dueInDays ?? 1}
+                      onChange={(e) => updateManualRecipe(key, { dueInDays: Number(e.target.value || 0) })}
+                    />
+                    <select
+                      className="w-32 rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                      value={r.priority || "MEDIUM"}
+                      onChange={(e) => updateManualRecipe(key, { priority: e.target.value as any })}
+                    >
+                      {(["LOW", "MEDIUM", "HIGH", "URGENT"] as const).map((p) => (
+                        <option key={p} value={p}>{p.toLowerCase()}</option>
+                      ))}
+                    </select>
+                    <label className="inline-flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={r.active !== false}
+                        onChange={(e) => updateManualRecipe(key, { active: e.target.checked })}
+                      />
+                      Active
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <Button onClick={saveSettings} disabled={savingSettings}>
+              {savingSettings ? "Saving playbook…" : "Save playbook"}
             </Button>
           </div>
         </div>

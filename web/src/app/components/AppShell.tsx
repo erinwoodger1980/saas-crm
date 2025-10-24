@@ -26,7 +26,6 @@ const BASE_NAV: Array<{ href: string; label: string; description: string; icon: 
   { href: "/tasks/owner", label: "Tasks", description: "Personal queue", icon: CheckSquare },
   { href: "/opportunities", label: "Opportunities", description: "Quotes to win", icon: Target },
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
-  { href: "/settings", label: "Settings", description: "Brand & automations", icon: Settings },
 ] as Array<{ href: string; label: string; description: string; icon: any }>;
 
 const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "developer"]);
@@ -90,7 +89,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </span>
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.45em] text-slate-400">Workspace</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.45em] text-slate-400">JoineryAI</p>
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-semibold text-slate-900">{brandName}</span>
                 <span className="hidden items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600 sm:inline-flex">
@@ -103,10 +102,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-2 text-xs text-slate-500 md:flex">
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-600 shadow-sm">
-                <Sparkles className="h-3.5 w-3.5 text-blue-500" />
-                Copilot ready
-              </span>
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/80 px-3 py-1 font-medium text-slate-500 shadow-sm">
                 Hey, <span className="text-slate-700">{greetingName}</span>
               </span>
@@ -141,9 +136,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <Image
                   src="/logo-full.png"
                   alt={`${brandName} full logo`}
-                  width={360}
-                  height={96}
-                  className="h-24 w-auto"
+                  width={480}
+                  height={128}
+                  className="h-32 w-auto"
                   priority
                 />
               </div>
