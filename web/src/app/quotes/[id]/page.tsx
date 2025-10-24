@@ -46,10 +46,30 @@ export default function QuoteBuilderPage() {
         apiFetch<any>(`/tenant/settings`),
       ]);
       setQuote(q);
-      const fields = Array.isArray(settings?.questionnaire)
-        ? settings.questionnaire.map((f: any) => ({ key: f.key, label: f.label }))
-        : [];
-      setQuestionnaire(fields);
+      // Normalize questionnaire to only client-facing fields
+      const normalizeFields = (cfg: any): Array<{ key: string; label: string }> => {
+        if (!cfg) return [];
+        const rawList = Array.isArray(cfg)
+          ? cfg
+          : (Array.isArray(cfg?.questions) ? cfg.questions : []);
+        return rawList
+          .filter((f: any) => {
+            // Only show questions visible to the client
+            const askInQuestionnaire = f?.askInQuestionnaire !== false;
+            const internalOnly = f?.internalOnly === true;
+            const visibleAfterOrder = f?.visibleAfterOrder === true;
+            return askInQuestionnaire && !internalOnly && !visibleAfterOrder;
+          })
+          .map((f: any) => ({
+            key: typeof f?.key === "string" && f.key.trim() ? f.key.trim() : String(f?.id || ""),
+            label:
+              (typeof f?.label === "string" && f.label.trim()) ||
+              (typeof f?.key === "string" && f.key.trim()) ||
+              String(f?.id || "Field"),
+          }))
+          .filter((f: any) => f.key);
+      };
+      setQuestionnaire(normalizeFields(settings?.questionnaire));
 
       // Populate mapping from existing meta.questionKey
       const initial: Record<string, string | ""> = {};

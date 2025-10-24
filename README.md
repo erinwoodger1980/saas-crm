@@ -24,6 +24,18 @@ This repository includes a multi-layer ML design across Gmail/MS365 ingest, quot
 ### 1) API
 
 ```bash
+## ML service (FastAPI) setup
+
+The API forwards parse/predict/train calls to a separate FastAPI service.
+
+- Local: the API defaults to `http://localhost:8000` for ML. Run the ML service from `ml/` and ensure it listens on port 8000.
+- Production: set `ML_URL` in the API environment to your deployed ML URL (for example `https://ml-yourservice.onrender.com`) and redeploy the API.
+
+Verify wiring:
+
+- From the API: `GET /ml/health` should return `{ ok: true, target: "<your ML_URL>" }`.
+- In the app: open Settings → AI Training; the header shows an ML status badge.
+
 cd api
 cp .env.example .env
 

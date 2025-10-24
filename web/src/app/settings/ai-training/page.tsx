@@ -62,6 +62,7 @@ function formatDate(s?: string | null) {
 export default function AiTrainingPage() {
   const { user } = useCurrentUser();
   const { toast } = useToast();
+  const [mlHealth, setMlHealth] = useState<{ ok: boolean; target?: string } | null>(null);
   const [moduleId, setModuleId] = useState<typeof MODULES[number]["id"]>("lead_classifier");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,8 +81,23 @@ export default function AiTrainingPage() {
   const [filesError, setFilesError] = useState<string | null>(null);
   const [files, setFiles] = useState<Array<{ id: string; name: string; uploadedAt?: string; mimeType?: string; sizeBytes?: number | null }>>([]);
   const [fileSel, setFileSel] = useState<Record<string, boolean>>({});
+  const [creatingQuote, setCreatingQuote] = useState(false);
 
   const isEA = !!user?.isEarlyAdopter;
+
+  // ML health indicator
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const h = await apiFetch<{ ok: boolean; target?: string }>("/ml/health");
+        if (!cancel) setMlHealth(h);
+      } catch {
+        if (!cancel) setMlHealth({ ok: false });
+      }
+    })();
+    return () => { cancel = true; };
+  }, []);
 
   useEffect(() => {
     let cancel = false;
@@ -222,6 +238,20 @@ export default function AiTrainingPage() {
       setError(e?.message || "Could not send files to train");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function createDraftQuoteAndOpen() {
+    setCreatingQuote(true);
+    try {
+      const q = await apiFetch<any>("/quotes", { method: "POST", json: { title: `Draft quote ${new Date().toLocaleString()}` } });
+      if (q?.id) {
+        window.location.href = `/settings/ai-training/quotes/${encodeURIComponent(q.id)}`;
+      }
+    } catch (e) {
+      // silently ignore; error box below handles general API errors
+    } finally {
+      setCreatingQuote(false);
     }
   }
 
@@ -382,9 +412,29 @@ export default function AiTrainingPage() {
           <h1 className="text-xl font-semibold text-slate-900">AI Training</h1>
           <p className="text-sm text-slate-600">Tune sensitivity, review recent decisions, and retrain per module.</p>
         </div>
-        {avgConf != null && (
-          <Badge variant="secondary" className="text-sm">Avg confidence: {(avgConf * 100).toFixed(0)}%</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {mlHealth && (
+            <Badge variant={mlHealth.ok ? "secondary" : "destructive"} className="text-xs">
+              ML: {mlHealth.ok ? "online" : "offline"}{mlHealth?.target ? ` • ${mlHealth.target}` : ""}
+            </Badge>
+          )}
+          {avgConf != null && (
+            <Badge variant="secondary" className="text-sm">Avg confidence: {(avgConf * 100).toFixed(0)}%</Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Quote Builder quick access */}
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-slate-700">Quote Builder</p>
+            <p className="text-xs text-slate-500">Parse supplier PDFs, map to questions, and price.</p>
+          </div>
+          <Button size="sm" onClick={createDraftQuoteAndOpen} disabled={creatingQuote}>
+            {creatingQuote ? "Creating…" : "New draft quote"}
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

@@ -26,7 +26,7 @@ const BASE_NAV: Array<{ href: string; label: string; description: string; icon: 
   { href: "/leads", label: "Leads", description: "Inbox & replies", icon: Mail },
   { href: "/tasks/owner", label: "Tasks", description: "Personal queue", icon: CheckSquare },
   { href: "/opportunities", label: "Opportunities", description: "Quotes to win", icon: Target },
-  { href: "/quotes", label: "Quotes", description: "Supplier quotes & pricing", icon: FileText },
+  // Quotes moved under AI Training; keep out of main nav
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
 ] as Array<{ href: string; label: string; description: string; icon: any }>;
 
