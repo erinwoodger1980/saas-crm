@@ -943,7 +943,7 @@ router.post("/import", async (req, res) => {
         let reason = aiReason;
 
         if (aiIsLead === true && !noise) {
-          if ((aiConfidence ?? 0) >= 0.45 || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur)) {
+          if ((aiConfidence ?? 0) >= 0.6 || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur)) {
             isLeadCandidate = true;
             reason = aiReason || "OpenAI classified this as a lead";
           } else if (!reason) {
@@ -956,7 +956,7 @@ router.post("/import", async (req, res) => {
           reason = aiReason || "OpenAI classified this as not a lead";
         }
 
-        if (aiIsLead === null || (aiConfidence ?? 0) < 0.45) {
+        if (aiIsLead === null || (aiConfidence ?? 0) < 0.6) {
           if (heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) && !noise) {
             isLeadCandidate = true;
             const heurReason = "Heuristics detected enquiry keywords and contact details";
@@ -1143,8 +1143,7 @@ router.post("/import", async (req, res) => {
               } else {
                 base.aiPredictedIsLead = classification.isLead;
               }
-              base.userLabelIsLead = classification.isLead;
-              base.userLabeledAt = new Date();
+              // Do not set userLabelIsLead here; leave that to explicit user actions or status changes
             }
             return base;
           })(),

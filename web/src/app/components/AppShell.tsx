@@ -112,13 +112,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
               )}
             </div>
 
-            <Button
-              asChild
-              size="sm"
-              className="rounded-full bg-slate-900 px-4 text-xs font-semibold uppercase tracking-[0.2em] text-white shadow-[0_16px_40px_-26px_rgba(15,23,42,0.8)] hover:bg-slate-800"
-            >
-              <Link href="/settings">Workspace settings</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                asChild
+                size="sm"
+                className="rounded-full bg-slate-900 px-4 text-xs font-semibold uppercase tracking-[0.2em] text-white shadow-[0_16px_40px_-26px_rgba(15,23,42,0.8)] hover:bg-slate-800"
+              >
+                <Link href="/settings">Workspace settings</Link>
+              </Button>
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="rounded-full border-slate-300 bg-white px-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 hover:bg-slate-50"
+              >
+                <Link href="/ai-training">AI training</Link>
+              </Button>
+            </div>
           </div>
         </div>
       </header>

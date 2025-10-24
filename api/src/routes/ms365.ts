@@ -6,6 +6,7 @@ import bcrypt from "bcrypt";
 import { prisma } from "../prisma";
 import { env } from "../env";
 import { normalizeEmail } from "../lib/email";
+import { getAccessTokenForTenant, getAttachment } from "../services/ms365";
 
 const router = Router();
 
@@ -142,3 +143,59 @@ router.get("/ms365/ping", (_req, res) => {
 });
 
 export default router;
+
+/**
+ * Connection status for UI
+ */
+router.get("/connection", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    const conn = await prisma.ms365TenantConnection.findUnique({
+      where: { tenantId },
+      select: { id: true, ms365Address: true, createdAt: true, updatedAt: true },
+    });
+    return res.json({ ok: true, connection: conn });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message || "failed" });
+  }
+});
+
+/**
+ * Stream attachment as inline/download with optional ?jwt=
+ */
+router.get(["/message/:id/attachments/:attachmentId", "/message/:id/attachments/:attachmentId/download"], async (req: any, res) => {
+  // Optional JWT via query for signed URLs
+  try {
+    const qJwt = (req.query.jwt as string | undefined) || undefined;
+    if (qJwt && !req.auth) {
+      const decoded = jwt.verify(qJwt, env.APP_JWT_SECRET) as any;
+      (req as any).auth = { tenantId: decoded.tenantId, userId: decoded.userId, email: decoded.email };
+    }
+  } catch {}
+
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).send("unauthorized");
+    const isDownload = String(req.path).endsWith("/download");
+    const messageId = String(req.params.id);
+    const attachmentId = String(req.params.attachmentId);
+
+    const accessToken = await getAccessTokenForTenant(tenantId);
+    const att = await getAttachment(accessToken, messageId, attachmentId);
+    const name = att?.name || "attachment.pdf";
+    const contentType = att?.contentType || "application/octet-stream";
+    const b64 = att?.contentBytes as string | undefined;
+    if (!b64) return res.status(404).send("attachment_content_missing");
+    const buf = Buffer.from(b64, "base64");
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", String(buf.length));
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="${name}"`);
+    return res.send(buf);
+  } catch (e: any) {
+    console.error("[ms365] attachment stream failed:", e);
+    return res.status(500).send(e?.message || "attachment stream failed");
+  }
+});

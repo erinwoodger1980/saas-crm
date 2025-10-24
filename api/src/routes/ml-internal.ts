@@ -3,6 +3,7 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { getAccessTokenForTenant, fetchMessage } from "../services/gmail";
+import { getAccessTokenForTenant as getMsAccessToken, listSentWithAttachments as msListSentWithAttachments, listAttachments as msListAttachments } from "../services/ms365";
 import { prisma } from "../db"; // singleton PrismaClient
 
 type GmailMessageRef = { id: string; threadId?: string };
@@ -359,3 +360,133 @@ router.post("/collect-train-save", async (req: any, res) => {
 });
 
 export default router;
+// -----------------------------
+// POST /internal/ml/ingest-ms365
+// -----------------------------
+/**
+ * Body: { limit?: number }
+ * Collect Sent items with PDF attachments (Microsoft 365) and return signed URLs.
+ */
+router.post("/ingest-ms365", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 500), 500));
+    const accessToken = await getMsAccessToken(tenantId);
+
+    type Item = {
+      messageId: string;
+      attachmentId: string;
+      url: string;
+      subject: string | null;
+      quotedAt: string | null;
+    };
+    const out: Item[] = [];
+
+    let nextLink: string | undefined;
+    while (out.length < limit) {
+      const page = await msListSentWithAttachments(accessToken, Math.min(limit - out.length, 50), nextLink);
+      const messages = Array.isArray(page.value) ? page.value : [];
+      nextLink = page['@odata.nextLink'] as string | undefined;
+
+      for (const m of messages) {
+        if (out.length >= limit) break;
+        if (!m?.id) continue;
+        if (!m?.hasAttachments) continue;
+        const subject = (m?.subject as string | undefined) || null;
+        const sentDate = (m?.sentDateTime as string | undefined) || null;
+
+        const atts = await msListAttachments(accessToken, m.id);
+        const arr = Array.isArray(atts.value) ? atts.value : [];
+        for (const a of arr) {
+          if (out.length >= limit) break;
+          const name = (a?.name as string | undefined) || "";
+          const ct = (a?.contentType as string | undefined) || "";
+          const isPdf = /pdf$/i.test(name) || /application\/pdf/i.test(ct);
+          if (!isPdf || !a?.id) continue;
+
+          const token = jwt.sign(
+            { tenantId, userId: "system", email: "system@local" },
+            env.APP_JWT_SECRET,
+            { expiresIn: "15m" }
+          );
+          const url = `${API_BASE}/ms365/message/${encodeURIComponent(m.id)}/attachments/${encodeURIComponent(a.id)}?jwt=${encodeURIComponent(token)}`;
+          out.push({ messageId: m.id, attachmentId: a.id, url, subject, quotedAt: sentDate });
+        }
+      }
+
+      if (!nextLink || messages.length === 0) break;
+    }
+
+    return res.json({ ok: true, count: out.length, items: out });
+  } catch (e: any) {
+    console.error("[internal/ml/ingest-ms365] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// -----------------------------
+// POST /internal/ml/collect-train-save-ms365
+// -----------------------------
+router.post("/collect-train-save-ms365", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
+
+    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 50), 500));
+
+    const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-ms365`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+      },
+      body: JSON.stringify({ limit }),
+    });
+
+    const ingestText = await ingestResp.text();
+    let ingestJson: any = {};
+    try { ingestJson = ingestText ? JSON.parse(ingestText) : {}; } catch { ingestJson = { raw: ingestText }; }
+    if (!ingestResp.ok) return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
+
+    type Item = { messageId: string; attachmentId: string; url: string; quotedAt?: string | null };
+    const items: Item[] = Array.isArray(ingestJson.items)
+      ? ingestJson.items
+          .filter((it: any) => it?.messageId && it?.attachmentId && it?.url)
+          .map((it: any) => ({
+            messageId: String(it.messageId),
+            attachmentId: String(it.attachmentId),
+            url: String(it.url),
+            quotedAt: it.quotedAt ?? null,
+          }))
+      : [];
+
+    let saved = 0;
+    for (const data of items) {
+      await prisma.mLTrainingSample.upsert({
+        where: { tenantId_messageId_attachmentId: { tenantId, messageId: data.messageId, attachmentId: data.attachmentId } },
+        create: { tenantId, messageId: data.messageId, attachmentId: data.attachmentId, url: data.url, quotedAt: data.quotedAt ? new Date(data.quotedAt) : null },
+        update: { url: data.url, quotedAt: data.quotedAt ? new Date(data.quotedAt) : null },
+      });
+      saved += 1;
+    }
+
+    const trainResp = await fetch(`${ML_URL}/train`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenantId, items: items.map((it) => ({ messageId: it.messageId, attachmentId: it.attachmentId, url: it.url, quotedAt: it.quotedAt ?? null })) }),
+    });
+
+    const trainText = await trainResp.text();
+    let trainJson: any = {};
+    try { trainJson = trainText ? JSON.parse(trainText) : {}; } catch { trainJson = { raw: trainText }; }
+    if (!trainResp.ok) return res.status(trainResp.status).json({ error: "ml_train_failed", detail: trainJson, saved });
+
+    return res.json({ ok: true, tenantId, requested: limit, collected: items.length, saved, ml: trainJson });
+  } catch (e: any) {
+    console.error("[internal/ml/collect-train-save-ms365] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
