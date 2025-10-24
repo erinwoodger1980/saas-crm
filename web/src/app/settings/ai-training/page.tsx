@@ -127,6 +127,63 @@ export default function AiTrainingPage() {
     return s;
   }, [filteredInsights]);
 
+  function parseEmailRef(inputSummary?: string | null): { provider: string; messageId: string } | null {
+    if (!inputSummary || !inputSummary.startsWith("email:")) return null;
+    const parts = inputSummary.split(":");
+    const provider = parts[1];
+    const messageId = parts.slice(2).join(":");
+    return { provider, messageId };
+  }
+
+  function toCsvValue(v: any): string {
+    if (v == null) return "";
+    const s = String(v);
+    if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  function exportCsv() {
+    const headers = [
+      "timestamp",
+      "module",
+      "provider",
+      "messageId",
+      "decision",
+      "confidence",
+      "feedbackThumbs",
+      "inputSummary",
+    ];
+    const rows = filteredInsights.map((i) => {
+      const ref = parseEmailRef(i.inputSummary);
+      const provider = ref?.provider || "";
+      const messageId = ref?.messageId || "";
+      const thumbs = typeof i.userFeedback?.thumbs === "boolean" ? i.userFeedback.thumbs : "";
+      return [
+        i.createdAt,
+        i.module,
+        provider,
+        messageId,
+        i.decision || "",
+        typeof i.confidence === "number" ? i.confidence.toFixed(3) : "",
+        thumbs,
+        i.inputSummary || "",
+      ].map(toCsvValue).join(",");
+    });
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.href = url;
+    a.download = `ai-training-${moduleId}-${ts}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   async function saveThreshold() {
     setSaving(true);
     setError(null);
@@ -282,6 +339,7 @@ export default function AiTrainingPage() {
                 <option value="other">Other</option>
               </select>
               <Badge variant="secondary" className="text-xs">{summary.accepted} ✓ / {summary.rejected} ✕ / {summary.total} total</Badge>
+              <Button size="sm" variant="outline" onClick={exportCsv}>Export CSV</Button>
             </div>
           </div>
           <div className="max-h-[420px] space-y-2 overflow-auto pr-2">
