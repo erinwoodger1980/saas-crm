@@ -51,7 +51,7 @@ type Settings = {
   questionnaireEmailBody?: string | null;
   aiFollowupLearning?: { crossTenantOptIn: boolean; lastUpdatedISO?: string | null } | null;
 };
-type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number };
+type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number; recallFirst?: boolean };
 type CostRow = {
   id: string;
   tenantId: string;
@@ -201,6 +201,9 @@ export default function SettingsPage() {
   const [profileLastName, setProfileLastName] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [qFields, setQFields] = useState<QField[]>([]);
+  const [qSearch, setQSearch] = useState("");
+  const [qHideInternal, setQHideInternal] = useState(true);
+  const [qOnlyPublic, setQOnlyPublic] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
 
@@ -453,13 +456,37 @@ export default function SettingsPage() {
       </Section>
 
       <Section title="Questionnaire" description="Manage the public questionnaire fields">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <input
+            className="w-64 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+            placeholder="Search questions…"
+            value={qSearch}
+            onChange={(e) => setQSearch(e.target.value)}
+          />
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={qHideInternal} onChange={(e) => setQHideInternal(e.target.checked)} />
+            Hide internal-only
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={qOnlyPublic} onChange={(e) => setQOnlyPublic(e.target.checked)} />
+            Show only public form fields
+          </label>
+        </div>
         <div className="space-y-3">
           {qFields.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white/60 px-4 py-6 text-sm text-slate-500">
               No questions yet.
             </div>
           ) : (
-            qFields.map((f, idx) => (
+            qFields
+              .filter((f) => (qHideInternal ? !f.internalOnly : true))
+              .filter((f) => (qOnlyPublic ? f.askInQuestionnaire !== false && !f.internalOnly : true))
+              .filter((f) => {
+                const hay = `${f.key} ${f.label} ${f.group || ""}`.toLowerCase();
+                const q = qSearch.trim().toLowerCase();
+                return !q || hay.includes(q);
+              })
+              .map((f, idx) => (
               <div key={f.id || idx} className="flex flex-wrap items-center gap-2">
                 <input
                   className="w-36 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
@@ -759,6 +786,10 @@ export default function SettingsPage() {
           <label className="inline-flex items-center gap-2">
             <span className="text-xs text-slate-500">Poll interval (minutes)</span>
             <input type="number" value={inbox.intervalMinutes} onChange={(e) => setInbox((p) => ({ ...p, intervalMinutes: Number(e.target.value || 10) }))} className="w-24 rounded-md border px-2 py-1" />
+          </label>
+          <label className="inline-flex items-center gap-2 md:col-span-3">
+            <input type="checkbox" checked={!!inbox.recallFirst} onChange={(e) => setInbox((p) => ({ ...p, recallFirst: e.target.checked }))} />
+            <span>Prefer recall (never miss leads)</span>
           </label>
         </div>
         <div className="mt-3">
