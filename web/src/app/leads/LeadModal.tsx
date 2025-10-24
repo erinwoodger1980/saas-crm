@@ -2,7 +2,7 @@
 "use client";
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { API_BASE, apiFetch } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import {
   DEFAULT_TASK_PLAYBOOK,
@@ -59,6 +59,8 @@ type QuestionnaireField = {
   options?: string[];
   askInQuestionnaire?: boolean;
   showOnLead?: boolean;
+  internalOnly?: boolean;
+  visibleAfterOrder?: boolean;
   sortOrder?: number;
 };
 
@@ -71,6 +73,8 @@ type NormalizedQuestionnaireField = {
   options: string[];
   askInQuestionnaire: boolean;
   showOnLead: boolean;
+  internalOnly?: boolean;
+  visibleAfterOrder?: boolean;
   sortOrder: number;
 };
 
@@ -181,6 +185,8 @@ function normalizeQuestionnaireFields(
         (raw as any).showOnLead !== undefined
           ? Boolean((raw as any).showOnLead)
           : Boolean((raw as any).showInternally || (raw as any).workspace);
+      const internalOnly = (raw as any).internalOnly === true ? true : undefined;
+      const visibleAfterOrder = (raw as any).visibleAfterOrder === true ? true : undefined;
       const options =
         type === "select" && Array.isArray(raw.options)
           ? raw.options
@@ -200,6 +206,8 @@ function normalizeQuestionnaireFields(
         options,
         askInQuestionnaire,
         showOnLead,
+        internalOnly,
+        visibleAfterOrder,
         sortOrder,
       } as NormalizedQuestionnaireField;
     })
@@ -807,19 +815,123 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     try {
       await ensureManualTask("supplier_followup");
 
-      const supplier = prompt("Supplier email (optional):");
-      if (supplier) {
-        openMailTo(
-          supplier,
-          `Price request: ${lead.contactName || "Project"}`,
-          "Hi,\n\nCould you price the attached items?\n\nThanks!"
-        );
+      const to = prompt("Supplier email (optional):")?.trim();
+
+      // Build a concise fields summary from questionnaire answers
+      const fields: Record<string, any> = {};
+      try {
+        // top-level questionnaire answers from known fields
+        for (const f of questionnaireFields) {
+          if (!f.key) continue;
+          const v = (lead.custom as any)?.[f.key];
+          if (v === undefined || v === null) continue;
+          fields[f.label || f.key] = formatAnswer(v);
+        }
+        // include a simple summary of first item if available
+        const items = Array.isArray((lead.custom as any)?.items) ? (lead.custom as any).items : [];
+        if (items.length) {
+          const first = items[0] || {};
+          const simple: Record<string, any> = {};
+          Object.entries(first).forEach(([k, v]) => {
+            if (k === "photos") return;
+            const val = formatAnswer(v);
+            if (val != null) simple[k] = val;
+          });
+          if (Object.keys(simple).length) fields["Item 1"] = simple;
+        }
+      } catch {}
+
+      // Prepare attachments from any questionnaire uploads (limit a few)
+      const uploads = Array.isArray((lead.custom as any)?.uploads) ? (lead.custom as any).uploads : [];
+      const attachments = uploads.slice(0, 5).map((u: any) => ({
+        source: "upload" as const,
+        filename: (u?.filename && String(u.filename)) || "attachment",
+        mimeType: (u?.mimeType && String(u.mimeType)) || "application/octet-stream",
+        base64: String(u?.base64 || ""),
+      })).filter((u: any) => u.base64);
+
+      // Attempt server-side send (via Gmail API). Fallback to mailto if it fails or no 'to'
+      if (to) {
+        try {
+          await apiFetch(`/leads/${encodeURIComponent(lead.id)}/request-supplier-quote`, {
+            method: "POST",
+            headers: { ...authHeaders, "Content-Type": "application/json" },
+            json: {
+              to,
+              subject: `Quote request for ${lead.contactName || "lead"}`,
+              text: "Please provide a price for the following enquiry.",
+              fields,
+              attachments,
+            },
+          });
+        } catch (err) {
+          // Fallback to mailto
+          openMailTo(
+            to,
+            `Price request: ${lead.contactName || "Project"}`,
+            "Hi,\n\nCould you price the attached items?\n\nThanks!"
+          );
+        }
+      } else {
+        // If no email provided, open a mailto for manual send
+        const subject = `Price request: ${lead.contactName || "Project"}`;
+        const body = "Hi,\n\nCould you price the attached items?\n\nThanks!";
+        openMailTo("", subject, body);
       }
+
       await reloadTasks();
       toast("Supplier request sent. Follow-up added.");
     } finally {
       setBusyTask(false);
     }
+  }
+
+  async function uploadSupplierQuote() {
+    if (!lead?.id) return;
+    // Create a hidden file input for PDF/image selection
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/pdf,image/*";
+    input.multiple = true;
+    input.onchange = async () => {
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      setSaving(true);
+      try {
+        // Ensure a draft quote exists
+        const quote = await apiFetch<any>("/quotes", {
+          method: "POST",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          json: {
+            leadId: lead.id,
+            title: `Estimate for ${lead.contactName || lead.email || "Lead"}`,
+          },
+        });
+
+        // Upload files as multipart/form-data
+        const fd = new FormData();
+        for (const f of files) fd.append("files", f, f.name);
+        await fetch(`${API_BASE}/quotes/${encodeURIComponent(quote.id)}/files`, {
+          method: "POST",
+          headers: authHeaders as any,
+          body: fd,
+          credentials: "include",
+        });
+
+        await ensureManualTask("quote_draft_complete", {
+          relatedType: "QUOTE",
+          relatedId: quote?.id,
+        });
+        await reloadTasks();
+        toast("Supplier quote uploaded to draft.");
+      } catch (e) {
+        console.error(e);
+        alert("Failed to upload supplier quote");
+      } finally {
+        setSaving(false);
+      }
+    };
+    input.click();
   }
 
   async function handleStatusChange(event: ChangeEvent<HTMLSelectElement>) {
@@ -878,8 +990,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     [settings?.questionnaire]
   );
   const workspaceFields = useMemo(
-    () => questionnaireFields.filter((field) => field.showOnLead),
-    [questionnaireFields]
+    () =>
+      questionnaireFields.filter((field) => {
+        if (!field.showOnLead) return false;
+        if (field.visibleAfterOrder) {
+          return uiStatus === "WON";
+        }
+        return true;
+      }),
+    [questionnaireFields, uiStatus]
   );
   const customData = useMemo(
     () => (lead?.custom && typeof lead.custom === "object" ? (lead.custom as Record<string, any>) : {}),
@@ -984,6 +1103,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
     return responses;
   }, [customData, questionnaireFields]);
+
+  // Inline edit state for questionnaire responses
+  const [qEdit, setQEdit] = useState<Record<string, boolean>>({});
+  const [qDraft, setQDraft] = useState<Record<string, string>>({});
+  function toggleQEdit(key: string, on: boolean, initial?: string) {
+    setQEdit((prev) => ({ ...prev, [key]: on }));
+    if (on && initial !== undefined) {
+      setQDraft((prev) => ({ ...prev, [key]: initial }));
+    }
+  }
   const questionnaireUploads = useMemo<
     Array<{ filename: string; mimeType: string; base64: string; sizeKB: number | null; addedAt: string | null }>
   >(() => {
@@ -1061,6 +1190,24 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
               Create Draft Estimate
             </button>
           )}
+
+          <button
+            className="ml-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+            onClick={requestSupplierPrice}
+            title="Ask your supplier for pricing — we’ll send a concise RFQ or open your mail client"
+            disabled={busyTask}
+          >
+            Send supplier RFQ
+          </button>
+
+          <button
+            className="ml-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+            onClick={uploadSupplierQuote}
+            title="Upload a supplier PDF or image to attach to a draft quote"
+            disabled={saving}
+          >
+            Upload supplier quote
+          </button>
 
           <button
             className="ml-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
@@ -1332,17 +1479,64 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 <div className="mt-4 space-y-3">
                   {questionnaireResponses.length ? (
                     <dl className="space-y-3">
-                      {questionnaireResponses.map(({ field, value }, idx) => (
-                        <div key={field.key ?? field.id ?? idx} className="rounded-xl border border-slate-200/70 bg-white/70 p-3">
-                          <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            {field.label || field.key || field.id}
-                            {field.required ? <span className="text-rose-500"> *</span> : null}
-                          </dt>
-                          <dd className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
-                            {value ?? <span className="text-slate-400">Not provided</span>}
-                          </dd>
-                        </div>
-                      ))}
+                      {questionnaireResponses.map(({ field, value }, idx) => {
+                        const k = field.key || field.id || String(idx);
+                        const isEditing = !!qEdit[k];
+                        const draftVal = qDraft[k] ?? (value ?? "");
+                        const inputClasses = "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200";
+                        return (
+                          <div key={k} className="rounded-xl border border-slate-200/70 bg-white/70 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                {field.label || field.key || field.id}
+                                {field.required ? <span className="text-rose-500"> *</span> : null}
+                              </dt>
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-sky-600 hover:underline"
+                                onClick={() => {
+                                  if (isEditing) {
+                                    // cancel
+                                    toggleQEdit(k, false);
+                                  } else {
+                                    toggleQEdit(k, true, value ?? "");
+                                  }
+                                }}
+                              >
+                                {isEditing ? "Cancel" : "Edit"}
+                              </button>
+                            </div>
+                            <dd className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
+                              {isEditing ? (
+                                field.type === "textarea" ? (
+                                  <textarea
+                                    className={`${inputClasses} min-h-[100px]`}
+                                    value={draftVal}
+                                    onChange={(e) => setQDraft((prev) => ({ ...prev, [k]: e.target.value }))}
+                                    onBlur={async (e) => {
+                                      await saveCustomField(field as any, e.target.value);
+                                      toggleQEdit(k, false);
+                                    }}
+                                  />
+                                ) : (
+                                  <input
+                                    className={inputClasses}
+                                    type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                                    value={draftVal}
+                                    onChange={(e) => setQDraft((prev) => ({ ...prev, [k]: e.target.value }))}
+                                    onBlur={async (e) => {
+                                      await saveCustomField(field as any, e.target.value);
+                                      toggleQEdit(k, false);
+                                    }}
+                                  />
+                                )
+                              ) : (
+                                value ?? <span className="text-slate-400">Not provided</span>
+                              )}
+                            </dd>
+                          </div>
+                        );
+                      })}
                     </dl>
                   ) : (
                     <div className="rounded-xl border border-dashed border-slate-200 bg-white/60 p-3 text-sm text-slate-500">
