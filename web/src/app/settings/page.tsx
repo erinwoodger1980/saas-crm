@@ -197,6 +197,8 @@ export default function SettingsPage() {
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
+  const [gmailConn, setGmailConn] = useState<{ gmailAddress?: string | null } | null>(null);
+  const [ms365Conn, setMs365Conn] = useState<{ ms365Address?: string | null } | null>(null);
   const [updatingEarlyAccess, setUpdatingEarlyAccess] = useState(false);
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
@@ -382,6 +384,54 @@ export default function SettingsPage() {
       }
     } catch {
       window.location.href = `${fallbackBase}/gmail/connect`;
+    }
+  }
+
+  async function connectMs365() {
+    const base = API_BASE.replace(/\/$/, "");
+    window.location.href = `${base}/ms365/login`;
+  }
+
+  async function refreshConnections() {
+    try {
+      const g = await apiFetch<{ ok: boolean; connection: { gmailAddress?: string | null } | null }>("/gmail/connection");
+      setGmailConn(g?.connection || null);
+    } catch {}
+    try {
+      const m = await apiFetch<{ ok: boolean; connection: { ms365Address?: string | null } | null }>("/ms365/connection");
+      setMs365Conn(m?.connection || null);
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (tab === "email") {
+      refreshConnections();
+    }
+  }, [tab]);
+
+  async function runImportGmail() {
+    try {
+      const r = await apiFetch<{ ok: boolean; imported: Array<{ createdLead: boolean }> }>("/gmail/import", {
+        method: "POST",
+        json: { max: 10, q: "newer_than:30d" },
+      });
+      const created = (r.imported || []).filter((x) => x.createdLead).length;
+      toast({ title: "Gmail import complete", description: `${created} new lead(s) created.` });
+    } catch (e: any) {
+      toast({ title: "Gmail import failed", description: e?.message || "", variant: "destructive" });
+    }
+  }
+
+  async function runImportMs365() {
+    try {
+      const r = await apiFetch<{ ok: boolean; imported: Array<{ createdLead: boolean }> }>("/ms365/import", {
+        method: "POST",
+        json: { max: 10 },
+      });
+      const created = (r.imported || []).filter((x) => x.createdLead).length;
+      toast({ title: "Microsoft 365 import complete", description: `${created} new lead(s) created.` });
+    } catch (e: any) {
+      toast({ title: "MS365 import failed", description: e?.message || "", variant: "destructive" });
     }
   }
 
@@ -871,7 +921,29 @@ export default function SettingsPage() {
             <span>Prefer recall (never miss leads)</span>
           </label>
         </div>
-        <div className="mt-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="rounded-xl border bg-white/70 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-sm font-semibold">Gmail</div>
+              <div className="text-xs text-slate-600">{gmailConn?.gmailAddress ? `Connected as ${gmailConn.gmailAddress}` : "Not connected"}</div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={connectGmail}>Connect</Button>
+              <Button variant="outline" onClick={runImportGmail}>Run import now</Button>
+            </div>
+          </div>
+          <div className="rounded-xl border bg-white/70 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-sm font-semibold">Microsoft 365</div>
+              <div className="text-xs text-slate-600">{ms365Conn?.ms365Address ? `Connected as ${ms365Conn.ms365Address}` : "Not connected"}</div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={connectMs365}>Connect</Button>
+              <Button variant="outline" onClick={runImportMs365}>Run import now</Button>
+            </div>
+          </div>
+        </div>
+        <div className="mt-4">
           <Button onClick={saveInbox} disabled={savingInbox}>{savingInbox ? "Saving…" : "Save inbox"}</Button>
         </div>
       </Section>
