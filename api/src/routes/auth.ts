@@ -234,20 +234,38 @@ router.post("/stripe-link-session", async (req, res) => {
 /**
  * Dev-only helper: creates demo user+tenant if missing and returns a token.
  */
-router.post("/dev-seed", async (_req, res) => {
+router.post("/dev-seed", async (req, res) => {
   try {
-    let tenant = await prisma.tenant.findFirst();
-    if (!tenant) tenant = await prisma.tenant.create({ data: { name: "Acme" } });
+    // Guard: in production, require a shared secret header to use this endpoint
+    const shouldRequireSecret = process.env.NODE_ENV === "production";
+    const requiredSecret = process.env.DEV_SEED_SECRET?.trim();
+    if (shouldRequireSecret && requiredSecret) {
+      const provided = req.headers["x-seed-secret"] as string | undefined;
+      if (!provided || provided.trim() !== requiredSecret) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+    } else if (shouldRequireSecret && !requiredSecret) {
+      // If in prod and no secret configured, disallow by default
+      return res.status(403).json({ error: "forbidden" });
+    }
 
-    const demoEmail = "erin@acme.test";
-    const normalizedEmail = normalizeEmail(demoEmail) || demoEmail;
+    const body = (req.body || {}) as { email?: unknown; password?: unknown; reset?: unknown; company?: unknown };
+    const emailRaw = typeof body.email === "string" && body.email ? body.email : "erin@acme.test";
+    const passwordRaw = typeof body.password === "string" && body.password ? body.password : "secret12";
+    const reset = body.reset === true || body.reset === "true";
+    const company = typeof body.company === "string" && body.company ? body.company : "Acme";
+
+    let tenant = await prisma.tenant.findFirst();
+    if (!tenant) tenant = await prisma.tenant.create({ data: { name: company } });
+
+    const normalizedEmail = normalizeEmail(emailRaw) || emailRaw;
 
     let user = await prisma.user.findFirst({
       where: { email: { equals: normalizedEmail, mode: "insensitive" } },
     });
 
     if (!user) {
-      const passwordHash = await bcrypt.hash("secret12", 10);
+      const passwordHash = await bcrypt.hash(passwordRaw, 10);
       user = await prisma.user.create({
         data: {
           email: normalizedEmail,
@@ -257,6 +275,16 @@ router.post("/dev-seed", async (_req, res) => {
           isEarlyAdopter: true,
         },
       });
+    } else {
+      // Ensure the user belongs to the seed tenant
+      if (user.tenantId !== tenant.id) {
+        user = await prisma.user.update({ where: { id: user.id }, data: { tenantId: tenant.id } });
+      }
+      // Optionally reset password when requested
+      if (reset) {
+        const passwordHash = await bcrypt.hash(passwordRaw, 10);
+        user = await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+      }
     }
 
     const token = jwt.sign(
@@ -270,7 +298,7 @@ router.post("/dev-seed", async (_req, res) => {
       ok: true,
       tenantId: tenant.id,
       userId: user.id,
-      email: demoEmail,
+      email: normalizedEmail,
       token,
       jwt: token,
       user: {
