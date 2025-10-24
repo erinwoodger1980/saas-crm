@@ -43,6 +43,23 @@ function sanitizeUrl(value: unknown): string | null {
   }
 }
 
+function featureFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const path = (u.pathname || "/").replace(/\/$/, "") || "/";
+    const slug = path === "/" ? "home" : path.slice(1);
+    const cleaned = slug
+      .toLowerCase()
+      .replace(/[^a-z0-9\-\/]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^\-|\-$/g, "");
+    return cleaned || "unknown";
+  } catch {
+    return null;
+  }
+}
+
 // POST /feedback  { feature: string, rating?: number, comment?: string, sourceUrl?: string }
 router.post("/", async (req: any, res) => {
   try {
@@ -53,7 +70,13 @@ router.post("/", async (req: any, res) => {
     if (!auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const { feature, rating, comment, sourceUrl } = req.body || {};
-    if (!feature || typeof feature !== "string") {
+    let featureFinal: string | null = typeof feature === "string" ? feature : null;
+    if (!featureFinal) {
+      // Derive from provided sourceUrl or Referer header as a best-effort fallback
+      const referer = (req.headers["referer"] as string | undefined) || undefined;
+      featureFinal = featureFromUrl(sourceUrl as string | undefined) || featureFromUrl(referer) || null;
+    }
+    if (!featureFinal) {
       return res.status(400).json({ error: "feature_required" });
     }
     if (rating != null && (isNaN(rating) || rating < 1 || rating > 5)) {
@@ -64,7 +87,7 @@ router.post("/", async (req: any, res) => {
       data: {
         tenantId: auth.tenantId,
         userId: auth.userId ?? null,
-        feature: sanitizeFeature(feature),
+        feature: sanitizeFeature(featureFinal),
         rating: rating ?? null,
         comment: comment ? String(comment).slice(0, 5000) : null,
         sourceUrl: sanitizeUrl(sourceUrl),

@@ -112,8 +112,16 @@ export default function FeedbackWidget() {
       setTimeout(() => setSuccess(false), 4000);
       setOpen(false);
     } catch (err: any) {
-      const message = err?.message || "Something went wrong";
-      setError(message);
+      const status = err?.status ?? err?.response?.status;
+      const details = err?.details;
+      if (status === 401) {
+        setError("Please sign in to send feedback.");
+      } else if (details?.error === "feature_required") {
+        setError("Missing feature tag. Please try again from the page you were on.");
+      } else {
+        const message = err?.message || "Something went wrong";
+        setError(message);
+      }
     } finally {
       setSubmitting(false);
     }
