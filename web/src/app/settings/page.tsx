@@ -193,6 +193,7 @@ export default function SettingsPage() {
   const { user, mutate: mutateCurrentUser } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"company" | "questionnaire" | "playbook" | "email">("company");
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -206,6 +207,7 @@ export default function SettingsPage() {
   const [qOnlyPublic, setQOnlyPublic] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     (async () => {
@@ -397,13 +399,38 @@ export default function SettingsPage() {
   if (loading || !s) return <div className="p-6 text-sm text-slate-600">Loading…</div>;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 space-y-8">
+    <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Company Settings</h1>
-        <Button onClick={saveProfile}>Save Profile</Button>
+        <h1 className="text-2xl font-bold">Settings</h1>
       </div>
 
-      <Section title="Company profile" description="Edit basic company and owner details">
+      {/* Tabs */}
+      <div className="sticky top-0 z-10 -mx-4 mb-2 bg-gradient-to-b from-white/90 to-white/0 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "company", label: "Company" },
+            { key: "questionnaire", label: "Questionnaire" },
+            { key: "playbook", label: "Playbook" },
+            { key: "email", label: "Email ingest" },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key as any)}
+              className={`rounded-full px-4 py-1.5 text-sm font-semibold shadow-sm border ${
+                tab === (t.key as any)
+                  ? "bg-[rgb(var(--brand))] border-[rgb(var(--brand))] text-white"
+                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "company" && (
+      <>
+      <Section title="Company profile" description="Edit basic company and owner details" right={<Button onClick={saveProfile}>Save Profile</Button>}>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Company name">
             <input
@@ -454,7 +481,24 @@ export default function SettingsPage() {
           </Button>
         </div>
       </Section>
+      <Section title="Source costs">
+        <SourceCosts />
+      </Section>
+      <Section title="Early Access">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={!!user?.isEarlyAdopter}
+            disabled={updatingEarlyAccess}
+            onChange={(e) => updateEarlyAccess(e.target.checked)}
+          />
+          <span>{user?.isEarlyAdopter ? "Enabled" : "Disabled"}</span>
+        </label>
+      </Section>
+      </>
+      )}
 
+      {tab === "questionnaire" && (
       <Section title="Questionnaire" description="Manage the public questionnaire fields">
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <input
@@ -478,15 +522,40 @@ export default function SettingsPage() {
               No questions yet.
             </div>
           ) : (
-            qFields
-              .filter((f) => (qHideInternal ? !f.internalOnly : true))
-              .filter((f) => (qOnlyPublic ? f.askInQuestionnaire !== false && !f.internalOnly : true))
-              .filter((f) => {
-                const hay = `${f.key} ${f.label} ${f.group || ""}`.toLowerCase();
-                const q = qSearch.trim().toLowerCase();
-                return !q || hay.includes(q);
-              })
-              .map((f, idx) => (
+            Object.entries(
+              qFields.reduce((acc: Record<string, QField[]>, f) => {
+                const g = (f.group || "(Ungrouped)").trim();
+                if (!acc[g]) acc[g] = [];
+                acc[g].push(f);
+                return acc;
+              }, {})
+            ).map(([groupName, fields]) => (
+              <div key={groupName} className="rounded-xl border bg-white/80">
+                <div className="flex items-center justify-between px-3 py-2">
+                  <div className="text-sm font-semibold text-slate-800">
+                    {groupName}
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs text-slate-600 hover:text-slate-800"
+                    onClick={() => setOpenGroups((prev) => ({ ...prev, [groupName]: !(prev[groupName] ?? true) }))}
+                  >
+                    {(openGroups[groupName] ?? true) ? "Collapse" : "Expand"}
+                  </button>
+                </div>
+                {(openGroups[groupName] ?? true) && (
+                  <div className="space-y-3 border-t px-3 py-3">
+                    {fields
+                      .filter((f) => (qHideInternal ? !f.internalOnly : true))
+                      .filter((f) => (qOnlyPublic ? f.askInQuestionnaire !== false && !f.internalOnly : true))
+                      .filter((f) => {
+                        const hay = `${f.key} ${f.label} ${f.group || ""}`.toLowerCase();
+                        const q = qSearch.trim().toLowerCase();
+                        return !q || hay.includes(q);
+                      })
+                      .map((f) => {
+                        const idx = qFields.findIndex((q) => (q.id && f.id ? q.id === f.id : q.key === f.key));
+                        return (
               <div key={f.id || idx} className="flex flex-wrap items-center gap-2">
                 <input
                   className="w-36 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
@@ -637,6 +706,11 @@ export default function SettingsPage() {
                   Remove
                 </button>
               </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
             ))
           )}
 
@@ -661,7 +735,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </Section>
+      )}
 
+      {tab === "playbook" && (
       <Section title="Task playbook" description="Define the tasks to create for each stage and the quick-add actions">
         <div className="space-y-6">
           {STATUS_KEYS.map((status) => (
@@ -772,7 +848,10 @@ export default function SettingsPage() {
           </div>
         </div>
       </Section>
+      )}
 
+      {tab === "email" && (
+      <>
       <Section title="Inbox & Integrations" description="Enable Gmail or Microsoft 365 ingestion">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <label className="inline-flex items-center gap-2">
@@ -796,26 +875,11 @@ export default function SettingsPage() {
           <Button onClick={saveInbox} disabled={savingInbox}>{savingInbox ? "Saving…" : "Save inbox"}</Button>
         </div>
       </Section>
-
-      <Section title="Source costs">
-        <SourceCosts />
-      </Section>
-
-      <Section title="Early Access">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={!!user?.isEarlyAdopter}
-            disabled={updatingEarlyAccess}
-            onChange={(e) => updateEarlyAccess(e.target.checked)}
-          />
-          <span>{user?.isEarlyAdopter ? "Enabled" : "Disabled"}</span>
-        </label>
-      </Section>
-
       <Section title="Gmail Integration">
         <Button onClick={connectGmail}>Connect Gmail</Button>
       </Section>
+      </>
+      )}
     </div>
   );
 }
