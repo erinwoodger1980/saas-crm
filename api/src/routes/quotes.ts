@@ -48,7 +48,14 @@ router.post("/", requireAuth, async (req: any, res) => {
   if (!title) return res.status(400).json({ error: "title_required" });
 
   const q = await prisma.quote.create({
-    data: { tenantId, title, leadId: leadId || null },
+    data: {
+      tenantId,
+      title,
+      leadId: leadId || null,
+      // Sensible defaults; store pricing preference in meta
+      markupDefault: new Prisma.Decimal(0.25),
+      meta: { pricingMode: "ml" },
+    },
   });
   res.json(q);
 });
@@ -94,6 +101,38 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
 });
 
 export default router;
+
+/**
+ * PATCH /quotes/:id/preference
+ * Body: { pricingMode: "ml" | "margin", margin?: number }
+ * Persists the per-quote pricing preference and optional default margin.
+ */
+router.patch("/:id/preference", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const q = await prisma.quote.findFirst({ where: { id, tenantId } });
+    if (!q) return res.status(404).json({ error: "not_found" });
+
+    const pricingModeRaw = String(req.body?.pricingMode || "").toLowerCase();
+    const pricingMode = pricingModeRaw === "ml" ? "ml" : pricingModeRaw === "margin" ? "margin" : null;
+    if (!pricingMode) return res.status(400).json({ error: "invalid_pricing_mode" });
+
+    const updates: any = { meta: { ...(q.meta as any || {}), pricingMode } };
+    if (req.body?.margin !== undefined) {
+      const m = Number(req.body.margin);
+      if (Number.isFinite(m) && m >= 0 && m <= 5) {
+        updates.markupDefault = new Prisma.Decimal(m);
+      }
+    }
+
+    const saved = await prisma.quote.update({ where: { id: q.id }, data: updates });
+    return res.json({ ok: true, quote: saved });
+  } catch (e: any) {
+    console.error("[/quotes/:id/preference] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
 /**
  * POST /quotes/:id/parse
  * For each supplier file, generate a signed download URL and forward to /ml/parse-quote.
