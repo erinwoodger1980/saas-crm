@@ -561,16 +561,18 @@ function LeadCard({
         </button>
 
         <div className="shrink-0 flex flex-col items-end gap-2 text-right">
-          <button
-            className="rounded-full border border-rose-200/70 bg-rose-50/70 px-3 py-1 text-[11px] font-medium text-rose-600 shadow-sm transition hover:bg-rose-100"
-            onClick={(e) => {
-              e.stopPropagation();
-              onReject();
-            }}
-            type="button"
-          >
-            ✕ Reject
-          </button>
+          {lead.status === "NEW_ENQUIRY" && (
+            <button
+              className="rounded-full border border-rose-200/70 bg-rose-50/70 px-3 py-1 text-[11px] font-medium text-rose-600 shadow-sm transition hover:bg-rose-100"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReject();
+              }}
+              type="button"
+            >
+              ✕ Reject
+            </button>
+          )}
 
           <span
             className="inline-flex items-center rounded-full border border-slate-200/80 bg-white/70 px-3 py-1 text-[11px] font-medium text-slate-600 shadow-sm"
