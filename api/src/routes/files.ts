@@ -8,6 +8,45 @@ import { env } from "../env";
 const router = Router();
 
 /**
+ * GET /files
+ * Lists recent uploaded files for the authenticated tenant. Optional query:
+ *   - kind: string (e.g., SUPPLIER_QUOTE)
+ *   - limit: number (default 25, max 100)
+ */
+router.get("/", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const kind = typeof req.query.kind === "string" ? req.query.kind : undefined;
+    const limit = Math.max(1, Math.min(Number(req.query.limit ?? 25), 100));
+
+    const where: any = { tenantId };
+    if (kind) where.kind = kind as any;
+
+    const items = await prisma.uploadedFile.findMany({
+      where,
+      orderBy: { uploadedAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        quoteId: true,
+        mimeType: true,
+        sizeBytes: true,
+        uploadedAt: true,
+      },
+    });
+
+    res.json({ ok: true, count: items.length, items });
+  } catch (e: any) {
+    console.error("[/files] list failed:", e?.message || e);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
  * GET /files/:id?jwt=...
  * Streams an uploaded file by id when provided a valid signed JWT.
  * The token payload must include { t: tenantId } and optionally { q: quoteId }.

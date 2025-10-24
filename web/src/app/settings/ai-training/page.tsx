@@ -75,6 +75,11 @@ export default function AiTrainingPage() {
   const [providerFilter, setProviderFilter] = useState<"all" | "gmail" | "ms365" | "other">("all");
   const [decisionFilter, setDecisionFilter] = useState<"all" | "accepted" | "rejected" | "other">("all");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  // Historic supplier quotes ingestion
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
+  const [files, setFiles] = useState<Array<{ id: string; name: string; uploadedAt?: string; mimeType?: string; sizeBytes?: number | null }>>([]);
+  const [fileSel, setFileSel] = useState<Record<string, boolean>>({});
 
   const isEA = !!user?.isEarlyAdopter;
 
@@ -102,6 +107,24 @@ export default function AiTrainingPage() {
       cancel = true;
     };
   }, [moduleId, limit]);
+
+  // Load recent supplier quote files
+  useEffect(() => {
+    let cancel = false;
+    setFilesLoading(true);
+    setFilesError(null);
+    (async () => {
+      try {
+        const resp = await apiFetch<{ ok: boolean; items: any[] }>(`/files?kind=SUPPLIER_QUOTE&limit=50`);
+        if (!cancel) setFiles((resp.items || []).map((x) => ({ id: x.id, name: x.name, uploadedAt: x.uploadedAt, mimeType: x.mimeType, sizeBytes: x.sizeBytes })));
+      } catch (e: any) {
+        if (!cancel) setFilesError(e?.message || "Failed to load uploaded files");
+      } finally {
+        if (!cancel) setFilesLoading(false);
+      }
+    })();
+    return () => { cancel = true; };
+  }, []);
 
   const avgConf = useMemo(() => {
     const xs = insights.map((i) => i.confidence).filter((x): x is number => typeof x === "number");
@@ -170,6 +193,36 @@ export default function AiTrainingPage() {
       return '"' + s.replace(/"/g, '""') + '"';
     }
     return s;
+  }
+
+  function toggleFile(id: string) {
+    setFileSel((s) => ({ ...s, [id]: !s[id] }));
+  }
+
+  function selectAllFiles() {
+    const next: Record<string, boolean> = { ...fileSel };
+    for (const f of files) next[f.id] = true;
+    setFileSel(next);
+  }
+
+  function clearFiles() {
+    setFileSel({});
+  }
+
+  async function trainOnSelectedFiles() {
+    const ids = Object.entries(fileSel).filter(([, v]) => v).map(([k]) => k);
+    if (ids.length === 0) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await apiFetch(`/internal/ml/save-train-from-uploaded`, { method: "POST", json: { uploadedFileIds: ids } });
+      toast({ title: "Training kicked", description: `${ids.length} file(s) sent to ML`, duration: 2500 });
+      clearFiles();
+    } catch (e: any) {
+      setError(e?.message || "Could not send files to train");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function exportCsv() {
@@ -539,6 +592,42 @@ export default function AiTrainingPage() {
             })}
           </div>
         </div>
+      </div>
+
+      {/* Historic supplier quotes ingestion */}
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-700">Historic supplier quotes</p>
+            <p className="text-xs text-slate-500">Select past uploaded PDFs and send them to the ML trainer.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={selectAllFiles}>Select all</Button>
+            <Button size="sm" variant="ghost" onClick={clearFiles}>Clear</Button>
+            <Button size="sm" onClick={trainOnSelectedFiles} disabled={saving || Object.values(fileSel).every((v) => !v)}>Train on selected</Button>
+          </div>
+        </div>
+        {filesLoading && <div className="text-sm text-slate-500">Loading files…</div>}
+        {filesError && <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{filesError}</div>}
+        {!filesLoading && !filesError && (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {files.map((f) => {
+              const checked = !!fileSel[f.id];
+              const when = f.uploadedAt ? formatDate(f.uploadedAt) : "—";
+              const size = typeof f.sizeBytes === 'number' && f.sizeBytes > 0 ? `${(f.sizeBytes/1024/1024).toFixed(2)} MB` : '';
+              return (
+                <label key={f.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50">
+                  <input type="checkbox" className="mt-1 size-4" checked={checked} onChange={() => toggleFile(f.id)} />
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-slate-800">{f.name}</div>
+                    <div className="text-xs text-slate-500">{when}{size ? ` • ${size}` : ''}</div>
+                  </div>
+                </label>
+              );
+            })}
+            {files.length === 0 && <div className="text-sm text-slate-500">No supplier quote files found.</div>}
+          </div>
+        )}
       </div>
     </div>
   );
