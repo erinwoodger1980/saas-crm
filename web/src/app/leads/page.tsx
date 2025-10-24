@@ -5,6 +5,30 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import LeadModal, { Lead } from "./LeadModal";
+              {activeId && (
+                <button
+                  onClick={async () => {
+                    const headers = authHeaders();
+                    // Create or fetch a draft quote for this lead
+                    try {
+                      const q = await apiFetch<any>(`/leads/${activeId}`);
+                      const quoteId = q?.quoteId || null;
+                      if (quoteId) {
+                        await apiFetch(`/quotes/${quoteId}/parse`, { method: "POST", headers });
+                        alert("Parsed supplier quotes for this lead's quote.");
+                      } else {
+                        alert("No quote yet for this lead. Send RFQ or create a quote first.");
+                      }
+                    } catch (e: any) {
+                      console.error(e);
+                      alert(e?.message || "Failed to parse quotes");
+                    }
+                  }}
+                  className="rounded-md border px-3 py-1.5 text-xs"
+                >
+                  Parse supplier quotes
+                </button>
+              )}
 import { on } from "@/lib/events";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import { useToast } from "@/components/ui/use-toast";

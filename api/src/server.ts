@@ -44,6 +44,7 @@ import featureFlagsRouter from "./routes/feature-flags";
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
 import feedbackRouter from "./routes/feedback";
+import filesRouter from "./routes/files";
 import tasksRouter from "./routes/tasks";
 import eventsRouter from "./routes/events";
 import notificationsRouter from "./routes/notifications";
@@ -373,6 +374,7 @@ app.use("/internal/ml", requireAuth, mlOpsRouter);
 app.use("/ml", requireAuth, mlInsightsRouter);
 app.use("/feature-flags", featureFlagsRouter);
 app.use("/feedback", feedbackRouter);
+app.use("/files", filesRouter);
 app.use("/tasks", tasksRouter);
 app.use("/events", eventsRouter);
 app.use("/notifications", notificationsRouter);

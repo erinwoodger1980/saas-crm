@@ -421,6 +421,9 @@ router.get("/:id", async (req, res) => {
   });
   if (!lead) return res.status(404).json({ error: "not found" });
 
+  // Find an existing draft quote for this lead (if any)
+  const existingQuote = await prisma.quote.findFirst({ where: { tenantId, leadId: lead.id }, orderBy: { createdAt: "desc" }, select: { id: true, status: true } });
+
   const fields = await prisma.leadFieldDef.findMany({
     where: { tenantId },
     orderBy: { sortOrder: "asc" },
@@ -434,6 +437,8 @@ router.get("/:id", async (req, res) => {
       description: lead.description,
       status: (lead.custom as any)?.uiStatus || dbToUi(lead.status),
       custom: lead.custom,
+      quoteId: existingQuote?.id || null,
+      quoteStatus: existingQuote?.status || null,
     },
     fields,
   });
