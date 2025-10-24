@@ -212,6 +212,36 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 });
 
 /**
+ * GET /quotes/:id/files/:fileId/signed
+ * Returns a short-lived signed URL for the supplier file so users can verify streaming works.
+ */
+router.get("/:id/files/:fileId/signed", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const fileId = String(req.params.fileId);
+    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { supplierFiles: true } });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+    const f = quote.supplierFiles.find((x) => x.id === fileId);
+    if (!f) return res.status(404).json({ error: "file_not_found" });
+
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
+
+    const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "15m" });
+    const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
+    return res.json({ ok: true, url });
+  } catch (e: any) {
+    console.error("[/quotes/:id/files/:fileId/signed] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
  * PATCH /quotes/:id/lines/map
  * Body: { mappings: Array<{ lineId, questionKey }> } to map lines to questionnaire items.
  */
