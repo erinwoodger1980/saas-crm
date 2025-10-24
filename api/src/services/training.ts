@@ -94,6 +94,44 @@ export async function listParams(tenantId: string, module?: ModuleName) {
   });
 }
 
+export async function applyFeedback(opts: {
+  tenantId: string;
+  insightId: string;
+  feedback: any;
+  module?: ModuleName;
+  actorId?: string | null;
+}) {
+  const { tenantId, insightId } = opts;
+  if (!tenantId || !insightId) return { ok: false as const, error: "invalid_input" };
+  try {
+    const existing = await (prisma as any).trainingInsights.findFirst({
+      where: { id: insightId, tenantId },
+      select: { id: true, userFeedback: true, module: true },
+    });
+    if (!existing) return { ok: false as const, error: "not_found" };
+
+    const merged = { ...(existing.userFeedback || {}), ...(opts.feedback || {}) };
+    await (prisma as any).trainingInsights.update({
+      where: { id: insightId },
+      data: { userFeedback: merged },
+    });
+
+    const module = (opts.module as any) || existing.module || "unknown";
+    await logEvent({
+      tenantId,
+      module,
+      kind: "FEEDBACK",
+      payload: { insightId, feedback: opts.feedback },
+      actorId: opts.actorId ?? null,
+    });
+
+    return { ok: true as const };
+  } catch (e) {
+    console.warn("[training] applyFeedback failed:", (e as any)?.message || e);
+    return { ok: false as const, error: "internal_error" };
+  }
+}
+
 export async function resetModel(opts: { tenantId: string; module: ModuleName; actorId?: string | null }) {
   // No-op placeholder; real implementation would clear adapters/caches per tenant
   await logEvent({ tenantId: opts.tenantId, module: opts.module, kind: "RESET", payload: {}, actorId: opts.actorId });

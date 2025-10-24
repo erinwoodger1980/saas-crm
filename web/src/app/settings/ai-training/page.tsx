@@ -128,6 +128,23 @@ export default function AiTrainingPage() {
     }
   }
 
+  async function sendFeedback(i: Insight, ok: boolean) {
+    setSaving(true);
+    setError(null);
+    try {
+      const payload: any = { module: moduleId, insightId: i.id, correct: ok };
+      // For lead classifier, also pass isLead flag
+      if (moduleId === "lead_classifier") payload.isLead = ok;
+      await apiFetch(`/ml/feedback`, { method: "POST", json: payload });
+      // Optimistic: mark userFeedback locally
+      setInsights((prev) => prev.map((row) => (row.id === i.id ? { ...row, userFeedback: { ...(row.userFeedback || {}), thumbs: ok } } : row)));
+    } catch (e: any) {
+      setError(e?.message || "Could not send feedback");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -185,18 +202,25 @@ export default function AiTrainingPage() {
             {!loading && insights.length === 0 && (
               <div className="text-sm text-slate-500">No insights yet.</div>
             )}
-            {insights.map((i) => (
-              <div key={i.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-medium text-slate-800">{i.decision || "—"}</div>
-                  <div className="text-xs text-slate-500">{formatDate(i.createdAt)}</div>
+            {insights.map((i) => {
+              const thumbs = i.userFeedback?.thumbs as boolean | undefined;
+              return (
+                <div key={i.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium text-slate-800">{i.decision || "—"}</div>
+                    <div className="text-xs text-slate-500">{formatDate(i.createdAt)}</div>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-600">{i.inputSummary || "(no summary)"}</div>
+                  {typeof i.confidence === "number" && (
+                    <div className="mt-1 text-xs text-slate-500">Confidence: {(i.confidence * 100).toFixed(0)}%</div>
+                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button size="sm" variant={thumbs === true ? "default" : "outline"} onClick={() => sendFeedback(i, true)} disabled={saving}>👍</Button>
+                    <Button size="sm" variant={thumbs === false ? "default" : "outline"} onClick={() => sendFeedback(i, false)} disabled={saving}>👎</Button>
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-slate-600">{i.inputSummary || "(no summary)"}</div>
-                {typeof i.confidence === "number" && (
-                  <div className="mt-1 text-xs text-slate-500">Confidence: {(i.confidence * 100).toFixed(0)}%</div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
