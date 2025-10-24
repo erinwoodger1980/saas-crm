@@ -11,6 +11,17 @@ const nextConfig: NextConfig = {
   experimental: {
     // keep other experimental flags here if you need them
   },
+  async rewrites() {
+    const isProd = process.env.NODE_ENV === "production";
+    if (isProd) return [];
+    // Dev-only proxy: route /api/* → local API (port 4000)
+    return [
+      {
+        source: "/api/:path*",
+        destination: "http://localhost:4000/:path*",
+      },
+    ];
+  },
 };
 
 

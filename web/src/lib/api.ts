@@ -106,9 +106,11 @@ export async function apiFetch<T = unknown>(
   const isAuthMeRequest = normalizedForMatch === "/auth/me";
 
   const isAbsolute = /^https?:/i.test(cleanPath);
+  // Prefer configured API_BASE; fall back to "/api" which is rewired in next.config.ts during dev
+  const base = API_BASE || "/api";
   const url = isAbsolute
     ? cleanPath
-    : `${API_BASE}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
+    : `${base}${cleanPath.startsWith("/") ? "" : "/"}${cleanPath}`;
 
   const headers = new Headers(init.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
