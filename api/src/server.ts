@@ -94,6 +94,9 @@ const configuredOrigins = (Array.isArray(rawConfiguredOrigins)
 const defaultOrigins = [
   "https://joineryai.app",
   "https://www.joineryai.app",
+  // Common subdomains for web/app/api separation
+  "https://app.joineryai.app",
+  "https://api.joineryai.app",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
 ];
