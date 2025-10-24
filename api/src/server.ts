@@ -103,12 +103,17 @@ const allowedOriginsSet = new Set<string>([...defaultOrigins, ...configuredOrigi
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
     if (!origin) return cb(null, true); // same-origin / curl / Postman
-
     const norm = origin.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const match = [...allowedOriginsSet].some(
       (o) => o.replace(/^https?:\/\//, "").replace(/\/$/, "") === norm
     );
     if (match) return cb(null, true);
+
+    // Allow any localhost origin when not in production (dev convenience)
+    const isProd = process.env.NODE_ENV === "production";
+    if (!isProd && (norm.startsWith("localhost") || norm.startsWith("127.0.0.1"))) {
+      return cb(null, true);
+    }
 
     cb(new Error(`CORS: origin not allowed: ${origin}`));
   },

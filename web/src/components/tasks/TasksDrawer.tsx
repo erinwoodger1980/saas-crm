@@ -298,7 +298,7 @@ export function TasksDrawer({ tenantId, userId }: { tenantId: string; userId: st
         <TaskModal
           open={!!activeTask}
           onClose={() => setActiveTask(null)}
-          task={activeTask}
+          task={activeTask as any}
           tenantId={tId}
           userId={uId}
           onChanged={() => {

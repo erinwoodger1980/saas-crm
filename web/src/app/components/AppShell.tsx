@@ -20,14 +20,14 @@ import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
 
-const BASE_NAV = [
+const BASE_NAV: Array<{ href: string; label: string; description: string; icon: any }> = [
   { href: "/dashboard", label: "Dashboard", description: "Pulse & KPIs", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", description: "Inbox & replies", icon: Mail },
   { href: "/tasks/owner", label: "Tasks", description: "Personal queue", icon: CheckSquare },
   { href: "/opportunities", label: "Opportunities", description: "Quotes to win", icon: Target },
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
   { href: "/settings", label: "Settings", description: "Brand & automations", icon: Settings },
-] as const;
+] as Array<{ href: string; label: string; description: string; icon: any }>;
 
 const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "developer"]);
 

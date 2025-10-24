@@ -7,11 +7,8 @@ type PageSearchParams = {
 
 export const dynamic = "force-dynamic";
 
-export default function CreateAccountPage({
-  searchParams,
-}: {
-  searchParams?: PageSearchParams;
-}) {
+export default function CreateAccountPage(props: any) {
+  const searchParams = (props?.searchParams as PageSearchParams) || {};
   const sessionId = searchParams?.session_id ?? "";
   const initialToken = searchParams?.token ?? "";
 

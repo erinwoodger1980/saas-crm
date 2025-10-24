@@ -52,13 +52,14 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
   if (!open || !form) return null;
 
   async function update(fields: Partial<Task>) {
+    if (!form) return;
     setSaving(true);
     try {
       const payload: Partial<Task> = {
         ...fields,
         dueAt: fields.dueAt === "" ? null : fields.dueAt,
       };
-      await apiFetch(`/tasks/${form.id}`, {
+  await apiFetch(`/tasks/${form.id}`, {
         method: "PATCH",
         headers: {
           "x-tenant-id": tenantId,
@@ -74,6 +75,7 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
   }
 
   async function startTask() {
+    if (!form) return;
     setSaving(true);
     try {
       await apiFetch(`/tasks/${form.id}/start`, {
@@ -92,6 +94,7 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
   }
 
   async function completeTask() {
+    if (!form) return;
     setSaving(true);
     try {
       await apiFetch(`/tasks/${form.id}/complete`, {

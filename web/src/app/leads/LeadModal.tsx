@@ -931,6 +931,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       "fromEmail",
       "uiStatus",
       "questionnaireSubmittedAt",
+      "items",
       "uploads",
       "aiFeedback",
     ]);
@@ -972,7 +973,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
     return responses;
   }, [customData, questionnaireFields]);
-  const questionnaireUploads = useMemo(() => {
+  const questionnaireUploads = useMemo<
+    Array<{ filename: string; mimeType: string; base64: string; sizeKB: number | null; addedAt: string | null }>
+  >(() => {
     const uploads = Array.isArray((customData as any)?.uploads) ? (customData as any).uploads : [];
     return uploads
       .map((item: any) => ({
@@ -982,7 +985,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         sizeKB: typeof item?.sizeKB === "number" ? item.sizeKB : null,
         addedAt: typeof item?.addedAt === "string" ? item.addedAt : null,
       }))
-      .filter((item) => item.base64);
+    .filter((item: { base64: string }) => item.base64);
+  }, [customData]);
+  const questionnaireItems = useMemo(() => {
+    const items = (customData as any)?.items;
+    return Array.isArray(items) ? items : [];
   }, [customData]);
   const questionnaireSubmittedAt = useMemo(() => {
     const raw = (customData as any)?.questionnaireSubmittedAt;
@@ -1360,6 +1367,50 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           );
                         })}
                       </ul>
+                    </div>
+                  ) : null}
+                  {questionnaireItems.length ? (
+                    <div className="mt-4">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Items</div>
+                      <div className="mt-2 space-y-3">
+                        {questionnaireItems.map((it: any, idx: number) => (
+                          <div key={idx} className="rounded-xl border border-slate-200/70 bg-white/70 p-3">
+                            <div className="text-sm font-semibold">Item {idx + 1}</div>
+                            <div className="mt-2 text-sm text-slate-700 space-y-1">
+                              {Object.keys(it || {}).length === 0 ? (
+                                <div className="text-xs text-slate-400">No details</div>
+                              ) : (
+                                Object.entries(it).map(([k, v]) => {
+                                  if (k === "photos") return null;
+                                  return (
+                                    <div key={k} className="flex items-start gap-2">
+                                      <div className="text-xs text-slate-500 w-28">{String(k)}</div>
+                                      <div className="text-sm text-slate-700 break-words">{formatAnswer(v) ?? ""}</div>
+                                    </div>
+                                  );
+                                })
+                              )}
+
+                              {Array.isArray(it.photos) && it.photos.length ? (
+                                <div className="mt-2">
+                                  <div className="text-xs text-slate-500">Photos</div>
+                                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                                    {it.photos.map((p: any, pidx: number) => {
+                                      const dataUrl = p && p.base64 ? `data:${p.mimeType || "image/jpeg"};base64,${p.base64}` : null;
+                                      return (
+                                        <a key={pidx} href={dataUrl || "#"} download={p?.filename || `photo-${pidx + 1}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
+                                          <span aria-hidden>📷</span>
+                                          {p?.filename || `photo-${pidx + 1}`}
+                                        </a>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ) : null}
                 </div>
