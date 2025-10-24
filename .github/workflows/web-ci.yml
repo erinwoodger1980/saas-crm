@@ -19,6 +19,7 @@ jobs:
     env:
       CI: "true"
       NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_API_BASE: https://api.joineryai.app
 
     steps:
       - uses: actions/checkout@v4
