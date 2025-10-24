@@ -141,24 +141,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <Image
                   src="/logo-full.png"
                   alt={`${brandName} full logo`}
-                  width={240}
-                  height={64}
-                  className="h-16 w-auto"
+                  width={360}
+                  height={96}
+                  className="h-24 w-auto"
                   priority
                 />
               </div>
 
               <nav className="space-y-1.5">
-                <div className="flex items-center justify-center pb-2">
-                  <Image
-                    src="/logo-full.png"
-                    alt={`${brandName} full logo`}
-                    width={180}
-                    height={48}
-                    className="h-12 w-auto"
-                    priority
-                  />
-                </div>
                 {navItems.map((item) => {
                   const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
                   return (
