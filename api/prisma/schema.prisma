@@ -39,6 +39,9 @@ model Tenant {
   streaks               Streak[]
   activityLogs          ActivityLog[]
   userPreferences       UserPreference[]
+  trainingInsights      TrainingInsights[]
+  modelOverrides        ModelOverride[]
+  trainingEvents        TrainingEvent[]
 }
 
 model User {

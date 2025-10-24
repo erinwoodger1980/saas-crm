@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getInsights, listParams, logEvent, resetModel, retrainModel, setParam } from "../services/training";
+import { applyFeedback, getInsights, listParams, logEvent, resetModel, retrainModel, setParam } from "../services/training";
 
 const router = Router();
 
@@ -70,3 +70,36 @@ router.post("/model/retrain", async (req: any, res) => {
 });
 
 export default router;
+
+// POST /ml/feedback { module, insightId, correct?, correctedLabel?, reason?, isLead? }
+router.post("/feedback", async (req: any, res) => {
+  const auth = req.auth;
+  if (!auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const body = req.body || {};
+  const module = typeof body.module === "string" && body.module ? body.module : null;
+  const insightId = typeof body.insightId === "string" && body.insightId ? body.insightId : null;
+  if (!module || !insightId) return res.status(400).json({ error: "invalid_payload" });
+
+  // Normalize feedback payload
+  const feedback: any = {};
+  if (typeof body.correct === "boolean") feedback.thumbs = body.correct;
+  if (typeof body.correctedLabel === "string") feedback.correctedLabel = body.correctedLabel;
+  if (typeof body.reason === "string") feedback.reason = body.reason;
+  if (typeof body.isLead === "boolean") feedback.isLead = body.isLead; // convenience for lead_classifier
+
+  try {
+    const out = await applyFeedback({
+      tenantId: auth.tenantId,
+      insightId,
+      feedback,
+      module,
+      actorId: auth.userId,
+    });
+    if (!out.ok) return res.status(400).json({ error: out.error || "failed" });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[POST /ml/feedback] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
