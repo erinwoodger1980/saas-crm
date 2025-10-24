@@ -288,6 +288,28 @@ router.patch("/:id", async (req, res) => {
     const actorId = (req.auth?.userId as string | undefined) ?? null;
     const playbook = await loadTaskPlaybook(tenantId);
     await handleStatusTransition({ tenantId, leadId: id, prevUi, nextUi, actorId, playbook });
+
+    // Learning signal: when users move a lead to certain buckets, label the originating ingests
+    const positive: UiStatus[] = [
+      "INFO_REQUESTED",
+      "READY_TO_QUOTE",
+      "QUOTE_SENT",
+      "WON",
+    ];
+    const negative: UiStatus[] = ["DISQUALIFIED", "REJECTED", "LOST"];
+    try {
+      if (positive.includes(nextUi)) {
+        await prisma.emailIngest.updateMany({
+          where: { tenantId, leadId: id },
+          data: { userLabelIsLead: true, userLabeledAt: new Date() },
+        });
+      } else if (negative.includes(nextUi)) {
+        await prisma.emailIngest.updateMany({
+          where: { tenantId, leadId: id },
+          data: { userLabelIsLead: false, userLabeledAt: new Date() },
+        });
+      }
+    } catch {}
   }
 
   // Adjust source conversions when toggling WON on/off (optional; keep if you used this before)

@@ -45,10 +45,105 @@ router.post("/ingest", async (req, res) => {
     }
     if (existing) {
       // recorded but not processed into a lead (very unlikely), treat as done
+      // Fall through to classification if we want to upgrade fields; but keep idempotent behavior
+      // For safety, keep as already ingested
       return res.json({ ok: true, alreadyIngested: true });
     }
 
-    // Extract structured fields via OpenAI (fail open with fallback)
+    // 1) Create a lightweight EmailIngest row first (so repeated calls are idempotent)
+    const snippet = body.replace(/\s+/g, " ").slice(0, 200);
+    await prisma.emailIngest.create({
+      data: {
+        tenantId,
+        provider,
+        messageId,
+        fromEmail: from,
+        subject,
+        snippet,
+      },
+    });
+
+    // 2) Classify as lead vs not lead using OpenAI with explicit subject + full body
+    let ai: any = null;
+    try {
+      const systemPrompt =
+        "You triage inbound emails for a bespoke joinery/carpentry business. Decide if the email is a NEW SALES ENQUIRY from a potential customer. When unsure, prefer NOT a lead.";
+      const userContent = `Subject: ${subject || "(no subject)"}\nFrom: ${from}\nBody:\n${body.slice(0, 6000)}`;
+      const resp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.1,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "lead_classification",
+            schema: {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                isLead: { type: "boolean" },
+                confidence: { type: "number", minimum: 0, maximum: 1 },
+                reason: { type: "string" },
+                contactName: { type: ["string", "null"] },
+                email: { type: ["string", "null"] },
+                phone: { type: ["string", "null"] },
+                projectType: { type: ["string", "null"] },
+                summary: { type: ["string", "null"] },
+              },
+              required: ["isLead", "reason"],
+            },
+          },
+        },
+      });
+      const text = resp.choices[0]?.message?.content || "{}";
+      ai = JSON.parse(text);
+    } catch (e) {
+      ai = null;
+    }
+
+    const aiIsLead =
+      typeof ai?.isLead === "boolean"
+        ? ai.isLead
+        : typeof ai?.isLead === "string"
+        ? ai.isLead.toLowerCase() === "true"
+        : null;
+    const aiConfidence = typeof ai?.confidence === "number" ? Math.max(0, Math.min(1, ai.confidence)) : null;
+    const decidedLead = aiIsLead === true && (aiConfidence ?? 0) >= 0.55; // slightly conservative
+
+    // 3) If NOT a lead → mark processed with prediction and return
+    if (!decidedLead) {
+      try {
+        await prisma.emailIngest.update({
+          where: { tenantId_provider_messageId: { tenantId, provider, messageId } },
+          data: { processedAt: new Date(), aiPredictedIsLead: aiIsLead ?? false },
+        });
+      } catch {}
+
+      // Record training example for learning
+      try {
+        await prisma.leadTrainingExample.upsert({
+          where: { tenantId_provider_messageId: { tenantId, provider, messageId } as any },
+          update: {
+            label: "rejected",
+            extracted: { subject, snippet, from, body: body.slice(0, 4000), ai },
+          },
+          create: {
+            tenantId,
+            provider,
+            messageId,
+            label: "rejected",
+            extracted: { subject, snippet, from, body: body.slice(0, 4000), ai },
+          },
+        } as any);
+      } catch {}
+
+      return res.json({ ok: true, classified: { isLead: false, confidence: aiConfidence ?? null } });
+    }
+
+    // 4) Extract structured fields via OpenAI (fail open with fallback)
     let extracted: {
       contactName?: string;
       email?: string;
@@ -101,20 +196,12 @@ Return ONLY JSON.
       };
     }
 
-    const snippet = body.replace(/\s+/g, " ").slice(0, 200);
-
-    // Create EmailIngest + Lead in a transaction; the unique will keep it idempotent
+    // 5) Create EmailIngest + Lead in a transaction; the unique will keep it idempotent
     const out = await prisma.$transaction(async (tx) => {
-      const ingest = await tx.emailIngest.create({
-        data: {
-          tenantId,
-          provider,
-          messageId,
-          fromEmail: from,
-          subject,
-          snippet,
-          processedAt: new Date(),
-        },
+      // Update ingest with processed + prediction
+      const ingest = await tx.emailIngest.update({
+        where: { tenantId_provider_messageId: { tenantId, provider, messageId } },
+        data: { processedAt: new Date(), aiPredictedIsLead: true },
       });
 
       const lead = await tx.lead.create({
@@ -145,6 +232,24 @@ Return ONLY JSON.
 
       return lead;
     });
+
+    // Record positive example
+    try {
+      await prisma.leadTrainingExample.upsert({
+        where: { tenantId_provider_messageId: { tenantId, provider, messageId } as any },
+        update: {
+          label: "accepted",
+          extracted: { subject, snippet, from, body: body.slice(0, 4000), ai },
+        },
+        create: {
+          tenantId,
+          provider,
+          messageId,
+          label: "accepted",
+          extracted: { subject, snippet, from, body: body.slice(0, 4000), ai },
+        },
+      } as any);
+    } catch {}
 
     return res.json({ ok: true, lead: out });
   } catch (err: any) {
