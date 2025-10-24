@@ -37,6 +37,7 @@ export default function QuoteBuilderPage() {
   const [pricingBusy, setPricingBusy] = useState<"margin" | "ml" | null>(null);
   const [parsing, setParsing] = useState(false);
   const autoAppliedRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function loadAll() {
     if (!id) return;
@@ -136,6 +137,23 @@ export default function QuoteBuilderPage() {
     }
   }
 
+  async function uploadSupplierFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setError(null);
+    try {
+      const fd = new FormData();
+      Array.from(files).forEach((f) => fd.append("files", f));
+      // Use apiFetch for consistent cookies and base URL handling
+      await apiFetch(`/quotes/${id}/files`, { method: "POST", body: fd as any } as any);
+      // Immediately parse after successful upload
+      await runParse();
+    } catch (e: any) {
+      setError(e?.message || "Upload failed");
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   async function saveMappings() {
     setSavingMap(true);
     setError(null);
@@ -209,6 +227,20 @@ export default function QuoteBuilderPage() {
           </Button>
           <Button onClick={saveMappings} disabled={savingMap}>
             {savingMap ? "Saving…" : "Save mappings"}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf"
+            multiple
+            hidden
+            onChange={(e) => uploadSupplierFiles(e.target.files)}
+          />
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Upload supplier PDF
           </Button>
         </div>
       </div>
@@ -376,7 +408,23 @@ export default function QuoteBuilderPage() {
                       onClick={async () => {
                         try {
                           const out = await apiFetch<{ ok: boolean; url: string }>(`/quotes/${id}/files/${encodeURIComponent(f.id)}/signed`);
-                          if (out?.url) window.open(out.url, "_blank");
+                          if (out?.url) {
+                            const win = window.open(out.url, "_blank");
+                            // If the file layer returns JSON with {error:"missing_file"}, show guidance
+                            setTimeout(async () => {
+                              try {
+                                const r = await fetch(out.url, { credentials: "include" });
+                                if (!r.ok) return; // will show itself in tab
+                                const ct = r.headers.get("content-type") || "";
+                                if (ct.includes("application/json")) {
+                                  const j = await r.json().catch(() => null);
+                                  if (j && j.error === "missing_file") {
+                                    setError("File is missing on the server. Please re-upload the PDF (server storage is ephemeral without a persistent disk).");
+                                  }
+                                }
+                              } catch {}
+                            }, 300);
+                          }
                         } catch (e: any) {
                           setError(e?.message || "Could not open file");
                         }
