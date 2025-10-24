@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ export default function QuoteBuilderPage() {
   const [savingMap, setSavingMap] = useState(false);
   const [pricingBusy, setPricingBusy] = useState<"margin" | "ml" | null>(null);
   const [parsing, setParsing] = useState(false);
+  const autoAppliedRef = useRef(false);
 
   async function loadAll() {
     if (!id) return;
@@ -95,6 +96,15 @@ export default function QuoteBuilderPage() {
       }
       const mode = (q?.meta as any)?.pricingMode;
       if (mode === "margin" || mode === "ml") setPricingMode(mode);
+
+      // Auto-apply preferred pricing once when lines are available
+      try {
+        const hasLines = Array.isArray(q?.lines) && q.lines.length > 0;
+        if (hasLines && !autoAppliedRef.current && !pricingBusy && !parsing) {
+          autoAppliedRef.current = true;
+          await applyPreferredPricing();
+        }
+      } catch {}
     } catch (e: any) {
       setError(e?.message || "Failed to load quote");
     } finally {
@@ -164,6 +174,10 @@ export default function QuoteBuilderPage() {
     try {
       setPricingMode(nextMode);
       await apiFetch(`/quotes/${id}/preference`, { method: "PATCH", json: { pricingMode: nextMode, margin: margins } });
+      // Auto-apply immediately after saving preference
+      if (!pricingBusy && !parsing) {
+        await applyPreferredPricing();
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to save preference");
     }
@@ -252,6 +266,7 @@ export default function QuoteBuilderPage() {
                     step="0.01"
                     value={margins}
                     onChange={(e) => setMargins(parseFloat(e.target.value))}
+                    onBlur={() => savePreference(pricingMode)}
                     className="h-8 w-24"
                   />
                   <Button size="sm" onClick={priceByMargin} disabled={pricingBusy === "margin"}>
