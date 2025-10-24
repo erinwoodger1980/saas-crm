@@ -74,6 +74,7 @@ export default function AiTrainingPage() {
   const [limit, setLimit] = useState<number>(50);
   const [providerFilter, setProviderFilter] = useState<"all" | "gmail" | "ms365" | "other">("all");
   const [decisionFilter, setDecisionFilter] = useState<"all" | "accepted" | "rejected" | "other">("all");
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   const isEA = !!user?.isEarlyAdopter;
 
@@ -209,6 +210,36 @@ export default function AiTrainingPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  function toggleSelectOne(id: string) {
+    setSelected((s) => ({ ...s, [id]: !s[id] }));
+  }
+
+  function selectAllCurrent() {
+    const next: Record<string, boolean> = { ...selected };
+    for (const i of filteredInsights) next[i.id] = true;
+    setSelected(next);
+  }
+
+  function clearSelection() {
+    setSelected({});
+  }
+
+  async function retrainWithSelection() {
+    const ids = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
+    if (ids.length === 0) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await apiFetch(`/ml/model/retrain`, { method: "POST", json: { module: moduleId, insightIds: ids } });
+      toast({ title: "Retrain queued", description: `${ids.length} examples selected`, duration: 2500 });
+      clearSelection();
+    } catch (e: any) {
+      setError(e?.message || "Could not retrain with selection");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function saveThreshold() {
@@ -350,7 +381,8 @@ export default function AiTrainingPage() {
           </div>
         </div>
 
-        {/* Right: Trend + Recent decisions */}
+  {/* Right: Trend + Recent decisions */
+  }
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4">
             <div className="mb-2 flex items-center justify-between">
@@ -402,6 +434,9 @@ export default function AiTrainingPage() {
               </select>
               <Badge variant="secondary" className="text-xs">{summary.accepted} ✓ / {summary.rejected} ✕ / {summary.total} total</Badge>
               <Button size="sm" variant="outline" onClick={exportCsv}>Export CSV</Button>
+              <Button size="sm" onClick={retrainWithSelection} disabled={saving || Object.values(selected).every((v) => !v)}>Retrain with selection</Button>
+              <Button size="sm" variant="outline" onClick={selectAllCurrent}>Select all</Button>
+              <Button size="sm" variant="ghost" onClick={clearSelection}>Clear</Button>
             </div>
           </div>
           <div className="max-h-[420px] space-y-2 overflow-auto pr-2">
@@ -434,10 +469,14 @@ export default function AiTrainingPage() {
                 }
               }
 
+              const checked = !!selected[i.id];
               return (
                 <div key={i.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="font-medium text-slate-800">{i.decision || "—"}</div>
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" className="size-4" checked={checked} onChange={() => toggleSelectOne(i.id)} />
+                      <div className="font-medium text-slate-800">{i.decision || "—"}</div>
+                    </div>
                     <div className="text-xs text-slate-500">{formatDate(i.createdAt)}</div>
                   </div>
                   <div className="mt-1 text-xs text-slate-600">{i.inputSummary || "(no summary)"}</div>
