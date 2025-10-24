@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { prisma } from "../prisma";
+import { Prisma } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 
@@ -146,10 +147,10 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             sku: typeof ln.sku === "string" ? ln.sku : undefined,
             description,
             qty,
-            unitPrice: new prisma.Prisma.Decimal(unit),
+            unitPrice: new Prisma.Decimal(unit),
             currency,
-            deliveryShareGBP: new prisma.Prisma.Decimal(0),
-            lineTotalGBP: new prisma.Prisma.Decimal(0),
+            deliveryShareGBP: new Prisma.Decimal(0),
+            lineTotalGBP: new Prisma.Decimal(0),
             meta: parsed ? { source: "ml-parse", raw: ln } : undefined,
           },
         });
@@ -210,7 +211,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         totalGBP += sellTotal;
         await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(ln.meta as any || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "margin", margin } } } as any });
       }
-      await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new prisma.Prisma.Decimal(totalGBP), markupDefault: new prisma.Prisma.Decimal(margin) } });
+  await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) } });
       return res.json({ ok: true, method, margin, totalGBP });
     }
 
@@ -234,7 +235,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         totalGBP += sellTotal;
         await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(ln.meta as any || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "ml", scale, predictedTotal } } } as any });
       }
-      await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new prisma.Prisma.Decimal(totalGBP) } });
+  await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
       return res.json({ ok: true, method, predictedTotal, totalGBP });
     }
 
