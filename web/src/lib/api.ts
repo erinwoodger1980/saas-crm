@@ -187,12 +187,35 @@ export async function ensureDemoAuth(): Promise<boolean> {
     if (me && me.email) return true;
   } catch {}
 
-  // Attempt demo login (cookie will be set by API)
+  // Attempt demo login (cookie will be set by API if /auth/login path works)
   try {
+    // Try legacy password first
     await apiFetch('/auth/login', { method: 'POST', json: { email: 'erin@acme.test', password: 'Password123!' } });
-    const me = await apiFetch<any>('/auth/me');
-    if (me && me.email) return true;
+    const me1 = await apiFetch<any>('/auth/me');
+    if (me1 && me1.email) return true;
   } catch {}
-
+  try {
+    // Try dev seeded password
+    await apiFetch('/auth/login', { method: 'POST', json: { email: 'erin@acme.test', password: 'secret12' } });
+    const me2 = await apiFetch<any>('/auth/me');
+    if (me2 && me2.email) return true;
+  } catch {}
+  try {
+    // Ensure a dev user/tenant exists (no cookie set here)
+    await apiFetch('/auth/dev-seed', { method: 'POST', json: { email: 'erin@acme.test', password: 'secret12' } });
+  } catch {}
+  try {
+    // Attempt login again after seeding
+    await apiFetch('/auth/login', { method: 'POST', json: { email: 'erin@acme.test', password: 'secret12' } });
+    const me3 = await apiFetch<any>('/auth/me');
+    if (me3 && me3.email) return true;
+  } catch {}
+  try {
+    // Fallback: get a token via dev-login and attach as legacy Bearer
+    const out = await apiFetch<any>('/auth/dev-login', { method: 'POST', json: { email: 'erin@acme.test' } });
+    if (out?.token) setJwt(out.token);
+    const me4 = await apiFetch<any>('/auth/me');
+    if (me4 && me4.email) return true;
+  } catch {}
   return false;
 }
