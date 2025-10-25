@@ -422,7 +422,9 @@ app.use("/questionnaire/fill", requireAuth, questionnaireFillRouter);
 app.use("/internal/ml", requireAuth, mlInternalRouter);
 app.use("/gmail", gmailAttachmentsRouter);
 app.use("/internal/ml", requireAuth, mlOpsRouter);
-app.use("/ml", requireAuth, mlInsightsRouter);
+// Move ML insights under a distinct prefix so it doesn't intercept /ml proxy routes
+// This avoids accidental 401s for public ML health/proxy endpoints like /ml/health and /ml/parse-quote.
+app.use("/ml/insights", requireAuth, mlInsightsRouter);
 app.use("/feature-flags", featureFlagsRouter);
 app.use("/feedback", feedbackRouter);
 app.use("/files", filesRouter);
@@ -436,7 +438,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-/** ---------- ML parse (requires auth) — keep BEFORE the ML proxy ---------- */
+/** ---------- ML parse + proxy (public endpoints used by server-side flows) ---------- */
 app.use("/ml", mlParseRouter);
 
 /** ---------- ML proxy (forwards to FastAPI) ---------- */
