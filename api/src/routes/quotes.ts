@@ -159,10 +159,15 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
   const created: any[] = [];
   const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }>= [];
-    const TIMEOUT_MS = Math.max(2000, Number(process.env.ML_TIMEOUT_MS || 10000));
-    for (const f of quote.supplierFiles) {
-      // Only attempt to parse PDFs
-      if (!/pdf$/i.test(f.mimeType || "") && !/\.pdf$/i.test(f.name || "")) continue;
+    // Keep per-file ML latency bounded to avoid upstream 502s from gateways.
+    const TIMEOUT_MS = Math.max(2000, Number(process.env.ML_TIMEOUT_MS || (process.env.NODE_ENV === "production" ? 6000 : 10000)));
+    // Parse at most the most-recent 1 PDF synchronously to keep request under edge timeouts.
+    const filesToParse = [...quote.supplierFiles]
+      .filter((x) => /pdf$/i.test(x.mimeType || "") || /\.pdf$/i.test(x.name || ""))
+      .sort((a: any, b: any) => new Date(b.uploadedAt || b.createdAt || 0).getTime() - new Date(a.uploadedAt || a.createdAt || 0).getTime())
+      .slice(0, 1);
+    for (const f of filesToParse) {
+  // Only attempt to parse PDFs (already filtered above)
       const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "30m" });
       const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
 
