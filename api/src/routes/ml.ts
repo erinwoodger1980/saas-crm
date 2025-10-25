@@ -18,7 +18,8 @@ const router = Router();
 const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000")
   .trim()
   .replace(/\/$/, "");
-const ML_TIMEOUT_MS = Math.max(1000, Number(process.env.ML_TIMEOUT_MS || 10000));
+// Default tighter timeout in production to avoid upstream gateway 502s (Cloudflare/Render)
+const ML_TIMEOUT_MS = Math.max(1000, Number(process.env.ML_TIMEOUT_MS || (process.env.NODE_ENV === "production" ? 6000 : 10000)));
 
 // Build your API base once (same logic you used earlier)
 const API_BASE = (
