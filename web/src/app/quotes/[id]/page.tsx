@@ -123,12 +123,19 @@ export default function QuoteBuilderPage() {
     setError(null);
     try {
       const out = await apiFetch<any>(`/quotes/${id}/parse`, { method: "POST" });
-      // If async mode, poll for lines briefly
+      // If async mode, poll the quote directly (not state) for a short window
       if (out && out.async) {
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 16; i++) {
           await new Promise((r) => setTimeout(r, 750));
-          await loadAll();
-          if (Array.isArray((quote as any)?.lines) && (quote as any).lines.length > 0) break;
+          const q = await apiFetch<any>(`/quotes/${id}`);
+          setQuote(q);
+          if (Array.isArray(q?.lines) && q.lines.length > 0) break;
+          const lp = (q?.meta as any)?.lastParse;
+          if (lp?.state === "error") {
+            const fails = Array.isArray(lp?.fails) ? ` (${lp.fails.length} file errors)` : "";
+            setError(`Parse failed${fails}. Try a different PDF or ensure the ML service can fetch the file URL.`);
+            break;
+          }
         }
       } else if (typeof out?.created === "number" && out.created === 0) {
         setError("No lines parsed. Check the PDF is a supplier quote and that ML is online.");
@@ -221,6 +228,7 @@ export default function QuoteBuilderPage() {
   }
 
   const lineCount = quote?.lines?.length || 0;
+  const lastParse = (quote?.meta as any)?.lastParse;
 
   return (
     <div className="space-y-6">
@@ -340,7 +348,12 @@ export default function QuoteBuilderPage() {
               <div className="border-b border-slate-200 p-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-slate-900">Parsed lines</h2>
-                  <span className="text-xs text-slate-500">{lineCount} lines</span>
+                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                    <span>{lineCount} lines</span>
+                    {lastParse?.state === 'running' && <span className="text-amber-600">Parsing…</span>}
+                    {lastParse?.state === 'error' && <span className="text-red-600">Last parse failed</span>}
+                    {lastParse?.state === 'ok' && <span className="text-emerald-600">Last parse ok</span>}
+                  </div>
                 </div>
               </div>
 

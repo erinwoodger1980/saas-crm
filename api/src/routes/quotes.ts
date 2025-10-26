@@ -227,14 +227,43 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
     const preferAsync = (process.env.NODE_ENV === "production") && String(req.query.async ?? "1") !== "0";
     if (preferAsync) {
+      // Record that a parse started (so UI can surface status)
+      try {
+        const startedAt = new Date().toISOString();
+        const meta0: any = (quote.meta as any) || {};
+        await prisma.quote.update({
+          where: { id: quote.id },
+          data: { meta: { ...(meta0 || {}), lastParse: { state: "running", startedAt } } as any },
+        } as any);
+      } catch {}
+
       setImmediate(async () => {
         try {
           const out = await doParse();
-          if ((out as any).error) {
-            console.warn(`[parse async] quote ${id} failed:`, out);
-          }
+          const finishedAt = new Date().toISOString();
+          try {
+            const meta1: any = (quote.meta as any) || {};
+            await prisma.quote.update({
+              where: { id: quote.id },
+              data: {
+                meta: {
+                  ...(meta1 || {}),
+                  lastParse: (out as any).error
+                    ? { state: "error", finishedAt, ...out }
+                    : { state: "ok", finishedAt, ...out },
+                } as any,
+              },
+            } as any);
+          } catch {}
+          if ((out as any).error) console.warn(`[parse async] quote ${id} failed:`, out);
         } catch (e: any) {
           console.error(`[parse async] quote ${id} crashed:`, e?.message || e);
+          try {
+            await prisma.quote.update({
+              where: { id: quote.id },
+              data: { meta: { ...((quote.meta as any) || {}), lastParse: { state: "error", finishedAt: new Date().toISOString(), error: String(e?.message || e) } } as any },
+            } as any);
+          } catch {}
         }
       });
       return res.json({ ok: true, async: true });
