@@ -187,7 +187,9 @@ export default function QuoteBuilderPage() {
     setPricingBusy("margin");
     setError(null);
     try {
-      await apiFetch(`/quotes/${id}/price`, { method: "POST", json: { method: "margin", margin: margins } });
+      // Treat values > 1 as percent for convenience (e.g., 30 → 0.3)
+      const norm = margins > 1 ? margins / 100 : margins;
+      await apiFetch(`/quotes/${id}/price`, { method: "POST", json: { method: "margin", margin: norm } });
       await loadAll();
     } catch (e: any) {
       setError(e?.message || "Failed to price by margin");
@@ -358,6 +360,35 @@ export default function QuoteBuilderPage() {
               </div>
 
               <div className="overflow-x-auto">
+                {/* Debug: show parse details when present */}
+                {lastParse && (
+                  <div className="mx-3 my-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span>Status: <span className="font-medium">{lastParse.state}</span></span>
+                      {lastParse.created != null && <span>Created: {String(lastParse.created)}</span>}
+                      {Array.isArray(lastParse.fails) && <span>Failures: {lastParse.fails.length}</span>}
+                      {lastParse.timeoutMs && <span>Timeout: {lastParse.timeoutMs}ms</span>}
+                      {lastParse.startedAt && <span>Started: {new Date(lastParse.startedAt).toLocaleTimeString()}</span>}
+                      {lastParse.finishedAt && <span>Finished: {new Date(lastParse.finishedAt).toLocaleTimeString()}</span>}
+                      <Button size="sm" variant="outline" onClick={() => apiFetch(`/quotes/${id}/parse?async=0`, { method: 'POST' }).then(loadAll).catch((e)=> setError(e?.message || 'Debug parse failed'))}>Parse (debug)</Button>
+                    </div>
+                    {Array.isArray(lastParse.fails) && lastParse.fails.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {lastParse.fails.map((f: any, i: number) => (
+                          <div key={i} className="rounded border border-slate-200 bg-white p-2">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="font-medium">{f?.name || f?.fileId || 'file'}</span>
+                              {f?.status && <span className="text-slate-500">{f.status}</span>}
+                            </div>
+                            {f?.error && (
+                              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] text-slate-700">{JSON.stringify(f.error, null, 2)}</pre>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
                     <tr>
