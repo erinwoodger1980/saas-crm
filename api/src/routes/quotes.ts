@@ -197,24 +197,104 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           continue;
         }
 
-        const lines = Array.isArray(parsed?.lines) ? parsed.lines : [];
+        // Recent ML responses wrap the useful payload under `parsed`; older
+        // versions returned the fields at the top level. Normalise here so we
+        // can continue handling both shapes without breaking the UI.
+        const normalized = parsed && typeof parsed === "object" && parsed.parsed
+          ? parsed.parsed
+          : parsed;
+
+        const normalizedQuote = normalized && typeof normalized === "object" && !Array.isArray(normalized)
+          ? (typeof (normalized as any).quote === "object" && !Array.isArray((normalized as any).quote)
+              ? (normalized as any).quote
+              : null)
+          : null;
+
+        const pickLines = (...candidates: any[]): any[] => {
+          for (const candidate of candidates) {
+            if (Array.isArray(candidate) && candidate.length > 0) return candidate;
+          }
+          for (const candidate of candidates) {
+            if (Array.isArray(candidate)) return candidate;
+          }
+          return [];
+        };
+
+        const lines = pickLines(
+          (normalizedQuote as any)?.lines,
+          (normalizedQuote as any)?.line_items,
+          (normalizedQuote as any)?.lineItems,
+          (normalizedQuote as any)?.items,
+          (normalized as any)?.lines,
+          (normalized as any)?.line_items,
+          (normalized as any)?.lineItems,
+          (normalized as any)?.items,
+        );
+
+        const resolveSupplier = (src: any): string | undefined => {
+          if (!src || typeof src !== "object") return undefined;
+          const candidates = [
+            src.supplier,
+            src.supplier_name,
+            src.supplierName,
+            src.vendor,
+            src.vendor_name,
+            src.vendorName,
+          ];
+          const found = candidates.find((v) => typeof v === "string" && v.trim());
+          return found ? String(found).trim() : undefined;
+        };
+
+        const resolveCurrency = (src: any): string | undefined => {
+          if (!src || typeof src !== "object") return undefined;
+          const candidates = [
+            src.currency,
+            src.currency_code,
+            src.currencyCode,
+          ];
+          const found = candidates.find((v) => typeof v === "string" && v.trim());
+          return found ? String(found).trim().toUpperCase() : undefined;
+        };
+
+        const supplier = resolveSupplier(normalizedQuote) || resolveSupplier(normalized);
+        const currency = resolveCurrency(normalizedQuote) || resolveCurrency(normalized);
+
         for (const ln of lines) {
-          const description = String(ln.description || ln.item || ln.name || f.name || "Line");
-          const qty = Number(ln.qty ?? ln.quantity ?? 1) || 1;
-          const unit = Number(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
-          const currency = String(parsed.currency || ln.currency || quote.currency || "GBP").toUpperCase();
+          if (!ln || typeof ln !== "object") continue;
+          const description = String(
+            ln.description || ln.item || ln.name || ln.title || f.name || "Line",
+          );
+          const qtyRaw = ln.qty ?? ln.quantity ?? ln.units ?? 1;
+          const qty = Number(qtyRaw);
+          const safeQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
+          const unitRaw = ln.unit_price ?? ln.unitPrice ?? ln.price_each ?? ln.priceEach ?? ln.price ?? ln.unit;
+          let unit = Number(unitRaw);
+          if (!Number.isFinite(unit) || unit < 0) {
+            const totalRaw = ln.total ?? ln.total_price ?? ln.totalPrice;
+            const total = Number(totalRaw);
+            if (Number.isFinite(total) && safeQty > 0) {
+              unit = total / safeQty;
+            }
+          }
+          const safeUnit = Number.isFinite(unit) ? unit : 0;
+          const currencySource = resolveCurrency(ln) || currency || parsed?.currency || quote.currency || "GBP";
+          const lineCurrency = String(currencySource || "GBP").toUpperCase();
           const row = await prisma.quoteLine.create({
             data: {
               quoteId: quote.id,
-              supplier: (parsed?.supplier || undefined) as any,
+              supplier: (resolveSupplier(ln) || supplier || parsed?.supplier || undefined) as any,
               sku: typeof ln.sku === "string" ? ln.sku : undefined,
               description,
-              qty,
-              unitPrice: new Prisma.Decimal(unit),
-              currency,
+              qty: safeQty,
+              unitPrice: new Prisma.Decimal(safeUnit),
+              currency: lineCurrency,
               deliveryShareGBP: new Prisma.Decimal(0),
               lineTotalGBP: new Prisma.Decimal(0),
-              meta: parsed ? { source: "ml-parse", raw: ln } : undefined,
+              meta: normalized
+                ? { source: "ml-parse", raw: ln, parsed: normalized, quote: normalizedQuote || undefined }
+                : parsed
+                  ? { source: "ml-parse", raw: ln, parsed }
+                  : undefined,
             },
           });
           created.push(row);
