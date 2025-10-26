@@ -157,78 +157,92 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       `http://localhost:${process.env.PORT || 4000}`
     ).replace(/\/$/, "");
 
-  const created: any[] = [];
-  const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }>= [];
-    // Keep per-file ML latency bounded to avoid upstream 502s from gateways.
-    const TIMEOUT_MS = Math.max(2000, Number(process.env.ML_TIMEOUT_MS || (process.env.NODE_ENV === "production" ? 6000 : 10000)));
-    // Parse at most the most-recent 1 PDF synchronously to keep request under edge timeouts.
-    const filesToParse = [...quote.supplierFiles]
-      .filter((x) => /pdf$/i.test(x.mimeType || "") || /\.pdf$/i.test(x.name || ""))
-      .sort((a: any, b: any) => new Date(b.uploadedAt || b.createdAt || 0).getTime() - new Date(a.uploadedAt || a.createdAt || 0).getTime())
-      .slice(0, 1);
-    for (const f of filesToParse) {
-  // Only attempt to parse PDFs (already filtered above)
-      const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "30m" });
-      const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
+    // Worker to perform parsing
+    const doParse = async () => {
+      const created: any[] = [];
+      const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }>= [];
+      const TIMEOUT_MS = Math.max(2000, Number(process.env.ML_TIMEOUT_MS || (process.env.NODE_ENV === "production" ? 6000 : 10000)));
+      const filesToParse = [...quote.supplierFiles]
+        .filter((x) => /pdf$/i.test(x.mimeType || "") || /\.pdf$/i.test(x.name || ""))
+        .sort((a: any, b: any) => new Date(b.uploadedAt || b.createdAt || 0).getTime() - new Date(a.uploadedAt || a.createdAt || 0).getTime())
+        .slice(0, 1);
 
-      // Bound the time spent waiting on ML by using an AbortController
-      const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
-      let resp: Response;
-      try {
-        resp = await fetch(`${API_BASE}/ml/parse-quote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: req.headers.authorization || "" },
-        body: JSON.stringify({ url, filename: f.name || undefined }),
-        signal: ctl.signal as any,
-      } as any);
-      } catch (err: any) {
-        clearTimeout(t);
-        const msg = err?.name === "AbortError" ? `timeout_${TIMEOUT_MS}ms` : err?.message || String(err);
-        fails.push({ fileId: f.id, name: f.name, status: 504, error: { error: msg } });
-        continue;
-      } finally {
-        clearTimeout(t);
-      }
-      const text = await resp.text();
-      let parsed: any = {};
-      try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
-      if (!resp.ok) {
-        // Keep going for other files, but record the failure
-        fails.push({ fileId: f.id, name: f.name, status: resp.status, error: parsed });
-        continue;
+      for (const f of filesToParse) {
+        const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "30m" });
+        const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
+        const ctl = new AbortController();
+        const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+        let resp: Response;
+        try {
+          resp = await fetch(`${API_BASE}/ml/parse-quote`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: req.headers.authorization || "" },
+            body: JSON.stringify({ url, filename: f.name || undefined }),
+            signal: ctl.signal as any,
+          } as any);
+        } catch (err: any) {
+          clearTimeout(t);
+          const msg = err?.name === "AbortError" ? `timeout_${TIMEOUT_MS}ms` : err?.message || String(err);
+          fails.push({ fileId: f.id, name: f.name, status: 504, error: { error: msg } });
+          continue;
+        } finally {
+          clearTimeout(t);
+        }
+
+        const text = await resp.text();
+        let parsed: any = {};
+        try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
+        if (!resp.ok) {
+          fails.push({ fileId: f.id, name: f.name, status: resp.status, error: parsed });
+          continue;
+        }
+
+        const lines = Array.isArray(parsed?.lines) ? parsed.lines : [];
+        for (const ln of lines) {
+          const description = String(ln.description || ln.item || ln.name || f.name || "Line");
+          const qty = Number(ln.qty ?? ln.quantity ?? 1) || 1;
+          const unit = Number(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
+          const currency = String(parsed.currency || ln.currency || quote.currency || "GBP").toUpperCase();
+          const row = await prisma.quoteLine.create({
+            data: {
+              quoteId: quote.id,
+              supplier: (parsed?.supplier || undefined) as any,
+              sku: typeof ln.sku === "string" ? ln.sku : undefined,
+              description,
+              qty,
+              unitPrice: new Prisma.Decimal(unit),
+              currency,
+              deliveryShareGBP: new Prisma.Decimal(0),
+              lineTotalGBP: new Prisma.Decimal(0),
+              meta: parsed ? { source: "ml-parse", raw: ln } : undefined,
+            },
+          });
+          created.push(row);
+        }
       }
 
-      const lines = Array.isArray(parsed?.lines) ? parsed.lines : [];
-      for (const ln of lines) {
-        const description = String(ln.description || ln.item || ln.name || f.name || "Line");
-        const qty = Number(ln.qty ?? ln.quantity ?? 1) || 1;
-        const unit = Number(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
-        const currency = String(parsed.currency || ln.currency || quote.currency || "GBP").toUpperCase();
-        const row = await prisma.quoteLine.create({
-          data: {
-            quoteId: quote.id,
-            supplier: (parsed?.supplier || undefined) as any,
-            sku: typeof ln.sku === "string" ? ln.sku : undefined,
-            description,
-            qty,
-            unitPrice: new Prisma.Decimal(unit),
-            currency,
-            deliveryShareGBP: new Prisma.Decimal(0),
-            lineTotalGBP: new Prisma.Decimal(0),
-            meta: parsed ? { source: "ml-parse", raw: ln } : undefined,
-          },
-        });
-        created.push(row);
-      }
+      if (created.length === 0) return { error: "parse_failed", created: 0, fails } as const;
+      return { ok: true, created: created.length, fails: 0 } as const;
+    };
+
+    const preferAsync = (process.env.NODE_ENV === "production") && String(req.query.async ?? "1") !== "0";
+    if (preferAsync) {
+      setImmediate(async () => {
+        try {
+          const out = await doParse();
+          if ((out as any).error) {
+            console.warn(`[parse async] quote ${id} failed:`, out);
+          }
+        } catch (e: any) {
+          console.error(`[parse async] quote ${id} crashed:`, e?.message || e);
+        }
+      });
+      return res.json({ ok: true, async: true });
     }
 
-    // If everything failed or produced no lines, surface an error
-    if (created.length === 0) {
-      return res.status(502).json({ error: "parse_failed", created: 0, fails });
-    }
-
-    return res.json({ ok: true, created: created.length, fails: fails.length });
+    const out = await doParse();
+    if ((out as any).error) return res.status(502).json(out);
+    return res.json(out);
   } catch (e: any) {
     console.error("[/quotes/:id/parse] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
