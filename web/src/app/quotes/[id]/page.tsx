@@ -123,10 +123,18 @@ export default function QuoteBuilderPage() {
     setError(null);
     try {
       const out = await apiFetch<any>(`/quotes/${id}/parse`, { method: "POST" });
-      if (typeof out?.created === "number" && out.created === 0) {
+      // If async mode, poll for lines briefly
+      if (out && out.async) {
+        for (let i = 0; i < 12; i++) {
+          await new Promise((r) => setTimeout(r, 750));
+          await loadAll();
+          if (Array.isArray((quote as any)?.lines) && (quote as any).lines.length > 0) break;
+        }
+      } else if (typeof out?.created === "number" && out.created === 0) {
         setError("No lines parsed. Check the PDF is a supplier quote and that ML is online.");
+      } else {
+        await loadAll();
       }
-      await loadAll();
     } catch (e: any) {
       const msg = e?.details?.error === "parse_failed"
         ? "Parse failed: ML service unavailable or file not parsable."
