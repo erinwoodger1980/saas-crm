@@ -197,16 +197,25 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           continue;
         }
 
-        const lines = Array.isArray(parsed?.lines) ? parsed.lines : [];
+        // Recent ML responses wrap the useful payload under `parsed`; older
+        // versions returned the fields at the top level. Normalise here so we
+        // can continue handling both shapes without breaking the UI.
+        const normalized = parsed && typeof parsed === "object" && parsed.parsed
+          ? parsed.parsed
+          : parsed;
+
+        const lines = Array.isArray(normalized?.lines) ? normalized.lines : [];
         for (const ln of lines) {
           const description = String(ln.description || ln.item || ln.name || f.name || "Line");
           const qty = Number(ln.qty ?? ln.quantity ?? 1) || 1;
           const unit = Number(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
-          const currency = String(parsed.currency || ln.currency || quote.currency || "GBP").toUpperCase();
+          const currency = String(
+            normalized?.currency || parsed?.currency || ln.currency || quote.currency || "GBP",
+          ).toUpperCase();
           const row = await prisma.quoteLine.create({
             data: {
               quoteId: quote.id,
-              supplier: (parsed?.supplier || undefined) as any,
+              supplier: (normalized?.supplier || parsed?.supplier || undefined) as any,
               sku: typeof ln.sku === "string" ? ln.sku : undefined,
               description,
               qty,
@@ -214,7 +223,11 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
               currency,
               deliveryShareGBP: new Prisma.Decimal(0),
               lineTotalGBP: new Prisma.Decimal(0),
-              meta: parsed ? { source: "ml-parse", raw: ln } : undefined,
+              meta: normalized
+                ? { source: "ml-parse", raw: ln, parsed: normalized }
+                : parsed
+                  ? { source: "ml-parse", raw: ln, parsed }
+                  : undefined,
             },
           });
           created.push(row);
