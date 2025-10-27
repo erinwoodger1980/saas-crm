@@ -531,7 +531,7 @@ export default function AiTrainingPage() {
           <div className="flex flex-wrap items-center gap-2">
             {followupLearning?.sampleSize != null ? (
               <Badge variant="secondary" className="text-xs">
-                {(followupLearning.sampleSize ?? 0).toLocaleString()} emails analyzed
+                {(followupLearning.sampleSize ?? 0).toLocaleString()} emails analysed
               </Badge>
             ) : null}
             {followupLearning ? (
