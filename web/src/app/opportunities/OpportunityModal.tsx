@@ -80,6 +80,8 @@ type AiSuggestion = {
   rationale?: string;
 };
 
+type LeadStatus = "QUOTE_SENT" | "WON" | "LOST";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function makeSuggestionId() {
@@ -254,14 +256,20 @@ export default function OpportunityModal({
   leadId,
   leadName,
   leadEmail,
+  leadStatus,
+  opportunityId,
   onAfterSend,
+  onStatusChange,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   leadId: string;
   leadName: string;
   leadEmail: string;
+  leadStatus: LeadStatus;
+  opportunityId?: string | null;
   onAfterSend?: () => void;
+  onStatusChange?: (next: LeadStatus) => void;
 }) {
   const { toast } = useToast();
   const {
@@ -298,7 +306,18 @@ export default function OpportunityModal({
   const [draftSubject, setDraftSubject] = useState("");
   const [draftBody, setDraftBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [status, setStatusState] = useState<LeadStatus>(leadStatus);
+  const [statusUpdating, setStatusUpdating] = useState<LeadStatus | null>(null);
   const [autoMode, setAutoMode] = useState(false);
+  const [autoPlan, setAutoPlan] = useState<{
+    whenISO: string | null;
+    subject?: string | null;
+    body?: string | null;
+    variant?: string | null;
+    rationale?: string | null;
+    logId?: string | null;
+  } | null>(null);
+  const [schedulingNext, setSchedulingNext] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [schedulingCall, setSchedulingCall] = useState(false);
   const [autoScheduleCall, setAutoScheduleCall] = useState(true);
@@ -321,8 +340,10 @@ export default function OpportunityModal({
     });
   }, [history]);
 
-  const lastEmail = useMemo(() => {
-    return history.find((log) => (log.channel || "email").toLowerCase() !== "phone");
+  const lastSentEmail = useMemo(() => {
+    return history.find(
+      (log) => (log.channel || "email").toLowerCase() !== "phone" && Boolean(log.sentAt),
+    );
   }, [history]);
 
   const cadenceStats = useMemo(() => {
@@ -401,6 +422,41 @@ export default function OpportunityModal({
     try {
       const h = await apiFetch<{ logs: FollowUpLog[] }>(`/opportunities/${leadId}/followups`);
       const logs = h.logs || [];
+
+      const upcomingEmail = logs.find((log) => {
+        if ((log.channel || "email").toLowerCase() === "phone") return false;
+        if (log.sentAt) return false;
+        if (!log.scheduledFor) return false;
+        const ts = new Date(log.scheduledFor).getTime();
+        return Number.isFinite(ts) && ts >= Date.now() - 60_000;
+      });
+
+      if (upcomingEmail) {
+        const meta = toPlainObject(upcomingEmail.metadata);
+        const planMeta = toPlainObject(meta.plan);
+        const whenISO =
+          upcomingEmail.scheduledFor ||
+          (typeof planMeta.scheduledForISO === "string" ? planMeta.scheduledForISO : null) ||
+          (typeof planMeta.whenISO === "string" ? planMeta.whenISO : null);
+        setAutoPlan({
+          whenISO: whenISO || null,
+          subject: upcomingEmail.subject ?? (typeof planMeta.subject === "string" ? planMeta.subject : null),
+          body: upcomingEmail.body ?? (typeof planMeta.body === "string" ? planMeta.body : null),
+          variant: upcomingEmail.variant ?? (typeof planMeta.variant === "string" ? planMeta.variant : null),
+          rationale:
+            typeof meta.rationale === "string"
+              ? meta.rationale
+              : typeof planMeta.rationale === "string"
+              ? planMeta.rationale
+              : undefined,
+          logId: upcomingEmail.id,
+        });
+        setAutoMode(true);
+      } else {
+        setAutoPlan(null);
+        setAutoMode(false);
+      }
+
       setHistory(logs);
 
       const upcoming = logs.find((log) => {
@@ -442,11 +498,15 @@ export default function OpportunityModal({
 
   useEffect(() => {
     if (open) {
+      setStatusState(leadStatus);
+      setStatusUpdating(null);
+      setAutoPlan(null);
+      setAutoMode(false);
       autoScheduleInitialised.current = false;
       void load();
       void loadReplies();
     }
-  }, [open, load, loadReplies]);
+  }, [open, leadStatus, load, loadReplies]);
 
   async function send() {
     if (!draftSubject || !draftBody) return;
@@ -530,7 +590,9 @@ export default function OpportunityModal({
   }
 
   async function scheduleNext() {
+    const idForSchedule = opportunityId || leadId;
     try {
+      setSchedulingNext(true);
       const resp = await apiFetch<{
         whenISO: string;
         subject: string;
@@ -539,26 +601,40 @@ export default function OpportunityModal({
         source?: string;
         cps?: number | null;
         rationale?: string;
-      }>(`/opportunities/${leadId}/next-followup`, {
+        logId?: string;
+      }>(`/opportunities/${idForSchedule}/next-followup`, {
         method: "POST",
         json: {},
       });
       setAutoMode(true);
+      setAutoPlan({
+        whenISO: resp.whenISO || null,
+        subject: resp.subject ?? null,
+        body: resp.body ?? null,
+        variant: resp.variant ?? null,
+        rationale: resp.rationale,
+        logId: resp.logId ?? null,
+      });
       toast({
         title: "Next follow-up scheduled",
-        description: `Planned for ${new Date(resp.whenISO).toLocaleString()}`,
+        description: resp.whenISO ? `Planned for ${formatDateTime(resp.whenISO) || resp.whenISO}` : undefined,
       });
+      await load();
+      onAfterSend?.();
     } catch (e: any) {
       toast({
         title: "Scheduling failed",
         description: e?.message || "Please try again",
         variant: "destructive",
       });
+    } finally {
+      setSchedulingNext(false);
     }
   }
 
-  async function setStatus(next: "QUOTE_SENT" | "WON" | "LOST") {
+  async function updateStatus(next: LeadStatus) {
     try {
+      setStatusUpdating(next);
       await apiFetch(`/leads/${encodeURIComponent(leadId)}`, {
         method: "PATCH",
         json: { status: next },
@@ -573,14 +649,18 @@ export default function OpportunityModal({
         toast({ title: "Back to Quote Sent" });
       }
 
+      setStatusState(next);
+      onStatusChange?.(next);
       onAfterSend?.();
       await loadReplies();
     } catch (e: any) {
       toast({ title: "Failed to update status", description: e?.message, variant: "destructive" });
+    } finally {
+      setStatusUpdating(null);
     }
   }
 
-  const lastSent = lastEmail;
+  const lastSent = lastSentEmail;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -636,22 +716,38 @@ export default function OpportunityModal({
             {/* Quick actions */}
             <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3">
               <span className="text-xs text-slate-600">Status:</span>
-              <Button size="sm" variant="secondary" onClick={() => setStatus("QUOTE_SENT")}>
-                Back to Quote Sent
+              <Button
+                size="sm"
+                variant={status === "QUOTE_SENT" ? "default" : "secondary"}
+                onClick={() => updateStatus("QUOTE_SENT")}
+                disabled={statusUpdating !== null}
+              >
+                {statusUpdating === "QUOTE_SENT" ? "Updating…" : "Back to Quote Sent"}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setStatus("LOST")}>
-                Mark Lost
+              <Button
+                size="sm"
+                variant={status === "LOST" ? "destructive" : "outline"}
+                onClick={() => updateStatus("LOST")}
+                disabled={statusUpdating !== null}
+              >
+                {statusUpdating === "LOST" ? "Updating…" : "Mark Lost"}
               </Button>
-              <Button size="sm" onClick={() => setStatus("WON")}>
-                Mark Won 🎉
+              <Button
+                size="sm"
+                variant={status === "WON" ? "default" : "outline"}
+                onClick={() => updateStatus("WON")}
+                disabled={statusUpdating !== null}
+              >
+                {statusUpdating === "WON" ? "Marking…" : "Mark Won 🎉"}
               </Button>
               <div className="ml-auto">
                 <Button
                   size="sm"
                   variant={autoMode ? "secondary" : "outline"}
                   onClick={scheduleNext}
+                  disabled={schedulingNext}
                 >
-                  {autoMode ? "Auto-scheduled ✓" : "Auto-schedule next"}
+                  {schedulingNext ? "Planning…" : autoMode ? "Auto-scheduled ✓" : "Auto-schedule next"}
                 </Button>
               </div>
             </div>
@@ -878,17 +974,25 @@ export default function OpportunityModal({
                   <div className="space-y-3 max-h-[46vh] overflow-auto pr-1">
                     {history.map((h) => {
                       const meta = toPlainObject(h.metadata);
-                      const isPhone = (h.channel || "email").toLowerCase() === "phone";
-                      const sentLabel = formatDateTime(h.sentAt) || "Unknown";
-                      const scheduledLabel = isPhone ? formatDateTime(h.scheduledFor) : null;
+                      const channel = (h.channel || "email").toLowerCase();
+                      const isPhone = channel === "phone";
+                      const sentLabel = h.sentAt ? formatDateTime(h.sentAt) : null;
+                      const scheduledLabel = h.scheduledFor ? formatDateTime(h.scheduledFor) : null;
+                      const whenLabel = sentLabel || (scheduledLabel ? `Scheduled ${scheduledLabel}` : "Unknown");
+                      const autoScheduledEmail = !isPhone && !sentLabel && Boolean(scheduledLabel);
 
                       return (
                         <div key={h.id} className="rounded-md border p-3 hover:bg-slate-50">
                           <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                            <span>{scheduledLabel || sentLabel}</span>
+                            <span>{whenLabel}</span>
                             <span className="rounded-full border bg-white px-2 py-0.5">
                               {isPhone ? "Phone" : `Variant ${h.variant}`}
                             </span>
+                            {autoScheduledEmail ? (
+                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                                AI auto
+                              </span>
+                            ) : null}
                             {!isPhone && h.opened && <span className="text-green-700">· Opened</span>}
                             {!isPhone && h.replied && <span className="text-blue-700">· Replied</span>}
                             {!isPhone && h.converted && <span className="text-emerald-700">· Converted</span>}
@@ -899,9 +1003,9 @@ export default function OpportunityModal({
                           <div className="text-sm font-medium">
                             {isPhone ? h.subject || "Phone follow-up" : h.subject}
                           </div>
-                          {isPhone && scheduledLabel && (
+                          {scheduledLabel && (
                             <div className="text-[11px] text-slate-500">
-                              Scheduled for {scheduledLabel}
+                              {sentLabel ? `Scheduled ${scheduledLabel}` : `Scheduled for ${scheduledLabel}`}
                             </div>
                           )}
                           {h.body && (
@@ -917,6 +1021,9 @@ export default function OpportunityModal({
                               Delay: {meta.callDelayDays} day{meta.callDelayDays === 1 ? "" : "s"}
                             </div>
                           )}
+                          {autoScheduledEmail ? (
+                            <div className="mt-1 text-[10px] text-emerald-700">AI will send this automatically.</div>
+                          ) : null}
                         </div>
                       );
                     })}
