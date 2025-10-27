@@ -511,61 +511,37 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           continue;
         }
 
-        const parsedSummary = normaliseParsedQuote(selected.parsed);
-        const parsed = parsedSummary.normalized;
-        const parsedQuote = parsedSummary.normalizedQuote;
-        const supplierFromParse = parsedSummary.supplier;
-        const currencyFromParse = parsedSummary.currency;
-        const lines = Array.isArray(parsedSummary.lines) ? parsedSummary.lines : [];
+        // Recent ML responses wrap the useful payload under `parsed`; older
+        // versions returned the fields at the top level. Normalise here so we
+        // can continue handling both shapes without breaking the UI.
+        const normalized = parsed && typeof parsed === "object" && parsed.parsed
+          ? parsed.parsed
+          : parsed;
 
+        const lines = Array.isArray(normalized?.lines) ? normalized.lines : [];
         for (const ln of lines) {
-          if (!ln || typeof ln !== "object") continue;
-
-          const description = String(ln.description || ln.item || ln.name || ln.title || f.name || "Line");
-
-          const qtyRaw = ln.qty ?? ln.quantity ?? ln.units ?? 1;
-          const qty = Number(qtyRaw);
-          const safeQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
-
-          const unitRaw =
-            ln.unit_price ?? ln.unitPrice ?? ln.price_each ?? ln.priceEach ?? ln.price ?? ln.unit ?? ln.rate;
-          let unit = Number(unitRaw);
-          if (!Number.isFinite(unit) || unit < 0) {
-            const totalRaw = ln.total ?? ln.total_price ?? ln.totalPrice;
-            const total = Number(totalRaw);
-            if (Number.isFinite(total) && safeQty > 0) {
-              unit = total / safeQty;
-            }
-          }
-          const safeUnit = Number.isFinite(unit) ? unit : 0;
-
-          const currencySource =
-            resolveCurrency(ln) || currencyFromParse || selected.currency || quote.currency || "GBP";
-          const lineCurrency = String(currencySource || "GBP").toUpperCase();
-
-          const lineSupplier =
-            resolveSupplier(ln) || supplierFromParse || selected.supplier || (quote as any).supplier || undefined;
-
-          const metaPayload: Record<string, any> = {
-            source: selected.source === "openai" ? "openai-parse" : "ml-parse",
-            raw: ln,
-            parsed: parsed || undefined,
-            quote: parsedQuote || undefined,
-          };
-          if (selected.details) metaPayload.details = selected.details;
-
+          const description = String(ln.description || ln.item || ln.name || f.name || "Line");
+          const qty = Number(ln.qty ?? ln.quantity ?? 1) || 1;
+          const unit = Number(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
+          const currency = String(
+            normalized?.currency || parsed?.currency || ln.currency || quote.currency || "GBP",
+          ).toUpperCase();
           const row = await prisma.quoteLine.create({
             data: {
               quoteId: quote.id,
-              supplier: lineSupplier as any,
-              sku: typeof ln.sku === "string" && ln.sku.trim() ? ln.sku : undefined,
+              supplier: (normalized?.supplier || parsed?.supplier || undefined) as any,
+              sku: typeof ln.sku === "string" ? ln.sku : undefined,
               description,
               qty: safeQty,
               unitPrice: new Prisma.Decimal(safeUnit),
               currency: lineCurrency,
               deliveryShareGBP: new Prisma.Decimal(0),
               lineTotalGBP: new Prisma.Decimal(0),
-              meta: metaPayload,
+              meta: normalized
+                ? { source: "ml-parse", raw: ln, parsed: normalized }
+                : parsed
+                  ? { source: "ml-parse", raw: ln, parsed }
+                  : undefined,
             },
           });
           created.push(row);
