@@ -557,7 +557,11 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
               currency: lineCurrency,
               deliveryShareGBP: new Prisma.Decimal(0),
               lineTotalGBP: new Prisma.Decimal(0),
-              meta: metaPayload,
+              meta: normalized
+                ? { source: "ml-parse", raw: ln, parsed: normalized }
+                : parsed
+                  ? { source: "ml-parse", raw: ln, parsed }
+                  : undefined,
             },
           });
           created.push(row);
