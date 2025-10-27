@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { Badge } from "@/components/ui/badge";
-import { formatDaysLabel } from "@/lib/dates";
 
 type FollowUpLog = {
   id: string;
@@ -164,6 +163,41 @@ function percentLabel(value?: number) {
   const pct = value * 100;
   if (pct >= 10) return `${Math.round(pct)}%`;
   return `${Math.round(pct * 10) / 10}%`;
+}
+
+function formatDaysLabel(value?: number | null) {
+  if (value == null || Number.isNaN(value)) return "–";
+  const days = Number(value);
+  if (!Number.isFinite(days)) return "–";
+  if (days <= 0) return "Same day";
+  if (days < 1) {
+    const hrs = Math.max(1, Math.round(days * 24));
+    return `${hrs} hr${hrs === 1 ? "" : "s"}`;
+  }
+  const rounded = Math.round(days * 10) / 10;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.05) {
+    const whole = Math.max(1, Math.round(rounded));
+    return `${whole} day${whole === 1 ? "" : "s"}`;
+  }
+  return `${rounded} days`;
+}
+
+function formatRelativeFuture(date?: Date | null) {
+  if (!date) return "–";
+  const diffDays = (date.getTime() - Date.now()) / DAY_MS;
+  if (!Number.isFinite(diffDays)) return "–";
+  if (diffDays <= -0.5) return "Overdue";
+  if (diffDays < 0.5) return "Ready now";
+  if (diffDays < 1) return "Later today";
+  if (diffDays < 2) return "Tomorrow";
+  return `In ${Math.round(diffDays)} days`;
+}
+
+function formatAgoDays(days?: number | null) {
+  if (days == null || Number.isNaN(days)) return "–";
+  if (days < 0.5) return "Today";
+  if (days < 1.5) return "1 day ago";
+  return `${Math.round(days)} days ago`;
 }
 
 function formatRelativeFuture(date?: Date | null) {
@@ -331,22 +365,15 @@ export default function OpportunityModal({
 
   const lastSentEmail = useMemo(() => {
     return history.find(
-      (log) =>
-        (log.channel || "email").toLowerCase() !== "phone" && Boolean(safeParseDate(log.sentAt)),
+      (log) => (log.channel || "email").toLowerCase() !== "phone" && Boolean(log.sentAt),
     );
   }, [history]);
-
-  const upcomingEmailDate = useMemo(() => {
-    const whenISO = autoPlan?.whenISO;
-    return whenISO ? safeParseDate(whenISO) : null;
-  }, [autoPlan?.whenISO]);
 
   const cadenceStats = useMemo(() => {
     const emailEvents = history
       .filter((log) => (log.channel || "email").toLowerCase() !== "phone")
-      .map((log) => safeParseDate(log.sentAt))
-      .filter((d): d is Date => Boolean(d))
-      .map((d) => d.getTime())
+      .map((log) => new Date(log.sentAt).getTime())
+      .filter((ts) => !Number.isNaN(ts))
       .sort((a, b) => b - a);
 
     if (emailEvents.length === 0) {
@@ -369,14 +396,14 @@ export default function OpportunityModal({
     };
   }, [history]);
 
-  const lastEmailDate = useMemo(() => safeParseDate(lastSentEmail?.sentAt), [lastSentEmail?.sentAt]);
-
   const nextSuggestedDate = useMemo(() => {
-    if (!lastEmailDate || typeof emailDelayDays !== "number") return null;
-    const nextTs = lastEmailDate.getTime() + emailDelayDays * DAY_MS;
+    if (!lastEmail?.sentAt || typeof emailDelayDays !== "number") return null;
+    const lastTs = new Date(lastEmail.sentAt).getTime();
+    if (Number.isNaN(lastTs)) return null;
+    const nextTs = lastTs + emailDelayDays * DAY_MS;
     if (!Number.isFinite(nextTs)) return null;
     return new Date(nextTs);
-  }, [lastEmailDate, emailDelayDays]);
+  }, [lastEmail, emailDelayDays]);
 
   const topVariant = useMemo(() => {
     if (!suggest?.learning?.variants || suggest.learning.variants.length === 0) return null;
@@ -386,25 +413,20 @@ export default function OpportunityModal({
     return ordered[0];
   }, [suggest?.learning?.variants]);
 
+  const lastEmailDate = lastEmail?.sentAt ? new Date(lastEmail.sentAt) : null;
   const sampleSize = suggest?.learning?.sampleSize ?? 0;
-  const nextStatValue = upcomingEmailDate
-    ? formatRelativeFuture(upcomingEmailDate)
-    : nextSuggestedDate
+  const nextStatValue = nextSuggestedDate
     ? formatRelativeFuture(nextSuggestedDate)
     : typeof emailDelayDays === "number"
     ? `Every ${formatDaysLabel(emailDelayDays)}`
     : "Let AI decide";
-  const nextStatHint = upcomingEmailDate
-    ? formatDateTime(upcomingEmailDate.toISOString()) || "Soon"
-    : nextSuggestedDate
-    ? formatDateTime(nextSuggestedDate.toISOString()) || "Soon"
+  const nextStatHint = nextSuggestedDate
+    ? nextSuggestedDate.toLocaleString()
     : typeof emailDelayDays === "number"
     ? "Based on recent wins"
     : "AI will recommend timing";
   const sinceStatValue = lastEmailDate ? formatAgoDays(cadenceStats.sinceLast) : "First follow-up";
-  const sinceStatHint = lastEmailDate
-    ? formatDateTime(lastEmailDate.toISOString()) || "No previous emails"
-    : "No previous emails";
+  const sinceStatHint = lastEmailDate ? lastEmailDate.toLocaleString() : "No previous emails";
   const avgStatValue = cadenceStats.averageGap != null ? formatDaysLabel(cadenceStats.averageGap) : "Learning";
   const avgStatHint =
     cadenceStats.total > 1
@@ -427,9 +449,9 @@ export default function OpportunityModal({
       const upcomingEmail = logs.find((log) => {
         if ((log.channel || "email").toLowerCase() === "phone") return false;
         if (log.sentAt) return false;
-        const scheduled = safeParseDate(log.scheduledFor);
-        if (!scheduled) return false;
-        return scheduled.getTime() >= Date.now() - 60_000;
+        if (!log.scheduledFor) return false;
+        const ts = new Date(log.scheduledFor).getTime();
+        return Number.isFinite(ts) && ts >= Date.now() - 60_000;
       });
 
       if (upcomingEmail) {
@@ -755,30 +777,6 @@ export default function OpportunityModal({
               </div>
             </div>
 
-            {autoPlan ? (
-              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-900">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold">AI follow-up scheduled</span>
-                  {autoPlan.variant ? (
-                    <span className="rounded-full border border-emerald-200 bg-white/70 px-2 py-0.5 text-[10px] text-emerald-700">
-                      Variant {autoPlan.variant}
-                    </span>
-                  ) : null}
-                </div>
-                <div className="mt-1 text-[11px]">
-                  {autoPlan.whenISO
-                    ? `Going out ${formatDateTime(autoPlan.whenISO) || "soon"}`
-                    : "We'll send it automatically soon."}
-                </div>
-                {autoPlan.subject ? (
-                  <div className="mt-1 text-[11px] text-emerald-800 line-clamp-2">“{autoPlan.subject}”</div>
-                ) : null}
-                {autoPlan.rationale ? (
-                  <div className="mt-1 text-[10px] text-emerald-700">{autoPlan.rationale}</div>
-                ) : null}
-              </div>
-            ) : null}
-
             {/* ML-powered summary */}
             <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <FollowupStat icon="📅" label="Next AI follow-up" value={nextStatValue} hint={nextStatHint} />
@@ -833,7 +831,7 @@ export default function OpportunityModal({
                       ) : null}
                       {suggest.learning.lastUpdatedISO ? (
                         <span className="text-[11px] text-slate-400">
-                          Updated {formatDateTime(suggest.learning.lastUpdatedISO) || "recently"}
+                          Updated {new Date(suggest.learning.lastUpdatedISO).toLocaleString()}
                         </span>
                       ) : null}
                     </div>
