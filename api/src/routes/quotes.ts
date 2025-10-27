@@ -560,66 +560,37 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           continue;
         }
 
-        const parsedSummary = normaliseParsedQuote(selected.parsed);
-        const parsedPayload = parsedSummary.normalized;
-        const parsedQuote = parsedSummary.normalizedQuote;
-        const supplierFromParse = parsedSummary.supplier;
-        const currencyFromParse = parsedSummary.currency;
-        const lines = Array.isArray(parsedSummary.lines) ? parsedSummary.lines : [];
+        // Recent ML responses wrap the useful payload under `parsed`; older
+        // versions returned the fields at the top level. Normalise here so we
+        // can continue handling both shapes without breaking the UI.
+        const normalized = parsed && typeof parsed === "object" && parsed.parsed
+          ? parsed.parsed
+          : parsed;
 
+        const lines = Array.isArray(normalized?.lines) ? normalized.lines : [];
         for (const ln of lines) {
-          if (!ln || typeof ln !== "object") continue;
-
-          const parsed = ln as ParsedLine;
-          const description = String(
-            parsed.description || parsed.item || parsed.name || parsed.title || f.name || "Line",
-          );
-
-          const quantityValue = parsed.qty ?? parsed.quantity ?? parsed.units ?? 1;
-          const qty = safeQty(quantityValue);
-
-          const unitRaw =
-            parsed.unit_price ?? parsed.unitPrice ?? parsed.price_each ?? parsed.priceEach ?? parsed.price ?? parsed.rate;
-          let unitPriceCandidate = toNumber(unitRaw);
-          if (!(unitPriceCandidate > 0)) {
-            const totalRaw = parsed.total ?? parsed.total_price ?? parsed.totalPrice;
-            const total = toNumber(totalRaw);
-            if (total > 0 && qty > 0) {
-              unitPriceCandidate = total / qty;
-            }
-          }
-          const unitPriceValue = safeUnitPrice(unitPriceCandidate);
-
-          const currencySource =
-            resolveCurrency(parsed) || currencyFromParse || selected.currency || quote.currency || "GBP";
-          const lineCurrency = String(currencySource || "GBP").toUpperCase();
-
-          const lineSupplier =
-            resolveSupplier(parsed) || supplierFromParse || selected.supplier || (quote as any).supplier || undefined;
-
-          const metaPayload: Record<string, any> = {
-            source: selected.source === "openai" ? "openai-parse" : "ml-parse",
-            raw: parsed,
-            parsed: parsedPayload || undefined,
-            quote: parsedQuote || undefined,
-          };
-          if (typeof parsed.unit === "string" && parsed.unit.trim()) {
-            metaPayload.unit = safeUnit(parsed.unit);
-          }
-          if (selected.details) metaPayload.details = selected.details;
-
+          const description = String(ln.description || ln.item || ln.name || f.name || "Line");
+          const qty = Number(ln.qty ?? ln.quantity ?? 1) || 1;
+          const unit = Number(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
+          const currency = String(
+            normalized?.currency || parsed?.currency || ln.currency || quote.currency || "GBP",
+          ).toUpperCase();
           const row = await prisma.quoteLine.create({
             data: {
               quoteId: quote.id,
-              supplier: lineSupplier as any,
-              sku: typeof parsed.sku === "string" && parsed.sku.trim() ? parsed.sku : undefined,
+              supplier: (normalized?.supplier || parsed?.supplier || undefined) as any,
+              sku: typeof ln.sku === "string" ? ln.sku : undefined,
               description,
               qty,
               unitPrice: new Prisma.Decimal(unitPriceValue),
               currency: lineCurrency,
               deliveryShareGBP: new Prisma.Decimal(0),
               lineTotalGBP: new Prisma.Decimal(0),
-              meta: metaPayload,
+              meta: normalized
+                ? { source: "ml-parse", raw: ln, parsed: normalized }
+                : parsed
+                  ? { source: "ml-parse", raw: ln, parsed }
+                  : undefined,
             },
           });
           created.push(row);

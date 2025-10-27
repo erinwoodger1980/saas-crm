@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -50,6 +50,26 @@ type InsightsResponse = {
   params: ParamRow[];
 };
 
+type FollowupLearningResponse = {
+  optIn: boolean;
+  summary?: string;
+  sampleSize?: number;
+  variants?: {
+    variant: string;
+    sampleSize: number;
+    replyRate?: number;
+    conversionRate?: number;
+    avgDelayDays?: number | null;
+    successScore?: number;
+  }[];
+  call?: {
+    sampleSize?: number;
+    avgDelayDays?: number | null;
+    conversionRate?: number | null;
+  };
+  lastUpdatedISO?: string | null;
+};
+
 function formatDate(s?: string | null) {
   if (!s) return "—";
   try {
@@ -57,6 +77,30 @@ function formatDate(s?: string | null) {
   } catch {
     return s;
   }
+}
+
+function formatPercent(value?: number | null) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "—";
+  const pct = value * 100;
+  if (pct >= 10) return `${Math.round(pct)}%`;
+  return `${Math.round(pct * 10) / 10}%`;
+}
+
+function formatDaysLabel(value?: number | null) {
+  if (value == null || Number.isNaN(value)) return "—";
+  const days = Number(value);
+  if (!Number.isFinite(days)) return "—";
+  if (days <= 0) return "Same day";
+  if (days < 1) {
+    const hrs = Math.max(1, Math.round(days * 24));
+    return `${hrs} hr${hrs === 1 ? "" : "s"}`;
+  }
+  const rounded = Math.round(days * 10) / 10;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.05) {
+    const whole = Math.max(1, Math.round(rounded));
+    return `${whole} day${whole === 1 ? "" : "s"}`;
+  }
+  return `${rounded} days`;
 }
 
 export default function AiTrainingPage() {
@@ -82,6 +126,23 @@ export default function AiTrainingPage() {
   const [files, setFiles] = useState<Array<{ id: string; name: string; uploadedAt?: string; mimeType?: string; sizeBytes?: number | null }>>([]);
   const [fileSel, setFileSel] = useState<Record<string, boolean>>({});
   const [creatingQuote, setCreatingQuote] = useState(false);
+  const [followupLearning, setFollowupLearning] = useState<FollowupLearningResponse | null>(null);
+  const [followupLoading, setFollowupLoading] = useState(false);
+  const [followupError, setFollowupError] = useState<string | null>(null);
+  const [updatingFollowupOptIn, setUpdatingFollowupOptIn] = useState(false);
+
+  const fetchFollowupLearning = useCallback(async () => {
+    setFollowupLoading(true);
+    setFollowupError(null);
+    try {
+      const data = await apiFetch<FollowupLearningResponse>("/ai/followup/learning");
+      setFollowupLearning(data);
+    } catch (e: any) {
+      setFollowupError(e?.message || "Failed to load follow-up learning");
+    } finally {
+      setFollowupLoading(false);
+    }
+  }, []);
 
   const isEA = !!user?.isEarlyAdopter;
 
@@ -98,6 +159,10 @@ export default function AiTrainingPage() {
     })();
     return () => { cancel = true; };
   }, []);
+
+  useEffect(() => {
+    void fetchFollowupLearning();
+  }, [fetchFollowupLearning]);
 
   useEffect(() => {
     let cancel = false;
@@ -194,6 +259,16 @@ export default function AiTrainingPage() {
     return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
   }, [filteredInsights]);
 
+  const followupHasData = (followupLearning?.sampleSize ?? 0) > 0;
+
+  const followupTopVariant = useMemo(() => {
+    if (!followupLearning?.variants || followupLearning.variants.length === 0) return null;
+    const ordered = [...followupLearning.variants].sort(
+      (a, b) => (b.successScore ?? 0) - (a.successScore ?? 0),
+    );
+    return ordered[0];
+  }, [followupLearning?.variants]);
+
   function parseEmailRef(inputSummary?: string | null): { provider: string; messageId: string } | null {
     if (!inputSummary || !inputSummary.startsWith("email:")) return null;
     const parts = inputSummary.split(":");
@@ -223,6 +298,29 @@ export default function AiTrainingPage() {
 
   function clearFiles() {
     setFileSel({});
+  }
+
+  async function toggleFollowupOptIn(next: boolean) {
+    setUpdatingFollowupOptIn(true);
+    try {
+      await apiFetch("/tenant/settings", {
+        method: "PATCH",
+        json: { aiFollowupLearning: { crossTenantOptIn: next } },
+      });
+      setFollowupLearning((prev) => (prev ? { ...prev, optIn: next } : { optIn: next }));
+      toast({
+        title: next ? "Sharing enabled" : "Sharing paused",
+        description: next
+          ? "Your follow-ups contribute to the network playbook."
+          : "We’ll keep future follow-ups private.",
+        duration: 2600,
+      });
+      await fetchFollowupLearning();
+    } catch (e: any) {
+      toast({ title: "Couldn’t update sharing", description: e?.message || "", variant: "destructive" });
+    } finally {
+      setUpdatingFollowupOptIn(false);
+    }
   }
 
   async function trainOnSelectedFiles() {
@@ -412,17 +510,140 @@ export default function AiTrainingPage() {
           <h1 className="text-xl font-semibold text-slate-900">AI Training</h1>
           <p className="text-sm text-slate-600">Tune sensitivity, review recent decisions, and retrain per module.</p>
         </div>
-        <div className="flex items-center gap-2">
-          {mlHealth && (
-            <Badge variant={mlHealth.ok ? "secondary" : "destructive"} className="text-xs">
-              ML: {mlHealth.ok ? "online" : "offline"}{mlHealth?.target ? ` • ${mlHealth.target}` : ""}
-            </Badge>
-          )}
-          {avgConf != null && (
-            <Badge variant="secondary" className="text-sm">Avg confidence: {(avgConf * 100).toFixed(0)}%</Badge>
-          )}
-        </div>
+      <div className="flex items-center gap-2">
+        {mlHealth && (
+          <Badge variant={mlHealth.ok ? "secondary" : "destructive"} className="text-xs">
+            ML: {mlHealth.ok ? "online" : "offline"}{mlHealth?.target ? ` • ${mlHealth.target}` : ""}
+          </Badge>
+        )}
+        {avgConf != null && (
+          <Badge variant="secondary" className="text-sm">Avg confidence: {(avgConf * 100).toFixed(0)}%</Badge>
+        )}
       </div>
+    </div>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-slate-700">Quote follow-up learning</p>
+            <p className="text-xs text-slate-500">See what the model is saying and how it times follow-ups after quotes.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {followupLearning?.sampleSize != null ? (
+              <Badge variant="secondary" className="text-xs">
+                {(followupLearning.sampleSize ?? 0).toLocaleString()} emails analysed
+              </Badge>
+            ) : null}
+            {followupLearning ? (
+              <Badge variant={followupLearning.optIn ? "secondary" : "destructive"} className="text-xs">
+                {followupLearning.optIn ? "Sharing insights" : "Sharing paused"}
+              </Badge>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={() => void fetchFollowupLearning()} disabled={followupLoading}>
+              {followupLoading ? "Refreshing…" : "Refresh"}
+            </Button>
+            {followupLearning ? (
+              <Button
+                size="sm"
+                variant={followupLearning.optIn ? "outline" : "default"}
+                onClick={() => toggleFollowupOptIn(!(followupLearning.optIn))}
+                disabled={updatingFollowupOptIn}
+              >
+                {updatingFollowupOptIn
+                  ? "Saving…"
+                  : followupLearning.optIn
+                  ? "Pause sharing"
+                  : "Enable sharing"}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        {followupError ? (
+          <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{followupError}</div>
+        ) : null}
+        {followupLoading && !followupHasData ? (
+          <div className="mt-4 text-sm text-slate-500">Loading follow-up insights…</div>
+        ) : null}
+        {!followupLoading && !followupHasData ? (
+          <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-sm text-slate-500">
+            Send your first follow-up from an opportunity to unlock cadence analytics.
+          </div>
+        ) : null}
+        {followupLearning ? (
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What we’re saying</div>
+              <div className="mt-2 text-sm text-slate-800">
+                {followupLearning.summary || "We’ll summarise messaging once a few follow-ups have been sent."}
+              </div>
+              {followupLearning.lastUpdatedISO ? (
+                <div className="mt-2 text-[10px] text-slate-500">
+                  Updated {formatDate(followupLearning.lastUpdatedISO)}
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-slate-100 bg-white p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Cadence & performance</div>
+              <div className="mt-2 text-sm text-slate-800">
+                {followupTopVariant && followupTopVariant.avgDelayDays != null
+                  ? `Variant ${followupTopVariant.variant} wins after about ${formatDaysLabel(followupTopVariant.avgDelayDays)}.`
+                  : followupHasData
+                  ? `AI is comparing ${followupLearning.variants?.length || 0} variants right now.`
+                  : "Cadence insights will appear here once we have a few sends."}
+              </div>
+              {followupTopVariant ? (
+                <div className="mt-3 space-y-1 text-[11px] text-slate-600">
+                  <div>
+                    Replies: {formatPercent(followupTopVariant.replyRate)} · Wins: {formatPercent(followupTopVariant.conversionRate)}
+                  </div>
+                  {followupTopVariant.avgDelayDays != null ? (
+                    <div>Average delay {formatDaysLabel(followupTopVariant.avgDelayDays)}</div>
+                  ) : null}
+                </div>
+              ) : null}
+              {followupLearning.call?.sampleSize ? (
+                <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-[11px] text-blue-900">
+                  Phone nudges: {followupLearning.call.sampleSize} samples · {formatDaysLabel(followupLearning.call.avgDelayDays)} after send · Conversion {formatPercent(followupLearning.call.conversionRate)}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        {followupLearning?.variants && followupLearning.variants.length > 0 ? (
+          <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white">
+            <table className="min-w-full text-left text-xs text-slate-600">
+              <thead className="text-[11px] uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Variant</th>
+                  <th className="px-3 py-2">Samples</th>
+                  <th className="px-3 py-2">Reply rate</th>
+                  <th className="px-3 py-2">Conversion</th>
+                  <th className="px-3 py-2">Avg delay</th>
+                </tr>
+              </thead>
+              <tbody>
+                {followupLearning.variants.slice(0, 5).map((variant) => {
+                  const leader = followupTopVariant?.variant === variant.variant;
+                  return (
+                    <tr key={variant.variant} className={`border-t border-slate-100 ${leader ? "bg-slate-50/80" : ""}`}>
+                      <td className="px-3 py-2 font-semibold text-slate-700">
+                        Variant {variant.variant}
+                        {leader ? (
+                          <Badge variant="secondary" className="ml-2 align-middle text-[10px]">Leading</Badge>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2">{variant.sampleSize.toLocaleString()}</td>
+                      <td className="px-3 py-2">{formatPercent(variant.replyRate)}</td>
+                      <td className="px-3 py-2">{formatPercent(variant.conversionRate)}</td>
+                      <td className="px-3 py-2">{formatDaysLabel(variant.avgDelayDays)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
 
       {/* Quote Builder quick access */}
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
