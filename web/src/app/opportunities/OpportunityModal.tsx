@@ -1,7 +1,7 @@
 // web/src/app/opportunities/OpportunityModal.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
 import {
   Dialog,
@@ -13,6 +13,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
+import { Badge } from "@/components/ui/badge";
+import { formatDaysLabel } from "@/lib/dates";
 
 type FollowUpLog = {
   id: string;
@@ -78,6 +80,8 @@ type AiSuggestion = {
   learning?: AiLearning;
   rationale?: string;
 };
+
+type LeadStatus = "QUOTE_SENT" | "WON" | "LOST";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -157,14 +161,39 @@ function normaliseSuggestion(raw: any): AiSuggestion {
 
 function percentLabel(value?: number) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "–";
-  return `${Math.round(value * 100)}%`;
+  const pct = value * 100;
+  if (pct >= 10) return `${Math.round(pct)}%`;
+  return `${Math.round(pct * 10) / 10}%`;
 }
 
-function formatDateTime(value?: string | null) {
+function formatRelativeFuture(date?: Date | null) {
+  if (!date) return "–";
+  const diffDays = (date.getTime() - Date.now()) / DAY_MS;
+  if (!Number.isFinite(diffDays)) return "–";
+  if (diffDays <= -0.5) return "Overdue";
+  if (diffDays < 0.5) return "Ready now";
+  if (diffDays < 1) return "Later today";
+  if (diffDays < 2) return "Tomorrow";
+  return `In ${Math.round(diffDays)} days`;
+}
+
+function formatAgoDays(days?: number | null) {
+  if (days == null || Number.isNaN(days)) return "–";
+  if (days < 0.5) return "Today";
+  if (days < 1.5) return "1 day ago";
+  return `${Math.round(days)} days ago`;
+}
+
+function safeParseDate(value?: string | null) {
   if (!value) return null;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString();
+  return d;
+}
+
+function formatDateTime(value?: string | null) {
+  const parsed = safeParseDate(value);
+  return parsed ? parsed.toLocaleString() : null;
 }
 
 /* ---------------- Confetti (renders above modal) ---------------- */
@@ -188,6 +217,27 @@ async function fireConfettiAboveModal() {
   setTimeout(() => { try { canvas.remove(); } catch {} }, 1500);
 }
 
+function FollowupStat({
+  icon,
+  label,
+  value,
+  hint,
+}: {
+  icon?: string;
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-[0_12px_35px_-28px_rgba(2,6,23,0.65)]">
+      {icon ? <div className="text-lg">{icon}</div> : null}
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-base font-semibold text-slate-900">{value}</div>
+      {hint ? <div className="mt-1 text-[11px] text-slate-500 leading-snug">{hint}</div> : null}
+    </div>
+  );
+}
+
 /* ---------------- Component ---------------- */
 export default function OpportunityModal({
   open,
@@ -195,14 +245,20 @@ export default function OpportunityModal({
   leadId,
   leadName,
   leadEmail,
+  leadStatus,
+  opportunityId,
   onAfterSend,
+  onStatusChange,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   leadId: string;
   leadName: string;
   leadEmail: string;
+  leadStatus: LeadStatus;
+  opportunityId?: string | null;
   onAfterSend?: () => void;
+  onStatusChange?: (next: LeadStatus) => void;
 }) {
   const { toast } = useToast();
   const {
@@ -239,7 +295,18 @@ export default function OpportunityModal({
   const [draftSubject, setDraftSubject] = useState("");
   const [draftBody, setDraftBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [status, setStatusState] = useState<LeadStatus>(leadStatus);
+  const [statusUpdating, setStatusUpdating] = useState<LeadStatus | null>(null);
   const [autoMode, setAutoMode] = useState(false);
+  const [autoPlan, setAutoPlan] = useState<{
+    whenISO: string | null;
+    subject?: string | null;
+    body?: string | null;
+    variant?: string | null;
+    rationale?: string | null;
+    logId?: string | null;
+  } | null>(null);
+  const [schedulingNext, setSchedulingNext] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [schedulingCall, setSchedulingCall] = useState(false);
   const [autoScheduleCall, setAutoScheduleCall] = useState(true);
@@ -256,15 +323,99 @@ export default function OpportunityModal({
     return history.find((log) => {
       const channel = (log.channel || "email").toLowerCase();
       if (channel !== "phone") return false;
-      if (!log.scheduledFor) return false;
-      const ts = new Date(log.scheduledFor).getTime();
-      return !Number.isNaN(ts) && ts >= now;
+      const scheduled = safeParseDate(log.scheduledFor);
+      if (!scheduled) return false;
+      return scheduled.getTime() >= now;
     });
   }, [history]);
 
-  const lastEmail = useMemo(() => {
-    return history.find((log) => (log.channel || "email").toLowerCase() !== "phone");
+  const lastSentEmail = useMemo(() => {
+    return history.find(
+      (log) =>
+        (log.channel || "email").toLowerCase() !== "phone" && Boolean(safeParseDate(log.sentAt)),
+    );
   }, [history]);
+
+  const upcomingEmailDate = useMemo(() => {
+    const whenISO = autoPlan?.whenISO;
+    return whenISO ? safeParseDate(whenISO) : null;
+  }, [autoPlan?.whenISO]);
+
+  const cadenceStats = useMemo(() => {
+    const emailEvents = history
+      .filter((log) => (log.channel || "email").toLowerCase() !== "phone")
+      .map((log) => safeParseDate(log.sentAt))
+      .filter((d): d is Date => Boolean(d))
+      .map((d) => d.getTime())
+      .sort((a, b) => b - a);
+
+    if (emailEvents.length === 0) {
+      return { total: 0, averageGap: null as number | null, lastGap: null as number | null, sinceLast: null as number | null };
+    }
+
+    const diffs: number[] = [];
+    for (let i = 0; i < emailEvents.length - 1; i += 1) {
+      const diffDays = (emailEvents[i] - emailEvents[i + 1]) / DAY_MS;
+      if (Number.isFinite(diffDays) && diffDays >= 0) diffs.push(diffDays);
+    }
+
+    const sinceLastDays = (Date.now() - emailEvents[0]) / DAY_MS;
+
+    return {
+      total: emailEvents.length,
+      averageGap: diffs.length ? diffs.reduce((a, b) => a + b, 0) / diffs.length : null,
+      lastGap: diffs.length ? diffs[0] : null,
+      sinceLast: Number.isFinite(sinceLastDays) && sinceLastDays >= 0 ? sinceLastDays : null,
+    };
+  }, [history]);
+
+  const lastEmailDate = useMemo(() => safeParseDate(lastSentEmail?.sentAt), [lastSentEmail?.sentAt]);
+
+  const nextSuggestedDate = useMemo(() => {
+    if (!lastEmailDate || typeof emailDelayDays !== "number") return null;
+    const nextTs = lastEmailDate.getTime() + emailDelayDays * DAY_MS;
+    if (!Number.isFinite(nextTs)) return null;
+    return new Date(nextTs);
+  }, [lastEmailDate, emailDelayDays]);
+
+  const topVariant = useMemo(() => {
+    if (!suggest?.learning?.variants || suggest.learning.variants.length === 0) return null;
+    const ordered = [...suggest.learning.variants].sort(
+      (a, b) => (b.successScore ?? 0) - (a.successScore ?? 0),
+    );
+    return ordered[0];
+  }, [suggest?.learning?.variants]);
+
+  const sampleSize = suggest?.learning?.sampleSize ?? 0;
+  const nextStatValue = upcomingEmailDate
+    ? formatRelativeFuture(upcomingEmailDate)
+    : nextSuggestedDate
+    ? formatRelativeFuture(nextSuggestedDate)
+    : typeof emailDelayDays === "number"
+    ? `Every ${formatDaysLabel(emailDelayDays)}`
+    : "Let AI decide";
+  const nextStatHint = upcomingEmailDate
+    ? formatDateTime(upcomingEmailDate.toISOString()) || "Soon"
+    : nextSuggestedDate
+    ? formatDateTime(nextSuggestedDate.toISOString()) || "Soon"
+    : typeof emailDelayDays === "number"
+    ? "Based on recent wins"
+    : "AI will recommend timing";
+  const sinceStatValue = lastEmailDate ? formatAgoDays(cadenceStats.sinceLast) : "First follow-up";
+  const sinceStatHint = lastEmailDate
+    ? formatDateTime(lastEmailDate.toISOString()) || "No previous emails"
+    : "No previous emails";
+  const avgStatValue = cadenceStats.averageGap != null ? formatDaysLabel(cadenceStats.averageGap) : "Learning";
+  const avgStatHint =
+    cadenceStats.total > 1
+      ? `From ${cadenceStats.total} email${cadenceStats.total === 1 ? "" : "s"}`
+      : "Send two follow-ups to tune cadence";
+  const sampleStatValue = sampleSize ? sampleSize.toLocaleString() : "Gathering";
+  const sampleStatHint = sampleSize
+    ? topVariant
+      ? `Variant ${topVariant.variant} is winning`
+      : "Variants rotating"
+    : "Send follow-ups to unlock insights";
 
   const load = useCallback(async () => {
     setRenderError(null);
@@ -272,13 +423,48 @@ export default function OpportunityModal({
     try {
       const h = await apiFetch<{ logs: FollowUpLog[] }>(`/opportunities/${leadId}/followups`);
       const logs = h.logs || [];
+
+      const upcomingEmail = logs.find((log) => {
+        if ((log.channel || "email").toLowerCase() === "phone") return false;
+        if (log.sentAt) return false;
+        const scheduled = safeParseDate(log.scheduledFor);
+        if (!scheduled) return false;
+        return scheduled.getTime() >= Date.now() - 60_000;
+      });
+
+      if (upcomingEmail) {
+        const meta = toPlainObject(upcomingEmail.metadata);
+        const planMeta = toPlainObject(meta.plan);
+        const whenISO =
+          upcomingEmail.scheduledFor ||
+          (typeof planMeta.scheduledForISO === "string" ? planMeta.scheduledForISO : null) ||
+          (typeof planMeta.whenISO === "string" ? planMeta.whenISO : null);
+        setAutoPlan({
+          whenISO: whenISO || null,
+          subject: upcomingEmail.subject ?? (typeof planMeta.subject === "string" ? planMeta.subject : null),
+          body: upcomingEmail.body ?? (typeof planMeta.body === "string" ? planMeta.body : null),
+          variant: upcomingEmail.variant ?? (typeof planMeta.variant === "string" ? planMeta.variant : null),
+          rationale:
+            typeof meta.rationale === "string"
+              ? meta.rationale
+              : typeof planMeta.rationale === "string"
+              ? planMeta.rationale
+              : undefined,
+          logId: upcomingEmail.id,
+        });
+        setAutoMode(true);
+      } else {
+        setAutoPlan(null);
+        setAutoMode(false);
+      }
+
       setHistory(logs);
 
       const upcoming = logs.find((log) => {
         if ((log.channel || "email").toLowerCase() !== "phone") return false;
-        if (!log.scheduledFor) return false;
-        const ts = new Date(log.scheduledFor).getTime();
-        return !Number.isNaN(ts) && ts > Date.now();
+        const scheduled = safeParseDate(log.scheduledFor);
+        if (!scheduled) return false;
+        return scheduled.getTime() > Date.now();
       });
       if (!autoScheduleInitialised.current) {
         setAutoScheduleCall(!upcoming);
@@ -313,11 +499,15 @@ export default function OpportunityModal({
 
   useEffect(() => {
     if (open) {
+      setStatusState(leadStatus);
+      setStatusUpdating(null);
+      setAutoPlan(null);
+      setAutoMode(false);
       autoScheduleInitialised.current = false;
       void load();
       void loadReplies();
     }
-  }, [open, load, loadReplies]);
+  }, [open, leadStatus, load, loadReplies]);
 
   async function send() {
     if (!draftSubject || !draftBody) return;
@@ -401,7 +591,9 @@ export default function OpportunityModal({
   }
 
   async function scheduleNext() {
+    const idForSchedule = opportunityId || leadId;
     try {
+      setSchedulingNext(true);
       const resp = await apiFetch<{
         whenISO: string;
         subject: string;
@@ -410,26 +602,40 @@ export default function OpportunityModal({
         source?: string;
         cps?: number | null;
         rationale?: string;
-      }>(`/opportunities/${leadId}/next-followup`, {
+        logId?: string;
+      }>(`/opportunities/${idForSchedule}/next-followup`, {
         method: "POST",
         json: {},
       });
       setAutoMode(true);
+      setAutoPlan({
+        whenISO: resp.whenISO || null,
+        subject: resp.subject ?? null,
+        body: resp.body ?? null,
+        variant: resp.variant ?? null,
+        rationale: resp.rationale,
+        logId: resp.logId ?? null,
+      });
       toast({
         title: "Next follow-up scheduled",
-        description: `Planned for ${new Date(resp.whenISO).toLocaleString()}`,
+        description: resp.whenISO ? `Planned for ${formatDateTime(resp.whenISO) || resp.whenISO}` : undefined,
       });
+      await load();
+      onAfterSend?.();
     } catch (e: any) {
       toast({
         title: "Scheduling failed",
         description: e?.message || "Please try again",
         variant: "destructive",
       });
+    } finally {
+      setSchedulingNext(false);
     }
   }
 
-  async function setStatus(next: "QUOTE_SENT" | "WON" | "LOST") {
+  async function updateStatus(next: LeadStatus) {
     try {
+      setStatusUpdating(next);
       await apiFetch(`/leads/${encodeURIComponent(leadId)}`, {
         method: "PATCH",
         json: { status: next },
@@ -444,14 +650,18 @@ export default function OpportunityModal({
         toast({ title: "Back to Quote Sent" });
       }
 
+      setStatusState(next);
+      onStatusChange?.(next);
       onAfterSend?.();
       await loadReplies();
     } catch (e: any) {
       toast({ title: "Failed to update status", description: e?.message, variant: "destructive" });
+    } finally {
+      setStatusUpdating(null);
     }
   }
 
-  const lastSent = lastEmail;
+  const lastSent = lastSentEmail;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -474,7 +684,9 @@ export default function OpportunityModal({
                 <div className="text-[11px] text-slate-500 truncate">{leadEmail || ""}</div>
               </div>
               <span className="ml-auto rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-600">
-                {lastSent ? `Last sent ${new Date(lastSent.sentAt).toLocaleString()}` : "No previous follow-up"}
+                {lastSent
+                  ? `Last sent ${formatDateTime(lastSent.sentAt) || "recently"}`
+                  : "No previous follow-up"}
               </span>
             </DialogTitle>
           </DialogHeader>
@@ -494,7 +706,7 @@ export default function OpportunityModal({
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">
                     Last customer reply:{" "}
-                    {lastReply.lastInboundAt ? new Date(lastReply.lastInboundAt).toLocaleString() : "—"}
+                    {lastReply.lastInboundAt ? formatDateTime(lastReply.lastInboundAt) || "—" : "—"}
                   </div>
                   {lastReply.snippet ? <div className="mt-1 line-clamp-2">{lastReply.snippet}</div> : null}
                 </div>
@@ -507,24 +719,87 @@ export default function OpportunityModal({
             {/* Quick actions */}
             <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3">
               <span className="text-xs text-slate-600">Status:</span>
-              <Button size="sm" variant="secondary" onClick={() => setStatus("QUOTE_SENT")}>
-                Back to Quote Sent
+              <Button
+                size="sm"
+                variant={status === "QUOTE_SENT" ? "default" : "secondary"}
+                onClick={() => updateStatus("QUOTE_SENT")}
+                disabled={statusUpdating !== null}
+              >
+                {statusUpdating === "QUOTE_SENT" ? "Updating…" : "Back to Quote Sent"}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setStatus("LOST")}>
-                Mark Lost
+              <Button
+                size="sm"
+                variant={status === "LOST" ? "destructive" : "outline"}
+                onClick={() => updateStatus("LOST")}
+                disabled={statusUpdating !== null}
+              >
+                {statusUpdating === "LOST" ? "Updating…" : "Mark Lost"}
               </Button>
-              <Button size="sm" onClick={() => setStatus("WON")}>
-                Mark Won 🎉
+              <Button
+                size="sm"
+                variant={status === "WON" ? "default" : "outline"}
+                onClick={() => updateStatus("WON")}
+                disabled={statusUpdating !== null}
+              >
+                {statusUpdating === "WON" ? "Marking…" : "Mark Won 🎉"}
               </Button>
               <div className="ml-auto">
                 <Button
                   size="sm"
                   variant={autoMode ? "secondary" : "outline"}
                   onClick={scheduleNext}
+                  disabled={schedulingNext}
                 >
-                  {autoMode ? "Auto-scheduled ✓" : "Auto-schedule next"}
+                  {schedulingNext ? "Planning…" : autoMode ? "Auto-scheduled ✓" : "Auto-schedule next"}
                 </Button>
               </div>
+            </div>
+
+            {autoPlan ? (
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-900">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">AI follow-up scheduled</span>
+                  {autoPlan.variant ? (
+                    <span className="rounded-full border border-emerald-200 bg-white/70 px-2 py-0.5 text-[10px] text-emerald-700">
+                      Variant {autoPlan.variant}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-1 text-[11px]">
+                  {autoPlan.whenISO
+                    ? `Going out ${formatDateTime(autoPlan.whenISO) || "soon"}`
+                    : "We'll send it automatically soon."}
+                </div>
+                {autoPlan.subject ? (
+                  <div className="mt-1 text-[11px] text-emerald-800 line-clamp-2">“{autoPlan.subject}”</div>
+                ) : null}
+                {autoPlan.rationale ? (
+                  <div className="mt-1 text-[10px] text-emerald-700">{autoPlan.rationale}</div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* ML-powered summary */}
+            <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <FollowupStat icon="📅" label="Next AI follow-up" value={nextStatValue} hint={nextStatHint} />
+              <FollowupStat
+                icon="📨"
+                label="Last send"
+                value={sinceStatValue}
+                hint={sinceStatHint}
+              />
+              <FollowupStat
+                icon="⏱️"
+                label="Average spacing"
+                value={avgStatValue}
+                hint={avgStatHint}
+              />
+              <FollowupStat
+                icon="🧠"
+                label="ML sample size"
+                value={sampleStatValue}
+                hint={sampleStatHint}
+              />
             </div>
 
             {/* Two column layout on md+ */}
@@ -546,34 +821,71 @@ export default function OpportunityModal({
                 </div>
 
                 {suggest?.learning && (
-                  <div className="mb-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
-                    {suggest.learning.summary && (
-                      <div className="text-slate-700">{suggest.learning.summary}</div>
-                    )}
-                    {suggest.rationale && (
-                      <div className="text-slate-600">{suggest.rationale}</div>
-                    )}
-                    {suggest.learning.variants && suggest.learning.variants.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {suggest.learning.variants.slice(0, 2).map((stat) => (
+                  <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-inner">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                        ML learning
+                      </Badge>
+                      {sampleSize ? (
+                        <span className="text-[11px] text-slate-500">
+                          Trained on {sampleSize.toLocaleString()} recent follow-ups
+                        </span>
+                      ) : null}
+                      {suggest.learning.lastUpdatedISO ? (
+                        <span className="text-[11px] text-slate-400">
+                          Updated {formatDateTime(suggest.learning.lastUpdatedISO) || "recently"}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Messaging angle
+                        </div>
+                        <div className="text-sm text-slate-800">
+                          {suggest.learning.summary || "Warmly reference the quote and invite the next step."}
+                        </div>
+                        {suggest.rationale ? (
+                          <div className="text-[11px] text-slate-600">{suggest.rationale}</div>
+                        ) : null}
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Cadence insights
+                        </div>
+                        <div className="text-sm text-slate-800">
+                          {typeof emailDelayDays === "number"
+                            ? `Emails perform best after ${formatDaysLabel(emailDelayDays)}.`
+                            : "AI will firm up timing once we gather a few sends."}
+                        </div>
+                        {topVariant ? (
+                          <div className="text-[11px] text-slate-600">
+                            Variant {topVariant.variant} leads with {percentLabel(topVariant.replyRate)} replies and {percentLabel(topVariant.conversionRate)} wins.
+                          </div>
+                        ) : null}
+                        {suggest.learning.call?.sampleSize ? (
+                          <div className="text-[11px] text-slate-600">
+                            Phone nudges land {formatDaysLabel(suggest.learning.call.avgDelayDays)} after send · {percentLabel(suggest.learning.call.conversionRate)} conversions.
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                    {suggest.learning.variants && suggest.learning.variants.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {suggest.learning.variants.slice(0, 3).map((stat) => (
                           <span
                             key={stat.variant}
-                            className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600"
+                            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-600"
                           >
-                            Variant {stat.variant}: {percentLabel(stat.replyRate)} replies · {percentLabel(stat.conversionRate)} won
+                            Variant {stat.variant}: {percentLabel(stat.replyRate)} replies · {percentLabel(stat.conversionRate)} wins ·
+                            {stat.avgDelayDays != null ? ` ${formatDaysLabel(stat.avgDelayDays)} cadence` : " cadence learning"}
                           </span>
                         ))}
                       </div>
-                    )}
-                    <div className="text-[10px] text-slate-500">
+                    ) : null}
+                    <div className="mt-3 text-[10px] text-slate-500">
                       Learning across the JoineryAI network to keep your follow-ups natural and effective.
                     </div>
-                    {typeof suggest.learning.call?.avgDelayDays === "number" && (
-                      <div className="text-[10px] text-slate-500">
-                        Phone nudges average {Math.round(suggest.learning.call.avgDelayDays || 0)} day
-                        {Math.round(suggest.learning.call.avgDelayDays || 0) === 1 ? "" : "s"} after send.
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -597,8 +909,7 @@ export default function OpportunityModal({
 
                 {typeof emailDelayDays === "number" && Number.isFinite(emailDelayDays) && (
                   <div className="mt-2 text-[11px] text-slate-500">
-                    Suggested rhythm: next follow-up in <b>{emailDelayDays}</b> day
-                    {emailDelayDays === 1 ? "" : "s"}.
+                    Suggested rhythm: next follow-up in <b>{formatDaysLabel(emailDelayDays)}</b>.
                   </div>
                 )}
 
@@ -690,17 +1001,25 @@ export default function OpportunityModal({
                   <div className="space-y-3 max-h-[46vh] overflow-auto pr-1">
                     {history.map((h) => {
                       const meta = toPlainObject(h.metadata);
-                      const isPhone = (h.channel || "email").toLowerCase() === "phone";
-                      const sentLabel = formatDateTime(h.sentAt) || "Unknown";
-                      const scheduledLabel = isPhone ? formatDateTime(h.scheduledFor) : null;
+                      const channel = (h.channel || "email").toLowerCase();
+                      const isPhone = channel === "phone";
+                      const sentLabel = h.sentAt ? formatDateTime(h.sentAt) : null;
+                      const scheduledLabel = h.scheduledFor ? formatDateTime(h.scheduledFor) : null;
+                      const whenLabel = sentLabel || (scheduledLabel ? `Scheduled ${scheduledLabel}` : "Unknown");
+                      const autoScheduledEmail = !isPhone && !sentLabel && Boolean(scheduledLabel);
 
                       return (
                         <div key={h.id} className="rounded-md border p-3 hover:bg-slate-50">
                           <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                            <span>{scheduledLabel || sentLabel}</span>
+                            <span>{whenLabel}</span>
                             <span className="rounded-full border bg-white px-2 py-0.5">
                               {isPhone ? "Phone" : `Variant ${h.variant}`}
                             </span>
+                            {autoScheduledEmail ? (
+                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                                AI auto
+                              </span>
+                            ) : null}
                             {!isPhone && h.opened && <span className="text-green-700">· Opened</span>}
                             {!isPhone && h.replied && <span className="text-blue-700">· Replied</span>}
                             {!isPhone && h.converted && <span className="text-emerald-700">· Converted</span>}
@@ -711,9 +1030,9 @@ export default function OpportunityModal({
                           <div className="text-sm font-medium">
                             {isPhone ? h.subject || "Phone follow-up" : h.subject}
                           </div>
-                          {isPhone && scheduledLabel && (
+                          {scheduledLabel && (
                             <div className="text-[11px] text-slate-500">
-                              Scheduled for {scheduledLabel}
+                              {sentLabel ? `Scheduled ${scheduledLabel}` : `Scheduled for ${scheduledLabel}`}
                             </div>
                           )}
                           {h.body && (
@@ -729,6 +1048,9 @@ export default function OpportunityModal({
                               Delay: {meta.callDelayDays} day{meta.callDelayDays === 1 ? "" : "s"}
                             </div>
                           )}
+                          {autoScheduledEmail ? (
+                            <div className="mt-1 text-[10px] text-emerald-700">AI will send this automatically.</div>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -741,7 +1063,9 @@ export default function OpportunityModal({
           {/* Footer */}
           <DialogFooter className="gap-2 p-4 border-t bg-white">
             <div className="flex-1 text-xs text-slate-500">
-              {lastSent ? `Last sent: ${new Date(lastSent.sentAt).toLocaleString()}` : "No previous follow-up"}
+              {lastSent
+                ? `Last sent: ${formatDateTime(lastSent.sentAt) || "recently"}`
+                : "No previous follow-up"}
             </div>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
