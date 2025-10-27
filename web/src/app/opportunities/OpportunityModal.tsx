@@ -683,7 +683,9 @@ export default function OpportunityModal({
                 <div className="text-[11px] text-slate-500 truncate">{leadEmail || ""}</div>
               </div>
               <span className="ml-auto rounded-full border bg-white px-2 py-0.5 text-[11px] text-slate-600">
-                {lastSent ? `Last sent ${new Date(lastSent.sentAt).toLocaleString()}` : "No previous follow-up"}
+                {lastSent
+                  ? `Last sent ${formatDateTime(lastSent.sentAt) || "recently"}`
+                  : "No previous follow-up"}
               </span>
             </DialogTitle>
           </DialogHeader>
@@ -703,7 +705,7 @@ export default function OpportunityModal({
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">
                     Last customer reply:{" "}
-                    {lastReply.lastInboundAt ? new Date(lastReply.lastInboundAt).toLocaleString() : "—"}
+                    {lastReply.lastInboundAt ? formatDateTime(lastReply.lastInboundAt) || "—" : "—"}
                   </div>
                   {lastReply.snippet ? <div className="mt-1 line-clamp-2">{lastReply.snippet}</div> : null}
                 </div>
@@ -1036,7 +1038,9 @@ export default function OpportunityModal({
           {/* Footer */}
           <DialogFooter className="gap-2 p-4 border-t bg-white">
             <div className="flex-1 text-xs text-slate-500">
-              {lastSent ? `Last sent: ${new Date(lastSent.sentAt).toLocaleString()}` : "No previous follow-up"}
+              {lastSent
+                ? `Last sent: ${formatDateTime(lastSent.sentAt) || "recently"}`
+                : "No previous follow-up"}
             </div>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Close
