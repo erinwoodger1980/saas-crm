@@ -885,7 +885,7 @@ export default function OpportunityModal({
                             className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-600"
                           >
                             Variant {stat.variant}: {percentLabel(stat.replyRate)} replies · {percentLabel(stat.conversionRate)} wins ·
-                            {stat.avgDelayDays != null ? ` ${formatDaysLabel(stat.avgDelayDays)} cadence` : " cadence learning"}
+                            {" "}{stat.avgDelayDays != null ? `${formatDaysLabel(stat.avgDelayDays)} cadence` : "cadence learning"}
                           </span>
                         ))}
                       </div>
