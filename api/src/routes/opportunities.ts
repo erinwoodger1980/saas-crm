@@ -205,13 +205,34 @@ router.post("/:id/next-followup", async (req: any, res: any) => {
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const id = String(req.params.id);
-    const opp = await prisma.opportunity.findUnique({
-      where: { id },
-      include: { lead: true },
-    });
-    if (!opp || opp.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
 
-    const source = (opp.lead?.custom as any)?.source || "Unknown";
+    // Allow callers to provide either a lead id or an opportunity id.
+    let lead = await prisma.lead.findUnique({ where: { id } });
+    let opportunity = lead
+      ? await prisma.opportunity.findFirst({
+          where: { tenantId, leadId: id },
+          orderBy: { createdAt: "desc" },
+          include: { lead: true },
+        })
+      : null;
+
+    if (!lead || lead.tenantId !== tenantId) {
+      const oppById = await prisma.opportunity.findUnique({
+        where: { id },
+        include: { lead: true },
+      });
+      if (!oppById || oppById.tenantId !== tenantId) {
+        return res.status(404).json({ error: "not found" });
+      }
+      opportunity = oppById;
+      lead = oppById.lead as any;
+    }
+
+    if (!lead || lead.tenantId !== tenantId) {
+      return res.status(404).json({ error: "not found" });
+    }
+
+    const source = ((lead.custom as any) || {}).source || (opportunity?.lead?.custom as any)?.source || "Unknown";
 
     // Look back 2 months
     const from = new Date(new Date().getFullYear(), new Date().getMonth() - 2, 1);
@@ -246,8 +267,11 @@ router.post("/:id/next-followup", async (req: any, res: any) => {
     const days = variant === "A" ? baseDaysA : baseDaysB;
     const when = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
-    let subject = `Re: Your quote – ${opp.title}`;
-    let body = `Hi ${opp.lead?.contactName || ""},\n\nJust checking you received the quote and if you had any questions.\n\nBest,\nSales`;
+    const oppTitle = opportunity?.title || lead.contactName || "Your quote";
+    const leadName = lead.contactName || opportunity?.lead?.contactName || "";
+
+    let subject = `Re: Your quote – ${oppTitle}`;
+    let body = `Hi ${leadName || ""},\n\nJust checking you received the quote and if you had any questions.\n\nBest,\nSales`;
     let rationale = "Default heuristic";
 
     if (env.OPENAI_API_KEY) {
@@ -255,8 +279,8 @@ router.post("/:id/next-followup", async (req: any, res: any) => {
 You are a sales assistant writing a short follow-up to a customer who received a quote.
 Keep tone warm, concise, UK English. Variant=${variant}.
 Inputs:
-- Lead name: ${opp.lead?.contactName || "-"}
-- Opportunity title: ${opp.title}
+- Lead name: ${leadName || "-"}
+- Opportunity title: ${oppTitle}
 - Source: ${source}
 - Performance: CPS=${cps ?? "unknown"} (lower is better)
 Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
@@ -304,18 +328,76 @@ Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
       }
     }
 
-    // Optional: log suggestion into followupExperiment if the model/table exists
+    const leadId = lead.id;
     const anyPrisma = prisma as any;
     await anyPrisma.followupExperiment?.create?.({
       data: {
         tenantId,
-        opportunityId: opp.id,
+        opportunityId: opportunity?.id ?? null,
         variant,
         suggestedAt: new Date(),
         whenISO: when.toISOString(),
         subject,
         body,
         source,
+      },
+    });
+
+    const futureWindow = new Date(Date.now() - 5 * 60 * 1000);
+    const existingFuture = await prisma.followUpLog.findFirst({
+      where: {
+        tenantId,
+        leadId,
+        channel: "email",
+        sentAt: null,
+        scheduledFor: { gt: futureWindow },
+      },
+      orderBy: { scheduledFor: "desc" },
+    });
+
+    const metadata = {
+      ...(existingFuture?.metadata as any),
+      autoScheduled: true,
+      planner: "ai-followup",
+      variant,
+      source,
+      cps,
+      rationale,
+    } as Record<string, any>;
+
+    let log;
+    if (existingFuture) {
+      log = await prisma.followUpLog.update({
+        where: { id: existingFuture.id },
+        data: {
+          subject,
+          body,
+          delayDays: days,
+          scheduledFor: when,
+          metadata,
+        },
+      });
+    } else {
+      log = await prisma.followUpLog.create({
+        data: {
+          tenantId,
+          leadId,
+          variant: String(variant || "A"),
+          subject,
+          body,
+          delayDays: days,
+          channel: "email",
+          scheduledFor: when,
+          metadata,
+        },
+      });
+    }
+
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        nextAction: "AI follow-up scheduled",
+        nextActionAt: when,
       },
     });
 
@@ -327,6 +409,8 @@ Write a subject and 80–140 word body. JSON keys: subject, body, rationale.
       rationale,
       source,
       cps,
+      logId: log.id,
+      leadId,
     });
   } catch (e: any) {
     console.error("[opportunities next-followup] failed:", e);
