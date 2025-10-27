@@ -259,7 +259,16 @@ export default function OpportunitiesPage() {
           leadId={selected.id}
           leadName={selected.contactName}
           leadEmail={(selected.email ?? "") as string}
+          leadStatus={(selected.status as LeadStatus) || "QUOTE_SENT"}
+          opportunityId={
+            typeof selected.custom?.opportunityId === "string"
+              ? (selected.custom.opportunityId as string)
+              : undefined
+          }
           onAfterSend={load}
+          onStatusChange={(next) => {
+            setSelected((prev) => (prev ? { ...prev, status: next } : prev));
+          }}
         />
       )}
     </>
