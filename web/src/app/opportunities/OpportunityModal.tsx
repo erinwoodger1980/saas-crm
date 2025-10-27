@@ -1,7 +1,7 @@
 // web/src/app/opportunities/OpportunityModal.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
 import {
   Dialog,
@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
+import { Badge } from "@/components/ui/badge";
 
 type FollowUpLog = {
   id: string;
@@ -157,7 +158,44 @@ function normaliseSuggestion(raw: any): AiSuggestion {
 
 function percentLabel(value?: number) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "–";
-  return `${Math.round(value * 100)}%`;
+  const pct = value * 100;
+  if (pct >= 10) return `${Math.round(pct)}%`;
+  return `${Math.round(pct * 10) / 10}%`;
+}
+
+function formatDaysLabel(value?: number | null) {
+  if (value == null || Number.isNaN(value)) return "–";
+  const days = Number(value);
+  if (!Number.isFinite(days)) return "–";
+  if (days <= 0) return "Same day";
+  if (days < 1) {
+    const hrs = Math.max(1, Math.round(days * 24));
+    return `${hrs} hr${hrs === 1 ? "" : "s"}`;
+  }
+  const rounded = Math.round(days * 10) / 10;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.05) {
+    const whole = Math.max(1, Math.round(rounded));
+    return `${whole} day${whole === 1 ? "" : "s"}`;
+  }
+  return `${rounded} days`;
+}
+
+function formatRelativeFuture(date?: Date | null) {
+  if (!date) return "–";
+  const diffDays = (date.getTime() - Date.now()) / DAY_MS;
+  if (!Number.isFinite(diffDays)) return "–";
+  if (diffDays <= -0.5) return "Overdue";
+  if (diffDays < 0.5) return "Ready now";
+  if (diffDays < 1) return "Later today";
+  if (diffDays < 2) return "Tomorrow";
+  return `In ${Math.round(diffDays)} days`;
+}
+
+function formatAgoDays(days?: number | null) {
+  if (days == null || Number.isNaN(days)) return "–";
+  if (days < 0.5) return "Today";
+  if (days < 1.5) return "1 day ago";
+  return `${Math.round(days)} days ago`;
 }
 
 function formatDateTime(value?: string | null) {
@@ -186,6 +224,27 @@ async function fireConfettiAboveModal() {
   shoot({ particleCount: 120, spread: 60, startVelocity: 35, origin: { x: 0.15, y: 0.7 }, scalar: 0.9 });
 
   setTimeout(() => { try { canvas.remove(); } catch {} }, 1500);
+}
+
+function FollowupStat({
+  icon,
+  label,
+  value,
+  hint,
+}: {
+  icon?: string;
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-[0_12px_35px_-28px_rgba(2,6,23,0.65)]">
+      {icon ? <div className="text-lg">{icon}</div> : null}
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-base font-semibold text-slate-900">{value}</div>
+      {hint ? <div className="mt-1 text-[11px] text-slate-500 leading-snug">{hint}</div> : null}
+    </div>
+  );
 }
 
 /* ---------------- Component ---------------- */
@@ -265,6 +324,76 @@ export default function OpportunityModal({
   const lastEmail = useMemo(() => {
     return history.find((log) => (log.channel || "email").toLowerCase() !== "phone");
   }, [history]);
+
+  const cadenceStats = useMemo(() => {
+    const emailEvents = history
+      .filter((log) => (log.channel || "email").toLowerCase() !== "phone")
+      .map((log) => new Date(log.sentAt).getTime())
+      .filter((ts) => !Number.isNaN(ts))
+      .sort((a, b) => b - a);
+
+    if (emailEvents.length === 0) {
+      return { total: 0, averageGap: null as number | null, lastGap: null as number | null, sinceLast: null as number | null };
+    }
+
+    const diffs: number[] = [];
+    for (let i = 0; i < emailEvents.length - 1; i += 1) {
+      const diffDays = (emailEvents[i] - emailEvents[i + 1]) / DAY_MS;
+      if (Number.isFinite(diffDays) && diffDays >= 0) diffs.push(diffDays);
+    }
+
+    const sinceLastDays = (Date.now() - emailEvents[0]) / DAY_MS;
+
+    return {
+      total: emailEvents.length,
+      averageGap: diffs.length ? diffs.reduce((a, b) => a + b, 0) / diffs.length : null,
+      lastGap: diffs.length ? diffs[0] : null,
+      sinceLast: Number.isFinite(sinceLastDays) && sinceLastDays >= 0 ? sinceLastDays : null,
+    };
+  }, [history]);
+
+  const nextSuggestedDate = useMemo(() => {
+    if (!lastEmail?.sentAt || typeof emailDelayDays !== "number") return null;
+    const lastTs = new Date(lastEmail.sentAt).getTime();
+    if (Number.isNaN(lastTs)) return null;
+    const nextTs = lastTs + emailDelayDays * DAY_MS;
+    if (!Number.isFinite(nextTs)) return null;
+    return new Date(nextTs);
+  }, [lastEmail, emailDelayDays]);
+
+  const topVariant = useMemo(() => {
+    if (!suggest?.learning?.variants || suggest.learning.variants.length === 0) return null;
+    const ordered = [...suggest.learning.variants].sort(
+      (a, b) => (b.successScore ?? 0) - (a.successScore ?? 0),
+    );
+    return ordered[0];
+  }, [suggest?.learning?.variants]);
+
+  const lastEmailDate = lastEmail?.sentAt ? new Date(lastEmail.sentAt) : null;
+  const sampleSize = suggest?.learning?.sampleSize ?? 0;
+  const nextStatValue = nextSuggestedDate
+    ? formatRelativeFuture(nextSuggestedDate)
+    : typeof emailDelayDays === "number"
+    ? `Every ${formatDaysLabel(emailDelayDays)}`
+    : "Let AI decide";
+  const nextStatHint = nextSuggestedDate
+    ? nextSuggestedDate.toLocaleString()
+    : typeof emailDelayDays === "number"
+    ? "Based on recent wins"
+    : "AI will recommend timing";
+  const sinceStatValue = lastEmailDate ? formatAgoDays(cadenceStats.sinceLast) : "First follow-up";
+  const sinceStatHint = lastEmailDate ? lastEmailDate.toLocaleString() : "No previous emails";
+  const avgStatValue = cadenceStats.averageGap != null ? formatDaysLabel(cadenceStats.averageGap) : "Learning";
+  const avgStatHint =
+    cadenceStats.total > 1
+      ? `From ${cadenceStats.total} email${cadenceStats.total === 1 ? "" : "s"}`
+      : "Send two follow-ups to tune cadence";
+  const sampleStatValue = sampleSize ? sampleSize.toLocaleString() : "Gathering";
+  const sampleStatHint = sampleSize
+    ? topVariant
+      ? `Variant ${topVariant.variant} is winning`
+      : "Variants rotating"
+    : "Send follow-ups to unlock insights";
 
   const load = useCallback(async () => {
     setRenderError(null);
@@ -527,6 +656,29 @@ export default function OpportunityModal({
               </div>
             </div>
 
+            {/* ML-powered summary */}
+            <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <FollowupStat icon="📅" label="Next AI follow-up" value={nextStatValue} hint={nextStatHint} />
+              <FollowupStat
+                icon="📨"
+                label="Last send"
+                value={sinceStatValue}
+                hint={sinceStatHint}
+              />
+              <FollowupStat
+                icon="⏱️"
+                label="Average spacing"
+                value={avgStatValue}
+                hint={avgStatHint}
+              />
+              <FollowupStat
+                icon="🧠"
+                label="ML sample size"
+                value={sampleStatValue}
+                hint={sampleStatHint}
+              />
+            </div>
+
             {/* Two column layout on md+ */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Compose panel */}
@@ -546,34 +698,71 @@ export default function OpportunityModal({
                 </div>
 
                 {suggest?.learning && (
-                  <div className="mb-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
-                    {suggest.learning.summary && (
-                      <div className="text-slate-700">{suggest.learning.summary}</div>
-                    )}
-                    {suggest.rationale && (
-                      <div className="text-slate-600">{suggest.rationale}</div>
-                    )}
-                    {suggest.learning.variants && suggest.learning.variants.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {suggest.learning.variants.slice(0, 2).map((stat) => (
+                  <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-inner">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                        ML learning
+                      </Badge>
+                      {sampleSize ? (
+                        <span className="text-[11px] text-slate-500">
+                          Trained on {sampleSize.toLocaleString()} recent follow-ups
+                        </span>
+                      ) : null}
+                      {suggest.learning.lastUpdatedISO ? (
+                        <span className="text-[11px] text-slate-400">
+                          Updated {new Date(suggest.learning.lastUpdatedISO).toLocaleString()}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Messaging angle
+                        </div>
+                        <div className="text-sm text-slate-800">
+                          {suggest.learning.summary || "Warmly reference the quote and invite the next step."}
+                        </div>
+                        {suggest.rationale ? (
+                          <div className="text-[11px] text-slate-600">{suggest.rationale}</div>
+                        ) : null}
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Cadence insights
+                        </div>
+                        <div className="text-sm text-slate-800">
+                          {typeof emailDelayDays === "number"
+                            ? `Emails perform best after ${formatDaysLabel(emailDelayDays)}.`
+                            : "AI will firm up timing once we gather a few sends."}
+                        </div>
+                        {topVariant ? (
+                          <div className="text-[11px] text-slate-600">
+                            Variant {topVariant.variant} leads with {percentLabel(topVariant.replyRate)} replies and {percentLabel(topVariant.conversionRate)} wins.
+                          </div>
+                        ) : null}
+                        {suggest.learning.call?.sampleSize ? (
+                          <div className="text-[11px] text-slate-600">
+                            Phone nudges land {formatDaysLabel(suggest.learning.call.avgDelayDays)} after send · {percentLabel(suggest.learning.call.conversionRate)} conversions.
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                    {suggest.learning.variants && suggest.learning.variants.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {suggest.learning.variants.slice(0, 3).map((stat) => (
                           <span
                             key={stat.variant}
-                            className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600"
+                            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-600"
                           >
-                            Variant {stat.variant}: {percentLabel(stat.replyRate)} replies · {percentLabel(stat.conversionRate)} won
+                            Variant {stat.variant}: {percentLabel(stat.replyRate)} replies · {percentLabel(stat.conversionRate)} wins ·
+                            {stat.avgDelayDays != null ? ` ${formatDaysLabel(stat.avgDelayDays)} cadence` : " cadence learning"}
                           </span>
                         ))}
                       </div>
-                    )}
-                    <div className="text-[10px] text-slate-500">
+                    ) : null}
+                    <div className="mt-3 text-[10px] text-slate-500">
                       Learning across the JoineryAI network to keep your follow-ups natural and effective.
                     </div>
-                    {typeof suggest.learning.call?.avgDelayDays === "number" && (
-                      <div className="text-[10px] text-slate-500">
-                        Phone nudges average {Math.round(suggest.learning.call.avgDelayDays || 0)} day
-                        {Math.round(suggest.learning.call.avgDelayDays || 0) === 1 ? "" : "s"} after send.
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -597,8 +786,7 @@ export default function OpportunityModal({
 
                 {typeof emailDelayDays === "number" && Number.isFinite(emailDelayDays) && (
                   <div className="mt-2 text-[11px] text-slate-500">
-                    Suggested rhythm: next follow-up in <b>{emailDelayDays}</b> day
-                    {emailDelayDays === 1 ? "" : "s"}.
+                    Suggested rhythm: next follow-up in <b>{formatDaysLabel(emailDelayDays)}</b>.
                   </div>
                 )}
 
