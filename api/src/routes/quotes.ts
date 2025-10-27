@@ -7,8 +7,301 @@ import { prisma } from "../prisma";
 import { Prisma } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
+import { openai } from "../ai";
 
 const router = Router();
+
+type QuoteParseSuccess = {
+  source: "openai" | "ml";
+  parsed: any;
+  supplier?: string;
+  currency?: string;
+  details?: Record<string, any> | null;
+};
+
+type QuoteParseFailure = {
+  source: "openai" | "ml";
+  error: any;
+};
+
+const OPENAI_QUOTE_MODEL = process.env.OPENAI_QUOTE_MODEL || "gpt-4.1-mini";
+
+const quoteStructuredOutputSchema = {
+  type: "json_schema",
+  json_schema: {
+    name: "SupplierQuote",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        supplier: { type: "string", description: "Supplier or vendor name on the quote." },
+        currency: {
+          type: "string",
+          description: "Three letter currency code found on the quote (e.g. GBP, EUR, USD).",
+        },
+        detected_total: {
+          anyOf: [
+            { type: "number" },
+            { type: "string" },
+            { type: "null" },
+          ],
+          description: "Grand total of the quote if explicitly stated.",
+        },
+        lines: {
+          type: "array",
+          description: "Individual line items listed on the supplier quote.",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["description"],
+            properties: {
+              description: { type: "string", description: "Line item description" },
+              quantity: {
+                anyOf: [
+                  { type: "number" },
+                  { type: "string" },
+                  { type: "null" },
+                ],
+                description: "Quantity for the line item.",
+              },
+              unit_price: {
+                anyOf: [
+                  { type: "number" },
+                  { type: "string" },
+                  { type: "null" },
+                ],
+                description: "Unit price for the line item.",
+              },
+              total_price: {
+                anyOf: [
+                  { type: "number" },
+                  { type: "string" },
+                  { type: "null" },
+                ],
+                description: "Total price for the line item if provided.",
+              },
+              currency: {
+                type: "string",
+                description: "Currency noted for the specific line, if different from the document currency.",
+              },
+              sku: { type: "string", description: "SKU or product identifier if present." },
+              notes: { type: "string", description: "Any notes, delivery info or additional context for the item." },
+            },
+          },
+        },
+      },
+      required: ["lines"],
+    },
+  },
+} as const;
+
+function pickLines(...candidates: any[]): any[] {
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) return candidate;
+  }
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
+function resolveSupplier(src: any): string | undefined {
+  if (!src || typeof src !== "object") return undefined;
+  const candidates = [
+    src.supplier,
+    src.supplier_name,
+    src.supplierName,
+    src.vendor,
+    src.vendor_name,
+    src.vendorName,
+  ];
+  const found = candidates.find((v) => typeof v === "string" && v.trim());
+  return found ? String(found).trim() : undefined;
+}
+
+function resolveCurrency(src: any): string | undefined {
+  if (!src || typeof src !== "object") return undefined;
+  const candidates = [src.currency, src.currency_code, src.currencyCode];
+  const found = candidates.find((v) => typeof v === "string" && v.trim());
+  return found ? String(found).trim().toUpperCase() : undefined;
+}
+
+type ParsedQuoteSummary = {
+  normalized: any;
+  normalizedQuote: any;
+  lines: any[];
+  supplier?: string;
+  currency?: string;
+};
+
+function normaliseParsedQuote(parsed: any): ParsedQuoteSummary {
+  const normalized = parsed && typeof parsed === "object" && parsed.parsed ? parsed.parsed : parsed;
+  const normalizedQuote =
+    normalized && typeof normalized === "object" && !Array.isArray(normalized)
+      ? typeof (normalized as any).quote === "object" && !Array.isArray((normalized as any).quote)
+        ? (normalized as any).quote
+        : null
+      : null;
+
+  const lines = pickLines(
+    (normalizedQuote as any)?.lines,
+    (normalizedQuote as any)?.line_items,
+    (normalizedQuote as any)?.lineItems,
+    (normalizedQuote as any)?.items,
+    (normalized as any)?.lines,
+    (normalized as any)?.line_items,
+    (normalized as any)?.lineItems,
+    (normalized as any)?.items,
+  );
+
+  const supplier = resolveSupplier(normalizedQuote) || resolveSupplier(normalized);
+  const currency = resolveCurrency(normalizedQuote) || resolveCurrency(normalized);
+
+  return { normalized, normalizedQuote, lines, supplier, currency };
+}
+
+async function parseQuoteWithOpenAI(filePath: string, filename: string): Promise<QuoteParseSuccess | QuoteParseFailure> {
+  try {
+    await fs.promises.access(filePath, fs.constants.R_OK);
+  } catch (err: any) {
+    return { source: "openai", error: { message: "file_unreadable", detail: err?.message || String(err) } };
+  }
+
+  try {
+    const uploaded = await openai.files.create({
+      file: fs.createReadStream(filePath),
+      purpose: "assistants",
+    });
+
+    try {
+      const systemPrompt =
+        "You are an expert assistant that extracts structured line items from supplier PDF quotes. " +
+        "Return accurate quantities, unit prices, totals, currencies and supplier details.";
+      const userPrompt =
+        `The attached supplier quote is named "${filename}". ` +
+        "Extract every purchasable line item from the document. " +
+        "Infer missing quantities or unit prices when possible, and include totals if present. " +
+        "Respond using the provided JSON schema. Do not invent line items.";
+
+      const response = await openai.responses.parse({
+        model: OPENAI_QUOTE_MODEL,
+        temperature: 0,
+        max_output_tokens: 2000,
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: systemPrompt }],
+          },
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: userPrompt },
+              { type: "input_file", file_id: uploaded.id, filename },
+            ],
+          },
+        ],
+        response_format: quoteStructuredOutputSchema as any,
+      });
+
+      const parsed = response.output_parsed;
+      if (parsed && typeof parsed === "object") {
+        const norm = normaliseParsedQuote(parsed);
+        return {
+          source: "openai",
+          parsed,
+          supplier: norm.supplier,
+          currency: norm.currency,
+          details: {
+            model: OPENAI_QUOTE_MODEL,
+            responseId: response.id,
+            usage: response.usage || null,
+          },
+        };
+      }
+      return {
+        source: "openai",
+        parsed,
+        supplier: undefined,
+        currency: undefined,
+        details: {
+          model: OPENAI_QUOTE_MODEL,
+          responseId: response.id,
+          usage: response.usage || null,
+        },
+      };
+    } finally {
+      try {
+        await openai.files.del(uploaded.id);
+      } catch (cleanupErr) {
+        console.warn("[quotes:openai] failed to delete uploaded file", cleanupErr);
+      }
+    }
+  } catch (err: any) {
+    return {
+      source: "openai",
+      error: {
+        message: err?.message || String(err),
+        type: err?.type || undefined,
+        code: err?.code || undefined,
+      },
+    };
+  }
+}
+
+async function parseQuoteWithLegacyML(
+  apiBase: string,
+  fileId: string,
+  token: string,
+  filename: string | null,
+  authHeader: string,
+  timeoutMs: number,
+): Promise<QuoteParseSuccess | QuoteParseFailure> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const resp = await fetch(`${apiBase}/ml/parse-quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: authHeader || "" },
+      body: JSON.stringify({
+        url: `${apiBase}/files/${encodeURIComponent(fileId)}?jwt=${encodeURIComponent(token)}`,
+        filename: filename || undefined,
+      }),
+      signal: ctl.signal as any,
+    } as any);
+
+    const text = await resp.text();
+    let parsed: any = {};
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      parsed = { raw: text };
+    }
+
+    if (!resp.ok) {
+      return {
+        source: "ml",
+        error: {
+          status: resp.status,
+          body: parsed,
+        },
+      };
+    }
+
+    const norm = normaliseParsedQuote(parsed);
+    return {
+      source: "ml",
+      parsed,
+      supplier: norm.supplier,
+      currency: norm.currency,
+      details: { status: resp.status },
+    };
+  } catch (err: any) {
+    const msg = err?.name === "AbortError" ? `timeout_${timeoutMs}ms` : err?.message || String(err);
+    return { source: "ml", error: { message: msg } };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function requireAuth(req: any, res: any, next: any) {
   if (!req.auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -160,61 +453,119 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
     // Worker to perform parsing
     const doParse = async () => {
       const created: any[] = [];
-      const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }>= [];
-      const TIMEOUT_MS = Math.max(2000, Number(process.env.ML_TIMEOUT_MS || (process.env.NODE_ENV === "production" ? 6000 : 10000)));
+      const fails: Array<{ fileId: string; name?: string | null; error?: any }> = [];
+      const TIMEOUT_MS = Math.max(
+        2000,
+        Number(process.env.ML_TIMEOUT_MS || (process.env.NODE_ENV === "production" ? 6000 : 10000)),
+      );
       const filesToParse = [...quote.supplierFiles]
         .filter((x) => /pdf$/i.test(x.mimeType || "") || /\.pdf$/i.test(x.name || ""))
-        .sort((a: any, b: any) => new Date(b.uploadedAt || b.createdAt || 0).getTime() - new Date(a.uploadedAt || a.createdAt || 0).getTime())
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.uploadedAt || b.createdAt || 0).getTime() -
+            new Date(a.uploadedAt || a.createdAt || 0).getTime(),
+        )
         .slice(0, 1);
 
       for (const f of filesToParse) {
-        const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "30m" });
-        const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
-        const ctl = new AbortController();
-        const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
-        let resp: Response;
-        try {
-          resp = await fetch(`${API_BASE}/ml/parse-quote`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: req.headers.authorization || "" },
-            body: JSON.stringify({ url, filename: f.name || undefined }),
-            signal: ctl.signal as any,
-          } as any);
-        } catch (err: any) {
-          clearTimeout(t);
-          const msg = err?.name === "AbortError" ? `timeout_${TIMEOUT_MS}ms` : err?.message || String(err);
-          fails.push({ fileId: f.id, name: f.name, status: 504, error: { error: msg } });
-          continue;
-        } finally {
-          clearTimeout(t);
+        const attemptErrors: QuoteParseFailure[] = [];
+        let selected: QuoteParseSuccess | null = null;
+
+        const absPath = path.isAbsolute(f.path) ? f.path : path.join(process.cwd(), f.path);
+        const aiAttempt = await parseQuoteWithOpenAI(absPath, f.name || "supplier-quote.pdf");
+        if ("parsed" in aiAttempt) {
+          const { lines } = normaliseParsedQuote(aiAttempt.parsed);
+          if (Array.isArray(lines) && lines.length > 0) {
+            selected = aiAttempt;
+          } else {
+            attemptErrors.push({ source: "openai", error: { message: "no_lines", parsed: aiAttempt.parsed } });
+          }
+        } else {
+          attemptErrors.push(aiAttempt);
         }
 
-        const text = await resp.text();
-        let parsed: any = {};
-        try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
-        if (!resp.ok) {
-          fails.push({ fileId: f.id, name: f.name, status: resp.status, error: parsed });
+        if (!selected) {
+          const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "30m" });
+          const mlAttempt = await parseQuoteWithLegacyML(
+            API_BASE,
+            f.id,
+            token,
+            f.name || null,
+            req.headers.authorization || "",
+            TIMEOUT_MS,
+          );
+          if ("parsed" in mlAttempt) {
+            const { lines } = normaliseParsedQuote(mlAttempt.parsed);
+            if (Array.isArray(lines) && lines.length > 0) {
+              selected = mlAttempt;
+            } else {
+              attemptErrors.push({ source: "ml", error: { message: "no_lines", parsed: mlAttempt.parsed } });
+            }
+          } else {
+            attemptErrors.push(mlAttempt);
+          }
+        }
+
+        if (!selected) {
+          fails.push({ fileId: f.id, name: f.name, error: { attempts: attemptErrors } });
           continue;
         }
 
-        const lines = Array.isArray(parsed?.lines) ? parsed.lines : [];
+        const parsedSummary = normaliseParsedQuote(selected.parsed);
+        const parsed = parsedSummary.normalized;
+        const parsedQuote = parsedSummary.normalizedQuote;
+        const supplierFromParse = parsedSummary.supplier;
+        const currencyFromParse = parsedSummary.currency;
+        const lines = Array.isArray(parsedSummary.lines) ? parsedSummary.lines : [];
+
         for (const ln of lines) {
-          const description = String(ln.description || ln.item || ln.name || f.name || "Line");
-          const qty = Number(ln.qty ?? ln.quantity ?? 1) || 1;
-          const unit = Number(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
-          const currency = String(parsed.currency || ln.currency || quote.currency || "GBP").toUpperCase();
+          if (!ln || typeof ln !== "object") continue;
+
+          const description = String(ln.description || ln.item || ln.name || ln.title || f.name || "Line");
+
+          const qtyRaw = ln.qty ?? ln.quantity ?? ln.units ?? 1;
+          const qty = Number(qtyRaw);
+          const safeQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
+
+          const unitRaw =
+            ln.unit_price ?? ln.unitPrice ?? ln.price_each ?? ln.priceEach ?? ln.price ?? ln.unit ?? ln.rate;
+          let unit = Number(unitRaw);
+          if (!Number.isFinite(unit) || unit < 0) {
+            const totalRaw = ln.total ?? ln.total_price ?? ln.totalPrice;
+            const total = Number(totalRaw);
+            if (Number.isFinite(total) && safeQty > 0) {
+              unit = total / safeQty;
+            }
+          }
+          const safeUnit = Number.isFinite(unit) ? unit : 0;
+
+          const currencySource =
+            resolveCurrency(ln) || currencyFromParse || selected.currency || quote.currency || "GBP";
+          const lineCurrency = String(currencySource || "GBP").toUpperCase();
+
+          const lineSupplier =
+            resolveSupplier(ln) || supplierFromParse || selected.supplier || (quote as any).supplier || undefined;
+
+          const metaPayload: Record<string, any> = {
+            source: selected.source === "openai" ? "openai-parse" : "ml-parse",
+            raw: ln,
+            parsed: parsed || undefined,
+            quote: parsedQuote || undefined,
+          };
+          if (selected.details) metaPayload.details = selected.details;
+
           const row = await prisma.quoteLine.create({
             data: {
               quoteId: quote.id,
-              supplier: (parsed?.supplier || undefined) as any,
-              sku: typeof ln.sku === "string" ? ln.sku : undefined,
+              supplier: lineSupplier as any,
+              sku: typeof ln.sku === "string" && ln.sku.trim() ? ln.sku : undefined,
               description,
-              qty,
-              unitPrice: new Prisma.Decimal(unit),
-              currency,
+              qty: safeQty,
+              unitPrice: new Prisma.Decimal(safeUnit),
+              currency: lineCurrency,
               deliveryShareGBP: new Prisma.Decimal(0),
               lineTotalGBP: new Prisma.Decimal(0),
-              meta: parsed ? { source: "ml-parse", raw: ln } : undefined,
+              meta: metaPayload,
             },
           });
           created.push(row);
@@ -222,7 +573,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       }
 
       if (created.length === 0) return { error: "parse_failed", created: 0, fails } as const;
-      return { ok: true, created: created.length, fails: 0 } as const;
+      return { ok: true, created: created.length, fails } as const;
     };
 
     const preferAsync = (process.env.NODE_ENV === "production") && String(req.query.async ?? "1") !== "0";
