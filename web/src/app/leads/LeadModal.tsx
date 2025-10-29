@@ -965,12 +965,39 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         return;
       }
 
-      const q = await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}`);
-      const files = Array.isArray(q?.supplierFiles) ? q.supplierFiles : [];
+      // Load current files; if none, prompt user to pick a PDF and upload it, then continue
+      let q = await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}`);
+      let files: Array<{ id: string; name?: string; uploadedAt?: string; createdAt?: string }>= Array.isArray(q?.supplierFiles) ? q.supplierFiles : [];
       if (!files.length) {
-        setParseTesterOut({ error: "no_files", message: "No supplier files on the quote. Upload a PDF, then try again." });
-        setParseTesterOpen(true);
-        return;
+        // Prompt selection
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "application/pdf";
+        input.multiple = false;
+        const picked: File | null = await new Promise((resolve) => {
+          input.onchange = () => {
+            const sel = Array.from(input.files || []);
+            resolve(sel.length ? sel[0] : null);
+          };
+          input.click();
+        });
+        if (!picked) {
+          setParseTesterOut({ error: "no_files", message: "No supplier files on the quote. Upload a PDF, then try again." });
+          setParseTesterOpen(true);
+          return;
+        }
+        // Upload the selected PDF to this quote
+        const fd = new FormData();
+        fd.append("files", picked, picked.name);
+        await fetch(`${API_BASE}/quotes/${encodeURIComponent(qid)}/files`, {
+          method: "POST",
+          headers: authHeaders as any,
+          body: fd,
+          credentials: "include",
+        });
+        // Re-fetch quote with files
+        q = await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}`);
+        files = Array.isArray(q?.supplierFiles) ? q.supplierFiles : [];
       }
 
       // Pick the most recent supplier file
