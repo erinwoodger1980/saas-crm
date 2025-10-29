@@ -170,4 +170,53 @@ router.delete("/time/:id", async (req: any, res) => {
   res.json({ ok: true });
 });
 
+// POST /workshop/backfill
+// Creates WON opportunities for any WON leads that don't yet have an associated opportunity.
+router.post("/backfill", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+
+  // Find WON leads without an opportunity
+  const wonLeads = await prisma.lead.findMany({
+    where: {
+      tenantId,
+      status: "WON" as any,
+      opportunity: { is: null },
+    },
+    select: { id: true, contactName: true, capturedAt: true },
+    orderBy: { capturedAt: "desc" },
+  });
+
+  if (!wonLeads.length) return res.json({ ok: true, created: 0, details: [] });
+
+  const created: Array<{ leadId: string; opportunityId: string; title: string }> = [];
+
+  for (const lead of wonLeads) {
+    // Try to pull a title/value from the most recent quote for this lead
+    const latestQuote = await prisma.quote.findFirst({
+      where: { tenantId, leadId: lead.id },
+      orderBy: { updatedAt: "desc" },
+      select: { title: true, totalGBP: true, updatedAt: true },
+    });
+
+    const title = latestQuote?.title || lead.contactName || "Project";
+    const wonAt = latestQuote?.updatedAt || new Date();
+
+    const opp = await prisma.opportunity.create({
+      data: {
+        tenantId,
+        leadId: lead.id,
+        title,
+        stage: "WON" as any,
+        wonAt,
+        valueGBP: (latestQuote as any)?.totalGBP ?? undefined,
+      },
+      select: { id: true, title: true },
+    });
+
+    created.push({ leadId: lead.id, opportunityId: opp.id, title: opp.title });
+  }
+
+  res.json({ ok: true, created: created.length, details: created });
+});
+
 export default router;
