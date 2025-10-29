@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: api
+    env: node
+    rootDir: api
+    buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
+    startCommand: pnpm run start
+  - type: web
+    name: web
+    env: node
+    rootDir: web
+    buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
+    startCommand: pnpm run start
