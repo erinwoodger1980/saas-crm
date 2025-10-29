@@ -16,6 +16,7 @@ import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import { FollowupPlanner } from "@/app/components/FollowupPlanner";
 // Using a native range input instead of a custom Slider to avoid extra deps
 
 const MODULES = [
@@ -130,6 +131,7 @@ export default function AiTrainingPage() {
   const [followupLoading, setFollowupLoading] = useState(false);
   const [followupError, setFollowupError] = useState<string | null>(null);
   const [updatingFollowupOptIn, setUpdatingFollowupOptIn] = useState(false);
+  const [followupTab, setFollowupTab] = useState<"overview" | "planner">("overview");
 
   const fetchFollowupLearning = useCallback(async () => {
     setFollowupLoading(true);
@@ -529,6 +531,17 @@ export default function AiTrainingPage() {
             <p className="text-xs text-slate-500">See what the model is saying and how it times follow-ups after quotes.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-2 hidden w-px self-stretch bg-slate-200 sm:block" />
+            <div className="inline-flex rounded-lg border bg-white p-0.5 text-xs">
+              <button
+                className={`rounded-md px-2 py-1 ${followupTab === "overview" ? "bg-slate-100 font-medium" : "text-slate-600"}`}
+                onClick={() => setFollowupTab("overview")}
+              >Overview</button>
+              <button
+                className={`rounded-md px-2 py-1 ${followupTab === "planner" ? "bg-slate-100 font-medium" : "text-slate-600"}`}
+                onClick={() => setFollowupTab("planner")}
+              >Follow-up planner</button>
+            </div>
             {followupLearning?.sampleSize != null ? (
               <Badge variant="secondary" className="text-xs">
                 {(followupLearning.sampleSize ?? 0).toLocaleString()} emails analysed
@@ -558,18 +571,18 @@ export default function AiTrainingPage() {
             ) : null}
           </div>
         </div>
-        {followupError ? (
+        {followupTab === "overview" && followupError ? (
           <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{followupError}</div>
         ) : null}
-        {followupLoading && !followupHasData ? (
+        {followupTab === "overview" && followupLoading && !followupHasData ? (
           <div className="mt-4 text-sm text-slate-500">Loading follow-up insights…</div>
         ) : null}
-        {!followupLoading && !followupHasData ? (
+        {followupTab === "overview" && !followupLoading && !followupHasData ? (
           <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-sm text-slate-500">
             Send your first follow-up from an opportunity to unlock cadence analytics.
           </div>
         ) : null}
-        {followupLearning ? (
+        {followupTab === "overview" && followupLearning ? (
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">What we’re saying</div>
@@ -609,7 +622,7 @@ export default function AiTrainingPage() {
             </div>
           </div>
         ) : null}
-        {followupLearning?.variants && followupLearning.variants.length > 0 ? (
+        {followupTab === "overview" && followupLearning?.variants && followupLearning.variants.length > 0 ? (
           <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white">
             <table className="min-w-full text-left text-xs text-slate-600">
               <thead className="text-[11px] uppercase tracking-wide text-slate-500">
@@ -643,6 +656,14 @@ export default function AiTrainingPage() {
             </table>
           </div>
         ) : null}
+
+        {followupTab === "planner" && (
+          <div className="mt-4">
+            {/* Lightweight follow-up generator, no send actions from training */}
+            {/** @ts-ignore - dynamic import path alias */}
+            <FollowupPlanner title="Follow-up planner (playground)" />
+          </div>
+        )}
       </section>
 
       {/* Quote Builder quick access */}
