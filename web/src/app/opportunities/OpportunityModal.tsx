@@ -849,7 +849,7 @@ export default function OpportunityModal({
                         ) : null}
                         {suggest.learning.call?.sampleSize ? (
                           <div className="text-[11px] text-slate-600">
-                            Phone nudges land {callAvgLabel} after send · {percentLabel(suggest.learning.call.conversionRate)} conversions.
+                            Phone nudges land {callAvgLabel} after send · {percentLabel(suggest.learning.call.conversionRate ?? undefined)} conversions.
                           </div>
                         ) : null}
                       </div>
