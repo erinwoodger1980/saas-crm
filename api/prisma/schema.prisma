@@ -42,6 +42,9 @@ model Tenant {
   trainingInsights      TrainingInsights[]
   modelOverrides        ModelOverride[]
   trainingEvents        TrainingEvent[]
+  // Workshop relations
+  processPlans          ProcessPlan[]
+  timeEntries           TimeEntry[]
 }
 
 model User {
@@ -60,6 +63,9 @@ model User {
   tenant                Tenant                  @relation(fields: [tenantId], references: [id])
   feedbacks             Feedback[]              @relation("FeedbackAuthor")
   resolvedFeedbacks     Feedback[]              @relation("FeedbackResolver")
+  // Workshop relations
+  processPlansAssigned   ProcessPlan[]
+  timeEntries            TimeEntry[]
 }
 
 model SignupToken {
@@ -109,6 +115,9 @@ model Opportunity {
   emailThreads  EmailThread[]
   lead          Lead           @relation(fields: [leadId], references: [id])
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  // Workshop relations
+  processPlans  ProcessPlan[]
+  timeEntries   TimeEntry[]
 
   @@index([tenantId, stage])
 }
