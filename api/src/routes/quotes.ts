@@ -15,6 +15,32 @@ function requireAuth(req: any, res: any, next: any) {
   next();
 }
 
+// Parse a number from strings like "1,200.50", "£1,234", "$99", or plain numbers. Returns 0 on failure.
+function toNumber(input: any): number {
+  if (typeof input === "number") return Number.isFinite(input) ? input : 0;
+  if (typeof input === "string") {
+    // Remove currency symbols and spaces, normalise thousands and decimals
+    const cleaned = input.replace(/[\s\u00A0]/g, "").replace(/[^0-9,.-]/g, "");
+    // If both comma and dot exist, assume comma is thousands separator
+    const hasComma = cleaned.includes(",");
+    const hasDot = cleaned.includes(".");
+    const normalised = hasComma && hasDot ? cleaned.replace(/,/g, "") : cleaned.replace(/,/g, ".");
+    const n = Number(normalised);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+function normalizeCurrency(input: any): string {
+  const raw = String(input || "").trim();
+  if (!raw) return "GBP";
+  const upper = raw.toUpperCase();
+  if (upper === "£" || upper === "GBP" || upper === "GB POUND" || upper === "POUND") return "GBP";
+  if (upper === "$" || upper === "USD" || upper === "US DOLLAR") return "USD";
+  if (upper === "EUR" || upper === "€" || upper === "EURO") return "EUR";
+  return upper;
+}
+
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const storage = multer.diskStorage({
@@ -172,7 +198,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
         const ctl = new AbortController();
         const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
-        let resp: Response;
+  let resp: any;
         try {
           resp = await fetch(`${API_BASE}/ml/parse-quote`, {
             method: "POST",
@@ -207,11 +233,11 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         const lines = Array.isArray(normalized?.lines) ? normalized.lines : [];
         for (const ln of lines) {
           const description = String(ln.description || ln.item || ln.name || f.name || "Line");
-          const qty = Number(ln.qty ?? ln.quantity ?? 1) || 1;
-          const unit = Number(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
-          const currency = String(
+          const qty = toNumber(ln.qty ?? ln.quantity ?? 1) || 1;
+          const unit = toNumber(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
+          const currency = normalizeCurrency(
             normalized?.currency || parsed?.currency || ln.currency || quote.currency || "GBP",
-          ).toUpperCase();
+          );
           const row = await prisma.quoteLine.create({
             data: {
               quoteId: quote.id,
