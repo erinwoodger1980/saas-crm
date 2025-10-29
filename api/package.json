@@ -29,6 +29,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
+    "puppeteer": "^23.7.1",
     "openai": "^4.104.0",
     "stripe": "^19.1.0",
     "zod": "^3.25.76"
