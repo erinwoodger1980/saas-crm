@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Joinery AI API",
-  "packageManager": "pnpm@8.15.8",
+  "packageManager": "pnpm@9.0.0",
   "type": "commonjs",
   "main": "dist/server.js",
   "scripts": {

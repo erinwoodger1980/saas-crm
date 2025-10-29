@@ -28,7 +28,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8.15.8
+          version: 9
 
       - name: Show tool versions
         run: |
@@ -36,8 +36,8 @@ jobs:
           pnpm -v
           npm -v
 
-      - name: Install deps (update lockfile if needed)
-        run: pnpm install --no-frozen-lockfile
+      - name: Install dependencies (frozen)
+        run: pnpm install --frozen-lockfile
 
       - name: Prisma generate
         run: pnpm run prisma:generate
