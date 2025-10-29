@@ -936,6 +936,73 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     input.click();
   }
 
+  // -------------------- Supplier PDF parse tester --------------------
+  const [parseTesterOpen, setParseTesterOpen] = useState(false);
+  const [parseTesterBusy, setParseTesterBusy] = useState(false);
+  const [parseTesterOut, setParseTesterOut] = useState<any>(null);
+
+  async function testSupplierParse() {
+    if (!lead?.id) return;
+    setParseTesterBusy(true);
+    setParseTesterOut(null);
+    try {
+      // Use existing quote if present; otherwise create (will likely have no files yet)
+      let qid: string | null = lead.quoteId || null;
+      if (!qid) {
+        const q = await apiFetch<any>("/quotes", {
+          method: "POST",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          json: {
+            leadId: lead.id,
+            title: `Estimate for ${lead.contactName || lead.email || "Lead"}`,
+          },
+        });
+        qid = q?.id || null;
+      }
+      if (!qid) {
+        setParseTesterOut({ error: "no_quote", message: "Couldn't create a draft quote." });
+        setParseTesterOpen(true);
+        return;
+      }
+
+      const q = await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}`);
+      const files = Array.isArray(q?.supplierFiles) ? q.supplierFiles : [];
+      if (!files.length) {
+        setParseTesterOut({ error: "no_files", message: "No supplier files on the quote. Upload a PDF, then try again." });
+        setParseTesterOpen(true);
+        return;
+      }
+
+      // Pick the most recent supplier file
+      const latest = [...files].sort((a, b) => new Date(b.uploadedAt || b.createdAt || 0).getTime() - new Date(a.uploadedAt || a.createdAt || 0).getTime())[0];
+      const signed = await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}/files/${encodeURIComponent(latest.id)}/signed`);
+      const url: string | undefined = signed?.url;
+      if (!url) {
+        setParseTesterOut({ error: "no_signed_url", details: signed });
+        setParseTesterOpen(true);
+        return;
+      }
+
+      // Call ML parse through the API
+      let out: any = null;
+      try {
+        out = await apiFetch<any>("/ml/parse-quote", {
+          method: "POST",
+          json: { url, filename: latest?.name || undefined },
+        });
+      } catch (e: any) {
+        out = { error: e?.message || "request_failed", details: e?.details || null };
+      }
+      setParseTesterOut(out);
+      setParseTesterOpen(true);
+    } catch (e: any) {
+      setParseTesterOut({ error: "tester_crashed", message: e?.message || String(e) });
+      setParseTesterOpen(true);
+    } finally {
+      setParseTesterBusy(false);
+    }
+  }
+
   async function handleStatusChange(event: ChangeEvent<HTMLSelectElement>) {
     const nextUi = event.target.value as Lead["status"];
     setUiStatus(nextUi);
@@ -1246,6 +1313,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             disabled={saving}
           >
             Upload supplier quote
+          </button>
+
+          <button
+            className="ml-2 rounded-full border border-indigo-200 bg-indigo-50/70 px-4 py-2 text-sm font-medium text-indigo-700 shadow-sm hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
+            onClick={testSupplierParse}
+            title="Test PDF parsing with your latest supplier file and show the raw response"
+            disabled={parseTesterBusy}
+          >
+            {parseTesterBusy ? "Testing…" : "Test PDF parsing"}
           </button>
 
           <button
@@ -1886,6 +1962,30 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           </aside>
         </div>
         </div>
+
+        {/* Parse tester output (simple inline panel) */}
+        {parseTesterOpen && (
+          <div className="absolute bottom-4 left-4 right-4 z-[70]">
+            <div className="rounded-2xl border border-indigo-200 bg-white/95 shadow-xl p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-indigo-800">PDF Parse Test Output</div>
+                <button
+                  className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                  onClick={() => setParseTesterOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="mt-2 max-h-64 overflow-auto">
+                <pre className="text-[11px] leading-snug text-slate-700 whitespace-pre-wrap break-words">
+                  {(() => {
+                    try { return JSON.stringify(parseTesterOut, null, 2); } catch { return String(parseTesterOut); }
+                  })()}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
