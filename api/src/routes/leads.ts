@@ -405,6 +405,40 @@ router.patch("/:id", async (req, res) => {
     });
   }
 
+  // When a lead is marked WON, ensure there's a corresponding Opportunity in stage WON
+  // so it appears in the Workshop schedule. If one exists, update it; else create it.
+  try {
+    if (nextUi === "WON") {
+      await prisma.$transaction(async (tx) => {
+        const latestQuote = await tx.quote.findFirst({
+          where: { tenantId, leadId: id },
+          orderBy: { updatedAt: "desc" },
+          select: { title: true, totalGBP: true },
+        });
+        const title = latestQuote?.title || updated.contactName || "Project";
+        await tx.opportunity.upsert({
+          where: { leadId: id },
+          update: {
+            stage: "WON" as any,
+            wonAt: new Date(),
+            title,
+            valueGBP: (latestQuote as any)?.totalGBP ?? undefined,
+          },
+          create: {
+            tenantId,
+            leadId: id,
+            title,
+            stage: "WON" as any,
+            wonAt: new Date(),
+            valueGBP: (latestQuote as any)?.totalGBP ?? undefined,
+          },
+        });
+      });
+    }
+  } catch (e) {
+    console.warn("[leads] ensure opportunity on WON failed:", (e as any)?.message || e);
+  }
+
   res.json({ ok: true, lead: updated });
 });
 
