@@ -42,6 +42,7 @@ import mlSamples from "./routes/ml-samples";
 import mlOpsRouter from "./routes/ml-ops";
 import mlInsightsRouter from "./routes/ml-insights";
 import featureFlagsRouter from "./routes/feature-flags";
+import workshopRouter from "./routes/workshop";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -432,6 +433,7 @@ app.use("/tasks", tasksRouter);
 app.use("/events", eventsRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/streaks", streaksRouter);
+app.use("/workshop", requireAuth, workshopRouter);
 
 /** ---------- Auth required from here ---------- */
 app.use((req, _res, next) => {
