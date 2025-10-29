@@ -2,6 +2,7 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@8.15.8",
   "scripts": {
   "dev": "next dev",
   "build": "npm run check:no-localhost && next build",
