@@ -400,12 +400,22 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
-    const cur = normalizeCurrency(quote.currency || "GBP");
+    const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
+    const cur = normalizeCurrency(quote.currency || quoteDefaults?.currency || "GBP");
     const sym = currencySymbol(cur);
-    const brand = (quote.tenant as any)?.brandName || "Quote";
+    const brand = (ts?.brandName || (quote.tenant as any)?.brandName || "Quotation").toString();
+    const logoUrl = (ts?.logoUrl || "").toString();
+    const phone = (ts?.phone || quoteDefaults?.phone || "").toString();
+    const website = (ts?.website || (Array.isArray(ts?.links) ? undefined : (ts?.links as any)?.website) || "").toString();
     const client = quote.lead?.contactName || quote.lead?.email || "Client";
     const title = quote.title || `Estimate for ${client}`;
     const when = new Date().toLocaleDateString();
+    const validDays = Number(quoteDefaults?.validDays ?? 30);
+    const validUntil = new Date(Date.now() + Math.max(0, validDays) * 86400000).toLocaleDateString();
+    const vatRate = Number(quoteDefaults?.vatRate ?? 0.2);
+    const showVat = quoteDefaults?.showVat !== false; // default true for UK
+    const terms = (quoteDefaults?.terms as string) || "Prices are valid for 30 days and subject to site survey. Payment terms: 50% upfront, 50% on delivery unless agreed otherwise.";
 
     // Summaries
     const rows = quote.lines.map((ln) => {
@@ -420,37 +430,60 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       };
     });
     const subtotal = rows.reduce((s, r) => s + r.total, 0);
-    const totalGBP = Number(quote.totalGBP ?? subtotal);
+    const vatAmount = showVat ? subtotal * vatRate : 0;
+    const computedTotal = subtotal + vatAmount;
+    // Prefer explicit quote.totalGBP if set (from pricing), else computed
+    const totalGBP = Number(quote.totalGBP ?? computedTotal);
 
     const styles = `
       <style>
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #0f172a; padding: 24px; }
-        h1 { font-size: 22px; margin: 0 0 8px; }
-        .meta { color: #475569; font-size: 12px; margin-bottom: 16px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #0f172a; padding: 28px; }
+        h1 { font-size: 22px; margin: 0 0 4px; }
+        .muted { color: #64748b; }
+        .meta { color: #475569; font-size: 12px; }
+        .grid { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+        .brand { display:flex; align-items:center; gap:12px; }
+        .brand img { max-height: 40px; }
+        .ref { font-size: 12px; color:#334155; }
+        .section { margin-top: 16px; }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
         th, td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
         th { background: #f8fafc; font-weight: 600; }
         tfoot td { border-top: 2px solid #0ea5e9; font-weight: 700; }
         .right { text-align: right; }
-        .muted { color: #64748b; }
+        .totals { margin-top: 8px; width: 50%; margin-left:auto; }
+        .totals .row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #e2e8f0; }
+        .totals .row.total { border-bottom: none; font-weight:700; }
+        footer { margin-top: 18px; font-size: 11px; color:#475569; }
       </style>`;
+
+    const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
 
     const html = `<!doctype html>
       <html>
       <head><meta charset="utf-8" />${styles}</head>
       <body>
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
-          <div>
-            <h1>${brand}</h1>
-            <div class="meta">Quotation for ${client}</div>
+        <header class="grid">
+          <div class="brand">
+            ${logoUrl ? `<img src="${logoUrl}" alt="logo" />` : ""}
+            <div>
+              <h1>${escapeHtml(brand)}</h1>
+              <div class="meta">${website || phone ? `${escapeHtml(website)}${website && phone ? " · " : ""}${escapeHtml(phone)}` : ""}</div>
+            </div>
           </div>
           <div class="meta right">
+            <div class="ref"><strong>Quote Ref:</strong> ${ref}</div>
             <div><strong>Date:</strong> ${when}</div>
+            <div><strong>Valid until:</strong> ${validUntil}</div>
             <div><strong>Currency:</strong> ${cur}</div>
           </div>
+        </header>
+
+        <div class="section">
+          <div class="meta"><strong>To:</strong> ${escapeHtml(client)}</div>
+          <div class="meta"><strong>Title:</strong> ${escapeHtml(title)}</div>
         </div>
-        <div class="meta" style="margin-top:4px;"><strong>Title:</strong> ${title}</div>
         <table>
           <thead>
             <tr>
@@ -473,14 +506,17 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
               )
               .join("")}
           </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="3" class="right">Total</td>
-              <td class="right">${sym}${totalGBP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            </tr>
-          </tfoot>
         </table>
-        <div class="muted" style="margin-top:16px;">Thank you for your business.</div>
+        <div class="totals">
+          <div class="row"><div>Subtotal</div><div>${sym}${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
+          ${showVat ? `<div class="row"><div>VAT (${(vatRate*100).toFixed(0)}%)</div><div>${sym}${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>` : ""}
+          <div class="row total"><div>Total</div><div>${sym}${totalGBP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
+        </div>
+        <footer>
+          <div><strong>Terms</strong></div>
+          <div class="muted">${escapeHtml(terms)}</div>
+          <div class="muted" style="margin-top:8px;">Thank you for your business.</div>
+        </footer>
       </body>
       </html>`;
 
