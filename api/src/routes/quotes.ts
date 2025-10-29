@@ -230,11 +230,31 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           ? parsed.parsed
           : parsed;
 
-        const lines = Array.isArray(normalized?.lines) ? normalized.lines : [];
+        // Accept multiple possible ML shapes for line items
+        const candidateArrays: any[] = [];
+        if (Array.isArray((normalized as any)?.lines)) candidateArrays.push((normalized as any).lines);
+        if (Array.isArray((normalized as any)?.items)) candidateArrays.push((normalized as any).items);
+        if (Array.isArray((normalized as any)?.line_items)) candidateArrays.push((normalized as any).line_items);
+        if (Array.isArray((normalized as any)?.rows)) candidateArrays.push((normalized as any).rows);
+        if (Array.isArray((normalized as any)?.table)) candidateArrays.push((normalized as any).table);
+        if ((normalized as any)?.table && Array.isArray((normalized as any).table.rows)) candidateArrays.push((normalized as any).table.rows);
+        const lines: any[] = candidateArrays.find((a) => Array.isArray(a) && a.length > 0) || [];
+
+        if (lines.length === 0) {
+          // Treat as a per-file failure so the UI surfaces a meaningful message
+          fails.push({
+            fileId: f.id,
+            name: f.name,
+            status: 200,
+            error: { error: "no_lines_detected", keys: Object.keys(normalized || {}), hint: "Ensure the PDF has a clear table or try another file." },
+          });
+          continue;
+        }
+
         for (const ln of lines) {
           const description = String(ln.description || ln.item || ln.name || f.name || "Line");
-          const qty = toNumber(ln.qty ?? ln.quantity ?? 1) || 1;
-          const unit = toNumber(ln.unit_price ?? ln.price ?? ln.unit ?? 0) || 0;
+          const qty = toNumber(ln.qty ?? ln.quantity ?? ln.count ?? ln.units ?? 1) || 1;
+          const unit = toNumber(ln.unit_price ?? ln.unitPrice ?? ln.price ?? ln.unit_cost ?? ln.unit ?? 0) || 0;
           const currency = normalizeCurrency(
             normalized?.currency || parsed?.currency || ln.currency || quote.currency || "GBP",
           );
