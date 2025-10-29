@@ -940,6 +940,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   const [parseTesterOpen, setParseTesterOpen] = useState(false);
   const [parseTesterBusy, setParseTesterBusy] = useState(false);
   const [parseTesterOut, setParseTesterOut] = useState<any>(null);
+  const [parseApplyBusy, setParseApplyBusy] = useState(false);
+  const [parseApplyResult, setParseApplyResult] = useState<{ url?: string; name?: string; error?: string } | null>(null);
 
   async function testSupplierParse() {
     if (!lead?.id) return;
@@ -1027,6 +1029,59 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       setParseTesterOpen(true);
     } finally {
       setParseTesterBusy(false);
+    }
+  }
+
+  // Create quote lines from latest supplier PDF, price them, and render a proposal PDF
+  async function applyParseToQuoteAndRender() {
+    if (!lead?.id) return;
+    setParseApplyBusy(true);
+    setParseApplyResult(null);
+    try {
+      // Ensure a draft quote exists
+      let qid: string | null = lead.quoteId || null;
+      if (!qid) {
+        const q = await apiFetch<any>("/quotes", {
+          method: "POST",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          json: {
+            leadId: lead.id,
+            title: `Estimate for ${lead.contactName || lead.email || "Lead"}`,
+          },
+        });
+        qid = q?.id || null;
+      }
+      if (!qid) {
+        setParseApplyResult({ error: "no_quote" });
+        return;
+      }
+
+      // Trigger server-side parse to create QuoteLine rows
+      await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}/parse`, { method: "POST", headers: authHeaders });
+
+      // Price using margin (defaults to quote.markupDefault on server)
+      await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}/price`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        json: { method: "margin" },
+      });
+
+      // Render PDF and then get a signed URL
+      await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}/render-pdf`, { method: "POST", headers: authHeaders });
+      const signed = await apiFetch<any>(`/quotes/${encodeURIComponent(qid)}/proposal/signed`, { headers: authHeaders });
+      const url = signed?.url as string | undefined;
+      const name = signed?.name as string | undefined;
+      if (url) {
+        setParseApplyResult({ url, name });
+        window.open(url, "_blank");
+        toast("Quote PDF ready");
+      } else {
+        setParseApplyResult({ error: "no_url" });
+      }
+    } catch (e: any) {
+      setParseApplyResult({ error: e?.message || "failed" });
+    } finally {
+      setParseApplyBusy(false);
     }
   }
 
@@ -2002,6 +2057,29 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 >
                   Close
                 </button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  className="rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 text-white px-3 py-1.5 text-xs font-semibold shadow hover:from-indigo-600 hover:to-sky-600 disabled:opacity-60"
+                  onClick={applyParseToQuoteAndRender}
+                  disabled={parseApplyBusy}
+                  title="Create quote lines, price them, and generate a proposal PDF"
+                >
+                  {parseApplyBusy ? "Building…" : "Add to Quote + Generate PDF"}
+                </button>
+                {parseApplyResult?.url ? (
+                  <a
+                    className="rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-white"
+                    href={parseApplyResult.url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open PDF{parseApplyResult.name ? ` (${parseApplyResult.name})` : ""}
+                  </a>
+                ) : null}
+                {parseApplyResult?.error ? (
+                  <span className="text-xs text-rose-600">{parseApplyResult.error}</span>
+                ) : null}
               </div>
               <div className="mt-2 max-h-64 overflow-auto">
                 <pre className="text-[11px] leading-snug text-slate-700 whitespace-pre-wrap break-words">

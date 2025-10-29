@@ -41,6 +41,19 @@ function normalizeCurrency(input: any): string {
   return upper;
 }
 
+function currencySymbol(code: string | undefined): string {
+  switch ((code || "GBP").toUpperCase()) {
+    case "GBP":
+      return "£";
+    case "USD":
+      return "$";
+    case "EUR":
+      return "€";
+    default:
+      return "";
+  }
+}
+
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const storage = multer.diskStorage({
@@ -241,13 +254,45 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         const lines: any[] = candidateArrays.find((a) => Array.isArray(a) && a.length > 0) || [];
 
         if (lines.length === 0) {
-          // Treat as a per-file failure so the UI surfaces a meaningful message
-          fails.push({
-            fileId: f.id,
-            name: f.name,
-            status: 200,
-            error: { error: "no_lines_detected", keys: Object.keys(normalized || {}), hint: "Ensure the PDF has a clear table or try another file." },
+          // Fallback: create a single umbrella line when we only have totals.
+          const candidates: number[] = [];
+          const est = Number((normalized as any)?.estimated_total ?? (parsed as any)?.estimated_total);
+          if (Number.isFinite(est) && est > 0) candidates.push(est);
+          const totalsArr = Array.isArray((normalized as any)?.detected_totals)
+            ? (normalized as any).detected_totals
+            : Array.isArray((parsed as any)?.detected_totals)
+            ? (parsed as any).detected_totals
+            : [];
+          for (const v of totalsArr) {
+            const n = Number(v);
+            if (Number.isFinite(n) && n > 0) candidates.push(n);
+          }
+          const single = candidates.sort((a, b) => b - a)[0];
+          if (!single) {
+            fails.push({
+              fileId: f.id,
+              name: f.name,
+              status: 200,
+              error: { error: "no_lines_detected", keys: Object.keys(normalized || {}), hint: "Ensure the PDF has a clear table or try another file." },
+            });
+            continue;
+          }
+          const currency = normalizeCurrency((normalized as any)?.currency || (parsed as any)?.currency || quote.currency || "GBP");
+          const row = await prisma.quoteLine.create({
+            data: {
+              quoteId: quote.id,
+              supplier: (normalized as any)?.supplier || (parsed as any)?.supplier || undefined,
+              sku: undefined,
+              description: `Supplier total — ${f.name || "PDF"}`,
+              qty: 1,
+              unitPrice: new Prisma.Decimal(single),
+              currency,
+              deliveryShareGBP: new Prisma.Decimal(0),
+              lineTotalGBP: new Prisma.Decimal(0),
+              meta: { source: "ml-parse", parsed: normalized || parsed, fallback: true },
+            },
           });
+          created.push(row);
           continue;
         }
 
@@ -336,6 +381,183 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
     return res.status(500).json({ error: "internal_error" });
   }
 });
+
+/**
+ * POST /quotes/:id/render-pdf
+ * Renders a simple PDF proposal for the quote lines using Puppeteer and stores it as an UploadedFile.
+ * Returns: { ok: true, fileId, name }
+ */
+router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
+  try {
+    // Dynamically load puppeteer to avoid type issues if not installed yet
+    // @ts-ignore
+    const puppeteer = require("puppeteer");
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: true, tenant: true, lead: true },
+    });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const cur = normalizeCurrency(quote.currency || "GBP");
+    const sym = currencySymbol(cur);
+    const brand = (quote.tenant as any)?.brandName || "Quote";
+    const client = quote.lead?.contactName || quote.lead?.email || "Client";
+    const title = quote.title || `Estimate for ${client}`;
+    const when = new Date().toLocaleDateString();
+
+    // Summaries
+    const rows = quote.lines.map((ln) => {
+      const qty = Number(ln.qty || 1);
+      const unit = Number(ln.unitPrice || 0);
+      const total = qty * unit;
+      return {
+        description: ln.description,
+        qty,
+        unit,
+        total,
+      };
+    });
+    const subtotal = rows.reduce((s, r) => s + r.total, 0);
+    const totalGBP = Number(quote.totalGBP ?? subtotal);
+
+    const styles = `
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #0f172a; padding: 24px; }
+        h1 { font-size: 22px; margin: 0 0 8px; }
+        .meta { color: #475569; font-size: 12px; margin-bottom: 16px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+        th, td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
+        th { background: #f8fafc; font-weight: 600; }
+        tfoot td { border-top: 2px solid #0ea5e9; font-weight: 700; }
+        .right { text-align: right; }
+        .muted { color: #64748b; }
+      </style>`;
+
+    const html = `<!doctype html>
+      <html>
+      <head><meta charset="utf-8" />${styles}</head>
+      <body>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+          <div>
+            <h1>${brand}</h1>
+            <div class="meta">Quotation for ${client}</div>
+          </div>
+          <div class="meta right">
+            <div><strong>Date:</strong> ${when}</div>
+            <div><strong>Currency:</strong> ${cur}</div>
+          </div>
+        </div>
+        <div class="meta" style="margin-top:4px;"><strong>Title:</strong> ${title}</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:60%">Description</th>
+              <th class="right" style="width:10%">Qty</th>
+              <th class="right" style="width:15%">Unit</th>
+              <th class="right" style="width:15%">Line Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (r) => `
+                <tr>
+                  <td>${escapeHtml(r.description || "-")}</td>
+                  <td class="right">${r.qty.toLocaleString()}</td>
+                  <td class="right">${sym}${r.unit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td class="right">${sym}${r.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>`
+              )
+              .join("")}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3" class="right">Total</td>
+              <td class="right">${sym}${totalGBP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div class="muted" style="margin-top:16px;">Thank you for your business.</div>
+      </body>
+      </html>`;
+
+    const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" } });
+    await browser.close();
+
+    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
+    const filename = `${filenameSafe}.pdf`;
+    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
+    fs.writeFileSync(filepath, pdfBuffer);
+
+    const fileRow = await prisma.uploadedFile.create({
+      data: {
+        tenantId,
+        quoteId: quote.id,
+        kind: "OTHER",
+        name: filename,
+        path: path.relative(process.cwd(), filepath),
+        mimeType: "application/pdf",
+        sizeBytes: pdfBuffer.length,
+      },
+    });
+
+    const meta0: any = (quote.meta as any) || {};
+    await prisma.quote.update({ where: { id: quote.id }, data: { proposalPdfUrl: null, meta: { ...(meta0 || {}), proposalFileId: fileRow.id } as any } as any });
+    return res.json({ ok: true, fileId: fileRow.id, name: fileRow.name });
+  } catch (e: any) {
+    console.error("[/quotes/:id/render-pdf] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * GET /quotes/:id/proposal/signed
+ * Returns a signed URL for the generated proposal PDF (if any).
+ */
+router.get("/:id/proposal/signed", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const q = await prisma.quote.findFirst({ where: { id, tenantId } });
+    if (!q) return res.status(404).json({ error: "not_found" });
+    const meta: any = (q.meta as any) || {};
+    const fileId: string | undefined = meta?.proposalFileId;
+    if (!fileId) return res.status(404).json({ error: "proposal_not_found" });
+
+    const f = await prisma.uploadedFile.findFirst({ where: { id: fileId, tenantId } });
+    if (!f) return res.status(404).json({ error: "file_not_found" });
+
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
+
+    const token = jwt.sign({ t: tenantId, q: q.id }, env.APP_JWT_SECRET, { expiresIn: "30m" });
+    const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
+    return res.json({ ok: true, url, name: f.name });
+  } catch (e: any) {
+    console.error("[/quotes/:id/proposal/signed] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// Basic HTML escape for PDF content
+function escapeHtml(s: string) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 /**
  * GET /quotes/:id/files/:fileId/signed
