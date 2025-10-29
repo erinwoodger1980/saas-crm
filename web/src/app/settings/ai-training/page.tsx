@@ -415,7 +415,7 @@ export default function AiTrainingPage() {
     setSaving(true);
     setError(null);
     try {
-      await apiFetch(`/ml/model/retrain`, { method: "POST", json: { module: moduleId, insightIds: ids } });
+  await apiFetch(`/ml/insights/model/retrain`, { method: "POST", json: { module: moduleId, insightIds: ids } });
       toast({ title: "Retrain queued", description: `${ids.length} examples selected`, duration: 2500 });
       clearSelection();
     } catch (e: any) {
@@ -429,7 +429,7 @@ export default function AiTrainingPage() {
     setSaving(true);
     setError(null);
     try {
-      await apiFetch(`/ml/params/set`, { method: "POST", json: { module: moduleId, key: "lead.threshold", value: threshold } });
+  await apiFetch(`/ml/insights/params/set`, { method: "POST", json: { module: moduleId, key: "lead.threshold", value: threshold } });
     } catch (e: any) {
       setError(e?.message || "Could not save parameter");
     } finally {
@@ -441,7 +441,7 @@ export default function AiTrainingPage() {
     setSaving(true);
     setError(null);
     try {
-      await apiFetch(`/ml/model/retrain`, { method: "POST", json: { module: moduleId } });
+  await apiFetch(`/ml/insights/model/retrain`, { method: "POST", json: { module: moduleId } });
     } catch (e: any) {
       setError(e?.message || "Could not trigger retrain");
     } finally {
@@ -454,7 +454,7 @@ export default function AiTrainingPage() {
     setSaving(true);
     setError(null);
     try {
-      await apiFetch(`/ml/model/reset`, { method: "POST", json: { module: moduleId } });
+  await apiFetch(`/ml/insights/model/reset`, { method: "POST", json: { module: moduleId } });
     } catch (e: any) {
       setError(e?.message || "Could not reset model");
     } finally {
@@ -469,7 +469,7 @@ export default function AiTrainingPage() {
       const payload: any = { module: moduleId, insightId: i.id, correct: ok };
       // For lead classifier, also pass isLead flag
       if (moduleId === "lead_classifier") payload.isLead = ok;
-      await apiFetch(`/ml/feedback`, { method: "POST", json: payload });
+  await apiFetch(`/ml/insights/feedback`, { method: "POST", json: payload });
       // Optimistic: mark userFeedback locally
       setInsights((prev) => prev.map((row) => (row.id === i.id ? { ...row, userFeedback: { ...(row.userFeedback || {}), thumbs: ok } } : row)));
       toast({ title: "Feedback saved", description: moduleId === "lead_classifier" ? "Recorded and linked to email ingest." : "Recorded for retraining.", duration: 2500 });
