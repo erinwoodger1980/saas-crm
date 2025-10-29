@@ -36,7 +36,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8.15.8
+          version: 9
 
       - name: Show tool versions
         run: |
@@ -47,7 +47,7 @@ jobs:
       - name: Configure pnpm store
         run: pnpm config set store-dir ~/.pnpm-store
 
-      - name: Install dependencies
+      - name: Install dependencies (frozen)
         run: pnpm install --frozen-lockfile
 
       # Rebuild LightningCSS for the runner
