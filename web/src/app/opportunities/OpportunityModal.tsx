@@ -165,7 +165,7 @@ function percentLabel(value?: number) {
   return `${Math.round(pct * 10) / 10}%`;
 }
 
-function formatDaysLabel(value?: number | null) {
+function formatDaysLabelLocal(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) return "–";
   const days = Number(value);
   if (!Number.isFinite(days)) return "–";
@@ -374,13 +374,13 @@ export default function OpportunityModal({
   }, [history]);
 
   const nextSuggestedDate = useMemo(() => {
-    if (!lastEmail?.sentAt || typeof emailDelayDays !== "number") return null;
-    const lastTs = new Date(lastEmail.sentAt).getTime();
+    if (!lastSentEmail?.sentAt || typeof emailDelayDays !== "number") return null;
+    const lastTs = new Date(lastSentEmail.sentAt).getTime();
     if (Number.isNaN(lastTs)) return null;
     const nextTs = lastTs + emailDelayDays * DAY_MS;
     if (!Number.isFinite(nextTs)) return null;
     return new Date(nextTs);
-  }, [lastEmail, emailDelayDays]);
+  }, [lastSentEmail, emailDelayDays]);
 
   const topVariant = useMemo(() => {
     if (!suggest?.learning?.variants || suggest.learning.variants.length === 0) return null;
@@ -390,12 +390,21 @@ export default function OpportunityModal({
     return ordered[0];
   }, [suggest?.learning?.variants]);
 
-  const lastEmailDate = lastEmail?.sentAt ? new Date(lastEmail.sentAt) : null;
+  const callAvgDelayDays: number | undefined =
+    typeof suggest?.learning?.call?.avgDelayDays === "number"
+      ? suggest.learning.call.avgDelayDays
+      : undefined;
+
+  const callAvgLabel = useMemo(() => {
+    return typeof callAvgDelayDays === "number" ? formatDaysLabelLocal(callAvgDelayDays) : "–";
+  }, [callAvgDelayDays]);
+
+  const lastEmailDate = lastSentEmail?.sentAt ? new Date(lastSentEmail.sentAt) : null;
   const sampleSize = suggest?.learning?.sampleSize ?? 0;
   const nextStatValue = nextSuggestedDate
     ? formatRelativeFuture(nextSuggestedDate)
     : typeof emailDelayDays === "number"
-    ? `Every ${formatDaysLabel(emailDelayDays)}`
+    ? `Every ${formatDaysLabelLocal(emailDelayDays)}`
     : "Let AI decide";
   const nextStatHint = nextSuggestedDate
     ? nextSuggestedDate.toLocaleString()
@@ -404,7 +413,7 @@ export default function OpportunityModal({
     : "AI will recommend timing";
   const sinceStatValue = lastEmailDate ? formatAgoDays(cadenceStats.sinceLast) : "First follow-up";
   const sinceStatHint = lastEmailDate ? lastEmailDate.toLocaleString() : "No previous emails";
-  const avgStatValue = cadenceStats.averageGap != null ? formatDaysLabel(cadenceStats.averageGap) : "Learning";
+  const avgStatValue = cadenceStats.averageGap != null ? formatDaysLabelLocal(cadenceStats.averageGap) : "Learning";
   const avgStatHint =
     cadenceStats.total > 1
       ? `From ${cadenceStats.total} email${cadenceStats.total === 1 ? "" : "s"}`
@@ -830,7 +839,7 @@ export default function OpportunityModal({
                         </div>
                         <div className="text-sm text-slate-800">
                           {typeof emailDelayDays === "number"
-                            ? `Emails perform best after ${formatDaysLabel(emailDelayDays)}.`
+                            ? `Emails perform best after ${formatDaysLabelLocal(emailDelayDays)}.`
                             : "AI will firm up timing once we gather a few sends."}
                         </div>
                         {topVariant ? (
@@ -840,7 +849,7 @@ export default function OpportunityModal({
                         ) : null}
                         {suggest.learning.call?.sampleSize ? (
                           <div className="text-[11px] text-slate-600">
-                            Phone nudges land {formatDaysLabel(suggest.learning.call.avgDelayDays)} after send · {percentLabel(suggest.learning.call.conversionRate)} conversions.
+                            Phone nudges land {callAvgLabel} after send · {percentLabel(suggest.learning.call.conversionRate)} conversions.
                           </div>
                         ) : null}
                       </div>
@@ -853,7 +862,7 @@ export default function OpportunityModal({
                             className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-600"
                           >
                             Variant {stat.variant}: {percentLabel(stat.replyRate)} replies · {percentLabel(stat.conversionRate)} wins ·
-                            {stat.avgDelayDays != null ? ` ${formatDaysLabel(stat.avgDelayDays)} cadence` : " cadence learning"}
+                            {stat.avgDelayDays != null ? ` ${formatDaysLabelLocal(stat.avgDelayDays)} cadence` : " cadence learning"}
                           </span>
                         ))}
                       </div>
@@ -884,7 +893,7 @@ export default function OpportunityModal({
 
                 {typeof emailDelayDays === "number" && Number.isFinite(emailDelayDays) && (
                   <div className="mt-2 text-[11px] text-slate-500">
-                    Suggested rhythm: next follow-up in <b>{formatDaysLabel(emailDelayDays)}</b>.
+                    Suggested rhythm: next follow-up in <b>{formatDaysLabelLocal(emailDelayDays)}</b>.
                   </div>
                 )}
 
