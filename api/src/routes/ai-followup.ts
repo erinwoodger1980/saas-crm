@@ -38,7 +38,7 @@ function toPlainObject(value: any): Record<string, any> {
  * POST /ai/followup/suggest
  * Body: { leadId, status, history, context }
  */
-router.post("/followup/suggest", async (req, res) => {
+router.post("/suggest", async (req, res) => {
   try {
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -236,7 +236,7 @@ router.post("/followup/suggest", async (req, res) => {
  * POST /ai/followup/feedback
  * Body: { leadId, logId?, suggestionId?, channel?, variant?, opened, replied, converted, delayDays }
  */
-router.post("/followup/feedback", async (req, res) => {
+router.post("/feedback", async (req, res) => {
   try {
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -296,7 +296,7 @@ router.post("/followup/feedback", async (req, res) => {
   }
 });
 
-router.get("/followup/learning", async (req, res) => {
+router.get("/learning", async (req, res) => {
   try {
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });

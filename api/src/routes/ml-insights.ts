@@ -4,7 +4,7 @@ import { applyFeedback, getInsights, listParams, logEvent, resetModel, retrainMo
 const router = Router();
 
 // GET /ml/insights?module=lead_classifier&limit=100
-router.get("/insights", async (req: any, res) => {
+router.get("/", async (req: any, res) => {
   const auth = req.auth;
   if (!auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
 
