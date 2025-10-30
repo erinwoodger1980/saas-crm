@@ -38,6 +38,7 @@ export default function QuoteBuilderPage() {
   const [parsing, setParsing] = useState(false);
   const autoAppliedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [rendering, setRendering] = useState(false);
 
   async function loadAll() {
     if (!id) return;
@@ -169,6 +170,21 @@ export default function QuoteBuilderPage() {
     }
   }
 
+  async function renderProposalPdf() {
+    if (!id) return;
+    setRendering(true);
+    setError(null);
+    try {
+      await apiFetch(`/quotes/${id}/render-pdf`, { method: "POST" });
+      const signed = await apiFetch<{ url: string }>(`/quotes/${id}/proposal/signed`);
+      if (signed?.url) window.open(signed.url, "_blank");
+    } catch (e: any) {
+      setError(e?.message || "Failed to render proposal");
+    } finally {
+      setRendering(false);
+    }
+  }
+
   async function saveMappings() {
     setSavingMap(true);
     setError(null);
@@ -245,6 +261,9 @@ export default function QuoteBuilderPage() {
           </Button>
           <Button onClick={saveMappings} disabled={savingMap}>
             {savingMap ? "Saving…" : "Save mappings"}
+          </Button>
+          <Button onClick={renderProposalPdf} disabled={rendering}>
+            {rendering ? "Rendering…" : "Render proposal PDF"}
           </Button>
           <input
             ref={fileInputRef}
