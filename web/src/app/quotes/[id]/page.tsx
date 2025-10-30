@@ -424,6 +424,7 @@ export default function QuoteBuilderPage() {
                       const sellUnit = ln?.meta?.sellUnitGBP;
                       const sellTotal = ln?.meta?.sellTotalGBP;
                       const selected = mapping[ln.id] ?? "";
+                      const selectedUi = selected === "" ? "__none__" : selected;
                       return (
                         <tr key={ln.id}>
                           <td className="px-3 py-2 font-medium text-slate-900">{ln.description || "-"}</td>
@@ -431,14 +432,17 @@ export default function QuoteBuilderPage() {
                           <td className="px-3 py-2 tabular-nums text-slate-700">{fmtMoney(ln.unitPrice)}</td>
                           <td className="px-3 py-2">
                             <Select
-                              value={selected}
-                              onValueChange={(v) => setMapping((m) => ({ ...m, [ln.id]: v }))}
+                              value={selectedUi}
+                              onValueChange={(v) => {
+                                const normalized = v === "__none__" ? "" : v;
+                                setMapping((m) => ({ ...m, [ln.id]: normalized }));
+                              }}
                             >
                               <SelectTrigger className="h-8 w-72 text-left">
                                 <SelectValue placeholder="Select field…" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="">— Not mapped —</SelectItem>
+                                <SelectItem value="__none__">— Not mapped —</SelectItem>
                                 {questionnaire.map((f) => (
                                   <SelectItem key={f.key} value={f.key}>
                                     {f.label} <span className="text-slate-400">({f.key})</span>

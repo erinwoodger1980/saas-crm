@@ -36,6 +36,11 @@ router.get("/schedule", async (req: any, res) => {
 
   const projectIds = projects.map((p) => p.id);
 
+  // Nothing to aggregate – return early to avoid empty `in: []` filters which cause errors on some drivers
+  if (projectIds.length === 0) {
+    return res.json({ ok: true, weeks, projects: [] });
+  }
+
   const plans = await (prisma as any).processPlan.findMany({
     where: { tenantId, projectId: { in: projectIds } },
     include: { assignee: { select: { id: true, name: true } } },
