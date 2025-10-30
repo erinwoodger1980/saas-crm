@@ -347,7 +347,7 @@ export default function AiTrainingPage() {
     try {
       const q = await apiFetch<any>("/quotes", { method: "POST", json: { title: `Draft quote ${new Date().toLocaleString()}` } });
       if (q?.id) {
-        window.location.href = `/settings/ai-training/quotes/${encodeURIComponent(q.id)}`;
+        window.location.href = `/quotes/${encodeURIComponent(q.id)}`;
       }
     } catch (e) {
       // silently ignore; error box below handles general API errors

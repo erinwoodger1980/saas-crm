@@ -1137,7 +1137,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         qid = q?.id || null;
       }
       if (qid) {
-        window.location.href = `/settings/ai-training/quotes/${encodeURIComponent(qid)}`;
+        window.location.href = `/quotes/${encodeURIComponent(qid)}`;
       } else {
         alert("Couldn't open quote builder – no quote id");
       }
