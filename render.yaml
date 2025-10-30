@@ -3,11 +3,11 @@ services:
     name: api
     env: node
     rootDir: api
-    buildCommand: corepack enable && cd api && pnpm i --frozen-lockfile && pnpm run build
-    startCommand: cd api && pnpm run start
+    buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
+    startCommand: pnpm run start
   - type: web
     name: web
     env: node
     rootDir: web
-    buildCommand: corepack enable && cd web && pnpm i --frozen-lockfile && pnpm run build
-    startCommand: cd web && pnpm run start
+    buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
+    startCommand: pnpm run start
