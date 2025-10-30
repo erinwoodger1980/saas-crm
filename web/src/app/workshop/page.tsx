@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch, ensureDemoAuth } from "@/lib/api";
+import { apiFetch, ensureDemoAuth, API_BASE } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,9 +62,12 @@ export default function WorkshopPage() {
   const [users, setUsers] = useState<UserLite[]>([]);
   const [adding, setAdding] = useState<Record<string, NewPlan>>({});
   const [loggingFor, setLoggingFor] = useState<Record<string, LogForm | null>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [backfillBusy, setBackfillBusy] = useState(false);
 
   async function loadAll() {
     setLoading(true);
+    setLoadError(null);
     try {
       // In local dev, try to ensure a demo session; in prod, rely on existing auth
       if (typeof window !== "undefined") {
@@ -86,6 +89,8 @@ export default function WorkshopPage() {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error("Failed to load workshop:", e);
+      const msg = (e as any)?.message || (e as any)?.toString?.() || "load_failed";
+      setLoadError(String(msg));
     } finally {
       setLoading(false);
     }
@@ -174,8 +179,54 @@ export default function WorkshopPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Workshop</h1>
-        <div className="text-sm text-muted-foreground">{projects.length} projects</div>
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <span>{projects.length} projects</span>
+          <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
+        </div>
       </div>
+
+      {/* Connection/Config hints when nothing is visible */}
+      {projects.length === 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+          {loadError ? (
+            <div>
+              <div className="font-semibold">Couldn’t load the workshop schedule.</div>
+              <div className="text-amber-800/90">{loadError}</div>
+            </div>
+          ) : (
+            <div>
+              <div className="font-semibold">No projects yet.</div>
+              <div>Mark a lead as Won to create a project automatically, or backfill existing Won leads.</div>
+            </div>
+          )}
+          {(!API_BASE && typeof window !== "undefined") ? (
+            <div className="text-amber-800/80">
+              Tip: API base isn’t configured for the browser. Either set NEXT_PUBLIC_API_BASE, or set API_ORIGIN for server rewrites.
+            </div>
+          ) : null}
+          <div className="flex gap-2 pt-1">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={async () => {
+                setBackfillBusy(true);
+                try {
+                  await apiFetch("/workshop/backfill", { method: "POST" });
+                  await loadAll();
+                } catch (e) {
+                  // eslint-disable-next-line no-alert
+                  alert((e as any)?.message || "Backfill failed");
+                } finally {
+                  setBackfillBusy(false);
+                }
+              }}
+              disabled={backfillBusy}
+            >
+              {backfillBusy ? "Backfilling…" : "Backfill Won leads → Projects"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {projects.map((proj) => (
