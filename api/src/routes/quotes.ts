@@ -391,7 +391,13 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
   try {
     // Dynamically load puppeteer to avoid type issues if not installed yet
     // @ts-ignore
-    const puppeteer = require("puppeteer");
+    let puppeteer: any;
+    try {
+      puppeteer = require("puppeteer");
+    } catch (err: any) {
+      console.error("[/quotes/:id/render-pdf] puppeteer missing:", err?.message || err);
+      return res.status(500).json({ error: "render_failed", reason: "puppeteer_not_installed" });
+    }
     const tenantId = req.auth.tenantId as string;
     const id = String(req.params.id);
     const quote = await prisma.quote.findFirst({
@@ -520,16 +526,47 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       </body>
       </html>`;
 
-    const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" } });
-    await browser.close();
+    let browser: any;
+    try {
+      const execPath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--single-process",
+          "--no-zygote",
+        ],
+        executablePath: execPath,
+      });
+    } catch (err: any) {
+      console.error("[/quotes/:id/render-pdf] chrome launch failed:", err?.message || err);
+      return res.status(500).json({ error: "render_failed", reason: "puppeteer_launch_failed" });
+    }
+
+    let pdfBuffer: Buffer;
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "networkidle0" });
+      pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" } });
+      await browser.close();
+    } catch (err: any) {
+      try { if (browser) await browser.close(); } catch {}
+      console.error("[/quotes/:id/render-pdf] pdf generation failed:", err?.message || err);
+      return res.status(500).json({ error: "render_failed", reason: "pdf_generation_failed" });
+    }
 
     const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
     const filename = `${filenameSafe}.pdf`;
     const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
-    fs.writeFileSync(filepath, pdfBuffer);
+    try {
+      fs.writeFileSync(filepath, pdfBuffer);
+    } catch (err: any) {
+      console.error("[/quotes/:id/render-pdf] write file failed:", err?.message || err);
+      return res.status(500).json({ error: "render_failed", reason: "write_failed" });
+    }
 
     const fileRow = await prisma.uploadedFile.create({
       data: {
@@ -548,7 +585,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     return res.json({ ok: true, fileId: fileRow.id, name: fileRow.name });
   } catch (e: any) {
     console.error("[/quotes/:id/render-pdf] failed:", e?.message || e);
-    return res.status(500).json({ error: "internal_error" });
+    return res.status(500).json({ error: "render_failed", reason: "unknown" });
   }
 });
 
