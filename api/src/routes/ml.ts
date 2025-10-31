@@ -210,6 +210,7 @@ router.post("/preview-email-quotes", async (req: any, res) => {
     const payload = {
       tenantId,
       emailProvider: emailProvider || "gmail",
+      credentials: {}, // ML service requires this field
       daysBack: daysBack || 30
     };
 
