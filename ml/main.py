@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any, List, Set
 import joblib, pandas as pd, numpy as np
 import json, os, traceback, urllib.request, datetime
 
-from pdf_parser import extract_text_from_pdf_bytes, parse_totals_from_text, parse_client_quote_from_text, determine_quote_type
+from pdf_parser import extract_text_from_pdf_bytes, parse_totals_from_text, parse_client_quote_from_text, determine_quote_type, parse_quote_lines_from_text
 
 app = FastAPI(title="JoineryAI ML API")
 
@@ -334,6 +334,54 @@ async def train(payload: TrainPayload):
         "samples": samples,
         "failures": fails,
         "message": "Training job accepted (heuristic parser).",
+    }
+
+@app.post("/debug-parse")
+async def debug_parse(req: Request):
+    """
+    Debug endpoint to see raw PDF text extraction and parsing results.
+    Body: { url: string, filename?: string }
+    """
+    body = await req.json()
+    url = body.get("url")
+    if not url or not isinstance(url, str):
+        raise HTTPException(status_code=422, detail="missing url")
+
+    filename = body.get("filename") or "debug.pdf"
+
+    try:
+        pdf_bytes = _http_get_bytes(url)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"download_failed: {e}")
+
+    # Extract raw text
+    raw_text = extract_text_from_pdf_bytes(pdf_bytes) or ""
+    
+    # Determine quote type
+    quote_type = determine_quote_type(raw_text)
+    
+    # Parse with both methods for comparison
+    supplier_parsed = parse_quote_lines_from_text(raw_text) if raw_text else {}
+    legacy_parsed = parse_totals_from_text(raw_text) if raw_text else {}
+
+    return {
+        "ok": True,
+        "filename": filename,
+        "raw_text_length": len(raw_text),
+        "raw_text_preview": raw_text[:1000] + "..." if len(raw_text) > 1000 else raw_text,
+        "quote_type": quote_type,
+        "supplier_parsing": {
+            "lines_found": len(supplier_parsed.get("lines", [])),
+            "lines": supplier_parsed.get("lines", [])[:5],  # First 5 lines
+            "estimated_total": supplier_parsed.get("estimated_total"),
+            "confidence": supplier_parsed.get("confidence"),
+            "supplier": supplier_parsed.get("supplier"),
+        },
+        "legacy_parsing": {
+            "lines_found": len(legacy_parsed.get("lines", [])),
+            "estimated_total": legacy_parsed.get("estimated_total"),
+            "detected_totals": legacy_parsed.get("detected_totals", []),
+        }
     }
 
 @app.post("/train-client-quotes")
