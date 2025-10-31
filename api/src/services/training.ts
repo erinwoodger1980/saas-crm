@@ -223,7 +223,7 @@ export async function applyFeedback(opts: {
 
             // Forward feedback to ML service for immediate learning
             try {
-              if (process.env.ML_SERVICE_URL) {
+              if (process.env.ML_URL) {
                 const mlPayload = {
                   tenantId,
                   emailId: summary, // email:provider:messageId format
@@ -237,7 +237,7 @@ export async function applyFeedback(opts: {
                   reason: opts.feedback.reason || undefined
                 };
 
-                const mlResponse = await fetch(`${process.env.ML_SERVICE_URL}/lead-classifier/feedback`, {
+                const mlResponse = await fetch(`${process.env.ML_URL}/lead-classifier/feedback`, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',

@@ -195,4 +195,136 @@ router.post("/train", async (req: any, res) => {
   }
 });
 
+/**
+ * POST /ml/preview-email-quotes
+ * Forward email quote preview requests to ML service
+ */
+router.post("/preview-email-quotes", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
+
+    const { emailProvider, daysBack } = req.body || {};
+    
+    const payload = {
+      tenantId,
+      emailProvider: emailProvider || "gmail",
+      daysBack: daysBack || 30
+    };
+
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
+    const r = await fetch(`${ML_URL}/preview-email-quotes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    cleanup();
+
+    const text = await r.text();
+    let json: any = {};
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+
+    if (!r.ok) return res.status(r.status).json(json);
+    return res.json(json);
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const isTimeout = /timeout_/i.test(msg) || /The operation was aborted/i.test(msg);
+    if (isTimeout) {
+      console.warn(`[ml proxy] /preview-email-quotes timed out after ${ML_TIMEOUT_MS}ms`);
+      return res.status(504).json({ error: "ml_timeout", timeoutMs: ML_TIMEOUT_MS });
+    }
+    console.error("[ml proxy] /preview-email-quotes failed:", msg);
+    return res.status(502).json({ error: "ml_unreachable", detail: msg });
+  }
+});
+
+/**
+ * POST /ml/start-email-training
+ * Forward email training workflow requests to ML service
+ */
+router.post("/start-email-training", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
+
+    const { emailProvider, daysBack, credentials } = req.body || {};
+    
+    const payload = {
+      tenantId,
+      emailProvider: emailProvider || "gmail",
+      daysBack: daysBack || 30,
+      credentials: credentials || {}
+    };
+
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS * 3); // Longer timeout for training
+    const r = await fetch(`${ML_URL}/start-email-training`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    cleanup();
+
+    const text = await r.text();
+    let json: any = {};
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+
+    if (!r.ok) return res.status(r.status).json(json);
+    return res.json(json);
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const isTimeout = /timeout_/i.test(msg) || /The operation was aborted/i.test(msg);
+    if (isTimeout) {
+      console.warn(`[ml proxy] /start-email-training timed out after ${ML_TIMEOUT_MS * 3}ms`);
+      return res.status(504).json({ error: "ml_timeout", timeoutMs: ML_TIMEOUT_MS * 3 });
+    }
+    console.error("[ml proxy] /start-email-training failed:", msg);
+    return res.status(502).json({ error: "ml_unreachable", detail: msg });
+  }
+});
+
+/**
+ * POST /ml/train-client-quotes
+ * Forward client quote training requests to ML service
+ */
+router.post("/train-client-quotes", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
+
+    const payload = {
+      tenantId
+    };
+
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS * 2); // Longer timeout for training
+    const r = await fetch(`${ML_URL}/train-client-quotes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    cleanup();
+
+    const text = await r.text();
+    let json: any = {};
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+
+    if (!r.ok) return res.status(r.status).json(json);
+    return res.json(json);
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const isTimeout = /timeout_/i.test(msg) || /The operation was aborted/i.test(msg);
+    if (isTimeout) {
+      console.warn(`[ml proxy] /train-client-quotes timed out after ${ML_TIMEOUT_MS * 2}ms`);
+      return res.status(504).json({ error: "ml_timeout", timeoutMs: ML_TIMEOUT_MS * 2 });
+    }
+    console.error("[ml proxy] /train-client-quotes failed:", msg);
+    return res.status(502).json({ error: "ml_unreachable", detail: msg });
+  }
+});
+
 export default router;
