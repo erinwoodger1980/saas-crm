@@ -108,11 +108,14 @@ def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
     # Extract line items from table-like structures
     lines = []
     
-    # Pattern 1: Table with description, qty, unit price
-    # Look for lines that have: description + quantity + price pattern
+    # Enhanced patterns for supplier quote tables
     table_patterns = [
-        # Pattern: Description [spaces/tabs] Qty [spaces/tabs] £Price
-        r"^(.+?)\s+(\d+(?:\.\d+)?)\s*(?:x\s*)?(?:[£$€]?\s*)?(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
+        # Pattern: Number. Description [spaces] Qty [spaces] Unit Price [spaces] Total
+        r"^\s*\d+\.\s*(.+?)\s+(\d+(?:\.\d+)?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
+        # Pattern: Description [spaces] Qty [spaces] £Unit Price [spaces] £Total  
+        r"^(.+?)\s+(\d+(?:\.\d+)?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
+        # Pattern: Description [spaces] Qty [spaces] Unit Price (no currency symbols)
+        r"^(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
         # Pattern: Description £Price (assuming qty=1)
         r"^(.+?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
         # Pattern: Qty x Description @ £Price
@@ -125,35 +128,61 @@ def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
         if not line or len(line) < 10:  # Skip very short lines
             continue
             
-        # Skip header lines
-        if re.search(r"(description|item|quantity|qty|price|total|sub.*total)", line, re.IGNORECASE):
+        # Skip header lines and footer lines
+        skip_patterns = [
+            r"(description|item|quantity|qty|price|total|sub.*total)",
+            r"(vat|tax|delivery|payment|terms)",
+            r"^(subtotal|grand.*total|balance|amount.*due)",
+            r"^\s*[£$€]\s*[\d,]+\.?\d*\s*$",  # Lines with only money amounts
+        ]
+        
+        should_skip = False
+        for skip_pattern in skip_patterns:
+            if re.search(skip_pattern, line, re.IGNORECASE):
+                should_skip = True
+                break
+        
+        if should_skip:
             continue
             
         # Try each pattern
         for i, pattern in enumerate(table_patterns):
             match = re.match(pattern, line, re.IGNORECASE)
             if match:
-                if i == 0:  # Description Qty Price
+                if i == 0:  # Number. Description Qty Unit Price Total
                     description = match.group(1).strip()
                     qty = float(match.group(2))
                     unit_price = float(match.group(3).replace(',', ''))
-                elif i == 1:  # Description Price (qty=1)
+                    total = float(match.group(4).replace(',', ''))
+                elif i == 1:  # Description Qty £Unit Price £Total
+                    description = match.group(1).strip()
+                    qty = float(match.group(2))
+                    unit_price = float(match.group(3).replace(',', ''))
+                    total = float(match.group(4).replace(',', ''))
+                elif i == 2:  # Description Qty Unit Price
+                    description = match.group(1).strip()
+                    qty = float(match.group(2))
+                    unit_price = float(match.group(3).replace(',', ''))
+                    total = qty * unit_price
+                elif i == 3:  # Description Price (qty=1)
                     description = match.group(1).strip()
                     qty = 1.0
                     unit_price = float(match.group(2).replace(',', ''))
-                elif i == 2:  # Qty x Description @ Price
+                    total = unit_price
+                elif i == 4:  # Qty x Description @ Price
                     qty = float(match.group(1))
                     description = match.group(2).strip()
                     unit_price = float(match.group(3).replace(',', ''))
+                    total = qty * unit_price
                 
                 # Filter out likely non-item lines
-                skip_keywords = ['total', 'subtotal', 'vat', 'tax', 'delivery', 'shipping', 'discount', 'payment']
-                if not any(keyword in description.lower() for keyword in skip_keywords):
+                skip_keywords = ['total', 'subtotal', 'vat', 'tax', 'delivery', 'shipping', 'discount', 'payment', 'terms', 'reference', 'invoice']
+                if not any(keyword in description.lower() for keyword in skip_keywords) and len(description) > 3:
                     lines.append({
                         "description": description,
                         "qty": qty,
                         "unit_price": unit_price,
-                        "total": qty * unit_price
+                        "total": total
                     })
                 break
 
@@ -449,9 +478,12 @@ def determine_quote_type(text: str) -> str:
     # Look for indicators of supplier quotes
     supplier_indicators = [
         r"supplier|vendor|invoice\s+from|quote\s+from",
-        r"remit\s+to|payment\s+terms|pay\s+within",
-        r"account\s+number|sort\s+code",
+        r"remit\s+to|payment\s+terms|pay\s+within|net\s+\d+\s+days",
+        r"account\s+number|sort\s+code|bank\s+details",
         r"order\s+number|purchase\s+order",
+        r"quote\s+reference.*[A-Z]{2,}\d+",  # Quote references like JS2024-001
+        r"supplies?\s+ltd|materials?\s+ltd|joinery\s+supplies",
+        r"terms:.*net|payment.*due",
     ]
     
     # Look for indicators of client quotes (estimates/proposals to customers)
@@ -466,6 +498,7 @@ def determine_quote_type(text: str) -> str:
         r"terms\s+and\s+conditions\s+apply",
         r"VAT\s+@\s+\d+%.*Total",  # Client quotes show VAT breakdown
         r"Item\s+Description\s+Number\s+Width\s+Height",  # Detailed specification table
+        r"specialists\s+in.*joinery",
     ]
     
     supplier_score = 0
@@ -484,6 +517,12 @@ def determine_quote_type(text: str) -> str:
         client_score += 3
     if re.search(r"Specialists\s+in.*Joinery", text, re.IGNORECASE):
         client_score += 2
+        
+    # Strong indicators for supplier quotes
+    if re.search(r"Item\s+Description\s+Qty\s+Unit\s+Price", text, re.IGNORECASE):
+        supplier_score += 2
+    if re.search(r"Subtotal.*VAT.*Total", text, re.IGNORECASE | re.DOTALL):
+        supplier_score += 1
         
     if client_score > supplier_score:
         return "client"
