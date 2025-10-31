@@ -443,8 +443,8 @@ app.use((req, _res, next) => {
 /** ---------- ML parse + proxy (public endpoints used by server-side flows) ---------- */
 app.use("/ml", mlParseRouter);
 
-/** ---------- ML proxy (forwards to FastAPI) ---------- */
-app.use("/ml", mlProxyRouter);
+/** ---------- ML proxy (forwards to FastAPI) - requires auth ---------- */
+app.use("/ml", requireAuth, mlProxyRouter);
 
 /** DB Debug */
 app.get("/__debug/db", async (_req, res) => {
