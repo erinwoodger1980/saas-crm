@@ -8,6 +8,7 @@ import joblib, pandas as pd, numpy as np
 import json, os, traceback, urllib.request, datetime
 
 from pdf_parser import extract_text_from_pdf_bytes, parse_totals_from_text, parse_client_quote_from_text, determine_quote_type, parse_quote_lines_from_text
+from email_trainer import EmailTrainingWorkflow
 
 app = FastAPI(title="JoineryAI ML API")
 
@@ -383,6 +384,92 @@ async def debug_parse(req: Request):
             "detected_totals": legacy_parsed.get("detected_totals", []),
         }
     }
+
+class EmailTrainingPayload(BaseModel):
+    tenantId: str
+    emailProvider: str  # "gmail" or "m365"
+    credentials: Dict[str, Any]
+    daysBack: int = 30
+
+@app.post("/start-email-training")
+async def start_email_training(payload: EmailTrainingPayload):
+    """
+    Start the automated email-to-ML training workflow.
+    Finds client quotes in email, parses them, and trains ML models.
+    """
+    try:
+        # Get database URL
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
+        
+        # Initialize workflow
+        workflow = EmailTrainingWorkflow(db_url, payload.tenantId)
+        
+        # Run the complete workflow
+        results = workflow.run_full_workflow(
+            email_provider=payload.emailProvider,
+            credentials=payload.credentials,
+            days_back=payload.daysBack
+        )
+        
+        return {
+            "ok": True,
+            "message": "Email training workflow completed",
+            "results": {
+                "quotes_found": results["quotes_found"],
+                "training_records_saved": results["training_records_saved"],
+                "ml_training_completed": results["ml_training_completed"],
+                "duration_seconds": results["duration"].total_seconds(),
+                "errors": results["errors"]
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email training workflow failed: {e}")
+
+@app.post("/preview-email-quotes")
+async def preview_email_quotes(payload: EmailTrainingPayload):
+    """
+    Preview client quotes found in email without training.
+    Useful for testing and validation before full training.
+    """
+    try:
+        # Get database URL  
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
+        
+        # Initialize workflow
+        workflow = EmailTrainingWorkflow(db_url, payload.tenantId)
+        workflow.setup_email_service(payload.emailProvider, payload.credentials)
+        
+        # Find quotes without training
+        quotes = workflow.find_client_quotes(payload.daysBack)
+        
+        # Convert to preview format
+        preview_quotes = []
+        for quote in quotes[:10]:  # Limit to first 10 for preview
+            preview_quotes.append({
+                "subject": quote.subject,
+                "date_sent": quote.date_sent.isoformat(),
+                "attachment_name": quote.attachment_name,
+                "confidence": quote.confidence,
+                "project_type": quote.parsed_data.get("questionnaire_answers", {}).get("project_type"),
+                "quoted_price": quote.parsed_data.get("quoted_price"),
+                "area_m2": quote.parsed_data.get("questionnaire_answers", {}).get("area_m2"),
+                "materials_grade": quote.parsed_data.get("questionnaire_answers", {}).get("materials_grade"),
+            })
+        
+        return {
+            "ok": True,
+            "total_quotes_found": len(quotes),
+            "preview_quotes": preview_quotes,
+            "message": f"Found {len(quotes)} client quotes from last {payload.daysBack} days"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email preview failed: {e}")
 
 @app.post("/train-client-quotes")
 async def train_client_quotes(payload: TrainPayload):
