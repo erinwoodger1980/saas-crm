@@ -528,7 +528,9 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
 
     let browser: any;
     try {
-      const execPath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+      // Prefer Puppeteer's resolved executable if available; fall back to env
+      const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
+      const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
       browser = await puppeteer.launch({
         headless: true,
         args: [
