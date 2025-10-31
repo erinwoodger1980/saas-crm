@@ -8,7 +8,15 @@ import joblib, pandas as pd, numpy as np
 import json, os, traceback, urllib.request, datetime
 
 from pdf_parser import extract_text_from_pdf_bytes, parse_totals_from_text, parse_client_quote_from_text, determine_quote_type, parse_quote_lines_from_text
-from email_trainer import EmailTrainingWorkflow
+
+# Optional import - email training only works if database is available
+try:
+    from email_trainer import EmailTrainingWorkflow
+    EMAIL_TRAINING_AVAILABLE = True
+except ImportError as e:
+    print(f"[WARNING] Email training not available: {e}")
+    EmailTrainingWorkflow = None
+    EMAIL_TRAINING_AVAILABLE = False
 
 app = FastAPI(title="JoineryAI ML API")
 
@@ -397,6 +405,9 @@ async def start_email_training(payload: EmailTrainingPayload):
     Start the automated email-to-ML training workflow.
     Finds client quotes in email, parses them, and trains ML models.
     """
+    if not EMAIL_TRAINING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Email training not available - database connection required")
+    
     try:
         # Get database URL
         db_url = os.getenv("DATABASE_URL")
@@ -434,6 +445,9 @@ async def preview_email_quotes(payload: EmailTrainingPayload):
     Preview client quotes found in email without training.
     Useful for testing and validation before full training.
     """
+    if not EMAIL_TRAINING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Email training not available - database connection required")
+    
     try:
         # Get database URL  
         db_url = os.getenv("DATABASE_URL")
@@ -546,3 +560,7 @@ async def train_client_quotes(payload: TrainPayload):
         "failures": fails,
         "message": "Client quote training data extracted successfully.",
     }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
