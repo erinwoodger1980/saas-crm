@@ -407,7 +407,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     if (!quote) return res.status(404).json({ error: "not_found" });
 
     const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
-    const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
+  const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
     const cur = normalizeCurrency(quote.currency || quoteDefaults?.currency || "GBP");
     const sym = currencySymbol(cur);
     const brand = (ts?.brandName || (quote.tenant as any)?.brandName || "Quotation").toString();
@@ -424,18 +424,21 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const terms = (quoteDefaults?.terms as string) || "Prices are valid for 30 days and subject to site survey. Payment terms: 50% upfront, 50% on delivery unless agreed otherwise.";
 
     // Summaries
+    const marginDefault = Number(quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25);
     const rows = quote.lines.map((ln) => {
       const qty = Number(ln.qty || 1);
-      const unit = Number(ln.unitPrice || 0);
-      const total = qty * unit;
+      // Prefer previously priced sellUnitGBP; otherwise apply default margin over supplier unitPrice
+      const metaAny: any = (ln.meta as any) || {};
+      const sellUnit = Number(metaAny?.sellUnitGBP ?? (Number(ln.unitPrice || 0) * (1 + marginDefault)));
+      const total = qty * sellUnit;
       return {
         description: ln.description,
         qty,
-        unit,
+        unit: sellUnit,
         total,
       };
     });
-    const subtotal = rows.reduce((s, r) => s + r.total, 0);
+    const subtotal = rows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
     const vatAmount = showVat ? subtotal * vatRate : 0;
     const computedTotal = subtotal + vatAmount;
     // Prefer explicit quote.totalGBP if set (from pricing), else computed
@@ -453,6 +456,9 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         .brand img { max-height: 40px; }
         .ref { font-size: 12px; color:#334155; }
         .section { margin-top: 16px; }
+        .section h2 { font-size: 14px; margin: 0 0 6px; color:#0f172a; }
+        .list { margin: 0; padding-left: 18px; font-size:12px; color:#334155; }
+        .box { border:1px solid #e2e8f0; border-radius:6px; padding:10px; background:#f8fafc; }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
         th, td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
         th { background: #f8fafc; font-weight: 600; }
@@ -513,11 +519,15 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
               .join("")}
           </tbody>
         </table>
+        <div class="section">
+          <div class="box muted">Prices shown include our standard margin${Number.isFinite(marginDefault) && marginDefault>0 ? ` of ${(marginDefault*100).toFixed(0)}%` : ""}.</div>
+        </div>
         <div class="totals">
           <div class="row"><div>Subtotal</div><div>${sym}${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
           ${showVat ? `<div class="row"><div>VAT (${(vatRate*100).toFixed(0)}%)</div><div>${sym}${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>` : ""}
           <div class="row total"><div>Total</div><div>${sym}${totalGBP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
         </div>
+        ${renderSections(quoteDefaults)}
         <footer>
           <div><strong>Terms</strong></div>
           <div class="muted">${escapeHtml(terms)}</div>
@@ -655,6 +665,41 @@ function escapeHtml(s: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+// Render optional sections configured under tenantSettings.quoteDefaults
+function renderSections(qd: any) {
+  const sections: Array<string> = [];
+  const asList = (v: any): string[] => Array.isArray(v) ? v.map((x) => String(x)) : (typeof v === "string" && v.trim() ? v.split(/\n+/) : []);
+  const block = (title: string, bodyHtml: string) => `
+    <div class="section">
+      <h2>${escapeHtml(title)}</h2>
+      ${bodyHtml}
+    </div>`;
+
+  if (qd?.overview) {
+    sections.push(block("Overview", `<div class=\"muted\">${escapeHtml(String(qd.overview))}</div>`));
+  }
+  const inclusions = asList(qd?.inclusions);
+  if (inclusions.length) {
+    sections.push(block("Inclusions", `<ul class=\"list\">${inclusions.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`));
+  }
+  const exclusions = asList(qd?.exclusions);
+  if (exclusions.length) {
+    sections.push(block("Exclusions", `<ul class=\"list\">${exclusions.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`));
+  }
+  if (qd?.leadTime || qd?.delivery || qd?.installation || qd?.warranty) {
+    const bits: string[] = [];
+    if (qd?.leadTime) bits.push(`<div><strong>Lead time:</strong> ${escapeHtml(String(qd.leadTime))}</div>`);
+    if (qd?.delivery) bits.push(`<div><strong>Delivery:</strong> ${escapeHtml(String(qd.delivery))}</div>`);
+    if (qd?.installation) bits.push(`<div><strong>Installation:</strong> ${escapeHtml(String(qd.installation))}</div>`);
+    if (qd?.warranty) bits.push(`<div><strong>Warranty:</strong> ${escapeHtml(String(qd.warranty))}</div>`);
+    if (bits.length) sections.push(block("Project details", `<div class=\"muted\">${bits.join("")}</div>`));
+  }
+  if (qd?.notes) {
+    sections.push(block("Notes", `<div class=\"muted\">${escapeHtml(String(qd.notes))}</div>`));
+  }
+  return sections.join("");
 }
 
 /**
