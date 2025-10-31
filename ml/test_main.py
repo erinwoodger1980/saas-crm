@@ -65,10 +65,11 @@ async def parse_supplier_quote(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="This appears to be a client quote, not a supplier quote")
         
         # Parse line items
-        lines = parse_quote_lines_from_text(text)
+        parsed_result = parse_quote_lines_from_text(text)
+        lines = parsed_result.get("lines", [])
         
-        # Parse total
-        total = parse_totals_from_text(text)
+        # Get total from parsed result
+        total = parsed_result.get("estimated_total", 0.0) or 0.0
         
         return ParsedQuote(
             lines=[LineItem(**line) for line in lines],
@@ -94,13 +95,15 @@ async def debug_parse(file: UploadFile = File(...)):
         
         # Try to parse line items
         try:
-            lines = parse_quote_lines_from_text(text)
+            parsed_result = parse_quote_lines_from_text(text)
+            lines = parsed_result.get("lines", [])
         except Exception as e:
+            parsed_result = {}
             lines = []
         
         # Try to parse total
         try:
-            total = parse_totals_from_text(text)
+            total = parsed_result.get("estimated_total", 0.0) or 0.0
         except Exception as e:
             total = 0.0
         
@@ -108,6 +111,7 @@ async def debug_parse(file: UploadFile = File(...)):
             "extracted_text": text[:2000] + "..." if len(text) > 2000 else text,
             "quote_type": quote_type,
             "parsed_lines": lines,
+            "parsed_result": parsed_result,
             "parsed_total": total,
             "text_length": len(text)
         }
