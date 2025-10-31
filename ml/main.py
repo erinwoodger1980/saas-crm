@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any, List, Set
 import joblib, pandas as pd, numpy as np
 import json, os, traceback, urllib.request, datetime
 
-from pdf_parser import extract_text_from_pdf_bytes, parse_totals_from_text
+from pdf_parser import extract_text_from_pdf_bytes, parse_totals_from_text, parse_client_quote_from_text, determine_quote_type
 
 app = FastAPI(title="JoineryAI ML API")
 
@@ -334,4 +334,80 @@ async def train(payload: TrainPayload):
         "samples": samples,
         "failures": fails,
         "message": "Training job accepted (heuristic parser).",
+    }
+
+@app.post("/train-client-quotes")
+async def train_client_quotes(payload: TrainPayload):
+    """
+    Process client quotes from emails to extract questionnaire answers and pricing
+    for training ML models on how to quote based on client requirements.
+    """
+    ok = 0
+    fails: List[Dict[str, Any]] = []
+    training_samples: List[Dict[str, Any]] = []
+
+    for item in payload.items:
+        try:
+            pdf_bytes = _http_get_bytes(item.url)
+            text = extract_text_from_pdf_bytes(pdf_bytes) or ""
+            
+            # Determine quote type
+            quote_type = determine_quote_type(text)
+            
+            if quote_type == "client":
+                # Parse as client quote for training data
+                parsed = parse_client_quote_from_text(text)
+            else:
+                # Fallback to supplier quote parsing
+                parsed = parse_totals_from_text(text)
+                
+            ok += 1
+
+            # Store training data sample
+            training_sample = {
+                "messageId": item.messageId,
+                "attachmentId": item.attachmentId,
+                "quotedAt": _iso(item.quotedAt),
+                "quote_type": quote_type,
+                "text_chars": len(text),
+                "parsed": parsed,
+            }
+            
+            training_samples.append(training_sample)
+            
+        except Exception as e:
+            fails.append({
+                "messageId": item.messageId,
+                "attachmentId": item.attachmentId,
+                "url": item.url,
+                "error": f"{e}",
+            })
+
+    # Calculate training stats
+    client_quotes = [s for s in training_samples if s["quote_type"] == "client"]
+    avg_quoted_price = None
+    
+    if client_quotes:
+        quoted_prices = [
+            s["parsed"]["quoted_price"]
+            for s in client_quotes
+            if s.get("parsed", {}).get("quoted_price") is not None
+        ]
+        if quoted_prices:
+            try:
+                avg_quoted_price = round(float(sum(quoted_prices)) / len(quoted_prices), 2)
+            except Exception:
+                avg_quoted_price = None
+
+    return {
+        "ok": True,
+        "tenantId": payload.tenantId,
+        "received_items": len(payload.items),
+        "parsed_ok": ok,
+        "failed": len(fails),
+        "client_quotes_found": len(client_quotes),
+        "avg_quoted_price": avg_quoted_price,
+        "training_samples": training_samples[:5],  # Return first 5 samples
+        "failures": fails,
+        "message": "Client quote training data extracted successfully.",
     }

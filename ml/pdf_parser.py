@@ -250,4 +250,246 @@ def parse_totals_from_text(text: str) -> Dict[str, Any]:
     return parse_quote_lines_from_text(text)
 
 
-__all__ = ["extract_text_from_pdf_bytes", "parse_totals_from_text", "parse_quote_lines_from_text"]
+def parse_client_quote_from_text(text: str) -> Dict[str, Any]:
+    """
+    Parse client quotes (from emails) to extract training data for ML models.
+    
+    Returns a dict with:
+      - questionnaire_answers (dict) - extracted project requirements and specifications
+      - project_details (dict) - area, location, materials, etc.
+      - quoted_price (float|None) - total price quoted to client
+      - line_items (list[dict]) - individual quoted items
+      - outcome (str|None) - won/lost status if available
+      - confidence (float) - 0..1 confidence score
+    """
+    if not text:
+        return {
+            "questionnaire_answers": {},
+            "project_details": {},
+            "quoted_price": None,
+            "line_items": [],
+            "outcome": None,
+            "confidence": 0.0,
+        }
+    
+    # Initialize return structure
+    questionnaire_answers = {}
+    project_details = {}
+    line_items = []
+    quoted_price = None
+    confidence = 0.0
+    
+    # Extract company/client information
+    client_name = None
+    client_match = re.search(r"^([A-Z][A-Za-z\s]+)$", text, re.MULTILINE)
+    if client_match:
+        client_name = client_match.group(1).strip()
+        project_details["client_name"] = client_name
+    
+    # Extract reference and project information
+    ref_match = re.search(r"Reference\s*([A-Za-z0-9]+)", text, re.IGNORECASE)
+    if ref_match:
+        project_details["reference"] = ref_match.group(1)
+    
+    # Extract estimate details
+    estimate_match = re.search(r"Estimate Number\s*([A-Za-z0-9]+)", text, re.IGNORECASE)
+    if estimate_match:
+        project_details["estimate_number"] = estimate_match.group(1)
+    
+    # Extract date
+    date_match = re.search(r"Date of Estimate\s*(\d{1,2}\s+\w+\s+\d{4})", text, re.IGNORECASE)
+    if date_match:
+        project_details["estimate_date"] = date_match.group(1)
+    
+    # Extract validity period
+    validity_match = re.search(r"Validity\s*(\d+\s+days)", text, re.IGNORECASE)
+    if validity_match:
+        project_details["validity"] = validity_match.group(1)
+    
+    # Extract project location/name
+    location_patterns = [
+        r"([A-Z][A-Za-z\s]+(?:Church|School|Hospital|Centre|Hall|Building))",
+        r"^([A-Z][A-Za-z\s]+)$",  # Generic location line
+    ]
+    for pattern in location_patterns:
+        location_match = re.search(pattern, text, re.MULTILINE)
+        if location_match and "Wealden" not in location_match.group(1):
+            project_details["project_location"] = location_match.group(1).strip()
+            break
+    
+    # Extract project type from context
+    if re.search(r"window|sash|frame", text, re.IGNORECASE):
+        questionnaire_answers["project_type"] = "windows"
+    elif re.search(r"door|entrance", text, re.IGNORECASE):
+        questionnaire_answers["project_type"] = "doors"
+    elif re.search(r"joinery|timber|wood", text, re.IGNORECASE):
+        questionnaire_answers["project_type"] = "joinery"
+    
+    # Extract materials information
+    wood_types = []
+    if re.search(r"ACCOYA", text, re.IGNORECASE):
+        wood_types.append("Accoya")
+    if re.search(r"Lead Weights", text, re.IGNORECASE):
+        questionnaire_answers["lead_weights"] = True
+    if re.search(r"Weatherstrip", text, re.IGNORECASE):
+        questionnaire_answers["weatherstrip"] = True
+    
+    if wood_types:
+        questionnaire_answers["wood_type"] = wood_types[0]
+        questionnaire_answers["materials_grade"] = "premium" if "Accoya" in wood_types else "standard"
+    
+    # Extract line items from the main table
+    lines = text.split('\n')
+    in_items_section = False
+    total_area = 0.0
+    
+    for i, line in enumerate(lines):
+        line = line.strip()
+        
+        # Look for item table headers
+        if re.search(r"Item\s+Description\s+Number\s+Width\s+Height", line, re.IGNORECASE):
+            in_items_section = True
+            continue
+        
+        # Stop at totals section
+        if re.search(r"VAT|Total|£\d", line) and "Description" not in line:
+            in_items_section = False
+        
+        if in_items_section and line:
+            # Parse sliding sash items
+            if re.search(r"Sliding Sash", line, re.IGNORECASE):
+                # Look for next lines with details
+                description = line
+                specs = {}
+                
+                # Extract dimensions and quantity from current and next lines
+                for j in range(i, min(i+5, len(lines))):
+                    detail_line = lines[j].strip()
+                    
+                    # Extract quantity
+                    qty_match = re.search(r"(\d+)\s+(\d+mm)\s+(\d+mm)", detail_line)
+                    if qty_match:
+                        qty = int(qty_match.group(1))
+                        width = qty_match.group(2)
+                        height = qty_match.group(3)
+                        
+                        # Calculate area
+                        width_mm = int(width.replace('mm', ''))
+                        height_mm = int(height.replace('mm', ''))
+                        area_m2 = (width_mm * height_mm * qty) / 1000000
+                        total_area += area_m2
+                        
+                        line_items.append({
+                            "description": description,
+                            "quantity": qty,
+                            "width": width,
+                            "height": height,
+                            "area_m2": round(area_m2, 2),
+                            "specifications": specs
+                        })
+                        break
+                    
+                    # Extract specifications
+                    if re.search(r"BOX FRAME|Lead Weights|Weatherstrip|ACCOYA", detail_line, re.IGNORECASE):
+                        specs["details"] = detail_line
+    
+    # Calculate total project area
+    if total_area > 0:
+        questionnaire_answers["area_m2"] = round(total_area, 2)
+        project_details["total_area_m2"] = round(total_area, 2)
+    
+    # Extract pricing information
+    # Look for subtotal, VAT, and total
+    subtotal_match = re.search(r"£([\d,]+\.?\d*)\s*VAT", text)
+    if subtotal_match:
+        subtotal = float(subtotal_match.group(1).replace(',', ''))
+        project_details["subtotal"] = subtotal
+    
+    vat_match = re.search(r"VAT.*?£([\d,]+\.?\d*)", text)
+    if vat_match:
+        vat = float(vat_match.group(1).replace(',', ''))
+        project_details["vat"] = vat
+    
+    total_match = re.search(r"Total\s*£([\d,]+\.?\d*)", text)
+    if total_match:
+        quoted_price = float(total_match.group(1).replace(',', ''))
+        project_details["total"] = quoted_price
+    
+    # Calculate confidence based on extracted data
+    confidence_factors = 0
+    if quoted_price: confidence_factors += 3
+    if line_items: confidence_factors += 2
+    if questionnaire_answers.get("project_type"): confidence_factors += 2
+    if project_details.get("project_location"): confidence_factors += 1
+    if questionnaire_answers.get("area_m2"): confidence_factors += 2
+    
+    confidence = min(confidence_factors / 10.0, 1.0)
+    
+    return {
+        "questionnaire_answers": questionnaire_answers,
+        "project_details": project_details,
+        "quoted_price": quoted_price,
+        "line_items": line_items,
+        "outcome": None,  # Would need to be determined from follow-up data
+        "confidence": confidence,
+    }
+
+def determine_quote_type(text: str) -> str:
+    """
+    Determine if this is a supplier quote or client quote based on content.
+    
+    Returns:
+      - "supplier" - quote from a supplier/vendor (for line item extraction)
+      - "client" - quote to a client (for ML training)
+      - "unknown" - cannot determine type
+    """
+    if not text:
+        return "unknown"
+    
+    # Look for indicators of supplier quotes
+    supplier_indicators = [
+        r"supplier|vendor|invoice\s+from|quote\s+from",
+        r"remit\s+to|payment\s+terms|pay\s+within",
+        r"account\s+number|sort\s+code",
+        r"order\s+number|purchase\s+order",
+    ]
+    
+    # Look for indicators of client quotes (estimates/proposals to customers)
+    client_indicators = [
+        r"ESTIMATE|QUOTATION|PROPOSAL",
+        r"Reference\s*[A-Za-z0-9]+.*Estimate\s+Number",
+        r"Date\s+of\s+Estimate|Validity\s*\d+\s+days",
+        r"dear\s+(?:mr|mrs|ms|miss)",
+        r"thank\s+you\s+for\s+your\s+enquiry",
+        r"we\s+are\s+pleased\s+to\s+quote",
+        r"project\s+requirements|questionnaire",
+        r"terms\s+and\s+conditions\s+apply",
+        r"VAT\s+@\s+\d+%.*Total",  # Client quotes show VAT breakdown
+        r"Item\s+Description\s+Number\s+Width\s+Height",  # Detailed specification table
+    ]
+    
+    supplier_score = 0
+    client_score = 0
+    
+    for pattern in supplier_indicators:
+        if re.search(pattern, text, re.IGNORECASE):
+            supplier_score += 1
+            
+    for pattern in client_indicators:
+        if re.search(pattern, text, re.IGNORECASE):
+            client_score += 1
+    
+    # Strong indicators for client quotes
+    if re.search(r"ESTIMATE.*Reference.*Windows", text, re.IGNORECASE | re.DOTALL):
+        client_score += 3
+    if re.search(r"Specialists\s+in.*Joinery", text, re.IGNORECASE):
+        client_score += 2
+        
+    if client_score > supplier_score:
+        return "client"
+    elif supplier_score > client_score:
+        return "supplier"
+    else:
+        return "unknown"
+
+__all__ = ["extract_text_from_pdf_bytes", "parse_totals_from_text", "parse_quote_lines_from_text", "parse_client_quote_from_text", "determine_quote_type"]
