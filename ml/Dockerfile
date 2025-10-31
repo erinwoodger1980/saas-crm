@@ -19,5 +19,8 @@ VOLUME ["/mnt/models"]
 
 COPY . .
 
+# Make startup script executable
+RUN chmod +x start.sh
+
 # Render provides PORT (e.g. 10000). Respect it; default to 8000 for local.
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["./start.sh"]
