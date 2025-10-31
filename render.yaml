@@ -11,3 +11,13 @@ services:
     rootDir: web
     buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
     startCommand: pnpm run start
+  - type: web
+    name: ml
+    env: docker
+    rootDir: ml
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Set this in Render dashboard to your PostgreSQL URL
+      - key: PORT
+        value: 8000
