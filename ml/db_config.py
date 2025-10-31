@@ -6,7 +6,7 @@ Optimized for shared database usage with connection pooling and query optimizati
 
 import os
 import psycopg
-from psycopg.pool import ConnectionPool
+from psycopg_pool import ConnectionPool
 from typing import Optional, Dict, Any
 import logging
 
@@ -181,3 +181,6 @@ def get_db_manager() -> MLDatabaseManager:
         _db_manager = MLDatabaseManager(database_url)
         _db_manager.create_ml_tables()
     return _db_manager
+
+# Alias for backwards compatibility
+DatabaseManager = MLDatabaseManager
