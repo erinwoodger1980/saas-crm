@@ -179,7 +179,8 @@ export default function QuoteBuilderPage() {
       const signed = await apiFetch<{ url: string }>(`/quotes/${id}/proposal/signed`);
       if (signed?.url) window.open(signed.url, "_blank");
     } catch (e: any) {
-      setError(e?.message || "Failed to render proposal");
+      const reason = e?.details?.reason || e?.details?.error || e?.message || "Failed to render proposal";
+      setError(String(reason));
     } finally {
       setRendering(false);
     }
