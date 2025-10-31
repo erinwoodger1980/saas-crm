@@ -363,7 +363,7 @@ router.patch("/:id", async (req, res) => {
 
         // Trigger ML retraining if enough feedback has accumulated
         try {
-          if (process.env.ML_SERVICE_URL && (becameAccepted || becameRejected)) {
+          if (process.env.ML_URL && (becameAccepted || becameRejected)) {
             // Check if we should trigger retraining (every 10 feedback examples)
             const feedbackCount = await (prisma as any).trainingInsights.count({
               where: {
@@ -380,7 +380,7 @@ router.patch("/:id", async (req, res) => {
                 limit: Math.min(feedbackCount, 100) // Use recent examples
               };
 
-              fetch(`${process.env.ML_SERVICE_URL}/lead-classifier/retrain`, {
+              fetch(`${process.env.ML_URL}/lead-classifier/retrain`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',

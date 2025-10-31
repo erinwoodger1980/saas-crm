@@ -6,7 +6,7 @@ services:
     buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
     startCommand: pnpm run start
     envVars:
-      - key: ML_SERVICE_URL
+      - key: ML_URL
         sync: false  # Set this in Render dashboard to your ML service URL (e.g., https://ml-xyz.onrender.com)
   - type: web
     name: web
