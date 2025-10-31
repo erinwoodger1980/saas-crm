@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email-to-ML Training Workflow</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2563eb;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #374151;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        input:focus, select:focus, textarea:focus {
+            border-color: #2563eb;
+            outline: none;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #1d4ed8;
+        }
+        .btn-secondary {
+            background: #6b7280;
+        }
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        .results {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #2563eb;
+        }
+        .error {
+            background: #fef2f2;
+            border-left-color: #ef4444;
+            color: #dc2626;
+        }
+        .success {
+            background: #f0fdf4;
+            border-left-color: #22c55e;
+            color: #16a34a;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .quote-preview {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .quote-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #6b7280;
+        }
+        .quote-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            font-size: 14px;
+        }
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Email-to-ML Training Workflow</h1>
+        <p>Automatically find client quotes in your email, parse them, and train your pricing AI.</p>
+        
+        <form id="trainingForm">
+            <div class="form-group">
+                <label for="tenantId">Tenant ID:</label>
+                <input type="text" id="tenantId" name="tenantId" required placeholder="your-tenant-id">
+            </div>
+            
+            <div class="form-group">
+                <label for="emailProvider">Email Provider:</label>
+                <select id="emailProvider" name="emailProvider" required>
+                    <option value="">Select provider...</option>
+                    <option value="gmail">Gmail</option>
+                    <option value="m365">Microsoft 365 / Outlook</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="daysBack">Days to look back:</label>
+                <input type="number" id="daysBack" name="daysBack" value="30" min="1" max="365">
+            </div>
+            
+            <div class="form-group">
+                <label for="credentials">Email Credentials (JSON):</label>
+                <textarea id="credentials" name="credentials" rows="6" placeholder='{
+  "type": "service_account",
+  "client_email": "your-email@project.iam.gserviceaccount.com",
+  "private_key": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
+}'></textarea>
+                <small style="color: #6b7280;">For Gmail: Use service account credentials. For M365: Use app registration details.</small>
+            </div>
+            
+            <div style="text-align: center;">
+                <button type="button" class="btn btn-secondary" onclick="previewQuotes()">Preview Quotes</button>
+                <button type="button" class="btn" onclick="startTraining()">Start Training</button>
+            </div>
+        </form>
+        
+        <div class="loading" id="loading">
+            <p>🔄 Processing emails and training ML models...</p>
+        </div>
+        
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000'; // Update this to your ML service URL
+        
+        function getFormData() {
+            const form = document.getElementById('trainingForm');
+            const formData = new FormData(form);
+            
+            let credentials = {};
+            try {
+                credentials = JSON.parse(formData.get('credentials') || '{}');
+            } catch (e) {
+                throw new Error('Invalid JSON in credentials field');
+            }
+            
+            return {
+                tenantId: formData.get('tenantId'),
+                emailProvider: formData.get('emailProvider'),
+                daysBack: parseInt(formData.get('daysBack')),
+                credentials: credentials
+            };
+        }
+        
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+        
+        function showResults(content, type = 'info') {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = content;
+            resultsDiv.className = `results ${type}`;
+        }
+        
+        async function previewQuotes() {
+            try {
+                showLoading(true);
+                const data = getFormData();
+                
+                const response = await fetch(`${API_BASE}/preview-email-quotes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                showLoading(false);
+                
+                if (result.ok) {
+                    let html = `<h3>📧 Email Preview Results</h3>`;
+                    html += `<p><strong>Total quotes found:</strong> ${result.total_quotes_found}</p>`;
+                    
+                    if (result.preview_quotes.length > 0) {
+                        html += `<h4>Preview (first 10 quotes):</h4>`;
+                        
+                        result.preview_quotes.forEach(quote => {
+                            html += `
+                                <div class="quote-preview">
+                                    <div class="quote-meta">
+                                        <span><strong>${quote.subject}</strong></span>
+                                        <span>${new Date(quote.date_sent).toLocaleDateString()}</span>
+                                    </div>
+                                    <div class="quote-details">
+                                        <div class="detail-item">
+                                            <span>Attachment:</span>
+                                            <span>${quote.attachment_name}</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span>Project Type:</span>
+                                            <span>${quote.project_type || 'Unknown'}</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span>Price:</span>
+                                            <span>£${quote.quoted_price ? quote.quoted_price.toLocaleString() : 'N/A'}</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span>Area:</span>
+                                            <span>${quote.area_m2 ? quote.area_m2 + ' m²' : 'N/A'}</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span>Materials:</span>
+                                            <span>${quote.materials_grade || 'N/A'}</span>
+                                        </div>
+                                        <div class="detail-item">
+                                            <span>Confidence:</span>
+                                            <span>${(quote.confidence * 100).toFixed(1)}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        html += `<p>No quotes found in the specified time period.</p>`;
+                    }
+                    
+                    showResults(html, 'success');
+                } else {
+                    showResults(`<h3>❌ Error</h3><p>${result.detail}</p>`, 'error');
+                }
+            } catch (error) {
+                showLoading(false);
+                showResults(`<h3>❌ Error</h3><p>${error.message}</p>`, 'error');
+            }
+        }
+        
+        async function startTraining() {
+            try {
+                showLoading(true);
+                const data = getFormData();
+                
+                const response = await fetch(`${API_BASE}/start-email-training`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                showLoading(false);
+                
+                if (result.ok) {
+                    let html = `<h3>🎉 Training Completed!</h3>`;
+                    html += `<p><strong>Quotes found:</strong> ${result.results.quotes_found}</p>`;
+                    html += `<p><strong>Training records saved:</strong> ${result.results.training_records_saved}</p>`;
+                    html += `<p><strong>ML training completed:</strong> ${result.results.ml_training_completed ? '✅ Yes' : '❌ No'}</p>`;
+                    html += `<p><strong>Duration:</strong> ${result.results.duration_seconds.toFixed(1)} seconds</p>`;
+                    
+                    if (result.results.errors.length > 0) {
+                        html += `<h4>⚠️ Warnings:</h4><ul>`;
+                        result.results.errors.forEach(error => {
+                            html += `<li>${error}</li>`;
+                        });
+                        html += `</ul>`;
+                    }
+                    
+                    showResults(html, 'success');
+                } else {
+                    showResults(`<h3>❌ Error</h3><p>${result.detail}</p>`, 'error');
+                }
+            } catch (error) {
+                showLoading(false);
+                showResults(`<h3>❌ Error</h3><p>${error.message}</p>`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
