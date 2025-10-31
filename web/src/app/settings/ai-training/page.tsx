@@ -72,6 +72,12 @@ type FollowupLearningResponse = {
   lastUpdatedISO?: string | null;
 };
 
+type EmailTrainingResponse = {
+  quotesFound?: number;
+  trainingRecords?: number;
+  message?: string;
+};
+
 function formatDate(s?: string | null) {
   if (!s) return "—";
   try {
@@ -133,6 +139,16 @@ export default function AiTrainingPage() {
   const [followupError, setFollowupError] = useState<string | null>(null);
   const [updatingFollowupOptIn, setUpdatingFollowupOptIn] = useState(false);
   const [followupTab, setFollowupTab] = useState<"overview" | "planner">("overview");
+  // Email training state
+  const [emailTraining, setEmailTraining] = useState<{
+    status: 'idle' | 'running' | 'completed' | 'error';
+    progress?: number;
+    message?: string;
+    quotesFound?: number;
+    trainingRecords?: number;
+  }>({ status: 'idle' });
+  const [emailProvider, setEmailProvider] = useState<'gmail' | 'ms365'>('gmail');
+  const [daysBack, setDaysBack] = useState(30);
 
   const fetchFollowupLearning = useCallback(async () => {
     setFollowupLoading(true);
@@ -450,6 +466,117 @@ export default function AiTrainingPage() {
     }
   }
 
+  async function startEmailTraining() {
+    setEmailTraining({ status: 'running', progress: 0, message: 'Starting email training...' });
+    setError(null);
+    
+    try {
+      // Start the email training workflow
+      const response = await apiFetch<EmailTrainingResponse>(`/ml/start-email-training`, {
+        method: 'POST',
+        json: {
+          emailProvider: emailProvider,
+          daysBack: daysBack,
+          credentials: {} // Will use stored credentials
+        }
+      });
+      
+      setEmailTraining({
+        status: 'completed',
+        progress: 100,
+        message: 'Email training completed successfully',
+        quotesFound: response.quotesFound || 0,
+        trainingRecords: response.trainingRecords || 0
+      });
+      
+      toast({
+        title: "Email Training Complete",
+        description: `Found ${response.quotesFound || 0} quotes, created ${response.trainingRecords || 0} training records`,
+        duration: 5000
+      });
+      
+      // Refresh insights to show new training data
+      window.location.reload();
+      
+    } catch (e: any) {
+      setEmailTraining({
+        status: 'error',
+        message: e?.message || 'Email training failed'
+      });
+      setError(e?.message || 'Email training failed');
+    }
+  }
+
+  async function previewEmailQuotes() {
+    setEmailTraining({ status: 'running', progress: 0, message: 'Scanning emails for quotes...' });
+    setError(null);
+    
+    try {
+      const response = await apiFetch<EmailTrainingResponse>(`/ml/preview-email-quotes`, {
+        method: 'POST',
+        json: {
+          emailProvider: emailProvider,
+          daysBack: daysBack
+        }
+      });
+      
+      setEmailTraining({
+        status: 'completed',
+        progress: 100,
+        message: `Preview complete: Found ${response.quotesFound || 0} potential client quotes`,
+        quotesFound: response.quotesFound || 0
+      });
+      
+      toast({
+        title: "Email Preview Complete",
+        description: `Found ${response.quotesFound || 0} potential client quotes in the last ${daysBack} days`,
+        duration: 4000
+      });
+      
+    } catch (e: any) {
+      setEmailTraining({
+        status: 'error',
+        message: e?.message || 'Email preview failed'
+      });
+      setError(e?.message || 'Email preview failed');
+    }
+  }
+
+  async function trainClientQuotes() {
+    setEmailTraining({ status: 'running', progress: 0, message: 'Training ML models with client quotes...' });
+    setError(null);
+    
+    try {
+      const response = await apiFetch<EmailTrainingResponse>(`/ml/train-client-quotes`, {
+        method: 'POST',
+        json: {}
+      });
+      
+      setEmailTraining({
+        status: 'completed',
+        progress: 100,
+        message: 'ML model training completed',
+        trainingRecords: response.trainingRecords || 0
+      });
+      
+      toast({
+        title: "ML Training Complete",
+        description: `Trained models with ${response.trainingRecords || 0} client quote records`,
+        duration: 5000
+      });
+      
+      // Refresh insights to show updated model
+      window.location.reload();
+      
+    } catch (e: any) {
+      setEmailTraining({
+        status: 'error',
+        message: e?.message || 'ML training failed'
+      });
+      setError(e?.message || 'ML training failed');
+    }
+  }
+
   async function reset() {
     if (!confirm("Reset model parameters and cached adapters for this module?")) return;
     setSaving(true);
@@ -681,6 +808,133 @@ export default function AiTrainingPage() {
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           AI Training is limited to early access users for now.
         </div>
+      )}
+
+      {/* Email Training Section */}
+      {isEA && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-lg font-medium text-slate-900">Client Quote Training</h3>
+              <p className="text-sm text-slate-600">Train ML models using client quotes from your email history</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {mlHealth && (
+                <Badge variant={mlHealth.ok ? "secondary" : "destructive"} className="text-xs">
+                  ML: {mlHealth.ok ? "online" : "offline"}
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Training Status */}
+          {emailTraining.status !== 'idle' && (
+            <div className="mb-4 p-4 rounded-lg border border-slate-200 bg-slate-50">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-700">Training Status</span>
+                <Badge variant={
+                  emailTraining.status === 'completed' ? 'default' :
+                  emailTraining.status === 'error' ? 'destructive' : 'secondary'
+                }>
+                  {emailTraining.status}
+                </Badge>
+              </div>
+              
+              {emailTraining.progress !== undefined && emailTraining.status === 'running' && (
+                <div className="w-full bg-slate-200 rounded-full h-2 mb-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${emailTraining.progress}%` }}
+                  ></div>
+                </div>
+              )}
+              
+              <p className="text-sm text-slate-600">{emailTraining.message}</p>
+              
+              {emailTraining.quotesFound !== undefined && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Quotes found: {emailTraining.quotesFound}
+                </p>
+              )}
+              
+              {emailTraining.trainingRecords !== undefined && (
+                <p className="text-xs text-slate-500">
+                  Training records: {emailTraining.trainingRecords}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Training Controls */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Email Provider
+                </label>
+                <select 
+                  value={emailProvider} 
+                  onChange={(e) => setEmailProvider(e.target.value as 'gmail' | 'ms365')}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={emailTraining.status === 'running'}
+                >
+                  <option value="gmail">Gmail</option>
+                  <option value="ms365">Microsoft 365</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Days to scan back
+                </label>
+                <input 
+                  type="number" 
+                  value={daysBack} 
+                  onChange={(e) => setDaysBack(parseInt(e.target.value) || 30)}
+                  min="1" 
+                  max="365"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={emailTraining.status === 'running'}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Button 
+                onClick={previewEmailQuotes}
+                disabled={emailTraining.status === 'running' || !mlHealth?.ok}
+                className="w-full"
+                variant="outline"
+              >
+                {emailTraining.status === 'running' ? 'Processing...' : 'Preview Email Quotes'}
+              </Button>
+              
+              <Button 
+                onClick={startEmailTraining}
+                disabled={emailTraining.status === 'running' || !mlHealth?.ok}
+                className="w-full"
+              >
+                {emailTraining.status === 'running' ? 'Training...' : 'Start Email Training'}
+              </Button>
+              
+              <Button 
+                onClick={trainClientQuotes}
+                disabled={emailTraining.status === 'running' || !mlHealth?.ok}
+                className="w-full"
+                variant="secondary"
+              >
+                {emailTraining.status === 'running' ? 'Training...' : 'Train ML Models'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
+            <p className="text-xs text-blue-700">
+              <strong>How it works:</strong> The system will scan your emails for client quotes, extract pricing patterns and requirements, 
+              then train the ML models to better predict pricing and match supplier products to client needs.
+            </p>
+          </div>
+        </section>
       )}
 
       {/* Hide low-level working details and ingestion UI to keep the page clean and visual */}
