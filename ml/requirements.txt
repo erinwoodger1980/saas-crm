@@ -6,7 +6,7 @@ numpy==1.26.4
 pandas==2.2.2
 # Use CPU-friendly XGBoost to avoid pulling GPU/NCCL extras on slim images
 xgboost==2.0.3
-psycopg[binary]==3.2.1
+psycopg[binary,pool]==3.2.1
 # Pin PDF/Imaging stack to stable versions
 pymupdf==1.24.10
 pytesseract==0.3.13
