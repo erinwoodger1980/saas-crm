@@ -220,6 +220,40 @@ export async function applyFeedback(opts: {
                 },
               });
             }
+
+            // Forward feedback to ML service for immediate learning
+            try {
+              if (process.env.ML_SERVICE_URL) {
+                const mlPayload = {
+                  tenantId,
+                  emailId: summary, // email:provider:messageId format
+                  provider,
+                  messageId,
+                  isLead: !!opts.feedback.isLead,
+                  subject: subject || undefined,
+                  fromEmail: from || undefined,
+                  snippet: snippet || undefined,
+                  confidence: existing.confidence || undefined,
+                  reason: opts.feedback.reason || undefined
+                };
+
+                const mlResponse = await fetch(`${process.env.ML_SERVICE_URL}/lead-classifier/feedback`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(mlPayload),
+                });
+
+                if (mlResponse.ok) {
+                  console.log("[training] ML service feedback sent successfully");
+                } else {
+                  console.warn("[training] ML service feedback failed:", await mlResponse.text());
+                }
+              }
+            } catch (e) {
+              console.warn("[training] ML service feedback error:", (e as any)?.message || e);
+            }
           } catch (e) {
             console.warn("[training] applyFeedback -> training example upsert failed:", (e as any)?.message || e);
           }

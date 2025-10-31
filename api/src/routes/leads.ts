@@ -360,6 +360,46 @@ router.patch("/:id", async (req, res) => {
           payload: { source: "lead_status_change", leadId: id, to: nextUi, from: prevUi, decision },
           actorId,
         });
+
+        // Trigger ML retraining if enough feedback has accumulated
+        try {
+          if (process.env.ML_SERVICE_URL && (becameAccepted || becameRejected)) {
+            // Check if we should trigger retraining (every 10 feedback examples)
+            const feedbackCount = await (prisma as any).trainingInsights.count({
+              where: {
+                tenantId,
+                module: "lead_classifier",
+                userFeedback: { not: null }
+              }
+            });
+
+            // Trigger retraining every 10 new feedback examples
+            if (feedbackCount > 0 && feedbackCount % 10 === 0) {
+              const retrainPayload = {
+                tenantId,
+                limit: Math.min(feedbackCount, 100) // Use recent examples
+              };
+
+              fetch(`${process.env.ML_SERVICE_URL}/lead-classifier/retrain`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(retrainPayload),
+              }).then(response => {
+                if (response.ok) {
+                  console.log(`[leads] Triggered ML retraining with ${feedbackCount} examples`);
+                } else {
+                  console.warn("[leads] ML retraining failed:", response.statusText);
+                }
+              }).catch(e => {
+                console.warn("[leads] ML retraining error:", (e as any)?.message || e);
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("[leads] ML retraining trigger error:", (e as any)?.message || e);
+        }
       }
     } catch (e) {
       console.warn("[leads] status→training log failed:", (e as any)?.message || e);
