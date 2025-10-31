@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 import psycopg
 from pdf_parser import parse_client_quote_from_text, extract_text_from_pdf_bytes
+from db_config import DatabaseManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -40,7 +41,7 @@ class EmailTrainingWorkflow:
     """Main workflow for email-based ML training"""
     
     def __init__(self, db_url: str, tenant_id: str):
-        self.db_url = db_url
+        self.db_manager = DatabaseManager(db_url)
         self.tenant_id = tenant_id
         self.email_service = None
         
@@ -224,66 +225,62 @@ class EmailTrainingWorkflow:
             return "low"
     
     def save_training_data(self, df: pd.DataFrame) -> int:
-        """Save training data to database"""
+        """Save training data to database using optimized connection pool"""
         try:
-            with psycopg.connect(self.db_url) as conn:
-                with conn.cursor() as cur:
-                    # Create training data table if not exists
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS ml_training_data (
-                            id SERIAL PRIMARY KEY,
-                            tenant_id VARCHAR(255),
-                            project_type VARCHAR(100),
-                            materials_grade VARCHAR(50),
-                            area_m2 DECIMAL(10,2),
-                            wood_type VARCHAR(100),
-                            quoted_price DECIMAL(12,2),
-                            num_line_items INTEGER,
-                            avg_item_price DECIMAL(10,2),
-                            lead_source VARCHAR(50),
-                            urgency VARCHAR(20),
-                            complexity VARCHAR(20),
-                            email_date TIMESTAMP,
-                            email_subject TEXT,
-                            attachment_name VARCHAR(255),
-                            confidence DECIMAL(3,2),
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """)
-                    
-                    # Insert training data
-                    inserted = 0
-                    for _, row in df.iterrows():
-                        cur.execute("""
-                            INSERT INTO ml_training_data (
-                                tenant_id, project_type, materials_grade, area_m2, wood_type,
-                                quoted_price, num_line_items, avg_item_price, lead_source,
-                                urgency, complexity, email_date, email_subject, 
-                                attachment_name, confidence
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (
-                            self.tenant_id,
-                            row["project_type"],
-                            row["materials_grade"],
-                            row["area_m2"],
-                            row["wood_type"],
-                            row["quoted_price"],
-                            row["num_line_items"],
-                            row["avg_item_price"],
-                            row["lead_source"],
-                            row["urgency"],
-                            row["complexity"],
-                            row["email_date"],
-                            row["email_subject"],
-                            row["attachment_name"],
-                            row["confidence"]
-                        ))
-                        inserted += 1
-                    
-                    conn.commit()
-                    logger.info(f"Saved {inserted} training records to database")
-                    return inserted
-                    
+            # Prepare all SQL operations as a batch
+            create_table_sql = """
+                CREATE TABLE IF NOT EXISTS ml_training_data (
+                    id SERIAL PRIMARY KEY,
+                    tenant_id VARCHAR(255),
+                    project_type VARCHAR(100),
+                    materials_grade VARCHAR(50),
+                    area_m2 DECIMAL(10,2),
+                    wood_type VARCHAR(100),
+                    quoted_price DECIMAL(12,2),
+                    num_line_items INTEGER,
+                    avg_item_price DECIMAL(10,2),
+                    lead_source VARCHAR(50),
+                    urgency VARCHAR(20),
+                    complexity VARCHAR(20),
+                    email_date TIMESTAMP,
+                    email_subject TEXT,
+                    attachment_name VARCHAR(255),
+                    confidence DECIMAL(3,2),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            
+            # Execute table creation
+            self.db_manager.execute_query(create_table_sql)
+            
+            # Prepare batch insert data
+            insert_sql = """
+                INSERT INTO ml_training_data (
+                    tenant_id, project_type, materials_grade, area_m2, wood_type,
+                    quoted_price, num_line_items, avg_item_price, lead_source,
+                    urgency, complexity, email_date, email_subject, 
+                    attachment_name, confidence
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            # Prepare batch data
+            batch_data = []
+            for _, row in df.iterrows():
+                batch_data.append((
+                    self.tenant_id, row.get('project_type'), row.get('materials_grade'),
+                    row.get('area_m2'), row.get('wood_type'), row.get('quoted_price'),
+                    row.get('num_line_items'), row.get('avg_item_price'), 
+                    row.get('lead_source'), row.get('urgency'), row.get('complexity'),
+                    row.get('email_date'), row.get('email_subject'), 
+                    row.get('attachment_name'), row.get('confidence')
+                ))
+            
+            # Execute batch insert
+            result = self.db_manager.execute_batch(insert_sql, batch_data)
+            
+            logger.info(f"Saved {len(batch_data)} training records to database")
+            return len(batch_data)
+            
         except Exception as e:
             logger.error(f"Error saving training data: {e}")
             return 0
