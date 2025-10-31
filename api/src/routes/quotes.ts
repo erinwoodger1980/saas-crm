@@ -527,6 +527,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       </html>`;
 
     let browser: any;
+    let firstLaunchError: any;
     try {
       // Prefer Puppeteer's resolved executable if available; fall back to env
       const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
@@ -544,8 +545,30 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         executablePath: execPath,
       });
     } catch (err: any) {
-      console.error("[/quotes/:id/render-pdf] chrome launch failed:", err?.message || err);
-      return res.status(500).json({ error: "render_failed", reason: "puppeteer_launch_failed" });
+      firstLaunchError = err;
+      console.warn("[/quotes/:id/render-pdf] puppeteer launch failed; trying @sparticuz/chromium fallback:", err?.message || err);
+      try {
+        // Lazy-load Sparticuz Chromium which bundles a compatible binary for serverless/container envs
+        const chromium = require("@sparticuz/chromium");
+        const execPath2 = await chromium.executablePath();
+        browser = await puppeteer.launch({
+          headless: chromium.headless !== undefined ? chromium.headless : true,
+          args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
+          executablePath: execPath2,
+          defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
+          ignoreHTTPSErrors: true,
+        });
+      } catch (fallbackErr: any) {
+        console.error("[/quotes/:id/render-pdf] chromium fallback launch failed:", fallbackErr?.message || fallbackErr);
+        return res.status(500).json({
+          error: "render_failed",
+          reason: "puppeteer_launch_failed",
+          detail: {
+            primary: String(firstLaunchError?.message || firstLaunchError || "unknown"),
+            fallback: String(fallbackErr?.message || fallbackErr || "unknown"),
+          },
+        });
+      }
     }
 
     let pdfBuffer: Buffer;
