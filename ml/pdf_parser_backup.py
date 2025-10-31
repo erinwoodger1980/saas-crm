@@ -246,8 +246,65 @@ def parse_totals_from_text(text: str) -> Dict[str, Any]:
       - estimated_total (float|None) chosen candidate
       - confidence (float) 0..1 rough confidence score
     """
-    # Delegate to the enhanced parser for full line item extraction
-    return parse_quote_lines_from_text(text)
+    if not text:
+        return {
+            "currency": None,
+            "lines": [],
+            "detected_totals": [],
+            "estimated_total": None,
+            "confidence": 0.0,
+        }
 
+    # currency symbol capture
+    currency = None
+    mcur = re.search(r"(?P<cur>£|\$|€)", text)
+    if mcur:
+        currency = mcur.group("cur")
+
+    # Common “total” phrases
+    total_patterns = [
+        r"grand\s+total\s*[:\-]?\s*([£$€]?\s?\d[\d,]*\.?\d*)",
+        r"total\s*(?:due|amount)?\s*[:\-]?\s*([£$€]?\s?\d[\d,]*\.?\d*)",
+        r"balance\s*due\s*[:\-]?\s*([£$€]?\s?\d[\d,]*\.?\d*)",
+    ]
+
+    candidates: List[float] = []
+    for pat in total_patterns:
+        for m in re.finditer(pat, text, flags=re.IGNORECASE):
+            num = m.group(1)
+            num = re.sub(r"[^\d\.]", "", num)
+            try:
+                val = float(num)
+                if val > 0:
+                    candidates.append(val)
+            except Exception:
+                pass
+
+    # Fallback: any money-like number on its own line
+    if not candidates:
+        for m in re.finditer(r"(^|\n)\s*[£$€]?\s?(\d[\d,]*\.?\d*)\s*($|\n)", text):
+            num = m.group(2)
+            num = re.sub(r"[^\d\.]", "", num)
+            try:
+                val = float(num)
+                if val > 0:
+                    candidates.append(val)
+            except Exception:
+                pass
+
+    estimated = None
+    confidence = 0.0
+    if candidates:
+        # Naive heuristic: choose the max (often grand total is largest).
+        estimated = float(max(candidates))
+        confidence = 0.35 if len(candidates) == 1 else 0.55
+
+    return {
+        "currency": currency,
+        "lines": [],  # reserved for future line-by-line parsing
+        "detected_totals": candidates,
+        "estimated_total": estimated,
+        "confidence": confidence,
+    }
 
 __all__ = ["extract_text_from_pdf_bytes", "parse_totals_from_text", "parse_quote_lines_from_text"]
