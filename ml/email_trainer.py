@@ -344,17 +344,17 @@ class EmailTrainingWorkflow:
 
 
 class GmailService:
-    """Gmail API integration"""
+    """Gmail API integration using existing API endpoints"""
     
     def __init__(self, credentials: Dict[str, Any]):
         self.credentials = credentials
-        # TODO: Implement Gmail API integration
-        logger.info("Gmail service initialized")
+        # credentials should contain api_base_url and authorization headers
+        self.api_base = credentials.get('api_base_url', 'https://api.joineryai.app')
+        self.headers = credentials.get('headers', {})
+        logger.info("Gmail service initialized with existing API")
     
     def search_emails(self, keywords: List[str], has_attachments: bool, since_date: datetime, sent_only: bool) -> List[Dict[str, Any]]:
-        """Search for emails matching criteria"""
-        # TODO: Implement Gmail API search
-        logger.info(f"Searching Gmail for emails with keywords: {keywords}")
+        """Search for emails matching criteria using existing Gmail API"""
         
         # For demo purposes, return sample email data when testing
         if os.getenv("ML_DEMO_MODE") == "true":
@@ -390,11 +390,85 @@ class GmailService:
                 }
             ]
         
-        return []
+        # Build Gmail search query
+        query_parts = []
+        
+        # Add keywords search
+        if keywords:
+            keyword_query = " OR ".join(keywords)
+            query_parts.append(f"({keyword_query})")
+        
+        # Add attachment filter  
+        if has_attachments:
+            query_parts.append("has:attachment")
+        
+        # Add date filter
+        days_back = (datetime.now() - since_date).days
+        if days_back > 0:
+            query_parts.append(f"newer_than:{days_back}d")
+        
+        # Add sent filter (look in sent items for client quotes we sent)
+        if sent_only:
+            query_parts.append("in:sent")
+        
+        gmail_query = " ".join(query_parts)
+        logger.info(f"Searching Gmail with query: {gmail_query}")
+        
+        try:
+            # Use existing Gmail import API with custom query
+            import requests
+            response = requests.post(
+                f"{self.api_base}/gmail/import",
+                headers=self.headers,
+                json={
+                    "q": gmail_query,
+                    "max": 50  # Search more messages for quotes
+                },
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"Gmail API returned {response.status_code}: {response.text}")
+                return []
+            
+            data = response.json()
+            imported = data.get('imported', [])
+            
+            # Convert to our expected format
+            emails = []
+            for item in imported:
+                if item.get('createdIngest') and item.get('messageInfo'):
+                    msg = item['messageInfo']
+                    attachments = []
+                    
+                    # Check if message has PDF attachments
+                    for att in msg.get('attachments', []):
+                        if att.get('filename', '').lower().endswith('.pdf'):
+                            attachments.append({
+                                'attachment_id': att.get('attachmentId'),
+                                'filename': att.get('filename'),
+                                'size': att.get('size', 0)
+                            })
+                    
+                    if attachments:  # Only include emails with PDF attachments
+                        emails.append({
+                            'message_id': msg.get('messageId'),
+                            'subject': msg.get('subject', ''),
+                            'sender': msg.get('from', ''),
+                            'recipient': msg.get('to', ''),
+                            'date_sent': msg.get('date'),
+                            'attachments': attachments
+                        })
+            
+            logger.info(f"Found {len(emails)} emails with PDF attachments")
+            return emails
+            
+        except Exception as e:
+            logger.error(f"Error searching Gmail: {e}")
+            return []
     
     def download_attachment(self, message_id: str, attachment_id: str) -> bytes:
-        """Download email attachment"""
-        # TODO: Implement Gmail API attachment download
+        """Download email attachment using existing Gmail API"""
         
         # For demo purposes, return sample PDF content when testing
         if os.getenv("ML_DEMO_MODE") == "true":
@@ -425,7 +499,24 @@ Valid for 30 days
             # Convert text to bytes (simulating PDF content)
             return sample_quote_text.encode('utf-8')
         
-        return b""
+        try:
+            # Use existing Gmail attachment API
+            import requests
+            response = requests.get(
+                f"{self.api_base}/gmail/attachment/{message_id}/{attachment_id}",
+                headers=self.headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return response.content
+            else:
+                logger.error(f"Failed to download attachment: {response.status_code}")
+                return b""
+                
+        except Exception as e:
+            logger.error(f"Error downloading attachment: {e}")
+            return b""
 
 
 class M365Service:
