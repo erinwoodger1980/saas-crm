@@ -210,7 +210,13 @@ router.post("/preview-email-quotes", async (req: any, res) => {
     const payload = {
       tenantId,
       emailProvider: emailProvider || "gmail",
-      credentials: {}, // ML service requires this field
+      credentials: {
+        api_base_url: API_BASE,
+        headers: {
+          'Authorization': req.headers.authorization || '',
+          'Content-Type': 'application/json'
+        }
+      },
       daysBack: daysBack || 30
     };
 
@@ -257,7 +263,13 @@ router.post("/start-email-training", async (req: any, res) => {
       tenantId,
       emailProvider: emailProvider || "gmail",
       daysBack: daysBack || 30,
-      credentials: credentials || {}
+      credentials: credentials || {
+        api_base_url: API_BASE,
+        headers: {
+          'Authorization': req.headers.authorization || '',
+          'Content-Type': 'application/json'
+        }
+      }
     };
 
     const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS * 3); // Longer timeout for training
