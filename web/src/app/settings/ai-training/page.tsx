@@ -674,8 +674,9 @@ export default function AiTrainingPage() {
         reader.readAsDataURL(upload.file);
       });
       
-      // Use environment variable for ML service URL - updated for deployment
-      const ML_URL = process.env.NEXT_PUBLIC_ML_URL || 'https://new-ml-zo9l.onrender.com';
+      // Force correct ML service URL for testing
+      const ML_URL = 'https://new-ml-zo9l.onrender.com';
+      console.log('Using ML_URL:', ML_URL); // Debug log
       
       const response = await fetch(`${ML_URL}/upload-quote-training`, {
         method: 'POST',
