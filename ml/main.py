@@ -209,6 +209,52 @@ def debug_env():
         "gmail_client_secret_length": len(os.getenv('GMAIL_CLIENT_SECRET', '')) if os.getenv('GMAIL_CLIENT_SECRET') else 0
     }
 
+@app.get("/debug-gmail")
+def debug_gmail():
+    """Debug Gmail token refresh (temporary)"""
+    try:
+        # Test Gmail token refresh
+        import requests
+        
+        # Get a tenant with Gmail connection
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {"error": "No DATABASE_URL"}
+            
+        from db_config import get_db_manager
+        db_manager = get_db_manager()
+        
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT "refreshToken", "gmailAddress" FROM "GmailTenantConnection" LIMIT 1')
+            result = cur.fetchone()
+            
+            if not result:
+                return {"error": "No Gmail connections found"}
+                
+            refresh_token, gmail_address = result
+            
+            # Test token refresh
+            data = {
+                'client_id': os.getenv('GMAIL_CLIENT_ID'),
+                'client_secret': os.getenv('GMAIL_CLIENT_SECRET'),
+                'grant_type': 'refresh_token',
+                'refresh_token': refresh_token
+            }
+            
+            response = requests.post('https://oauth2.googleapis.com/token', data=data)
+            
+            return {
+                "gmail_address": gmail_address,
+                "refresh_token_length": len(refresh_token) if refresh_token else 0,
+                "token_refresh_status": response.status_code,
+                "token_refresh_success": response.ok,
+                "error_details": response.text if not response.ok else "Success"
+            }
+            
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/meta")
 def meta():
     return {
