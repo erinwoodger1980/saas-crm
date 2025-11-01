@@ -568,58 +568,36 @@ class GmailService:
         logger.info(f"Searching Gmail with query: {gmail_query} (days_back: {days_back})")
         
         try:
-            # Use existing Gmail import API with custom query
+            # Call Gmail API directly instead of going through main API
+            access_token = self._get_access_token()
+            
+            headers = {
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json'
+            }
+            
+            url = "https://www.googleapis.com/gmail/v1/users/me/messages"
+            params = {
+                "q": gmail_query,
+                "maxResults": 50
+            }
+            
             import requests
-            response = requests.post(
-                f"{self.api_base}/gmail/import",
-                headers=self.headers,
-                json={
-                    "q": gmail_query,
-                    "max": 50  # Search more messages for quotes
-                },
-                timeout=30
-            )
-            
-            logger.info(f"Gmail API response status: {response.status_code}")
-            
-            if response.status_code != 200:
-                logger.error(f"Gmail API returned {response.status_code}: {response.text}")
-                raise RuntimeError(f"Failed to search Gmail: {response.status_code} - {response.text}")
+            response = requests.get(url, headers=headers, params=params)
+            if not response.ok:
+                logger.error(f"Gmail search failed: {response.status_code} {response.text}")
+                return []
             
             data = response.json()
-            imported = data.get('imported', [])
-            logger.info(f"Gmail API returned {len(imported)} emails")
+            message_ids = [msg["id"] for msg in data.get("messages", [])]
+            logger.info(f"Found {len(message_ids)} messages matching search")
             
-            # Log first few email subjects for debugging
-            for i, email in enumerate(imported[:3]):
-                subject = email.get('subject', 'No subject')
-                logger.info(f"Email {i+1}: {subject}")
-            
-            # Convert to our expected format
+            # Get detailed message data for each message
             emails = []
-            for item in imported:
-                if item.get('createdIngest') and item.get('messageInfo'):
-                    msg = item['messageInfo']
-                    attachments = []
-                    
-                    # Check if message has PDF attachments
-                    for att in msg.get('attachments', []):
-                        if att.get('filename', '').lower().endswith('.pdf'):
-                            attachments.append({
-                                'attachment_id': att.get('attachmentId'),
-                                'filename': att.get('filename'),
-                                'size': att.get('size', 0)
-                            })
-                    
-                    if attachments:  # Only include emails with PDF attachments
-                        emails.append({
-                            'message_id': msg.get('messageId'),
-                            'subject': msg.get('subject', ''),
-                            'sender': msg.get('from', ''),
-                            'recipient': msg.get('to', ''),
-                            'date_sent': msg.get('date'),
-                            'attachments': attachments
-                        })
+            for msg_id in message_ids[:10]:  # Limit to first 10 for processing
+                email_data = self._get_email_details(access_token, msg_id)
+                if email_data:
+                    emails.append(email_data)
             
             logger.info(f"Found {len(emails)} emails with PDF attachments")
             return emails
@@ -628,6 +606,52 @@ class GmailService:
             logger.error(f"Error searching Gmail: {e}")
             return []
     
+    def _get_email_details(self, access_token: str, message_id: str) -> Dict[str, Any]:
+        """Get detailed email information including attachments"""
+        try:
+            import requests
+            
+            url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}"
+            headers = {'Authorization': f'Bearer {access_token}'}
+            
+            response = requests.get(url, headers=headers)
+            if not response.ok:
+                logger.error(f"Failed to get email details: {response.status_code}")
+                return None
+                
+            data = response.json()
+            
+            # Extract headers
+            headers_data = {}
+            if "payload" in data and "headers" in data["payload"]:
+                for header in data["payload"]["headers"]:
+                    headers_data[header["name"]] = header["value"]
+            
+            # Extract attachments
+            attachments = []
+            if "payload" in data:
+                self._extract_attachments(data["payload"], attachments)
+            
+            # Filter for PDF attachments only
+            pdf_attachments = [att for att in attachments if att.get("filename", "").lower().endswith(".pdf")]
+            
+            # Only return email if it has PDF attachments
+            if not pdf_attachments:
+                return None
+                
+            return {
+                "message_id": message_id,
+                "subject": headers_data.get("Subject", ""),
+                "sender": headers_data.get("From", ""),
+                "recipient": headers_data.get("To", ""),
+                "date_sent": headers_data.get("Date", ""),
+                "attachments": pdf_attachments
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting email details for {message_id}: {e}")
+            return None
+
     def download_attachment(self, message_id: str, attachment_id: str) -> bytes:
         """Download email attachment using existing Gmail API"""
         
