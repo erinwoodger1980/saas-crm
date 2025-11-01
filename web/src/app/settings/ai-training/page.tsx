@@ -159,8 +159,10 @@ export default function AiTrainingPage() {
     progress?: number;
     result?: any;
     error?: string;
+    quoteType?: 'supplier' | 'client';
   }>>([]);
   const [dragCounter, setDragCounter] = useState(0);
+  const [selectedQuoteType, setSelectedQuoteType] = useState<'supplier' | 'client'>('supplier');
 
   const fetchFollowupLearning = useCallback(async () => {
     setFollowupLoading(true);
@@ -644,7 +646,8 @@ export default function AiTrainingPage() {
     const newUploads = pdfFiles.map(file => ({
       file,
       id: Math.random().toString(36).substr(2, 9),
-      status: 'pending' as const
+      status: 'pending' as const,
+      quoteType: selectedQuoteType
     }));
 
     setUploadQueue(prev => [...prev, ...newUploads]);
@@ -686,7 +689,7 @@ export default function AiTrainingPage() {
         body: JSON.stringify({
           filename: upload.file.name,
           base64: base64Content,
-          quoteType: 'supplier',
+          quoteType: upload.quoteType || 'supplier',
           tenantId: user?.id || 'default-tenant'
         })
       });
@@ -1110,6 +1113,41 @@ export default function AiTrainingPage() {
             </Badge>
           </div>
 
+          {/* Quote Type Selector */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Quote Type
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectedQuoteType('supplier')}
+                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  selectedQuoteType === 'supplier'
+                    ? 'bg-blue-50 border-blue-200 text-blue-700'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Supplier Quote
+              </button>
+              <button
+                onClick={() => setSelectedQuoteType('client')}
+                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  selectedQuoteType === 'client'
+                    ? 'bg-blue-50 border-blue-200 text-blue-700'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Client Quote
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              {selectedQuoteType === 'supplier' 
+                ? 'Quotes received from suppliers/contractors' 
+                : 'Quotes sent to your clients/customers'
+              }
+            </p>
+          </div>
+
           {/* Drag and Drop Zone */}
           <div
             className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
@@ -1181,7 +1219,7 @@ export default function AiTrainingPage() {
                         {upload.file.name}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {(upload.file.size / 1024 / 1024).toFixed(2)} MB
+                        {(upload.file.size / 1024 / 1024).toFixed(2)} MB • {upload.quoteType || 'supplier'} quote
                       </p>
                       {upload.result && (
                         <p className="text-xs text-green-600 mt-1">
