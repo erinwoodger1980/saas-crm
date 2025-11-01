@@ -1,0 +1,12 @@
+INFO:     Started server process [59971]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:61940 - "GET /health HTTP/1.1" 200 OK
+INFO:email_trainer:Gmail service initialized with existing API
+INFO:email_trainer:Searching Gmail with query: (estimate OR quotation OR proposal OR quote OR joinery OR windows OR doors OR timber) has:attachment in:sent
+/Users/Erin/saas-crm/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+ERROR:email_trainer:Error searching Gmail: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: /api/gmail/import (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x141481460>: Failed to establish a new connection: [Errno 61] Connection refused'))
+INFO:email_trainer:Found 0 client quotes from last 30 days
+INFO:     127.0.0.1:61976 - "POST /preview-email-quotes HTTP/1.1" 200 OK
