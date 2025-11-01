@@ -29,8 +29,7 @@ class MLDatabaseManager:
                 min_size=1,      # Minimal connections
                 max_size=3,      # Conservative max to not overwhelm shared DB
                 timeout=30,      # Reasonable timeout
-                max_idle=300,    # 5 minutes idle timeout
-                reset_on_reuse=True
+                max_idle=300     # 5 minutes idle timeout
             )
             self.logger.info("ML database connection pool initialized")
         except Exception as e:
