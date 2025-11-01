@@ -150,6 +150,18 @@ export default function AiTrainingPage() {
   const [emailProvider, setEmailProvider] = useState<'gmail' | 'ms365'>('gmail');
   const [daysBack, setDaysBack] = useState(30);
 
+  // Manual quote upload state
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<Array<{
+    file: File;
+    id: string;
+    status: 'pending' | 'uploading' | 'completed' | 'error';
+    progress?: number;
+    result?: any;
+    error?: string;
+  }>>([]);
+  const [dragCounter, setDragCounter] = useState(0);
+
   const fetchFollowupLearning = useCallback(async () => {
     setFollowupLoading(true);
     setFollowupError(null);
@@ -577,6 +589,138 @@ export default function AiTrainingPage() {
     }
   }
 
+  // Manual quote upload functions
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev + 1);
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev - 1);
+    if (dragCounter === 1) {
+      setIsDragging(false);
+    }
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    setDragCounter(0);
+
+    const files = Array.from(e.dataTransfer.files);
+    addFilesToQueue(files);
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      addFilesToQueue(files);
+    }
+  }
+
+  function addFilesToQueue(files: File[]) {
+    const pdfFiles = files.filter(file => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
+    
+    if (pdfFiles.length !== files.length) {
+      toast({
+        title: "Invalid files detected",
+        description: "Only PDF files are supported for quote training",
+        variant: "destructive"
+      });
+    }
+
+    const newUploads = pdfFiles.map(file => ({
+      file,
+      id: Math.random().toString(36).substr(2, 9),
+      status: 'pending' as const
+    }));
+
+    setUploadQueue(prev => [...prev, ...newUploads]);
+
+    // Auto-start upload for each file
+    newUploads.forEach(upload => {
+      setTimeout(() => uploadQuoteFile(upload), 100);
+    });
+  }
+
+  async function uploadQuoteFile(upload: typeof uploadQueue[0]) {
+    setUploadQueue(prev => prev.map(u => 
+      u.id === upload.id ? { ...u, status: 'uploading', progress: 0 } : u
+    ));
+
+    try {
+      const formData = new FormData();
+      formData.append('file', upload.file);
+      formData.append('quoteType', 'supplier'); // Default to supplier quotes
+      
+      // TenantId will be determined from auth context on server side
+      
+      const response = await fetch(`${API_BASE}/ml/upload-quote-training`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}` || ''
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      setUploadQueue(prev => prev.map(u => 
+        u.id === upload.id ? { 
+          ...u, 
+          status: 'completed', 
+          progress: 100, 
+          result 
+        } : u
+      ));
+
+      toast({
+        title: "Quote uploaded successfully",
+        description: `${upload.file.name} processed with ${(result.confidence * 100).toFixed(0)}% confidence`,
+        duration: 3000
+      });
+
+    } catch (error: any) {
+      setUploadQueue(prev => prev.map(u => 
+        u.id === upload.id ? { 
+          ...u, 
+          status: 'error', 
+          error: error.message 
+        } : u
+      ));
+
+      toast({
+        title: "Upload failed",
+        description: `Failed to process ${upload.file.name}: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  }
+
+  function removeFromQueue(id: string) {
+    setUploadQueue(prev => prev.filter(u => u.id !== id));
+  }
+
+  function clearCompletedUploads() {
+    setUploadQueue(prev => prev.filter(u => u.status !== 'completed'));
+  }
+
   async function reset() {
     if (!confirm("Reset model parameters and cached adapters for this module?")) return;
     setSaving(true);
@@ -932,6 +1076,149 @@ export default function AiTrainingPage() {
             <p className="text-xs text-blue-700">
               <strong>How it works:</strong> The system will scan your emails for client quotes, extract pricing patterns and requirements, 
               then train the ML models to better predict pricing and match supplier products to client needs.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* Manual Quote Upload Section */}
+      {isEA && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-lg font-medium text-slate-900">Manual Quote Training</h3>
+              <p className="text-sm text-slate-600">Drag and drop PDF quotes to train the model with specific examples</p>
+            </div>
+            <Badge variant="secondary" className="text-xs">
+              {uploadQueue.filter(u => u.status === 'completed').length} processed
+            </Badge>
+          </div>
+
+          {/* Drag and Drop Zone */}
+          <div
+            className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+              isDragging 
+                ? 'border-blue-400 bg-blue-50' 
+                : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-slate-100'
+            }`}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <div className="flex flex-col items-center gap-3">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                isDragging ? 'bg-blue-100' : 'bg-slate-200'
+              }`}>
+                <svg className={`w-6 h-6 ${isDragging ? 'text-blue-600' : 'text-slate-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              <div>
+                <p className={`text-sm font-medium ${isDragging ? 'text-blue-700' : 'text-slate-700'}`}>
+                  {isDragging ? 'Drop PDF quotes here' : 'Drag PDF quotes here to train the model'}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Or click to browse files
+                </p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => document.getElementById('quote-file-input')?.click()}
+                disabled={!mlHealth?.ok}
+              >
+                Browse Files
+              </Button>
+            </div>
+            
+            <input
+              id="quote-file-input"
+              type="file"
+              multiple
+              accept=".pdf,application/pdf"
+              onChange={handleFileSelect}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+          </div>
+
+          {/* Upload Queue */}
+          {uploadQueue.length > 0 && (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium text-slate-700">Upload Queue</h4>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={clearCompletedUploads}
+                  disabled={uploadQueue.filter(u => u.status === 'completed').length === 0}
+                >
+                  Clear Completed
+                </Button>
+              </div>
+              
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {uploadQueue.map((upload) => (
+                  <div key={upload.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg bg-slate-50">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-700 truncate">
+                        {upload.file.name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {(upload.file.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                      {upload.result && (
+                        <p className="text-xs text-green-600 mt-1">
+                          Confidence: {(upload.result.confidence * 100).toFixed(0)}% • 
+                          {upload.result.quote_type} quote • 
+                          {upload.result.training_records_saved} training record saved
+                        </p>
+                      )}
+                      {upload.error && (
+                        <p className="text-xs text-red-600 mt-1">
+                          Error: {upload.error}
+                        </p>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Badge variant={
+                        upload.status === 'completed' ? 'default' :
+                        upload.status === 'error' ? 'destructive' :
+                        upload.status === 'uploading' ? 'secondary' : 'outline'
+                      } className="text-xs">
+                        {upload.status}
+                      </Badge>
+                      
+                      {upload.status === 'uploading' && upload.progress !== undefined && (
+                        <div className="w-16 bg-slate-200 rounded-full h-1.5">
+                          <div 
+                            className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" 
+                            style={{ width: `${upload.progress}%` }}
+                          ></div>
+                        </div>
+                      )}
+                      
+                      <button 
+                        onClick={() => removeFromQueue(upload.id)}
+                        className="text-slate-400 hover:text-slate-600 p-1"
+                        title="Remove from queue"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 p-3 rounded-lg bg-green-50 border border-green-200">
+            <p className="text-xs text-green-700">
+              <strong>Training tips:</strong> Upload a variety of supplier quotes with different formats, pricing structures, 
+              and product types. The more diverse examples you provide, the better the model will become at parsing quotes accurately.
             </p>
           </div>
         </section>

@@ -45,6 +45,23 @@ const ACTIVE_TABS: LeadStatus[] = [
   "READY_TO_QUOTE",
 ];
 
+/* -------------------------------- Email Upload Types -------------------------------- */
+
+type EmailUpload = {
+  id: string;
+  file: File;
+  status: 'pending' | 'uploading' | 'completed' | 'error';
+  progress?: number;
+  result?: {
+    leadId: string;
+    contactName: string;
+    email: string;
+    subject: string;
+    confidence: number;
+  };
+  error?: string;
+};
+
 /* -------------------------------- Page -------------------------------- */
 
 export default function LeadsPage() {
@@ -70,6 +87,11 @@ export default function LeadsPage() {
   const [open, setOpen] = useState(false);
   const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
   const { toast } = useToast();
+
+  // email upload state
+  const [emailUploadQueue, setEmailUploadQueue] = useState<EmailUpload[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragCounter, setDragCounter] = useState(0);
 
   const buildAuthHeaders = (): HeadersInit | undefined => {
     const ids = getAuthIdsFromJwt();
@@ -326,6 +348,161 @@ export default function LeadsPage() {
     }
   }
 
+  /* ------------------------------ Email Upload Functions ------------------------------ */
+
+  function handleEmailDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev + 1);
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  }
+
+  function handleEmailDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev - 1);
+    if (dragCounter === 1) {
+      setIsDragging(false);
+    }
+  }
+
+  function handleEmailDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function handleEmailDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    setDragCounter(0);
+
+    const files = Array.from(e.dataTransfer.files);
+    addEmailFilesToQueue(files);
+  }
+
+  function handleEmailFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      addEmailFilesToQueue(files);
+    }
+  }
+
+  function addEmailFilesToQueue(files: File[]) {
+    // Filter for email-like files (.eml, .msg, .txt)
+    const emailFiles = files.filter(file => {
+      const name = file.name.toLowerCase();
+      return name.endsWith('.eml') || name.endsWith('.msg') || name.endsWith('.txt') || 
+             file.type === 'message/rfc822' || file.type === 'text/plain';
+    });
+    
+    if (emailFiles.length !== files.length) {
+      toast({
+        title: "Invalid files detected",
+        description: "Only email files (.eml, .msg, .txt) are supported",
+        variant: "destructive"
+      });
+    }
+
+    const newUploads = emailFiles.map(file => ({
+      file,
+      id: Math.random().toString(36).substr(2, 9),
+      status: 'pending' as const
+    }));
+
+    setEmailUploadQueue(prev => [...prev, ...newUploads]);
+
+    // Auto-start upload for each file
+    newUploads.forEach(upload => {
+      setTimeout(() => uploadEmailFile(upload), 100);
+    });
+  }
+
+  async function uploadEmailFile(upload: EmailUpload) {
+    setEmailUploadQueue(prev => prev.map(u => 
+      u.id === upload.id ? { ...u, status: 'uploading', progress: 0 } : u
+    ));
+
+    try {
+      // Convert file to base64
+      const base64Content = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remove data URL prefix (e.g., "data:text/plain;base64,")
+          const base64 = result.split(',')[1] || result;
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(upload.file);
+      });
+      
+      const headers = buildAuthHeaders();
+      
+      // Call email parsing API to extract lead information
+      const response = await apiFetch<{
+        leadId: string;
+        contactName: string;
+        email: string;
+        subject: string;
+        confidence: number;
+        bodyText?: string;
+      }>('/leads/parse-email', {
+        method: 'POST',
+        headers,
+        json: {
+          filename: upload.file.name,
+          mimeType: upload.file.type || 'text/plain',
+          base64: base64Content,
+          provider: 'manual'
+        }
+      });
+
+      setEmailUploadQueue(prev => prev.map(u => 
+        u.id === upload.id ? { 
+          ...u, 
+          status: 'completed', 
+          progress: 100, 
+          result: response
+        } : u
+      ));
+
+      toast({
+        title: "Email processed successfully",
+        description: `Created lead for ${response.contactName} with ${(response.confidence * 100).toFixed(0)}% confidence`,
+        duration: 4000
+      });
+
+      // Refresh the leads to show the new one
+      await refreshGrouped();
+
+    } catch (error: any) {
+      setEmailUploadQueue(prev => prev.map(u => 
+        u.id === upload.id ? { 
+          ...u, 
+          status: 'error', 
+          error: error.message || 'Upload failed'
+        } : u
+      ));
+
+      toast({
+        title: "Email processing failed",
+        description: `Failed to process ${upload.file.name}: ${error.message || 'Unknown error'}`,
+        variant: "destructive"
+      });
+    }
+  }
+
+  function removeEmailFromQueue(id: string) {
+    setEmailUploadQueue(prev => prev.filter(u => u.id !== id));
+  }
+
+  function clearCompletedEmailUploads() {
+    setEmailUploadQueue(prev => prev.filter(u => u.status !== 'completed'));
+  }
+
   /* ------------------------------ Render ------------------------------ */
 
   return (
@@ -434,6 +611,150 @@ export default function LeadsPage() {
             </div>
           )}
         </SectionCard>
+
+        {/* Email Upload Section - Only show on NEW_ENQUIRY tab */}
+        {tab === "NEW_ENQUIRY" && (
+          <SectionCard
+            title="Manual Email Import"
+            action={
+              <span className="text-xs font-medium text-slate-500">
+                {emailUploadQueue.filter(u => u.status === 'completed').length} processed
+              </span>
+            }
+          >
+            <div className="space-y-4">
+              <div className="text-sm text-slate-600 mb-3">
+                Missed an enquiry? Drag and drop email files here to create leads automatically.
+              </div>
+              
+              {/* Drag and Drop Zone */}
+              <div
+                className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all ${
+                  isDragging 
+                    ? 'border-sky-400 bg-sky-50' 
+                    : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-slate-100'
+                }`}
+                onDragEnter={handleEmailDragEnter}
+                onDragLeave={handleEmailDragLeave}
+                onDragOver={handleEmailDragOver}
+                onDrop={handleEmailDrop}
+              >
+                <div className="flex flex-col items-center gap-3">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    isDragging ? 'bg-sky-100' : 'bg-slate-200'
+                  }`}>
+                    <svg className={`w-6 h-6 ${isDragging ? 'text-sky-600' : 'text-slate-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className={`text-sm font-medium ${isDragging ? 'text-sky-700' : 'text-slate-700'}`}>
+                      {isDragging ? 'Drop email files here' : 'Drag email files here to create leads'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Supports .eml, .msg, and .txt files
+                    </p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => document.getElementById('email-file-input')?.click()}
+                  >
+                    Browse Files
+                  </Button>
+                </div>
+                
+                <input
+                  id="email-file-input"
+                  type="file"
+                  multiple
+                  accept=".eml,.msg,.txt,message/rfc822,text/plain"
+                  onChange={handleEmailFileSelect}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
+
+              {/* Upload Queue */}
+              {emailUploadQueue.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-slate-700">Processing Queue</h4>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={clearCompletedEmailUploads}
+                      disabled={emailUploadQueue.filter(u => u.status === 'completed').length === 0}
+                    >
+                      Clear Completed
+                    </Button>
+                  </div>
+                  
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {emailUploadQueue.map((upload) => (
+                      <div key={upload.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg bg-white">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-700 truncate">
+                            {upload.file.name}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {(upload.file.size / 1024).toFixed(1)} KB
+                          </p>
+                          {upload.result && (
+                            <p className="text-xs text-green-600 mt-1">
+                              ✓ Created lead for {upload.result.contactName} ({(upload.result.confidence * 100).toFixed(0)}% confidence)
+                            </p>
+                          )}
+                          {upload.error && (
+                            <p className="text-xs text-red-600 mt-1">
+                              ✗ {upload.error}
+                            </p>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            upload.status === 'completed' ? 'bg-green-100 text-green-700' :
+                            upload.status === 'error' ? 'bg-red-100 text-red-700' :
+                            upload.status === 'uploading' ? 'bg-blue-100 text-blue-700' : 
+                            'bg-slate-100 text-slate-700'
+                          }`}>
+                            {upload.status === 'uploading' ? 'Processing...' : upload.status}
+                          </span>
+                          
+                          {upload.status === 'uploading' && upload.progress !== undefined && (
+                            <div className="w-16 bg-slate-200 rounded-full h-1.5">
+                              <div 
+                                className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" 
+                                style={{ width: `${upload.progress}%` }}
+                              ></div>
+                            </div>
+                          )}
+                          
+                          <button 
+                            onClick={() => removeEmailFromQueue(upload.id)}
+                            className="text-slate-400 hover:text-slate-600 p-1"
+                            title="Remove from queue"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-xs text-blue-700">
+                  <strong>How it works:</strong> Upload email files (.eml, .msg, .txt) and the system will automatically extract contact information, 
+                  subject lines, and message content to create new leads. Perfect for importing enquiries that weren't caught by automatic email scanning.
+                </p>
+              </div>
+            </div>
+          </SectionCard>
+        )}
       </DeskSurface>
 
       <LeadModal

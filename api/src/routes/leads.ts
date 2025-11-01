@@ -816,4 +816,157 @@ router.post("/seed-demo", async (req, res) => {
   res.json({ ok: true, lead });
 });
 
+/* ------------------------------------------------------------------ */
+/* Manual Email Upload and Parsing                                     */
+/* ------------------------------------------------------------------ */
+
+router.post("/parse-email", async (req, res) => {
+  const { tenantId, userId } = getAuth(req);
+  if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+  try {
+    const { filename, mimeType, base64, provider } = req.body;
+    
+    if (!filename || !base64) {
+      return res.status(400).json({ error: "Missing filename or file content" });
+    }
+
+    // Decode base64 content
+    const fileContent = Buffer.from(base64, 'base64').toString('utf-8');
+    
+    // Parse email content to extract lead information
+    const emailData = parseEmailContent(fileContent);
+    
+    if (!emailData.contactName && !emailData.email) {
+      return res.status(400).json({ error: "Could not extract contact information from email" });
+    }
+
+    // Create a new lead from the parsed email
+    const lead = await prisma.lead.create({
+      data: {
+        tenantId,
+        createdById: userId,
+        contactName: emailData.contactName || "Unknown Contact",
+        email: emailData.email || null,
+        status: "NEW",
+        description: emailData.bodyText || null,
+        custom: {
+          subject: emailData.subject,
+          provider: provider || "manual",
+          bodyText: emailData.bodyText,
+          summary: emailData.summary,
+          uiStatus: "NEW_ENQUIRY" as UiStatus,
+          confidence: emailData.confidence,
+          source: "manual_upload",
+          filename: filename,
+        },
+      },
+    });
+
+    // Handle status transition and task creation
+    const playbook = await loadTaskPlaybook(tenantId);
+    await handleStatusTransition({
+      tenantId,
+      leadId: lead.id,
+      prevUi: null,
+      nextUi: "NEW_ENQUIRY",
+      actorId: userId,
+      playbook,
+    });
+
+    res.json({
+      leadId: lead.id,
+      contactName: lead.contactName,
+      email: lead.email,
+      subject: emailData.subject,
+      confidence: emailData.confidence,
+      bodyText: emailData.bodyText,
+    });
+
+  } catch (e: any) {
+    console.error("[leads] parse-email failed:", e);
+    res.status(500).json({ error: e?.message || "email parsing failed" });
+  }
+});
+
+/**
+ * Parse email content and extract lead information
+ */
+function parseEmailContent(content: string): {
+  contactName: string | null;
+  email: string | null;
+  subject: string | null;
+  bodyText: string | null;
+  summary: string | null;
+  confidence: number;
+} {
+  const lines = content.split('\n');
+  let subject = null;
+  let from = null;
+  let bodyText = null;
+  let contactName = null;
+  let email = null;
+  let confidence = 0.5;
+
+  // Parse email headers
+  const headerEndIndex = lines.findIndex(line => line.trim() === '');
+  const headers = lines.slice(0, headerEndIndex);
+  const body = lines.slice(headerEndIndex + 1).join('\n').trim();
+
+  // Extract headers
+  for (const line of headers) {
+    if (line.toLowerCase().startsWith('subject:')) {
+      subject = line.substring(8).trim();
+    } else if (line.toLowerCase().startsWith('from:')) {
+      from = line.substring(5).trim();
+    }
+  }
+
+  // Extract email and name from From header
+  if (from) {
+    const emailMatch = from.match(/<([^>]+)>/);
+    if (emailMatch) {
+      email = emailMatch[1];
+      contactName = from.replace(/<[^>]+>/, '').trim().replace(/^["']|["']$/g, '');
+    } else {
+      // Check if from is just an email
+      const simpleEmailMatch = from.match(/^([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/);
+      if (simpleEmailMatch) {
+        email = simpleEmailMatch[1];
+        contactName = email.split('@')[0]; // Use part before @ as name
+      }
+    }
+  }
+
+  // Clean up contact name
+  if (contactName) {
+    contactName = contactName.trim();
+    if (contactName === '' || contactName === email) {
+      contactName = email ? email.split('@')[0] : null;
+    }
+  }
+
+  // Use body as description and create summary
+  bodyText = body;
+  let summary = null;
+  if (bodyText && bodyText.length > 100) {
+    summary = bodyText.substring(0, 200) + (bodyText.length > 200 ? '...' : '');
+  }
+
+  // Calculate confidence based on what we extracted
+  if (email && contactName && subject) confidence = 0.9;
+  else if (email && subject) confidence = 0.8;
+  else if (email || contactName) confidence = 0.6;
+  else confidence = 0.3;
+
+  return {
+    contactName,
+    email,
+    subject,
+    bodyText,
+    summary,
+    confidence,
+  };
+}
+
 export default router;
