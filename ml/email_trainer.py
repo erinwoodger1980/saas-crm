@@ -416,6 +416,10 @@ class GmailService:
     def search_emails(self, keywords: List[str], has_attachments: bool, since_date: datetime, sent_only: bool) -> List[Dict[str, Any]]:
         """Search for emails matching criteria using existing Gmail API"""
         
+        # Check if we have real credentials with refresh token
+        if self.credentials.get('refresh_token'):
+            return self._search_real_gmail_emails(keywords, has_attachments, since_date, sent_only)
+        
         # For demo purposes, return sample email data when testing
         if os.getenv("ML_DEMO_MODE") == "true":
             logger.info("Demo mode: returning sample client quote emails")

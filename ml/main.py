@@ -454,22 +454,53 @@ async def start_email_training(payload: EmailTrainingPayload):
         raise HTTPException(status_code=503, detail="Email training not available - database connection required")
     
     try:
-        # Enable demo mode for testing if no real credentials provided
-        if not payload.credentials or not payload.credentials.get('access_token'):
-            os.environ['ML_DEMO_MODE'] = 'true'
-            
         # Get database URL
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
             raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
+
+        from db_config import get_db_manager
+        db_manager = get_db_manager()
+        
+        # Get Gmail credentials from database (same as API service does)
+        gmail_credentials = {}
+        tenant_id = payload.tenantId
+        
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            # Check if Gmail is connected for this tenant
+            cur.execute('SELECT "refreshToken", "gmailAddress" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
+            result = cur.fetchone()
+            
+            if result:
+                refresh_token, gmail_address = result
+                # Get fresh access token using refresh token
+                gmail_credentials = {
+                    'refresh_token': refresh_token,
+                    'gmail_address': gmail_address,
+                    'api_base_url': os.getenv('API_SERVICE_URL', 'https://joinery-ai.onrender.com'),
+                    'headers': {
+                        'Authorization': f'Bearer {refresh_token}',  # Will be refreshed to access token
+                        'Content-Type': 'application/json'
+                    }
+                }
+                
+                # Set environment variables needed for Gmail API
+                os.environ['GMAIL_CLIENT_ID'] = os.getenv('GMAIL_CLIENT_ID', '')
+                os.environ['GMAIL_CLIENT_SECRET'] = os.getenv('GMAIL_CLIENT_SECRET', '')
+                
+                logger.info(f"Found Gmail connection for {gmail_address}")
+            else:
+                logger.warning(f"No Gmail connection found for tenant {tenant_id} - will try demo mode")
+                os.environ['ML_DEMO_MODE'] = 'true'
         
         # Initialize workflow
-        workflow = EmailTrainingWorkflow(db_url, payload.tenantId)
+        workflow = EmailTrainingWorkflow(db_url, tenant_id)
         
-        # Run the complete workflow
+        # Run the complete workflow with real Gmail credentials
         results = workflow.run_full_workflow(
             email_provider=payload.emailProvider,
-            credentials=payload.credentials,
+            credentials=gmail_credentials,  # Use real credentials from database
             days_back=payload.daysBack
         )
         
