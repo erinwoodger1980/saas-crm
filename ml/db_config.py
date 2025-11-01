@@ -161,6 +161,48 @@ class MLDatabaseManager:
             self.logger.error(f"Failed to retrieve training data: {e}")
             raise
     
+    def execute_query(self, sql: str, params: tuple = None):
+        """Execute a query with optional parameters."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    if params:
+                        cur.execute(sql, params)
+                    else:
+                        cur.execute(sql)
+                    conn.commit()
+        except Exception as e:
+            self.logger.error(f"Failed to execute query: {e}")
+            raise
+    
+    def fetch_one(self, sql: str, params: tuple = None):
+        """Fetch one row from a query."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    if params:
+                        cur.execute(sql, params)
+                    else:
+                        cur.execute(sql)
+                    return cur.fetchone()
+        except Exception as e:
+            self.logger.error(f"Failed to fetch one: {e}")
+            raise
+    
+    def fetch_all(self, sql: str, params: tuple = None):
+        """Fetch all rows from a query."""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    if params:
+                        cur.execute(sql, params)
+                    else:
+                        cur.execute(sql)
+                    return cur.fetchall()
+        except Exception as e:
+            self.logger.error(f"Failed to fetch all: {e}")
+            raise
+    
     def cleanup(self):
         """Clean up database connections."""
         if self.pool:

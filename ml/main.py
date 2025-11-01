@@ -798,7 +798,10 @@ async def get_lead_classifier_stats(tenantId: str):
             WHERE tenant_id = %s
         """
         
-        stats_result = db_manager.fetch_one(stats_sql, (tenantId,))
+        with db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(stats_sql, (tenantId,))
+                stats_result = cur.fetchone()
         
         # Get retraining history
         retrain_history_sql = """
@@ -809,7 +812,10 @@ async def get_lead_classifier_stats(tenantId: str):
             LIMIT 5
         """
         
-        retrain_history = db_manager.fetch_all(retrain_history_sql, (tenantId,))
+        with db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(retrain_history_sql, (tenantId,))
+                retrain_history = cur.fetchall()
         
         if stats_result:
             return {
