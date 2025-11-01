@@ -454,6 +454,10 @@ async def start_email_training(payload: EmailTrainingPayload):
         raise HTTPException(status_code=503, detail="Email training not available - database connection required")
     
     try:
+        # Enable demo mode for testing if no real credentials provided
+        if not payload.credentials or not payload.credentials.get('access_token'):
+            os.environ['ML_DEMO_MODE'] = 'true'
+            
         # Get database URL
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
