@@ -1,4 +1,4 @@
-# ml/main.py
+# ml/main.py - FastAPI ML service with Gmail integration (v2.1)
 from __future__ import annotations
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
