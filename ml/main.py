@@ -545,8 +545,8 @@ async def upload_quote_training(request: dict):
         # Use default tenant if not provided
         effective_tenant_id = tenant_id or "default-tenant"
         
-        from db_config import DatabaseManager
-        db_manager = DatabaseManager(db_url)
+        from db_config import get_db_manager
+        db_manager = get_db_manager()  # This automatically creates tables
         
         # Create training data record
         training_record = {
@@ -749,8 +749,8 @@ async def submit_lead_feedback(payload: LeadFeedbackPayload):
             raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
         
         # Store the feedback in the training database
-        from db_config import DatabaseManager
-        db_manager = DatabaseManager(db_url)
+        from db_config import get_db_manager
+        db_manager = get_db_manager()  # This automatically creates tables
         
         # Create lead feedback table if not exists
         # Create the table if it doesn't exist
@@ -836,8 +836,8 @@ async def retrain_lead_classifier(payload: LeadClassifierRetrainPayload):
         if not db_url:
             raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
         
-        from db_config import DatabaseManager
-        db_manager = DatabaseManager(db_url)
+        from db_config import get_db_manager
+        db_manager = get_db_manager()  # This automatically creates tables
         
         # Ensure retraining log table exists
         create_log_table_sql = """
@@ -935,8 +935,8 @@ async def get_lead_classifier_stats(tenantId: str):
         if not db_url:
             raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
         
-        from db_config import DatabaseManager
-        db_manager = DatabaseManager(db_url)
+        from db_config import get_db_manager
+        db_manager = get_db_manager()  # This automatically creates tables
         
         # Get training data stats
         stats_sql = """
