@@ -349,7 +349,9 @@ class GmailService:
     def __init__(self, credentials: Dict[str, Any]):
         self.credentials = credentials
         # credentials should contain api_base_url and authorization headers
-        self.api_base = credentials.get('api_base_url', 'https://api.joineryai.app')
+        # Use environment variable API_SERVICE_URL or fallback to credentials
+        import os
+        self.api_base = os.getenv('API_SERVICE_URL') or credentials.get('api_base_url', 'https://joinery-ai.onrender.com')
         self.headers = credentials.get('headers', {})
         logger.info("Gmail service initialized with existing API")
     

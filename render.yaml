@@ -22,5 +22,7 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false  # Set this in Render dashboard to your PostgreSQL URL
+      - key: API_SERVICE_URL
+        value: https://joinery-ai.onrender.com
       - key: PORT
         value: 8000
