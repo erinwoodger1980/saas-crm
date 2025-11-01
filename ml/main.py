@@ -244,13 +244,45 @@ def debug_gmail():
             
             response = requests.post('https://oauth2.googleapis.com/token', data=data)
             
-            return {
-                "gmail_address": gmail_address,
-                "refresh_token_length": len(refresh_token) if refresh_token else 0,
-                "token_refresh_status": response.status_code,
-                "token_refresh_success": response.ok,
-                "error_details": response.text if not response.ok else "Success"
-            }
+            if response.ok:
+                access_token = response.json()['access_token']
+                
+                # Test simple Gmail search for emails with "quote" in subject
+                headers = {'Authorization': f'Bearer {access_token}'}
+                url = 'https://www.googleapis.com/gmail/v1/users/me/messages'
+                params = {'q': 'subject:quote in:sent', 'maxResults': 5}
+                
+                gmail_response = requests.get(url, headers=headers, params=params)
+                
+                gmail_result = {
+                    "gmail_search_status": gmail_response.status_code,
+                    "gmail_search_success": gmail_response.ok
+                }
+                
+                if gmail_response.ok:
+                    data = gmail_response.json()
+                    messages = data.get('messages', [])
+                    gmail_result["messages_found"] = len(messages)
+                    if messages:
+                        gmail_result["message_ids"] = [m['id'] for m in messages]
+                else:
+                    gmail_result["gmail_error"] = gmail_response.text
+                
+                return {
+                    "gmail_address": gmail_address,
+                    "refresh_token_length": len(refresh_token) if refresh_token else 0,
+                    "token_refresh_status": response.status_code,
+                    "token_refresh_success": response.ok,
+                    **gmail_result
+                }
+            else:
+                return {
+                    "gmail_address": gmail_address,
+                    "refresh_token_length": len(refresh_token) if refresh_token else 0,
+                    "token_refresh_status": response.status_code,
+                    "token_refresh_success": response.ok,
+                    "error_details": response.text
+                }
             
     except Exception as e:
         return {"error": str(e)}
