@@ -674,11 +674,10 @@ export default function AiTrainingPage() {
         reader.readAsDataURL(upload.file);
       });
       
-      const response = await fetch(`${API_BASE}/ml/upload-quote-training`, {
+      const response = await fetch('https://new-ml-zo9l.onrender.com/upload-quote-training', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` || ''
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           filename: upload.file.name,
