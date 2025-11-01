@@ -803,19 +803,23 @@ async def get_lead_classifier_stats(tenantId: str):
                 cur.execute(stats_sql, (tenantId,))
                 stats_result = cur.fetchone()
         
-        # Get retraining history
-        retrain_history_sql = """
-            SELECT retrained_at, examples_used, performance_metrics
-            FROM lead_classifier_retraining_log 
-            WHERE tenant_id = %s 
-            ORDER BY retrained_at DESC 
-            LIMIT 5
-        """
-        
-        with db_manager.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(retrain_history_sql, (tenantId,))
-                retrain_history = cur.fetchall()
+        # Get retraining history - handle case where table doesn't exist yet
+        try:
+            retrain_history_sql = """
+                SELECT retrained_at, examples_used, performance_metrics
+                FROM lead_classifier_retraining_log 
+                WHERE tenant_id = %s 
+                ORDER BY retrained_at DESC 
+                LIMIT 5
+            """
+            
+            with db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(retrain_history_sql, (tenantId,))
+                    retrain_history = cur.fetchall()
+        except Exception as e:
+            # Table might not exist yet - that's ok
+            retrain_history = []
         
         if stats_result:
             return {
