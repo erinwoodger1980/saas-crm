@@ -1,6 +1,6 @@
 # ml/main.py
 from __future__ import annotations
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List, Set
@@ -483,6 +483,96 @@ async def start_email_training(payload: EmailTrainingPayload):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Email training workflow failed: {e}")
+
+@app.post("/upload-quote-training")
+async def upload_quote_training(
+    file: UploadFile = File(...),
+    tenantId: str = Form(...),
+    quoteType: str = Form(...),  # "supplier" or "client"
+    projectType: Optional[str] = Form(None),
+    clientName: Optional[str] = Form(None),
+    quotedPrice: Optional[float] = Form(None),
+    areaM2: Optional[float] = Form(None),
+    materialsGrade: Optional[str] = Form(None)
+):
+    """
+    Upload and process a quote file for training.
+    Supports drag-and-drop functionality for manual quote training.
+    """
+    if not EMAIL_TRAINING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Quote training not available - database connection required")
+    
+    try:
+        # Validate file type
+        if not file.filename or not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=422, detail="Only PDF files are supported")
+        
+        # Read file content
+        file_content = await file.read()
+        
+        # Extract text from PDF
+        pdf_text = extract_text_from_pdf_bytes(file_content) or ""
+        
+        if not pdf_text.strip():
+            raise HTTPException(status_code=422, detail="Could not extract text from PDF")
+        
+        # Parse the quote based on type
+        if quoteType == "supplier":
+            parsed_data = parse_quote_lines_from_text(pdf_text)
+            quote_type = "supplier"
+        else:
+            parsed_data = parse_client_quote_from_text(pdf_text)
+            quote_type = "client"
+        
+        # Determine quote confidence
+        confidence = parsed_data.get('confidence', 0.0) if parsed_data else 0.0
+        
+        # Get database URL and save training data
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
+        
+        from db_config import DatabaseManager
+        db_manager = DatabaseManager(db_url)
+        
+        # Create training data record
+        training_record = {
+            'tenant_id': tenantId,
+            'email_subject': f"Manual upload: {file.filename}",
+            'email_date': datetime.datetime.utcnow(),
+            'attachment_name': file.filename,
+            'parsed_data': json.dumps(parsed_data) if parsed_data else "{}",
+            'project_type': projectType,
+            'quoted_price': quotedPrice,
+            'area_m2': areaM2,
+            'materials_grade': materialsGrade,
+            'confidence': confidence
+        }
+        
+        # Save to database
+        saved_count = db_manager.save_training_data([training_record])
+        
+        return {
+            "ok": True,
+            "message": f"Quote uploaded and processed successfully",
+            "filename": file.filename,
+            "quote_type": quote_type,
+            "text_length": len(pdf_text),
+            "confidence": confidence,
+            "parsed_data": parsed_data,
+            "training_records_saved": saved_count,
+            "manual_metadata": {
+                "project_type": projectType,
+                "client_name": clientName,
+                "quoted_price": quotedPrice,
+                "area_m2": areaM2,
+                "materials_grade": materialsGrade
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Quote upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Quote upload failed: {e}")
 
 @app.post("/preview-email-quotes")
 async def preview_email_quotes(payload: EmailTrainingPayload):

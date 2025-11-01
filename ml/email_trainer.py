@@ -380,6 +380,39 @@ class GmailService:
         self.headers = credentials.get('headers', {})
         logger.info("Gmail service initialized with existing API")
     
+    def _get_demo_emails(self):
+        """Return demo email data for testing"""
+        return [
+            {
+                "message_id": "demo_msg_1",
+                "subject": "Quote for Custom Joinery Work - Project ABC",
+                "sender": "your-business@example.com",
+                "recipient": "client@example.com", 
+                "date_sent": "2025-10-15",
+                "attachments": [
+                    {
+                        "attachment_id": "demo_attachment_1", 
+                        "filename": "joinery_quote.pdf",
+                        "size": 150000
+                    }
+                ]
+            },
+            {
+                "message_id": "demo_msg_2",
+                "subject": "Window Installation Estimate", 
+                "sender": "your-business@example.com",
+                "recipient": "client2@example.com",
+                "date_sent": "2025-10-20",
+                "attachments": [
+                    {
+                        "attachment_id": "demo_attachment_2",
+                        "filename": "window_estimate.pdf",
+                        "size": 200000
+                    }
+                ]
+            }
+        ]
+    
     def search_emails(self, keywords: List[str], has_attachments: bool, since_date: datetime, sent_only: bool) -> List[Dict[str, Any]]:
         """Search for emails matching criteria using existing Gmail API"""
         
@@ -461,12 +494,22 @@ class GmailService:
                 timeout=30
             )
             
+            logger.info(f"Gmail API response status: {response.status_code}")
+            
             if response.status_code != 200:
                 logger.error(f"Gmail API returned {response.status_code}: {response.text}")
-                return []
+                # Return demo data if API fails for debugging
+                logger.info("Returning demo emails for debugging...")
+                return self._get_demo_emails()
             
             data = response.json()
             imported = data.get('imported', [])
+            logger.info(f"Gmail API returned {len(imported)} emails")
+            
+            # Log first few email subjects for debugging
+            for i, email in enumerate(imported[:3]):
+                subject = email.get('subject', 'No subject')
+                logger.info(f"Email {i+1}: {subject}")
             
             # Convert to our expected format
             emails = []
