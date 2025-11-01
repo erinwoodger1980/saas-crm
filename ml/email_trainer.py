@@ -64,9 +64,11 @@ class EmailTrainingWorkflow:
         
         quote_keywords = [
             "estimate", "quotation", "proposal", "quote",
-            "joinery", "windows", "doors", "timber"
+            "joinery", "windows", "doors", "timber", "carpenter",
+            "price", "cost", "attachment", "pdf"
         ]
         
+        # First try sent emails (client quotes we generated)
         emails = self.email_service.search_emails(
             keywords=quote_keywords,
             has_attachments=True,
@@ -74,18 +76,41 @@ class EmailTrainingWorkflow:
             sent_only=True  # Only emails we sent to clients
         )
         
+        # If no sent emails found, also check received emails for debugging
+        if not emails:
+            logger.info("No sent emails with quotes found, checking received emails for debugging...")
+            emails = self.email_service.search_emails(
+                keywords=quote_keywords,
+                has_attachments=True,
+                since_date=since_date,
+                sent_only=False
+            )
+        
+        logger.info(f"Found {len(emails)} emails matching quote criteria")
+        
         client_quotes = []
         
         for email in emails:
             # Check if email has PDF attachments
-            for attachment in email.get("attachments", []):
-                if attachment.get("filename", "").lower().endswith(".pdf"):
+            attachments = email.get("attachments", [])
+            logger.info(f"Email '{email.get('subject', 'No subject')}' has {len(attachments)} attachments")
+            
+            for attachment in attachments:
+                filename = attachment.get("filename", "").lower()
+                logger.info(f"Processing attachment: {filename}")
+                
+                if filename.endswith(".pdf") or "pdf" in filename:
                     try:
                         quote = self._process_email_attachment(email, attachment)
-                        if quote and quote.confidence > 0.2:  # Lower threshold for demo
+                        if quote and quote.confidence > 0.1:  # Very low threshold for debugging
                             client_quotes.append(quote)
+                            logger.info(f"Added quote with confidence {quote.confidence}")
+                        else:
+                            logger.info(f"Quote rejected - confidence too low or processing failed")
                     except Exception as e:
-                        logger.error(f"Error processing attachment {attachment.get('filename')}: {e}")
+                        logger.error(f"Error processing attachment {filename}: {e}")
+                else:
+                    logger.info(f"Skipping non-PDF attachment: {filename}")
         
         logger.info(f"Found {len(client_quotes)} client quotes from last {days_back} days")
         return client_quotes
@@ -395,24 +420,33 @@ class GmailService:
         # Build Gmail search query
         query_parts = []
         
-        # Add keywords search
+        # Add keywords search - make it more flexible
         if keywords:
-            keyword_query = " OR ".join(keywords)
+            # Try broader search terms
+            broader_keywords = keywords + ["attachment", "file", "document"]
+            keyword_query = " OR ".join(broader_keywords)
             query_parts.append(f"({keyword_query})")
         
         # Add attachment filter  
         if has_attachments:
             query_parts.append("has:attachment")
         
-        # Add date filter - temporarily disabled for testing
-        # query_parts.append("newer_than:1d")
+        # Add date filter - use days_back from function parameter
+        days_back = (datetime.now() - since_date).days
+        if days_back <= 1:
+            query_parts.append("newer_than:1d")
+        elif days_back <= 7:
+            query_parts.append("newer_than:7d") 
+        elif days_back <= 30:
+            query_parts.append("newer_than:30d")
+        # For larger ranges, don't add date filter to get any results
         
         # Add sent filter (look in sent items for client quotes we sent)
         if sent_only:
             query_parts.append("in:sent")
         
         gmail_query = " ".join(query_parts)
-        logger.info(f"Searching Gmail with query: {gmail_query}")
+        logger.info(f"Searching Gmail with query: {gmail_query} (days_back: {days_back})")
         
         try:
             # Use existing Gmail import API with custom query
