@@ -494,15 +494,45 @@ class GmailService:
     
     def _extract_attachments(self, payload: Dict, attachments: List[Dict]):
         """Recursively extract attachments from email payload"""
+        logger.info(f"Extracting attachments from payload with keys: {list(payload.keys())}")
+        
         if "parts" in payload:
-            for part in payload["parts"]:
+            logger.info(f"Found {len(payload['parts'])} parts in payload")
+            for i, part in enumerate(payload["parts"]):
+                logger.info(f"Processing part {i+1} with keys: {list(part.keys())}")
                 self._extract_attachments(part, attachments)
-        elif payload.get("filename") and payload.get("body", {}).get("attachmentId"):
+        
+        # Check for attachment in this part
+        filename = payload.get("filename", "")
+        mimeType = payload.get("mimeType", "")
+        
+        logger.info(f"Part filename: '{filename}', mimeType: '{mimeType}'")
+        
+        # Standard Gmail attachment format
+        if filename and payload.get("body", {}).get("attachmentId"):
+            logger.info(f"Found standard attachment: {filename}")
             attachments.append({
                 "attachment_id": payload["body"]["attachmentId"],
-                "filename": payload["filename"],
+                "filename": filename,
                 "size": payload["body"].get("size", 0)
             })
+        
+        # Alternative attachment format - sometimes Gmail puts attachments differently
+        elif filename and mimeType and ("pdf" in mimeType.lower() or filename.lower().endswith(".pdf")):
+            # Even without attachmentId, if it has a PDF filename, try to include it
+            logger.info(f"Found PDF attachment (alternative format): {filename}")
+            attachment_id = payload.get("body", {}).get("attachmentId") or payload.get("partId", "unknown")
+            attachments.append({
+                "attachment_id": attachment_id,
+                "filename": filename,
+                "size": payload.get("body", {}).get("size", 0)
+            })
+        
+        # Log what we found
+        if filename:
+            logger.info(f"File '{filename}' - included: {len([a for a in attachments if a['filename'] == filename]) > 0}")
+        
+        logger.info(f"Total attachments found so far: {len(attachments)}")
 
     def download_attachment(self, message_id: str, attachment_id: str) -> bytes:
         """Download email attachment using real Gmail API"""
