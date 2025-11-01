@@ -402,10 +402,8 @@ class GmailService:
         if has_attachments:
             query_parts.append("has:attachment")
         
-        # Add date filter
-        days_back = (datetime.now() - since_date).days
-        if days_back > 0:
-            query_parts.append(f"newer_than:{days_back}d")
+        # Add date filter - temporarily disabled for testing
+        # query_parts.append("newer_than:1d")
         
         # Add sent filter (look in sent items for client quotes we sent)
         if sent_only:
