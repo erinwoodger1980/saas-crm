@@ -661,18 +661,31 @@ export default function AiTrainingPage() {
     ));
 
     try {
-      const formData = new FormData();
-      formData.append('file', upload.file);
-      formData.append('quoteType', 'supplier'); // Default to supplier quotes
-      
-      // TenantId will be determined from auth context on server side
+      // Convert file to base64
+      const base64Content = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remove data URL prefix (e.g., "data:application/pdf;base64,")
+          const base64 = result.split(',')[1] || result;
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(upload.file);
+      });
       
       const response = await fetch(`${API_BASE}/ml/upload-quote-training`, {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}` || ''
         },
-        body: formData
+        body: JSON.stringify({
+          filename: upload.file.name,
+          base64: base64Content,
+          quoteType: 'supplier',
+          tenantId: user?.id || 'default-tenant'
+        })
       });
 
       if (!response.ok) {

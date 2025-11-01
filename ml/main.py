@@ -1,6 +1,6 @@
 # ml/main.py
 from __future__ import annotations
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List, Set
@@ -485,30 +485,40 @@ async def start_email_training(payload: EmailTrainingPayload):
         raise HTTPException(status_code=500, detail=f"Email training workflow failed: {e}")
 
 @app.post("/upload-quote-training")
-async def upload_quote_training(
-    file: UploadFile = File(...),
-    quoteType: str = Form(...),  # "supplier" or "client"
-    tenantId: Optional[str] = Form(None),  # Optional, will use default if not provided
-    projectType: Optional[str] = Form(None),
-    clientName: Optional[str] = Form(None),
-    quotedPrice: Optional[float] = Form(None),
-    areaM2: Optional[float] = Form(None),
-    materialsGrade: Optional[str] = Form(None)
-):
+async def upload_quote_training(request: dict):
     """
     Upload and process a quote file for training.
     Supports drag-and-drop functionality for manual quote training.
+    Expects JSON payload with base64 encoded file content.
     """
     if not EMAIL_TRAINING_AVAILABLE:
         raise HTTPException(status_code=503, detail="Quote training not available - database connection required")
     
     try:
+        # Extract data from JSON request
+        filename = request.get('filename')
+        base64_content = request.get('base64')
+        quote_type = request.get('quoteType', 'supplier')
+        tenant_id = request.get('tenantId')
+        project_type = request.get('projectType')
+        client_name = request.get('clientName')
+        quoted_price = request.get('quotedPrice')
+        area_m2 = request.get('areaM2')
+        materials_grade = request.get('materialsGrade')
+        
+        if not filename or not base64_content:
+            raise HTTPException(status_code=422, detail="Missing filename or base64 content")
+        
         # Validate file type
-        if not file.filename or not file.filename.lower().endswith('.pdf'):
+        if not filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=422, detail="Only PDF files are supported")
         
-        # Read file content
-        file_content = await file.read()
+        # Decode base64 content
+        import base64
+        try:
+            file_content = base64.b64decode(base64_content)
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid base64 content")
         
         # Extract text from PDF
         pdf_text = extract_text_from_pdf_bytes(file_content) or ""
@@ -517,12 +527,12 @@ async def upload_quote_training(
             raise HTTPException(status_code=422, detail="Could not extract text from PDF")
         
         # Parse the quote based on type
-        if quoteType == "supplier":
+        if quote_type == "supplier":
             parsed_data = parse_quote_lines_from_text(pdf_text)
-            quote_type = "supplier"
+            quote_type_result = "supplier"
         else:
             parsed_data = parse_client_quote_from_text(pdf_text)
-            quote_type = "client"
+            quote_type_result = "client"
         
         # Determine quote confidence
         confidence = parsed_data.get('confidence', 0.0) if parsed_data else 0.0
@@ -533,7 +543,7 @@ async def upload_quote_training(
             raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
         
         # Use default tenant if not provided
-        effective_tenant_id = tenantId or "default-tenant"
+        effective_tenant_id = tenant_id or "default-tenant"
         
         from db_config import DatabaseManager
         db_manager = DatabaseManager(db_url)
@@ -541,14 +551,14 @@ async def upload_quote_training(
         # Create training data record
         training_record = {
             'tenant_id': effective_tenant_id,
-            'email_subject': f"Manual upload: {file.filename}",
+            'email_subject': f"Manual upload: {filename}",
             'email_date': datetime.datetime.utcnow(),
-            'attachment_name': file.filename,
+            'attachment_name': filename,
             'parsed_data': json.dumps(parsed_data) if parsed_data else "{}",
-            'project_type': projectType,
-            'quoted_price': quotedPrice,
-            'area_m2': areaM2,
-            'materials_grade': materialsGrade,
+            'project_type': project_type,
+            'quoted_price': quoted_price,
+            'area_m2': area_m2,
+            'materials_grade': materials_grade,
             'confidence': confidence
         }
         
@@ -558,21 +568,23 @@ async def upload_quote_training(
         return {
             "ok": True,
             "message": f"Quote uploaded and processed successfully",
-            "filename": file.filename,
-            "quote_type": quote_type,
+            "filename": filename,
+            "quote_type": quote_type_result,
             "text_length": len(pdf_text),
             "confidence": confidence,
             "parsed_data": parsed_data,
             "training_records_saved": saved_count,
             "manual_metadata": {
-                "project_type": projectType,
-                "client_name": clientName,
-                "quoted_price": quotedPrice,
-                "area_m2": areaM2,
-                "materials_grade": materialsGrade
+                "project_type": project_type,
+                "client_name": client_name,
+                "quoted_price": quoted_price,
+                "area_m2": area_m2,
+                "materials_grade": materials_grade
             }
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Quote upload error: {e}")
         raise HTTPException(status_code=500, detail=f"Quote upload failed: {e}")
