@@ -570,6 +570,7 @@ class GmailService:
         try:
             # Call Gmail API directly instead of going through main API
             access_token = self._get_access_token()
+            logger.info("Successfully got Gmail access token")
             
             headers = {
                 'Authorization': f'Bearer {access_token}',
@@ -582,8 +583,12 @@ class GmailService:
                 "maxResults": 50
             }
             
+            logger.info(f"Calling Gmail API: {url} with query: {gmail_query}")
+            
             import requests
             response = requests.get(url, headers=headers, params=params)
+            logger.info(f"Gmail API response status: {response.status_code}")
+            
             if not response.ok:
                 logger.error(f"Gmail search failed: {response.status_code} {response.text}")
                 return []
@@ -592,12 +597,20 @@ class GmailService:
             message_ids = [msg["id"] for msg in data.get("messages", [])]
             logger.info(f"Found {len(message_ids)} messages matching search")
             
+            # Log some message IDs for debugging
+            if message_ids:
+                logger.info(f"First few message IDs: {message_ids[:3]}")
+            
             # Get detailed message data for each message
             emails = []
-            for msg_id in message_ids[:10]:  # Limit to first 10 for processing
+            for i, msg_id in enumerate(message_ids[:10]):  # Limit to first 10 for processing
+                logger.info(f"Processing message {i+1}/{min(len(message_ids), 10)}: {msg_id}")
                 email_data = self._get_email_details(access_token, msg_id)
                 if email_data:
+                    logger.info(f"Found valid email: {email_data['subject']}")
                     emails.append(email_data)
+                else:
+                    logger.info(f"Skipped email {msg_id} (no PDF attachments)")
             
             logger.info(f"Found {len(emails)} emails with PDF attachments")
             return emails
@@ -627,21 +640,34 @@ class GmailService:
                 for header in data["payload"]["headers"]:
                     headers_data[header["name"]] = header["value"]
             
+            subject = headers_data.get("Subject", "")
+            logger.info(f"Processing email: {subject}")
+            
             # Extract attachments
             attachments = []
             if "payload" in data:
                 self._extract_attachments(data["payload"], attachments)
             
+            logger.info(f"Found {len(attachments)} total attachments")
+            
             # Filter for PDF attachments only
             pdf_attachments = [att for att in attachments if att.get("filename", "").lower().endswith(".pdf")]
+            logger.info(f"Found {len(pdf_attachments)} PDF attachments")
+            
+            # Log attachment details for debugging
+            for att in attachments:
+                filename = att.get("filename", "")
+                logger.info(f"Attachment: {filename}")
             
             # Only return email if it has PDF attachments
             if not pdf_attachments:
+                logger.info(f"Skipping email '{subject}' - no PDF attachments")
                 return None
                 
+            logger.info(f"Email '{subject}' has PDF attachments - including in results")
             return {
                 "message_id": message_id,
-                "subject": headers_data.get("Subject", ""),
+                "subject": subject,
                 "sender": headers_data.get("From", ""),
                 "recipient": headers_data.get("To", ""),
                 "date_sent": headers_data.get("Date", ""),
