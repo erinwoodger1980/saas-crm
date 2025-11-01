@@ -487,8 +487,8 @@ async def start_email_training(payload: EmailTrainingPayload):
 @app.post("/upload-quote-training")
 async def upload_quote_training(
     file: UploadFile = File(...),
-    tenantId: str = Form(...),
     quoteType: str = Form(...),  # "supplier" or "client"
+    tenantId: Optional[str] = Form(None),  # Optional, will use default if not provided
     projectType: Optional[str] = Form(None),
     clientName: Optional[str] = Form(None),
     quotedPrice: Optional[float] = Form(None),
@@ -532,12 +532,15 @@ async def upload_quote_training(
         if not db_url:
             raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
         
+        # Use default tenant if not provided
+        effective_tenant_id = tenantId or "default-tenant"
+        
         from db_config import DatabaseManager
         db_manager = DatabaseManager(db_url)
         
         # Create training data record
         training_record = {
-            'tenant_id': tenantId,
+            'tenant_id': effective_tenant_id,
             'email_subject': f"Manual upload: {file.filename}",
             'email_date': datetime.datetime.utcnow(),
             'attachment_name': file.filename,
