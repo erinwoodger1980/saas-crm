@@ -188,7 +188,26 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "models": models_status()}
+    """Health check endpoint showing service status and model availability"""
+    return {
+        "status": "ok",
+        "models": {
+            "price": price_model is not None,
+            "win": win_model is not None,
+        }
+    }
+
+@app.get("/debug-env")
+def debug_env():
+    """Debug endpoint to check Gmail environment variables (temporary)"""
+    return {
+        "gmail_client_id_set": bool(os.getenv('GMAIL_CLIENT_ID')),
+        "gmail_client_secret_set": bool(os.getenv('GMAIL_CLIENT_SECRET')),
+        "database_url_set": bool(os.getenv('DATABASE_URL')),
+        "api_service_url": os.getenv('API_SERVICE_URL', 'not_set'),
+        "gmail_client_id_length": len(os.getenv('GMAIL_CLIENT_ID', '')) if os.getenv('GMAIL_CLIENT_ID') else 0,
+        "gmail_client_secret_length": len(os.getenv('GMAIL_CLIENT_SECRET', '')) if os.getenv('GMAIL_CLIENT_SECRET') else 0
+    }
 
 @app.get("/meta")
 def meta():
