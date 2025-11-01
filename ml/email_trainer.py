@@ -124,12 +124,8 @@ class EmailTrainingWorkflow:
                 attachment["attachment_id"]
             )
             
-            # Extract text from PDF (or use direct text in demo mode)
-            if os.getenv("ML_DEMO_MODE") == "true" and isinstance(attachment_data, bytes):
-                # In demo mode, attachment_data is already text content
-                pdf_text = attachment_data.decode('utf-8')
-            else:
-                pdf_text = extract_text_from_pdf_bytes(attachment_data)
+            # Extract text from PDF
+            pdf_text = extract_text_from_pdf_bytes(attachment_data)
                 
             if not pdf_text:
                 return None
@@ -380,81 +376,167 @@ class GmailService:
         self.headers = credentials.get('headers', {})
         logger.info("Gmail service initialized with existing API")
     
-    def _get_demo_emails(self):
-        """Return demo email data for testing"""
-        return [
-            {
-                "message_id": "demo_msg_1",
-                "subject": "Quote for Custom Joinery Work - Project ABC",
-                "sender": "your-business@example.com",
-                "recipient": "client@example.com", 
-                "date_sent": "2025-10-15",
-                "attachments": [
-                    {
-                        "attachment_id": "demo_attachment_1", 
-                        "filename": "joinery_quote.pdf",
-                        "size": 150000
-                    }
-                ]
-            },
-            {
-                "message_id": "demo_msg_2",
-                "subject": "Window Installation Estimate", 
-                "sender": "your-business@example.com",
-                "recipient": "client2@example.com",
-                "date_sent": "2025-10-20",
-                "attachments": [
-                    {
-                        "attachment_id": "demo_attachment_2",
-                        "filename": "window_estimate.pdf",
-                        "size": 200000
-                    }
-                ]
-            }
-        ]
-    
     def search_emails(self, keywords: List[str], has_attachments: bool, since_date: datetime, sent_only: bool) -> List[Dict[str, Any]]:
-        """Search for emails matching criteria using existing Gmail API"""
+        """Search for emails matching criteria using real Gmail API"""
         
         # Check if we have real credentials with refresh token
         if self.credentials.get('refresh_token'):
             return self._search_real_gmail_emails(keywords, has_attachments, since_date, sent_only)
         
-        # For demo purposes, return sample email data when testing
-        if os.getenv("ML_DEMO_MODE") == "true":
-            logger.info("Demo mode: returning sample client quote emails")
-            return [
-                {
-                    "message_id": "demo_msg_1",
-                    "subject": "Quote for Custom Joinery Work - Project ABC",
-                    "sender": "your-business@example.com",
-                    "recipient": "client@example.com", 
-                    "date_sent": "2025-10-15",
-                    "attachments": [
-                        {
-                            "attachment_id": "demo_attachment_1", 
-                            "filename": "joinery_quote.pdf",
-                            "size": 150000
-                        }
-                    ]
-                },
-                {
-                    "message_id": "demo_msg_2",
-                    "subject": "Window Installation Estimate",
-                    "sender": "your-business@example.com",
-                    "recipient": "client2@example.com",
-                    "date_sent": "2025-10-20", 
-                    "attachments": [
-                        {
-                            "attachment_id": "demo_attachment_2",
-                            "filename": "window_estimate.pdf", 
-                            "size": 200000
-                        }
-                    ]
-                }
-            ]
+        # No demo mode - require real credentials
+        raise RuntimeError("Gmail credentials required. No demo mode available.")
+    
+    def _search_real_gmail_emails(self, keywords: List[str], has_attachments: bool, since_date: datetime, sent_only: bool) -> List[Dict[str, Any]]:
+        """Search real Gmail using refresh token for authentication"""
+        import requests
         
-        # Build Gmail search query
+        try:
+            # Get access token using refresh token
+            access_token = self._get_access_token()
+            
+            # Build Gmail search query
+            query_parts = []
+            if has_attachments:
+                query_parts.append("has:attachment")
+            if sent_only:
+                query_parts.append("in:sent")
+            
+            # Add keyword search
+            if keywords:
+                keyword_query = " OR ".join(keywords)
+                query_parts.append(f"({keyword_query})")
+            
+            # Add date filter
+            date_str = since_date.strftime("%Y/%m/%d")
+            query_parts.append(f"after:{date_str}")
+            
+            search_query = " ".join(query_parts)
+            logger.info(f"Gmail search query: {search_query}")
+            
+            # Search Gmail using Gmail API
+            url = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            params = {"q": search_query, "maxResults": 50}
+            
+            response = requests.get(url, headers=headers, params=params)
+            if not response.ok:
+                logger.error(f"Gmail search failed: {response.status_code} {response.text}")
+                return []
+            
+            data = response.json()
+            message_ids = [msg["id"] for msg in data.get("messages", [])]
+            logger.info(f"Found {len(message_ids)} messages matching search")
+            
+            # Get detailed message data for each message
+            emails = []
+            for msg_id in message_ids[:10]:  # Limit to first 10 for processing
+                email_data = self._get_email_details(access_token, msg_id)
+                if email_data:
+                    emails.append(email_data)
+            
+            return emails
+            
+        except Exception as e:
+            logger.error(f"Error searching Gmail: {e}")
+            return []
+    
+    def _get_access_token(self) -> str:
+        """Get access token using refresh token"""
+        import requests
+        
+        # Use same OAuth flow as API service
+        data = {
+            'client_id': os.getenv('GMAIL_CLIENT_ID'),
+            'client_secret': os.getenv('GMAIL_CLIENT_SECRET'), 
+            'grant_type': 'refresh_token',
+            'refresh_token': self.credentials['refresh_token']
+        }
+        
+        response = requests.post('https://oauth2.googleapis.com/token', data=data)
+        if not response.ok:
+            raise Exception(f"Failed to refresh access token: {response.text}")
+            
+        return response.json()['access_token']
+    
+    def _get_email_details(self, access_token: str, message_id: str) -> Optional[Dict[str, Any]]:
+        """Get detailed email data including attachments"""
+        import requests
+        
+        try:
+            url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            
+            response = requests.get(url, headers=headers)
+            if not response.ok:
+                return None
+                
+            data = response.json()
+            
+            # Extract email metadata
+            headers_data = {h["name"]: h["value"] for h in data["payload"].get("headers", [])}
+            
+            # Extract attachments
+            attachments = []
+            self._extract_attachments(data["payload"], attachments)
+            
+            return {
+                "message_id": message_id,
+                "subject": headers_data.get("Subject", ""),
+                "sender": headers_data.get("From", ""),
+                "recipient": headers_data.get("To", ""),
+                "date_sent": headers_data.get("Date", ""),
+                "attachments": attachments
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting email details for {message_id}: {e}")
+            return None
+    
+    def _extract_attachments(self, payload: Dict, attachments: List[Dict]):
+        """Recursively extract attachments from email payload"""
+        if "parts" in payload:
+            for part in payload["parts"]:
+                self._extract_attachments(part, attachments)
+        elif payload.get("filename") and payload.get("body", {}).get("attachmentId"):
+            attachments.append({
+                "attachment_id": payload["body"]["attachmentId"],
+                "filename": payload["filename"],
+                "size": payload["body"].get("size", 0)
+            })
+
+    def download_attachment(self, message_id: str, attachment_id: str) -> bytes:
+        """Download email attachment using real Gmail API"""
+        import requests
+        
+        try:
+            # Get access token using refresh token
+            access_token = self._get_access_token()
+            
+            # Download attachment using Gmail API
+            url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            
+            response = requests.get(url, headers=headers)
+            if not response.ok:
+                logger.error(f"Failed to download attachment: {response.status_code}")
+                return b""
+                
+            data = response.json()
+            attachment_data = data.get("data", "")
+            
+            # Decode base64url data
+            import base64
+            # Gmail uses base64url encoding (- and _ instead of + and /)
+            attachment_data = attachment_data.replace('-', '+').replace('_', '/')
+            # Add padding if needed
+            while len(attachment_data) % 4:
+                attachment_data += '='
+                
+            return base64.b64decode(attachment_data)
+                
+        except Exception as e:
+            logger.error(f"Error downloading attachment: {e}")
+            return b""        # Build Gmail search query
         query_parts = []
         
         # Add keywords search - make it more flexible
@@ -502,9 +584,7 @@ class GmailService:
             
             if response.status_code != 200:
                 logger.error(f"Gmail API returned {response.status_code}: {response.text}")
-                # Return demo data if API fails for debugging
-                logger.info("Returning demo emails for debugging...")
-                return self._get_demo_emails()
+                raise RuntimeError(f"Failed to search Gmail: {response.status_code} - {response.text}")
             
             data = response.json()
             imported = data.get('imported', [])
@@ -550,35 +630,6 @@ class GmailService:
     
     def download_attachment(self, message_id: str, attachment_id: str) -> bytes:
         """Download email attachment using existing Gmail API"""
-        
-        # For demo purposes, return sample PDF content when testing
-        if os.getenv("ML_DEMO_MODE") == "true":
-            logger.info(f"Demo mode: returning sample PDF content for attachment {attachment_id}")
-            
-            # Sample quote content that the ML can parse
-            sample_quote_text = """
-JOINERY SOLUTIONS LTD
-Custom Timber Work Quote
-
-Date: October 15, 2025
-Quote #: JS-2025-001
-
-Item Description                    Qty    Unit Price    Total
-Custom Oak Window Frame            2      £450.00       £900.00  
-Interior Door Installation         3      £320.00       £960.00
-Timber Skirting Boards            15m     £25.00        £375.00
-Installation & Finishing          1      £500.00       £500.00
-
-                                            Subtotal:    £2,735.00
-                                            VAT (20%):   £547.00
-                                            Total:       £3,282.00
-
-Terms: 50% deposit, remainder on completion
-Valid for 30 days
-            """
-            
-            # Convert text to bytes (simulating PDF content)
-            return sample_quote_text.encode('utf-8')
         
         try:
             # Use existing Gmail attachment API

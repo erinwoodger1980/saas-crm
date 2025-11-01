@@ -491,8 +491,7 @@ async def start_email_training(payload: EmailTrainingPayload):
                 
                 logger.info(f"Found Gmail connection for {gmail_address}")
             else:
-                logger.warning(f"No Gmail connection found for tenant {tenant_id} - will try demo mode")
-                os.environ['ML_DEMO_MODE'] = 'true'
+                raise HTTPException(status_code=400, detail=f"No Gmail connection found for tenant {tenant_id}. Please connect Gmail first.")
         
         # Initialize workflow
         workflow = EmailTrainingWorkflow(db_url, tenant_id)
