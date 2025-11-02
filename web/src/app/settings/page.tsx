@@ -208,6 +208,7 @@ export default function SettingsPage() {
   const [qHideInternal, setQHideInternal] = useState(true);
   const [qOnlyPublic, setQOnlyPublic] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [enrichingWebsite, setEnrichingWebsite] = useState(false);
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
@@ -281,6 +282,7 @@ export default function SettingsPage() {
         introHtml: s.introHtml,
         website: s.website,
         phone: s.phone,
+        logoUrl: s.logoUrl,
         inbox,
         questionnaire: serializeQuestionnaire(qFields),
         taskPlaybook: playbook,
@@ -435,6 +437,59 @@ export default function SettingsPage() {
     }
   }
 
+  async function enrichFromWebsite() {
+    if (!s?.website?.trim()) {
+      toast({ title: "Website required", description: "Please enter a website URL first", variant: "destructive" });
+      return;
+    }
+
+    setEnrichingWebsite(true);
+    try {
+      const enriched = await apiFetch<{
+        brandName?: string;
+        phone?: string;
+        logoUrl?: string;
+        links?: { label: string; url: string }[];
+        introSuggestion?: string;
+      }>("/tenant/settings/enrich", {
+        method: "POST",
+        json: { website: s.website },
+      });
+
+      // Update settings with enriched data
+      setS((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          brandName: enriched.brandName || prev.brandName,
+          phone: enriched.phone || prev.phone,
+          logoUrl: enriched.logoUrl || prev.logoUrl,
+          introHtml: enriched.introSuggestion 
+            ? `<p>${enriched.introSuggestion}</p>` 
+            : prev.introHtml,
+        };
+      });
+
+      toast({ 
+        title: "Website data imported successfully", 
+        description: `Found: ${[
+          enriched.brandName && "company name",
+          enriched.phone && "phone number", 
+          enriched.logoUrl && "logo",
+          enriched.introSuggestion && "intro text"
+        ].filter(Boolean).join(", ") || "some basic info"}` 
+      });
+    } catch (e: any) {
+      toast({ 
+        title: "Failed to import website data", 
+        description: e?.message || "Could not extract company information from website", 
+        variant: "destructive" 
+      });
+    } finally {
+      setEnrichingWebsite(false);
+    }
+  }
+
   /* Machine Learning section */
   async function trainModel() {
     try {
@@ -485,7 +540,7 @@ export default function SettingsPage() {
 
       {currentStage === "company" && (
       <>
-      <Section title="Company profile" description="Edit basic company and owner details" right={<Button onClick={saveProfile}>Save Profile</Button>}>
+      <Section title="Company profile" description="Edit basic company and owner details. Enter your website URL and click 'Import Data' to automatically extract company info, logo, and contact details." right={<Button onClick={saveProfile}>Save Profile</Button>}>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Company name">
             <input
@@ -495,11 +550,22 @@ export default function SettingsPage() {
             />
           </Field>
           <Field label="Website">
-            <input
-              className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
-              value={s.website ?? ""}
-              onChange={(e) => setS((prev) => (prev ? { ...prev, website: e.target.value } : prev))}
-            />
+            <div className="flex gap-2">
+              <input
+                className="flex-1 rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                value={s.website ?? ""}
+                onChange={(e) => setS((prev) => (prev ? { ...prev, website: e.target.value } : prev))}
+                placeholder="https://yourcompany.com"
+              />
+              <Button 
+                variant="outline" 
+                onClick={enrichFromWebsite}
+                disabled={enrichingWebsite || !s.website?.trim()}
+                className="whitespace-nowrap"
+              >
+                {enrichingWebsite ? "Importing..." : "Import Data"}
+              </Button>
+            </div>
           </Field>
           <Field label="Owner first name">
             <input
@@ -521,6 +587,26 @@ export default function SettingsPage() {
               value={s.phone ?? ""}
               onChange={(e) => setS((prev) => (prev ? { ...prev, phone: e.target.value } : prev))}
             />
+          </Field>
+          <Field label="Logo URL" hint="Auto-populated from website import">
+            <div className="flex gap-2 items-center">
+              <input
+                className="flex-1 rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                value={s.logoUrl ?? ""}
+                onChange={(e) => setS((prev) => (prev ? { ...prev, logoUrl: e.target.value } : prev))}
+                placeholder="https://example.com/logo.png"
+              />
+              {s.logoUrl && (
+                <img 
+                  src={s.logoUrl} 
+                  alt="Logo preview" 
+                  className="w-8 h-8 rounded object-contain border"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              )}
+            </div>
           </Field>
           <Field label="Intro HTML" hint="Optional HTML shown on the public questionnaire">
             <textarea
