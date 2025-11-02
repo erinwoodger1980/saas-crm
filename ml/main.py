@@ -420,6 +420,101 @@ async def debug_email_processing(req: Request):
             "traceback": traceback.format_exc()
         }
 
+@app.post("/debug-attachment-processing")
+async def debug_attachment_processing(req: Request):
+    """Debug attachment download and PDF processing"""
+    try:
+        payload = await req.json()
+        tenant_id = payload.get("tenantId")
+        
+        if not tenant_id:
+            return {"error": "tenantId required"}
+            
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {"error": "No DATABASE_URL"}
+            
+        from email_trainer import EmailTrainingWorkflow
+        from pdf_parser import extract_text_from_pdf_bytes, parse_client_quote_from_text
+        
+        # Initialize workflow
+        workflow = EmailTrainingWorkflow(db_url, tenant_id)
+        
+        # Get Gmail connection details from database
+        from db_config import get_db_manager
+        db_manager = get_db_manager()
+        
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT "refreshToken", "gmailAddress" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
+            result = cur.fetchone()
+            
+            if not result:
+                return {"error": f"No Gmail connection found for tenant {tenant_id}"}
+                
+            refresh_token, gmail_address = result
+        
+        # Setup Gmail service
+        gmail_credentials = {"refresh_token": refresh_token}
+        workflow.setup_email_service("gmail", gmail_credentials)
+        
+        # Test specific attachment processing
+        message_id = "19a3f6846b1e3038"  # From debug output
+        attachment_id = "ANGjdJ-ow0gGB3JZQDm988R7Al9Gm5-wh1lzYUySz5Db-KrEOPOyQsJx6FrMcbp4Xk1zGKmv98XgzaXbKNlA_f9QMMClcfutqilXbzT6Ddf3XbKX8bFqnvuCPmEjZlu-DBoHbuBSmC6oGw59aPUjt23Sxp28oBMGw6Uk9qBjuT7cQneHIz9theMZ3CwLvmspZCUHvB7iA2yQXM-EPqKAnQDGMULafSijnK--mqx8ChnwkWrdPlXQjT2Sg_N1YCnqageHErL8hSXVZuOSZZKduFUjNatRJKVsZLaIzuyoanWd4ix5LFGNpbElU5Qb7D2m6LCfO0YZvXuTDIJguhqJQPU4S-JmTpzA-0gsroCpNwU2AWqCrPGymUqwdxpJ3v4KoqZ7fs5vMN3ZLzJWuWgD"
+        
+        debug_info = {
+            "message_id": message_id,
+            "attachment_id": attachment_id[:50] + "...",  # Truncate for readability
+            "steps": []
+        }
+        
+        # Step 1: Download attachment
+        debug_info["steps"].append("Downloading attachment...")
+        try:
+            attachment_data = workflow.email_service.download_attachment(message_id, attachment_id)
+            debug_info["download_success"] = len(attachment_data) > 0
+            debug_info["attachment_size"] = len(attachment_data)
+            debug_info["steps"].append(f"Downloaded {len(attachment_data)} bytes")
+        except Exception as e:
+            debug_info["download_error"] = str(e)
+            debug_info["steps"].append(f"Download failed: {e}")
+            return debug_info
+        
+        # Step 2: Extract text from PDF
+        debug_info["steps"].append("Extracting text from PDF...")
+        try:
+            pdf_text = extract_text_from_pdf_bytes(attachment_data)
+            debug_info["text_extraction_success"] = len(pdf_text) > 0
+            debug_info["extracted_text_length"] = len(pdf_text)
+            debug_info["text_preview"] = pdf_text[:500] if pdf_text else "No text extracted"
+            debug_info["steps"].append(f"Extracted {len(pdf_text)} characters")
+        except Exception as e:
+            debug_info["text_extraction_error"] = str(e)
+            debug_info["steps"].append(f"Text extraction failed: {e}")
+            return debug_info
+        
+        # Step 3: Parse client quote data
+        debug_info["steps"].append("Parsing client quote data...")
+        try:
+            parsed_data = parse_client_quote_from_text(pdf_text)
+            debug_info["parsing_success"] = True
+            debug_info["parsed_data"] = parsed_data
+            debug_info["confidence"] = parsed_data.get("confidence", 0.0)
+            debug_info["steps"].append(f"Parsed with confidence: {parsed_data.get('confidence', 0.0)}")
+        except Exception as e:
+            debug_info["parsing_error"] = str(e)
+            debug_info["steps"].append(f"Parsing failed: {e}")
+            return debug_info
+        
+        return debug_info
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @app.get("/meta")
 def meta():
     return {
