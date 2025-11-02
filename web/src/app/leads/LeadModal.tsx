@@ -249,17 +249,13 @@ export default function LeadModal({
     
     try {
       setSaving(true);
-      const res = await apiFetch(`/api/leads/${lead.id}`, {
+      await apiFetch(`/api/leads/${lead.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify(patch),
       });
       
-      if ((res as Response).ok) {
-        await onUpdated?.();
-      } else {
-        toast("Failed to save changes");
-      }
+      await onUpdated?.();
     } catch (err) {
       console.error("Save error:", err);
       toast("Failed to save changes");
@@ -310,48 +306,36 @@ export default function LeadModal({
       setLoading(true);
       try {
         // Load lead details
-        const leadRes = await apiFetch(`/api/leads/${leadPreview.id}`, {
+        const leadData = await apiFetch<Lead>(`/api/leads/${leadPreview.id}`, {
           headers: authHeaders,
         });
         
-        if ((leadRes as Response).ok) {
-          const leadData = await (leadRes as Response).json();
-          setLead(leadData);
-          setUiStatus(leadData.status || "NEW_ENQUIRY");
-          setNameInput(leadData.contactName || "");
-          setEmailInput(leadData.email || "");
-          setDescInput(leadData.description || "");
-        }
+        setLead(leadData);
+        setUiStatus(leadData.status || "NEW_ENQUIRY");
+        setNameInput(leadData.contactName || "");
+        setEmailInput(leadData.email || "");
+        setDescInput(leadData.description || "");
 
         // Load tasks
-        const tasksRes = await apiFetch(`/api/tasks?relatedType=LEAD&relatedId=${leadPreview.id}`, {
+        const tasksData = await apiFetch<Task[]>(`/api/tasks?relatedType=LEAD&relatedId=${leadPreview.id}`, {
           headers: authHeaders,
         });
         
-        if ((tasksRes as Response).ok) {
-          const tasksData = await (tasksRes as Response).json();
-          setTasks(tasksData || []);
-        }
+        setTasks(tasksData || []);
 
         // Load email threads
-        const emailRes = await apiFetch(`/api/leads/${leadPreview.id}/emails`, {
+        const emailData = await apiFetch<EmailThread[]>(`/api/leads/${leadPreview.id}/emails`, {
           headers: authHeaders,
         });
         
-        if ((emailRes as Response).ok) {
-          const emailData = await (emailRes as Response).json();
-          setEmailThreads(emailData || []);
-        }
+        setEmailThreads(emailData || []);
 
         // Load settings
-        const settingsRes = await apiFetch("/api/settings", {
+        const settingsData = await apiFetch<TenantSettings>("/api/settings", {
           headers: authHeaders,
         });
         
-        if ((settingsRes as Response).ok) {
-          const settingsData = await (settingsRes as Response).json();
-          setSettings(settingsData);
-        }
+        setSettings(settingsData);
         
       } catch (err) {
         console.error("Error loading lead data:", err);
@@ -373,7 +357,7 @@ export default function LeadModal({
 
     setBusyTask(true);
     try {
-      const res = await apiFetch(`/api/leads/${lead.id}/send-questionnaire`, {
+      await apiFetch(`/api/leads/${lead.id}/send-questionnaire`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
@@ -382,13 +366,9 @@ export default function LeadModal({
         }),
       });
 
-      if ((res as Response).ok) {
-        toast("Questionnaire sent successfully");
-        setUiStatus("INFO_REQUESTED");
-        savePatch({ status: "INFO_REQUESTED" });
-      } else {
-        toast("Failed to send questionnaire");
-      }
+      toast("Questionnaire sent successfully");
+      setUiStatus("INFO_REQUESTED");
+      savePatch({ status: "INFO_REQUESTED" });
     } catch (err) {
       console.error("Error sending questionnaire:", err);
       toast("Failed to send questionnaire");
@@ -400,16 +380,12 @@ export default function LeadModal({
   const requestSupplierQuote = async () => {
     setBusyTask(true);
     try {
-      const res = await apiFetch(`/api/leads/${lead?.id}/supplier-request`, {
+      await apiFetch(`/api/leads/${lead?.id}/supplier-request`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
       });
 
-      if ((res as Response).ok) {
-        toast("Supplier quote request sent");
-      } else {
-        toast("Failed to send supplier request");
-      }
+      toast("Supplier quote request sent");
     } catch (err) {
       console.error("Error requesting supplier quote:", err);
       toast("Failed to send supplier request");
@@ -433,7 +409,7 @@ export default function LeadModal({
     }
 
     try {
-      const res = await apiFetch("/api/tasks", {
+      const newTask = await apiFetch<Task>("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
@@ -447,20 +423,15 @@ export default function LeadModal({
         }),
       });
 
-      if ((res as Response).ok) {
-        const newTask = await (res as Response).json();
-        setTasks(prev => [...prev, newTask]);
-        setTaskComposer({
-          title: "",
-          description: "",
-          priority: "MEDIUM",
-          dueAt: "",
-        });
-        setShowTaskComposer(false);
-        toast("Task created successfully");
-      } else {
-        toast("Failed to create task");
-      }
+      setTasks(prev => [...prev, newTask]);
+      setTaskComposer({
+        title: "",
+        description: "",
+        priority: "MEDIUM",
+        dueAt: "",
+      });
+      setShowTaskComposer(false);
+      toast("Task created successfully");
     } catch (err) {
       console.error("Error creating task:", err);
       toast("Failed to create task");
@@ -471,19 +442,15 @@ export default function LeadModal({
     const newStatus = currentStatus === "DONE" ? "OPEN" : "DONE";
     
     try {
-      const res = await apiFetch(`/api/tasks/${taskId}`, {
+      await apiFetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ status: newStatus }),
       });
 
-      if ((res as Response).ok) {
-        setTasks(prev => prev.map(task => 
-          task.id === taskId ? { ...task, status: newStatus } : task
-        ));
-      } else {
-        toast("Failed to update task");
-      }
+      setTasks(prev => prev.map(task => 
+        task.id === taskId ? { ...task, status: newStatus } : task
+      ));
     } catch (err) {
       console.error("Error updating task:", err);
       toast("Failed to update task");
