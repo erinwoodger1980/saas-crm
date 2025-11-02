@@ -76,6 +76,16 @@ type EmailTrainingResponse = {
   quotesFound?: number;
   trainingRecords?: number;
   message?: string;
+  preview_quotes?: Array<{
+    subject: string;
+    date_sent: string;
+    attachment_name: string;
+    confidence: number;
+    project_type?: string;
+    quoted_price?: number;
+    area_m2?: number;
+    materials_grade?: string;
+  }>;
 };
 
 function formatDate(s?: string | null) {
@@ -146,6 +156,16 @@ export default function AiTrainingPage() {
     message?: string;
     quotesFound?: number;
     trainingRecords?: number;
+    previewQuotes?: Array<{
+      subject: string;
+      date_sent: string;
+      attachment_name: string;
+      confidence: number;
+      project_type?: string;
+      quoted_price?: number;
+      area_m2?: number;
+      materials_grade?: string;
+    }>;
   }>({ status: 'idle' });
   const [emailProvider, setEmailProvider] = useState<'gmail' | 'ms365'>('gmail');
   const [daysBack, setDaysBack] = useState(30);
@@ -538,7 +558,8 @@ export default function AiTrainingPage() {
         status: 'completed',
         progress: 100,
         message: `Preview complete: Found ${response.quotesFound || 0} potential client quotes`,
-        quotesFound: response.quotesFound || 0
+        quotesFound: response.quotesFound || 0,
+        previewQuotes: response.preview_quotes || []
       });
       
       toast({
@@ -809,7 +830,7 @@ export default function AiTrainingPage() {
             <div className="flex items-center gap-3">
               {mlHealth && (
                 <Badge variant={mlHealth.ok ? "secondary" : "destructive"} className="text-sm px-3 py-1">
-                  ML: {mlHealth.ok ? "🟢 Online" : "🔴 Offline"}{mlHealth?.target ? ` • ${mlHealth.target}` : ""}
+                  ML: {mlHealth.ok ? "🟢 Online" : "🔴 Offline"}
                 </Badge>
               )}
               {avgConf != null && (
@@ -895,6 +916,42 @@ export default function AiTrainingPage() {
                 </div>
               )}
 
+              {/* Preview Quotes Display */}
+              {emailTraining.previewQuotes && emailTraining.previewQuotes.length > 0 && (
+                <div className="mb-6 p-4 rounded-xl bg-white/70 backdrop-blur-sm border border-white/50">
+                  <h4 className="text-sm font-semibold text-slate-900 mb-3">📋 Found Client Quotes</h4>
+                  <div className="space-y-3">
+                    {emailTraining.previewQuotes.map((quote, index) => (
+                      <div key={index} className="p-3 rounded-lg border border-slate-200 bg-white/50">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <div className="font-medium text-sm text-slate-900">{quote.subject}</div>
+                            <div className="text-xs text-slate-600">{quote.attachment_name}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs text-slate-600">{new Date(quote.date_sent).toLocaleDateString()}</div>
+                            <div className="text-xs font-medium text-blue-600">{(quote.confidence * 100).toFixed(0)}% confidence</div>
+                          </div>
+                        </div>
+                        {(quote.quoted_price || quote.project_type || quote.materials_grade) && (
+                          <div className="flex gap-4 text-xs text-slate-600">
+                            {quote.quoted_price && (
+                              <span>💰 £{quote.quoted_price.toLocaleString()}</span>
+                            )}
+                            {quote.project_type && (
+                              <span>🏗️ {quote.project_type}</span>
+                            )}
+                            {quote.materials_grade && (
+                              <span>⭐ {quote.materials_grade}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Training Controls */}
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -926,6 +983,16 @@ export default function AiTrainingPage() {
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                       disabled={emailTraining.status === 'running'}
                     />
+                  </div>
+                </div>
+
+                {/* Button Actions Explanation */}
+                <div className="bg-slate-50 rounded-lg p-4 mb-4">
+                  <h4 className="font-medium text-slate-900 mb-2">AI Training Workflow</h4>
+                  <div className="grid gap-2 text-sm text-slate-600">
+                    <div><strong>👀 Preview Quotes:</strong> Scan your emails to find potential quotes without saving them</div>
+                    <div><strong>🚀 Start Training:</strong> Extract and save quotes from emails to improve AI accuracy</div>
+                    <div><strong>🎯 Train Models:</strong> Retrain the AI models using all saved quote data</div>
                   </div>
                 </div>
 

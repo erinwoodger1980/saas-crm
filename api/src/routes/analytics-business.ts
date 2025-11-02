@@ -4,6 +4,45 @@ import { prisma } from "../prisma";
 
 const router = Router();
 
+// Helper function to get financial year boundaries based on tenant's year end
+function getFinancialYearBoundaries(yearEnd: string, year: number) {
+  // yearEnd is in MM-DD format, e.g., "03-31" for March 31st
+  const [month, day] = yearEnd.split('-').map(Number);
+  
+  // Financial year starts after the year end date of the previous year
+  const start = new Date(year - 1, month - 1, day + 1);
+  const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+  
+  return { start, end };
+}
+
+// Helper function to get current financial year based on tenant's year end
+function getCurrentFinancialYear(yearEnd: string): number {
+  const today = new Date();
+  const [month, day] = yearEnd.split('-').map(Number);
+  
+  // If we're past the year end date, we're in the next financial year
+  const thisYearEnd = new Date(today.getFullYear(), month - 1, day);
+  
+  if (today > thisYearEnd) {
+    return today.getFullYear() + 1;
+  } else {
+    return today.getFullYear();
+  }
+}
+
+// Helper function to get progress through financial year
+function getFinancialYearProgress(yearEnd: string): number {
+  const today = new Date();
+  const currentFY = getCurrentFinancialYear(yearEnd);
+  const { start, end } = getFinancialYearBoundaries(yearEnd, currentFY);
+  
+  const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  const daysPassed = Math.ceil((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  
+  return Math.max(0, Math.min(1, daysPassed / totalDays));
+}
+
 // Helper function to get month boundaries
 function getMonthBoundaries(year: number, month: number) {
   const start = new Date(year, month - 1, 1);
@@ -24,8 +63,15 @@ router.get("/business-metrics", async (req, res) => {
     const { tenantId } = (req as any).auth || {};
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
+    // Get tenant's financial year end setting
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { financialYearEnd: true }
+    });
+    
+    const financialYearEnd = tenant?.financialYearEnd || "12-31"; // Default to calendar year
+    const currentFinancialYear = getCurrentFinancialYear(financialYearEnd);
+    const fyProgress = getFinancialYearProgress(financialYearEnd);
 
     // Get last 12 months of data
     const monthlyData = [];
@@ -123,20 +169,20 @@ router.get("/business-metrics", async (req, res) => {
       });
     }
 
-    // Year-to-date totals
-    const { start: yearStart, end: yearEnd } = getYearBoundaries(currentYear);
+    // Financial year-to-date totals
+    const { start: fyStart, end: fyEnd } = getFinancialYearBoundaries(financialYearEnd, currentFinancialYear);
 
     const ytdEnquiries = await prisma.lead.count({
       where: { 
         tenantId, 
-        capturedAt: { gte: yearStart, lte: yearEnd }
+        capturedAt: { gte: fyStart, lte: fyEnd }
       }
     });
 
     const ytdQuotes = await prisma.quote.findMany({
       where: { 
         tenantId, 
-        createdAt: { gte: yearStart, lte: yearEnd },
+        createdAt: { gte: fyStart, lte: fyEnd },
         status: { not: "DRAFT" }
       },
       select: { totalGBP: true }
@@ -148,7 +194,7 @@ router.get("/business-metrics", async (req, res) => {
     const ytdSales = await prisma.opportunity.findMany({
       where: { 
         tenantId, 
-        wonAt: { gte: yearStart, lte: yearEnd }
+        wonAt: { gte: fyStart, lte: fyEnd }
       },
       select: { valueGBP: true }
     });
@@ -156,12 +202,10 @@ router.get("/business-metrics", async (req, res) => {
     const ytdSalesCount = ytdSales.length;
     const ytdSalesValue = ytdSales.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
 
-    // Get or create targets for current year
-    // TODO: Uncomment after migration is deployed
-    /*
+    // Get or create targets for current financial year
     let targets = await prisma.target.findUnique({
       where: { 
-        tenantId_year: { tenantId, year: currentYear }
+        tenantId_year: { tenantId, year: currentFinancialYear }
       }
     });
 
@@ -169,7 +213,7 @@ router.get("/business-metrics", async (req, res) => {
       targets = await prisma.target.create({
         data: {
           tenantId,
-          year: currentYear,
+          year: currentFinancialYear,
           enquiriesTarget: 120,      // Default: 10 per month
           quotesValueTarget: 120000, // Default: £10k per month
           quotesCountTarget: 48,     // Default: 4 per month
@@ -178,16 +222,6 @@ router.get("/business-metrics", async (req, res) => {
         }
       });
     }
-    */
-
-    // Temporary default targets until migration is deployed
-    const targets = {
-      enquiriesTarget: 120,
-      quotesValueTarget: 120000,
-      quotesCountTarget: 48,
-      salesValueTarget: 60000,
-      salesCountTarget: 24
-    };
 
     // Cost analysis by source (COL = Cost of Lead, COS = Cost of Sale)
     const sourceCosts = await prisma.leadSourceCost.findMany({
@@ -241,16 +275,22 @@ router.get("/business-metrics", async (req, res) => {
         quotesCountTarget: Number(targets.quotesCountTarget || 0),
         salesValueTarget: Number(targets.salesValueTarget || 0),
         salesCountTarget: Number(targets.salesCountTarget || 0),
-        // Calculate prorated targets for year-to-date
-        ytdEnquiriesTarget: Math.round((Number(targets.enquiriesTarget || 0) / 12) * currentMonth),
-        ytdQuotesValueTarget: Math.round((Number(targets.quotesValueTarget || 0) / 12) * currentMonth),
-        ytdQuotesCountTarget: Math.round((Number(targets.quotesCountTarget || 0) / 12) * currentMonth),
-        ytdSalesValueTarget: Math.round((Number(targets.salesValueTarget || 0) / 12) * currentMonth),
-        ytdSalesCountTarget: Math.round((Number(targets.salesCountTarget || 0) / 12) * currentMonth)
+        // Calculate prorated targets for financial year-to-date
+        ytdEnquiriesTarget: Math.round((Number(targets.enquiriesTarget || 0)) * fyProgress),
+        ytdQuotesValueTarget: Math.round((Number(targets.quotesValueTarget || 0)) * fyProgress),
+        ytdQuotesCountTarget: Math.round((Number(targets.quotesCountTarget || 0)) * fyProgress),
+        ytdSalesValueTarget: Math.round((Number(targets.salesValueTarget || 0)) * fyProgress),
+        ytdSalesCountTarget: Math.round((Number(targets.salesCountTarget || 0)) * fyProgress)
       },
       sourceAnalysis,
-      currentYear,
-      currentMonth
+      currentYear: currentFinancialYear,
+      currentMonth: new Date().getMonth() + 1,
+      financialYear: {
+        current: currentFinancialYear,
+        yearEnd: financialYearEnd,
+        progress: fyProgress,
+        progressPercent: Math.round(fyProgress * 100)
+      }
     });
 
   } catch (err: any) {
@@ -265,10 +305,6 @@ router.post("/targets", async (req, res) => {
     const { tenantId } = (req as any).auth || {};
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-    // TODO: Implement after migration is deployed
-    res.status(501).json({ error: "Targets management coming soon" });
-
-    /*
     const { 
       year, 
       enquiriesTarget, 
@@ -305,11 +341,127 @@ router.post("/targets", async (req, res) => {
     });
 
     res.json(targets);
-    */
 
   } catch (err: any) {
     console.error("[analytics-targets] failed:", err);
     res.status(500).json({ error: err?.message || "targets update failed" });
+  }
+});
+
+// POST /analytics/business/financial-year - Set financial year end
+router.post("/financial-year", async (req, res) => {
+  try {
+    const { tenantId } = (req as any).auth || {};
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const { financialYearEnd } = req.body;
+    
+    // Validate format MM-DD
+    if (!/^\d{2}-\d{2}$/.test(financialYearEnd)) {
+      return res.status(400).json({ error: "Financial year end must be in MM-DD format" });
+    }
+
+    const tenant = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { financialYearEnd },
+      select: { financialYearEnd: true }
+    });
+
+    res.json(tenant);
+
+  } catch (err: any) {
+    console.error("[analytics-financial-year] failed:", err);
+    res.status(500).json({ error: err?.message || "financial year update failed" });
+  }
+});
+
+// POST /analytics/business/import-historical - Import historical data
+router.post("/import-historical", async (req, res) => {
+  try {
+    const { tenantId } = (req as any).auth || {};
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const { data, type } = req.body;
+    // data should be array of records with date and values
+    // type should be 'leads', 'quotes', or 'sales'
+    
+    if (!Array.isArray(data)) {
+      return res.status(400).json({ error: "Data must be an array" });
+    }
+
+    let imported = 0;
+    
+    for (const record of data) {
+      const { date, value, count, source } = record;
+      const recordDate = new Date(date);
+      
+      if (isNaN(recordDate.getTime())) {
+        continue; // Skip invalid dates
+      }
+
+      if (type === 'leads') {
+        // Create historical lead records
+        for (let i = 0; i < (count || 1); i++) {
+          await prisma.lead.create({
+            data: {
+              tenantId,
+              contactName: `Historical Import ${i + 1}`,
+              email: `historical-${Date.now()}-${i}@example.com`,
+              status: 'NEW',
+              capturedAt: recordDate,
+              custom: source ? { source } : null
+            }
+          });
+        }
+        imported += count || 1;
+      } else if (type === 'quotes') {
+        // Create historical quote records
+        await prisma.quote.create({
+          data: {
+            tenantId,
+            title: `Historical Quote - ${recordDate.toISOString().split('T')[0]}`,
+            status: 'SENT',
+            totalGBP: value || 0,
+            createdAt: recordDate
+          }
+        });
+        imported++;
+      } else if (type === 'sales') {
+        // Create historical opportunity records
+        const lead = await prisma.lead.create({
+          data: {
+            tenantId,
+            contactName: `Historical Sale`,
+            email: `historical-sale-${Date.now()}@example.com`,
+            status: 'WON',
+            capturedAt: recordDate
+          }
+        });
+
+        await prisma.opportunity.create({
+          data: {
+            tenantId,
+            leadId: lead.id,
+            title: `Historical Sale - ${recordDate.toISOString().split('T')[0]}`,
+            valueGBP: value || 0,
+            stage: 'WON',
+            wonAt: recordDate,
+            createdAt: recordDate
+          }
+        });
+        imported++;
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      imported,
+      message: `Imported ${imported} ${type} records` 
+    });
+
+  } catch (err: any) {
+    console.error("[analytics-import-historical] failed:", err);
+    res.status(500).json({ error: err?.message || "historical import failed" });
   }
 });
 
