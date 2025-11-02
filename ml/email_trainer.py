@@ -173,12 +173,22 @@ class EmailTrainingWorkflow:
             
             # Create EmailQuote object
             logger.info(f"🏗️ Creating EmailQuote object for {filename}")
+            
+            # Handle date conversion safely
+            date_sent = email["date_sent"]
+            if isinstance(date_sent, str):
+                try:
+                    date_sent = datetime.fromisoformat(date_sent)
+                except ValueError:
+                    logger.warning(f"⚠️ Could not parse date '{date_sent}', using current time")
+                    date_sent = datetime.now()
+            
             email_quote = EmailQuote(
                 message_id=email["message_id"],
                 subject=email["subject"],
                 sender=email["sender"],
                 recipient=email["recipient"],
-                date_sent=datetime.fromisoformat(email["date_sent"]) if isinstance(email["date_sent"], str) else email["date_sent"],
+                date_sent=date_sent,
                 attachment_name=attachment["filename"],
                 attachment_data=attachment_data,
                 pdf_text=pdf_text,
