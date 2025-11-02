@@ -52,11 +52,10 @@ type Task = {
 };
 
 type QuestionnaireField = {
-  id?: string;
-  key?: string;
+  key: string;
   label?: string;
-  required?: boolean;
   type?: string;
+  required?: boolean;
   options?: string[];
   askInQuestionnaire?: boolean;
   showOnLead?: boolean;
@@ -80,24 +79,30 @@ type NormalizedQuestionnaireField = {
 };
 
 type TenantSettings = {
-  taskPlaybook?: TaskPlaybook;
-  questionnaire?: QuestionnaireField[];
-  questionnaireEmailSubject?: string;
-  questionnaireEmailBody?: string;
+  tenantId: string;
+  slug: string;
+  brandName: string;
+  ownerFirstName?: string | null;
+  ownerLastName?: string | null;
+  questionnaire?: { title?: string; questions?: QuestionnaireField[] } | QuestionnaireField[] | null;
+  taskPlaybook?: TaskPlaybook | null;
+  questionnaireEmailSubject?: string | null;
+  questionnaireEmailBody?: string | null;
 };
 
-/* ----------------------------- Constants & Helpers ----------------------------- */
-
-const STATUS_LABELS: Record<Lead["status"], string> = {
-  NEW_ENQUIRY: "New Enquiry",
-  INFO_REQUESTED: "Info Requested",
-  DISQUALIFIED: "Disqualified",
-  REJECTED: "Rejected",
-  READY_TO_QUOTE: "Ready to Quote",
-  QUOTE_SENT: "Quote Sent",
-  WON: "Won",
-  LOST: "Lost",
+type EmailThread = {
+  id: string;
+  threadId?: string | null;
+  subject?: string | null;
+  from?: string | null;
+  to?: string | null;
+  receivedAt?: string | null;
+  snippet?: string | null;
+  bodyText?: string | null;
+  bodyHtml?: string | null;
 };
+
+/* ----------------------------- Utils ----------------------------- */
 
 function avatarText(name?: string | null): string {
   if (!name?.trim()) return "?";
@@ -148,47 +153,46 @@ function normalizeQuestionnaireFields(config?: QuestionnaireField[]): Normalized
       };
     })
     .filter((field: any): field is NormalizedQuestionnaireField => field !== null)
-    .sort((a: any, b: any) => a.sortOrder - b.sortOrder);
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-function findTaskRecipe(playbook: TaskPlaybook, task: Task): TaskRecipe | null {
-  const key = task.meta?.key;
-  if (!key) return null;
-  // Note: manualTasks might not exist in the current TaskPlaybook type
-  return null;
-}
-
-function cleanString(value: string): string {
-  if (typeof value !== "string") return "";
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : "";
-}
-
-function htmlToText(html: string): string {
-  if (!html) return "";
-  let str = String(html);
-  str = str.replace(/<[^>]*>/g, "");
-  str = str.replace(/&nbsp;/g, " ");
-  const el = document.createElement("div");
-  el.innerHTML = str;
-  return el.textContent || el.innerText || "";
-}
-
-function formatDateForInput(isoString: string | null | undefined): string {
-  if (!isoString) return "";
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return "";
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  } catch {
-    return "";
+function formatAnswer(value: any): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
   }
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((v) => (v === null || v === undefined ? "" : String(v).trim()))
+      .filter(Boolean)
+      .join(", ");
+    return joined || null;
+  }
+  if (value instanceof Date) {
+    return value.toLocaleString();
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  const str = String(value);
+  return str.trim() ? str : null;
 }
 
-/* ----------------------------- Main Component ----------------------------- */
+function toast(msg: string) {
+  const el = document.createElement("div");
+  el.textContent = msg;
+  el.className =
+    "fixed bottom-6 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded-xl shadow-lg z-[1000]";
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1600);
+}
+
+/* ----------------------------- Component ----------------------------- */
 
 export default function LeadModal({
   open,
@@ -214,9 +218,11 @@ export default function LeadModal({
   const [lead, setLead] = useState<Lead | null>(leadPreview);
   const [uiStatus, setUiStatus] = useState<Lead["status"]>("NEW_ENQUIRY");
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [emailThreads, setEmailThreads] = useState<EmailThread[]>([]);
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [busyTask, setBusyTask] = useState(false);
 
   // Stage navigation
   const [currentStage, setCurrentStage] = useState<'overview' | 'details' | 'questionnaire' | 'tasks'>('overview');
@@ -225,9 +231,8 @@ export default function LeadModal({
   const [nameInput, setNameInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [descInput, setDescInput] = useState("");
-  const [customDraft, setCustomDraft] = useState<Record<string, string>>({});
 
-  // Task creation
+  // Task management
   const [showTaskComposer, setShowTaskComposer] = useState(false);
   const [taskComposer, setTaskComposer] = useState({
     title: "",
@@ -235,640 +240,821 @@ export default function LeadModal({
     priority: "MEDIUM" as Task["priority"],
     dueAt: "",
   });
-  const [taskSaving, setTaskSaving] = useState(false);
 
-  const lastSavedServerStatusRef = useRef<string | null>(null);
-
-  const playbook = useMemo(
-    () => normalizeTaskPlaybook(settings?.taskPlaybook ?? DEFAULT_TASK_PLAYBOOK),
-    [settings?.taskPlaybook]
-  );
-
-  // Navigation stages configuration
-  const stages = [
-    {
-      id: 'overview' as const,
-      title: 'Overview',
-      icon: '👀',
-      description: 'Lead summary and actions'
-    },
-    {
-      id: 'details' as const,
-      title: 'Details',
-      icon: '📝',
-      description: 'Contact info and notes'
-    },
-    {
-      id: 'questionnaire' as const,
-      title: 'Questionnaire',
-      icon: '📋',
-      description: 'Client responses and data'
-    },
-    {
-      id: 'tasks' as const,
-      title: 'Tasks',
-      icon: '✅',
-      description: 'Next steps and progress'
+  // Auto-save with debouncing to prevent saving on every character
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+  
+  const savePatch = useCallback(async (patch: Partial<Lead>) => {
+    if (!lead?.id) return;
+    
+    try {
+      setSaving(true);
+      const res = await apiFetch(`/api/leads/${lead.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify(patch),
+      });
+      
+      if ((res as Response).ok) {
+        await onUpdated?.();
+      } else {
+        toast("Failed to save changes");
+      }
+    } catch (err) {
+      console.error("Save error:", err);
+      toast("Failed to save changes");
+    } finally {
+      setSaving(false);
     }
-  ];
-
-  // Initialize form fields when lead changes
-  useEffect(() => {
-    if (leadPreview) {
-      setLead(leadPreview);
-      setUiStatus(leadPreview.status);
-      setNameInput(leadPreview.contactName || "");
-      setEmailInput(leadPreview.email || "");
-      setDescInput(leadPreview.description || "");
-      lastSavedServerStatusRef.current = leadPreview.status;
+  }, [lead?.id, authHeaders, onUpdated]);
+  
+  const debouncedSave = useCallback((data: Partial<Lead>) => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
     }
-  }, [leadPreview]);
+    
+    const timeout = setTimeout(() => {
+      savePatch(data);
+    }, 1000); // Wait 1 second after user stops typing
+    
+    setSaveTimeout(timeout);
+  }, [saveTimeout, savePatch]);
 
-  // Load settings and tasks
+  // Form handlers with debounced saving
+  const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNameInput(value);
+    setLead((l) => (l ? { ...l, contactName: value || null } : l));
+    debouncedSave({ contactName: value || null });
+  };
+
+  const handleEmailChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEmailInput(value);
+    setLead((l) => (l ? { ...l, email: value || null } : l));
+    debouncedSave({ email: value || null });
+  };
+
+  const handleDescChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setDescInput(value);
+    setLead((l) => (l ? { ...l, description: value || null } : l));
+    debouncedSave({ description: value || null });
+  };
+
+  // Load data when modal opens
   useEffect(() => {
-    if (!open || !tenantId) return;
+    if (!open || !leadPreview?.id) return;
 
     const loadData = async () => {
       setLoading(true);
       try {
-        const [settingsResult, tasksResult] = await Promise.all([
-          apiFetch<TenantSettings>("/tenant-settings", { headers: authHeaders }),
-          leadPreview?.id
-            ? apiFetch<Task[]>(`/tasks?relatedType=LEAD&relatedId=${leadPreview.id}`, { headers: authHeaders })
-            : Promise.resolve([])
-        ]);
+        // Load lead details
+        const leadRes = await apiFetch(`/api/leads/${leadPreview.id}`, {
+          headers: authHeaders,
+        });
+        
+        if ((leadRes as Response).ok) {
+          const leadData = await (leadRes as Response).json();
+          setLead(leadData);
+          setUiStatus(leadData.status || "NEW_ENQUIRY");
+          setNameInput(leadData.contactName || "");
+          setEmailInput(leadData.email || "");
+          setDescInput(leadData.description || "");
+        }
 
-        setSettings(settingsResult);
-        setTasks(tasksResult);
+        // Load tasks
+        const tasksRes = await apiFetch(`/api/tasks?relatedType=LEAD&relatedId=${leadPreview.id}`, {
+          headers: authHeaders,
+        });
+        
+        if ((tasksRes as Response).ok) {
+          const tasksData = await (tasksRes as Response).json();
+          setTasks(tasksData || []);
+        }
+
+        // Load email threads
+        const emailRes = await apiFetch(`/api/leads/${leadPreview.id}/emails`, {
+          headers: authHeaders,
+        });
+        
+        if ((emailRes as Response).ok) {
+          const emailData = await (emailRes as Response).json();
+          setEmailThreads(emailData || []);
+        }
+
+        // Load settings
+        const settingsRes = await apiFetch("/api/settings", {
+          headers: authHeaders,
+        });
+        
+        if ((settingsRes as Response).ok) {
+          const settingsData = await (settingsRes as Response).json();
+          setSettings(settingsData);
+        }
+        
       } catch (err) {
-        console.error("Failed to load data:", err);
+        console.error("Error loading lead data:", err);
+        toast("Failed to load lead data");
       } finally {
         setLoading(false);
       }
     };
 
     loadData();
-  }, [open, tenantId, leadPreview?.id, authHeaders]);
+  }, [open, leadPreview?.id, authHeaders]);
 
-  // Utility components
-  const StatusBadge = ({ status }: { status: Lead["status"] }) => (
-    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-      status === 'NEW_ENQUIRY' ? 'bg-blue-100 text-blue-800' :
-      status === 'INFO_REQUESTED' ? 'bg-yellow-100 text-yellow-800' :
-      status === 'READY_TO_QUOTE' ? 'bg-green-100 text-green-800' :
-      status === 'QUOTE_SENT' ? 'bg-purple-100 text-purple-800' :
-      status === 'WON' ? 'bg-emerald-100 text-emerald-800' :
-      status === 'LOST' ? 'bg-red-100 text-red-800' :
-      status === 'REJECTED' ? 'bg-gray-100 text-gray-800' :
-      'bg-gray-100 text-gray-800'
-    }`}>
-      {STATUS_LABELS[status]}
-    </span>
-  );
+  // Action handlers
+  const sendQuestionnaire = async () => {
+    if (!lead?.id || !lead?.email) {
+      toast("Lead must have an email to send questionnaire");
+      return;
+    }
 
-  const StatusPipeline = ({ currentStatus, onStatusChange, disabled }: {
-    currentStatus: Lead["status"];
-    onStatusChange: (status: Lead["status"]) => void;
-    disabled?: boolean;
-  }) => (
-    <select
-      value={currentStatus}
-      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm"
-      onChange={(e) => onStatusChange(e.target.value as Lead["status"])}
-      disabled={disabled}
-    >
-      {(Object.keys(STATUS_LABELS) as Lead["status"][]).map((s) => (
-        <option key={s} value={s}>
-          {STATUS_LABELS[s]}
-        </option>
-      ))}
-    </select>
-  );
-
-  const formatDate = (dateStr: string | null | undefined) => {
-    if (!dateStr) return "Unknown";
+    setBusyTask(true);
     try {
-      return new Date(dateStr).toLocaleDateString();
-    } catch {
-      return "Invalid date";
+      const res = await apiFetch(`/api/leads/${lead.id}/send-questionnaire`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          emailSubject: settings?.questionnaireEmailSubject || DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+          emailBody: settings?.questionnaireEmailBody || DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+        }),
+      });
+
+      if ((res as Response).ok) {
+        toast("Questionnaire sent successfully");
+        setUiStatus("INFO_REQUESTED");
+        savePatch({ status: "INFO_REQUESTED" });
+      } else {
+        toast("Failed to send questionnaire");
+      }
+    } catch (err) {
+      console.error("Error sending questionnaire:", err);
+      toast("Failed to send questionnaire");
+    } finally {
+      setBusyTask(false);
     }
   };
 
-  // Stage Navigation Component
-  const StageNavigation = () => (
-    <div className="flex border-b border-gray-200 bg-gray-50">
-      {stages.map((stage) => (
-        <button
-          key={stage.id}
-          onClick={() => setCurrentStage(stage.id)}
-          className={`flex-1 px-4 py-3 text-sm font-medium text-center transition-colors ${
-            currentStage === stage.id
-              ? 'text-blue-600 bg-white border-b-2 border-blue-600'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-          }`}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-lg">{stage.icon}</span>
-            <div className="flex flex-col">
-              <span>{stage.title}</span>
-              <span className="text-xs text-gray-400">{stage.description}</span>
-            </div>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
+  const requestSupplierQuote = async () => {
+    setBusyTask(true);
+    try {
+      const res = await apiFetch(`/api/leads/${lead?.id}/supplier-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+      });
 
-  // Overview Stage Component
-  const OverviewStage = () => (
-    <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">
-            {lead?.contactName || lead?.email || "Unnamed Lead"}
-          </h2>
-          <p className="text-gray-600 mt-1">{lead?.email}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <StatusBadge status={uiStatus} />
-            <span className="text-sm text-gray-500">
-              Lead #{lead?.id?.slice(-8)}
-            </span>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {lead && (
-            <DeclineEnquiryButton 
-              lead={lead}
-              authHeaders={authHeaders}
-              onMarkedRejected={() => {
-                onUpdated?.();
-                onOpenChange(false);
-              }}
-            />
-          )}
-        </div>
-      </div>
-
-      {lead?.description && (
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <h3 className="font-medium text-gray-900 mb-2">Initial Enquiry</h3>
-          <p className="text-gray-700 whitespace-pre-wrap">{lead.description}</p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <h3 className="font-medium text-gray-900">Quick Actions</h3>
-          <div className="space-y-2">
-            <button
-              onClick={() => setCurrentStage('details')}
-              className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">📝</span>
-                <div>
-                  <div className="font-medium">Edit Details</div>
-                  <div className="text-sm text-gray-500">Update contact information</div>
-                </div>
-              </div>
-            </button>
-            <button
-              onClick={() => setCurrentStage('questionnaire')}
-              className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">📋</span>
-                <div>
-                  <div className="font-medium">View Questionnaire</div>
-                  <div className="text-sm text-gray-500">Client responses and data</div>
-                </div>
-              </div>
-            </button>
-            <button
-              onClick={() => setCurrentStage('tasks')}
-              className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">✅</span>
-                <div>
-                  <div className="font-medium">Manage Tasks</div>
-                  <div className="text-sm text-gray-500">Create and track next steps</div>
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <h3 className="font-medium text-gray-900">Lead Progress</h3>
-          <StatusPipeline 
-            currentStatus={uiStatus}
-            onStatusChange={(newStatus: Lead["status"]) => {
-              setUiStatus(newStatus);
-              if (lead?.id) {
-                setSaving(true);
-                apiFetch(`/leads/${lead.id}`, {
-                  method: "PATCH",
-                  headers: { ...authHeaders, "Content-Type": "application/json" },
-                  body: JSON.stringify({ status: newStatus })
-                })
-                  .then(() => {
-                    lastSavedServerStatusRef.current = newStatus;
-                    onUpdated?.();
-                  })
-                  .catch((err: any) => console.error("Failed to update status:", err))
-                  .finally(() => setSaving(false));
-              }
-            }}
-            disabled={saving}
-          />
-        </div>
-      </div>
-    </div>
-  );
-
-  // Details Stage Component 
-  const DetailsStage = () => (
-    <div className="p-6 space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">Contact Details</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contact Name
-            </label>
-            <input
-              type="text"
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              placeholder="Enter contact name"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address
-            </label>
-            <input
-              type="email"
-              value={emailInput}
-              onChange={(e) => setEmailInput(e.target.value)}
-              placeholder="Enter email address"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Description
-          </label>
-          <textarea
-            value={descInput}
-            onChange={(e) => setDescInput(e.target.value)}
-            placeholder="Enter lead description"
-            rows={6}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-      </div>
-      
-      <div className="flex justify-end gap-3">
-        <button
-          onClick={() => setCurrentStage('overview')}
-          className="px-4 py-2 text-gray-600 hover:text-gray-800"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={async () => {
-            if (lead?.id) {
-              setSaving(true);
-              try {
-                await apiFetch(`/leads/${lead.id}`, {
-                  method: "PATCH",
-                  headers: { ...authHeaders, "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    contactName: nameInput || null,
-                    email: emailInput || null,
-                    description: descInput || null,
-                  })
-                });
-                onUpdated?.();
-                setCurrentStage('overview');
-              } catch (err) {
-                console.error("Failed to update lead:", err);
-              } finally {
-                setSaving(false);
-              }
-            }
-          }}
-          disabled={saving}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
-    </div>
-  );
-
-  // Questionnaire Stage Component
-  const QuestionnaireStage = () => {
-    const fields = normalizeQuestionnaireFields(settings?.questionnaire);
-    
-    return (
-      <div className="p-6 space-y-6">
-        <h2 className="text-xl font-bold text-gray-900">Questionnaire</h2>
-        
-        {fields.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <p>No questionnaire configured</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {fields.map((field) => {
-              const value = lead?.custom?.[field.key] || "";
-              return (
-                <div key={field.id} className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    {field.label}
-                    {field.required && <span className="text-red-500 ml-1">*</span>}
-                  </label>
-                  
-                  {field.type === "textarea" ? (
-                    <textarea
-                      value={value}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                      rows={3}
-                    />
-                  ) : field.type === "select" ? (
-                    <select
-                      value={value}
-                      disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                    >
-                      <option value="">Select an option</option>
-                      {field.options.map((option, i) => (
-                        <option key={i} value={option}>{option}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type={field.type}
-                      value={value}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
+      if ((res as Response).ok) {
+        toast("Supplier quote request sent");
+      } else {
+        toast("Failed to send supplier request");
+      }
+    } catch (err) {
+      console.error("Error requesting supplier quote:", err);
+      toast("Failed to send supplier request");
+    } finally {
+      setBusyTask(false);
+    }
   };
 
-  // Tasks Stage Component
-  const TasksStage = () => (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Tasks</h2>
-        <button
-          onClick={() => setShowTaskComposer(!showTaskComposer)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          + Add Task
-        </button>
-      </div>
-      
-      {showTaskComposer && (
-        <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Task Title
-            </label>
-            <input
-              type="text"
-              value={taskComposer.title}
-              onChange={(e) => setTaskComposer(prev => ({ ...prev, title: e.target.value }))}
-              placeholder="Enter task title"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Description
-            </label>
-            <textarea
-              value={taskComposer.description}
-              onChange={(e) => setTaskComposer(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="Enter task description"
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Priority
-              </label>
-              <select
-                value={taskComposer.priority}
-                onChange={(e) => setTaskComposer(prev => ({ ...prev, priority: e.target.value as Task["priority"] }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-              </select>
-            </div>
-            
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Due Date
-              </label>
-              <input
-                type="date"
-                value={taskComposer.dueAt}
-                onChange={(e) => setTaskComposer(prev => ({ ...prev, dueAt: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-          
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={() => {
-                setShowTaskComposer(false);
-                setTaskComposer({
-                  title: "",
-                  description: "",
-                  priority: "MEDIUM",
-                  dueAt: "",
-                });
-              }}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={async () => {
-                if (!taskComposer.title.trim() || !lead?.id) return;
-                
-                setTaskSaving(true);
-                try {
-                  const newTask = await apiFetch<Task>("/tasks", {
-                    method: "POST",
-                    headers: { ...authHeaders, "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      title: taskComposer.title,
-                      description: taskComposer.description || null,
-                      priority: taskComposer.priority,
-                      dueAt: taskComposer.dueAt || null,
-                      relatedType: "LEAD",
-                      relatedId: lead.id,
-                    })
-                  });
-                  
-                  setTasks(current => [...current, newTask]);
-                  
-                  setShowTaskComposer(false);
-                  setTaskComposer({
-                    title: "",
-                    description: "",
-                    priority: "MEDIUM",
-                    dueAt: "",
-                  });
-                } catch (err) {
-                  console.error("Failed to create task:", err);
-                } finally {
-                  setTaskSaving(false);
-                }
-              }}
-              disabled={taskSaving || !taskComposer.title.trim()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {taskSaving ? "Creating..." : "Create Task"}
-            </button>
-          </div>
-        </div>
-      )}
-      
-      <div className="space-y-3">
-        {tasks.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <p>No tasks yet</p>
-          </div>
-        ) : (
-          tasks.map((task) => (
-            <div key={task.id} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-medium text-gray-900">{task.title}</h3>
-                  {task.description && (
-                    <p className="text-sm text-gray-600 mt-1">{task.description}</p>
-                  )}
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      task.priority === 'URGENT' ? 'bg-red-100 text-red-800' :
-                      task.priority === 'HIGH' ? 'bg-orange-100 text-orange-800' :
-                      task.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {task.priority}
-                    </span>
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      task.status === 'DONE' ? 'bg-green-100 text-green-800' :
-                      task.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {task.status.replace('_', ' ')}
-                    </span>
-                    {task.dueAt && (
-                      <span className="text-xs text-gray-500">
-                        Due: {formatDate(task.dueAt)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                
-                <button
-                  onClick={async () => {
-                    try {
-                      await apiFetch(`/tasks/${task.id}`, {
-                        method: "PATCH",
-                        headers: { ...authHeaders, "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          status: task.status === "DONE" ? "OPEN" : "DONE"
-                        })
-                      });
-                      
-                      setTasks(current => 
-                        current.map(t => 
-                          t.id === task.id 
-                            ? { ...t, status: t.status === "DONE" ? "OPEN" : "DONE" }
-                            : t
-                        )
-                      );
-                    } catch (err) {
-                      console.error("Failed to update task:", err);
-                    }
-                  }}
-                  className={`px-3 py-1 text-xs rounded-lg transition-colors ${
-                    task.status === "DONE"
-                      ? "bg-gray-200 text-gray-600 hover:bg-gray-300"
-                      : "bg-green-100 text-green-700 hover:bg-green-200"
-                  }`}
-                >
-                  {task.status === "DONE" ? "Reopen" : "Complete"}
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+  const openQuoteBuilder = () => {
+    if (!lead?.quoteId) {
+      toast("No quote associated with this lead");
+      return;
+    }
+    window.open(`/quotes/${lead.quoteId}`, "_blank");
+  };
+
+  const createTask = async () => {
+    if (!taskComposer.title.trim()) {
+      toast("Task title is required");
+      return;
+    }
+
+    try {
+      const res = await apiFetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          title: taskComposer.title,
+          description: taskComposer.description || null,
+          priority: taskComposer.priority,
+          dueAt: taskComposer.dueAt || null,
+          relatedType: "LEAD",
+          relatedId: lead?.id,
+          status: "OPEN",
+        }),
+      });
+
+      if ((res as Response).ok) {
+        const newTask = await (res as Response).json();
+        setTasks(prev => [...prev, newTask]);
+        setTaskComposer({
+          title: "",
+          description: "",
+          priority: "MEDIUM",
+          dueAt: "",
+        });
+        setShowTaskComposer(false);
+        toast("Task created successfully");
+      } else {
+        toast("Failed to create task");
+      }
+    } catch (err) {
+      console.error("Error creating task:", err);
+      toast("Failed to create task");
+    }
+  };
+
+  const toggleTaskStatus = async (taskId: string, currentStatus: Task["status"]) => {
+    const newStatus = currentStatus === "DONE" ? "OPEN" : "DONE";
+    
+    try {
+      const res = await apiFetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if ((res as Response).ok) {
+        setTasks(prev => prev.map(task => 
+          task.id === taskId ? { ...task, status: newStatus } : task
+        ));
+      } else {
+        toast("Failed to update task");
+      }
+    } catch (err) {
+      console.error("Error updating task:", err);
+      toast("Failed to update task");
+    }
+  };
+
+  // Computed values
+  const questionnaireFields = useMemo(() => {
+    if (!settings?.questionnaire) return [];
+    const config = Array.isArray(settings.questionnaire) 
+      ? settings.questionnaire 
+      : settings.questionnaire.questions || [];
+    return normalizeQuestionnaireFields(config);
+  }, [settings?.questionnaire]);
+
+  const customData = lead?.custom || {};
+  const questionnaireItems = customData?.items || [];
+  const openTasks = tasks.filter(t => t.status !== "DONE" && t.status !== "CANCELLED");
+  const completedTasks = tasks.filter(t => t.status === "DONE");
+  const progress = tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
 
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[60] bg-gradient-to-br from-sky-500/30 via-indigo-700/20 to-rose-500/30 backdrop-blur flex items-center justify-center px-3 py-6"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => e.target === e.currentTarget && onOpenChange(false)}
-    >
-      <div className="relative flex h-[min(88vh,calc(100vh-3rem))] w-[min(1200px,95vw)] max-h-[88vh] flex-col overflow-hidden rounded-2xl border border-white/30 bg-white shadow-[0_32px_70px_-35px_rgba(30,64,175,0.45)] backdrop-blur-xl">
-        
-        {/* Stage Navigation */}
-        <StageNavigation />
-        
-        {/* Stage Content */}
-        <div className="flex-1 overflow-auto">
-          {currentStage === 'overview' && <OverviewStage />}
-          {currentStage === 'details' && <DetailsStage />}
-          {currentStage === 'questionnaire' && <QuestionnaireStage />}
-          {currentStage === 'tasks' && <TasksStage />}
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
+      
+      <div className="relative w-full max-w-7xl max-h-[90vh] mx-4 bg-white rounded-xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white font-bold">
+              {avatarText(lead?.contactName)}
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">
+                {lead?.contactName || "Unnamed Lead"}
+              </h2>
+              <p className="text-sm text-gray-500">{lead?.email}</p>
+            </div>
+            {saving && (
+              <div className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                Saving...
+              </div>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <select
+              value={uiStatus}
+              onChange={(e) => {
+                const newStatus = e.target.value as Lead["status"];
+                setUiStatus(newStatus);
+                savePatch({ status: newStatus });
+              }}
+              className="px-3 py-1 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="NEW_ENQUIRY">New Enquiry</option>
+              <option value="INFO_REQUESTED">Info Requested</option>
+              <option value="READY_TO_QUOTE">Ready to Quote</option>
+              <option value="QUOTE_SENT">Quote Sent</option>
+              <option value="WON">Won</option>
+              <option value="LOST">Lost</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+            
+            <button
+              onClick={() => onOpenChange(false)}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              ✕
+            </button>
+          </div>
         </div>
-        
-        {/* Close Button */}
-        <div className="absolute top-4 right-4">
+
+        {/* Action Bar */}
+        <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b bg-gradient-to-r from-sky-50 via-indigo-50 to-amber-50">
+          {uiStatus === "NEW_ENQUIRY" && (
+            <DeclineEnquiryButton
+              lead={{
+                id: lead?.id || leadPreview?.id || "",
+                contactName: lead?.contactName ?? leadPreview?.contactName,
+                email: lead?.email ?? leadPreview?.email,
+                description: lead?.description ?? leadPreview?.description,
+                custom: lead?.custom ?? leadPreview?.custom ?? null,
+              }}
+              disabled={saving || loading}
+              authHeaders={authHeaders}
+              brandName={settings?.brandName ?? null}
+              onMarkedRejected={() => {
+                setUiStatus("REJECTED");
+                return savePatch({ status: "REJECTED" });
+              }}
+            />
+          )}
+
           <button
-            onClick={() => onOpenChange(false)}
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-white/80 hover:bg-white shadow-sm border border-gray-200"
+            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
+            onClick={sendQuestionnaire}
+            disabled={busyTask || saving || !lead?.email}
+            title="Send questionnaire to client"
           >
-            <span className="text-gray-600">✕</span>
+            <span aria-hidden="true">📜</span>
+            Send questionnaire
+          </button>
+
+          <button
+            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
+            onClick={requestSupplierQuote}
+            disabled={busyTask}
+            title="Request quote from supplier"
+          >
+            <span aria-hidden="true">🧞</span>
+            Request supplier quote
+          </button>
+
+          <button
+            className="rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 text-white px-4 py-2 text-sm font-semibold shadow hover:from-indigo-600 hover:to-sky-600"
+            onClick={openQuoteBuilder}
+            title="Open quote builder"
+            disabled={!lead?.quoteId}
+          >
+            Open Quote Builder
           </button>
         </div>
-        
+
+        {/* Stage Navigation */}
+        <div className="flex gap-1 rounded-xl bg-slate-100/80 p-1 mx-6 mt-4">
+          {[
+            { key: "overview", label: "Overview", icon: "📊", description: "Lead summary and actions" },
+            { key: "details", label: "Details", icon: "📝", description: "Contact info and notes" },
+            { key: "questionnaire", label: "Questionnaire", icon: "📋", description: "Client responses" },
+            { key: "tasks", label: "Tasks", icon: "✅", description: "Action items" },
+          ].map((stage) => (
+            <button
+              key={stage.key}
+              onClick={() => setCurrentStage(stage.key as typeof currentStage)}
+              className={`
+                flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200
+                ${currentStage === stage.key
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }
+              `}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <span>{stage.icon}</span>
+                <span className="hidden sm:inline">{stage.label}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-0 min-h-[60vh]">
+            {/* Main Content Area */}
+            <div className="lg:col-span-3 p-6 space-y-6">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-gray-500">Loading...</div>
+                </div>
+              ) : (
+                <>
+                  {/* Overview Stage */}
+                  {currentStage === 'overview' && (
+                    <div className="space-y-6">
+                      {/* Lead Summary */}
+                      <div className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm">
+                        <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-4">
+                          <span aria-hidden="true">✨</span>
+                          Lead Summary
+                        </h3>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Contact</div>
+                            <div className="text-sm text-slate-700">
+                              {lead?.contactName || "No name provided"}
+                              {lead?.email && (
+                                <div className="text-xs text-slate-500">{lead.email}</div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Status</div>
+                            <div className="text-sm text-slate-700">
+                              {uiStatus.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+                            </div>
+                          </div>
+                        </div>
+
+                        {lead?.description && (
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Description</div>
+                            <div className="text-sm text-slate-700 bg-gray-50 p-3 rounded-lg">
+                              {lead.description}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Email Thread */}
+                      {emailThreads.length > 0 && (
+                        <div className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm">
+                          <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-4">
+                            <span aria-hidden="true">✉️</span>
+                            Email Thread
+                          </h3>
+                          
+                          <div className="space-y-3">
+                            {emailThreads.map((email) => (
+                              <div key={email.id} className="border border-gray-200 rounded-lg p-3">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div>
+                                    <div className="font-medium text-sm">{email.subject}</div>
+                                    <div className="text-xs text-gray-500">
+                                      From: {email.from} • {email.receivedAt && new Date(email.receivedAt).toLocaleString()}
+                                    </div>
+                                  </div>
+                                </div>
+                                {email.snippet && (
+                                  <div className="text-sm text-gray-700 mt-2">
+                                    {email.snippet}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Questionnaire Responses */}
+                      {questionnaireItems.length > 0 && (
+                        <div className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm">
+                          <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-4">
+                            <span aria-hidden="true">📋</span>
+                            Client Responses
+                          </h3>
+                          
+                          <div className="space-y-3">
+                            {questionnaireItems.map((item: any, idx: number) => (
+                              <div key={idx} className="border border-gray-200 rounded-lg p-3">
+                                <div className="font-medium text-sm mb-2">Item {idx + 1}</div>
+                                <div className="space-y-1">
+                                  {Object.entries(item || {}).map(([k, v]) => {
+                                    if (k === "photos") return null;
+                                    const answer = formatAnswer(v);
+                                    if (!answer) return null;
+                                    return (
+                                      <div key={k} className="flex gap-2">
+                                        <div className="text-xs text-gray-500 w-24 shrink-0">{k}</div>
+                                        <div className="text-sm text-gray-700">{answer}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Details Stage */}
+                  {currentStage === 'details' && (
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm">
+                        <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-4">
+                          <span aria-hidden="true">📝</span>
+                          Contact Details
+                        </h3>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                          <label className="text-sm">
+                            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Name</span>
+                            <input
+                              className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                              value={nameInput}
+                              onChange={handleNameChange}
+                              placeholder="Client name"
+                            />
+                          </label>
+
+                          <label className="text-sm">
+                            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Email</span>
+                            <input
+                              className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                              value={emailInput}
+                              onChange={handleEmailChange}
+                              placeholder="client@email.com"
+                            />
+                          </label>
+                        </div>
+
+                        <label className="text-sm block">
+                          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Notes</span>
+                          <textarea
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-32 shadow-inner"
+                            value={descInput}
+                            onChange={handleDescChange}
+                            placeholder="Project background, requirements, constraints…"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Questionnaire Stage */}
+                  {currentStage === 'questionnaire' && (
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm">
+                        <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-4">
+                          <span aria-hidden="true">📋</span>
+                          Questionnaire Responses
+                        </h3>
+                        
+                        {questionnaireFields.length === 0 ? (
+                          <div className="text-sm text-gray-500">No questionnaire configured</div>
+                        ) : (
+                          <div className="space-y-4">
+                            {questionnaireFields.map((field) => {
+                              const value = customData[field.key] || "";
+                              return (
+                                <div key={field.key}>
+                                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                    {field.label}
+                                    {field.required && <span className="text-red-500">*</span>}
+                                  </div>
+                                  
+                                  {field.type === "textarea" ? (
+                                    <textarea
+                                      value={value}
+                                      readOnly
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                                      rows={3}
+                                    />
+                                  ) : field.type === "select" ? (
+                                    <select
+                                      value={value}
+                                      disabled
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                                    >
+                                      <option value="">Select an option</option>
+                                      {field.options.map((option, i) => (
+                                        <option key={i} value={option}>{option}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <input
+                                      type={field.type}
+                                      value={value}
+                                      readOnly
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tasks Stage */}
+                  {currentStage === 'tasks' && (
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                            <span aria-hidden="true">✅</span>
+                            Tasks
+                          </h3>
+                          <button
+                            onClick={() => setShowTaskComposer(!showTaskComposer)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                          >
+                            + Add Task
+                          </button>
+                        </div>
+                        
+                        {showTaskComposer && (
+                          <div className="bg-gray-50 p-4 rounded-lg space-y-4 mb-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Task Title
+                              </label>
+                              <input
+                                type="text"
+                                value={taskComposer.title}
+                                onChange={(e) => setTaskComposer(prev => ({ ...prev, title: e.target.value }))}
+                                placeholder="Enter task title"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                              />
+                            </div>
+                            
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Description
+                              </label>
+                              <textarea
+                                value={taskComposer.description}
+                                onChange={(e) => setTaskComposer(prev => ({ ...prev, description: e.target.value }))}
+                                placeholder="Enter task description"
+                                rows={3}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                              />
+                            </div>
+                            
+                            <div className="flex gap-4">
+                              <div className="flex-1">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Priority
+                                </label>
+                                <select
+                                  value={taskComposer.priority}
+                                  onChange={(e) => setTaskComposer(prev => ({ ...prev, priority: e.target.value as Task["priority"] }))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                >
+                                  <option value="LOW">Low</option>
+                                  <option value="MEDIUM">Medium</option>
+                                  <option value="HIGH">High</option>
+                                  <option value="URGENT">Urgent</option>
+                                </select>
+                              </div>
+                              
+                              <div className="flex-1">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Due Date
+                                </label>
+                                <input
+                                  type="date"
+                                  value={taskComposer.dueAt}
+                                  onChange={(e) => setTaskComposer(prev => ({ ...prev, dueAt: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                />
+                              </div>
+                            </div>
+                            
+                            <div className="flex gap-2">
+                              <button
+                                onClick={createTask}
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                              >
+                                Create Task
+                              </button>
+                              <button
+                                onClick={() => setShowTaskComposer(false)}
+                                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 text-sm"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          {tasks.length === 0 ? (
+                            <div className="text-sm text-gray-500 py-4">No tasks yet</div>
+                          ) : (
+                            tasks.map((task) => (
+                              <div
+                                key={task.id}
+                                className={`p-3 rounded-lg border ${
+                                  task.status === "DONE" 
+                                    ? "bg-green-50 border-green-200" 
+                                    : "bg-white border-gray-200"
+                                }`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <button
+                                    onClick={() => toggleTaskStatus(task.id, task.status)}
+                                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                      task.status === "DONE"
+                                        ? "bg-green-500 border-green-500 text-white"
+                                        : "border-gray-300 hover:border-green-400"
+                                    }`}
+                                  >
+                                    {task.status === "DONE" && "✓"}
+                                  </button>
+                                  
+                                  <div className="flex-1">
+                                    <div className={`font-medium ${task.status === "DONE" ? "line-through text-gray-500" : ""}`}>
+                                      {task.title}
+                                    </div>
+                                    {task.description && (
+                                      <div className="text-sm text-gray-600 mt-1">
+                                        {task.description}
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-2 mt-2">
+                                      <span className={`px-2 py-1 rounded text-xs ${
+                                        task.priority === "URGENT" ? "bg-red-100 text-red-700" :
+                                        task.priority === "HIGH" ? "bg-orange-100 text-orange-700" :
+                                        task.priority === "MEDIUM" ? "bg-yellow-100 text-yellow-700" :
+                                        "bg-gray-100 text-gray-700"
+                                      }`}>
+                                        {task.priority}
+                                      </span>
+                                      {task.dueAt && (
+                                        <span className="text-xs text-gray-500">
+                                          Due: {new Date(task.dueAt).toLocaleDateString()}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Sidebar - Always Visible Tasks */}
+            <div className="lg:col-span-1 bg-gradient-to-br from-indigo-900/10 via-white to-rose-50 p-4 border-l space-y-4">
+              <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 font-semibold text-slate-900">
+                    <span aria-hidden="true">⭐</span>
+                    Task Progress
+                  </div>
+                  <div className="text-xs text-slate-500">{openTasks.length} open</div>
+                </div>
+                
+                <div className="mb-3">
+                  <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1">
+                    <span>{completedTasks.length} completed</span>
+                    <span>{progress}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {openTasks.slice(0, 5).map((task) => (
+                    <div key={task.id} className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleTaskStatus(task.id, task.status)}
+                          className="w-3 h-3 rounded-full border border-gray-300 hover:border-green-400 flex-shrink-0"
+                        />
+                        <span className="truncate">{task.title}</span>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {openTasks.length > 5 && (
+                    <button
+                      onClick={() => setCurrentStage('tasks')}
+                      className="text-xs text-blue-600 hover:text-blue-700"
+                    >
+                      View all {openTasks.length} tasks →
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
