@@ -562,19 +562,36 @@ class GmailService:
     def _get_access_token(self) -> str:
         """Get access token using refresh token"""
         import requests
+        import os
+        
+        # Get client credentials from environment with detailed logging
+        client_id = os.getenv('GMAIL_CLIENT_ID')
+        client_secret = os.getenv('GMAIL_CLIENT_SECRET')
+        
+        logger.info(f"🔍 Getting access token...")
+        logger.info(f"🔍 GMAIL_CLIENT_ID set: {bool(client_id)}, length: {len(client_id) if client_id else 0}")
+        logger.info(f"🔍 GMAIL_CLIENT_SECRET set: {bool(client_secret)}, length: {len(client_secret) if client_secret else 0}")
+        
+        if not client_id or not client_secret:
+            logger.error(f"❌ Gmail OAuth credentials missing from environment!")
+            raise Exception("Gmail OAuth credentials not configured in environment variables")
         
         # Use same OAuth flow as API service
         data = {
-            'client_id': os.getenv('GMAIL_CLIENT_ID'),
-            'client_secret': os.getenv('GMAIL_CLIENT_SECRET'), 
+            'client_id': client_id,
+            'client_secret': client_secret, 
             'grant_type': 'refresh_token',
             'refresh_token': self.credentials['refresh_token']
         }
         
+        logger.info(f"🔄 Attempting token refresh...")
+        
         response = requests.post('https://oauth2.googleapis.com/token', data=data)
         if not response.ok:
+            logger.error(f"💥 Token refresh failed: {response.text}")
             raise Exception(f"Failed to refresh access token: {response.text}")
             
+        logger.info(f"✅ Token refresh successful!")
         return response.json()['access_token']
     
     def _get_email_details(self, access_token: str, message_id: str) -> Optional[Dict[str, Any]]:
