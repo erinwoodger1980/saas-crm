@@ -197,6 +197,54 @@ def health():
         }
     }
 
+@app.post("/debug-client-quote-parser")
+def debug_client_quote_parser():
+    """Debug the client quote parser specifically"""
+    
+    # Use the exact same PDF text from the working debug endpoint
+    pdf_text = """JMS 2, 4, 3, 5 (59629)
+David Murphy
+ESTIMATE
+Reference
+Windows
+Estimate Number
+Wellow201
+Date of Estimate
+5 February 2024
+Validity
+10 days
+Wellow Baptist Church
+Item
+Description
+Number Width
+Height
+Sliding Sash - SS1
+BOX FRAME - Lead Weights -
+Weatherstrip - Decorative Horns.
+Arched to be fixed above.
+ACCOYA timber throughout.
+(Traditional putty glazing)
+1 1100mm 1640mm
+Total £55,512.68 VAT £11,102.54 Total £66,615.22"""
+    
+    try:
+        from pdf_parser import parse_client_quote_from_text
+        
+        result = parse_client_quote_from_text(pdf_text)
+        
+        return {
+            "pdf_text_length": len(pdf_text),
+            "pdf_text_preview": pdf_text[:200],
+            "parsed_result": result,
+            "confidence": result.get("confidence", 0),
+            "quoted_price": result.get("quoted_price"),
+            "project_type": result.get("questionnaire_answers", {}).get("project_type"),
+            "success": result.get("confidence", 0) > 0.1
+        }
+        
+    except Exception as e:
+        return {"error": f"Client quote parser failed: {e}"}
+
 @app.get("/debug-env")
 def debug_env():
     """Debug endpoint to check Gmail environment variables (temporary)"""
