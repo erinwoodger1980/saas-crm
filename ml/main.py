@@ -420,6 +420,129 @@ async def debug_email_processing(req: Request):
             "traceback": traceback.format_exc()
         }
 
+@app.post("/debug-email-search")
+async def debug_email_search(req: Request):
+    """Debug the email search logic used by preview endpoint"""
+    try:
+        tenant_id = "cmgt9bchl0001uj2h4po89fim"
+        days_back = 7
+        
+        # Get database connection
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {"error": "No DATABASE_URL configured"}
+        
+        # Get Gmail credentials
+        from db_config import get_db_manager
+        db_manager = get_db_manager()
+        
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT "refreshToken" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
+            result = cur.fetchone()
+            
+            if not result:
+                return {"error": f"No Gmail connection found for tenant {tenant_id}"}
+                
+            refresh_token = result[0]
+        
+        # Setup workflow (mimics preview endpoint)
+        from email_trainer import EmailTrainingWorkflow
+        workflow = EmailTrainingWorkflow(db_url, tenant_id)
+        
+        gmail_credentials = {'refresh_token': refresh_token}
+        workflow.setup_email_service("gmail", gmail_credentials)
+        
+        # Test the exact search logic from find_client_quotes
+        from datetime import datetime, timedelta
+        since_date = datetime.now() - timedelta(days=days_back)
+        
+        quote_keywords = [
+            "estimate", "quotation", "proposal", "quote",
+            "joinery", "windows", "doors", "timber", "carpenter",
+            "price", "cost", "attachment", "pdf"
+        ]
+        
+        # Search sent emails (same as find_client_quotes)
+        result = {
+            "search_params": {
+                "keywords": quote_keywords,
+                "has_attachments": True,
+                "since_date": since_date.isoformat(),
+                "sent_only": True,
+                "days_back": days_back
+            }
+        }
+        
+        try:
+            emails = workflow.email_service.search_emails(
+                keywords=quote_keywords,
+                has_attachments=True,
+                since_date=since_date,
+                sent_only=True
+            )
+            
+            result["sent_emails_found"] = len(emails)
+            result["sent_emails"] = [{"subject": e.get("subject", ""), "sender": e.get("sender", ""), "date": e.get("date_sent", "")} for e in emails[:3]]
+            
+        except Exception as e:
+            result["sent_search_error"] = str(e)
+            emails = []
+        
+        # If no sent emails, try all emails (same logic as find_client_quotes)
+        if not emails:
+            try:
+                emails = workflow.email_service.search_emails(
+                    keywords=quote_keywords,
+                    has_attachments=True,
+                    since_date=since_date,
+                    sent_only=False
+                )
+                
+                result["all_emails_found"] = len(emails)
+                result["all_emails"] = [{"subject": e.get("subject", ""), "sender": e.get("sender", ""), "date": e.get("date_sent", "")} for e in emails[:3]]
+                
+            except Exception as e:
+                result["all_search_error"] = str(e)
+        
+        # Test processing the first email if found
+        if emails:
+            first_email = emails[0]
+            result["processing_first_email"] = {
+                "subject": first_email.get("subject", ""),
+                "attachments_count": len(first_email.get("attachments", []))
+            }
+            
+            # Test attachment processing
+            attachments = first_email.get("attachments", [])
+            pdf_attachments = [att for att in attachments if att.get("filename", "").lower().endswith(".pdf")]
+            
+            result["pdf_attachments_found"] = len(pdf_attachments)
+            
+            if pdf_attachments:
+                # Test the actual workflow processing
+                try:
+                    quote = workflow._process_email_attachment(first_email, pdf_attachments[0])
+                    if quote:
+                        result["quote_processed"] = {
+                            "confidence": quote.confidence,
+                            "quoted_price": quote.parsed_data.get("quoted_price"),
+                            "success": True
+                        }
+                    else:
+                        result["quote_processed"] = {"success": False, "reason": "No quote returned"}
+                except Exception as e:
+                    result["quote_processing_error"] = str(e)
+        
+        return result
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()[:500]
+        }
+
 @app.post("/debug-full-workflow")
 async def debug_full_workflow(req: Request):
     """Debug the full email-to-quote workflow step by step"""
