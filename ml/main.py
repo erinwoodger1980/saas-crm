@@ -197,6 +197,94 @@ def health():
         }
     }
 
+@app.post("/debug-pdf-text-extraction")
+def debug_pdf_text_extraction():
+    """Debug PDF text extraction from the actual email attachment"""
+    
+    try:
+        # Get database URL  
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {"error": "DATABASE_URL not configured"}
+
+        from db_config import get_db_manager
+        db_manager = get_db_manager()
+        
+        # Get Gmail credentials
+        tenant_id = "cmgt9bchl0001uj2h4po89fim"
+        
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT "refreshToken", "gmailAddress" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
+            result = cur.fetchone()
+            
+            if not result:
+                return {"error": "No Gmail connection found"}
+                
+            refresh_token, gmail_address = result
+            gmail_credentials = {
+                'refresh_token': refresh_token,
+                'gmail_address': gmail_address,
+            }
+            
+            # Set environment variables
+            os.environ['GMAIL_CLIENT_ID'] = os.getenv('GMAIL_CLIENT_ID', '')
+            os.environ['GMAIL_CLIENT_SECRET'] = os.getenv('GMAIL_CLIENT_SECRET', '')
+        
+        # Initialize workflow and get the exact same email
+        workflow = EmailTrainingWorkflow(db_url, tenant_id)
+        workflow.setup_email_service("gmail", gmail_credentials)
+        
+        # Search for the specific email
+        from datetime import datetime, timedelta
+        since_date = datetime.now() - timedelta(days=5)
+        
+        emails = workflow.email_service.search_emails(
+            keywords=["quote", "david", "murphy"],
+            has_attachments=True,
+            since_date=since_date,
+            sent_only=False
+        )
+        
+        if not emails:
+            return {"error": "No emails found"}
+        
+        email = emails[0]  # Get first email
+        attachments = email.get("attachments", [])
+        
+        if not attachments:
+            return {"error": "No attachments found"}
+        
+        attachment = attachments[0]  # Get first attachment
+        
+        # Download and extract text
+        attachment_data = workflow.email_service.download_attachment(
+            email["message_id"], 
+            attachment["attachment_id"]
+        )
+        
+        pdf_text = extract_text_from_pdf_bytes(attachment_data)
+        
+        # Parse with client quote parser
+        parsed_data = parse_client_quote_from_text(pdf_text)
+        
+        return {
+            "email_subject": email.get("subject"),
+            "attachment_filename": attachment.get("filename"),
+            "attachment_size": len(attachment_data),
+            "pdf_text_length": len(pdf_text) if pdf_text else 0,
+            "pdf_text_preview": pdf_text[:500] if pdf_text else "No text extracted",
+            "parsed_confidence": parsed_data.get("confidence", 0),
+            "parsed_price": parsed_data.get("quoted_price"),
+            "parsed_project_type": parsed_data.get("questionnaire_answers", {}).get("project_type"),
+            "passes_threshold": parsed_data.get("confidence", 0) > 0.1,
+            "full_parsed_data": parsed_data
+        }
+        
+    except Exception as e:
+        import traceback
+        return {"error": f"Debug failed: {e}", "traceback": traceback.format_exc()}
+
 @app.post("/debug-client-quote-parser")
 def debug_client_quote_parser():
     """Debug the client quote parser specifically"""
