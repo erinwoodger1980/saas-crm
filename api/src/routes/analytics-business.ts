@@ -421,6 +421,7 @@ router.post("/import-historical", async (req, res) => {
           await prisma.lead.create({
             data: {
               tenantId,
+              createdById: userId,
               contactName: `Historical Import ${i + 1}`,
               email: `historical-${Date.now()}-${i}@example.com`,
               status: 'NEW',
