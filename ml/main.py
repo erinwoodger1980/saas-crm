@@ -471,7 +471,40 @@ async def debug_attachment_processing(req: Request):
         # Step 1: Download attachment
         debug_info["steps"].append("Downloading attachment...")
         try:
-            attachment_data = workflow.email_service.download_attachment(message_id, attachment_id)
+            # Create a custom download method with error capture
+            access_token = workflow.email_service._get_access_token()
+            
+            # Test Gmail attachment download directly
+            import requests
+            url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            
+            response = requests.get(url, headers=headers)
+            debug_info["download_url"] = url[:100] + "..."
+            debug_info["download_status"] = response.status_code
+            debug_info["download_ok"] = response.ok
+            
+            if not response.ok:
+                debug_info["download_error_text"] = response.text[:500]
+                debug_info["steps"].append(f"Download failed with status {response.status_code}")
+                return debug_info
+            
+            data = response.json()
+            attachment_data_raw = data.get("data", "")
+            debug_info["raw_data_length"] = len(attachment_data_raw)
+            
+            if not attachment_data_raw:
+                debug_info["steps"].append("No data in response")
+                return debug_info
+            
+            # Decode base64url
+            import base64
+            attachment_data_raw = attachment_data_raw.replace('-', '+').replace('_', '/')
+            while len(attachment_data_raw) % 4:
+                attachment_data_raw += '='
+            
+            attachment_data = base64.b64decode(attachment_data_raw)
+            
             debug_info["download_success"] = len(attachment_data) > 0
             debug_info["attachment_size"] = len(attachment_data)
             debug_info["steps"].append(f"Downloaded {len(attachment_data)} bytes")
