@@ -45,6 +45,7 @@ model Tenant {
   // Workshop relations
   processPlans          ProcessPlan[]
   timeEntries           TimeEntry[]
+  targets               Target[]
 }
 
 model User {
@@ -820,4 +821,21 @@ model TimeEntry {
 
   @@index([tenantId, projectId, process])
   @@index([tenantId, date])
+}
+
+model Target {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  year                Int
+  enquiriesTarget     Int?     @default(0)
+  quotesValueTarget   Decimal? @default(0)
+  quotesCountTarget   Int?     @default(0)
+  salesValueTarget    Decimal? @default(0)
+  salesCountTarget    Int?     @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, year])
 }
