@@ -420,6 +420,143 @@ async def debug_email_processing(req: Request):
             "traceback": traceback.format_exc()
         }
 
+@app.post("/simple-attachment-test")
+async def simple_attachment_test(req: Request):
+    """Minimal test of Gmail attachment download API"""
+    try:
+        # Use hardcoded tenant for testing
+        tenant_id = "cmgt9bchl0001uj2h4po89fim"
+        message_id = "19a3f6846b1e3038"
+        
+        # Get database connection
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {"error": "No DATABASE_URL configured"}
+        
+        # Get Gmail credentials from database
+        from db_config import get_db_manager
+        db_manager = get_db_manager()
+        
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT "refreshToken" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
+            result = cur.fetchone()
+            
+            if not result:
+                return {"error": f"No Gmail connection found for tenant {tenant_id}"}
+                
+            refresh_token = result[0]
+        
+        # Get access token
+        import requests
+        token_data = {
+            'client_id': os.getenv('GMAIL_CLIENT_ID'),
+            'client_secret': os.getenv('GMAIL_CLIENT_SECRET'),
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token
+        }
+        
+        token_response = requests.post('https://oauth2.googleapis.com/token', data=token_data)
+        if not token_response.ok:
+            return {
+                "error": "Token refresh failed",
+                "status": token_response.status_code,
+                "details": token_response.text[:200]
+            }
+        
+        access_token = token_response.json()['access_token']
+        
+        # Get message details to find current attachment ID
+        headers = {"Authorization": f"Bearer {access_token}"}
+        msg_url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}"
+        
+        msg_response = requests.get(msg_url, headers=headers)
+        if not msg_response.ok:
+            return {
+                "error": "Failed to get message",
+                "status": msg_response.status_code,
+                "details": msg_response.text[:200]
+            }
+        
+        message_data = msg_response.json()
+        
+        # Find first PDF attachment
+        def find_pdf_attachment(payload):
+            if payload.get('filename', '').lower().endswith('.pdf') and payload.get('body', {}).get('attachmentId'):
+                return {
+                    'filename': payload['filename'],
+                    'attachment_id': payload['body']['attachmentId'],
+                    'size': payload['body'].get('size', 0)
+                }
+            
+            if 'parts' in payload:
+                for part in payload['parts']:
+                    result = find_pdf_attachment(part)
+                    if result:
+                        return result
+            return None
+        
+        attachment = find_pdf_attachment(message_data.get('payload', {}))
+        if not attachment:
+            return {"error": "No PDF attachment found in message"}
+        
+        # Test attachment download
+        attachment_url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment['attachment_id']}"
+        
+        attachment_response = requests.get(attachment_url, headers=headers)
+        
+        result = {
+            "message_id": message_id,
+            "attachment_filename": attachment['filename'],
+            "attachment_size_from_metadata": attachment['size'],
+            "download_url": attachment_url[:80] + "...",
+            "download_status": attachment_response.status_code,
+            "download_success": attachment_response.ok
+        }
+        
+        if attachment_response.ok:
+            data = attachment_response.json()
+            raw_data = data.get("data", "")
+            result["raw_attachment_data_length"] = len(raw_data)
+            
+            if raw_data:
+                # Test base64url decoding
+                import base64
+                try:
+                    # Gmail uses base64url encoding
+                    decoded_data = raw_data.replace('-', '+').replace('_', '/')
+                    while len(decoded_data) % 4:
+                        decoded_data += '='
+                    
+                    decoded_bytes = base64.b64decode(decoded_data)
+                    result["decoded_size"] = len(decoded_bytes)
+                    result["first_bytes_hex"] = decoded_bytes[:16].hex() if len(decoded_bytes) >= 16 else decoded_bytes.hex()
+                    result["success"] = True
+                    
+                    # Check if it's a valid PDF
+                    if decoded_bytes.startswith(b'%PDF'):
+                        result["is_valid_pdf"] = True
+                    else:
+                        result["is_valid_pdf"] = False
+                        result["actual_start"] = decoded_bytes[:20]
+                        
+                except Exception as decode_error:
+                    result["decode_error"] = str(decode_error)
+            else:
+                result["error"] = "No attachment data in response"
+                result["response_data"] = data
+        else:
+            result["error_details"] = attachment_response.text[:300]
+        
+        return result
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()[:500]
+        }
+
 @app.post("/test-gmail-download")
 async def test_gmail_download(req: Request):
     """Simple test of Gmail attachment download with detailed error reporting"""
