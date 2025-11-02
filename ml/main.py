@@ -552,13 +552,41 @@ async def debug_attachment_processing(req: Request):
         gmail_credentials = {"refresh_token": refresh_token}
         workflow.setup_email_service("gmail", gmail_credentials)
         
-        # Test specific attachment processing
+        # Use a known message ID
         message_id = "19a3f6846b1e3038"  # From debug output
-        attachment_id = "ANGjdJ-ow0gGB3JZQDm988R7Al9Gm5-wh1lzYUySz5Db-KrEOPOyQsJx6FrMcbp4Xk1zGKmv98XgzaXbKNlA_f9QMMClcfutqilXbzT6Ddf3XbKX8bFqnvuCPmEjZlu-DBoHbuBSmC6oGw59aPUjt23Sxp28oBMGw6Uk9qBjuT7cQneHIz9theMZ3CwLvmspZCUHvB7iA2yQXM-EPqKAnQDGMULafSijnK--mqx8ChnwkWrdPlXQjT2Sg_N1YCnqageHErL8hSXVZuOSZZKduFUjNatRJKVsZLaIzuyoanWd4ix5LFGNpbElU5Qb7D2m6LCfO0YZvXuTDIJguhqJQPU4S-JmTpzA-0gsroCpNwU2AWqCrPGymUqwdxpJ3v4KoqZ7fs5vMN3ZLzJWuWgD"
+        
+        # Get current email details and use real attachment ID
+        import requests
+        access_token = workflow.email_service._get_access_token()
+        
+        # Get the message details to get current attachment IDs
+        msg_url = f'https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}'
+        headers = {'Authorization': f'Bearer {access_token}'}
+        msg_response = requests.get(msg_url, headers=headers)
+        
+        if not msg_response.ok:
+            return {"error": f"Failed to get message details: {msg_response.status_code}"}
+        
+        message_data = msg_response.json()
+        payload = message_data.get('payload', {})
+        
+        # Find PDF attachments
+        attachments = []
+        workflow.email_service._extract_attachments(payload, attachments)
+        
+        pdf_attachments = [att for att in attachments if att['filename'].lower().endswith('.pdf')]
+        
+        if not pdf_attachments:
+            return {"error": "No PDF attachments found in current message"}
+        
+        # Use the first PDF attachment
+        attachment = pdf_attachments[0]
+        attachment_id = attachment['attachment_id']
         
         debug_info = {
             "message_id": message_id,
-            "attachment_id": attachment_id[:50] + "...",  # Truncate for readability
+            "attachment_filename": attachment['filename'],
+            "attachment_id": attachment_id[:50] + "...",
             "steps": []
         }
         
