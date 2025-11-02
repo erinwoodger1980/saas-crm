@@ -287,6 +287,121 @@ def debug_gmail():
     except Exception as e:
         return {"error": str(e)}
 
+@app.post("/debug-email-processing")
+async def debug_email_processing(req: Request):
+    """Debug detailed email processing and attachment detection"""
+    try:
+        payload = await req.json()
+        tenant_id = payload.get("tenantId")
+        days_back = payload.get("daysBack", 7)
+        
+        if not tenant_id:
+            return {"error": "tenantId required"}
+            
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {"error": "No DATABASE_URL"}
+            
+        from email_trainer import EmailTrainingWorkflow
+        
+        # Initialize workflow
+        workflow = EmailTrainingWorkflow(db_url, tenant_id)
+        
+        # Test real Gmail email search with detailed debugging
+        import requests
+        from datetime import datetime, timedelta
+        
+        # Get Gmail credentials
+        access_token = workflow._get_access_token()
+        if not access_token:
+            return {"error": "Failed to get Gmail access token"}
+            
+        # Search for emails
+        after_date = datetime.now() - timedelta(days=days_back)
+        after_str = after_date.strftime('%Y/%m/%d')
+        
+        headers = {'Authorization': f'Bearer {access_token}'}
+        url = 'https://www.googleapis.com/gmail/v1/users/me/messages'
+        params = {
+            'q': f'subject:quote in:sent after:{after_str}',
+            'maxResults': 5
+        }
+        
+        search_response = requests.get(url, headers=headers, params=params)
+        
+        debug_info = {
+            "search_query": params['q'],
+            "search_status": search_response.status_code,
+            "search_success": search_response.ok
+        }
+        
+        if not search_response.ok:
+            debug_info["search_error"] = search_response.text
+            return debug_info
+            
+        messages = search_response.json().get('messages', [])
+        debug_info["messages_found"] = len(messages)
+        
+        if not messages:
+            return debug_info
+            
+        # Process first message in detail
+        message_id = messages[0]['id']
+        debug_info["processing_message_id"] = message_id
+        
+        # Get full message details
+        msg_url = f'https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}'
+        msg_response = requests.get(msg_url, headers=headers)
+        
+        if not msg_response.ok:
+            debug_info["message_fetch_error"] = msg_response.text
+            return debug_info
+            
+        message_data = msg_response.json()
+        debug_info["message_fetch_success"] = True
+        
+        # Extract basic message info
+        payload = message_data.get('payload', {})
+        headers_list = payload.get('headers', [])
+        
+        subject = next((h['value'] for h in headers_list if h['name'].lower() == 'subject'), 'No subject')
+        debug_info["message_subject"] = subject
+        
+        # Test attachment extraction with detailed logging
+        attachments = []
+        workflow._extract_attachments(payload, attachments)
+        
+        debug_info["attachments_found"] = len(attachments)
+        debug_info["attachment_details"] = attachments
+        
+        # Test payload structure analysis
+        debug_info["payload_keys"] = list(payload.keys())
+        debug_info["payload_mimetype"] = payload.get('mimeType')
+        
+        if 'parts' in payload:
+            debug_info["parts_count"] = len(payload['parts'])
+            debug_info["parts_info"] = []
+            
+            for i, part in enumerate(payload['parts'][:3]):  # First 3 parts only
+                part_info = {
+                    "part_index": i,
+                    "keys": list(part.keys()),
+                    "mimetype": part.get('mimeType'),
+                    "filename": part.get('filename', ''),
+                    "has_body": 'body' in part,
+                    "has_attachment_id": part.get('body', {}).get('attachmentId') is not None if 'body' in part else False
+                }
+                debug_info["parts_info"].append(part_info)
+        
+        return debug_info
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @app.get("/meta")
 def meta():
     return {
