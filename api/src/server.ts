@@ -57,6 +57,19 @@ import streaksRouter from "./routes/streaks";
 const app = express();
 
 /* ------------------------------------------------------
+ * Health check endpoint (early setup for debugging)
+ * ---------------------------------------------------- */
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV || 'development',
+    port: env.PORT,
+    uptime: process.uptime()
+  });
+});
+
+/* ------------------------------------------------------
  * Core app setup
  * ---------------------------------------------------- */
 
@@ -551,24 +564,77 @@ app.use((err: any, _req: any, res: any, _next: any) => {
   res.status(500).json({ error: "internal_error" });
 });
 
-/** Start server */
-app.listen(env.PORT, () => {
-  console.log(`API running at http://localhost:${env.PORT}`);
-  // Log storage config
-  const configuredUpload = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
-  const resolvedUpload = path.isAbsolute(configuredUpload)
-    ? configuredUpload
-    : path.join(process.cwd(), configuredUpload);
-  try { fs.mkdirSync(resolvedUpload, { recursive: true }); } catch {}
-  let writable = true;
-  try { fs.accessSync(resolvedUpload, fs.constants.W_OK); } catch { writable = false; }
-  console.log(`[storage] UPLOAD_DIR -> ${resolvedUpload} (writable=${writable})`);
-  const mlEnv = ((process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "").trim());
-  if (!mlEnv) {
-    console.warn("[ml] ML_URL not set; ML proxy will default to http://localhost:8000 (dev only)");
-  } else if (process.env.NODE_ENV === "production" && /(localhost|127\.0\.0\.1)/i.test(mlEnv)) {
-    console.warn(`[ml] ML_URL is '${mlEnv}' which points to localhost in production — update your API env to the deployed ML service URL.`);
-  } else {
-    console.log(`[ml] ML proxy target: ${mlEnv}`);
+/** Start server with error handling */
+function startServer() {
+  try {
+    const port = env.PORT;
+    const server = app.listen(port, '0.0.0.0', () => {
+      console.log(`🚀 API running at http://0.0.0.0:${port}`);
+      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`📋 Process PID: ${process.pid}`);
+      
+      // Log storage config
+      const configuredUpload = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+      const resolvedUpload = path.isAbsolute(configuredUpload)
+        ? configuredUpload
+        : path.join(process.cwd(), configuredUpload);
+      try { fs.mkdirSync(resolvedUpload, { recursive: true }); } catch {}
+      let writable = true;
+      try { fs.accessSync(resolvedUpload, fs.constants.W_OK); } catch { writable = false; }
+      console.log(`[storage] UPLOAD_DIR -> ${resolvedUpload} (writable=${writable})`);
+      
+      // Log ML configuration
+      const mlEnv = ((process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "").trim());
+      if (!mlEnv) {
+        console.warn("[ml] ML_URL not set; ML proxy will default to http://localhost:8000 (dev only)");
+      } else if (process.env.NODE_ENV === "production" && /(localhost|127\.0\.0\.1)/i.test(mlEnv)) {
+        console.warn(`[ml] ML_URL is '${mlEnv}' which points to localhost in production — update your API env to the deployed ML service URL.`);
+      } else {
+        console.log(`[ml] ML proxy target: ${mlEnv}`);
+      }
+    });
+
+    // Handle server errors
+    server.on('error', (error: any) => {
+      console.error('❌ Server error:', error);
+      if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${port} is already in use`);
+      }
+      process.exit(1);
+    });
+
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+      console.log('🛑 SIGTERM received, shutting down gracefully');
+      server.close(() => {
+        console.log('✅ Process terminated');
+        process.exit(0);
+      });
+    });
+
+    process.on('SIGINT', () => {
+      console.log('🛑 SIGINT received, shutting down gracefully');
+      server.close(() => {
+        console.log('✅ Process terminated');
+        process.exit(0);
+      });
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
   }
+}
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  process.exit(1);
 });
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+startServer();

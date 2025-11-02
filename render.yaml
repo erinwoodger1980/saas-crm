@@ -5,6 +5,8 @@ services:
     rootDir: api
     buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
     startCommand: pnpm run start
+    preDeployCommand: npx prisma migrate deploy
+    healthCheckPath: /health
     envVars:
       - key: ML_URL
         sync: false  # Set this in Render dashboard to your ML service URL (e.g., https://ml-xyz.onrender.com)

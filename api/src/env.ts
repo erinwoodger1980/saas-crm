@@ -3,10 +3,14 @@ import "dotenv/config";
 function requireEnv(name: string): string {
   const v = process.env[name];
   if (!v || !v.trim()) {
+    console.error(`❌ Missing required environment variable: ${name}`);
+    console.error(`📋 Available env vars starting with ${name.slice(0, 3)}: ${Object.keys(process.env).filter(k => k.startsWith(name.slice(0, 3))).join(', ') || 'none'}`);
     throw new Error(`Missing required env var: ${name}`);
   }
   return v.trim();
 }
+
+console.log('🔧 Loading environment configuration...');
 
 const rawJwtSecret =
   (process.env.APP_JWT_SECRET && process.env.APP_JWT_SECRET.trim()) ||
@@ -14,6 +18,8 @@ const rawJwtSecret =
   "";
 
 if (!rawJwtSecret) {
+  console.error("❌ Missing required environment variable: APP_JWT_SECRET or JWT_SECRET");
+  console.error("📋 Available JWT-related env vars:", Object.keys(process.env).filter(k => k.includes('JWT') || k.includes('SECRET')).join(', ') || 'none');
   throw new Error("Missing required env var: APP_JWT_SECRET or JWT_SECRET");
 }
 
@@ -60,3 +66,11 @@ export const env = {
   // Web origins allowlist for CORS
   WEB_ORIGIN: parsedWebOrigin,
 } as const;
+
+console.log('✅ Environment configuration loaded successfully');
+console.log(`📡 PORT: ${env.PORT}`);
+console.log(`🌐 WEB_ORIGIN: ${env.WEB_ORIGIN.join(', ')}`);
+console.log(`🔐 JWT configured: ${!!env.APP_JWT_SECRET}`);
+console.log(`🤖 OpenAI configured: ${!!env.OPENAI_API_KEY}`);
+console.log(`📧 Gmail configured: ${!!env.GMAIL_CLIENT_ID}`);
+console.log(`📧 MS365 configured: ${!!env.MS365_CLIENT_ID}`);
