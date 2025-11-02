@@ -1449,7 +1449,7 @@ async def debug_parse(req: Request):
 class EmailTrainingPayload(BaseModel):
     tenantId: str
     emailProvider: str  # "gmail" or "m365"
-    credentials: Dict[str, Any]
+    credentials: Optional[Dict[str, Any]] = None  # Make credentials optional - will be fetched from DB
     daysBack: int = 30
 
 @app.post("/start-email-training")
@@ -1656,146 +1656,6 @@ async def preview_email_quotes(payload: EmailTrainingPayload):
         raise HTTPException(status_code=503, detail="Email training not available - database connection required")
     
     try:
-        # TEMPORARY FIX: Use the working debug-full-workflow logic directly
-        # since it successfully processes the David Murphy quote
-        try:
-            tenant_id = payload.tenantId
-            message_id = "19a3f6846b1e3038"  # David Murphy quote that works in debug
-            
-            # Get database connection
-            db_url = os.getenv("DATABASE_URL")
-            if not db_url:
-                raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
-
-            from db_config import get_db_manager
-            db_manager = get_db_manager()
-            
-            # Get Gmail credentials
-            with db_manager.get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute('SELECT "refreshToken" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
-                db_result = cur.fetchone()
-                
-                if not db_result:
-                    raise HTTPException(status_code=404, detail="Gmail not connected for this tenant")
-                    
-                refresh_token = db_result[0]
-            
-            # Get access token using same approach as debug endpoint
-            import requests
-            token_data = {
-                'client_id': os.getenv('GMAIL_CLIENT_ID'),
-                'client_secret': os.getenv('GMAIL_CLIENT_SECRET'),
-                'grant_type': 'refresh_token',
-                'refresh_token': refresh_token
-            }
-            
-            token_response = requests.post('https://oauth2.googleapis.com/token', data=token_data)
-            if not token_response.ok:
-                # Fall back to original workflow if token fails
-                raise Exception("Token refresh failed")
-            
-            access_token = token_response.json()['access_token']
-            
-            # Get message using working debug approach
-            headers = {"Authorization": f"Bearer {access_token}"}
-            msg_url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}"
-            
-            msg_response = requests.get(msg_url, headers=headers)
-            if not msg_response.ok:
-                raise Exception("Failed to get message")
-            
-            message_data = msg_response.json()
-            payload_data = message_data.get('payload', {})
-            
-            # Find PDF attachment using working logic from debug endpoint
-            def find_pdf_attachment(payload):
-                if payload.get('filename', '').lower().endswith('.pdf') and payload.get('body', {}).get('attachmentId'):
-                    return {
-                        'filename': payload['filename'],
-                        'attachment_id': payload['body']['attachmentId'],
-                        'size': payload['body'].get('size', 0)
-                    }
-                
-                if 'parts' in payload:
-                    for part in payload['parts']:
-                        attachment = find_pdf_attachment(part)
-                        if attachment:
-                            return attachment
-                return None
-            
-            attachment = find_pdf_attachment(payload_data)
-            if not attachment:
-                raise Exception("No PDF attachment found")
-            
-            # Download using working debug approach
-            attachment_url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment['attachment_id']}"
-            
-            attachment_response = requests.get(attachment_url, headers=headers)
-            if not attachment_response.ok:
-                raise Exception("Attachment download failed")
-            
-            data = attachment_response.json()
-            raw_data = data.get("data", "")
-            
-            if not raw_data:
-                raise Exception("No attachment data")
-            
-            # Decode using working debug approach
-            import base64
-            decoded_data = raw_data.replace('-', '+').replace('_', '/')
-            while len(decoded_data) % 4:
-                decoded_data += '='
-            
-            attachment_bytes = base64.b64decode(decoded_data)
-            
-            # Extract and parse using working debug approach
-            pdf_text = extract_text_from_pdf_bytes(attachment_bytes)
-            if pdf_text:
-                parsed_data = parse_client_quote_from_text(pdf_text)
-                confidence = parsed_data.get("confidence", 0.0)
-                
-                if confidence > 0.1:
-                    # Create preview quote using debug endpoint's successful result
-                    preview_quote = {
-                        "subject": "Quote",
-                        "date_sent": "2025-11-01T12:32:58+00:00",
-                        "attachment_name": attachment['filename'],
-                        "confidence": confidence,
-                        "project_type": parsed_data.get("questionnaire_answers", {}).get("project_type"),
-                        "quoted_price": parsed_data.get("quoted_price"),
-                        "area_m2": parsed_data.get("questionnaire_answers", {}).get("area_m2"),
-                        "materials_grade": parsed_data.get("questionnaire_answers", {}).get("materials_grade"),
-                    }
-                    
-                    # Return successful result using debug endpoint's proven logic
-                    return {
-                        "ok": True,
-                        "total_quotes_found": 1,
-                        "preview_quotes": [preview_quote],
-                        "progress": [
-                            {"step": "searching", "message": "🔍 Searching for emails from last 5 days..."},
-                            {"step": "processing", "message": "📧 Found 1 emails with attachments"},
-                            {"step": "processing", "message": "📎 Processing email 1/1: 'Quote' (1 attachments)"},
-                            {"step": "extracting", "message": "📄 Processing PDF: david murphy wellows201.pdf"},
-                            {"step": "found", "message": f"✅ Found quote in {attachment['filename']} (confidence: {confidence:.1%})"},
-                            {"step": "completed", "message": "🎯 Found 1 valid quotes from 1 emails"}
-                        ],
-                        "message": "✅ Found 1 client quotes from last 5 days (using debug endpoint logic)",
-                        "summary": {
-                            "emails_searched": 1,
-                            "pdfs_processed": 1,
-                            "quotes_found": 1
-                        }
-                    }
-            
-            # If we get here, the debug logic didn't work as expected
-            raise Exception("Debug logic failed to process quote")
-            
-        except Exception as debug_error:
-            logger.error(f"Debug endpoint logic failed: {debug_error}")
-            # Fall back to original EmailTrainingWorkflow approach
-            pass
         # Get database URL  
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
@@ -1804,8 +1664,7 @@ async def preview_email_quotes(payload: EmailTrainingPayload):
         from db_config import get_db_manager
         db_manager = get_db_manager()
         
-        # Get Gmail credentials from database (same as start-email-training)
-        gmail_credentials = {}
+        # Get Gmail credentials from database
         tenant_id = payload.tenantId
         
         with db_manager.get_connection() as conn:
@@ -1814,39 +1673,214 @@ async def preview_email_quotes(payload: EmailTrainingPayload):
             cur.execute('SELECT "refreshToken", "gmailAddress" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
             result = cur.fetchone()
             
-            if result:
-                refresh_token, gmail_address = result
-                # Get fresh access token using refresh token
-                gmail_credentials = {
-                    'refresh_token': refresh_token,
-                    'gmail_address': gmail_address,
-                    'api_base_url': os.getenv('API_SERVICE_URL', 'https://joinery-ai.onrender.com'),
-                    'headers': {
-                        'Authorization': f'Bearer {refresh_token}',  # Will be refreshed to access token
-                        'Content-Type': 'application/json'
-                    }
-                }
-                
-                # Set environment variables needed for Gmail API
-                os.environ['GMAIL_CLIENT_ID'] = os.getenv('GMAIL_CLIENT_ID', '')
-                os.environ['GMAIL_CLIENT_SECRET'] = os.getenv('GMAIL_CLIENT_SECRET', '')
-            else:
+            if not result:
                 raise HTTPException(status_code=404, detail="Gmail not connected for this tenant")
+                
+            refresh_token, gmail_address = result
         
-        # Initialize workflow
-        workflow = EmailTrainingWorkflow(db_url, payload.tenantId)
-        workflow.setup_email_service(payload.emailProvider, gmail_credentials)
+        # Get fresh access token using refresh token
+        import requests
+        token_data = {
+            'client_id': os.getenv('GMAIL_CLIENT_ID'),
+            'client_secret': os.getenv('GMAIL_CLIENT_SECRET'),
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token
+        }
         
-        # Collect progress messages
+        token_response = requests.post('https://oauth2.googleapis.com/token', data=token_data)
+        if not token_response.ok:
+            raise HTTPException(status_code=500, detail="Failed to refresh Gmail access token")
+        
+        access_token = token_response.json()['access_token']
+        
+        # Search for emails with attachments that might contain quotes
+        # Use a broader search to find any emails with PDFs
+        gmail_query = "has:attachment (quote OR estimate OR quotation OR proposal OR pdf OR joinery OR windows OR doors OR timber)"
+        
+        # Add date filter based on days back
+        if payload.daysBack <= 7:
+            gmail_query += " newer_than:7d"
+        elif payload.daysBack <= 30:
+            gmail_query += " newer_than:1m"
+        
+        # First search sent emails (quotes we sent to clients)
+        sent_query = gmail_query + " in:sent"
+        
+        logger.info(f"Searching Gmail with query: {sent_query}")
+        
+        # Search Gmail using direct API
+        headers = {"Authorization": f"Bearer {access_token}"}
+        search_url = f"https://www.googleapis.com/gmail/v1/users/me/messages?q={sent_query}&maxResults=50"
+        
+        search_response = requests.get(search_url, headers=headers)
+        if not search_response.ok:
+            logger.error(f"Gmail search failed: {search_response.status_code}, {search_response.text}")
+            # Try a simpler search
+            simple_query = "has:attachment"
+            simple_url = f"https://www.googleapis.com/gmail/v1/users/me/messages?q={simple_query}&maxResults=20"
+            search_response = requests.get(simple_url, headers=headers)
+            
+        if not search_response.ok:
+            raise HTTPException(status_code=500, detail="Failed to search Gmail")
+        
+        search_data = search_response.json()
+        messages = search_data.get('messages', [])
+        
+        logger.info(f"Found {len(messages)} messages")
+        
+        # If no sent emails found, search received emails
+        if not messages:
+            logger.info("No sent emails found, searching all emails")
+            all_query = gmail_query  # Remove in:sent
+            all_url = f"https://www.googleapis.com/gmail/v1/users/me/messages?q={all_query}&maxResults=50"
+            search_response = requests.get(all_url, headers=headers)
+            if search_response.ok:
+                search_data = search_response.json()
+                messages = search_data.get('messages', [])
+                logger.info(f"Found {len(messages)} total messages")
+        
+        quotes_found = []
         progress_messages = []
         
-        def progress_callback(progress_info):
-            """Collect progress messages for user feedback"""
-            progress_messages.append(progress_info)
+        if not messages:
+            progress_messages.append({"step": "completed", "message": "No emails with attachments found"})
+            return {
+                "ok": True,
+                "total_quotes_found": 0,
+                "preview_quotes": [],
+                "progress": progress_messages,
+                "message": "No client quotes found in the specified time period",
+                "summary": {
+                    "emails_searched": 0,
+                    "pdfs_processed": 0,
+                    "quotes_found": 0
+                }
+            }
         
-        # TEMPORARY FIX: Use direct Gmail API approach for known David Murphy quote
-        # This bypasses the EmailTrainingWorkflow which has issues
-        try:
+        progress_messages.append({"step": "searching", "message": f"🔍 Searching {len(messages)} emails for quotes..."})
+        
+        # Process each message to find PDF attachments with quotes
+        for i, message in enumerate(messages[:10]):  # Limit to first 10 for preview
+            message_id = message['id']
+            
+            try:
+                # Get message details
+                msg_url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}"
+                msg_response = requests.get(msg_url, headers=headers)
+                if not msg_response.ok:
+                    continue
+                
+                message_data = msg_response.json()
+                payload_data = message_data.get('payload', {})
+                
+                # Extract headers
+                headers_data = {h["name"]: h["value"] for h in payload_data.get("headers", [])}
+                subject = headers_data.get("Subject", "No subject")
+                
+                progress_messages.append({"step": "processing", "message": f"📧 Processing email {i+1}/{len(messages)}: '{subject[:50]}...'"})
+                
+                # Find PDF attachments
+                def find_pdf_attachments(payload):
+                    attachments = []
+                    
+                    if 'parts' in payload:
+                        for part in payload['parts']:
+                            attachments.extend(find_pdf_attachments(part))
+                    
+                    # Check if this part is a PDF attachment
+                    filename = payload.get('filename', '')
+                    if filename.lower().endswith('.pdf') and payload.get('body', {}).get('attachmentId'):
+                        attachments.append({
+                            'filename': filename,
+                            'attachment_id': payload['body']['attachmentId'],
+                            'size': payload['body'].get('size', 0)
+                        })
+                    
+                    return attachments
+                
+                pdf_attachments = find_pdf_attachments(payload_data)
+                
+                if not pdf_attachments:
+                    continue
+                
+                # Process each PDF attachment
+                for attachment in pdf_attachments:
+                    try:
+                        progress_messages.append({"step": "extracting", "message": f"📄 Processing PDF: {attachment['filename']}"})
+                        
+                        # Download attachment
+                        attachment_url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment['attachment_id']}"
+                        attachment_response = requests.get(attachment_url, headers=headers)
+                        
+                        if not attachment_response.ok:
+                            continue
+                        
+                        attachment_data = attachment_response.json()
+                        raw_data = attachment_data.get("data", "")
+                        
+                        if not raw_data:
+                            continue
+                        
+                        # Decode base64url data
+                        import base64
+                        decoded_data = raw_data.replace('-', '+').replace('_', '/')
+                        while len(decoded_data) % 4:
+                            decoded_data += '='
+                        
+                        attachment_bytes = base64.b64decode(decoded_data)
+                        
+                        # Extract text and parse quote
+                        pdf_text = extract_text_from_pdf_bytes(attachment_bytes)
+                        if not pdf_text:
+                            continue
+                        
+                        parsed_data = parse_client_quote_from_text(pdf_text)
+                        confidence = parsed_data.get("confidence", 0.0)
+                        
+                        # Accept quotes with any confidence > 0 for preview
+                        if confidence > 0:
+                            quote_info = {
+                                "subject": subject,
+                                "date_sent": headers_data.get("Date", ""),
+                                "attachment_name": attachment['filename'],
+                                "confidence": confidence,
+                                "project_type": parsed_data.get("questionnaire_answers", {}).get("project_type"),
+                                "quoted_price": parsed_data.get("quoted_price"),
+                                "area_m2": parsed_data.get("questionnaire_answers", {}).get("area_m2"),
+                                "materials_grade": parsed_data.get("questionnaire_answers", {}).get("materials_grade"),
+                            }
+                            
+                            quotes_found.append(quote_info)
+                            progress_messages.append({"step": "found", "message": f"✅ Found quote in {attachment['filename']} (confidence: {confidence:.1%})"})
+                        
+                    except Exception as attachment_error:
+                        logger.error(f"Error processing attachment {attachment['filename']}: {attachment_error}")
+                        continue
+                
+            except Exception as message_error:
+                logger.error(f"Error processing message {message_id}: {message_error}")
+                continue
+        
+        progress_messages.append({"step": "completed", "message": f"🎯 Found {len(quotes_found)} valid quotes from {len(messages)} emails"})
+        
+        return {
+            "ok": True,
+            "total_quotes_found": len(quotes_found),
+            "preview_quotes": quotes_found,
+            "progress": progress_messages,
+            "message": f"Found {len(quotes_found)} client quotes from {len(messages)} emails",
+            "summary": {
+                "emails_searched": len(messages),
+                "pdfs_processed": sum(1 for q in quotes_found),
+                "quotes_found": len(quotes_found)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Preview email quotes failed: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to preview email quotes: {str(e)}")
             # Try the working debug approach first
             access_token = workflow.email_service._get_access_token()
             
