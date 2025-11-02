@@ -146,7 +146,7 @@ export default function DashboardPage() {
       await apiFetch("/analytics/business/financial-year", {
         method: "POST",
         json: {
-          yearEnd: financialYearEnd
+          financialYearEnd: financialYearEnd
         }
       });
       
