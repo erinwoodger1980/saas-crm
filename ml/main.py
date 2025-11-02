@@ -23,7 +23,7 @@ except ImportError as e:
     EmailTrainingWorkflow = None
     EMAIL_TRAINING_AVAILABLE = False
 
-app = FastAPI(title="JoineryAI ML API")
+app = FastAPI(title="JoineryAI ML API v2.2")
 
 app.add_middleware(
     CORSMiddleware,
