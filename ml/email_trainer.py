@@ -541,18 +541,27 @@ class GmailService:
         try:
             # Get access token using refresh token
             access_token = self._get_access_token()
+            logger.info(f"Got access token for attachment download")
             
             # Download attachment using Gmail API
             url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
             headers = {"Authorization": f"Bearer {access_token}"}
             
+            logger.info(f"Downloading attachment from URL: {url[:100]}...")
             response = requests.get(url, headers=headers)
+            logger.info(f"Download response status: {response.status_code}")
+            
             if not response.ok:
-                logger.error(f"Failed to download attachment: {response.status_code}")
+                logger.error(f"Failed to download attachment: {response.status_code}, Response: {response.text[:200]}")
                 return b""
                 
             data = response.json()
             attachment_data = data.get("data", "")
+            logger.info(f"Got attachment data length: {len(attachment_data)}")
+            
+            if not attachment_data:
+                logger.error("No attachment data in response")
+                return b""
             
             # Decode base64url data
             import base64
@@ -561,8 +570,10 @@ class GmailService:
             # Add padding if needed
             while len(attachment_data) % 4:
                 attachment_data += '='
-                
-            return base64.b64decode(attachment_data)
+            
+            decoded_data = base64.b64decode(attachment_data)
+            logger.info(f"Decoded attachment size: {len(decoded_data)} bytes")
+            return decoded_data
                 
         except Exception as e:
             logger.error(f"Error downloading attachment: {e}")
