@@ -420,6 +420,171 @@ async def debug_email_processing(req: Request):
             "traceback": traceback.format_exc()
         }
 
+@app.post("/debug-full-workflow")
+async def debug_full_workflow(req: Request):
+    """Debug the full email-to-quote workflow step by step"""
+    try:
+        # Use hardcoded values from working test
+        tenant_id = "cmgt9bchl0001uj2h4po89fim"
+        message_id = "19a3f6846b1e3038"
+        
+        result = {
+            "steps": [],
+            "errors": []
+        }
+        
+        # Get database connection
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {"error": "No DATABASE_URL configured"}
+        
+        # Get Gmail credentials
+        from db_config import get_db_manager
+        db_manager = get_db_manager()
+        
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT "refreshToken" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
+            db_result = cur.fetchone()
+            
+            if not db_result:
+                return {"error": f"No Gmail connection found for tenant {tenant_id}"}
+                
+            refresh_token = db_result[0]
+        
+        result["steps"].append("✅ Retrieved Gmail credentials from database")
+        
+        # Get access token
+        import requests
+        token_data = {
+            'client_id': os.getenv('GMAIL_CLIENT_ID'),
+            'client_secret': os.getenv('GMAIL_CLIENT_SECRET'),
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token
+        }
+        
+        token_response = requests.post('https://oauth2.googleapis.com/token', data=token_data)
+        if not token_response.ok:
+            result["errors"].append(f"Token refresh failed: {token_response.status_code}")
+            return result
+        
+        access_token = token_response.json()['access_token']
+        result["steps"].append("✅ Got access token")
+        
+        # Get message details
+        headers = {"Authorization": f"Bearer {access_token}"}
+        msg_url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}"
+        
+        msg_response = requests.get(msg_url, headers=headers)
+        if not msg_response.ok:
+            result["errors"].append(f"Failed to get message: {msg_response.status_code}")
+            return result
+        
+        message_data = msg_response.json()
+        result["steps"].append("✅ Retrieved message details")
+        
+        # Extract email metadata
+        payload = message_data.get('payload', {})
+        headers_list = payload.get('headers', [])
+        
+        subject = next((h['value'] for h in headers_list if h['name'].lower() == 'subject'), 'No subject')
+        from_header = next((h['value'] for h in headers_list if h['name'].lower() == 'from'), 'No sender')
+        date_header = next((h['value'] for h in headers_list if h['name'].lower() == 'date'), 'No date')
+        
+        result["email_metadata"] = {
+            "subject": subject,
+            "from": from_header,
+            "date": date_header
+        }
+        result["steps"].append(f"✅ Extracted email metadata: {subject}")
+        
+        # Find PDF attachments using working logic
+        def find_pdf_attachment(payload):
+            if payload.get('filename', '').lower().endswith('.pdf') and payload.get('body', {}).get('attachmentId'):
+                return {
+                    'filename': payload['filename'],
+                    'attachment_id': payload['body']['attachmentId'],
+                    'size': payload['body'].get('size', 0)
+                }
+            
+            if 'parts' in payload:
+                for part in payload['parts']:
+                    attachment = find_pdf_attachment(part)
+                    if attachment:
+                        return attachment
+            return None
+        
+        attachment = find_pdf_attachment(payload)
+        if not attachment:
+            result["errors"].append("No PDF attachment found")
+            return result
+        
+        result["attachment_info"] = attachment
+        result["steps"].append(f"✅ Found PDF attachment: {attachment['filename']}")
+        
+        # Download attachment using working approach
+        attachment_url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment['attachment_id']}"
+        
+        attachment_response = requests.get(attachment_url, headers=headers)
+        if not attachment_response.ok:
+            result["errors"].append(f"Attachment download failed: {attachment_response.status_code}")
+            return result
+        
+        data = attachment_response.json()
+        raw_data = data.get("data", "")
+        
+        if not raw_data:
+            result["errors"].append("No attachment data in response")
+            return result
+        
+        # Decode attachment
+        import base64
+        decoded_data = raw_data.replace('-', '+').replace('_', '/')
+        while len(decoded_data) % 4:
+            decoded_data += '='
+        
+        attachment_bytes = base64.b64decode(decoded_data)
+        result["steps"].append(f"✅ Downloaded attachment: {len(attachment_bytes)} bytes")
+        
+        # Test PDF text extraction
+        from pdf_parser import extract_text_from_pdf_bytes
+        try:
+            pdf_text = extract_text_from_pdf_bytes(attachment_bytes)
+            result["pdf_text_length"] = len(pdf_text)
+            result["pdf_text_preview"] = pdf_text[:300] if pdf_text else "No text extracted"
+            result["steps"].append(f"✅ Extracted PDF text: {len(pdf_text)} characters")
+        except Exception as e:
+            result["errors"].append(f"PDF text extraction failed: {str(e)}")
+            return result
+        
+        # Test quote parsing
+        if pdf_text:
+            from pdf_parser import parse_client_quote_from_text
+            try:
+                parsed_data = parse_client_quote_from_text(pdf_text)
+                result["parsed_quote"] = parsed_data
+                result["confidence"] = parsed_data.get("confidence", 0.0)
+                result["steps"].append(f"✅ Parsed quote data: confidence {parsed_data.get('confidence', 0.0)}")
+                
+                if parsed_data.get("confidence", 0.0) > 0.1:
+                    result["steps"].append("🎉 SUCCESS: Found valid client quote!")
+                    result["success"] = True
+                else:
+                    result["steps"].append("⚠️ Low confidence quote - may be filtered out")
+                    
+            except Exception as e:
+                result["errors"].append(f"Quote parsing failed: {str(e)}")
+                return result
+        
+        return result
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()[:500]
+        }
+
 @app.post("/simple-attachment-test")
 async def simple_attachment_test(req: Request):
     """Minimal test of Gmail attachment download API"""
