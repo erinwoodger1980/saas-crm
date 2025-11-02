@@ -134,24 +134,46 @@ class EmailTrainingWorkflow:
     
     def _process_email_attachment(self, email: Dict[str, Any], attachment: Dict[str, Any]) -> Optional[EmailQuote]:
         """Process a single email attachment"""
+        filename = attachment.get("filename", "unknown")
         try:
+            logger.info(f"🔍 Starting to process attachment: {filename}")
+            
             # Download attachment data
+            logger.info(f"📥 Downloading attachment data for {filename}")
             attachment_data = self.email_service.download_attachment(
                 email["message_id"], 
                 attachment["attachment_id"]
             )
+            logger.info(f"✅ Downloaded {len(attachment_data)} bytes for {filename}")
             
             # Extract text from PDF
+            logger.info(f"📄 Extracting text from PDF: {filename}")
             pdf_text = extract_text_from_pdf_bytes(attachment_data)
-                
+            
             if not pdf_text:
+                logger.warning(f"❌ No text extracted from PDF: {filename}")
                 return None
             
+            logger.info(f"✅ Extracted {len(pdf_text)} characters from {filename}")
+            
             # Parse client quote data
+            logger.info(f"🔬 Parsing client quote data from {filename}")
             parsed_data = parse_client_quote_from_text(pdf_text)
             
+            confidence = parsed_data.get("confidence", 0.0)
+            quoted_price = parsed_data.get("quoted_price")
+            project_type = parsed_data.get("questionnaire_answers", {}).get("project_type")
+            
+            logger.info(f"📊 Parse results for {filename}: confidence={confidence}, price={quoted_price}, type={project_type}")
+            
+            if confidence <= 0.1:
+                logger.warning(f"⚠️ Low confidence ({confidence}) for {filename}, but creating EmailQuote anyway")
+            else:
+                logger.info(f"✅ Good confidence ({confidence}) for {filename}")
+            
             # Create EmailQuote object
-            return EmailQuote(
+            logger.info(f"🏗️ Creating EmailQuote object for {filename}")
+            email_quote = EmailQuote(
                 message_id=email["message_id"],
                 subject=email["subject"],
                 sender=email["sender"],
@@ -161,11 +183,17 @@ class EmailTrainingWorkflow:
                 attachment_data=attachment_data,
                 pdf_text=pdf_text,
                 parsed_data=parsed_data,
-                confidence=parsed_data.get("confidence", 0.0)
+                confidence=confidence
             )
             
+            logger.info(f"🎉 Successfully created EmailQuote for {filename} with confidence {confidence}")
+            return email_quote
+            
         except Exception as e:
-            logger.error(f"Error processing email attachment: {e}")
+            logger.error(f"💥 Error processing attachment {filename}: {e}")
+            logger.error(f"📋 Error details: {type(e).__name__}: {str(e)}")
+            import traceback
+            logger.error(f"🔍 Full traceback: {traceback.format_exc()}")
             return None
     
     def map_to_questionnaire_features(self, quotes: List[EmailQuote]) -> pd.DataFrame:
