@@ -4,6 +4,22 @@ import { prisma } from "../prisma";
 
 const router = Router();
 
+// Helper function to extract authentication info
+function getAuth(req: any) {
+  const headerString = (req: any, key: string) => {
+    const val = req.headers[key];
+    return typeof val === "string" ? val : undefined;
+  };
+  
+  return {
+    tenantId:
+      (req.auth?.tenantId as string | undefined) ?? headerString(req, "x-tenant-id"),
+    userId:
+      (req.auth?.userId as string | undefined) ?? headerString(req, "x-user-id"),
+    email: (req.auth?.email as string | undefined) ?? headerString(req, "x-user-email"),
+  };
+}
+
 // Helper function to get financial year boundaries based on tenant's year end
 function getFinancialYearBoundaries(yearEnd: string, year: number) {
   // yearEnd is in MM-DD format, e.g., "03-31" for March 31st
@@ -60,7 +76,7 @@ function getYearBoundaries(year: number) {
 // GET /analytics/business-metrics
 router.get("/business-metrics", async (req, res) => {
   try {
-    const { tenantId } = (req as any).auth || {};
+    const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     // Get tenant's financial year end setting
@@ -302,7 +318,7 @@ router.get("/business-metrics", async (req, res) => {
 // POST/PUT /analytics/targets - Set targets for a year
 router.post("/targets", async (req, res) => {
   try {
-    const { tenantId } = (req as any).auth || {};
+    const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const { 
@@ -351,7 +367,7 @@ router.post("/targets", async (req, res) => {
 // POST /analytics/business/financial-year - Set financial year end
 router.post("/financial-year", async (req, res) => {
   try {
-    const { tenantId } = (req as any).auth || {};
+    const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const { financialYearEnd } = req.body;
@@ -378,8 +394,8 @@ router.post("/financial-year", async (req, res) => {
 // POST /analytics/business/import-historical - Import historical data
 router.post("/import-historical", async (req, res) => {
   try {
-    const { tenantId } = (req as any).auth || {};
-    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
 
     const { data, type } = req.body;
     // data should be array of records with date and values
@@ -409,7 +425,7 @@ router.post("/import-historical", async (req, res) => {
               email: `historical-${Date.now()}-${i}@example.com`,
               status: 'NEW',
               capturedAt: recordDate,
-              custom: source ? { source } : null
+              custom: source ? { source } : undefined
             }
           });
         }
@@ -431,6 +447,7 @@ router.post("/import-historical", async (req, res) => {
         const lead = await prisma.lead.create({
           data: {
             tenantId,
+            createdById: userId,
             contactName: `Historical Sale`,
             email: `historical-sale-${Date.now()}@example.com`,
             status: 'WON',
