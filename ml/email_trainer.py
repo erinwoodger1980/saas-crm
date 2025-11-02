@@ -54,10 +54,21 @@ class EmailTrainingWorkflow:
         else:
             raise ValueError(f"Unsupported email provider: {provider}")
     
-    def find_client_quotes(self, days_back: int = 30) -> List[EmailQuote]:
-        """Find emails with client quote attachments"""
+    def find_client_quotes(self, days_back: int = 30, progress_callback=None) -> List[EmailQuote]:
+        """Find emails with client quote attachments
+        
+        Args:
+            days_back: Number of days to search back
+            progress_callback: Optional callback function to report progress
+        """
         if not self.email_service:
             raise RuntimeError("Email service not configured")
+        
+        def report_progress(message: str, step: str = "searching"):
+            """Report progress to callback if available"""
+            if progress_callback:
+                progress_callback({"step": step, "message": message})
+            logger.info(message)
         
         # Search for emails with quote attachments
         since_date = datetime.now() - timedelta(days=days_back)
@@ -67,6 +78,8 @@ class EmailTrainingWorkflow:
             "joinery", "windows", "doors", "timber", "carpenter",
             "price", "cost", "attachment", "pdf"
         ]
+        
+        report_progress(f"🔍 Searching for emails from last {days_back} days...", "searching")
         
         # First try sent emails (client quotes we generated)
         emails = self.email_service.search_emails(
@@ -78,7 +91,7 @@ class EmailTrainingWorkflow:
         
         # If no sent emails found, also check received emails for debugging
         if not emails:
-            logger.info("No sent emails with quotes found, checking received emails for debugging...")
+            report_progress("No sent emails with quotes found, checking received emails...", "searching")
             emails = self.email_service.search_emails(
                 keywords=quote_keywords,
                 has_attachments=True,
@@ -86,33 +99,37 @@ class EmailTrainingWorkflow:
                 sent_only=False
             )
         
-        logger.info(f"Found {len(emails)} emails matching quote criteria")
+        report_progress(f"📧 Found {len(emails)} emails with attachments", "processing")
         
         client_quotes = []
+        processed_emails = 0
         
         for email in emails:
+            processed_emails += 1
+            subject = email.get('subject', 'No subject')
+            
             # Check if email has PDF attachments
             attachments = email.get("attachments", [])
-            logger.info(f"Email '{email.get('subject', 'No subject')}' has {len(attachments)} attachments")
+            report_progress(f"📎 Processing email {processed_emails}/{len(emails)}: '{subject}' ({len(attachments)} attachments)", "processing")
             
             for attachment in attachments:
                 filename = attachment.get("filename", "").lower()
-                logger.info(f"Processing attachment: {filename}")
                 
                 if filename.endswith(".pdf") or "pdf" in filename:
+                    report_progress(f"📄 Processing PDF: {filename}", "extracting")
                     try:
                         quote = self._process_email_attachment(email, attachment)
                         if quote and quote.confidence > 0.1:  # Very low threshold for debugging
                             client_quotes.append(quote)
-                            logger.info(f"Added quote with confidence {quote.confidence}")
+                            report_progress(f"✅ Found quote in {filename} (confidence: {quote.confidence:.1%})", "found")
                         else:
-                            logger.info(f"Quote rejected - confidence too low or processing failed")
+                            report_progress(f"❌ No valid quote found in {filename}", "processing")
                     except Exception as e:
-                        logger.error(f"Error processing attachment {filename}: {e}")
+                        report_progress(f"⚠️ Error processing {filename}: {str(e)}", "error")
                 else:
-                    logger.info(f"Skipping non-PDF attachment: {filename}")
+                    report_progress(f"⏭️ Skipping non-PDF: {filename}", "processing")
         
-        logger.info(f"Found {len(client_quotes)} client quotes from last {days_back} days")
+        report_progress(f"🎯 Found {len(client_quotes)} valid quotes from {len(emails)} emails", "completed")
         return client_quotes
     
     def _process_email_attachment(self, email: Dict[str, Any], attachment: Dict[str, Any]) -> Optional[EmailQuote]:
@@ -322,44 +339,65 @@ class EmailTrainingWorkflow:
         except Exception as e:
             logger.error(f"Error during ML training: {e}")
     
-    def run_full_workflow(self, email_provider: str, credentials: Dict[str, Any], days_back: int = 30) -> Dict[str, Any]:
+    def run_full_workflow(self, email_provider: str, credentials: Dict[str, Any], days_back: int = 30, progress_callback=None) -> Dict[str, Any]:
         """Run the complete email-to-ML training workflow"""
         results = {
             "start_time": datetime.now(),
             "quotes_found": 0,
             "training_records_saved": 0,
             "ml_training_completed": False,
-            "errors": []
+            "errors": [],
+            "progress": []
         }
+        
+        def report_progress(message: str, step: str = "workflow"):
+            """Report progress to callback and store in results"""
+            progress_info = {"step": step, "message": message}
+            results["progress"].append(progress_info)
+            if progress_callback:
+                progress_callback(progress_info)
+            logger.info(message)
         
         try:
             # Setup email service
+            report_progress("🔗 Setting up email service connection...", "setup")
             self.setup_email_service(email_provider, credentials)
             
-            # Find client quotes
-            quotes = self.find_client_quotes(days_back)
+            # Find client quotes with progress tracking
+            report_progress("🔍 Starting email search for client quotes...", "search")
+            quotes = self.find_client_quotes(days_back, report_progress)
             results["quotes_found"] = len(quotes)
             
             if quotes:
+                report_progress(f"📊 Mapping {len(quotes)} quotes to training features...", "processing")
                 # Map to training features
                 training_df = self.map_to_questionnaire_features(quotes)
                 
                 # Save to database
+                report_progress("💾 Saving training data to database...", "saving")
                 saved_count = self.save_training_data(training_df)
                 results["training_records_saved"] = saved_count
                 
                 # Trigger ML retraining if we have enough new data
                 if saved_count >= 5:  # Minimum threshold for retraining
+                    report_progress("🤖 Triggering ML model retraining...", "training")
                     self.trigger_ml_training()
                     results["ml_training_completed"] = True
+                    report_progress("✅ ML training completed successfully!", "completed")
+                else:
+                    report_progress(f"⏳ Need {5 - saved_count} more samples to trigger ML retraining", "waiting")
+            else:
+                report_progress("❌ No quotes found to process", "completed")
             
         except Exception as e:
             error_msg = f"Workflow error: {e}"
-            logger.error(error_msg)
+            report_progress(f"⚠️ {error_msg}", "error")
             results["errors"].append(error_msg)
         
         results["end_time"] = datetime.now()
         results["duration"] = results["end_time"] - results["start_time"]
+        
+        report_progress(f"🏁 Workflow completed in {results['duration'].total_seconds():.1f} seconds", "completed")
         
         return results
 

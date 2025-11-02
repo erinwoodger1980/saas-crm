@@ -1368,22 +1368,37 @@ async def start_email_training(payload: EmailTrainingPayload):
         # Initialize workflow
         workflow = EmailTrainingWorkflow(db_url, tenant_id)
         
-        # Run the complete workflow with real Gmail credentials
+        # Collect progress messages
+        progress_messages = []
+        
+        def progress_callback(progress_info):
+            """Collect progress messages for user feedback"""
+            progress_messages.append(progress_info)
+        
+        # Run the complete workflow with real Gmail credentials and progress tracking
         results = workflow.run_full_workflow(
             email_provider=payload.emailProvider,
             credentials=gmail_credentials,  # Use real credentials from database
-            days_back=payload.daysBack
+            days_back=payload.daysBack,
+            progress_callback=progress_callback
         )
         
         return {
             "ok": True,
-            "message": "Email training workflow completed",
+            "message": "✅ Email training workflow completed",
             "results": {
                 "quotes_found": results["quotes_found"],
                 "training_records_saved": results["training_records_saved"],
                 "ml_training_completed": results["ml_training_completed"],
                 "duration_seconds": results["duration"].total_seconds(),
                 "errors": results["errors"]
+            },
+            "progress": results.get("progress", []),
+            "summary": {
+                "emails_searched": len([msg for msg in results.get("progress", []) if "Found" in msg.get("message", "") and "emails" in msg.get("message", "")]),
+                "pdfs_processed": len([msg for msg in results.get("progress", []) if msg.get("step") == "extracting"]),
+                "quotes_found": results["quotes_found"],
+                "training_completed": results["ml_training_completed"]
             }
         }
         
@@ -1546,8 +1561,15 @@ async def preview_email_quotes(payload: EmailTrainingPayload):
         workflow = EmailTrainingWorkflow(db_url, payload.tenantId)
         workflow.setup_email_service(payload.emailProvider, gmail_credentials)
         
-        # Find quotes without training
-        quotes = workflow.find_client_quotes(payload.daysBack)
+        # Collect progress messages
+        progress_messages = []
+        
+        def progress_callback(progress_info):
+            """Collect progress messages for user feedback"""
+            progress_messages.append(progress_info)
+        
+        # Find quotes with progress tracking
+        quotes = workflow.find_client_quotes(payload.daysBack, progress_callback)
         
         # Convert to preview format
         preview_quotes = []
@@ -1567,7 +1589,13 @@ async def preview_email_quotes(payload: EmailTrainingPayload):
             "ok": True,
             "total_quotes_found": len(quotes),
             "preview_quotes": preview_quotes,
-            "message": f"Found {len(quotes)} client quotes from last {payload.daysBack} days"
+            "progress": progress_messages,
+            "message": f"✅ Found {len(quotes)} client quotes from last {payload.daysBack} days",
+            "summary": {
+                "emails_searched": len([msg for msg in progress_messages if "Found" in msg.get("message", "") and "emails" in msg.get("message", "")]),
+                "pdfs_processed": len([msg for msg in progress_messages if msg.get("step") == "extracting"]),
+                "quotes_found": len(quotes)
+            }
         }
         
     except Exception as e:
