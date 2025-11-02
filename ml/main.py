@@ -420,6 +420,100 @@ async def debug_email_processing(req: Request):
             "traceback": traceback.format_exc()
         }
 
+@app.post("/test-gmail-download")
+async def test_gmail_download(req: Request):
+    """Simple test of Gmail attachment download with detailed error reporting"""
+    try:
+        payload = await req.json()
+        tenant_id = payload.get("tenantId", "cmgt9bchl0001uj2h4po89fim")
+        
+        # Get database connection
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            return {"error": "No DATABASE_URL configured"}
+        
+        # Get Gmail credentials from database
+        from db_config import get_db_manager
+        db_manager = get_db_manager()
+        
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT "refreshToken" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
+            result = cur.fetchone()
+            
+            if not result:
+                return {"error": f"No Gmail connection found for tenant {tenant_id}"}
+                
+            refresh_token = result[0]
+        
+        # Get access token
+        import requests
+        token_data = {
+            'client_id': os.getenv('GMAIL_CLIENT_ID'),
+            'client_secret': os.getenv('GMAIL_CLIENT_SECRET'),
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token
+        }
+        
+        token_response = requests.post('https://oauth2.googleapis.com/token', data=token_data)
+        if not token_response.ok:
+            return {
+                "error": "Token refresh failed",
+                "status": token_response.status_code,
+                "details": token_response.text[:300]
+            }
+        
+        access_token = token_response.json()['access_token']
+        
+        # Test attachment download with the corrected URL
+        message_id = "19a3f6846b1e3038"
+        attachment_id = "ANGjdJ-ow0gGB3JZQDm988R7Al9Gm5-wh1lzYUySz5Db-KrEOPOyQsJx6FrMcbp4Xk1zGKmv98XgzaXbKNlA_f9QMMClcfutqilXbzT6Ddf3XbKX8bFqnvuCPmEjZlu-DBoHbuBSmC6oGw59aPUjt23Sxp28oBMGw6Uk9qBjuT7cQneHIz9theMZ3CwLvmspZCUHvB7iA2yQXM-EPqKAnQDGMULafSijnK--mqx8ChnwkWrdPlXQjT2Sg_N1YCnqageHErL8hSXVZuOSZZKduFUjNatRJKVsZLaIzuyoanWd4ix5LFGNpbElU5Qb7D2m6LCfO0YZvXuTDIJguhqJQPU4S-JmTpzA-0gsroCpNwU2AWqCrPGymUqwdxpJ3v4KoqZ7fs5vMN3ZLzJWuWgD"
+        
+        url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        download_response = requests.get(url, headers=headers)
+        
+        result = {
+            "access_token_length": len(access_token),
+            "download_url": url[:80] + "...",
+            "download_status": download_response.status_code,
+            "download_success": download_response.ok
+        }
+        
+        if download_response.ok:
+            data = download_response.json()
+            attachment_data = data.get("data", "")
+            result["raw_data_length"] = len(attachment_data)
+            
+            if attachment_data:
+                # Decode base64url
+                import base64
+                decoded_data = attachment_data.replace('-', '+').replace('_', '/')
+                while len(decoded_data) % 4:
+                    decoded_data += '='
+                
+                try:
+                    decoded_bytes = base64.b64decode(decoded_data)
+                    result["decoded_size"] = len(decoded_bytes)
+                    result["success"] = True
+                    result["message"] = f"Successfully downloaded {len(decoded_bytes)} bytes"
+                except Exception as decode_error:
+                    result["decode_error"] = str(decode_error)
+            else:
+                result["error"] = "No attachment data in response"
+        else:
+            result["error"] = download_response.text[:300]
+        
+        return result
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()[:500]
+        }
+
 @app.post("/debug-attachment-processing")
 async def debug_attachment_processing(req: Request):
     """Debug attachment download and PDF processing"""
@@ -468,43 +562,10 @@ async def debug_attachment_processing(req: Request):
             "steps": []
         }
         
-        # Step 1: Download attachment
+        # Step 1: Download attachment using the service method
         debug_info["steps"].append("Downloading attachment...")
         try:
-            # Create a custom download method with error capture
-            access_token = workflow.email_service._get_access_token()
-            
-            # Test Gmail attachment download directly
-            import requests
-            url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
-            headers = {"Authorization": f"Bearer {access_token}"}
-            
-            response = requests.get(url, headers=headers)
-            debug_info["download_url"] = url[:100] + "..."
-            debug_info["download_status"] = response.status_code
-            debug_info["download_ok"] = response.ok
-            
-            if not response.ok:
-                debug_info["download_error_text"] = response.text[:500]
-                debug_info["steps"].append(f"Download failed with status {response.status_code}")
-                return debug_info
-            
-            data = response.json()
-            attachment_data_raw = data.get("data", "")
-            debug_info["raw_data_length"] = len(attachment_data_raw)
-            
-            if not attachment_data_raw:
-                debug_info["steps"].append("No data in response")
-                return debug_info
-            
-            # Decode base64url
-            import base64
-            attachment_data_raw = attachment_data_raw.replace('-', '+').replace('_', '/')
-            while len(attachment_data_raw) % 4:
-                attachment_data_raw += '='
-            
-            attachment_data = base64.b64decode(attachment_data_raw)
-            
+            attachment_data = workflow.email_service.download_attachment(message_id, attachment_id)
             debug_info["download_success"] = len(attachment_data) > 0
             debug_info["attachment_size"] = len(attachment_data)
             debug_info["steps"].append(f"Downloaded {len(attachment_data)} bytes")
