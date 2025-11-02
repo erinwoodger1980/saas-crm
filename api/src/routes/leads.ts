@@ -7,8 +7,24 @@ import { UiStatus, loadTaskPlaybook, ensureTaskFromRecipe, TaskPlaybook } from "
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { randomUUID } from "crypto";
+import multer from "multer";
 
 const router = Router();
+
+// Configure multer for CSV uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed'));
+    }
+  },
+});
 
 /* ------------------------------------------------------------------ */
 /* Helpers: auth + status mapping                                      */
@@ -96,6 +112,224 @@ function dbToUi(db: string): UiStatus {
 function monthStartUTC(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0));
 }
+
+/* ------------------------------------------------------------------ */
+/* CSV Import Helpers                                                  */
+/* ------------------------------------------------------------------ */
+
+function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
+  const lines = csvText.split('\n').filter(line => line.trim());
+  if (lines.length === 0) {
+    throw new Error('CSV file is empty');
+  }
+  
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const rows = lines.slice(1).map(line => {
+    // Simple CSV parsing - handle quoted fields
+    const row: string[] = [];
+    let currentField = '';
+    let inQuotes = false;
+    let i = 0;
+    
+    while (i < line.length) {
+      const char = line[i];
+      if (char === '"' && (i === 0 || line[i-1] === ',')) {
+        inQuotes = true;
+      } else if (char === '"' && inQuotes && (i === line.length - 1 || line[i+1] === ',')) {
+        inQuotes = false;
+      } else if (char === ',' && !inQuotes) {
+        row.push(currentField.trim());
+        currentField = '';
+        i++;
+        continue;
+      } else {
+        currentField += char;
+      }
+      i++;
+    }
+    row.push(currentField.trim());
+    
+    return row;
+  });
+  
+  return { headers, rows };
+}
+
+function validateLeadData(data: any): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  if (!data.contactName || typeof data.contactName !== 'string' || !data.contactName.trim()) {
+    errors.push('Contact name is required');
+  }
+  
+  if (data.email && typeof data.email === 'string' && data.email.trim()) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.email.trim())) {
+      errors.push('Invalid email format');
+    }
+  }
+  
+  return { valid: errors.length === 0, errors };
+}
+
+/* ------------------------------------------------------------------ */
+/* CSV Import Endpoints                                                */
+/* ------------------------------------------------------------------ */
+
+// Preview CSV file and return headers for field mapping
+router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
+  const { tenantId, userId } = getAuth(req);
+  if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+  
+  if (!req.file) {
+    return res.status(400).json({ error: "CSV file is required" });
+  }
+  
+  try {
+    const csvText = req.file.buffer.toString('utf-8');
+    const { headers, rows } = parseCSV(csvText);
+    
+    // Return first few rows as preview
+    const preview = rows.slice(0, 5);
+    
+    res.json({
+      headers,
+      preview,
+      totalRows: rows.length,
+      availableFields: [
+        { key: 'contactName', label: 'Contact Name', required: true },
+        { key: 'email', label: 'Email', required: false },
+        { key: 'phone', label: 'Phone', required: false },
+        { key: 'company', label: 'Company', required: false },
+        { key: 'description', label: 'Description', required: false },
+        { key: 'source', label: 'Source', required: false },
+        { key: 'status', label: 'Status', required: false },
+      ]
+    });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message || 'Failed to parse CSV file' });
+  }
+});
+
+// Import leads from CSV with field mapping
+router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
+  const { tenantId, userId } = getAuth(req);
+  if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+  
+  if (!req.file) {
+    return res.status(400).json({ error: "CSV file is required" });
+  }
+  
+  const { fieldMapping } = req.body;
+  if (!fieldMapping) {
+    return res.status(400).json({ error: "Field mapping is required" });
+  }
+  
+  let mapping: Record<string, string>;
+  try {
+    mapping = typeof fieldMapping === 'string' ? JSON.parse(fieldMapping) : fieldMapping;
+  } catch {
+    return res.status(400).json({ error: "Invalid field mapping format" });
+  }
+  
+  try {
+    const csvText = req.file.buffer.toString('utf-8');
+    const { headers, rows } = parseCSV(csvText);
+    
+    const playbook = await loadTaskPlaybook(tenantId);
+    const results = {
+      successful: 0,
+      failed: 0,
+      errors: [] as Array<{ row: number; errors: string[] }>,
+      leadIds: [] as string[]
+    };
+    
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const leadData: any = {};
+      
+      // Map CSV columns to lead fields
+      for (const [csvColumn, leadField] of Object.entries(mapping)) {
+        const columnIndex = headers.indexOf(csvColumn);
+        if (columnIndex >= 0 && columnIndex < row.length) {
+          const value = row[columnIndex]?.trim();
+          if (value) {
+            leadData[leadField] = value;
+          }
+        }
+      }
+      
+      // Validate the lead data
+      const validation = validateLeadData(leadData);
+      if (!validation.valid) {
+        results.failed++;
+        results.errors.push({ row: i + 1, errors: validation.errors });
+        continue;
+      }
+      
+      try {
+        // Determine status
+        let uiStatus: UiStatus = "NEW_ENQUIRY";
+        if (leadData.status) {
+          const statusMap: Record<string, UiStatus> = {
+            'new': 'NEW_ENQUIRY',
+            'contacted': 'INFO_REQUESTED',
+            'qualified': 'READY_TO_QUOTE',
+            'quote_sent': 'QUOTE_SENT',
+            'won': 'WON',
+            'lost': 'LOST',
+            'rejected': 'REJECTED'
+          };
+          uiStatus = statusMap[leadData.status.toLowerCase()] || "NEW_ENQUIRY";
+        }
+        
+        // Create custom data object
+        const custom: any = { uiStatus };
+        if (leadData.phone) custom.phone = leadData.phone;
+        if (leadData.company) custom.company = leadData.company;
+        if (leadData.source) custom.source = leadData.source;
+        
+        // Create the lead
+        const lead = await prisma.lead.create({
+          data: {
+            tenantId,
+            createdById: userId,
+            contactName: leadData.contactName,
+            email: leadData.email || "",
+            status: uiToDb(uiStatus),
+            description: leadData.description || null,
+            custom,
+          },
+        });
+        
+        // Create initial tasks
+        await handleStatusTransition({
+          tenantId,
+          leadId: lead.id,
+          prevUi: null,
+          nextUi: uiStatus,
+          actorId: userId,
+          playbook
+        });
+        
+        results.successful++;
+        results.leadIds.push(lead.id);
+        
+      } catch (error: any) {
+        results.failed++;
+        results.errors.push({
+          row: i + 1,
+          errors: [`Failed to create lead: ${error.message}`]
+        });
+      }
+    }
+    
+    res.json(results);
+    
+  } catch (error: any) {
+    res.status(400).json({ error: error.message || 'Failed to process CSV file' });
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* Task helpers                                                        */
