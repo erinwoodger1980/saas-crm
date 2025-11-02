@@ -1331,15 +1331,6 @@ export default function AiTrainingPage() {
         </section>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {MODULES.map((m) => (
-          <Button key={m.id} size="sm" variant={moduleId === m.id ? "default" : "outline"} onClick={() => setModuleId(m.id)}>
-            {m.label}
-          </Button>
-        ))}
-        {/* Hide low-level controls to keep it visual */}
-      </div>
-
       {!isEA && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           AI Training is limited to early access users for now.

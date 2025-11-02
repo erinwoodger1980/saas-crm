@@ -234,6 +234,12 @@ router.post("/preview-email-quotes", async (req: any, res) => {
     try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
 
     if (!r.ok) return res.status(r.status).json(json);
+    
+    // Map ML service response to frontend expected format for preview-email-quotes
+    if (json.total_quotes_found !== undefined) {
+      json.quotesFound = json.total_quotes_found;
+    }
+    
     return res.json(json);
   } catch (e: any) {
     const msg = e?.message || String(e);
@@ -286,6 +292,15 @@ router.post("/start-email-training", async (req: any, res) => {
     try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
 
     if (!r.ok) return res.status(r.status).json(json);
+    
+    // Map ML service response to frontend expected format for start-email-training
+    if (json.quotes_found !== undefined) {
+      json.quotesFound = json.quotes_found;
+    }
+    if (json.training_records_saved !== undefined) {
+      json.trainingRecords = json.training_records_saved;
+    }
+    
     return res.json(json);
   } catch (e: any) {
     const msg = e?.message || String(e);
