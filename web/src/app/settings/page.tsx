@@ -193,7 +193,7 @@ export default function SettingsPage() {
   const { user, mutate: mutateCurrentUser } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"company" | "questionnaire" | "playbook" | "email">("company");
+  const [currentStage, setCurrentStage] = useState<"company" | "questionnaire" | "automation" | "integrations">("company");
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -404,10 +404,10 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    if (tab === "email") {
+    if (currentStage === "integrations") {
       refreshConnections();
     }
-  }, [tab]);
+  }, [currentStage]);
 
   async function runImportGmail() {
     try {
@@ -454,31 +454,36 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold">Settings</h1>
       </div>
 
-      {/* Tabs */}
-      <div className="sticky top-0 z-10 -mx-4 mb-2 bg-gradient-to-b from-white/90 to-white/0 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-white/70">
-        <div className="flex flex-wrap gap-2">
-          {[
-            { key: "company", label: "Company" },
-            { key: "questionnaire", label: "Questionnaire" },
-            { key: "playbook", label: "Playbook" },
-            { key: "email", label: "Email ingest" },
-          ].map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key as any)}
-              className={`rounded-full px-4 py-1.5 text-sm font-semibold shadow-sm border ${
-                tab === (t.key as any)
-                  ? "bg-[rgb(var(--brand))] border-[rgb(var(--brand))] text-white"
-                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      {/* Stage Navigation */}
+      <div className="flex gap-1 rounded-xl bg-slate-100/80 p-1 mb-6">
+        {[
+          { key: "company", label: "Company", icon: "🏢", description: "Basic company info and profile" },
+          { key: "questionnaire", label: "Questionnaire", icon: "📋", description: "Lead capture form fields" },
+          { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
+          { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
+        ].map((stage) => (
+          <button
+            key={stage.key}
+            onClick={() => setCurrentStage(stage.key as any)}
+            className={`
+              flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200
+              ${currentStage === stage.key
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              }
+            `}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <span>{stage.icon}</span>
+              <span className="hidden sm:inline">{stage.label}</span>
+            </div>
+          </button>
+        ))}
       </div>
 
-      {tab === "company" && (
+      <div className="rounded-xl border bg-slate-50/50 p-6">{/* Content area with background */}
+
+      {currentStage === "company" && (
       <>
       <Section title="Company profile" description="Edit basic company and owner details" right={<Button onClick={saveProfile}>Save Profile</Button>}>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -548,7 +553,7 @@ export default function SettingsPage() {
       </>
       )}
 
-      {tab === "questionnaire" && (
+      {currentStage === "questionnaire" && (
       <Section title="Questionnaire" description="Manage the public questionnaire fields">
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <input
@@ -787,7 +792,7 @@ export default function SettingsPage() {
       </Section>
       )}
 
-      {tab === "playbook" && (
+      {currentStage === "automation" && (
       <Section title="Task playbook" description="Define the tasks to create for each stage and the quick-add actions">
         <div className="space-y-6">
           {STATUS_KEYS.map((status) => (
@@ -900,7 +905,7 @@ export default function SettingsPage() {
       </Section>
       )}
 
-      {tab === "email" && (
+      {currentStage === "integrations" && (
       <>
       <Section title="Inbox & Integrations" description="Enable Gmail or Microsoft 365 ingestion">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -952,6 +957,7 @@ export default function SettingsPage() {
       </Section>
       </>
       )}
+      </div>{/* End content area */}
     </div>
   );
 }
