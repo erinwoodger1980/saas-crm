@@ -54,6 +54,12 @@ type BusinessMetrics = {
   }>;
   currentYear: number;
   currentMonth: number;
+  financialYear: {
+    current: number;
+    yearEnd: string;
+    progress: number;
+    progressPercent: number;
+  };
 };
 
 export default function DashboardPage() {
@@ -61,6 +67,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [showTargetsDialog, setShowTargetsDialog] = useState(false);
+  const [savingTargets, setSavingTargets] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showFinancialYearDialog, setShowFinancialYearDialog] = useState(false);
+  const [financialYearEnd, setFinancialYearEnd] = useState("12-31");
   const [targetForm, setTargetForm] = useState({
     enquiriesTarget: 120,
     quotesValueTarget: 120000,
@@ -86,11 +96,39 @@ export default function DashboardPage() {
         salesValueTarget: res.targets.salesValueTarget,
         salesCountTarget: res.targets.salesCountTarget,
       });
+      
+      // Set financial year end if available
+      if (res.financialYear?.yearEnd) {
+        setFinancialYearEnd(res.financialYear.yearEnd);
+      }
     } catch (e: any) {
       console.error("Failed to load business metrics:", e);
       setErr(e?.message || "Failed to load");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveTargets = async () => {
+    try {
+      setSavingTargets(true);
+      await apiFetch("/analytics/business/targets", {
+        method: "POST",
+        json: {
+          year: data!.currentYear,
+          ...targetForm
+        }
+      });
+      
+      // Reload data to show updated targets
+      await loadData();
+      setShowTargetsDialog(false);
+      
+    } catch (e: any) {
+      console.error("Failed to save targets:", e);
+      setErr(e?.message || "Failed to save targets");
+    } finally {
+      setSavingTargets(false);
     }
   };
 
@@ -127,12 +165,63 @@ export default function DashboardPage() {
           {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
         </div>
         
-        <Dialog open={showTargetsDialog} onOpenChange={setShowTargetsDialog}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm">
-              Set Targets
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <Dialog open={showFinancialYearDialog} onOpenChange={setShowFinancialYearDialog}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                Financial Year
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Financial Year Settings</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Financial Year End (MM-DD)</label>
+                  <Input
+                    value={financialYearEnd}
+                    onChange={(e) => setFinancialYearEnd(e.target.value)}
+                    placeholder="12-31"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Current: FY{data.financialYear.current} (ends {data.financialYear.yearEnd}) - {data.financialYear.progressPercent}% complete
+                  </p>
+                </div>
+                <Button className="w-full" disabled>
+                  Save Financial Year (Coming Soon)
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                Import Data
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Import Historical Data</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Import historical enquiries, quotes, and sales to backdate your metrics.
+                </p>
+                <Button className="w-full" disabled>
+                  Import Historical Data (Coming Soon)
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={showTargetsDialog} onOpenChange={setShowTargetsDialog}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                Set Targets
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Set Annual Targets for {data.currentYear}</DialogTitle>
@@ -178,12 +267,13 @@ export default function DashboardPage() {
                   onChange={(e) => setTargetForm({...targetForm, salesCountTarget: Number(e.target.value)})}
                 />
               </div>
-              <Button className="w-full" disabled>
-                Save Targets (Coming Soon)
+              <Button className="w-full" onClick={saveTargets} disabled={savingTargets}>
+                {savingTargets ? "Saving..." : "Save Targets"}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </header>
 
       {/* Current Month vs Year-to-Date Metrics */}
@@ -220,7 +310,10 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Year to Date ({data.currentYear})</CardTitle>
+            <CardTitle className="text-lg">Financial Year to Date (FY{data.financialYear.current})</CardTitle>
+            <p className="text-sm text-gray-500">
+              Year ending {data.financialYear.yearEnd} • {data.financialYear.progressPercent}% complete
+            </p>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
@@ -255,7 +348,7 @@ export default function DashboardPage() {
       {/* Annual Targets vs Actuals */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Annual Targets vs Actuals ({data.currentYear})</CardTitle>
+          <CardTitle className="text-lg">Annual Targets vs Actuals (FY{data.financialYear.current})</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-5">

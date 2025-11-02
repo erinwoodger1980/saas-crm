@@ -21,6 +21,7 @@ model Tenant {
   seatsDisplay          Int                    @default(2)
   subscriptionStatus    SubscriptionStatus?
   plan                  Plan?
+  financialYearEnd      String?                @default("12-31") // MM-DD format for financial year end
   emailIngests          EmailIngest[]
   emailMessages         EmailMessage[]
   emailThreads          EmailThread[]
