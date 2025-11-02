@@ -797,25 +797,398 @@ export default function AiTrainingPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">AI Training</h1>
-          <p className="text-sm text-slate-600">Tune sensitivity, review recent decisions, and retrain per module.</p>
+    <div className="space-y-8">
+      {/* Beautiful Header */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
+        <div className="relative z-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 mb-2">🤖 AI Training Hub</h1>
+              <p className="text-slate-600 max-w-2xl">Train your AI models with email quotes and manual examples to improve accuracy and prediction power.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {mlHealth && (
+                <Badge variant={mlHealth.ok ? "secondary" : "destructive"} className="text-sm px-3 py-1">
+                  ML: {mlHealth.ok ? "🟢 Online" : "🔴 Offline"}{mlHealth?.target ? ` • ${mlHealth.target}` : ""}
+                </Badge>
+              )}
+              {avgConf != null && (
+                <Badge variant="secondary" className="text-sm px-3 py-1">✨ Avg confidence: {(avgConf * 100).toFixed(0)}%</Badge>
+              )}
+            </div>
+          </div>
         </div>
-      <div className="flex items-center gap-2">
-        {mlHealth && (
-          <Badge variant={mlHealth.ok ? "secondary" : "destructive"} className="text-xs">
-            ML: {mlHealth.ok ? "online" : "offline"}{mlHealth?.target ? ` • ${mlHealth.target}` : ""}
-          </Badge>
-        )}
-        {avgConf != null && (
-          <Badge variant="secondary" className="text-sm">Avg confidence: {(avgConf * 100).toFixed(0)}%</Badge>
-        )}
+        {/* Decorative background elements */}
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-200/30 to-purple-200/30 rounded-full blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-indigo-200/30 to-blue-200/30 rounded-full blur-xl"></div>
       </div>
-    </div>
 
-      {/* Sales Assistant: high-level follow-up training visuals only */}
+      {/* Quote Training Sections - Most Important */}
+      {isEA && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Email-Based Client Quote Training */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200/50 shadow-sm">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200/20 rounded-full blur-xl"></div>
+            <div className="relative p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-slate-900">📧 Email Quote Discovery</h3>
+                  <p className="text-sm text-slate-600">Automatically find and learn from client quotes in your email history</p>
+                </div>
+                {mlHealth && (
+                  <Badge variant={mlHealth.ok ? "secondary" : "destructive"} className="text-xs">
+                    {mlHealth.ok ? "🟢 Ready" : "🔴 Offline"}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Beautiful Training Status */}
+              {emailTraining.status !== 'idle' && (
+                <div className="mb-6 p-4 rounded-xl bg-white/70 backdrop-blur-sm border border-white/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3 h-3 rounded-full ${
+                        emailTraining.status === 'running' ? 'bg-blue-500 animate-pulse' :
+                        emailTraining.status === 'completed' ? 'bg-green-500' :
+                        emailTraining.status === 'error' ? 'bg-red-500' : 'bg-gray-400'
+                      }`}></div>
+                      <span className="text-sm font-medium text-slate-700">Training Status</span>
+                    </div>
+                    <Badge variant={
+                      emailTraining.status === 'completed' ? 'default' :
+                      emailTraining.status === 'error' ? 'destructive' : 'secondary'
+                    } className="text-xs">
+                      {emailTraining.status === 'running' ? '⚡ Processing' : 
+                       emailTraining.status === 'completed' ? '✅ Complete' :
+                       emailTraining.status === 'error' ? '❌ Failed' : emailTraining.status}
+                    </Badge>
+                  </div>
+                  
+                  {emailTraining.progress !== undefined && emailTraining.status === 'running' && (
+                    <div className="w-full bg-slate-200 rounded-full h-2 mb-3 overflow-hidden">
+                      <div 
+                        className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-500 ease-out" 
+                        style={{ width: `${emailTraining.progress}%` }}
+                      ></div>
+                    </div>
+                  )}
+                  
+                  <p className="text-sm text-slate-700 font-medium">{emailTraining.message}</p>
+                  
+                  <div className="flex gap-4 mt-2 text-xs text-slate-600">
+                    {emailTraining.quotesFound !== undefined && (
+                      <span className="flex items-center gap-1">
+                        📊 <strong>{emailTraining.quotesFound}</strong> quotes found
+                      </span>
+                    )}
+                    {emailTraining.trainingRecords !== undefined && (
+                      <span className="flex items-center gap-1">
+                        🎯 <strong>{emailTraining.trainingRecords}</strong> training records
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Training Controls */}
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      📧 Email Provider
+                    </label>
+                    <select 
+                      value={emailProvider} 
+                      onChange={(e) => setEmailProvider(e.target.value as 'gmail' | 'ms365')}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      disabled={emailTraining.status === 'running'}
+                    >
+                      <option value="gmail">Gmail</option>
+                      <option value="ms365">Microsoft 365</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      📅 Days to scan back
+                    </label>
+                    <input 
+                      type="number" 
+                      value={daysBack} 
+                      onChange={(e) => setDaysBack(parseInt(e.target.value) || 30)}
+                      min="1" 
+                      max="365"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      disabled={emailTraining.status === 'running'}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Button 
+                    onClick={previewEmailQuotes}
+                    disabled={emailTraining.status === 'running' || !mlHealth?.ok}
+                    variant="outline"
+                    className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  >
+                    {emailTraining.status === 'running' ? '🔄 Processing...' : '👀 Preview Quotes'}
+                  </Button>
+                  
+                  <Button 
+                    onClick={startEmailTraining}
+                    disabled={emailTraining.status === 'running' || !mlHealth?.ok}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {emailTraining.status === 'running' ? '⚡ Training...' : '🚀 Start Training'}
+                  </Button>
+                  
+                  <Button 
+                    onClick={trainClientQuotes}
+                    disabled={emailTraining.status === 'running' || !mlHealth?.ok}
+                    variant="secondary"
+                    className="w-full"
+                  >
+                    {emailTraining.status === 'running' ? '🔄 Training...' : '🎯 Train Models'}
+                  </Button>
+                </div>
+
+                <div className="p-3 rounded-lg bg-emerald-100/60 border border-emerald-200">
+                  <p className="text-xs text-emerald-800">
+                    <strong>💡 How it works:</strong> Scans your emails for client quotes, extracts pricing patterns and requirements, 
+                    then trains ML models to better predict pricing and match supplier products to client needs.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Manual Quote Upload Training */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200/50 shadow-sm">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-violet-200/20 rounded-full blur-xl"></div>
+            <div className="relative p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-violet-500 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-slate-900">📄 Manual Quote Training</h3>
+                  <p className="text-sm text-slate-600">Upload specific PDF quotes to train with targeted examples</p>
+                </div>
+                <Badge variant="secondary" className="text-xs">
+                  ✅ {uploadQueue.filter(u => u.status === 'completed').length} processed
+                </Badge>
+              </div>
+
+              {/* Quote Type Selector */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  📋 Quote Type
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedQuoteType('supplier')}
+                    className={`flex-1 px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
+                      selectedQuoteType === 'supplier'
+                        ? 'bg-violet-100 border-violet-300 text-violet-700 shadow-sm'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🏭 Supplier Quote
+                  </button>
+                  <button
+                    onClick={() => setSelectedQuoteType('client')}
+                    className={`flex-1 px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
+                      selectedQuoteType === 'client'
+                        ? 'bg-violet-100 border-violet-300 text-violet-700 shadow-sm'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    👤 Client Quote
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  {selectedQuoteType === 'supplier' 
+                    ? '📥 Quotes received from suppliers/contractors' 
+                    : '📤 Quotes sent to your clients/customers'
+                  }
+                </p>
+              </div>
+
+              {/* Beautiful Drag and Drop Zone */}
+              <div
+                className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all duration-200 ${
+                  isDragging 
+                    ? 'border-violet-400 bg-violet-100/50 scale-[1.02]' 
+                    : 'border-slate-300 bg-white/70 hover:border-violet-300 hover:bg-violet-50/30'
+                }`}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
+                <div className="flex flex-col items-center gap-3">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                    isDragging ? 'bg-violet-200 scale-110' : 'bg-slate-200'
+                  }`}>
+                    {isDragging ? (
+                      <svg className="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                    )}
+                  </div>
+                  <div>
+                    <p className={`text-sm font-medium ${isDragging ? 'text-violet-700' : 'text-slate-700'}`}>
+                      {isDragging ? '📄 Drop PDF quotes here!' : '🎯 Drag PDF quotes here to train'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Or click to browse files • PDF only
+                    </p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => document.getElementById('quote-file-input')?.click()}
+                    disabled={!mlHealth?.ok}
+                    className="border-violet-300 text-violet-700 hover:bg-violet-50"
+                  >
+                    📁 Browse Files
+                  </Button>
+                </div>
+                
+                <input
+                  id="quote-file-input"
+                  type="file"
+                  multiple
+                  accept=".pdf,application/pdf"
+                  onChange={handleFileSelect}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
+
+              {/* Upload Queue with Beautiful Design */}
+              {uploadQueue.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                      📋 Upload Queue 
+                      <Badge variant="outline" className="text-xs">
+                        {uploadQueue.length} file{uploadQueue.length === 1 ? '' : 's'}
+                      </Badge>
+                    </h4>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={clearCompletedUploads}
+                      disabled={uploadQueue.filter(u => u.status === 'completed').length === 0}
+                      className="text-xs"
+                    >
+                      🗑️ Clear Completed
+                    </Button>
+                  </div>
+                  
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {uploadQueue.map((upload) => (
+                      <div key={upload.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg bg-white/80 backdrop-blur-sm shadow-sm">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-700 truncate flex items-center gap-2">
+                            📄 {upload.file.name}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            💾 {(upload.file.size / 1024 / 1024).toFixed(2)} MB • 
+                            {upload.quoteType === 'supplier' ? '🏭' : '👤'} {upload.quoteType || 'supplier'} quote
+                          </p>
+                          {upload.result && (
+                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                              ✅ Confidence: <strong>{(upload.result.confidence * 100).toFixed(0)}%</strong> • 
+                              📊 {upload.result.quote_type} quote • 
+                              🎯 {upload.result.training_records_saved} training record saved
+                            </p>
+                          )}
+                          {upload.error && (
+                            <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                              ❌ Error: {upload.error}
+                            </p>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Badge variant={
+                            upload.status === 'completed' ? 'default' :
+                            upload.status === 'error' ? 'destructive' :
+                            upload.status === 'uploading' ? 'secondary' : 'outline'
+                          } className="text-xs">
+                            {upload.status === 'completed' ? '✅' :
+                             upload.status === 'error' ? '❌' :
+                             upload.status === 'uploading' ? '⚡' : '⏳'} {upload.status}
+                          </Badge>
+                          
+                          {upload.status === 'uploading' && upload.progress !== undefined && (
+                            <div className="w-16 bg-slate-200 rounded-full h-1.5">
+                              <div 
+                                className="bg-violet-600 h-1.5 rounded-full transition-all duration-300" 
+                                style={{ width: `${upload.progress}%` }}
+                              ></div>
+                            </div>
+                          )}
+                          
+                          <button 
+                            onClick={() => removeFromQueue(upload.id)}
+                            className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors"
+                            title="Remove from queue"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 p-3 rounded-lg bg-violet-100/60 border border-violet-200">
+                <p className="text-xs text-violet-800">
+                  <strong>💡 Training tips:</strong> Upload a variety of quotes with different formats, pricing structures, 
+                  and product types. The more diverse examples you provide, the better the model will become at parsing quotes accurately.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isEA && (
+        <div className="rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-6 text-center">
+          <div className="w-12 h-12 rounded-full bg-amber-200 mx-auto mb-3 flex items-center justify-center">
+            <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-amber-800 mb-2">🚀 Early Access Required</h3>
+          <p className="text-sm text-amber-700">AI Training is currently limited to early access users. Contact support to get access!</p>
+        </div>
+      )}
+
+      {/* Module Selection */}
+      <div className="flex flex-wrap gap-2">
+        {MODULES.map((m) => (
+          <Button key={m.id} size="sm" variant={moduleId === m.id ? "default" : "outline"} onClick={() => setModuleId(m.id)}>
+            {m.label}
+          </Button>
+        ))}
+      </div>
       {moduleId === "sales_assistant" && (
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -971,311 +1344,6 @@ export default function AiTrainingPage() {
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           AI Training is limited to early access users for now.
         </div>
-      )}
-
-      {/* Email Training Section */}
-      {isEA && (
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-lg font-medium text-slate-900">Client Quote Training</h3>
-              <p className="text-sm text-slate-600">Train ML models using client quotes from your email history</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {mlHealth && (
-                <Badge variant={mlHealth.ok ? "secondary" : "destructive"} className="text-xs">
-                  ML: {mlHealth.ok ? "online" : "offline"}
-                </Badge>
-              )}
-            </div>
-          </div>
-
-          {/* Training Status */}
-          {emailTraining.status !== 'idle' && (
-            <div className="mb-4 p-4 rounded-lg border border-slate-200 bg-slate-50">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-slate-700">Training Status</span>
-                <Badge variant={
-                  emailTraining.status === 'completed' ? 'default' :
-                  emailTraining.status === 'error' ? 'destructive' : 'secondary'
-                }>
-                  {emailTraining.status}
-                </Badge>
-              </div>
-              
-              {emailTraining.progress !== undefined && emailTraining.status === 'running' && (
-                <div className="w-full bg-slate-200 rounded-full h-2 mb-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                    style={{ width: `${emailTraining.progress}%` }}
-                  ></div>
-                </div>
-              )}
-              
-              <p className="text-sm text-slate-600">{emailTraining.message}</p>
-              
-              {emailTraining.quotesFound !== undefined && (
-                <p className="text-xs text-slate-500 mt-1">
-                  Quotes found: {emailTraining.quotesFound}
-                </p>
-              )}
-              
-              {emailTraining.trainingRecords !== undefined && (
-                <p className="text-xs text-slate-500">
-                  Training records: {emailTraining.trainingRecords}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Training Controls */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Email Provider
-                </label>
-                <select 
-                  value={emailProvider} 
-                  onChange={(e) => setEmailProvider(e.target.value as 'gmail' | 'ms365')}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={emailTraining.status === 'running'}
-                >
-                  <option value="gmail">Gmail</option>
-                  <option value="ms365">Microsoft 365</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Days to scan back
-                </label>
-                <input 
-                  type="number" 
-                  value={daysBack} 
-                  onChange={(e) => setDaysBack(parseInt(e.target.value) || 30)}
-                  min="1" 
-                  max="365"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={emailTraining.status === 'running'}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Button 
-                onClick={previewEmailQuotes}
-                disabled={emailTraining.status === 'running' || !mlHealth?.ok}
-                className="w-full"
-                variant="outline"
-              >
-                {emailTraining.status === 'running' ? 'Processing...' : 'Preview Email Quotes'}
-              </Button>
-              
-              <Button 
-                onClick={startEmailTraining}
-                disabled={emailTraining.status === 'running' || !mlHealth?.ok}
-                className="w-full"
-              >
-                {emailTraining.status === 'running' ? 'Training...' : 'Start Email Training'}
-              </Button>
-              
-              <Button 
-                onClick={trainClientQuotes}
-                disabled={emailTraining.status === 'running' || !mlHealth?.ok}
-                className="w-full"
-                variant="secondary"
-              >
-                {emailTraining.status === 'running' ? 'Training...' : 'Train ML Models'}
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
-            <p className="text-xs text-blue-700">
-              <strong>How it works:</strong> The system will scan your emails for client quotes, extract pricing patterns and requirements, 
-              then train the ML models to better predict pricing and match supplier products to client needs.
-            </p>
-          </div>
-        </section>
-      )}
-
-      {/* Manual Quote Upload Section */}
-      {isEA && (
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-lg font-medium text-slate-900">Manual Quote Training</h3>
-              <p className="text-sm text-slate-600">Drag and drop PDF quotes to train the model with specific examples</p>
-            </div>
-            <Badge variant="secondary" className="text-xs">
-              {uploadQueue.filter(u => u.status === 'completed').length} processed
-            </Badge>
-          </div>
-
-          {/* Quote Type Selector */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Quote Type
-            </label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setSelectedQuoteType('supplier')}
-                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                  selectedQuoteType === 'supplier'
-                    ? 'bg-blue-50 border-blue-200 text-blue-700'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                Supplier Quote
-              </button>
-              <button
-                onClick={() => setSelectedQuoteType('client')}
-                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                  selectedQuoteType === 'client'
-                    ? 'bg-blue-50 border-blue-200 text-blue-700'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                Client Quote
-              </button>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              {selectedQuoteType === 'supplier' 
-                ? 'Quotes received from suppliers/contractors' 
-                : 'Quotes sent to your clients/customers'
-              }
-            </p>
-          </div>
-
-          {/* Drag and Drop Zone */}
-          <div
-            className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
-              isDragging 
-                ? 'border-blue-400 bg-blue-50' 
-                : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-slate-100'
-            }`}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-          >
-            <div className="flex flex-col items-center gap-3">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                isDragging ? 'bg-blue-100' : 'bg-slate-200'
-              }`}>
-                <svg className={`w-6 h-6 ${isDragging ? 'text-blue-600' : 'text-slate-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-              </div>
-              <div>
-                <p className={`text-sm font-medium ${isDragging ? 'text-blue-700' : 'text-slate-700'}`}>
-                  {isDragging ? 'Drop PDF quotes here' : 'Drag PDF quotes here to train the model'}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Or click to browse files
-                </p>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => document.getElementById('quote-file-input')?.click()}
-                disabled={!mlHealth?.ok}
-              >
-                Browse Files
-              </Button>
-            </div>
-            
-            <input
-              id="quote-file-input"
-              type="file"
-              multiple
-              accept=".pdf,application/pdf"
-              onChange={handleFileSelect}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
-          </div>
-
-          {/* Upload Queue */}
-          {uploadQueue.length > 0 && (
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium text-slate-700">Upload Queue</h4>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={clearCompletedUploads}
-                  disabled={uploadQueue.filter(u => u.status === 'completed').length === 0}
-                >
-                  Clear Completed
-                </Button>
-              </div>
-              
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {uploadQueue.map((upload) => (
-                  <div key={upload.id} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg bg-slate-50">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700 truncate">
-                        {upload.file.name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {(upload.file.size / 1024 / 1024).toFixed(2)} MB • {upload.quoteType || 'supplier'} quote
-                      </p>
-                      {upload.result && (
-                        <p className="text-xs text-green-600 mt-1">
-                          Confidence: {(upload.result.confidence * 100).toFixed(0)}% • 
-                          {upload.result.quote_type} quote • 
-                          {upload.result.training_records_saved} training record saved
-                        </p>
-                      )}
-                      {upload.error && (
-                        <p className="text-xs text-red-600 mt-1">
-                          Error: {upload.error}
-                        </p>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Badge variant={
-                        upload.status === 'completed' ? 'default' :
-                        upload.status === 'error' ? 'destructive' :
-                        upload.status === 'uploading' ? 'secondary' : 'outline'
-                      } className="text-xs">
-                        {upload.status}
-                      </Badge>
-                      
-                      {upload.status === 'uploading' && upload.progress !== undefined && (
-                        <div className="w-16 bg-slate-200 rounded-full h-1.5">
-                          <div 
-                            className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" 
-                            style={{ width: `${upload.progress}%` }}
-                          ></div>
-                        </div>
-                      )}
-                      
-                      <button 
-                        onClick={() => removeFromQueue(upload.id)}
-                        className="text-slate-400 hover:text-slate-600 p-1"
-                        title="Remove from queue"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4 p-3 rounded-lg bg-green-50 border border-green-200">
-            <p className="text-xs text-green-700">
-              <strong>Training tips:</strong> Upload a variety of supplier quotes with different formats, pricing structures, 
-              and product types. The more diverse examples you provide, the better the model will become at parsing quotes accurately.
-            </p>
-          </div>
-        </section>
       )}
 
       {/* Hide low-level working details and ingestion UI to keep the page clean and visual */}
