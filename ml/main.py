@@ -476,7 +476,7 @@ async def debug_attachment_processing(req: Request):
             
             # Test Gmail attachment download directly
             import requests
-            url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
+            url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
             headers = {"Authorization": f"Bearer {access_token}"}
             
             response = requests.get(url, headers=headers)

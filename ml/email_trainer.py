@@ -544,7 +544,7 @@ class GmailService:
             logger.info(f"Got access token for attachment download")
             
             # Download attachment using Gmail API
-            url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
+            url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}/attachments/{attachment_id}"
             headers = {"Authorization": f"Bearer {access_token}"}
             
             logger.info(f"Downloading attachment from URL: {url[:100]}...")
