@@ -387,7 +387,7 @@ async def debug_email_processing(req: Request):
         
         # Test attachment extraction with detailed logging
         attachments = []
-        workflow._extract_attachments(payload, attachments)
+        workflow.email_service._extract_attachments(payload, attachments)
         
         debug_info["attachments_found"] = len(attachments)
         debug_info["attachment_details"] = attachments
