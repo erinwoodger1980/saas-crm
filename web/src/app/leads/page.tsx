@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import LeadModal, { Lead } from "./LeadModal";
+import CsvImportModal from "@/components/leads/CsvImportModal";
 import { on } from "@/lib/events";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import { useToast } from "@/components/ui/use-toast";
@@ -86,6 +87,7 @@ export default function LeadsPage() {
   // modal
   const [open, setOpen] = useState(false);
   const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
   const { toast } = useToast();
 
   // email upload state
@@ -523,6 +525,14 @@ export default function LeadsPage() {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="ghost"
+              className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300"
+              type="button"
+              onClick={() => setCsvImportOpen(true)}
+            >
+              📊 Import CSV
+            </Button>
+            <Button
+              variant="ghost"
               className="rounded-full bg-gradient-to-r from-sky-500 via-indigo-500 to-rose-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(37,99,235,0.55)] hover:from-sky-600 hover:via-indigo-600 hover:to-rose-500 hover:bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
               type="button"
               onClick={handleCreateLead}
@@ -765,6 +775,15 @@ export default function LeadsPage() {
         }}
         leadPreview={leadPreview}
         onUpdated={refreshGrouped}
+      />
+
+      <CsvImportModal
+        open={csvImportOpen}
+        onClose={() => setCsvImportOpen(false)}
+        onImportComplete={() => {
+          refreshGrouped();
+          setCsvImportOpen(false);
+        }}
       />
     </>
   );
