@@ -307,12 +307,30 @@ async def debug_email_processing(req: Request):
         # Initialize workflow
         workflow = EmailTrainingWorkflow(db_url, tenant_id)
         
+        # Get Gmail connection details from database
+        from db_config import get_db_manager
+        db_manager = get_db_manager()
+        
+        with db_manager.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT "refreshToken", "gmailAddress" FROM "GmailTenantConnection" WHERE "tenantId" = %s', (tenant_id,))
+            result = cur.fetchone()
+            
+            if not result:
+                return {"error": f"No Gmail connection found for tenant {tenant_id}"}
+                
+            refresh_token, gmail_address = result
+        
+        # Setup Gmail service
+        gmail_credentials = {"refresh_token": refresh_token}
+        workflow.setup_email_service("gmail", gmail_credentials)
+        
         # Test real Gmail email search with detailed debugging
         import requests
         from datetime import datetime, timedelta
         
-        # Get Gmail credentials
-        access_token = workflow._get_access_token()
+        # Get Gmail credentials through the service
+        access_token = workflow.email_service._get_access_token()
         if not access_token:
             return {"error": "Failed to get Gmail access token"}
             
