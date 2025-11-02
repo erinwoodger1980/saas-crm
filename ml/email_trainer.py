@@ -119,13 +119,24 @@ class EmailTrainingWorkflow:
                     report_progress(f"📄 Processing PDF: {filename}", "extracting")
                     try:
                         quote = self._process_email_attachment(email, attachment)
-                        if quote and quote.confidence > 0.1:  # Very low threshold for debugging
+                        logger.info(f"🔍 _process_email_attachment returned: {quote}")
+                        logger.info(f"🔍 Quote type: {type(quote)}")
+                        if quote:
+                            logger.info(f"🔍 Quote confidence: {quote.confidence}")
+                            
+                        # Very permissive threshold for debugging  
+                        if quote and quote.confidence > 0.05:  # Lower threshold for debugging
                             client_quotes.append(quote)
                             report_progress(f"✅ Found quote in {filename} (confidence: {quote.confidence:.1%})", "found")
+                        elif quote:
+                            report_progress(f"⚠️ Quote found but low confidence ({quote.confidence:.1%}) in {filename}", "processing")
                         else:
                             report_progress(f"❌ No valid quote found in {filename}", "processing")
                     except Exception as e:
                         report_progress(f"⚠️ Error processing {filename}: {str(e)}", "error")
+                        logger.error(f"💥 Exception in find_client_quotes: {e}")
+                        import traceback
+                        logger.error(f"🔍 Traceback: {traceback.format_exc()}")
                 else:
                     report_progress(f"⏭️ Skipping non-PDF: {filename}", "processing")
         
