@@ -70,7 +70,15 @@ export default function DashboardPage() {
   const [savingTargets, setSavingTargets] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showFinancialYearDialog, setShowFinancialYearDialog] = useState(false);
+  const [savingFinancialYear, setSavingFinancialYear] = useState(false);
   const [financialYearEnd, setFinancialYearEnd] = useState("12-31");
+  
+  // Import data states
+  const [importType, setImportType] = useState<'leads' | 'quotes' | 'sales'>('leads');
+  const [importDate, setImportDate] = useState('');
+  const [importValue, setImportValue] = useState('');
+  const [importSource, setImportSource] = useState('');
+  const [importingData, setImportingData] = useState(false);
   const [targetForm, setTargetForm] = useState({
     enquiriesTarget: 120,
     quotesValueTarget: 120000,
@@ -132,6 +140,64 @@ export default function DashboardPage() {
     }
   };
 
+  const saveFinancialYear = async () => {
+    try {
+      setSavingFinancialYear(true);
+      await apiFetch("/analytics/business/financial-year", {
+        method: "POST",
+        json: {
+          yearEnd: financialYearEnd
+        }
+      });
+      
+      // Reload data to show updated financial year
+      await loadData();
+      setShowFinancialYearDialog(false);
+      
+    } catch (e: any) {
+      console.error("Failed to save financial year:", e);
+      setErr(e?.message || "Failed to save financial year");
+    } finally {
+      setSavingFinancialYear(false);
+    }
+  };
+
+  const importHistoricalData = async () => {
+    try {
+      setImportingData(true);
+      
+      const requestData = {
+        data: [{
+          date: importDate,
+          value: importType === 'leads' ? undefined : Number(importValue),
+          count: importType === 'leads' ? Number(importValue) : undefined,
+          source: importType === 'leads' ? importSource : undefined
+        }],
+        type: importType
+      };
+      
+      await apiFetch("/analytics/business/import-historical", {
+        method: "POST",
+        json: requestData
+      });
+      
+      // Reload data to show updated metrics
+      await loadData();
+      setShowImportDialog(false);
+      
+      // Reset form
+      setImportDate('');
+      setImportValue('');
+      setImportSource('');
+      
+    } catch (e: any) {
+      console.error("Failed to import data:", e);
+      setErr(e?.message || "Failed to import data");
+    } finally {
+      setImportingData(false);
+    }
+  };
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-GB', {
       style: 'currency',
@@ -188,8 +254,12 @@ export default function DashboardPage() {
                     Current: FY{data.financialYear.current} (ends {data.financialYear.yearEnd}) - {data.financialYear.progressPercent}% complete
                   </p>
                 </div>
-                <Button className="w-full" disabled>
-                  Save Financial Year (Coming Soon)
+                <Button 
+                  className="w-full" 
+                  onClick={saveFinancialYear}
+                  disabled={savingFinancialYear}
+                >
+                  {savingFinancialYear ? "Saving..." : "Save Financial Year"}
                 </Button>
               </div>
             </DialogContent>
@@ -209,8 +279,65 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-600">
                   Import historical enquiries, quotes, and sales to backdate your metrics.
                 </p>
-                <Button className="w-full" disabled>
-                  Import Historical Data (Coming Soon)
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Import Type</label>
+                    <select 
+                      className="w-full border rounded-md p-2"
+                      value={importType}
+                      onChange={(e) => setImportType(e.target.value as any)}
+                    >
+                      <option value="leads">Enquiries/Leads</option>
+                      <option value="quotes">Quotes</option>
+                      <option value="sales">Sales/Won Business</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Date</label>
+                    <input 
+                      type="date" 
+                      className="w-full border rounded-md p-2"
+                      value={importDate}
+                      onChange={(e) => setImportDate(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      {importType === 'leads' ? 'Number of Enquiries' : 
+                       importType === 'quotes' ? 'Quote Value (£)' : 'Sale Value (£)'}
+                    </label>
+                    <input 
+                      type="number" 
+                      className="w-full border rounded-md p-2"
+                      value={importValue}
+                      onChange={(e) => setImportValue(e.target.value)}
+                      placeholder={importType === 'leads' ? '10' : '5000'}
+                    />
+                  </div>
+                  
+                  {importType === 'leads' && (
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Source (optional)</label>
+                      <input 
+                        type="text" 
+                        className="w-full border rounded-md p-2"
+                        value={importSource}
+                        onChange={(e) => setImportSource(e.target.value)}
+                        placeholder="Website, Referral, etc."
+                      />
+                    </div>
+                  )}
+                </div>
+                
+                <Button 
+                  className="w-full" 
+                  onClick={importHistoricalData}
+                  disabled={importingData || !importDate || !importValue}
+                >
+                  {importingData ? "Importing..." : "Import Historical Data"}
                 </Button>
               </div>
             </DialogContent>
