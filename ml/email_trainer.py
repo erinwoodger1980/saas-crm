@@ -414,7 +414,7 @@ class GmailService:
             logger.info(f"Gmail search query: {search_query}")
             
             # Search Gmail using Gmail API
-            url = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+            url = "https://www.googleapis.com/gmail/v1/users/me/messages"
             headers = {"Authorization": f"Bearer {access_token}"}
             params = {"q": search_query, "maxResults": 50}
             
@@ -463,7 +463,7 @@ class GmailService:
         import requests
         
         try:
-            url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}"
+            url = f"https://www.googleapis.com/gmail/v1/users/me/messages/{message_id}"
             headers = {"Authorization": f"Bearer {access_token}"}
             
             response = requests.get(url, headers=headers)
