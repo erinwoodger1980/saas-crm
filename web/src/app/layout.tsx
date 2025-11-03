@@ -12,6 +12,7 @@ import { API_BASE, setJwt, apiFetch } from "@/lib/api";
 function DevAuth() {
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (process.env.NODE_ENV !== "development") return; // Only run in development
     if (localStorage.getItem("jwt")) return;
 
     // use apiFetch so credentials and API_BASE are resolved consistently
