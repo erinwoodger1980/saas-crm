@@ -346,15 +346,8 @@ export default function LeadModal({
   );
 
   // Navigation stages configuration
-  // If showFollowUp is explicitly true (like from opportunities), always show it
-  // Otherwise, show based on lead status for quote-related statuses
-  const shouldShowFollowUp = useMemo(() => {
-    const result = showFollowUp || (lead?.status && ['READY_TO_QUOTE', 'QUOTE_SENT', 'WON', 'LOST'].includes(lead.status));
-    if (process.env.NODE_ENV === 'development') {
-      console.log('shouldShowFollowUp:', { showFollowUp, leadStatus: lead?.status, result });
-    }
-    return result;
-  }, [showFollowUp, lead?.status]);
+  // Always show follow-up tab for consistent UX across all leads
+  const shouldShowFollowUp = true;
   
   const stages = [
     {
@@ -381,18 +374,13 @@ export default function LeadModal({
       icon: '✅',
       description: 'Next steps and progress'
     },
-    ...(shouldShowFollowUp ? [{
+    {
       id: 'follow-up' as const,
       title: 'Follow-up',
       icon: '📧',
       description: 'Email follow-ups and quotes'
-    }] : [])
+    }
   ];
-
-  const showEstimateCta = useMemo(
-    () => (uiStatus === "READY_TO_QUOTE" || uiStatus === "QUOTE_SENT" || uiStatus === "WON") && currentStage !== 'follow-up',
-    [uiStatus, currentStage]
-  );
 
   useEffect(() => {
     if (open) return;
@@ -1432,35 +1420,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     await saveStatus(nextUi);
   }
 
-  async function createDraftEstimate() {
-    if (!lead?.id) return;
-    setSaving(true);
-    try {
-      const quote = await apiFetch<any>("/quotes", {
-        method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
-        json: {
-          leadId: lead.id,
-          title: `Estimate for ${lead.contactName || lead.email || "Lead"}`,
-          notes: "Draft created from Lead.",
-        },
-      });
-
-      await ensureManualTask("quote_draft_complete", {
-        relatedType: "QUOTE",
-        relatedId: quote?.id,
-      });
-
-      await reloadTasks();
-      toast("Draft estimate created.");
-    } catch (e) {
-      console.error(e);
-      alert("Failed to create draft estimate");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function openQuoteBuilder() {
     if (!lead?.id) return;
     setSaving(true);
@@ -2211,16 +2170,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
               </option>
             ))}
           </select>
-
-          {showEstimateCta && (
-            <button
-              className="ml-2 rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 text-white px-4 py-2 text-sm font-semibold shadow hover:from-emerald-500 hover:to-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-              onClick={createDraftEstimate}
-              disabled={saving}
-            >
-              Create Draft Estimate
-            </button>
-          )}
 
           <button
             className="ml-2 rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 text-white px-4 py-2 text-sm font-semibold shadow hover:from-indigo-600 hover:to-sky-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
