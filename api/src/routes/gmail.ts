@@ -1057,7 +1057,6 @@ router.post("/import", async (req, res) => {
             inputSummary: `gmail:${m.id}`,
             decision: "auto_rejected",
             confidence: aiConfidence,
-            metadata: { subject, from: fromAddr, reason },
           });
         }
 

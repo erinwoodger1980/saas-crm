@@ -655,7 +655,6 @@ router.post("/import", async (req, res) => {
             inputSummary: `ms365:${m.id}`,
             decision: "auto_rejected",
             confidence: aiConfidence,
-            metadata: { subject, from: fromAddr, reason },
           });
         }
 
