@@ -44,7 +44,10 @@ r.post("/search", async (req, res) => {
     const searchQuery = query.toLowerCase().trim();
     const results: SearchResult[] = [];
     let directAnswer = "";
-    let suggestedAction = undefined;
+    let suggestedAction: {
+      label: string;
+      action: SearchResult['action'];
+    } | undefined = undefined;
 
     // Search leads by name, email, or contact info
     if (searchQuery.length > 2) {
@@ -54,12 +57,11 @@ r.post("/search", async (req, res) => {
           OR: [
             { contactName: { contains: query, mode: 'insensitive' } },
             { email: { contains: query, mode: 'insensitive' } },
-            { phone: { contains: query, mode: 'insensitive' } },
             { description: { contains: query, mode: 'insensitive' } }
           ]
         },
         take: 10,
-        orderBy: { createdAt: 'desc' }
+        orderBy: { capturedAt: 'desc' }
       });
 
       for (const lead of leads) {
@@ -67,14 +69,14 @@ r.post("/search", async (req, res) => {
           id: lead.id,
           type: 'lead',
           title: lead.contactName || lead.email || 'Unnamed Lead',
-          subtitle: lead.email || lead.phone || undefined,
-          description: lead.description || `Lead created ${new Date(lead.createdAt).toLocaleDateString()}`,
+          subtitle: lead.email || undefined,
+          description: lead.description || `Lead created ${new Date(lead.capturedAt).toLocaleDateString()}`,
           action: {
             type: 'modal',
             target: '/leads',
             params: { leadId: lead.id, modal: 'lead' }
           },
-          score: calculateRelevanceScore(query, [lead.contactName, lead.email, lead.description].filter(Boolean))
+          score: calculateRelevanceScore(query, [lead.contactName, lead.email, lead.description].filter((item): item is string => item !== null))
         });
       }
     }
@@ -85,11 +87,11 @@ r.post("/search", async (req, res) => {
         where: {
           tenantId: auth.tenantId,
           OR: [
-            { name: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } },
-            { contactName: { contains: query, mode: 'insensitive' } },
-            { contactEmail: { contains: query, mode: 'insensitive' } }
+            { title: { contains: query, mode: 'insensitive' } }
           ]
+        },
+        include: {
+          lead: true
         },
         take: 10,
         orderBy: { createdAt: 'desc' }
@@ -99,14 +101,14 @@ r.post("/search", async (req, res) => {
         results.push({
           id: opp.id,
           type: 'opportunity',
-          title: opp.name || 'Unnamed Opportunity',
-          subtitle: opp.contactEmail || opp.contactName || undefined,
-          description: opp.description || `£${opp.valueGBP || 0} opportunity`,
+          title: opp.title || 'Unnamed Opportunity',
+          subtitle: opp.lead?.email || opp.lead?.contactName || undefined,
+          description: `£${opp.valueGBP || 0} opportunity`,
           action: {
             type: 'navigate',
             target: `/dashboard?opportunityId=${opp.id}`
           },
-          score: calculateRelevanceScore(query, [opp.name, opp.description, opp.contactName].filter(Boolean))
+          score: calculateRelevanceScore(query, [opp.title, opp.lead?.contactName].filter((item): item is string => item !== null))
         });
       }
     }
@@ -136,7 +138,7 @@ r.post("/search", async (req, res) => {
             type: 'navigate',
             target: `/dashboard?taskId=${task.id}`
           },
-          score: calculateRelevanceScore(query, [task.title, task.description].filter(Boolean))
+          score: calculateRelevanceScore(query, [task.title, task.description].filter((item): item is string => item !== null))
         });
       }
     }
@@ -160,7 +162,7 @@ r.post("/search", async (req, res) => {
             suggestedAction = {
               label: "Open Business Settings",
               action: {
-                type: 'navigate',
+                type: 'navigate' as const,
                 target: '/dashboard?tab=settings&section=business'
               }
             };
@@ -171,7 +173,7 @@ r.post("/search", async (req, res) => {
             suggestedAction = {
               label: "Open Settings",
               action: {
-                type: 'navigate',
+                type: 'navigate' as const,
                 target: '/dashboard?tab=settings'
               }
             };
@@ -182,7 +184,7 @@ r.post("/search", async (req, res) => {
             suggestedAction = {
               label: "Add New Lead",
               action: {
-                type: 'navigate',
+                type: 'navigate' as const,
                 target: '/leads?action=add'
               }
             };
@@ -193,7 +195,7 @@ r.post("/search", async (req, res) => {
             suggestedAction = {
               label: "Add New Opportunity",
               action: {
-                type: 'navigate',
+                type: 'navigate' as const,
                 target: '/dashboard?action=addOpportunity'
               }
             };
@@ -212,7 +214,7 @@ r.post("/search", async (req, res) => {
             suggestedAction = {
               label: "View Full Analytics",
               action: {
-                type: 'navigate',
+                type: 'navigate' as const,
                 target: '/dashboard?tab=analytics'
               }
             };
@@ -223,7 +225,7 @@ r.post("/search", async (req, res) => {
             suggestedAction = {
               label: "View All Tasks",
               action: {
-                type: 'navigate',
+                type: 'navigate' as const,
                 target: '/dashboard?tab=tasks'
               }
             };
@@ -234,7 +236,7 @@ r.post("/search", async (req, res) => {
             suggestedAction = {
               label: "Open Dashboard",
               action: {
-                type: 'navigate',
+                type: 'navigate' as const,
                 target: '/dashboard'
               }
             };
@@ -262,7 +264,7 @@ r.post("/search", async (req, res) => {
           title: nav.title,
           description: `Navigate to ${nav.title} section`,
           action: {
-            type: 'navigate',
+            type: 'navigate' as const,
             target: nav.target
           },
           score: 0.8
