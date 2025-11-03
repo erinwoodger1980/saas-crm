@@ -34,13 +34,21 @@ export default function AISearchBar() {
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
+  // Ensure component is mounted before enabling functionality
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Click outside to close
   useEffect(() => {
+    if (!isMounted) return;
+    
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsOpen(false);
@@ -51,10 +59,12 @@ export default function AISearchBar() {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [isOpen]);
+  }, [isOpen, isMounted]);
 
   // Keyboard shortcuts
   useEffect(() => {
+    if (!isMounted) return;
+    
     const handleKeyDown = (event: KeyboardEvent) => {
       // Cmd/Ctrl + K to focus search
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
@@ -72,10 +82,10 @@ export default function AISearchBar() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isMounted]);
 
   const handleSearch = async (searchQuery: string) => {
-    if (!searchQuery.trim()) {
+    if (!isMounted || !searchQuery.trim()) {
       setResults(null);
       return;
     }
@@ -99,13 +109,15 @@ export default function AISearchBar() {
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isMounted) return;
+    
     const value = e.target.value;
     setQuery(value);
   };
 
   // Debounced search effect
   useEffect(() => {
-    if (!query.trim()) {
+    if (!isMounted || !query.trim()) {
       setResults(null);
       return;
     }
@@ -115,9 +127,11 @@ export default function AISearchBar() {
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [query]);
+  }, [query, isMounted]);
 
   const executeAction = async (action: SearchResult['action'], result?: SearchResult) => {
+    if (!isMounted) return;
+    
     setIsOpen(false);
     setQuery("");
     setResults(null);
@@ -214,11 +228,12 @@ export default function AISearchBar() {
           type="text"
           value={query}
           onChange={handleInputChange}
-          onFocus={() => setIsOpen(true)}
-          placeholder="Search anything or ask Joinery AI... (⌘K)"
+          onFocus={() => isMounted && setIsOpen(true)}
+          placeholder={isMounted ? "Search anything or ask Joinery AI... (⌘K)" : "Search..."}
           className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-full bg-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={!isMounted}
         />
-        {isLoading && (
+        {isLoading && isMounted && (
           <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
           </div>
@@ -226,7 +241,7 @@ export default function AISearchBar() {
       </div>
 
       {/* Search Results Dropdown */}
-      {isOpen && (query.trim() || results || error) && (
+      {isMounted && isOpen && (query.trim() || results || error) && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
           {error && (
             <div className="p-4 text-red-600 text-sm">
