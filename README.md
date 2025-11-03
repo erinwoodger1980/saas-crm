@@ -81,4 +81,4 @@ Endpoints of note:
 	- `POST /gmail/import`, `POST /ms365/import`
 	- `GET /gmail/message/:id`, `GET /ms365/message/:id`
 
-If ML tables are not present in your DB yet, the API responds gracefully with empty sets; run migrations or deploy the provided SQL migration to enable full functionality.
+If ML tables are not present in your DB yet, the API responds gracefully with empty sets; run migrations or deploy the provided SQL migration to enable full functionality.# Trigger deployment
