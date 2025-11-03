@@ -192,19 +192,34 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
     // Return first few rows as preview
     const preview = rows.slice(0, 5);
     
+    // Get questionnaire questions for this tenant
+    const leadFieldDefs = await prisma.leadFieldDef.findMany({
+      where: { tenantId },
+      orderBy: { sortOrder: 'asc' }
+    });
+    
+    // Build available fields including basic fields and questionnaire questions
+    const availableFields = [
+      { key: 'contactName', label: 'Contact Name', required: true },
+      { key: 'email', label: 'Email', required: false },
+      { key: 'phone', label: 'Phone', required: false },
+      { key: 'company', label: 'Company', required: false },
+      { key: 'description', label: 'Description', required: false },
+      { key: 'source', label: 'Source', required: false },
+      { key: 'status', label: 'Status', required: false },
+      // Add questionnaire questions
+      ...leadFieldDefs.map(field => ({
+        key: `custom.${field.key}`,
+        label: `${field.label} (Questionnaire)`,
+        required: field.required
+      }))
+    ];
+    
     res.json({
       headers,
       preview,
       totalRows: rows.length,
-      availableFields: [
-        { key: 'contactName', label: 'Contact Name', required: true },
-        { key: 'email', label: 'Email', required: false },
-        { key: 'phone', label: 'Phone', required: false },
-        { key: 'company', label: 'Company', required: false },
-        { key: 'description', label: 'Description', required: false },
-        { key: 'source', label: 'Source', required: false },
-        { key: 'status', label: 'Status', required: false },
-      ]
+      availableFields
     });
   } catch (error: any) {
     res.status(400).json({ error: error.message || 'Failed to parse CSV file' });
@@ -247,6 +262,7 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const leadData: any = {};
+      const customData: any = {};
       
       // Map CSV columns to lead fields
       for (const [csvColumn, leadField] of Object.entries(mapping)) {
@@ -254,7 +270,13 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
         if (columnIndex >= 0 && columnIndex < row.length) {
           const value = row[columnIndex]?.trim();
           if (value) {
-            leadData[leadField] = value;
+            // Check if this is a questionnaire field (custom.*)
+            if (leadField.startsWith('custom.')) {
+              const questionKey = leadField.substring(7); // Remove 'custom.' prefix
+              customData[questionKey] = value;
+            } else {
+              leadData[leadField] = value;
+            }
           }
         }
       }
@@ -283,8 +305,8 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
           uiStatus = statusMap[leadData.status.toLowerCase()] || "NEW_ENQUIRY";
         }
         
-        // Create custom data object
-        const custom: any = { uiStatus };
+        // Create custom data object with standard fields and questionnaire responses
+        const custom: any = { uiStatus, ...customData };
         if (leadData.phone) custom.phone = leadData.phone;
         if (leadData.company) custom.company = leadData.company;
         if (leadData.source) custom.source = leadData.source;
