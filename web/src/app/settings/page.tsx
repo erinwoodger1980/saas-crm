@@ -7,6 +7,7 @@ import { useCurrentUser, type CurrentUser } from "@/lib/use-current-user";
 import {
   DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
   DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+  DEFAULT_EMAIL_TEMPLATES,
 } from "@/lib/constants";
 import SourceCosts from "./SourceCosts";
 import {
@@ -49,6 +50,15 @@ type Settings = {
   taskPlaybook?: TaskPlaybook | null;
   questionnaireEmailSubject?: string | null;
   questionnaireEmailBody?: string | null;
+  emailTemplates?: {
+    declineQuote?: { subject: string; body: string };
+    requestSupplierQuote?: { subject: string; body: string };
+    sendQuestionnaire?: { subject: string; body: string };
+    sendQuote?: { subject: string; body: string };
+    followUpEmail?: { subject: string; body: string };
+    quoteApproved?: { subject: string; body: string };
+    quoteRejected?: { subject: string; body: string };
+  } | null;
   aiFollowupLearning?: { crossTenantOptIn: boolean; lastUpdatedISO?: string | null } | null;
 };
 type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number; recallFirst?: boolean };
@@ -193,7 +203,7 @@ export default function SettingsPage() {
   const { user, mutate: mutateCurrentUser } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
-  const [currentStage, setCurrentStage] = useState<"company" | "questionnaire" | "automation" | "integrations">("company");
+  const [currentStage, setCurrentStage] = useState<"company" | "questionnaire" | "email-templates" | "automation" | "integrations">("company");
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -490,6 +500,125 @@ export default function SettingsPage() {
     }
   }
 
+  /* Email Templates section */
+  function getTemplateDisplayName(templateKey: string): string {
+    const names: Record<string, string> = {
+      declineQuote: "Decline Quote",
+      requestSupplierQuote: "Request Supplier Quote", 
+      sendQuestionnaire: "Send Questionnaire",
+      sendQuote: "Send Quote",
+      followUpEmail: "Follow-up Email",
+      quoteApproved: "Quote Approved",
+      quoteRejected: "Quote Rejected"
+    };
+    return names[templateKey] || templateKey;
+  }
+
+  function getTemplateDescription(templateKey: string): string {
+    const descriptions: Record<string, string> = {
+      declineQuote: "Email sent when declining to provide a quote to a potential client",
+      requestSupplierQuote: "Email sent to suppliers when requesting quotes for client projects",
+      sendQuestionnaire: "Email sent to clients with questionnaire link for project details",
+      sendQuote: "Email sent to clients when delivering their completed quote",
+      followUpEmail: "Email sent to follow up on quotes that haven't received a response",
+      quoteApproved: "Email sent when a client approves a quote",
+      quoteRejected: "Email sent as a thank you when a client rejects a quote"
+    };
+    return descriptions[templateKey] || "Custom email template";
+  }
+
+  function updateEmailTemplate(templateKey: string, field: 'subject' | 'body', value: string) {
+    setS((prev) => {
+      if (!prev) return prev;
+      
+      const currentTemplates = prev.emailTemplates || {};
+      const currentTemplate = currentTemplates[templateKey as keyof typeof DEFAULT_EMAIL_TEMPLATES] || 
+                              DEFAULT_EMAIL_TEMPLATES[templateKey as keyof typeof DEFAULT_EMAIL_TEMPLATES];
+
+      return {
+        ...prev,
+        emailTemplates: {
+          ...currentTemplates,
+          [templateKey]: {
+            ...currentTemplate,
+            [field]: value
+          }
+        }
+      };
+    });
+  }
+
+  function resetEmailTemplate(templateKey: string) {
+    const defaultTemplate = DEFAULT_EMAIL_TEMPLATES[templateKey as keyof typeof DEFAULT_EMAIL_TEMPLATES];
+    if (!defaultTemplate) return;
+    
+    setS((prev) => {
+      if (!prev) return prev;
+      
+      const currentTemplates = prev.emailTemplates || {};
+      
+      return {
+        ...prev,
+        emailTemplates: {
+          ...currentTemplates,
+          [templateKey]: { ...defaultTemplate }
+        }
+      };
+    });
+    
+    toast({ title: "Template reset", description: "Email template has been reset to default" });
+  }
+
+  async function previewEmailTemplate(templateKey: string) {
+    if (!s) return;
+    
+    const template = s.emailTemplates?.[templateKey as keyof typeof DEFAULT_EMAIL_TEMPLATES] || 
+                    DEFAULT_EMAIL_TEMPLATES[templateKey as keyof typeof DEFAULT_EMAIL_TEMPLATES];
+    
+    // Create a sample preview with placeholder data
+    let previewSubject = template.subject;
+    let previewBody = template.body;
+    
+    const sampleData: Record<string, string> = {
+      '{{contactName}}': 'John Smith',
+      '{{brandName}}': s.brandName || 'Your Company',
+      '{{ownerName}}': `${s.ownerFirstName || 'Your'} ${s.ownerLastName || 'Name'}`,
+      '{{phone}}': s.phone || 'Your Phone',
+      '{{projectName}}': 'Kitchen Renovation',
+      '{{deadline}}': '2 weeks',
+      '{{projectDescription}}': 'Complete kitchen renovation including cabinets, countertops, and appliances',
+      '{{quoteDeadline}}': 'within 3 days',
+      '{{questionnaireLink}}': 'https://yourapp.com/questionnaire/123',
+      '{{quoteLink}}': 'https://yourapp.com/quote/123',
+      '{{quoteTotal}}': '£15,000',
+      '{{quoteExpiry}}': '30 days',
+      '{{quoteDate}}': 'November 1st',
+      '{{startDate}}': 'Next Monday',
+      '{{completionDate}}': 'End of month'
+    };
+    
+    Object.entries(sampleData).forEach(([placeholder, value]) => {
+      previewSubject = previewSubject.replace(new RegExp(placeholder, 'g'), value);
+      previewBody = previewBody.replace(new RegExp(placeholder, 'g'), value);
+    });
+    
+    alert(`EMAIL PREVIEW\n\nSubject: ${previewSubject}\n\n${previewBody}`);
+  }
+
+  async function saveEmailTemplates() {
+    if (!s) return;
+    
+    try {
+      await apiFetch("/tenant/settings", {
+        method: "PATCH",
+        json: { emailTemplates: s.emailTemplates },
+      });
+      toast({ title: "Email templates saved", description: "Your email templates have been updated successfully" });
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e?.message || "", variant: "destructive" });
+    }
+  }
+
   /* Machine Learning section */
   async function trainModel() {
     try {
@@ -514,6 +643,7 @@ export default function SettingsPage() {
         {[
           { key: "company", label: "Company", icon: "🏢", description: "Basic company info and profile" },
           { key: "questionnaire", label: "Questionnaire", icon: "📋", description: "Lead capture form fields" },
+          { key: "email-templates", label: "Email Templates", icon: "📧", description: "Customize email templates" },
           { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
           { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
         ].map((stage) => (
@@ -875,6 +1005,71 @@ export default function SettingsPage() {
           </div>
         </div>
       </Section>
+      )}
+
+      {currentStage === "email-templates" && (
+        <Section title="Email Templates" description="Customize the email templates used throughout your CRM. Use template variables like {{contactName}}, {{brandName}}, {{ownerName}}, {{phone}}, etc.">
+          <div className="space-y-6">
+            {Object.entries(DEFAULT_EMAIL_TEMPLATES).map(([templateKey, defaultTemplate]) => {
+              const currentTemplate = s.emailTemplates?.[templateKey as keyof typeof DEFAULT_EMAIL_TEMPLATES] || defaultTemplate;
+              
+              return (
+                <div key={templateKey} className="rounded-xl border bg-white/70 p-4">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-semibold text-slate-800 mb-1">
+                      {getTemplateDisplayName(templateKey)}
+                    </h3>
+                    <p className="text-xs text-slate-600">
+                      {getTemplateDescription(templateKey)}
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <Field label="Subject Line">
+                      <input
+                        className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                        value={currentTemplate.subject}
+                        onChange={(e) => updateEmailTemplate(templateKey, 'subject', e.target.value)}
+                        placeholder={defaultTemplate.subject}
+                      />
+                    </Field>
+                    
+                    <Field label="Email Body">
+                      <textarea
+                        className="w-full rounded-2xl border bg-white/95 px-4 py-3 text-sm min-h-[120px]"
+                        value={currentTemplate.body}
+                        onChange={(e) => updateEmailTemplate(templateKey, 'body', e.target.value)}
+                        placeholder={defaultTemplate.body}
+                      />
+                    </Field>
+                  </div>
+                  
+                  <div className="mt-3 flex gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => resetEmailTemplate(templateKey)}
+                    >
+                      Reset to Default
+                    </Button>
+                    <Button 
+                      size="sm"
+                      onClick={() => previewEmailTemplate(templateKey)}
+                    >
+                      Preview
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+            
+            <div className="flex justify-end pt-4 border-t">
+              <Button onClick={saveEmailTemplates}>
+                Save Email Templates
+              </Button>
+            </div>
+          </div>
+        </Section>
       )}
 
       {currentStage === "automation" && (
