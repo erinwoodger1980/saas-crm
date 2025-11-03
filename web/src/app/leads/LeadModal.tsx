@@ -346,7 +346,15 @@ export default function LeadModal({
   );
 
   // Navigation stages configuration
-  const shouldShowFollowUp = showFollowUp || (lead?.status && ['READY_TO_QUOTE', 'QUOTE_SENT', 'WON', 'LOST'].includes(lead.status));
+  // If showFollowUp is explicitly true (like from opportunities), always show it
+  // Otherwise, show based on lead status for quote-related statuses
+  const shouldShowFollowUp = useMemo(() => {
+    const result = showFollowUp || (lead?.status && ['READY_TO_QUOTE', 'QUOTE_SENT', 'WON', 'LOST'].includes(lead.status));
+    if (process.env.NODE_ENV === 'development') {
+      console.log('shouldShowFollowUp:', { showFollowUp, leadStatus: lead?.status, result });
+    }
+    return result;
+  }, [showFollowUp, lead?.status]);
   
   const stages = [
     {
@@ -549,9 +557,9 @@ export default function LeadModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, leadPreview?.id]);
 
-  // Reset to initial stage when modal opens or lead changes
+  // Reset to initial stage when modal opens or lead changes (but not during navigation)
   useEffect(() => {
-    if (open) {
+    if (open && leadPreview?.id) {
       setCurrentStage(initialStage);
     }
   }, [open, leadPreview?.id, initialStage]);
