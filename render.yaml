@@ -10,7 +10,9 @@ services:
     plan: starter
     envVars:
       - key: ML_URL
-        sync: false  # Set this in Render dashboard to your ML service URL (e.g., https://ml-xyz.onrender.com)
+        value: https://saas-crm-ml.onrender.com  # Update this to your actual ML service URL
+      - key: ML_TIMEOUT_MS
+        value: 8000
   - type: web
     name: web
     env: node
