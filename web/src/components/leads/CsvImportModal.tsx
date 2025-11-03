@@ -75,17 +75,46 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
       const autoMapping: Record<string, string> = {};
       result.headers.forEach(header => {
         const normalizedHeader = header.toLowerCase().trim();
-        const matchingField = result.availableFields.find(field => 
-          field.key.toLowerCase() === normalizedHeader ||
-          field.label.toLowerCase() === normalizedHeader ||
-          (normalizedHeader.includes('name') && field.key === 'contactName') ||
-          (normalizedHeader.includes('email') && field.key === 'email') ||
-          (normalizedHeader.includes('phone') && field.key === 'phone') ||
-          (normalizedHeader.includes('company') && field.key === 'company') ||
-          (normalizedHeader.includes('description') && field.key === 'description') ||
-          (normalizedHeader.includes('source') && field.key === 'source') ||
-          (normalizedHeader.includes('status') && field.key === 'status')
-        );
+        
+        // First check exact matches (case-insensitive)
+        let matchingField = result.availableFields.find(field => {
+          const fieldLabel = field.label.toLowerCase();
+          const fieldKey = field.key.toLowerCase();
+          return fieldLabel === normalizedHeader || 
+                 fieldKey === normalizedHeader ||
+                 (fieldKey.startsWith('custom.') && fieldKey.substring(7) === normalizedHeader);
+        });
+        
+        // If no exact match, try pattern matching
+        if (!matchingField) {
+          matchingField = result.availableFields.find(field => {
+            const fieldLabel = field.label.toLowerCase();
+            const fieldKey = field.key.toLowerCase();
+            
+            // Basic field patterns
+            if ((normalizedHeader.includes('name') || normalizedHeader.includes('contact')) && field.key === 'contactName') return true;
+            if (normalizedHeader.includes('email') && field.key === 'email') return true;
+            if (normalizedHeader.includes('phone') && field.key === 'phone') return true;
+            if (normalizedHeader.includes('company') && field.key === 'company') return true;
+            if (normalizedHeader.includes('description') && field.key === 'description') return true;
+            if (normalizedHeader.includes('source') && field.key === 'source') return true;
+            if (normalizedHeader.includes('status') && field.key === 'status') return true;
+            
+            // Questionnaire field patterns
+            if (field.key.startsWith('custom.')) {
+              // Check if header contains words from the field label
+              const labelWords = fieldLabel.split(/\s+|[^\w]/);
+              const headerWords = normalizedHeader.split(/\s+|[^\w]/);
+              const matchingWords = labelWords.filter(word => 
+                word.length > 2 && headerWords.some(hw => hw.includes(word) || word.includes(hw))
+              );
+              return matchingWords.length > 0;
+            }
+            
+            return false;
+          });
+        }
+        
         if (matchingField) {
           autoMapping[header] = matchingField.key;
         }
@@ -218,12 +247,13 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                 </div>
               </div>
               
-              <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="bg-blue-50 p-4 rounded-lg">
                 <h4 className="font-medium text-blue-900 mb-2">CSV Format Requirements:</h4>
                 <ul className="text-sm text-blue-700 space-y-1">
                   <li>• First row should contain column headers</li>
                   <li>• Contact Name column is required</li>
                   <li>• Supported columns: Name, Email, Phone, Company, Description, Source, Status</li>
+                  <li>• <strong>Questionnaire fields:</strong> Import directly into any of your questionnaire questions</li>
                   <li>• Use comma separation, quotes for text containing commas</li>
                 </ul>
               </div>
@@ -243,30 +273,51 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
               {/* Field Mapping */}
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {preview.headers.map((header, index) => (
-                    <div key={index} className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">
-                        CSV Column: <span className="font-mono bg-gray-100 px-2 py-1 rounded">{header}</span>
-                      </label>
-                      <select
-                        value={fieldMapping[header] || ''}
-                        onChange={(e) => {
-                          setFieldMapping(prev => ({
-                            ...prev,
-                            [header]: e.target.value
-                          }));
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      >
-                        <option value="">Don't import this column</option>
-                        {preview.availableFields.map(field => (
-                          <option key={field.key} value={field.key}>
-                            {field.label} {field.required ? '(Required)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
+                  {preview.headers.map((header, index) => {
+                    // Separate basic fields from questionnaire fields
+                    const basicFields = preview.availableFields.filter(f => !f.key.startsWith('custom.'));
+                    const questionnaireFields = preview.availableFields.filter(f => f.key.startsWith('custom.'));
+                    
+                    return (
+                      <div key={index} className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          CSV Column: <span className="font-mono bg-gray-100 px-2 py-1 rounded">{header}</span>
+                        </label>
+                        <select
+                          value={fieldMapping[header] || ''}
+                          onChange={(e) => {
+                            setFieldMapping(prev => ({
+                              ...prev,
+                              [header]: e.target.value
+                            }));
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                        >
+                          <option value="">Don't import this column</option>
+                          
+                          {/* Basic Lead Fields */}
+                          <optgroup label="Basic Lead Fields">
+                            {basicFields.map(field => (
+                              <option key={field.key} value={field.key}>
+                                {field.label} {field.required ? '(Required)' : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                          
+                          {/* Questionnaire Fields */}
+                          {questionnaireFields.length > 0 && (
+                            <optgroup label="Questionnaire Fields">
+                              {questionnaireFields.map(field => (
+                                <option key={field.key} value={field.key}>
+                                  {field.label} {field.required ? '(Required)' : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
