@@ -122,10 +122,33 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
 
     const prev = (typeof lead.custom === "object" && lead.custom) ? (lead.custom as any) : {};
 
+    // Extract individual field values from items structure for LeadModal compatibility
+    const individualFieldValues: Record<string, any> = {};
+    
+    if (answers.items && Array.isArray(answers.items)) {
+      // Get the tenant settings to understand the questionnaire structure
+      const tenantSettings = await prisma.tenantSettings.findUnique({
+        where: { tenantId: lead.tenantId }
+      });
+      
+      const questionnaire = normalizeQuestionnaire((tenantSettings as any)?.questionnaire ?? []);
+      
+      // Extract values from the first item (most common case)
+      const firstItem = answers.items[0];
+      if (firstItem && typeof firstItem === "object") {
+        questionnaire.forEach((field: any) => {
+          if (field.key && firstItem.hasOwnProperty(field.key)) {
+            individualFieldValues[field.key] = firstItem[field.key];
+          }
+        });
+      }
+    }
+
     // Safely merge (do not explode if uploads missing)
     const merged = {
       ...prev,
       ...answers,
+      ...individualFieldValues, // Add individual field values for LeadModal
       questionnaireSubmittedAt: new Date().toISOString(),
       // append uploads (if any) – keep a short list
       uploads: [
