@@ -1621,7 +1621,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
   // Questionnaire Stage Component
   const QuestionnaireStage = () => {
-    const fields = normalizeQuestionnaireFields(settings?.leadQuestionnaire);
+    const fields = normalizeQuestionnaireFields(settings?.questionnaire);
     
     return (
       <div className="p-6 space-y-6">
@@ -1956,6 +1956,33 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           </button>
         </div>
 
+        {/* Stage Navigation */}
+        <div className="flex gap-1 rounded-xl bg-slate-100/80 p-1 mx-6 mt-4">
+          {[
+            { key: "overview", label: "Overview", icon: "📊", description: "Lead summary and actions" },
+            { key: "details", label: "Details", icon: "📝", description: "Contact info and notes" },
+            { key: "questionnaire", label: "Questionnaire", icon: "📋", description: "Client responses" },
+            { key: "tasks", label: "Tasks", icon: "✅", description: "Action items" },
+          ].map((stage) => (
+            <button
+              key={stage.key}
+              onClick={() => setCurrentStage(stage.key as typeof currentStage)}
+              className={`
+                flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200
+                ${currentStage === stage.key
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }
+              `}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <span>{stage.icon}</span>
+                <span className="hidden sm:inline">{stage.label}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-50 via-indigo-50 to-amber-50 text-slate-700">
           {uiStatus === "NEW_ENQUIRY" && (
@@ -2000,9 +2027,102 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
-          {/* Left – Details */}
-          <div className="md:col-span-2 border-r border-sky-100/60 min-h-[60vh] bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 p-4 sm:p-6 space-y-4">
+          {/* Stage-based Content */}
+          {currentStage === 'overview' && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
+              <div className="max-w-4xl mx-auto space-y-6">
+                {/* Overview Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                      <span aria-hidden="true">👤</span>
+                      Lead Summary
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-slate-600">Name:</span>
+                        <span className="text-sm font-medium">{lead.contactName || 'Not provided'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-slate-600">Email:</span>
+                        <span className="text-sm font-medium">{lead.email || 'Not provided'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-slate-600">Status:</span>
+                        <span className="text-sm font-medium">{STATUS_LABELS[lead.status]}</span>
+                      </div>
+                      <div className="pt-2 border-t">
+                        <span className="text-sm text-slate-600">Description:</span>
+                        <p className="text-sm mt-1">{lead.description || 'No description provided'}</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                      <span aria-hidden="true">📊</span>
+                      Quick Actions
+                    </div>
+                    <div className="space-y-3">
+                      <button
+                        className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+                        onClick={() => setCurrentStage('details')}
+                      >
+                        <div className="font-medium text-sm">Edit Details</div>
+                        <div className="text-xs text-slate-500">Update contact information and notes</div>
+                      </button>
+                      <button
+                        className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+                        onClick={() => setCurrentStage('questionnaire')}
+                      >
+                        <div className="font-medium text-sm">View Questionnaire</div>
+                        <div className="text-xs text-slate-500">See client responses and send new questionnaire</div>
+                      </button>
+                      <button
+                        className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+                        onClick={() => setCurrentStage('tasks')}
+                      >
+                        <div className="font-medium text-sm">Manage Tasks</div>
+                        <div className="text-xs text-slate-500">Track progress and add action items</div>
+                      </button>
+                    </div>
+                  </section>
+                </div>
+
+                {/* Recent Activity */}
+                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                    <span aria-hidden="true">⚡</span>
+                    Recent Activity
+                  </div>
+                  <div className="space-y-2">
+                    {tasks.filter(t => t.status === 'DONE').slice(0, 3).map(task => (
+                      <div key={task.id} className="flex items-center gap-3 p-2 rounded-lg bg-green-50 border border-green-200">
+                        <span className="text-green-600">✅</span>
+                        <span className="text-sm">{task.title}</span>
+                        <span className="text-xs text-green-600 ml-auto">Completed</span>
+                      </div>
+                    ))}
+                    {tasks.filter(t => t.status === 'OPEN' || t.status === 'IN_PROGRESS').slice(0, 2).map(task => (
+                      <div key={task.id} className="flex items-center gap-3 p-2 rounded-lg bg-amber-50 border border-amber-200">
+                        <span className="text-amber-600">⏳</span>
+                        <span className="text-sm">{task.title}</span>
+                        <span className="text-xs text-amber-600 ml-auto">{task.status === 'IN_PROGRESS' ? 'In Progress' : 'Open'}</span>
+                      </div>
+                    ))}
+                    {tasks.length === 0 && (
+                      <div className="text-sm text-slate-500 py-4 text-center">No tasks yet. Create some to track your progress!</div>
+                    )}
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+
+          {currentStage === 'details' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
+              {/* Left – Details */}
+              <div className="md:col-span-2 border-r border-sky-100/60 min-h-[60vh] bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 p-4 sm:p-6 space-y-4">
             <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <span aria-hidden="true">✨</span>
@@ -2584,6 +2704,283 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             </div>
           </aside>
         </div>
+          )}
+
+          {currentStage === 'questionnaire' && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
+              <div className="max-w-4xl mx-auto space-y-6">
+                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                    <span aria-hidden="true">📋</span>
+                    Client Questionnaire
+                  </div>
+                  {questionnaireFields.length > 0 ? (
+                    <div className="space-y-4">
+                      {questionnaireFields.map((field: NormalizedQuestionnaireField) => {
+                        const key = field.key;
+                        const value = customData?.[key] ?? "";
+                        const label = field.label || key;
+                        
+                        return (
+                          <div key={key} className="p-4 rounded-lg border border-slate-200 bg-slate-50/50">
+                            <div className="font-medium text-sm text-slate-700 mb-2">{label}</div>
+                            <div className="text-sm text-slate-600">
+                              {value || <span className="italic text-slate-400">No response provided</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-500 py-8 text-center">
+                      No questionnaire configured for this workspace
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          )}
+
+          {currentStage === 'tasks' && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
+              <div className="max-w-6xl mx-auto">
+                {/* Tasks Section - Full Width */}
+                <div className="rounded-2xl border border-indigo-100 bg-white/80 p-6 shadow-sm backdrop-blur">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2 font-semibold text-slate-900">
+                      <span aria-hidden="true">⭐</span>
+                      Task journey
+                    </div>
+                    <div className="text-xs text-slate-500">{openCount} open</div>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-2">
+                      <span>{completedCount} completed</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 transition-all"
+                        style={{ width: `${progress}%` }}
+                        aria-hidden="true"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Task List */}
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {tasks.map((t) => {
+                      let bgColor = "bg-slate-50";
+                      if (t.status === "DONE") bgColor = "bg-emerald-50";
+                      else if (t.status === "IN_PROGRESS") bgColor = "bg-blue-50";
+                      else if (t.status === "BLOCKED") bgColor = "bg-rose-50";
+                      else if (t.priority === "URGENT") bgColor = "bg-orange-50";
+
+                      return (
+                        <div
+                          key={t.id}
+                          className={`rounded-xl border border-slate-200 ${bgColor} p-4 transition-colors hover:shadow-sm cursor-pointer`}
+                          onClick={() => {
+                            // Optional: Add task detail modal functionality here
+                          }}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <label className="inline-flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={t.status === "DONE"}
+                                    onChange={() => toggleTaskComplete(t)}
+                                    className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
+                                    aria-label={`Complete ${t.title}`}
+                                  />
+                                </label>
+                                <div className="text-sm font-semibold text-slate-900 leading-snug">
+                                  {t.title}
+                                </div>
+                              </div>
+                              {t.description && (
+                                <div className="text-xs text-slate-600 mb-2 line-clamp-2">
+                                  {t.description}
+                                </div>
+                              )}
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    t.status === "DONE"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : t.status === "IN_PROGRESS"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : t.status === "BLOCKED"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : "bg-slate-100 text-slate-700"
+                                  }`}
+                                >
+                                  {(() => {
+                                    if (t.status === "DONE") return "✓";
+                                    if (t.status === "IN_PROGRESS") return "⏳";
+                                    if (t.status === "BLOCKED") return "⚠";
+                                    return "○";
+                                  })()}
+                                  <span className="ml-1">
+                                    {t.status === "IN_PROGRESS" ? "In progress" : t.status.toLowerCase()}
+                                  </span>
+                                </span>
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    t.priority === "URGENT"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : t.priority === "HIGH"
+                                      ? "bg-orange-100 text-orange-700"
+                                      : t.priority === "MEDIUM"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-slate-100 text-slate-700"
+                                  }`}
+                                >
+                                  {t.priority.toLowerCase()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                            <span className="inline-flex items-center gap-1">
+                              <span aria-hidden="true">⏰</span>
+                              {t.dueAt ? new Date(t.dueAt).toLocaleString() : "No due date"}
+                            </span>
+                            {t.relatedType && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-600">
+                                <span aria-hidden="true">🔗</span>
+                                {t.relatedType.toLowerCase()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    
+                    {tasks.length === 0 && (
+                      <div className="col-span-full text-sm text-slate-500 py-8 text-center">
+                        No tasks created yet. Use the actions above or create a manual task to get started.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Add Task Section */}
+                  <div className="mt-6 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between gap-2 mb-4">
+                      <div className="flex items-center gap-2 font-semibold text-slate-900">
+                        <span aria-hidden="true">➕</span>
+                        New task
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:bg-white"
+                        onClick={() => {
+                          if (showTaskComposer) {
+                            resetTaskComposer();
+                          }
+                          setShowTaskComposer((v) => !v);
+                        }}
+                      >
+                        {showTaskComposer ? "Cancel" : "Add Task"}
+                      </button>
+                    </div>
+
+                    {showTaskComposer && (
+                      <form
+                        className="bg-slate-50/50 rounded-lg p-4 space-y-4"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          createManualTask();
+                        }}
+                      >
+                        {taskError && (
+                          <div className="rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2 text-sm text-rose-600">
+                            {taskError}
+                          </div>
+                        )}
+
+                        <label className="block text-sm font-semibold text-slate-600">
+                          Title *
+                          <input
+                            type="text"
+                            value={taskComposer.title}
+                            onChange={(e) => setTaskComposer((prev) => ({ ...prev, title: e.target.value }))}
+                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                            placeholder="e.g. Call the client"
+                            required
+                          />
+                        </label>
+
+                        <label className="block text-sm font-semibold text-slate-600">
+                          Description
+                          <textarea
+                            value={taskComposer.description}
+                            onChange={(e) => setTaskComposer((prev) => ({ ...prev, description: e.target.value }))}
+                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200 min-h-[72px]"
+                            placeholder="Add context for the team"
+                          />
+                        </label>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label className="block text-sm font-semibold text-slate-600">
+                            Priority
+                            <select
+                              value={taskComposer.priority}
+                              onChange={(e) =>
+                                setTaskComposer((prev) => ({ ...prev, priority: e.target.value as Task["priority"] }))
+                              }
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                            >
+                              {["LOW", "MEDIUM", "HIGH", "URGENT"].map((p) => (
+                                <option key={p} value={p}>
+                                  {p}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block text-sm font-semibold text-slate-600">
+                            Due date & time
+                            <input
+                              type="datetime-local"
+                              value={taskComposer.dueAt}
+                              onChange={(e) => setTaskComposer((prev) => ({ ...prev, dueAt: e.target.value }))}
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="flex gap-3">
+                          <button
+                            type="submit"
+                            className="rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 text-white px-6 py-2 text-sm font-semibold shadow hover:from-indigo-600 hover:to-sky-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
+                            disabled={busyTask || !taskComposer.title.trim()}
+                          >
+                            {busyTask ? "Creating..." : "Create Task"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowTaskComposer(false)}
+                            className="rounded-full border border-slate-200 bg-white px-6 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+
+                  <div className="mt-4 text-xs text-slate-500 text-center">
+                    Tip: Completing a lead action will sprinkle pixie dust on the matching task automatically.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Parse tester output (simple inline panel) */}
