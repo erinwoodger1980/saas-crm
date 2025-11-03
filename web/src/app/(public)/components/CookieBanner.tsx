@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 const STORAGE_KEY = "joineryai-cookie-consent";
 
@@ -50,13 +51,13 @@ export default function CookieBanner() {
           >
             Dismiss
           </button>
-          <button
+          <Button
             type="button"
             onClick={() => store("accepted")}
-            className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+            variant="default"
           >
             Accept
-          </button>
+          </Button>
         </div>
       </div>
     </div>

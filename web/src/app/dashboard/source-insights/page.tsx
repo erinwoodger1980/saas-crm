@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import Sparkline from "@/components/Sparkline";
 import { API_BASE, apiFetch, ensureDemoAuth } from "@/lib/api";
 
@@ -142,13 +143,13 @@ export default function SourceInsightsPage() {
                 onChange={(e) => setBudget(e.target.value)}
                 inputMode="numeric"
               />
-              <button
+              <Button
                 onClick={suggest}
                 disabled={suggesting}
-                className="rounded-md bg-[rgb(var(--brand))] px-3 py-2 text-sm text-white disabled:opacity-60"
+                variant="default"
               >
-                {suggesting ? "Suggesting…" : "Suggest allocation"}
-              </button>
+                {suggesting ? "Suggesting…" : "Suggest Allocation"}
+              </Button>
             </div>
             {recs && (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

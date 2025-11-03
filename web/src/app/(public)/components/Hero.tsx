@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { appendReferralParam } from "@/lib/referral";
 import { buildSignupUrl, describeSeats, formatGBP, getBasePrice } from "@/lib/price";
 
@@ -105,13 +106,14 @@ export default function Hero({ referral, onOpenDemo, onCtaClick }: HeroProps) {
             >
               Sign in
             </Link>
-            <Link
-              href={signupHref}
-              onClick={handlePrimaryClick}
-              className="rounded-full bg-emerald-400 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-200"
-            >
-              Start 14-Day Free Trial
-            </Link>
+            <Button asChild>
+              <Link
+                href={signupHref}
+                onClick={handlePrimaryClick}
+              >
+                Start 14-Day Free Trial
+              </Link>
+            </Button>
           </div>
         </nav>
 
@@ -139,16 +141,17 @@ export default function Hero({ referral, onOpenDemo, onCtaClick }: HeroProps) {
               quoting, follow-ups and workshop scheduling.
             </p>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <Link
-                href={signupHref}
-                onClick={handlePrimaryClick}
-                className="flex w-full items-center justify-center gap-3 rounded-full bg-emerald-400 px-8 py-3 text-base font-semibold text-slate-900 transition hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-200 sm:w-auto"
-              >
-                Start Free Trial
-                <span className={promoPillClassName} aria-disabled={isExpired}>
-                  {PROMO_CODE}
-                </span>
-              </Link>
+              <Button asChild size="lg" className="w-full sm:w-auto">
+                <Link
+                  href={signupHref}
+                  onClick={handlePrimaryClick}
+                >
+                  Start Free Trial
+                  <span className={promoPillClassName} aria-disabled={isExpired}>
+                    {PROMO_CODE}
+                  </span>
+                </Link>
+              </Button>
               <button
                 type="button"
                 onClick={handleDemoClick}

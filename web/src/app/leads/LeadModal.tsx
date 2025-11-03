@@ -16,6 +16,7 @@ import {
   DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
 } from "@/lib/constants";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
+import { Button } from "@/components/ui/button";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
 import DeclineEnquiryButton from "./DeclineEnquiryButton";
 
@@ -2198,31 +2199,31 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             ))}
           </select>
 
-          <button
-            className="ml-2 rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 text-white px-4 py-2 text-sm font-semibold shadow hover:from-indigo-600 hover:to-sky-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          <Button
+            variant="default"
             onClick={openQuoteBuilder}
             title="Open the quote builder for this lead"
             disabled={saving}
           >
             Open Quote Builder
-          </button>
+          </Button>
 
-          <button
-            className="ml-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-50"
+          <Button
+            variant="destructive"
             onClick={deleteLead}
             disabled={saving || loading}
             title="Delete this lead permanently"
           >
             🗑️ Delete
-          </button>
+          </Button>
 
-          <button
-            className="ml-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+          <Button
+            variant="ghost"
             onClick={() => onOpenChange(false)}
             disabled={saving || loading}
           >
             Close
-          </button>
+          </Button>
         </div>
 
         {/* Stage Navigation */}
@@ -2273,15 +2274,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             />
           )}
 
-          <button
-            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
+          <Button
+            variant="outline"
             onClick={sendQuestionnaire}
             disabled={busyTask || saving}
             title="Invite your client to share their project details."
           >
             <span aria-hidden="true">📜</span>
-            Send client questionnaire
-          </button>
+            Send Client Questionnaire
+          </Button>
 
           <button
             className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
@@ -2290,18 +2291,18 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             title="Ask your supplier for pricing — we’ll handle the magic behind the scenes"
           >
             <span aria-hidden="true">🧞</span>
-            Request supplier quote
+            Request Supplier Quote
           </button>
 
-          <button
-            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
+          <Button
+            variant="outline"
             onClick={uploadSupplierQuote}
             title="Upload a supplier PDF or image to attach to a draft quote"
             disabled={saving}
           >
             <span aria-hidden="true">📎</span>
-            Upload supplier quote
-          </button>
+            Upload Supplier Quote
+          </Button>
         </div>
 
         {/* Body */}
@@ -2422,14 +2423,14 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           />
                         </label>
 
-                        <button
-                          className="w-full rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 text-white px-4 py-2 text-sm font-semibold shadow hover:from-sky-600 hover:to-indigo-600 transition-all disabled:opacity-50"
+                        <Button
+                          className="w-full"
                           onClick={addCommunicationNote}
                           disabled={!newNote.trim()}
                         >
                           {communicationType === 'call' ? '📞 Log Call' : 
                            communicationType === 'email' ? '📧 Log Email' : '📝 Add Note'}
-                        </button>
+                        </Button>
                       </div>
 
                       <div className="space-y-3">
@@ -3488,28 +3489,31 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             </div>
                             <div className="flex gap-2">
                               {task.meta?.type === "email_followup" ? (
-                                <button 
-                                  className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"
+                                <Button 
+                                  variant="default"
+                                  size="sm"
                                   onClick={() => openEmailComposer(task.id)}
                                 >
                                   Compose & Send
-                                </button>
+                                </Button>
                               ) : (
-                                <button 
-                                  className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                <Button 
+                                  variant="outline"
+                                  size="sm"
                                   onClick={() => {
                                     toast("Call logging would open here");
                                   }}
                                 >
                                   Log Call
-                                </button>
+                                </Button>
                               )}
-                              <button 
-                                className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                              <Button 
+                                variant="secondary"
+                                size="sm"
                                 onClick={() => completeFollowUpTask(task.id)}
                               >
                                 Mark Done
-                              </button>
+                              </Button>
                             </div>
                           </div>
                         ))
