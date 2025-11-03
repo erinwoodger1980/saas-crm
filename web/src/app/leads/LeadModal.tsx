@@ -301,6 +301,13 @@ export default function LeadModal({
   // Load data when modal opens
   useEffect(() => {
     if (!open || !leadPreview?.id) return;
+    
+    // Check authentication before making API calls
+    if (!tenantId || !userId) {
+      console.warn("LeadModal: Missing authentication, skipping data load");
+      setLoading(false);
+      return;
+    }
 
     const loadData = async () => {
       setLoading(true);
@@ -469,6 +476,25 @@ export default function LeadModal({
   const progress = tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
 
   if (!open) return null;
+
+  // Don't render if authentication is missing
+  if (!tenantId || !userId) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
+        <div className="relative w-full max-w-md mx-4 bg-white rounded-xl shadow-2xl p-6">
+          <h2 className="text-lg font-semibold mb-4">Authentication Required</h2>
+          <p className="text-gray-600 mb-4">Please log in to view lead details.</p>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="w-full bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
