@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
+import { getAuthIdsFromJwt } from "@/lib/auth";
 import {
   Dialog,
   DialogContent,
@@ -272,6 +273,12 @@ export default function OpportunityModal({
   onStatusChange?: (next: LeadStatus) => void;
 }) {
   const { toast } = useToast();
+  
+  // Auth setup
+  const ids = getAuthIdsFromJwt();
+  const tenantId = ids?.tenantId || "";
+  const userId = ids?.userId || "";
+
   const {
     brandName: tenantBrandName,
     shortName: tenantShortName,
@@ -308,6 +315,12 @@ export default function OpportunityModal({
   const [creatingSequence, setCreatingSequence] = useState(false);
   const [leadTasks, setLeadTasks] = useState<any[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
+
+  // Email composer state
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
+  const [composerSubject, setComposerSubject] = useState("");
+  const [composerBody, setComposerBody] = useState("");
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
 
   // Load tasks for this lead
   const loadLeadTasks = useCallback(async () => {
@@ -348,6 +361,7 @@ export default function OpportunityModal({
           relatedId: leadId,
           priority: "MEDIUM",
           dueAt: dueDate.toISOString(),
+          assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
           meta: { type: "email_followup", leadEmail }
         }
       });
@@ -380,6 +394,7 @@ export default function OpportunityModal({
           relatedId: leadId,
           priority: "MEDIUM",
           dueAt: dueDate.toISOString(),
+          assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
           meta: { type: "phone_followup", leadEmail }
         }
       });
@@ -418,6 +433,7 @@ export default function OpportunityModal({
             relatedId: leadId,
             priority: "MEDIUM",
             dueAt: emailDueDate.toISOString(),
+            assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
             meta: { type: "email_followup", leadEmail, sequence: true }
           }
         }),
@@ -431,6 +447,7 @@ export default function OpportunityModal({
             relatedId: leadId,
             priority: "MEDIUM", 
             dueAt: phoneDueDate.toISOString(),
+            assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
             meta: { type: "phone_followup", leadEmail, sequence: true }
           }
         })
@@ -453,6 +470,51 @@ export default function OpportunityModal({
       await loadLeadTasks();
     } catch (error) {
       console.error("Failed to complete task:", error);
+    }
+  };
+
+  // Open email composer for a task
+  const openEmailComposer = (taskId: string) => {
+    setCurrentTaskId(taskId);
+    setComposerSubject(`Follow-up: ${leadName}`);
+    setComposerBody(`Hi ${leadName},\n\nI wanted to follow up on the quote we sent. Please let me know if you have any questions or if you'd like to move forward.\n\nBest regards,\n${followupOwnerFirst || "Sales Team"}`);
+    setShowEmailComposer(true);
+  };
+
+  // Send email and complete task
+  const sendComposerEmail = async () => {
+    if (!composerSubject || !composerBody || !currentTaskId) return;
+    
+    try {
+      setSending(true);
+      
+      // Send the email using the existing endpoint
+      await apiFetch(`/opportunities/${leadId}/send-followup`, {
+        method: "POST",
+        json: {
+          variant: "MANUAL",
+          subject: composerSubject,
+          body: composerBody,
+          taskId: currentTaskId
+        },
+      });
+
+      // Mark the task as complete
+      await completeTask(currentTaskId);
+      
+      // Close the composer
+      setShowEmailComposer(false);
+      setCurrentTaskId(null);
+      setComposerSubject("");
+      setComposerBody("");
+      
+      toast({ title: "Email sent and task completed!" });
+      onAfterSend?.();
+    } catch (error) {
+      console.error("Failed to send email:", error);
+      toast({ title: "Failed to send email", variant: "destructive" });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -842,6 +904,7 @@ export default function OpportunityModal({
   const lastSent = lastSentEmail;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* forceMount ensures content node exists (helps with confetti zIndex) */}
       <DialogContent
@@ -1044,10 +1107,7 @@ export default function OpportunityModal({
                             <Button 
                               size="sm" 
                               className="text-xs"
-                              onClick={() => {
-                                // TODO: Open email composer
-                                toast({ title: "Email composer would open here" });
-                              }}
+                              onClick={() => openEmailComposer(task.id)}
                             >
                               Compose & Send
                             </Button>
@@ -1143,6 +1203,59 @@ export default function OpportunityModal({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Email Composer Modal */}
+    <Dialog open={showEmailComposer} onOpenChange={setShowEmailComposer}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Compose Follow-up Email</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">To:</label>
+            <div className="text-sm text-slate-600">{leadEmail}</div>
+          </div>
+          
+          <div>
+            <label htmlFor="subject" className="block text-sm font-medium mb-1">Subject:</label>
+            <input
+              id="subject"
+              type="text"
+              value={composerSubject}
+              onChange={(e) => setComposerSubject(e.target.value)}
+              className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Email subject..."
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="body" className="block text-sm font-medium mb-1">Message:</label>
+            <textarea
+              id="body"
+              value={composerBody}
+              onChange={(e) => setComposerBody(e.target.value)}
+              rows={8}
+              className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Email message..."
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setShowEmailComposer(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={sendComposerEmail}
+            disabled={sending || !composerSubject || !composerBody}
+          >
+            {sending ? "Sending..." : "Send Email"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
