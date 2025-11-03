@@ -1723,20 +1723,59 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     currentStatus: Lead["status"];
     onStatusChange: (status: Lead["status"]) => void;
     disabled?: boolean;
-  }) => (
-    <select
-      value={currentStatus}
-      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm"
-      onChange={(e) => onStatusChange(e.target.value as Lead["status"])}
-      disabled={disabled}
-    >
-      {(Object.keys(STATUS_LABELS) as Lead["status"][]).map((s) => (
-        <option key={s} value={s}>
-          {STATUS_LABELS[s]}
-        </option>
-      ))}
-    </select>
-  );
+  }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+          setIsOpen(false);
+        }
+      };
+      
+      if (isOpen) {
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }
+    }, [isOpen]);
+    
+    return (
+      <div className="relative" ref={dropdownRef}>
+        <button
+          type="button"
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+          disabled={disabled}
+          className="w-full flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <StatusBadge status={currentStatus} />
+          <svg className="w-4 h-4 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        
+        {isOpen && !disabled && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+            <div className="p-2 space-y-1">
+              {(Object.keys(STATUS_LABELS) as Lead["status"][]).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => {
+                    onStatusChange(status);
+                    setIsOpen(false);
+                  }}
+                  className="w-full flex items-start p-2 rounded-md hover:bg-gray-50 focus:outline-none focus:bg-gray-50 transition-colors"
+                >
+                  <StatusBadge status={status} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return "Unknown";
