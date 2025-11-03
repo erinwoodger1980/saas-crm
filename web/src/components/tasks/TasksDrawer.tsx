@@ -137,8 +137,9 @@ export function TasksDrawer({ tenantId, userId }: { tenantId: string; userId: st
     <>
       <Button
         onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-40"
+        className="fixed bottom-16 right-4 z-40"
         variant="default"
+        size="md"
         aria-label="Open My Tasks"
       >
         My Tasks
