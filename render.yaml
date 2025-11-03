@@ -23,9 +23,11 @@ services:
       - key: NODE_ENV
         value: production
       - key: API_ORIGIN
-        value: https://joinery-ai.onrender.com
+        value: https://api.joineryai.app
       - key: NEXT_PUBLIC_API_BASE
-        sync: false  # Set this in Render dashboard to: https://joinery-ai.onrender.com
+        value: https://api.joineryai.app
+      - key: NEXT_PUBLIC_WEB_ORIGIN
+        value: https://www.joineryai.app
       - key: NEXT_PUBLIC_FOUNDERS_PROMO_CODE
         sync: false  # Set this in Render dashboard (optional)
       - key: NEXT_PUBLIC_DISCOUNT_DEADLINE
@@ -43,6 +45,6 @@ services:
       - key: DATABASE_URL
         sync: false  # Set this in Render dashboard to your PostgreSQL URL
       - key: API_SERVICE_URL
-        value: https://joinery-ai.onrender.com
+        value: https://api.joineryai.app
       - key: PORT
         value: 8000
