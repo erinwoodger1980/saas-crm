@@ -99,6 +99,16 @@ async function resolveTenantAndUserFromSession(sessionId: string) {
         stripeCustomerId: customerId || undefined,
       },
     });
+
+    // Initialize new tenant with seed template data
+    try {
+      const { initializeTenantWithSeedData } = await import('../services/seed-template');
+      await initializeTenantWithSeedData(tenant.id);
+      console.log(`✅ Initialized tenant ${tenant.id} with seed data`);
+    } catch (error) {
+      console.error(`⚠️  Failed to initialize tenant ${tenant.id} with seed data:`, error);
+      // Don't fail the signup process if seed data fails
+    }
   } else if (customerId && tenant.stripeCustomerId !== customerId) {
     tenant = await prisma.tenant.update({
       where: { id: tenant.id },
