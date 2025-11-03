@@ -1,7 +1,8 @@
 // web/src/app/leads/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import LeadModal, { Lead } from "./LeadModal";
@@ -65,7 +66,7 @@ type EmailUpload = {
 
 /* -------------------------------- Page -------------------------------- */
 
-export default function LeadsPage() {
+function LeadsPageContent() {
   const empty: Grouped = {
     NEW_ENQUIRY: [],
     INFO_REQUESTED: [],
@@ -78,6 +79,7 @@ export default function LeadsPage() {
   };
 
   const { shortName } = useTenantBrand();
+  const searchParams = useSearchParams();
 
   const [grouped, setGrouped] = useState<Grouped>(empty);
   const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
@@ -100,6 +102,17 @@ export default function LeadsPage() {
     if (!ids?.tenantId || !ids?.userId) return undefined;
     return { "x-tenant-id": ids.tenantId, "x-user-id": ids.userId };
   };
+
+  // Handle URL parameters for direct lead access
+  useEffect(() => {
+    const leadId = searchParams.get('leadId');
+    const modal = searchParams.get('modal');
+    
+    if (leadId && modal === 'lead') {
+      // Open the lead modal with the specified lead ID
+      openLeadById(leadId);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     (async () => {
@@ -784,6 +797,14 @@ export default function LeadsPage() {
         }}
       />
     </>
+  );
+}
+
+export default function LeadsPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <LeadsPageContent />
+    </Suspense>
   );
 }
 

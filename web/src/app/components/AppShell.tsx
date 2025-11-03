@@ -20,6 +20,7 @@ import {
 import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
+import AISearchBar from "@/components/AISearchBar";
 
 const BASE_NAV: Array<{ href: string; label: string; description: string; icon: any }> = [
   { href: "/dashboard", label: "Dashboard", description: "Pulse & KPIs", icon: LayoutDashboard },
@@ -100,6 +101,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* AI Search Bar */}
+          <div className="flex-1 max-w-2xl mx-8">
+            <AISearchBar />
           </div>
 
           <div className="flex items-center gap-3">
