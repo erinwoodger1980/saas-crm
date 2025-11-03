@@ -369,7 +369,10 @@ function LeadsPageContent() {
     e.preventDefault();
     e.stopPropagation();
     setDragCounter(prev => prev + 1);
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+    
+    // Check if we have files being dragged
+    if (e.dataTransfer.types.includes('Files')) {
+      console.log('🎯 Email files detected in drag operation');
       setIsDragging(true);
     }
   }
@@ -377,15 +380,21 @@ function LeadsPageContent() {
   function handleEmailDragLeave(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    setDragCounter(prev => prev - 1);
-    if (dragCounter === 1) {
-      setIsDragging(false);
-    }
+    setDragCounter(prev => {
+      const newCount = prev - 1;
+      if (newCount <= 0) {
+        setIsDragging(false);
+        return 0;
+      }
+      return newCount;
+    });
   }
 
   function handleEmailDragOver(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
+    // This is crucial for enabling drop
+    e.dataTransfer.dropEffect = 'copy';
   }
 
   function handleEmailDrop(e: React.DragEvent) {
@@ -394,8 +403,14 @@ function LeadsPageContent() {
     setIsDragging(false);
     setDragCounter(0);
 
+    console.log('📧 Email drop detected, files:', e.dataTransfer.files.length);
     const files = Array.from(e.dataTransfer.files);
-    addEmailFilesToQueue(files);
+    if (files.length > 0) {
+      console.log('📧 Processing files:', files.map(f => f.name).join(', '));
+      addEmailFilesToQueue(files);
+    } else {
+      console.log('⚠️ No files found in drop operation');
+    }
   }
 
   function handleEmailFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -406,19 +421,43 @@ function LeadsPageContent() {
   }
 
   function addEmailFilesToQueue(files: File[]) {
-    // Filter for email-like files (.eml, .msg, .txt)
+    // Filter for email-like files (.eml, .msg, .txt) and check MIME types
     const emailFiles = files.filter(file => {
       const name = file.name.toLowerCase();
-      return name.endsWith('.eml') || name.endsWith('.msg') || name.endsWith('.txt') || 
-             file.type === 'message/rfc822' || file.type === 'text/plain';
+      const type = file.type.toLowerCase();
+      
+      // Check file extensions
+      const validExtensions = name.endsWith('.eml') || 
+                             name.endsWith('.msg') || 
+                             name.endsWith('.txt') ||
+                             name.endsWith('.mbox');
+      
+      // Check MIME types
+      const validMimeTypes = type === 'message/rfc822' || 
+                            type === 'text/plain' ||
+                            type === 'application/vnd.ms-outlook' ||
+                            type === 'application/octet-stream' || // Often used for .eml files
+                            type === '';  // Some email files don't have MIME type set
+      
+      return validExtensions || validMimeTypes;
     });
     
     if (emailFiles.length !== files.length) {
+      const skipped = files.length - emailFiles.length;
       toast({
-        title: "Invalid files detected",
-        description: "Only email files (.eml, .msg, .txt) are supported",
+        title: `${skipped} file(s) skipped`,
+        description: "Only email files (.eml, .msg, .txt, .mbox) are supported",
         variant: "destructive"
       });
+    }
+
+    if (emailFiles.length === 0) {
+      toast({
+        title: "No valid email files",
+        description: "Please drop email files (.eml, .msg, .txt, .mbox)",
+        variant: "destructive"
+      });
+      return;
     }
 
     const newUploads = emailFiles.map(file => ({
@@ -673,7 +712,7 @@ function LeadsPageContent() {
                       {isDragging ? 'Drop email files here' : 'Drag email files here to create leads'}
                     </p>
                     <p className="text-xs text-slate-500 mt-1">
-                      Supports .eml, .msg, and .txt files
+                      Supports .eml, .msg, .txt, and .mbox files
                     </p>
                   </div>
                   <Button 
@@ -689,7 +728,7 @@ function LeadsPageContent() {
                   id="email-file-input"
                   type="file"
                   multiple
-                  accept=".eml,.msg,.txt,message/rfc822,text/plain"
+                  accept=".eml,.msg,.txt,.mbox,message/rfc822,text/plain,application/vnd.ms-outlook,application/octet-stream"
                   onChange={handleEmailFileSelect}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
@@ -769,7 +808,7 @@ function LeadsPageContent() {
 
               <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
                 <p className="text-xs text-blue-700">
-                  <strong>How it works:</strong> Upload email files (.eml, .msg, .txt) and the system will automatically extract contact information, 
+                  <strong>How it works:</strong> Upload email files (.eml, .msg, .txt, .mbox) and the system will automatically extract contact information, 
                   subject lines, and message content to create new leads. Perfect for importing enquiries that weren't caught by automatic email scanning.
                 </p>
               </div>
