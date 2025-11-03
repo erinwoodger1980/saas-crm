@@ -2049,16 +2049,33 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     <textarea
                       value={value}
                       onChange={(e) => {
-                        // Handle field updates here
+                        // Update immediately in the UI
+                        setLead(prev => prev ? {
+                          ...prev,
+                          custom: {
+                            ...prev.custom,
+                            [field.key]: e.target.value
+                          }
+                        } : prev);
                       }}
+                      onBlur={(e) => saveCustomField(field, e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       rows={3}
                     />
                   ) : field.type === "select" ? (
                     <select
                       value={value}
-                      onChange={(e) => {
-                        // Handle field updates here
+                      onChange={async (e) => {
+                        // Update immediately in the UI
+                        setLead(prev => prev ? {
+                          ...prev,
+                          custom: {
+                            ...prev.custom,
+                            [field.key]: e.target.value
+                          }
+                        } : prev);
+                        // Save to server
+                        await saveCustomField(field, e.target.value);
                       }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
@@ -2072,14 +2089,28 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       type={field.type}
                       value={value}
                       onChange={(e) => {
-                        // Handle field updates here
+                        // Update immediately in the UI
+                        setLead(prev => prev ? {
+                          ...prev,
+                          custom: {
+                            ...prev.custom,
+                            [field.key]: e.target.value
+                          }
+                        } : prev);
                       }}
+                      onBlur={(e) => saveCustomField(field, e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   )}
                 </div>
               );
             })}
+            
+            <div className="pt-4 border-t">
+              <p className="text-sm text-gray-600">
+                Changes are saved automatically when you finish editing each field.
+              </p>
+            </div>
           </div>
         )}
       </div>
