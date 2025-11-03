@@ -524,20 +524,18 @@ export default function LeadsPage() {
 
           <div className="flex flex-wrap gap-2">
             <Button
-              variant="ghost"
-              className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300"
+              variant="outline"
               type="button"
               onClick={() => setCsvImportOpen(true)}
             >
               📊 Import CSV
             </Button>
             <Button
-              variant="ghost"
-              className="rounded-full bg-gradient-to-r from-sky-500 via-indigo-500 to-rose-500 px-5 py-2 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(37,99,235,0.55)] hover:from-sky-600 hover:via-indigo-600 hover:to-rose-500 hover:bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+              variant="default"
               type="button"
               onClick={handleCreateLead}
             >
-              + New Lead
+              New Lead
             </Button>
             <Button
               variant="ghost"
@@ -599,13 +597,13 @@ export default function LeadsPage() {
             <EmptyState
               title={`No leads in “${STATUS_LABELS[tab]}”.`}
               action={
-                <button
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-white"
+                <Button
+                  variant="outline"
                   onClick={refreshGrouped}
                   type="button"
                 >
-                  Refresh inbox
-                </button>
+                  Refresh Inbox
+                </Button>
               }
             />
           ) : (
@@ -902,8 +900,9 @@ function LeadCard({
 
         <div className="shrink-0 flex flex-col items-end gap-2 text-right">
           {lead.status === "NEW_ENQUIRY" && (
-            <button
-              className="rounded-full border border-rose-200/70 bg-rose-50/70 px-3 py-1 text-[11px] font-medium text-rose-600 shadow-sm transition hover:bg-rose-100"
+            <Button
+              variant="destructive"
+              size="sm"
               onClick={(e) => {
                 e.stopPropagation();
                 onReject();
@@ -911,7 +910,7 @@ function LeadCard({
               type="button"
             >
               ✕ Reject
-            </button>
+            </Button>
           )}
 
           <span

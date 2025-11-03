@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { appendReferralParam } from "@/lib/referral";
 import {
   BillingCadence,
@@ -111,16 +112,17 @@ export default function Pricing({ referral, onCtaClick }: PricingProps) {
         </div>
 
         <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
-          <a
-            href={signupHref}
-            onClick={handleTrialClick}
-            className="flex w-full items-center justify-center gap-3 rounded-full bg-emerald-400 px-8 py-3 text-base font-semibold text-slate-900 transition hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-200 sm:w-auto"
-          >
-            Start 14-Day Free Trial
-            <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-900">
-              {PROMO_CODE}
-            </span>
-          </a>
+          <Button asChild size="lg" className="w-full sm:w-auto">
+            <a
+              href={signupHref}
+              onClick={handleTrialClick}
+            >
+              Start 14-Day Free Trial
+              <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-900">
+                {PROMO_CODE}
+              </span>
+            </a>
+          </Button>
           <a
             href={stripeCheckoutHref}
             onClick={handleStripeClick}
