@@ -300,6 +300,176 @@ export default function OpportunityModal({
     return ctx;
   }, [followupBrand, followupOwnerFirst]);
 
+  // Task creation state
+  const [emailTaskDays, setEmailTaskDays] = useState("3");
+  const [phoneTaskDays, setPhoneTaskDays] = useState("2");
+  const [creatingEmailTask, setCreatingEmailTask] = useState(false);
+  const [creatingPhoneTask, setCreatingPhoneTask] = useState(false);
+  const [creatingSequence, setCreatingSequence] = useState(false);
+  const [leadTasks, setLeadTasks] = useState<any[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+
+  // Load tasks for this lead
+  const loadLeadTasks = useCallback(async () => {
+    if (!leadId) return;
+    setLoadingTasks(true);
+    try {
+      const data = await apiFetch<{ items: any[] }>(`/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(leadId)}&mine=false`);
+      setLeadTasks(data.items || []);
+    } catch (error) {
+      console.error("Failed to load tasks:", error);
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [leadId]);
+
+  // Load tasks when modal opens
+  useEffect(() => {
+    if (open && leadId) {
+      loadLeadTasks();
+    }
+  }, [open, leadId, loadLeadTasks]);
+
+  // Create email follow-up task
+  const createEmailTask = async () => {
+    if (!leadId) return;
+    setCreatingEmailTask(true);
+    try {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + parseInt(emailTaskDays));
+      
+      await apiFetch("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        json: {
+          title: `Email follow-up: ${leadName}`,
+          description: `Send follow-up email about the quote to ${leadEmail}`,
+          relatedType: "LEAD",
+          relatedId: leadId,
+          priority: "MEDIUM",
+          dueAt: dueDate.toISOString(),
+          meta: { type: "email_followup", leadEmail }
+        }
+      });
+      
+      toast({ title: "Email follow-up task created" });
+      await loadLeadTasks();
+    } catch (error) {
+      console.error("Failed to create email task:", error);
+      toast({ title: "Failed to create task", variant: "destructive" });
+    } finally {
+      setCreatingEmailTask(false);
+    }
+  };
+
+  // Create phone follow-up task
+  const createPhoneTask = async () => {
+    if (!leadId) return;
+    setCreatingPhoneTask(true);
+    try {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + parseInt(phoneTaskDays));
+      
+      await apiFetch("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        json: {
+          title: `Phone follow-up: ${leadName}`,
+          description: `Call ${leadName} to discuss the quote`,
+          relatedType: "LEAD", 
+          relatedId: leadId,
+          priority: "MEDIUM",
+          dueAt: dueDate.toISOString(),
+          meta: { type: "phone_followup", leadEmail }
+        }
+      });
+      
+      toast({ title: "Phone follow-up task created" });
+      await loadLeadTasks();
+    } catch (error) {
+      console.error("Failed to create phone task:", error);
+      toast({ title: "Failed to create task", variant: "destructive" });
+    } finally {
+      setCreatingPhoneTask(false);
+    }
+  };
+
+  // Create follow-up sequence
+  const createFollowupSequence = async () => {
+    if (!leadId) return;
+    setCreatingSequence(true);
+    try {
+      // Create email task in 3 days
+      const emailDueDate = new Date();
+      emailDueDate.setDate(emailDueDate.getDate() + 3);
+      
+      // Create phone task in 7 days  
+      const phoneDueDate = new Date();
+      phoneDueDate.setDate(phoneDueDate.getDate() + 7);
+      
+      await Promise.all([
+        apiFetch("/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          json: {
+            title: `Email follow-up: ${leadName}`,
+            description: `Send follow-up email about the quote to ${leadEmail}`,
+            relatedType: "LEAD",
+            relatedId: leadId,
+            priority: "MEDIUM",
+            dueAt: emailDueDate.toISOString(),
+            meta: { type: "email_followup", leadEmail, sequence: true }
+          }
+        }),
+        apiFetch("/tasks", {
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          json: {
+            title: `Phone follow-up: ${leadName}`,
+            description: `Call ${leadName} to discuss the quote if no email response`,
+            relatedType: "LEAD",
+            relatedId: leadId,
+            priority: "MEDIUM", 
+            dueAt: phoneDueDate.toISOString(),
+            meta: { type: "phone_followup", leadEmail, sequence: true }
+          }
+        })
+      ]);
+      
+      toast({ title: "Follow-up sequence created: Email in 3 days, phone in 1 week" });
+      await loadLeadTasks();
+    } catch (error) {
+      console.error("Failed to create sequence:", error);
+      toast({ title: "Failed to create sequence", variant: "destructive" });
+    } finally {
+      setCreatingSequence(false);
+    }
+  };
+
+  // Mark task as complete
+  const completeTask = async (taskId: string) => {
+    try {
+      await apiFetch(`/tasks/${taskId}/complete`, { method: "POST" });
+      await loadLeadTasks();
+    } catch (error) {
+      console.error("Failed to complete task:", error);
+    }
+  };
+
+  // Get pending follow-up tasks
+  const pendingTasks = leadTasks.filter(task => 
+    task.status !== "DONE" && 
+    task.meta?.type && 
+    ["email_followup", "phone_followup"].includes(task.meta.type)
+  );
+
+  // Get completed follow-up tasks  
+  const completedTasks = leadTasks.filter(task =>
+    task.status === "DONE" &&
+    task.meta?.type &&
+    ["email_followup", "phone_followup"].includes(task.meta.type)
+  );
+
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState<FollowUpLog[]>([]);
   const [suggest, setSuggest] = useState<AiSuggestion | null>(null);
@@ -771,9 +941,13 @@ export default function OpportunityModal({
                     <div className="space-y-2">
                       <label className="block">
                         <div className="text-xs text-slate-600 mb-1">When to send</div>
-                        <select className="w-full rounded border bg-white p-2 text-sm">
+                        <select 
+                          className="w-full rounded border bg-white p-2 text-sm"
+                          value={emailTaskDays}
+                          onChange={(e) => setEmailTaskDays(e.target.value)}
+                        >
                           <option value="1">Tomorrow</option>
-                          <option value="3" selected>In 3 days</option>
+                          <option value="3">In 3 days</option>
                           <option value="7">In 1 week</option>
                           <option value="14">In 2 weeks</option>
                         </select>
@@ -781,12 +955,10 @@ export default function OpportunityModal({
                       <Button 
                         size="sm" 
                         className="w-full"
-                        onClick={() => {
-                          // Create email follow-up task
-                          toast({ title: "Email follow-up task created" });
-                        }}
+                        disabled={creatingEmailTask}
+                        onClick={createEmailTask}
                       >
-                        Create Email Task
+                        {creatingEmailTask ? "Creating..." : "Create Email Task"}
                       </Button>
                     </div>
                   </div>
@@ -800,9 +972,13 @@ export default function OpportunityModal({
                     <div className="space-y-2">
                       <label className="block">
                         <div className="text-xs text-slate-600 mb-1">When to call</div>
-                        <select className="w-full rounded border bg-white p-2 text-sm">
+                        <select 
+                          className="w-full rounded border bg-white p-2 text-sm"
+                          value={phoneTaskDays}
+                          onChange={(e) => setPhoneTaskDays(e.target.value)}
+                        >
                           <option value="1">Tomorrow</option>
-                          <option value="2" selected>In 2 days</option>
+                          <option value="2">In 2 days</option>
                           <option value="5">In 5 days</option>
                           <option value="7">In 1 week</option>
                         </select>
@@ -811,12 +987,10 @@ export default function OpportunityModal({
                         size="sm" 
                         variant="outline"
                         className="w-full"
-                        onClick={() => {
-                          // Create phone follow-up task
-                          toast({ title: "Phone follow-up task created" });
-                        }}
+                        disabled={creatingPhoneTask}
+                        onClick={createPhoneTask}
                       >
-                        Create Phone Task
+                        {creatingPhoneTask ? "Creating..." : "Create Phone Task"}
                       </Button>
                     </div>
                   </div>
@@ -825,12 +999,10 @@ export default function OpportunityModal({
                   <div className="pt-3 border-t">
                     <Button 
                       className="w-full"
-                      onClick={() => {
-                        // Create sequence of follow-up tasks
-                        toast({ title: "Follow-up sequence scheduled: Email in 3 days, then phone call in 1 week if no reply" });
-                      }}
+                      disabled={creatingSequence}
+                      onClick={createFollowupSequence}
                     >
-                      Auto-schedule Follow-up Sequence
+                      {creatingSequence ? "Creating..." : "Auto-schedule Follow-up Sequence"}
                     </Button>
                     <div className="text-xs text-slate-500 mt-1 text-center">
                       Creates email task (3 days) + phone task (1 week)
@@ -841,46 +1013,91 @@ export default function OpportunityModal({
 
               {/* Follow-up Tasks Panel */}
               <section className="rounded-xl border p-4 bg-white">
-                <div className="mb-2 text-sm font-semibold text-slate-900">Scheduled Tasks</div>
+                <div className="mb-2 text-sm font-semibold text-slate-900 flex items-center justify-between">
+                  <span>Scheduled Tasks</span>
+                  {loadingTasks && <span className="text-xs text-slate-500">Loading...</span>}
+                </div>
                 
-                {/* Example tasks - in real implementation, these would come from API */}
+                {/* Real tasks from API */}
                 <div className="space-y-3">
-                  <div className="rounded-md border p-3 bg-blue-50">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <span>📧</span>
-                        <span className="text-sm font-medium">Email follow-up</span>
+                  {pendingTasks.length === 0 ? (
+                    <div className="text-sm text-slate-500 text-center py-4">
+                      No scheduled follow-up tasks. Create one above.
+                    </div>
+                  ) : (
+                    pendingTasks.map((task) => (
+                      <div key={task.id} className="rounded-md border p-3 bg-blue-50">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span>{task.meta?.type === "email_followup" ? "📧" : "📞"}</span>
+                            <span className="text-sm font-medium">{task.title}</span>
+                          </div>
+                          <span className="text-xs text-slate-500">
+                            {task.dueAt ? `Due ${new Date(task.dueAt).toLocaleDateString()}` : "Due soon"}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-600 mb-2">
+                          {task.description}
+                        </div>
+                        <div className="flex gap-2">
+                          {task.meta?.type === "email_followup" ? (
+                            <Button 
+                              size="sm" 
+                              className="text-xs"
+                              onClick={() => {
+                                // TODO: Open email composer
+                                toast({ title: "Email composer would open here" });
+                              }}
+                            >
+                              Compose & Send
+                            </Button>
+                          ) : (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => {
+                                // TODO: Open call logging
+                                toast({ title: "Call logging would open here" });
+                              }}
+                            >
+                              Log Call
+                            </Button>
+                          )}
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            className="text-xs"
+                            onClick={() => completeTask(task.id)}
+                          >
+                            Mark Done
+                          </Button>
+                        </div>
                       </div>
-                      <span className="text-xs text-slate-500">Due in 2 days</span>
-                    </div>
-                    <div className="text-xs text-slate-600 mb-2">
-                      Send follow-up email about the quote
-                    </div>
-                    <Button size="sm" className="text-xs">
-                      Compose & Send
-                    </Button>
-                  </div>
+                    ))
+                  )}
 
-                  <div className="rounded-md border p-3 bg-green-50">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <span>📞</span>
-                        <span className="text-sm font-medium">Phone follow-up</span>
+                  {/* Completed Tasks */}
+                  {completedTasks.length > 0 && (
+                    <div className="mt-4 pt-3 border-t">
+                      <div className="text-xs font-medium text-slate-600 mb-2">Recently Completed</div>
+                      <div className="space-y-2">
+                        {completedTasks.slice(0, 3).map((task) => (
+                          <div key={task.id} className="rounded-md border p-2 bg-slate-50 opacity-75">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-green-600">✓</span>
+                                <span className="text-xs">{task.title}</span>
+                              </div>
+                              <span className="text-xs text-slate-400">
+                                {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : "Done"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <span className="text-xs text-slate-500">Due in 1 week</span>
                     </div>
-                    <div className="text-xs text-slate-600 mb-2">
-                      Call to discuss quote if no email response
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="text-xs">
-                        Mark Called
-                      </Button>
-                      <Button size="sm" className="text-xs">
-                        Log Call
-                      </Button>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Past Activities */}
@@ -930,7 +1147,7 @@ export default function OpportunityModal({
 }
 
 /* ---------------- helpers ---------------- */
-function avatarText(name?: string | null) {
+function avatarText(name?: string | null): string {
   if (!name) return "?";
   const parts = String(name).trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
