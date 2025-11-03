@@ -1958,7 +1958,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             title="Ask your supplier for pricing — we’ll send a concise RFQ or open your mail client"
             disabled={busyTask}
           >
-            Send supplier RFQ
+            Request supplier quote
           </button>
 
           <button
@@ -2203,33 +2203,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </div>
                   </section>
                 </div>
-
-                {/* Recent Activity */}
-                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                    <span aria-hidden="true">⚡</span>
-                    Recent Activity
-                  </div>
-                  <div className="space-y-2">
-                    {tasks.filter(t => t.status === 'DONE').slice(0, 3).map(task => (
-                      <div key={task.id} className="flex items-center gap-3 p-2 rounded-lg bg-green-50 border border-green-200">
-                        <span className="text-green-600">✅</span>
-                        <span className="text-sm">{task.title}</span>
-                        <span className="text-xs text-green-600 ml-auto">Completed</span>
-                      </div>
-                    ))}
-                    {tasks.filter(t => t.status === 'OPEN' || t.status === 'IN_PROGRESS').slice(0, 2).map(task => (
-                      <div key={task.id} className="flex items-center gap-3 p-2 rounded-lg bg-amber-50 border border-amber-200">
-                        <span className="text-amber-600">⏳</span>
-                        <span className="text-sm">{task.title}</span>
-                        <span className="text-xs text-amber-600 ml-auto">{task.status === 'IN_PROGRESS' ? 'In Progress' : 'Open'}</span>
-                      </div>
-                    ))}
-                    {tasks.length === 0 && (
-                      <div className="text-sm text-slate-500 py-4 text-center">No tasks yet. Create some to track your progress!</div>
-                    )}
-                  </div>
-                </section>
               </div>
             </div>
           )}
