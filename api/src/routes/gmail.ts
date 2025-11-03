@@ -976,8 +976,13 @@ router.post("/import", async (req, res) => {
         }
 
         // Recall-first mode: if enabled, prefer creating a lead unless clearly noise.
+        // BUT: Respect confident AI "not a lead" decisions
         if (!isLeadCandidate && recallFirst && !noise) {
-          if (subjectLeadSignal || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || (fromAddr && (subject || bodyForAnalysis))) {
+          // Don't override AI if it confidently said "not a lead"
+          if (aiIsLead === false && (aiConfidence ?? 0) >= 0.7) {
+            // AI is confident this is not a lead - respect that decision
+            reason = reason ? `${reason}; AI confident not a lead` : "AI confident not a lead";
+          } else if (subjectLeadSignal || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || (fromAddr && (subject || bodyForAnalysis))) {
             isLeadCandidate = true;
             decidedBy = ai ? "openai" : "heuristics";
             reason = reason ? `${reason}; recall-first enabled` : "recall-first enabled";
@@ -998,6 +1003,63 @@ router.post("/import", async (req, res) => {
           heuristics: heur,
           noiseFiltered: noise,
         };
+
+        // Auto-reject confident "not a lead" decisions
+        let autoRejected = false;
+        if (!isLeadCandidate && aiIsLead === false && (aiConfidence ?? 0) >= 0.8) {
+          autoRejected = true;
+          
+          const contactName = 
+            (typeof ai?.contactName === "string" && ai.contactName) ||
+            heur.contactName ||
+            (fromHdr?.match(/"?([^"<@]+)"?\s*<.*>/)?.[1] || null);
+
+          const emailCandidate = 
+            (typeof ai?.email === "string" && ai.email) || heur.email || fromAddr || null;
+          const email = emailCandidate ? String(emailCandidate).toLowerCase() : null;
+
+          const aiDecision: Record<string, any> = {
+            decidedBy,
+            reason,
+            confidence: aiConfidence ?? null,
+            model: "openai",
+            autoRejected: true,
+          };
+
+          const custom: Record<string, any> = {
+            provider: "gmail",
+            messageId: m.id,
+            threadId: thread.threadId,
+            subject: subject || null,
+            from: fromHdr || null,
+            summary: snippet || null,
+            uiStatus: "REJECTED",
+            aiDecision,
+          };
+
+          if (Array.isArray(ai?.tags) && ai.tags.length) custom.tags = ai.tags;
+
+          await prisma.lead.create({
+            data: {
+              tenantId,
+              createdById: userId,
+              contactName: contactName || (email ? email.split("@")?.[0] : "Auto-rejected"),
+              email,
+              description: `Auto-rejected: ${reason}`,
+              status: "REJECTED",
+              custom,
+            },
+          });
+
+          await logInsight({
+            tenantId,
+            module: "email_classifier",
+            inputSummary: `gmail:${m.id}`,
+            decision: "auto_rejected",
+            confidence: aiConfidence,
+            metadata: { subject, from: fromAddr, reason },
+          });
+        }
 
   if (isLeadCandidate) {
           const contactName =
