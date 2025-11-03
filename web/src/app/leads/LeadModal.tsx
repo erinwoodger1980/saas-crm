@@ -346,6 +346,8 @@ export default function LeadModal({
   );
 
   // Navigation stages configuration
+  const shouldShowFollowUp = showFollowUp || (lead?.status && ['READY_TO_QUOTE', 'QUOTE_SENT', 'WON', 'LOST'].includes(lead.status));
+  
   const stages = [
     {
       id: 'overview' as const,
@@ -371,7 +373,7 @@ export default function LeadModal({
       icon: '✅',
       description: 'Next steps and progress'
     },
-    ...(showFollowUp ? [{
+    ...(shouldShowFollowUp ? [{
       id: 'follow-up' as const,
       title: 'Follow-up',
       icon: '📧',
