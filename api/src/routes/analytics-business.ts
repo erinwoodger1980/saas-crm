@@ -89,9 +89,13 @@ router.get("/business-metrics", async (req, res) => {
     const currentFinancialYear = getCurrentFinancialYear(financialYearEnd);
     const fyProgress = getFinancialYearProgress(financialYearEnd);
 
-    // Get last 12 months of data
+    // Get current and previous financial year boundaries
+    const currentFY = getFinancialYearBoundaries(financialYearEnd, currentFinancialYear);
+    const previousFY = getFinancialYearBoundaries(financialYearEnd, currentFinancialYear - 1);
+
+    // Get last 24 months of data (current + previous year for comparison)
     const monthlyData = [];
-    for (let i = 11; i >= 0; i--) {
+    for (let i = 23; i >= 0; i--) {
       const targetDate = new Date();
       targetDate.setMonth(targetDate.getMonth() - i);
       const year = targetDate.getFullYear();
@@ -275,8 +279,53 @@ router.get("/business-metrics", async (req, res) => {
       data.costPerSale = data.totalWins > 0 ? data.totalSpend / data.totalWins : 0;
     });
 
+    // Previous year comparison data
+    const previousYearEnquiries = await prisma.lead.count({
+      where: { 
+        tenantId, 
+        capturedAt: { gte: previousFY.start, lte: previousFY.end }
+      }
+    });
+
+    const previousYearQuotes = await prisma.quote.findMany({
+      where: { 
+        tenantId, 
+        createdAt: { gte: previousFY.start, lte: previousFY.end },
+        status: { not: "DRAFT" }
+      },
+      select: { totalGBP: true }
+    });
+
+    const previousYearSales = await prisma.opportunity.findMany({
+      where: { 
+        tenantId, 
+        wonAt: { gte: previousFY.start, lte: previousFY.end }
+      },
+      select: { valueGBP: true }
+    });
+
+    const previousYear = {
+      enquiries: previousYearEnquiries,
+      quotesCount: previousYearQuotes.length,
+      quotesValue: previousYearQuotes.reduce((sum, q) => sum + Number(q.totalGBP || 0), 0),
+      salesCount: previousYearSales.length,
+      salesValue: previousYearSales.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0),
+      conversionRate: previousYearEnquiries > 0 ? previousYearSales.length / previousYearEnquiries : 0
+    };
+
+    // Calculate year-over-year changes
+    const yoyChanges = {
+      enquiries: previousYear.enquiries > 0 ? ((ytdEnquiries - previousYear.enquiries) / previousYear.enquiries) * 100 : 0,
+      quotesCount: previousYear.quotesCount > 0 ? ((ytdQuotesCount - previousYear.quotesCount) / previousYear.quotesCount) * 100 : 0,
+      quotesValue: previousYear.quotesValue > 0 ? ((ytdQuotesValue - previousYear.quotesValue) / previousYear.quotesValue) * 100 : 0,
+      salesCount: previousYear.salesCount > 0 ? ((ytdSalesCount - previousYear.salesCount) / previousYear.salesCount) * 100 : 0,
+      salesValue: previousYear.salesValue > 0 ? ((ytdSalesValue - previousYear.salesValue) / previousYear.salesValue) * 100 : 0,
+      conversionRate: previousYear.conversionRate > 0 ? (((ytdEnquiries > 0 ? ytdSalesCount / ytdEnquiries : 0) - previousYear.conversionRate) / previousYear.conversionRate) * 100 : 0
+    };
+
     res.json({
-      monthlyData,
+      monthlyData: monthlyData.slice(-12), // Return last 12 months for main view
+      monthlyDataTwoYear: monthlyData, // Return 24 months for comparison charts
       yearToDate: {
         enquiries: ytdEnquiries,
         quotesCount: ytdQuotesCount,
@@ -285,6 +334,8 @@ router.get("/business-metrics", async (req, res) => {
         salesValue: ytdSalesValue,
         conversionRate: ytdEnquiries > 0 ? ytdSalesCount / ytdEnquiries : 0
       },
+      previousYear,
+      yoyChanges,
       targets: {
         enquiriesTarget: Number(targets.enquiriesTarget || 0),
         quotesValueTarget: Number(targets.quotesValueTarget || 0),
