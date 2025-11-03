@@ -131,10 +131,11 @@ export default function FeedbackWidget() {
 
   return (
     <>
-      <div className="fixed bottom-24 right-6 z-[998] flex flex-col items-end gap-2">
+      <div className="fixed bottom-4 right-4 z-[998] flex flex-col items-end gap-2">
         <Button
-          size="lg"
-          className="rounded-full bg-blue-600 px-5 shadow-lg shadow-blue-600/40 hover:bg-blue-700"
+          size="md"
+          variant="default"
+          className="rounded-full shadow-lg"
           onClick={() => {
             setOpen(true);
             setSuccess(false);
