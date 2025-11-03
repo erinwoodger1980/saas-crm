@@ -24,6 +24,7 @@ export type Lead = {
   id: string;
   contactName?: string | null;
   email?: string | null;
+  phone?: string | null;
   quoteId?: string | null;
   status:
     | "NEW_ENQUIRY"
@@ -297,8 +298,13 @@ export default function LeadModal({
   // Form inputs
   const [nameInput, setNameInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
   const [descInput, setDescInput] = useState("");
   const [customDraft, setCustomDraft] = useState<Record<string, string>>({});
+
+  // Communication logging
+  const [newNote, setNewNote] = useState("");
+  const [communicationType, setCommunicationType] = useState<'call' | 'email' | 'note'>('note');
 
   // Task creation
   const [showTaskComposer, setShowTaskComposer] = useState(false);
@@ -355,7 +361,9 @@ export default function LeadModal({
     setLead(null);
     setNameInput("");
     setEmailInput("");
+    setPhoneInput("");
     setDescInput("");
+    setNewNote("");
     setTasks([]);
     setUiStatus("NEW_ENQUIRY");
     lastSavedServerStatusRef.current = null;
@@ -426,6 +434,7 @@ export default function LeadModal({
 
       setNameInput(normalized.contactName ?? "");
       setEmailInput(normalized.email ?? "");
+      setPhoneInput(normalized.phone ?? "");
       setDescInput(previewDescription);
 
       return normalized;
@@ -485,6 +494,7 @@ export default function LeadModal({
         // seed inputs
         setNameInput(contactName || "");
         setEmailInput(email || "");
+        setPhoneInput((row as any)?.phone || "");
         setDescInput(description || "");
 
         // After fetching full lead + tasks list:
@@ -592,6 +602,9 @@ export default function LeadModal({
         if (Object.prototype.hasOwnProperty.call(patch, "email")) {
           next.email = patch.email ?? null;
         }
+        if (Object.prototype.hasOwnProperty.call(patch, "phone")) {
+          next.phone = patch.phone ?? null;
+        }
         if (Object.prototype.hasOwnProperty.call(patch, "description")) {
           next.description = patch.description ?? null;
         }
@@ -617,6 +630,25 @@ export default function LeadModal({
     } catch (e: any) {
       console.error("patch failed", e?.message || e);
       alert("Failed to save changes");
+    }
+  }
+
+  async function addCommunicationNote() {
+    if (!lead?.id || !newNote.trim()) return;
+    
+    const noteText = `[${communicationType.toUpperCase()}] ${new Date().toLocaleString()}: ${newNote.trim()}`;
+    const currentDescription = lead.description || '';
+    const updatedDescription = currentDescription 
+      ? `${currentDescription}\n\n${noteText}`
+      : noteText;
+    
+    try {
+      await savePatch({ description: updatedDescription });
+      setNewNote('');
+      setDescInput(updatedDescription);
+    } catch (e) {
+      console.error('Failed to add communication note:', e);
+      alert('Failed to save communication note');
     }
   }
 
@@ -1931,24 +1963,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
           <button
             className="ml-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
-            onClick={uploadSupplierQuote}
-            title="Upload a supplier PDF or image to attach to a draft quote"
-            disabled={saving}
-          >
-            Upload supplier quote
-          </button>
-
-          <button
-            className="ml-2 rounded-full border border-indigo-200 bg-indigo-50/70 px-4 py-2 text-sm font-medium text-indigo-700 shadow-sm hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
-            onClick={testSupplierParse}
-            title="Test PDF parsing with your latest supplier file and show the raw response"
-            disabled={parseTesterBusy}
-          >
-            {parseTesterBusy ? "Testing…" : "Test PDF parsing"}
-          </button>
-
-          <button
-            className="ml-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
             onClick={() => onOpenChange(false)}
             disabled={saving || loading}
           >
@@ -2023,6 +2037,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             <span aria-hidden="true">🧞</span>
             Request supplier quote
           </button>
+
+          <button
+            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
+            onClick={uploadSupplierQuote}
+            title="Upload a supplier PDF or image to attach to a draft quote"
+            disabled={saving}
+          >
+            <span aria-hidden="true">📎</span>
+            Upload supplier quote
+          </button>
         </div>
 
         {/* Body */}
@@ -2036,55 +2060,146 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
                       <span aria-hidden="true">👤</span>
-                      Lead Summary
+                      Lead Details
                     </div>
-                    <div className="space-y-3">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-slate-600">Name:</span>
-                        <span className="text-sm font-medium">{lead.contactName || 'Not provided'}</span>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Name</span>
+                          <input
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                            value={nameInput}
+                            onChange={(e) => setNameInput(e.target.value)}
+                            onBlur={() => {
+                              setLead((l) => (l ? { ...l, contactName: nameInput || null } : l));
+                              savePatch({ contactName: nameInput || null });
+                            }}
+                            placeholder="Client name"
+                          />
+                        </label>
+
+                        <label className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Email</span>
+                          <input
+                            type="email"
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                            value={emailInput}
+                            onChange={(e) => setEmailInput(e.target.value)}
+                            onBlur={() => {
+                              setLead((l) => (l ? { ...l, email: emailInput || null } : l));
+                              savePatch({ email: emailInput || null });
+                            }}
+                            placeholder="client@email.com"
+                          />
+                        </label>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-slate-600">Email:</span>
-                        <span className="text-sm font-medium">{lead.email || 'Not provided'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-slate-600">Status:</span>
-                        <span className="text-sm font-medium">{STATUS_LABELS[lead.status]}</span>
-                      </div>
-                      <div className="pt-2 border-t">
-                        <span className="text-sm text-slate-600">Description:</span>
-                        <p className="text-sm mt-1">{lead.description || 'No description provided'}</p>
+
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Phone</span>
+                        <input
+                          type="tel"
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                          value={phoneInput}
+                          onChange={(e) => setPhoneInput(e.target.value)}
+                          onBlur={() => {
+                            setLead((l) => (l ? { ...l, phone: phoneInput || null } : l));
+                            savePatch({ phone: phoneInput || null });
+                          }}
+                          placeholder="Phone number"
+                        />
+                      </label>
+
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Project Description</span>
+                        <textarea
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-24 shadow-inner"
+                          value={descInput}
+                          onChange={(e) => setDescInput(e.target.value)}
+                          onBlur={() => {
+                            setLead((l) => (l ? { ...l, description: descInput || null } : l));
+                            savePatch({ description: descInput || null });
+                          }}
+                          placeholder="Project background, requirements, constraints…"
+                        />
+                      </label>
+
+                      <div className="pt-2 border-t border-slate-200">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">Status</span>
+                        <div className="text-sm font-medium text-slate-700">{STATUS_LABELS[lead.status]}</div>
                       </div>
                     </div>
                   </section>
 
                   <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                      <span aria-hidden="true">📊</span>
-                      Quick Actions
+                      <span aria-hidden="true">�</span>
+                      Communication Log
                     </div>
-                    <div className="space-y-3">
-                      <button
-                        className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
-                        onClick={() => setCurrentStage('details')}
-                      >
-                        <div className="font-medium text-sm">Edit Details</div>
-                        <div className="text-xs text-slate-500">Update contact information and notes</div>
-                      </button>
-                      <button
-                        className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
-                        onClick={() => setCurrentStage('questionnaire')}
-                      >
-                        <div className="font-medium text-sm">View Questionnaire</div>
-                        <div className="text-xs text-slate-500">See client responses and send new questionnaire</div>
-                      </button>
-                      <button
-                        className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
-                        onClick={() => setCurrentStage('tasks')}
-                      >
-                        <div className="font-medium text-sm">Manage Tasks</div>
-                        <div className="text-xs text-slate-500">Track progress and add action items</div>
-                      </button>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-3">
+                        <label className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Type</span>
+                          <select
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                            value={communicationType}
+                            onChange={(e) => setCommunicationType(e.target.value as 'call' | 'email' | 'note')}
+                          >
+                            <option value="note">📝 Note</option>
+                            <option value="call">📞 Phone Call</option>
+                            <option value="email">📧 Email</option>
+                          </select>
+                        </label>
+
+                        <label className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            {communicationType === 'call' ? 'Call Summary' : 
+                             communicationType === 'email' ? 'Email Summary' : 'Note'}
+                          </span>
+                          <textarea
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-20 shadow-inner"
+                            value={newNote}
+                            onChange={(e) => setNewNote(e.target.value)}
+                            placeholder={
+                              communicationType === 'call' ? 'What was discussed during the call?' :
+                              communicationType === 'email' ? 'Email sent/received summary' :
+                              'Add a note about this lead...'
+                            }
+                          />
+                        </label>
+
+                        <button
+                          className="w-full rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 text-white px-4 py-2 text-sm font-semibold shadow hover:from-sky-600 hover:to-indigo-600 transition-all disabled:opacity-50"
+                          onClick={addCommunicationNote}
+                          disabled={!newNote.trim()}
+                        >
+                          {communicationType === 'call' ? '📞 Log Call' : 
+                           communicationType === 'email' ? '📧 Log Email' : '📝 Add Note'}
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        <button
+                          className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+                          onClick={() => setCurrentStage('details')}
+                        >
+                          <div className="font-medium text-sm">📝 Edit Full Details</div>
+                          <div className="text-xs text-slate-500">Complete contact information and workspace fields</div>
+                        </button>
+                        <button
+                          className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+                          onClick={() => setCurrentStage('questionnaire')}
+                        >
+                          <div className="font-medium text-sm">📋 View Questionnaire</div>
+                          <div className="text-xs text-slate-500">See client responses and send new questionnaire</div>
+                        </button>
+                        <button
+                          className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+                          onClick={() => setCurrentStage('tasks')}
+                        >
+                          <div className="font-medium text-sm">✅ Manage Tasks</div>
+                          <div className="text-xs text-slate-500">Track progress and add action items</div>
+                        </button>
+                      </div>
                     </div>
                   </section>
                 </div>
