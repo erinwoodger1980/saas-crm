@@ -1171,6 +1171,32 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       await ensureManualTask("supplier_followup");
 
       const to = prompt("Supplier email (optional):")?.trim();
+      
+      // Ask for quote deadline
+      const deadlineStr = prompt("When do you need the quote back? (e.g., 2025-11-10, or number of days like '7'):")?.trim();
+      let quoteDeadline: Date | null = null;
+      
+      if (deadlineStr) {
+        // Try to parse as a date or number of days
+        if (/^\d+$/.test(deadlineStr)) {
+          // It's a number of days
+          const days = parseInt(deadlineStr);
+          quoteDeadline = new Date();
+          quoteDeadline.setDate(quoteDeadline.getDate() + days);
+        } else {
+          // Try to parse as a date
+          const parsed = new Date(deadlineStr);
+          if (!isNaN(parsed.getTime())) {
+            quoteDeadline = parsed;
+          }
+        }
+      }
+      
+      // Default to 7 days if no valid date provided
+      if (!quoteDeadline) {
+        quoteDeadline = new Date();
+        quoteDeadline.setDate(quoteDeadline.getDate() + 7);
+      }
 
       // Build a concise fields summary from questionnaire answers
       const fields: Record<string, any> = {};
@@ -1205,6 +1231,35 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         base64: String(u?.base64 || ""),
       })).filter((u: any) => u.base64);
 
+      // Store the quote deadline in the lead custom data
+      await savePatch({ 
+        custom: { 
+          ...lead.custom, 
+          supplierQuoteDeadline: quoteDeadline.toISOString(),
+          supplierQuoteRequested: new Date().toISOString()
+        } 
+      });
+
+      // Create a follow-up task for the deadline
+      await apiFetch("/tasks", {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        json: {
+          title: `Chase supplier quote: ${lead.contactName || lead.email || "Lead"}`,
+          description: `Follow up on supplier quote request. Deadline: ${quoteDeadline.toLocaleDateString()}`,
+          relatedType: "LEAD" as const,
+          relatedId: lead.id,
+          priority: "MEDIUM" as const,
+          dueAt: quoteDeadline.toISOString(),
+          assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
+          meta: { 
+            type: "supplier_quote_followup", 
+            deadline: quoteDeadline.toISOString(),
+            supplierEmail: to || ""
+          }
+        },
+      });
+
       // Attempt server-side send (via Gmail API). Fallback to mailto if it fails or no 'to'
       if (to) {
         try {
@@ -1213,29 +1268,30 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             headers: { ...authHeaders, "Content-Type": "application/json" },
             json: {
               to,
-              subject: `Quote request for ${lead.contactName || "lead"}`,
-              text: "Please provide a price for the following enquiry.",
+              subject: `Quote request for ${lead.contactName || "lead"} - Due ${quoteDeadline.toLocaleDateString()}`,
+              text: `Please provide a price for the following enquiry by ${quoteDeadline.toLocaleDateString()}.`,
               fields,
               attachments,
+              deadline: quoteDeadline.toISOString(),
             },
           });
         } catch (err) {
           // Fallback to mailto
           openMailTo(
             to,
-            `Price request: ${lead.contactName || "Project"}`,
-            "Hi,\n\nCould you price the attached items?\n\nThanks!"
+            `Price request: ${lead.contactName || "Project"} - Due ${quoteDeadline.toLocaleDateString()}`,
+            `Hi,\n\nCould you price the attached items by ${quoteDeadline.toLocaleDateString()}?\n\nThanks!`
           );
         }
       } else {
         // If no email provided, open a mailto for manual send
-        const subject = `Price request: ${lead.contactName || "Project"}`;
-        const body = "Hi,\n\nCould you price the attached items?\n\nThanks!";
+        const subject = `Price request: ${lead.contactName || "Project"} - Due ${quoteDeadline.toLocaleDateString()}`;
+        const body = `Hi,\n\nCould you price the attached items by ${quoteDeadline.toLocaleDateString()}?\n\nThanks!`;
         openMailTo("", subject, body);
       }
 
       await reloadTasks();
-      toast("Supplier request sent. Follow-up added.");
+      toast(`Supplier request sent. Follow-up task created for ${quoteDeadline.toLocaleDateString()}.`);
     } finally {
       setBusyTask(false);
     }
@@ -1844,6 +1900,34 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
               <p className="text-xs text-gray-500 text-center">
                 And {lead.communicationLog.length - 5} more entries...
               </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Supplier Quote Status */}
+      {lead?.custom?.supplierQuoteDeadline && (
+        <div className="bg-orange-50 p-4 rounded-lg">
+          <h3 className="font-medium text-gray-900 mb-2">Supplier Quote Request</h3>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🧞</span>
+              <span className="text-sm font-medium">Quote Deadline:</span>
+              <span className="text-sm text-gray-700">
+                {new Date(lead.custom.supplierQuoteDeadline).toLocaleDateString()}
+              </span>
+              {new Date(lead.custom.supplierQuoteDeadline) < new Date() && (
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">Overdue</span>
+              )}
+            </div>
+            {lead.custom.supplierQuoteRequested && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm">📅</span>
+                <span className="text-sm font-medium">Requested:</span>
+                <span className="text-sm text-gray-700">
+                  {new Date(lead.custom.supplierQuoteRequested).toLocaleDateString()}
+                </span>
+              </div>
             )}
           </div>
         </div>
