@@ -1225,4 +1225,89 @@ function parseEmailContent(content: string): {
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Delete Lead Endpoint                                               */
+/* ------------------------------------------------------------------ */
+
+// DELETE /leads/:id - Delete a lead and all associated data
+router.delete("/:id", async (req, res) => {
+  const { tenantId, userId } = getAuth(req);
+  if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+  
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ error: "Lead ID is required" });
+  }
+  
+  try {
+    // First verify the lead belongs to this tenant
+    const lead = await prisma.lead.findFirst({
+      where: { id, tenantId }
+    });
+    
+    if (!lead) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+    
+    // Delete in transaction to ensure data consistency
+    await prisma.$transaction(async (tx) => {
+      // Delete related records first (due to foreign key constraints)
+      
+      // Delete email threads and messages
+      await tx.emailMessage.deleteMany({
+        where: { leadId: id }
+      });
+      
+      await tx.emailThread.deleteMany({
+        where: { leadId: id }
+      });
+      
+      await tx.emailIngest.deleteMany({
+        where: { leadId: id }
+      });
+      
+      // Delete follow-up logs
+      await tx.followUpLog.deleteMany({
+        where: { leadId: id }
+      });
+      
+      // Delete tasks related to this lead
+      await tx.task.deleteMany({
+        where: { 
+          AND: [
+            { tenantId },
+            {
+              OR: [
+                { relatedId: id },
+                { title: { contains: lead.contactName || lead.email || id } }
+              ]
+            }
+          ]
+        }
+      });
+      
+      // Delete quotes associated with this lead
+      await tx.quote.deleteMany({
+        where: { leadId: id }
+      });
+      
+      // Delete opportunities associated with this lead
+      await tx.opportunity.deleteMany({
+        where: { leadId: id }
+      });
+      
+      // Finally delete the lead itself
+      await tx.lead.delete({
+        where: { id }
+      });
+    });
+    
+    res.json({ success: true, message: "Lead deleted successfully" });
+    
+  } catch (error: any) {
+    console.error("Failed to delete lead:", error);
+    res.status(500).json({ error: "Failed to delete lead" });
+  }
+});
+
 export default router;

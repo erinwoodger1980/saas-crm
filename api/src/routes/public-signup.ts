@@ -69,6 +69,16 @@ router.post("/signup", async (req, res) => {
     let tenant = await prisma.tenant.findFirst({ where: { name: company } });
     if (!tenant) {
       tenant = await prisma.tenant.create({ data: { name: company } });
+
+      // Initialize new tenant with seed template data
+      try {
+        const { initializeTenantWithSeedData } = await import('../services/seed-template');
+        await initializeTenantWithSeedData(tenant.id);
+        console.log(`✅ Initialized tenant ${tenant.id} with seed data`);
+      } catch (error) {
+        console.error(`⚠️  Failed to initialize tenant ${tenant.id} with seed data:`, error);
+        // Don't fail the signup process if seed data fails
+      }
     }
 
     /* 2) Find-or-create Admin user */

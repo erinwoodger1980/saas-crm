@@ -1448,6 +1448,33 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   }
 
+  async function deleteLead() {
+    if (!lead?.id) return;
+    
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this lead "${lead.contactName || lead.email || 'Unnamed Lead'}"?\n\nThis action cannot be undone and will also delete:\n• All associated tasks\n• Communication history\n• Questionnaire responses\n• Any linked quotes or opportunities`
+    );
+    
+    if (!confirmed) return;
+    
+    setSaving(true);
+    try {
+      await apiFetch(`/leads/${lead.id}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+      
+      toast("Lead deleted successfully");
+      onUpdated?.(); // Refresh the leads list
+      onOpenChange(false); // Close the modal
+    } catch (error: any) {
+      console.error("Failed to delete lead:", error);
+      alert("Failed to delete lead. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function openMailTo(to: string, subject: string, body?: string) {
     const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}${
       body ? `&body=${encodeURIComponent(body)}` : ""
@@ -2178,6 +2205,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             disabled={saving}
           >
             Open Quote Builder
+          </button>
+
+          <button
+            className="ml-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-50"
+            onClick={deleteLead}
+            disabled={saving || loading}
+            title="Delete this lead permanently"
+          >
+            🗑️ Delete
           </button>
 
           <button
