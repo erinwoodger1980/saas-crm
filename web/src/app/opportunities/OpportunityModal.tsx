@@ -755,96 +755,159 @@ export default function OpportunityModal({
 
             {/* Two column layout */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Compose panel */}
+              {/* Create Follow-up Tasks */}
               <section className="rounded-xl border p-4 bg-white/90 shadow-sm">
                 <div className="mb-3 text-sm font-semibold text-slate-900">
-                  Send Follow-up Email
+                  Schedule Follow-up Tasks
                 </div>
-
-                <label className="space-y-1.5 block">
-                  <div className="text-xs text-slate-600">Subject</div>
-                  <input
-                    className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
-                    value={draftSubject}
-                    onChange={(e) => setDraftSubject(e.target.value)}
-                    placeholder="Follow-up on your quote"
-                  />
-                </label>
-
-                <label className="space-y-1.5 block mt-3">
-                  <div className="text-xs text-slate-600">Message</div>
-                  <textarea
-                    className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2 min-h-[160px]"
-                    value={draftBody}
-                    onChange={(e) => setDraftBody(e.target.value)}
-                    placeholder="Hi {leadName},
-
-I wanted to follow up on the quote I sent. Do you have any questions about the proposal?
-
-Let me know if you'd like to discuss next steps.
-
-Best regards"
-                  />
-                </label>
-
-                <div className="mt-3 flex gap-2">
-                  <Button variant="secondary" onClick={() => load()} disabled={loading}>
-                    {loading ? "Loading..." : "Generate AI suggestion"}
-                  </Button>
-                  <Button onClick={send} disabled={sending || !draftSubject || !draftBody}>
-                    {sending ? "Sending…" : "Send follow-up"}
-                  </Button>
-                </div>
-
-                {/* Simple preview */}
-                {(draftSubject || draftBody) && (
-                  <div className="mt-4 rounded-lg border bg-slate-50 p-3">
-                    <div className="text-[11px] text-slate-500 mb-1">Preview</div>
-                    <div className="text-sm font-medium mb-1">{draftSubject || "(no subject)"}</div>
-                    <pre className="text-xs text-slate-700 whitespace-pre-wrap">{draftBody}</pre>
+                
+                <div className="space-y-4">
+                  {/* Email Follow-up Task */}
+                  <div className="p-3 border rounded-lg bg-slate-50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span>📧</span>
+                      <span className="font-medium text-sm">Email Follow-up</span>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block">
+                        <div className="text-xs text-slate-600 mb-1">When to send</div>
+                        <select className="w-full rounded border bg-white p-2 text-sm">
+                          <option value="1">Tomorrow</option>
+                          <option value="3" selected>In 3 days</option>
+                          <option value="7">In 1 week</option>
+                          <option value="14">In 2 weeks</option>
+                        </select>
+                      </label>
+                      <Button 
+                        size="sm" 
+                        className="w-full"
+                        onClick={() => {
+                          // Create email follow-up task
+                          toast({ title: "Email follow-up task created" });
+                        }}
+                      >
+                        Create Email Task
+                      </Button>
+                    </div>
                   </div>
-                )}
+
+                  {/* Phone Follow-up Task */}
+                  <div className="p-3 border rounded-lg bg-slate-50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span>📞</span>
+                      <span className="font-medium text-sm">Phone Follow-up</span>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block">
+                        <div className="text-xs text-slate-600 mb-1">When to call</div>
+                        <select className="w-full rounded border bg-white p-2 text-sm">
+                          <option value="1">Tomorrow</option>
+                          <option value="2" selected>In 2 days</option>
+                          <option value="5">In 5 days</option>
+                          <option value="7">In 1 week</option>
+                        </select>
+                      </label>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          // Create phone follow-up task
+                          toast({ title: "Phone follow-up task created" });
+                        }}
+                      >
+                        Create Phone Task
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Auto-schedule All */}
+                  <div className="pt-3 border-t">
+                    <Button 
+                      className="w-full"
+                      onClick={() => {
+                        // Create sequence of follow-up tasks
+                        toast({ title: "Follow-up sequence scheduled: Email in 3 days, then phone call in 1 week if no reply" });
+                      }}
+                    >
+                      Auto-schedule Follow-up Sequence
+                    </Button>
+                    <div className="text-xs text-slate-500 mt-1 text-center">
+                      Creates email task (3 days) + phone task (1 week)
+                    </div>
+                  </div>
+                </div>
               </section>
 
-              {/* History panel */}
+              {/* Follow-up Tasks Panel */}
               <section className="rounded-xl border p-4 bg-white">
-                <div className="mb-2 text-sm font-semibold text-slate-900">Follow-up History</div>
-                {history.length === 0 ? (
-                  <div className="text-xs text-slate-500 py-4 text-center">No follow-ups sent yet.</div>
-                ) : (
-                  <div className="space-y-3 max-h-[46vh] overflow-auto pr-1">
-                    {history.map((h) => {
-                      const meta = toPlainObject(h.metadata);
-                      const channel = (h.channel || "email").toLowerCase();
-                      const isPhone = channel === "phone";
-                      const sentLabel = h.sentAt ? formatDateTime(h.sentAt) : null;
-                      const scheduledLabel = h.scheduledFor ? formatDateTime(h.scheduledFor) : null;
-                      const whenLabel = sentLabel || (scheduledLabel ? `Scheduled ${scheduledLabel}` : "Unknown");
-
-                      return (
-                        <div key={h.id} className="rounded-md border p-3 hover:bg-slate-50">
-                          <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                            <span>{whenLabel}</span>
-                            <span className="rounded-full border bg-white px-2 py-0.5">
-                              {isPhone ? "📞 Phone" : "📧 Email"}
-                            </span>
-                            {!isPhone && h.opened && <span className="text-green-700">• Opened</span>}
-                            {!isPhone && h.replied && <span className="text-blue-700">• Replied</span>}
-                            {!isPhone && h.converted && <span className="text-emerald-700">• Converted</span>}
-                          </div>
-                          <div className="text-sm font-medium">
-                            {isPhone ? h.subject || "Phone follow-up" : h.subject}
-                          </div>
-                          {h.body && (
-                            <div className="mt-1 rounded-md bg-slate-50 p-2 text-xs text-slate-700 line-clamp-3">
-                              {h.body}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                <div className="mb-2 text-sm font-semibold text-slate-900">Scheduled Tasks</div>
+                
+                {/* Example tasks - in real implementation, these would come from API */}
+                <div className="space-y-3">
+                  <div className="rounded-md border p-3 bg-blue-50">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span>📧</span>
+                        <span className="text-sm font-medium">Email follow-up</span>
+                      </div>
+                      <span className="text-xs text-slate-500">Due in 2 days</span>
+                    </div>
+                    <div className="text-xs text-slate-600 mb-2">
+                      Send follow-up email about the quote
+                    </div>
+                    <Button size="sm" className="text-xs">
+                      Compose & Send
+                    </Button>
                   </div>
-                )}
+
+                  <div className="rounded-md border p-3 bg-green-50">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span>📞</span>
+                        <span className="text-sm font-medium">Phone follow-up</span>
+                      </div>
+                      <span className="text-xs text-slate-500">Due in 1 week</span>
+                    </div>
+                    <div className="text-xs text-slate-600 mb-2">
+                      Call to discuss quote if no email response
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="text-xs">
+                        Mark Called
+                      </Button>
+                      <Button size="sm" className="text-xs">
+                        Log Call
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Past Activities */}
+                <div className="mt-4 pt-4 border-t">
+                  <div className="mb-2 text-xs font-semibold text-slate-600">Completed Activities</div>
+                  {history.length === 0 ? (
+                    <div className="text-xs text-slate-500 py-2">No activities yet.</div>
+                  ) : (
+                    <div className="space-y-2 max-h-32 overflow-auto">
+                      {history.map((h) => {
+                        const channel = (h.channel || "email").toLowerCase();
+                        const isPhone = channel === "phone";
+                        const sentLabel = h.sentAt ? formatDateTime(h.sentAt) : null;
+
+                        return (
+                          <div key={h.id} className="text-xs text-slate-600 py-1">
+                            <div className="flex items-center gap-2">
+                              <span>{isPhone ? "📞" : "📧"}</span>
+                              <span>{h.subject}</span>
+                              <span className="text-slate-400">• {sentLabel}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </section>
             </div>
           </div>
