@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import OpportunityModal from "./OpportunityModal";
+import LeadModal from "../leads/LeadModal";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -250,25 +250,21 @@ export default function OpportunitiesPage() {
       </DeskSurface>
 
       {selected && (
-        <OpportunityModal
+        <LeadModal
           open={open}
-          onOpenChange={(v) => {
+          onOpenChange={(v: boolean) => {
             setOpen(v);
             if (!v) setSelected(null);
           }}
-          leadId={selected.id}
-          leadName={selected.contactName}
-          leadEmail={(selected.email ?? "") as string}
-          leadStatus={(selected.status as LeadStatus) || "QUOTE_SENT"}
-          opportunityId={
-            typeof selected.custom?.opportunityId === "string"
-              ? (selected.custom.opportunityId as string)
-              : undefined
-          }
-          onAfterSend={load}
-          onStatusChange={(next) => {
-            setSelected((prev) => (prev ? { ...prev, status: next } : prev));
+          leadPreview={{
+            id: selected.id,
+            contactName: selected.contactName,
+            email: selected.email,
+            status: (selected.status as any) || "QUOTE_SENT",
+            custom: selected.custom
           }}
+          onUpdated={load}
+          initialStage="follow-up"
         />
       )}
     </>

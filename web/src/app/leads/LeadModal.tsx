@@ -15,6 +15,7 @@ import {
   DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
   DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
 } from "@/lib/constants";
+import { useTenantBrand } from "@/lib/use-tenant-brand";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
 import DeclineEnquiryButton from "./DeclineEnquiryButton";
 
@@ -266,11 +267,13 @@ export default function LeadModal({
   onOpenChange,
   leadPreview,
   onUpdated,
+  initialStage = 'overview',
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   leadPreview: Lead | null;
   onUpdated?: () => void | Promise<void>;
+  initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up';
 }) {
   const ids = getAuthIdsFromJwt();
   const tenantId = ids?.tenantId || "";
@@ -293,7 +296,7 @@ export default function LeadModal({
   const [taskAssignToMe, setTaskAssignToMe] = useState(true);
 
   // Stage navigation
-  const [currentStage, setCurrentStage] = useState<'overview' | 'details' | 'questionnaire' | 'tasks'>('overview');
+  const [currentStage, setCurrentStage] = useState<'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up'>(initialStage);
 
   // Form inputs
   const [nameInput, setNameInput] = useState("");
@@ -315,6 +318,23 @@ export default function LeadModal({
     dueAt: "",
   });
   const [taskSaving, setTaskSaving] = useState(false);
+
+  // Follow-up state
+  const { brandName: tenantBrandName, shortName: tenantShortName, ownerFirstName: tenantOwnerFirstName } = useTenantBrand();
+  const [emailTaskDays, setEmailTaskDays] = useState("3");
+  const [phoneTaskDays, setPhoneTaskDays] = useState("2");
+  const [creatingEmailTask, setCreatingEmailTask] = useState(false);
+  const [creatingPhoneTask, setCreatingPhoneTask] = useState(false);
+  const [creatingSequence, setCreatingSequence] = useState(false);
+  const [followUpTasks, setFollowUpTasks] = useState<any[]>([]);
+  const [loadingFollowUpTasks, setLoadingFollowUpTasks] = useState(false);
+  
+  // Email composer state
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
+  const [composerSubject, setComposerSubject] = useState("");
+  const [composerBody, setComposerBody] = useState("");
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
 
   const lastSavedServerStatusRef = useRef<string | null>(null);
 
@@ -348,6 +368,12 @@ export default function LeadModal({
       title: 'Tasks',
       icon: '✅',
       description: 'Next steps and progress'
+    },
+    {
+      id: 'follow-up' as const,
+      title: 'Follow-up',
+      icon: '📧',
+      description: 'Email follow-ups and quotes'
     }
   ];
 
@@ -518,6 +544,20 @@ export default function LeadModal({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, leadPreview?.id]);
+
+  // Reset to initial stage when modal opens or lead changes
+  useEffect(() => {
+    if (open) {
+      setCurrentStage(initialStage);
+    }
+  }, [open, leadPreview?.id, initialStage]);
+
+  // Load follow-up tasks when follow-up tab is opened
+  useEffect(() => {
+    if (open && currentStage === 'follow-up' && lead?.id) {
+      loadFollowUpTasks();
+    }
+  }, [open, currentStage, lead?.id]);
 
   /* ----------------------------- Save helpers ----------------------------- */
 
@@ -825,6 +865,230 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       } catch {}
     }
   }
+
+  /* ----------------------------- Follow-up Functions ----------------------------- */
+
+  // Follow-up brand and context setup
+  const followupBrand = useMemo(() => {
+    const brand = (tenantBrandName || "").trim();
+    if (brand && brand.toLowerCase() !== "your company") return brand;
+    const short = (tenantShortName || "").trim();
+    if (short && short.toLowerCase() !== "your") return short;
+    return "Sales team";
+  }, [tenantBrandName, tenantShortName]);
+
+  const followupOwnerFirst = useMemo(() => {
+    const owner = (tenantOwnerFirstName || "").trim();
+    if (owner) return owner;
+    const firstWord = followupBrand.split(/\s+/)[0] || "";
+    if (firstWord && firstWord.toLowerCase() !== "sales") return firstWord;
+    return null;
+  }, [tenantOwnerFirstName, followupBrand]);
+
+  // Load follow-up tasks for this lead
+  async function loadFollowUpTasks() {
+    if (!lead?.id) return;
+    setLoadingFollowUpTasks(true);
+    try {
+      const data = await apiFetch<{ items: any[] }>(`/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(lead.id)}&mine=false`);
+      setFollowUpTasks(data.items || []);
+    } catch (error) {
+      console.error("Failed to load follow-up tasks:", error);
+    } finally {
+      setLoadingFollowUpTasks(false);
+    }
+  }
+
+  // Create email follow-up task
+  async function createEmailTask() {
+    if (!lead?.id) return;
+    setCreatingEmailTask(true);
+    try {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + parseInt(emailTaskDays));
+      
+      await apiFetch("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        json: {
+          title: `Email follow-up: ${lead.contactName}`,
+          description: `Send follow-up email about the quote to ${lead.email}`,
+          relatedType: "LEAD",
+          relatedId: lead.id,
+          priority: "MEDIUM",
+          dueAt: dueDate.toISOString(),
+          assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
+          meta: { type: "email_followup", leadEmail: lead.email }
+        }
+      });
+      
+      toast("Email follow-up task created");
+      await loadFollowUpTasks();
+      await reloadTasks(); // Also reload main tasks
+    } catch (error) {
+      console.error("Failed to create email task:", error);
+      toast("Failed to create task");
+    } finally {
+      setCreatingEmailTask(false);
+    }
+  }
+
+  // Create phone follow-up task
+  async function createPhoneTask() {
+    if (!lead?.id) return;
+    setCreatingPhoneTask(true);
+    try {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + parseInt(phoneTaskDays));
+      
+      await apiFetch("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        json: {
+          title: `Phone follow-up: ${lead.contactName}`,
+          description: `Call ${lead.contactName} to discuss the quote`,
+          relatedType: "LEAD", 
+          relatedId: lead.id,
+          priority: "MEDIUM",
+          dueAt: dueDate.toISOString(),
+          assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
+          meta: { type: "phone_followup", leadEmail: lead.email }
+        }
+      });
+      
+      toast("Phone follow-up task created");
+      await loadFollowUpTasks();
+      await reloadTasks(); // Also reload main tasks
+    } catch (error) {
+      console.error("Failed to create phone task:", error);
+      toast("Failed to create task");
+    } finally {
+      setCreatingPhoneTask(false);
+    }
+  }
+
+  // Create follow-up sequence
+  async function createFollowupSequence() {
+    if (!lead?.id) return;
+    setCreatingSequence(true);
+    try {
+      // Create email task in 3 days
+      const emailDueDate = new Date();
+      emailDueDate.setDate(emailDueDate.getDate() + 3);
+      
+      // Create phone task in 7 days  
+      const phoneDueDate = new Date();
+      phoneDueDate.setDate(phoneDueDate.getDate() + 7);
+      
+      await Promise.all([
+        apiFetch("/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          json: {
+            title: `Email follow-up: ${lead.contactName}`,
+            description: `Send follow-up email about the quote to ${lead.email}`,
+            relatedType: "LEAD",
+            relatedId: lead.id,
+            priority: "MEDIUM",
+            dueAt: emailDueDate.toISOString(),
+            assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
+            meta: { type: "email_followup", leadEmail: lead.email, sequence: true }
+          }
+        }),
+        apiFetch("/tasks", {
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          json: {
+            title: `Phone follow-up: ${lead.contactName}`,
+            description: `Call ${lead.contactName} to discuss the quote if no email response`,
+            relatedType: "LEAD",
+            relatedId: lead.id,
+            priority: "MEDIUM", 
+            dueAt: phoneDueDate.toISOString(),
+            assignees: userId ? [{ userId, role: "OWNER" as const }] : undefined,
+            meta: { type: "phone_followup", leadEmail: lead.email, sequence: true }
+          }
+        })
+      ]);
+      
+      toast("Follow-up sequence created: Email in 3 days, phone in 1 week");
+      await loadFollowUpTasks();
+      await reloadTasks(); // Also reload main tasks
+    } catch (error) {
+      console.error("Failed to create sequence:", error);
+      toast("Failed to create sequence");
+    } finally {
+      setCreatingSequence(false);
+    }
+  }
+
+  // Mark task as complete
+  async function completeFollowUpTask(taskId: string) {
+    try {
+      await apiFetch(`/tasks/${taskId}/complete`, { method: "POST" });
+      await loadFollowUpTasks();
+      await reloadTasks(); // Also reload main tasks
+    } catch (error) {
+      console.error("Failed to complete task:", error);
+    }
+  }
+
+  // Open email composer for a task
+  function openEmailComposer(taskId: string) {
+    setCurrentTaskId(taskId);
+    setComposerSubject(`Follow-up: ${lead?.contactName}`);
+    setComposerBody(`Hi ${lead?.contactName},\n\nI wanted to follow up on the quote we sent. Please let me know if you have any questions or if you'd like to move forward.\n\nBest regards,\n${followupOwnerFirst || "Sales Team"}`);
+    setShowEmailComposer(true);
+  }
+
+  // Send email and complete task
+  async function sendComposerEmail() {
+    if (!composerSubject || !composerBody || !currentTaskId || !lead?.id) return;
+    
+    try {
+      setSending(true);
+      
+      // Send the email using the existing endpoint
+      await apiFetch(`/opportunities/${lead.id}/send-followup`, {
+        method: "POST",
+        json: {
+          variant: "MANUAL",
+          subject: composerSubject,
+          body: composerBody,
+          taskId: currentTaskId
+        },
+      });
+
+      // Mark the task as complete
+      await completeFollowUpTask(currentTaskId);
+      
+      // Close the composer
+      setShowEmailComposer(false);
+      setCurrentTaskId(null);
+      setComposerSubject("");
+      setComposerBody("");
+      
+      toast("Email sent and task completed!");
+    } catch (error) {
+      console.error("Failed to send email:", error);
+      toast("Failed to send email");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Get pending and completed follow-up tasks
+  const pendingFollowUpTasks = followUpTasks.filter(task => 
+    task.status !== "DONE" && 
+    task.meta?.type && 
+    ["email_followup", "phone_followup"].includes(task.meta.type)
+  );
+
+  const completedFollowUpTasks = followUpTasks.filter(task =>
+    task.status === "DONE" &&
+    task.meta?.type &&
+    ["email_followup", "phone_followup"].includes(task.meta.type)
+  );
 
   /* ----------------------------- Actions ----------------------------- */
 
@@ -3111,7 +3375,236 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             </div>
           </div>
         )}
+
+          {/* Follow-up Tab */}
+          {currentStage === 'follow-up' && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-blue-50/70 to-indigo-50/60 min-h-[60vh]">
+              <div className="max-w-6xl mx-auto">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  
+                  {/* Schedule Follow-up Tasks */}
+                  <section className="rounded-xl border p-4 bg-white/90 shadow-sm">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-4">Schedule Follow-up Tasks</h3>
+                    
+                    {/* Email Follow-up Task */}
+                    <div className="p-3 border rounded-lg bg-slate-50 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span>📧</span>
+                        <span className="font-medium text-sm">Email Follow-up</span>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block">
+                          <div className="text-xs text-slate-600 mb-1">When to send</div>
+                          <select 
+                            className="w-full rounded border bg-white p-2 text-sm"
+                            value={emailTaskDays}
+                            onChange={(e) => setEmailTaskDays(e.target.value)}
+                          >
+                            <option value="1">Tomorrow</option>
+                            <option value="3">In 3 days</option>
+                            <option value="7">In 1 week</option>
+                            <option value="14">In 2 weeks</option>
+                          </select>
+                        </label>
+                        <button 
+                          className="w-full rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          disabled={creatingEmailTask}
+                          onClick={createEmailTask}
+                        >
+                          {creatingEmailTask ? "Creating..." : "Create Email Task"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Phone Follow-up Task */}
+                    <div className="p-3 border rounded-lg bg-slate-50 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span>📞</span>
+                        <span className="font-medium text-sm">Phone Follow-up</span>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block">
+                          <div className="text-xs text-slate-600 mb-1">When to call</div>
+                          <select 
+                            className="w-full rounded border bg-white p-2 text-sm"
+                            value={phoneTaskDays}
+                            onChange={(e) => setPhoneTaskDays(e.target.value)}
+                          >
+                            <option value="1">Tomorrow</option>
+                            <option value="2">In 2 days</option>
+                            <option value="5">In 5 days</option>
+                            <option value="7">In 1 week</option>
+                          </select>
+                        </label>
+                        <button 
+                          className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          disabled={creatingPhoneTask}
+                          onClick={createPhoneTask}
+                        >
+                          {creatingPhoneTask ? "Creating..." : "Create Phone Task"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Auto-schedule All */}
+                    <div className="pt-3 border-t">
+                      <button 
+                        className="w-full rounded bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                        disabled={creatingSequence}
+                        onClick={createFollowupSequence}
+                      >
+                        {creatingSequence ? "Creating..." : "Auto-schedule Follow-up Sequence"}
+                      </button>
+                      <div className="text-xs text-slate-500 mt-1 text-center">
+                        Creates email task (3 days) + phone task (1 week)
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Scheduled Tasks Panel */}
+                  <section className="rounded-xl border p-4 bg-white">
+                    <div className="mb-2 text-sm font-semibold text-slate-900 flex items-center justify-between">
+                      <span>Scheduled Tasks</span>
+                      {loadingFollowUpTasks && <span className="text-xs text-slate-500">Loading...</span>}
+                    </div>
+                    
+                    {/* Real tasks from API */}
+                    <div className="space-y-3">
+                      {pendingFollowUpTasks.length === 0 ? (
+                        <div className="text-sm text-slate-500 text-center py-4">
+                          No scheduled follow-up tasks. Create one above.
+                        </div>
+                      ) : (
+                        pendingFollowUpTasks.map((task) => (
+                          <div key={task.id} className="rounded-md border p-3 bg-blue-50">
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <span>{task.meta?.type === "email_followup" ? "📧" : "📞"}</span>
+                                <span className="text-sm font-medium">{task.title}</span>
+                              </div>
+                              <span className="text-xs text-slate-500">
+                                {task.dueAt ? `Due ${new Date(task.dueAt).toLocaleDateString()}` : "Due soon"}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-600 mb-2">
+                              {task.description}
+                            </div>
+                            <div className="flex gap-2">
+                              {task.meta?.type === "email_followup" ? (
+                                <button 
+                                  className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"
+                                  onClick={() => openEmailComposer(task.id)}
+                                >
+                                  Compose & Send
+                                </button>
+                              ) : (
+                                <button 
+                                  className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                  onClick={() => {
+                                    toast("Call logging would open here");
+                                  }}
+                                >
+                                  Log Call
+                                </button>
+                              )}
+                              <button 
+                                className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                                onClick={() => completeFollowUpTask(task.id)}
+                              >
+                                Mark Done
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Completed Tasks */}
+                    {completedFollowUpTasks.length > 0 && (
+                      <div className="mt-4 pt-3 border-t">
+                        <div className="text-xs font-medium text-slate-600 mb-2">Completed</div>
+                        <div className="space-y-2">
+                          {completedFollowUpTasks.map((task) => (
+                            <div key={task.id} className="rounded-md border p-2 bg-slate-50 opacity-75">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-green-600">✓</span>
+                                  <span className="text-xs">{task.title}</span>
+                                </div>
+                                <span className="text-xs text-slate-400">
+                                  {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : "Done"}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </div>
+            </div>
+          )}
+
       </div>
+
+      {/* Email Composer Modal */}
+      {showEmailComposer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
+            <div className="p-4 border-b">
+              <h3 className="text-lg font-semibold">Compose Follow-up Email</h3>
+            </div>
+            
+            <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
+              <div>
+                <label className="block text-sm font-medium mb-1">To:</label>
+                <div className="text-sm text-slate-600">{lead?.email}</div>
+              </div>
+              
+              <div>
+                <label htmlFor="subject" className="block text-sm font-medium mb-1">Subject:</label>
+                <input
+                  id="subject"
+                  type="text"
+                  value={composerSubject}
+                  onChange={(e) => setComposerSubject(e.target.value)}
+                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Email subject..."
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="body" className="block text-sm font-medium mb-1">Message:</label>
+                <textarea
+                  id="body"
+                  value={composerBody}
+                  onChange={(e) => setComposerBody(e.target.value)}
+                  rows={8}
+                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Email message..."
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t flex gap-2 justify-end">
+              <button 
+                className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50"
+                onClick={() => setShowEmailComposer(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                onClick={sendComposerEmail}
+                disabled={sending || !composerSubject || !composerBody}
+              >
+                {sending ? "Sending..." : "Send Email"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
