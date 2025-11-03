@@ -268,12 +268,14 @@ export default function LeadModal({
   leadPreview,
   onUpdated,
   initialStage = 'overview',
+  showFollowUp = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   leadPreview: Lead | null;
   onUpdated?: () => void | Promise<void>;
   initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up';
+  showFollowUp?: boolean;
 }) {
   const ids = getAuthIdsFromJwt();
   const tenantId = ids?.tenantId || "";
@@ -369,17 +371,17 @@ export default function LeadModal({
       icon: '✅',
       description: 'Next steps and progress'
     },
-    {
+    ...(showFollowUp ? [{
       id: 'follow-up' as const,
       title: 'Follow-up',
       icon: '📧',
       description: 'Email follow-ups and quotes'
-    }
+    }] : [])
   ];
 
   const showEstimateCta = useMemo(
-    () => uiStatus === "READY_TO_QUOTE" || uiStatus === "QUOTE_SENT" || uiStatus === "WON",
-    [uiStatus]
+    () => (uiStatus === "READY_TO_QUOTE" || uiStatus === "QUOTE_SENT" || uiStatus === "WON") && currentStage !== 'follow-up',
+    [uiStatus, currentStage]
   );
 
   useEffect(() => {
