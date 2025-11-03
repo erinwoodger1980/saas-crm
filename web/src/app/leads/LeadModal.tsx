@@ -39,6 +39,12 @@ export type Lead = {
     | "LOST";
   custom?: any;
   description?: string | null;
+  communicationLog?: Array<{
+    id: string;
+    type: 'call' | 'email' | 'note';
+    content: string;
+    timestamp: string;
+  }> | null;
 };
 
 type Task = {
@@ -446,6 +452,7 @@ export default function LeadModal({
           description: hasPreviewDescription
             ? previewDescription || null
             : prev.description ?? null,
+          communicationLog: (leadPreview.custom?.communicationLog || prev.communicationLog || []) as Lead['communicationLog'],
         };
         return next;
       }
@@ -457,6 +464,7 @@ export default function LeadModal({
         status: leadPreview.status ?? "NEW_ENQUIRY",
         custom: leadPreview.custom ?? null,
         description: hasPreviewDescription ? previewDescription || null : null,
+        communicationLog: (leadPreview.custom?.communicationLog || []) as Lead['communicationLog'],
       };
 
       setNameInput(normalized.contactName ?? "");
@@ -510,10 +518,12 @@ export default function LeadModal({
           id: row.id || leadPreview.id,
           contactName,
           email,
+          phone: (row as any)?.phone ?? null,
           status: sUi,
           custom: row.custom ?? row.briefJson ?? null,
           description,
           quoteId: (row as any)?.quoteId ?? null,
+          communicationLog: (row.custom?.communicationLog || []) as Lead['communicationLog'],
         };
         setLead(normalized);
         setUiStatus(sUi);
@@ -677,16 +687,29 @@ export default function LeadModal({
   async function addCommunicationNote() {
     if (!lead?.id || !newNote.trim()) return;
     
-    const noteText = `[${communicationType.toUpperCase()}] ${new Date().toLocaleString()}: ${newNote.trim()}`;
-    const currentDescription = lead.description || '';
-    const updatedDescription = currentDescription 
-      ? `${currentDescription}\n\n${noteText}`
-      : noteText;
+    const newEntry = {
+      id: Date.now().toString(),
+      type: communicationType,
+      content: newNote.trim(),
+      timestamp: new Date().toISOString()
+    };
+    
+    const currentLog = lead.communicationLog || [];
+    const updatedLog = [newEntry, ...currentLog]; // Add to top for latest first
     
     try {
-      await savePatch({ description: updatedDescription });
+      await savePatch({ 
+        custom: { 
+          ...lead.custom, 
+          communicationLog: updatedLog 
+        } 
+      });
+      setLead(prev => prev ? { 
+        ...prev, 
+        communicationLog: updatedLog,
+        custom: { ...prev.custom, communicationLog: updatedLog }
+      } : prev);
       setNewNote('');
-      setDescInput(updatedDescription);
     } catch (e) {
       console.error('Failed to add communication note:', e);
       alert('Failed to save communication note');
@@ -1759,74 +1782,33 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <h3 className="font-medium text-gray-900">Quick Actions</h3>
-          <div className="space-y-2">
-            <button
-              onClick={() => setCurrentStage('details')}
-              className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">📝</span>
-                <div>
-                  <div className="font-medium">Edit Details</div>
-                  <div className="text-sm text-gray-500">Update contact information</div>
+      {/* Communication Log Display */}
+      {lead?.communicationLog && lead.communicationLog.length > 0 && (
+        <div className="bg-blue-50 p-4 rounded-lg">
+          <h3 className="font-medium text-gray-900 mb-3">Communication History</h3>
+          <div className="space-y-3">
+            {lead.communicationLog.slice(0, 5).map((entry) => (
+              <div key={entry.id} className="bg-white p-3 rounded-md border border-blue-100">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm">
+                    {entry.type === 'call' ? '📞' : entry.type === 'email' ? '📧' : '📝'}
+                  </span>
+                  <span className="text-sm font-medium capitalize">{entry.type}</span>
+                  <span className="text-xs text-gray-500">
+                    {new Date(entry.timestamp).toLocaleDateString()} {new Date(entry.timestamp).toLocaleTimeString()}
+                  </span>
                 </div>
+                <p className="text-sm text-gray-700">{entry.content}</p>
               </div>
-            </button>
-            <button
-              onClick={() => setCurrentStage('questionnaire')}
-              className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">📋</span>
-                <div>
-                  <div className="font-medium">View Questionnaire</div>
-                  <div className="text-sm text-gray-500">Client responses and data</div>
-                </div>
-              </div>
-            </button>
-            <button
-              onClick={() => setCurrentStage('tasks')}
-              className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">✅</span>
-                <div>
-                  <div className="font-medium">Manage Tasks</div>
-                  <div className="text-sm text-gray-500">Create and track next steps</div>
-                </div>
-              </div>
-            </button>
+            ))}
+            {lead.communicationLog.length > 5 && (
+              <p className="text-xs text-gray-500 text-center">
+                And {lead.communicationLog.length - 5} more entries...
+              </p>
+            )}
           </div>
         </div>
-
-        <div className="space-y-4">
-          <h3 className="font-medium text-gray-900">Lead Progress</h3>
-          <StatusPipeline 
-            currentStatus={uiStatus}
-            onStatusChange={(newStatus: Lead["status"]) => {
-              setUiStatus(newStatus);
-              if (lead?.id) {
-                setSaving(true);
-                apiFetch(`/leads/${lead.id}`, {
-                  method: "PATCH",
-                  headers: { ...authHeaders, "Content-Type": "application/json" },
-                  body: JSON.stringify({ status: newStatus })
-                })
-                  .then(() => {
-                    lastSavedServerStatusRef.current = newStatus;
-                    onUpdated?.();
-                  })
-                  .catch((err: any) => console.error("Failed to update status:", err))
-                  .finally(() => setSaving(false));
-              }
-            }}
-            disabled={saving}
-          />
-        </div>
-      </div>
+      )}
     </div>
   );
 
@@ -2188,7 +2170,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           <label className="text-xs font-medium text-slate-600 mr-2">Status</label>
           <select
             value={uiStatus}
-            className="rounded-xl border border-sky-200 bg-white/80 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm"
+            className="rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             onChange={handleStatusChange}
             disabled={saving}
           >
@@ -2378,11 +2360,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           placeholder="Project background, requirements, constraints…"
                         />
                       </label>
-
-                      <div className="pt-2 border-t border-slate-200">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">Status</span>
-                        <div className="text-sm font-medium text-slate-700">{STATUS_LABELS[lead.status]}</div>
-                      </div>
                     </div>
                   </section>
 
@@ -2433,29 +2410,28 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </Button>
                       </div>
 
-                      <div className="space-y-3">
-                        <button
-                          className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
-                          onClick={() => setCurrentStage('details')}
-                        >
-                          <div className="font-medium text-sm">📝 Edit Full Details</div>
-                          <div className="text-xs text-slate-500">Complete contact information and workspace fields</div>
-                        </button>
-                        <button
-                          className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
-                          onClick={() => setCurrentStage('questionnaire')}
-                        >
-                          <div className="font-medium text-sm">📋 View Questionnaire</div>
-                          <div className="text-xs text-slate-500">See client responses and send new questionnaire</div>
-                        </button>
-                        <button
-                          className="w-full text-left p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
-                          onClick={() => setCurrentStage('tasks')}
-                        >
-                          <div className="font-medium text-sm">✅ Manage Tasks</div>
-                          <div className="text-xs text-slate-500">Track progress and add action items</div>
-                        </button>
-                      </div>
+                      {/* Communication Log Display */}
+                      {lead?.communicationLog && lead.communicationLog.length > 0 && (
+                        <div className="space-y-3 pt-4 border-t border-slate-200">
+                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Recent Communications</h4>
+                          <div className="space-y-2 max-h-40 overflow-y-auto">
+                            {lead.communicationLog.map((entry) => (
+                              <div key={entry.id} className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs">
+                                    {entry.type === 'call' ? '📞' : entry.type === 'email' ? '📧' : '📝'}
+                                  </span>
+                                  <span className="text-xs font-medium capitalize">{entry.type}</span>
+                                  <span className="text-xs text-slate-500 ml-auto">
+                                    {new Date(entry.timestamp).toLocaleDateString()} {new Date(entry.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-700">{entry.content}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </section>
                 </div>
