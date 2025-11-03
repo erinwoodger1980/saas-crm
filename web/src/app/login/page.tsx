@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, setJwt } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -68,13 +69,14 @@ export default function LoginPage() {
           {error && (
             <p className="text-sm text-red-600 text-center">{error}</p>
           )}
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-black py-3 text-white hover:bg-gray-800 transition"
+            className="w-full"
+            variant="default"
           >
             {loading ? "Signing in…" : "Sign in"}
-          </button>
+          </Button>
         </form>
 
         <div className="mt-4 flex justify-between text-sm text-gray-600">

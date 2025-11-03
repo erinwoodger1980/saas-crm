@@ -8,7 +8,24 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  LineChart, 
+  Line,
+  ComposedChart,
+  Area,
+  AreaChart,
+  PieChart,
+  Pie,
+  Cell
+} from "recharts";
+import { TrendingUp, TrendingDown, Target, Calendar, DollarSign, Users, Award, ArrowUp, ArrowDown } from "lucide-react";
 
 type MonthlyData = {
   year: number;
@@ -25,7 +42,24 @@ type MonthlyData = {
 
 type BusinessMetrics = {
   monthlyData: MonthlyData[];
+  monthlyDataTwoYear: MonthlyData[];
   yearToDate: {
+    enquiries: number;
+    quotesCount: number;
+    quotesValue: number;
+    salesCount: number;
+    salesValue: number;
+    conversionRate: number;
+  };
+  previousYear: {
+    enquiries: number;
+    quotesCount: number;
+    quotesValue: number;
+    salesCount: number;
+    salesValue: number;
+    conversionRate: number;
+  };
+  yoyChanges: {
     enquiries: number;
     quotesCount: number;
     quotesValue: number;
@@ -403,8 +437,104 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Current Month vs Year-to-Date Metrics */}
+      {/* Year-over-Year Key Metrics */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <YoYMetricCard
+          title="Enquiries"
+          current={data.yearToDate.enquiries}
+          previous={data.previousYear.enquiries}
+          change={data.yoyChanges.enquiries}
+          target={data.targets.ytdEnquiriesTarget}
+          icon={<Users className="h-5 w-5" />}
+          color="blue"
+        />
+        <YoYMetricCard
+          title="Quotes Value"
+          current={data.yearToDate.quotesValue}
+          previous={data.previousYear.quotesValue}
+          change={data.yoyChanges.quotesValue}
+          target={data.targets.ytdQuotesValueTarget}
+          icon={<DollarSign className="h-5 w-5" />}
+          color="green"
+          isCurrency
+        />
+        <YoYMetricCard
+          title="Sales Won"
+          current={data.yearToDate.salesCount}
+          previous={data.previousYear.salesCount}
+          change={data.yoyChanges.salesCount}
+          target={data.targets.ytdSalesCountTarget}
+          icon={<Award className="h-5 w-5" />}
+          color="purple"
+        />
+        <YoYMetricCard
+          title="Conversion Rate"
+          current={data.yearToDate.conversionRate * 100}
+          previous={data.previousYear.conversionRate * 100}
+          change={data.yoyChanges.conversionRate}
+          target={undefined}
+          icon={<Target className="h-5 w-5" />}
+          color="orange"
+          isPercentage
+        />
+      </div>
+
+      {/* Visual Progress Indicators */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              Financial Year Progress
+            </CardTitle>
+            <p className="text-sm text-slate-600">
+              FY{data.financialYear.current} • Ending {data.financialYear.yearEnd}
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="relative">
+              <div className="flex justify-between text-sm mb-2">
+                <span>Year Progress</span>
+                <span className="font-semibold">{data.financialYear.progressPercent}%</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3">
+                <div 
+                  className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-500"
+                  style={{ width: `${data.financialYear.progressPercent}%` }}
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <ProgressIndicator
+                label="Enquiries"
+                current={data.yearToDate.enquiries}
+                target={data.targets.ytdEnquiriesTarget}
+                color="blue"
+              />
+              <ProgressIndicator
+                label="Sales Count"
+                current={data.yearToDate.salesCount}
+                target={data.targets.ytdSalesCountTarget}
+                color="green"
+              />
+              <ProgressIndicator
+                label="Sales Value"
+                current={data.yearToDate.salesValue}
+                target={data.targets.ytdSalesValueTarget}
+                color="purple"
+                isCurrency
+              />
+              <ProgressIndicator
+                label="Quotes Count"
+                current={data.yearToDate.quotesCount}
+                target={data.targets.ytdQuotesCountTarget}
+                color="orange"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">This Month ({currentMonth?.monthName})</CardTitle>
@@ -434,103 +564,108 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Financial Year to Date (FY{data.financialYear.current})</CardTitle>
-            <p className="text-sm text-gray-500">
-              Year ending {data.financialYear.yearEnd} • {data.financialYear.progressPercent}% complete
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <MetricItem 
-                title="Enquiries" 
-                value={data.yearToDate.enquiries}
-                subtitle={`Target: ${data.targets.ytdEnquiriesTarget}`}
-                isOnTrack={data.yearToDate.enquiries >= data.targets.ytdEnquiriesTarget}
-              />
-              <MetricItem 
-                title="Quotes Sent" 
-                value={data.yearToDate.quotesCount}
-                subtitle={`Target: ${data.targets.ytdQuotesCountTarget} | ${formatCurrency(data.yearToDate.quotesValue)}`}
-                isOnTrack={data.yearToDate.quotesCount >= data.targets.ytdQuotesCountTarget}
-              />
-              <MetricItem 
-                title="Sales Won" 
-                value={data.yearToDate.salesCount}
-                subtitle={`Target: ${data.targets.ytdSalesCountTarget} | ${formatCurrency(data.yearToDate.salesValue)}`}
-                isOnTrack={data.yearToDate.salesCount >= data.targets.ytdSalesCountTarget}
-              />
-              <MetricItem 
-                title="Conversion Rate" 
-                value={formatPercent(data.yearToDate.conversionRate)}
-                subtitle="enquiry to sale"
-              />
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Annual Targets vs Actuals */}
+      {/* Visual Annual Targets Dashboard */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Annual Targets vs Actuals (FY{data.financialYear.current})</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5" />
+            Annual Targets vs Actuals (FY{data.financialYear.current})
+          </CardTitle>
+          <p className="text-sm text-slate-600">
+            Track your progress against annual goals
+          </p>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-            <TargetVsActual
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <TargetVsActualCard
               title="Enquiries"
+              current={data.yearToDate.enquiries}
               target={data.targets.enquiriesTarget}
-              actual={data.yearToDate.enquiries}
               ytdTarget={data.targets.ytdEnquiriesTarget}
+              icon="👥"
+              color="blue"
             />
-            <TargetVsActual
+            <TargetVsActualCard
               title="Quotes Value"
+              current={data.yearToDate.quotesValue}
               target={data.targets.quotesValueTarget}
-              actual={data.yearToDate.quotesValue}
               ytdTarget={data.targets.ytdQuotesValueTarget}
+              icon="💰"
+              color="green"
               isCurrency
             />
-            <TargetVsActual
+            <TargetVsActualCard
               title="Quotes Count"
+              current={data.yearToDate.quotesCount}
               target={data.targets.quotesCountTarget}
-              actual={data.yearToDate.quotesCount}
               ytdTarget={data.targets.ytdQuotesCountTarget}
+              icon="📋"
+              color="purple"
             />
-            <TargetVsActual
+            <TargetVsActualCard
               title="Sales Value"
+              current={data.yearToDate.salesValue}
               target={data.targets.salesValueTarget}
-              actual={data.yearToDate.salesValue}
               ytdTarget={data.targets.ytdSalesValueTarget}
+              icon="🎯"
+              color="orange"
               isCurrency
             />
-            <TargetVsActual
+            <TargetVsActualCard
               title="Sales Count"
+              current={data.yearToDate.salesCount}
               target={data.targets.salesCountTarget}
-              actual={data.yearToDate.salesCount}
               ytdTarget={data.targets.ytdSalesCountTarget}
+              icon="🏆"
+              color="indigo"
             />
+            <div className="flex items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg">
+              <div className="text-center">
+                <Calendar className="h-8 w-8 mx-auto text-slate-400 mb-2" />
+                <div className="text-sm font-medium text-slate-600">Financial Year</div>
+                <div className="text-xs text-slate-500">
+                  {data.financialYear.progressPercent}% Complete
+                </div>
+                <div className="mt-2 w-16 bg-slate-200 rounded-full h-2 mx-auto">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full"
+                    style={{ width: `${data.financialYear.progressPercent}%` }}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Monthly Trends Chart */}
+      {/* Enhanced 24-Month Comparison Chart */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">12-Month Trends</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            24-Month Trends Comparison
+          </CardTitle>
+          <p className="text-sm text-slate-600">Current vs Previous Year</p>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={data.monthlyData}>
+          <ResponsiveContainer width="100%" height={400}>
+            <ComposedChart data={data.monthlyDataTwoYear}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="monthName" tick={{ fontSize: 12 }} />
+              <XAxis 
+                dataKey="monthName" 
+                tick={{ fontSize: 11 }}
+                angle={-45}
+                textAnchor="end"
+                height={80}
+              />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey="enquiries" stroke="#3b82f6" name="Enquiries" />
-              <Line type="monotone" dataKey="quotesCount" stroke="#10b981" name="Quotes Sent" />
-              <Line type="monotone" dataKey="salesCount" stroke="#f59e0b" name="Sales Won" />
-            </LineChart>
+              <Area type="monotone" dataKey="enquiries" fill="#3b82f6" fillOpacity={0.3} stroke="#3b82f6" name="Enquiries" />
+              <Line type="monotone" dataKey="quotesCount" stroke="#10b981" strokeWidth={2} name="Quotes Sent" />
+              <Line type="monotone" dataKey="salesCount" stroke="#f59e0b" strokeWidth={2} name="Sales Won" />
+            </ComposedChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
@@ -654,4 +789,204 @@ function formatCurrency(value: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function YoYMetricCard({
+  title,
+  current,
+  previous,
+  change,
+  target,
+  icon,
+  color,
+  isCurrency = false,
+  isPercentage = false,
+}: {
+  title: string;
+  current: number;
+  previous: number;
+  change: number;
+  target?: number;
+  icon: React.ReactNode;
+  color: "blue" | "green" | "purple" | "orange";
+  isCurrency?: boolean;
+  isPercentage?: boolean;
+}) {
+  const formatValue = (value: number) => {
+    if (isCurrency) return formatCurrency(value);
+    if (isPercentage) return `${value.toFixed(1)}%`;
+    return value.toLocaleString();
+  };
+
+  const colorClasses = {
+    blue: "from-blue-500 to-blue-600 text-blue-600",
+    green: "from-green-500 to-green-600 text-green-600", 
+    purple: "from-purple-500 to-purple-600 text-purple-600",
+    orange: "from-orange-500 to-orange-600 text-orange-600"
+  };
+
+  const isPositiveChange = change >= 0;
+  const targetProgress = target ? (current / target) * 100 : 100;
+
+  return (
+    <Card className="relative overflow-hidden">
+      <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${colorClasses[color].split(' ').slice(0, 2).join(' ')}`} />
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className={`p-2 rounded-lg bg-gradient-to-r ${colorClasses[color].split(' ').slice(0, 2).join(' ')} text-white`}>
+            {icon}
+          </div>
+          <div className={`flex items-center gap-1 text-sm ${isPositiveChange ? 'text-green-600' : 'text-red-600'}`}>
+            {isPositiveChange ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+            {Math.abs(change).toFixed(1)}%
+          </div>
+        </div>
+        <CardTitle className="text-sm font-medium text-slate-600">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-2">
+          <div className="text-2xl font-bold">{formatValue(current)}</div>
+          <div className="text-sm text-slate-500">
+            vs {formatValue(previous)} last year
+          </div>
+          {target && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span>Target progress</span>
+                <span className="font-medium">{targetProgress.toFixed(0)}%</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-1.5">
+                <div 
+                  className={`h-1.5 rounded-full bg-gradient-to-r ${colorClasses[color].split(' ').slice(0, 2).join(' ')}`}
+                  style={{ width: `${Math.min(targetProgress, 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProgressIndicator({
+  label,
+  current,
+  target,
+  color,
+  isCurrency = false,
+}: {
+  label: string;
+  current: number;
+  target: number;
+  color: "blue" | "green" | "purple" | "orange";
+  isCurrency?: boolean;
+}) {
+  const progress = target > 0 ? (current / target) * 100 : 0;
+  const isOnTrack = progress >= 80;
+
+  const colorClasses = {
+    blue: "bg-blue-500",
+    green: "bg-green-500", 
+    purple: "bg-purple-500",
+    orange: "bg-orange-500"
+  };
+
+  const formatValue = (value: number) => {
+    return isCurrency ? formatCurrency(value) : value.toLocaleString();
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between text-sm">
+        <span className="font-medium">{label}</span>
+        <span className={`text-xs ${isOnTrack ? 'text-green-600' : 'text-amber-600'}`}>
+          {progress.toFixed(0)}%
+        </span>
+      </div>
+      <div className="text-lg font-semibold">{formatValue(current)}</div>
+      <div className="text-xs text-slate-500">Target: {formatValue(target)}</div>
+      <div className="w-full bg-slate-200 rounded-full h-2">
+        <div 
+          className={`h-2 rounded-full transition-all duration-500 ${colorClasses[color]}`}
+          style={{ width: `${Math.min(progress, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TargetVsActualCard({
+  title,
+  current,
+  target,
+  ytdTarget,
+  icon,
+  color,
+  isCurrency = false,
+}: {
+  title: string;
+  current: number;
+  target: number;
+  ytdTarget: number;
+  icon: string;
+  color: "blue" | "green" | "purple" | "orange" | "indigo";
+  isCurrency?: boolean;
+}) {
+  const progress = ytdTarget > 0 ? (current / ytdTarget) * 100 : 0;
+  const isOnTrack = progress >= 80;
+  const annualProgress = target > 0 ? (current / target) * 100 : 0;
+
+  const colorClasses = {
+    blue: "from-blue-500 to-blue-600 bg-blue-500",
+    green: "from-green-500 to-green-600 bg-green-500", 
+    purple: "from-purple-500 to-purple-600 bg-purple-500",
+    orange: "from-orange-500 to-orange-600 bg-orange-500",
+    indigo: "from-indigo-500 to-indigo-600 bg-indigo-500"
+  };
+
+  const formatValue = (value: number) => {
+    return isCurrency ? formatCurrency(value) : value.toLocaleString();
+  };
+
+  return (
+    <Card className="relative overflow-hidden">
+      <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${colorClasses[color].split(' ').slice(0, 2).join(' ')}`} />
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <div className="text-2xl">{icon}</div>
+          <div>
+            <CardTitle className="text-sm font-medium text-slate-600">{title}</CardTitle>
+            <div className="text-xl font-bold">{formatValue(current)}</div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-3">
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs">
+            <span>YTD Target Progress</span>
+            <span className={`font-medium ${isOnTrack ? 'text-green-600' : 'text-amber-600'}`}>
+              {progress.toFixed(0)}%
+            </span>
+          </div>
+          <div className="w-full bg-slate-200 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full transition-all duration-500 ${colorClasses[color].split(' ')[2]}`}
+              style={{ width: `${Math.min(progress, 100)}%` }}
+            />
+          </div>
+          <div className="text-xs text-slate-500">
+            {formatValue(current)} of {formatValue(ytdTarget)} YTD target
+          </div>
+        </div>
+        
+        <div className="pt-2 border-t border-slate-100">
+          <div className="text-xs text-slate-500 mb-1">Annual target: {formatValue(target)}</div>
+          <div className="text-xs font-medium">
+            {annualProgress.toFixed(1)}% of annual goal
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }

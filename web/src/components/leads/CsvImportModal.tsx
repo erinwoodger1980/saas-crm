@@ -201,12 +201,14 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
             </p>
           </div>
           
-          <button
+          <Button
             onClick={handleClose}
-            className="p-2 hover:bg-gray-100 rounded-lg"
+            variant="ghost"
+            size="sm"
+            className="p-2 h-auto"
           >
             ✕
-          </button>
+          </Button>
         </div>
 
         {/* Content */}

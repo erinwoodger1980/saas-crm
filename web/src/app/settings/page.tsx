@@ -517,22 +517,17 @@ export default function SettingsPage() {
           { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
           { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
         ].map((stage) => (
-          <button
+          <Button
             key={stage.key}
+            variant={currentStage === stage.key ? "default" : "ghost"}
             onClick={() => setCurrentStage(stage.key as any)}
-            className={`
-              flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200
-              ${currentStage === stage.key
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }
-            `}
+            className="flex-1"
           >
             <div className="flex items-center justify-center gap-2">
               <span>{stage.icon}</span>
               <span className="hidden sm:inline">{stage.label}</span>
             </div>
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -676,13 +671,14 @@ export default function SettingsPage() {
                   <div className="text-sm font-semibold text-slate-800">
                     {groupName}
                   </div>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     type="button"
-                    className="text-xs text-slate-600 hover:text-slate-800"
                     onClick={() => setOpenGroups((prev) => ({ ...prev, [groupName]: !(prev[groupName] ?? true) }))}
                   >
                     {(openGroups[groupName] ?? true) ? "Collapse" : "Expand"}
-                  </button>
+                  </Button>
                 </div>
                 {(openGroups[groupName] ?? true) && (
                   <div className="space-y-3 border-t px-3 py-3">
@@ -817,9 +813,10 @@ export default function SettingsPage() {
                             )
                           }
                         />
-                        <button
+                        <Button
+                          variant="destructive"
+                          size="sm"
                           type="button"
-                          className="text-sm text-rose-500"
                           onClick={() =>
                             setQFields((prev) =>
                               prev.map((p, i) => (i === idx ? { ...p, options: (p.options ?? []).filter((_, j) => j !== optIdx) } : p))
@@ -827,25 +824,27 @@ export default function SettingsPage() {
                           }
                         >
                           Remove
-                        </button>
+                        </Button>
                       </div>
                     ))}
-                    <button
+                    <Button
+                      variant="outline"
+                      size="sm"
                       type="button"
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-sm text-[rgb(var(--brand))]"
                       onClick={() => setQFields((prev) => prev.map((p, i) => (i === idx ? { ...p, options: [...(p.options ?? []), ""] } : p)))}
                     >
-                      Add option
-                    </button>
+                      Add Option
+                    </Button>
                   </div>
                 ) : null}
-                <button
+                <Button
+                  variant="destructive"
+                  size="sm"
                   type="button"
-                  className="text-sm text-rose-500"
                   onClick={() => setQFields((prev) => prev.filter((_, i) => i !== idx))}
                 >
                   Remove
-                </button>
+                </Button>
               </div>
                         );
                       })}
