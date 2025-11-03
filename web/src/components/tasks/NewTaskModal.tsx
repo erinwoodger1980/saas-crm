@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 function toIsoOrUndefined(localValue: string): string | undefined {
   if (!localValue) return undefined;
@@ -143,19 +144,19 @@ export function NewTaskModal({
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <button
+            <Button
               onClick={onClose}
-              className="rounded-full border border-slate-200 bg-white/80 px-5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
+              variant="outline"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={save}
               disabled={saving}
-              className="rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition disabled:opacity-40"
+              variant="default"
             >
               {saving ? "Saving…" : "Create task"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

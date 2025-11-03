@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
+import { Button } from "@/components/ui/button";
 
 type SourceInfo = {
   source: string;
@@ -160,13 +161,14 @@ export default function LeadSourcePicker({
               }}
               disabled={saving}
             />
-            <button
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            <Button
               onClick={onCustomSubmit}
               disabled={saving}
+              variant="outline"
+              size="sm"
             >
               {saving ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         )}
       </div>

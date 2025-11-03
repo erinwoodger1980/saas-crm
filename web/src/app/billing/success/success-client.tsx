@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch, setJwt } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 type Status = {
   name: string;
@@ -89,12 +90,12 @@ export default function SuccessClient() {
       )}
 
       <div className="mt-6 flex gap-3">
-        <a href="/dashboard" className="rounded-xl bg-black px-5 py-3 text-white">
-          Go to Dashboard
-        </a>
-        <a href="/setup" className="rounded-xl border px-5 py-3">
-          Continue Setup
-        </a>
+        <Button asChild variant="default">
+          <a href="/dashboard">Go to Dashboard</a>
+        </Button>
+        <Button asChild variant="outline">
+          <a href="/setup">Continue Setup</a>
+        </Button>
       </div>
     </main>
   );

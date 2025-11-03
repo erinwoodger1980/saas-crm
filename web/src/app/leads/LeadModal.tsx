@@ -2284,15 +2284,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             Send Client Questionnaire
           </Button>
 
-          <button
-            className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-white"
+          <Button
+            variant="outline"
             onClick={requestSupplierPrice}
             disabled={busyTask}
             title="Ask your supplier for pricing — we’ll handle the magic behind the scenes"
           >
             <span aria-hidden="true">🧞</span>
             Request Supplier Quote
-          </button>
+          </Button>
 
           <Button
             variant="outline"

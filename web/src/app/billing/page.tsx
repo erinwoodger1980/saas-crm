@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 const FOUNDERS_CODE = process.env.NEXT_PUBLIC_FOUNDERS_PROMO_CODE || "";
 
@@ -128,17 +129,18 @@ export default function BillingPage() {
         </div>
       ) : null}
 
-      <button
+      <Button
         onClick={goCheckout}
         disabled={loading}
-        className="rounded-xl bg-black px-5 py-3 text-white disabled:opacity-60"
+        variant="default"
+        className="w-full"
       >
         {loading
           ? "Redirecting…"
           : plan === "annual"
           ? "Continue with Annual"
           : "Continue with Monthly"}
-      </button>
+      </Button>
     </main>
   );
 }

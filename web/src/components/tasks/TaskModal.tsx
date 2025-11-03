@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 type Task = {
   id: string;
@@ -179,12 +180,13 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                 ) : null}
               </div>
             </div>
-            <button
+            <Button
               onClick={onClose}
-              className="self-start rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-white"
+              variant="outline"
+              size="sm"
             >
               Close
-            </button>
+            </Button>
           </header>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -247,20 +249,20 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
               {form.completedAt ? <div>Completed {new Date(form.completedAt).toLocaleString()}</div> : null}
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
+              <Button
                 onClick={startTask}
                 disabled={saving || form.status === "IN_PROGRESS" || form.status === "DONE"}
-                className="rounded-full border border-slate-200 bg-white/90 px-5 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                variant="outline"
               >
                 Start task
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={completeTask}
                 disabled={saving || form.status === "DONE"}
-                className="rounded-full bg-gradient-to-r from-sky-500 via-indigo-500 to-rose-500 px-5 py-2 text-sm font-semibold text-white shadow-lg transition hover:from-sky-600 hover:via-indigo-600 hover:to-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                variant="default"
               >
                 Mark complete
-              </button>
+              </Button>
             </div>
           </footer>
         </div>

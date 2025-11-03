@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, API_BASE, getJwt } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 import {
   DEFAULT_DECLINE_EMAIL_TEMPLATE,
   DeclineEmailTemplate,
@@ -337,22 +338,22 @@ export default function DeclineEnquiryButton({
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
-              <button
+              <Button
                 type="button"
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                variant="outline"
                 onClick={() => setOpen(false)}
                 disabled={sending}
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                variant="default"
                 onClick={handleConfirm}
                 disabled={sending || !lead?.email}
               >
                 {sending ? "Sending…" : "Send & mark rejected"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

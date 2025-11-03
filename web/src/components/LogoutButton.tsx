@@ -1,20 +1,22 @@
 "use client";
 
 import { clearJwt } from "@/lib/api";
+import { Button } from '@/components/ui/button';
 
 export default function LogoutButton() {
   return (
-    <button
+    <Button
       onClick={() => {
         clearJwt();
         const next = encodeURIComponent(window.location.pathname + window.location.search);
         window.location.href = `/login?next=${next}`;
       }}
-      className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
+      variant="outline"
+      size="sm"
       aria-label="Log out"
       title="Log out"
     >
       Logout
-    </button>
+    </Button>
   );
 }

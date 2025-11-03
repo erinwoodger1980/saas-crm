@@ -6,6 +6,7 @@ import { getAuthIdsFromJwt } from "@/lib/auth";
 import { emit, on } from "@/lib/events";
 import { TaskModal } from "@/components/tasks/TaskModal";
 import { NewTaskModal } from "@/components/tasks/NewTaskModal";
+import { Button } from "@/components/ui/button";
 
 type Task = {
   id: string;
@@ -134,13 +135,14 @@ export function TasksDrawer({ tenantId, userId }: { tenantId: string; userId: st
 
   return (
     <>
-      <button
+      <Button
         onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-40 rounded-full bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-indigo-700"
+        className="fixed bottom-4 right-4 z-40"
+        variant="default"
         aria-label="Open My Tasks"
       >
         My Tasks
-      </button>
+      </Button>
 
       {open && (
         <div

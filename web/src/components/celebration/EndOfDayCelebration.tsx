@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from '@/components/ui/button';
+
 export function EndOfDayCelebration({ open, onClose }: { open: boolean; onClose: () => void }) {
   if (!open) return null;
 
@@ -17,8 +19,8 @@ export function EndOfDayCelebration({ open, onClose }: { open: boolean; onClose:
           <div className="text-4xl mb-2">✨ Your board is clear. Breathe.</div>
           <p className="text-gray-600 mb-6">You wrapped up everything for today—nice and tidy.</p>
           <div className="flex gap-3">
-            <button onClick={onClose} className="rounded-xl bg-gray-900 text-white px-4 py-2">Dismiss</button>
-            <button onClick={copy} className="rounded-xl border px-4 py-2">Copy & Share</button>
+            <Button onClick={onClose} variant="default">Dismiss</Button>
+            <Button onClick={copy} variant="outline">Copy & Share</Button>
           </div>
         </div>
       </div>

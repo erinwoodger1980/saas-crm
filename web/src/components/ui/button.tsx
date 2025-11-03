@@ -11,11 +11,11 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 const variantClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  default: "bg-blue-600 text-white hover:bg-blue-700",
-  secondary: "bg-slate-100 text-slate-800 hover:bg-slate-200",
-  destructive: "bg-rose-600 text-white hover:bg-rose-700",
-  outline: "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50",
-  ghost: "bg-transparent hover:bg-slate-50 text-slate-800",
+  default: "bg-blue-500 text-white hover:bg-blue-600 shadow-sm",
+  secondary: "bg-slate-200 text-slate-700 hover:bg-slate-300 shadow-sm",
+  destructive: "bg-rose-500 text-white hover:bg-rose-600 shadow-sm",
+  outline: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-sm",
+  ghost: "bg-transparent hover:bg-slate-100 text-slate-700",
 };
 
 const sizeClasses: Record<NonNullable<ButtonProps["size"]>, string> = {
@@ -31,7 +31,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <Comp
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+          "inline-flex items-center justify-center whitespace-nowrap rounded-full font-medium transition-colors disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
           variantClasses[variant],
           sizeClasses[size],
           className
