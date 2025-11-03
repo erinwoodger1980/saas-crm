@@ -251,7 +251,7 @@ r.post("/search", async (req, res) => {
       { keywords: ['lead', 'contact', 'customer'], title: 'Leads', target: '/leads' },
       { keywords: ['opportunity', 'deal', 'sale'], title: 'Opportunities', target: '/dashboard?tab=opportunities' },
       { keywords: ['task', 'todo', 'action'], title: 'Tasks', target: '/dashboard?tab=tasks' },
-      { keywords: ['setting', 'config', 'preference'], title: 'Settings', target: '/dashboard?tab=settings' },
+      { keywords: ['setting', 'config', 'preference'], title: 'Settings', target: '/settings' },
       { keywords: ['analytic', 'report', 'metric'], title: 'Analytics', target: '/dashboard?tab=analytics' },
       { keywords: ['quote', 'proposal', 'estimate'], title: 'Quotes', target: '/dashboard?tab=quotes' }
     ];
@@ -272,24 +272,122 @@ r.post("/search", async (req, res) => {
       }
     }
 
-    // If no specific results but query looks like a question, use OpenAI
-    if (results.length === 0 && !directAnswer && (query.includes('?') || query.includes('how') || query.includes('what') || query.includes('where'))) {
+    // Add specific setting shortcuts for common queries
+    const settingShortcuts = [
+      {
+        keywords: ['company logo', 'update logo', 'change logo', 'upload logo'],
+        title: 'Update Company Logo',
+        description: 'Change your company logo in settings',
+        target: '/settings'
+      },
+      {
+        keywords: ['financial year', 'year end', 'financial year end'],
+        title: 'Set Financial Year End',
+        description: 'Configure your financial year-end date',
+        target: '/settings'
+      },
+      {
+        keywords: ['email template', 'automated email', 'email automation'],
+        title: 'Email Templates',
+        description: 'Customize automated email templates',
+        target: '/settings'
+      },
+      {
+        keywords: ['questionnaire', 'customer question', 'lead form'],
+        title: 'Customer Questionnaires',
+        description: 'Set up customer information gathering forms',
+        target: '/settings'
+      },
+      {
+        keywords: ['vat number', 'vat rate', 'tax setting'],
+        title: 'VAT Configuration',
+        description: 'Configure VAT rates and registration number',
+        target: '/settings'
+      },
+      {
+        keywords: ['email integration', 'gmail setup', 'outlook setup'],
+        title: 'Email Integration',
+        description: 'Connect Gmail or Outlook for email sync',
+        target: '/settings'
+      }
+    ];
+
+    for (const setting of settingShortcuts) {
+      if (setting.keywords.some(keyword => searchQuery.includes(keyword))) {
+        results.push({
+          id: `setting-${setting.title.toLowerCase().replace(/\s+/g, '-')}`,
+          type: 'setting',
+          title: setting.title,
+          description: setting.description,
+          action: {
+            type: 'navigate' as const,
+            target: setting.target
+          },
+          score: 0.9
+        });
+      }
+    }
+
+    // Add user manual knowledge base for "how to" questions
+    const userManualKnowledge = getUserManualKnowledge();
+    const manualResponse = findManualAnswer(query, userManualKnowledge);
+    
+    if (manualResponse) {
+      directAnswer = manualResponse.answer;
+      if (manualResponse.action) {
+        suggestedAction = manualResponse.action;
+      }
+    }
+
+    // If no specific results but query looks like a question, use OpenAI with enhanced context
+    if (results.length === 0 && !directAnswer && (query.includes('?') || query.includes('how') || query.includes('what') || query.includes('where') || query.includes('when') || query.includes('why'))) {
       try {
-        const system = `You are Joinery AI, an assistant for a CRM system. The user is asking: "${query}". 
-        Provide a helpful, brief response in UK English. If the question is about CRM functionality, guide them appropriately.
-        Available sections: Dashboard, Leads, Opportunities, Tasks, Analytics, Settings, Quotes.`;
+        const systemPrompt = `You are Joinery AI, an expert assistant for a joinery/carpentry CRM system. 
+
+SYSTEM FEATURES:
+- Leads Management: Track customer enquiries through stages (New Enquiry → Info Requested → Ready to Quote → Quote Sent → Won/Lost)
+- Quote Builder: Create customer proposals, parse supplier PDFs, apply markup
+- Supplier Integration: Request quotes, track deadlines, upload supplier documents
+- Tasks & Follow-ups: Automated task creation, deadline tracking
+- Analytics: Sales performance, lead conversion, source tracking
+- Settings: Company details, financial year-end, VAT, email templates, questionnaires
+- Workshop Integration: Production tracking, job scheduling
+- Email Integration: Gmail/Outlook sync, automated lead creation
+- CSV Import: Bulk lead import with field mapping
+
+NAVIGATION PATHS:
+- Company Logo: Settings → Company → Upload Logo
+- Financial Year End: Settings → Financial → Year End Date  
+- Email Templates: Settings → Email Templates
+- Questionnaires: Settings → Questionnaires
+- Lead Import: Leads → Import CSV
+- Quote Creation: Leads → Select Lead → Move to Quote Builder
+- Supplier Quotes: Lead → Request Supplier Quote
+- Analytics: Dashboard → Analytics tab
+- Tasks: Dashboard → Tasks tab
+
+USER QUESTION: "${query}"
+
+Provide a helpful, concise response in UK English. If it's about system functionality, give specific navigation steps. If asking for a setting location, provide the exact path.`;
 
         const resp = await openai.chat.completions.create({
           model: "gpt-4o-mini",
           messages: [
-            { role: "system", content: system },
+            { role: "system", content: systemPrompt },
             { role: "user", content: query }
           ],
-          temperature: 0.3,
-          max_tokens: 150
+          temperature: 0.2,
+          max_tokens: 200
         });
 
         directAnswer = resp.choices[0]?.message?.content?.trim() ?? "I'm not sure how to help with that.";
+        
+        // Extract suggested navigation from the response
+        const navigationSuggestion = extractNavigationSuggestion(directAnswer);
+        if (navigationSuggestion) {
+          suggestedAction = navigationSuggestion;
+        }
+        
       } catch (err) {
         console.error("OpenAI error:", err);
         directAnswer = "I'm having trouble processing that question. Try searching for specific leads, opportunities, or tasks.";
@@ -340,6 +438,204 @@ function calculateRelevanceScore(query: string, fields: string[]): number {
   }
 
   return score;
+}
+
+// User manual knowledge base
+function getUserManualKnowledge() {
+  return [
+    {
+      keywords: ['company logo', 'update logo', 'change logo', 'upload logo', 'logo'],
+      question: 'How do I update my company logo?',
+      answer: 'To update your company logo, go to Settings → Company → Upload Logo. Select your image file (PNG or JPG recommended) and save changes.',
+      action: {
+        label: 'Go to Company Settings',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings'
+        }
+      }
+    },
+    {
+      keywords: ['financial year', 'year end', 'financial year end', 'set year end'],
+      question: 'How do I set my financial year end?',
+      answer: 'To set your financial year end, go to Settings → Financial → Year End Date. Select your year-end date and save changes.',
+      action: {
+        label: 'Go to Financial Settings',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings'
+        }
+      }
+    },
+    {
+      keywords: ['email templates', 'customize email', 'automated emails', 'email automation'],
+      question: 'How do I customize email templates?',
+      answer: 'To customize email templates, go to Settings → Email Templates. You can edit templates for different automated emails like follow-ups, quotes, and customer communications.',
+      action: {
+        label: 'Go to Email Settings',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings'
+        }
+      }
+    },
+    {
+      keywords: ['questionnaire', 'customer questions', 'lead questionnaire', 'information gathering'],
+      question: 'How do I set up customer questionnaires?',
+      answer: 'To create customer questionnaires, go to Settings → Questionnaires. Add questions for information gathering, set required vs optional fields, and save your template.',
+      action: {
+        label: 'Go to Questionnaire Settings',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings'
+        }
+      }
+    },
+    {
+      keywords: ['import leads', 'csv import', 'bulk import', 'upload leads', 'spreadsheet'],
+      question: 'How do I import leads from a CSV file?',
+      answer: 'To import leads, go to Leads → Import CSV. Upload your CSV file, map columns to lead fields, and import leads in bulk.',
+      action: {
+        label: 'Go to Leads',
+        action: {
+          type: 'navigate' as const,
+          target: '/leads'
+        }
+      }
+    },
+    {
+      keywords: ['create quote', 'quote builder', 'customer proposal', 'estimate'],
+      question: 'How do I create a quote for a customer?',
+      answer: 'To create a quote, go to Leads → Select your lead → Move to Quote Builder. Add line items, set markup, and generate a PDF proposal.',
+      action: {
+        label: 'Go to Leads',
+        action: {
+          type: 'navigate' as const,
+          target: '/leads'
+        }
+      }
+    },
+    {
+      keywords: ['supplier quote', 'supplier pdf', 'parse pdf', 'extract pricing'],
+      question: 'How do I parse supplier PDF quotes?',
+      answer: 'Upload supplier PDFs in the Quote Builder, then click "Parse supplier PDFs" to automatically extract line items and pricing.',
+      action: {
+        label: 'Learn More About Quotes',
+        action: {
+          type: 'navigate' as const,
+          target: '/dashboard?tab=quotes'
+        }
+      }
+    },
+    {
+      keywords: ['vat number', 'vat rate', 'tax settings', 'vat configuration'],
+      question: 'How do I set up VAT?',
+      answer: 'To configure VAT, go to Settings → Financial. Set your VAT rate (usually 20% in UK), add your VAT registration number, and configure display preferences.',
+      action: {
+        label: 'Go to Financial Settings',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings'
+        }
+      }
+    },
+    {
+      keywords: ['lead stages', 'lead status', 'lead pipeline', 'lead management'],
+      question: 'What are the different lead stages?',
+      answer: 'Lead stages are: New Enquiry → Info Requested → Ready to Quote → Quote Sent → Won/Lost. You can also mark leads as Disqualified or Rejected.',
+      action: {
+        label: 'View Leads',
+        action: {
+          type: 'navigate' as const,
+          target: '/leads'
+        }
+      }
+    },
+    {
+      keywords: ['email integration', 'gmail setup', 'outlook setup', 'email sync'],
+      question: 'How do I connect my email?',
+      answer: 'To connect email, go to Settings → Email Integration. Connect your Gmail or Outlook account and authorize access for email tracking and automatic lead creation.',
+      action: {
+        label: 'Go to Email Settings',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings'
+        }
+      }
+    },
+    {
+      keywords: ['analytics', 'reports', 'sales performance', 'conversion rates'],
+      question: 'How do I view my business analytics?',
+      answer: 'View analytics on your Dashboard or go to the Analytics section. Track sales pipeline, lead conversion, source performance, and revenue metrics.',
+      action: {
+        label: 'View Analytics',
+        action: {
+          type: 'navigate' as const,
+          target: '/dashboard?tab=analytics'
+        }
+      }
+    },
+    {
+      keywords: ['tasks', 'follow up', 'todo', 'reminders'],
+      question: 'How do I manage tasks and follow-ups?',
+      answer: 'Tasks are automatically created for lead actions, or you can create manual tasks. View and manage them on your Dashboard → Tasks or in the dedicated Tasks section.',
+      action: {
+        label: 'View Tasks',
+        action: {
+          type: 'navigate' as const,
+          target: '/dashboard?tab=tasks'
+        }
+      }
+    }
+  ];
+}
+
+// Find matching answer from user manual
+function findManualAnswer(query: string, knowledge: any[]) {
+  const queryLower = query.toLowerCase();
+  
+  for (const item of knowledge) {
+    for (const keyword of item.keywords) {
+      if (queryLower.includes(keyword.toLowerCase())) {
+        return {
+          answer: item.answer,
+          action: item.action
+        };
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Extract navigation suggestions from AI responses
+function extractNavigationSuggestion(response: string) {
+  const navigationPatterns = [
+    { pattern: /settings.*company/i, target: '/settings', label: 'Go to Settings' },
+    { pattern: /settings.*financial/i, target: '/settings', label: 'Go to Financial Settings' },
+    { pattern: /settings.*email/i, target: '/settings', label: 'Go to Email Settings' },
+    { pattern: /settings/i, target: '/settings', label: 'Go to Settings' },
+    { pattern: /leads.*import|import.*leads/i, target: '/leads', label: 'Go to Leads' },
+    { pattern: /leads/i, target: '/leads', label: 'Go to Leads' },
+    { pattern: /dashboard.*analytics|analytics/i, target: '/dashboard?tab=analytics', label: 'View Analytics' },
+    { pattern: /dashboard.*tasks|tasks/i, target: '/dashboard?tab=tasks', label: 'View Tasks' },
+    { pattern: /quote.*builder|quotes/i, target: '/dashboard?tab=quotes', label: 'View Quotes' },
+    { pattern: /dashboard/i, target: '/dashboard', label: 'Go to Dashboard' }
+  ];
+  
+  for (const pattern of navigationPatterns) {
+    if (pattern.pattern.test(response)) {
+      return {
+        label: pattern.label,
+        action: {
+          type: 'navigate' as const,
+          target: pattern.target
+        }
+      };
+    }
+  }
+  
+  return null;
 }
 
 r.post("/chat", async (req, res) => {
