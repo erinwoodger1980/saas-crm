@@ -249,7 +249,7 @@ export default function LeadModal({
     
     try {
       setSaving(true);
-      await apiFetch(`/api/leads/${lead.id}`, {
+      await apiFetch(`/leads/${lead.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify(patch),
@@ -306,7 +306,7 @@ export default function LeadModal({
       setLoading(true);
       try {
         // Load lead details
-        const leadData = await apiFetch<Lead>(`/api/leads/${leadPreview.id}`, {
+        const leadData = await apiFetch<Lead>(`/leads/${leadPreview.id}`, {
           headers: authHeaders,
         });
         
@@ -317,21 +317,21 @@ export default function LeadModal({
         setDescInput(leadData.description || "");
 
         // Load tasks
-        const tasksData = await apiFetch<Task[]>(`/api/tasks?relatedType=LEAD&relatedId=${leadPreview.id}`, {
+        const tasksData = await apiFetch<Task[]>(`/tasks?relatedType=LEAD&relatedId=${leadPreview.id}`, {
           headers: authHeaders,
         });
         
         setTasks(tasksData || []);
 
-        // Load email threads
-        const emailData = await apiFetch<EmailThread[]>(`/api/leads/${leadPreview.id}/emails`, {
-          headers: authHeaders,
-        });
-        
-        setEmailThreads(emailData || []);
+        // Load email threads (endpoint doesn't exist yet)
+        // const emailData = await apiFetch<EmailThread[]>(`/leads/${leadPreview.id}/emails`, {
+        //   headers: authHeaders,
+        // });
+        // setEmailThreads(emailData || []);
+        setEmailThreads([]); // Set empty array for now
 
         // Load settings
-        const settingsData = await apiFetch<TenantSettings>("/api/settings", {
+        const settingsData = await apiFetch<TenantSettings>("/tenant/settings", {
           headers: authHeaders,
         });
         
@@ -357,13 +357,9 @@ export default function LeadModal({
 
     setBusyTask(true);
     try {
-      await apiFetch(`/api/leads/${lead.id}/send-questionnaire`, {
+      await apiFetch(`/leads/${lead.id}/request-info`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({
-          emailSubject: settings?.questionnaireEmailSubject || DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-          emailBody: settings?.questionnaireEmailBody || DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-        }),
       });
 
       toast("Questionnaire sent successfully");
@@ -380,7 +376,7 @@ export default function LeadModal({
   const requestSupplierQuote = async () => {
     setBusyTask(true);
     try {
-      await apiFetch(`/api/leads/${lead?.id}/supplier-request`, {
+      await apiFetch(`/leads/${lead?.id}/supplier-request`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
       });
@@ -409,7 +405,7 @@ export default function LeadModal({
     }
 
     try {
-      const newTask = await apiFetch<Task>("/api/tasks", {
+      const newTask = await apiFetch<Task>("/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
@@ -442,7 +438,7 @@ export default function LeadModal({
     const newStatus = currentStatus === "DONE" ? "OPEN" : "DONE";
     
     try {
-      await apiFetch(`/api/tasks/${taskId}`, {
+      await apiFetch(`/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ status: newStatus }),
