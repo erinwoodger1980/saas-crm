@@ -1308,6 +1308,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       "items",
       "uploads",
       "aiFeedback",
+      "tags",
+      "threadId",
+      "aiDecision",
     ]);
 
     const humanizeKey = (key: string): string => {
@@ -1950,15 +1953,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             disabled={saving}
           >
             Open Quote Builder
-          </button>
-
-          <button
-            className="ml-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-200"
-            onClick={requestSupplierPrice}
-            title="Ask your supplier for pricing — we’ll send a concise RFQ or open your mail client"
-            disabled={busyTask}
-          >
-            Request supplier quote
           </button>
 
           <button
