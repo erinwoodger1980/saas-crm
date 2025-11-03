@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AUTH_COOKIE_NAME = "jid";
+const AUTH_COOKIE_NAME = "jauth"; // Changed from "jid" to "jauth" to match API server expectations
 const APP_HOME_PATH = "/dashboard";
 
 const PUBLIC_EXACT = new Set([
