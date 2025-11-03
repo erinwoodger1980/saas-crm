@@ -265,6 +265,7 @@ export default function OpportunitiesPage() {
           }}
           onUpdated={load}
           initialStage="follow-up"
+          showFollowUp={true}
         />
       )}
     </>
