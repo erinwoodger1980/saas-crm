@@ -724,7 +724,7 @@ export default function OpportunityModal({
               </div>
             )}
 
-            {/* Quick actions */}
+            {/* Status actions */}
             <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3">
               <span className="text-xs text-slate-600">Status:</span>
               <Button
@@ -751,127 +751,15 @@ export default function OpportunityModal({
               >
                 {statusUpdating === "WON" ? "Marking…" : "Mark Won 🎉"}
               </Button>
-              <div className="ml-auto">
-                <Button
-                  size="sm"
-                  variant={autoMode ? "secondary" : "outline"}
-                  onClick={scheduleNext}
-                  disabled={schedulingNext}
-                >
-                  {schedulingNext ? "Planning…" : autoMode ? "Auto-scheduled ✓" : "Auto-schedule next"}
-                </Button>
-              </div>
             </div>
 
-            {/* ML-powered summary */}
-            <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <FollowupStat icon="📅" label="Next AI follow-up" value={nextStatValue} hint={nextStatHint} />
-              <FollowupStat
-                icon="📨"
-                label="Last send"
-                value={sinceStatValue}
-                hint={sinceStatHint}
-              />
-              <FollowupStat
-                icon="⏱️"
-                label="Average spacing"
-                value={avgStatValue}
-                hint={avgStatHint}
-              />
-              <FollowupStat
-                icon="🧠"
-                label="ML sample size"
-                value={sampleStatValue}
-                hint={sampleStatHint}
-              />
-            </div>
-
-            {/* Two column layout on md+ */}
+            {/* Two column layout */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Compose panel */}
-              <section className="rounded-xl border p-4 bg-white/90 shadow-[0_10px_30px_-22px_rgba(2,6,23,0.45)]">
-                <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                  <span className="font-semibold">AI suggestion</span>
-                  {suggest?.variant && (
-                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600">
-                      Variant {suggest.variant}
-                    </span>
-                  )}
-                  {suggest?.learning?.sampleSize ? (
-                    <span className="text-[11px] text-slate-500">
-                      Learning from {suggest.learning.sampleSize} recent follow-ups
-                    </span>
-                  ) : null}
+              <section className="rounded-xl border p-4 bg-white/90 shadow-sm">
+                <div className="mb-3 text-sm font-semibold text-slate-900">
+                  Send Follow-up Email
                 </div>
-
-                {suggest?.learning && (
-                  <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-inner">
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
-                        ML learning
-                      </Badge>
-                      {sampleSize ? (
-                        <span className="text-[11px] text-slate-500">
-                          Trained on {sampleSize.toLocaleString()} recent follow-ups
-                        </span>
-                      ) : null}
-                      {suggest.learning.lastUpdatedISO ? (
-                        <span className="text-[11px] text-slate-400">
-                          Updated {new Date(suggest.learning.lastUpdatedISO).toLocaleString()}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          Messaging angle
-                        </div>
-                        <div className="text-sm text-slate-800">
-                          {suggest.learning.summary || "Warmly reference the quote and invite the next step."}
-                        </div>
-                        {suggest.rationale ? (
-                          <div className="text-[11px] text-slate-600">{suggest.rationale}</div>
-                        ) : null}
-                      </div>
-                      <div className="space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          Cadence insights
-                        </div>
-                        <div className="text-sm text-slate-800">
-                          {typeof emailDelayDays === "number"
-                            ? `Emails perform best after ${formatDaysLabelLocal(emailDelayDays)}.`
-                            : "AI will firm up timing once we gather a few sends."}
-                        </div>
-                        {topVariant ? (
-                          <div className="text-[11px] text-slate-600">
-                            Variant {topVariant.variant} leads with {percentLabel(topVariant.replyRate)} replies and {percentLabel(topVariant.conversionRate)} wins.
-                          </div>
-                        ) : null}
-                        {suggest.learning.call?.sampleSize ? (
-                          <div className="text-[11px] text-slate-600">
-                            Phone nudges land {callAvgLabel} after send · {percentLabel(suggest.learning.call.conversionRate ?? undefined)} conversions.
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                    {suggest.learning.variants && suggest.learning.variants.length > 0 ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {suggest.learning.variants.slice(0, 3).map((stat) => (
-                          <span
-                            key={stat.variant}
-                            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] text-slate-600"
-                          >
-                            Variant {stat.variant}: {percentLabel(stat.replyRate)} replies · {percentLabel(stat.conversionRate)} wins ·
-                            {stat.avgDelayDays != null ? ` ${formatDaysLabelLocal(stat.avgDelayDays)} cadence` : " cadence learning"}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                    <div className="mt-3 text-[10px] text-slate-500">
-                      Learning across the JoineryAI network to keep your follow-ups natural and effective.
-                    </div>
-                  </div>
-                )}
 
                 <label className="space-y-1.5 block">
                   <div className="text-xs text-slate-600">Subject</div>
@@ -879,94 +767,36 @@ export default function OpportunityModal({
                     className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2"
                     value={draftSubject}
                     onChange={(e) => setDraftSubject(e.target.value)}
+                    placeholder="Follow-up on your quote"
                   />
                 </label>
 
                 <label className="space-y-1.5 block mt-3">
-                  <div className="text-xs text-slate-600">Body</div>
+                  <div className="text-xs text-slate-600">Message</div>
                   <textarea
                     className="w-full rounded-md border bg-white p-2 text-sm outline-none focus:ring-2 min-h-[160px]"
                     value={draftBody}
                     onChange={(e) => setDraftBody(e.target.value)}
+                    placeholder="Hi {leadName},
+
+I wanted to follow up on the quote I sent. Do you have any questions about the proposal?
+
+Let me know if you'd like to discuss next steps.
+
+Best regards"
                   />
                 </label>
 
-                {typeof emailDelayDays === "number" && Number.isFinite(emailDelayDays) && (
-                  <div className="mt-2 text-[11px] text-slate-500">
-                    Suggested rhythm: next follow-up in <b>{formatDaysLabelLocal(emailDelayDays)}</b>.
-                  </div>
-                )}
-
                 <div className="mt-3 flex gap-2">
                   <Button variant="secondary" onClick={() => load()} disabled={loading}>
-                    Refresh suggestion
+                    {loading ? "Loading..." : "Generate AI suggestion"}
                   </Button>
                   <Button onClick={send} disabled={sending || !draftSubject || !draftBody}>
                     {sending ? "Sending…" : "Send follow-up"}
                   </Button>
                 </div>
 
-                {phonePlan && (
-                  <div className="mt-4 space-y-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs text-blue-900">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-semibold text-blue-900">Recommended phone follow-up</span>
-                      {phonePlan.confidence && (
-                        <span className="rounded-full border border-blue-300 bg-white/70 px-2 py-0.5 text-[10px] text-blue-700 capitalize">
-                          {phonePlan.confidence === "learned" ? "AI learned" : phonePlan.confidence}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-sm font-medium text-blue-900">
-                      {upcomingCall
-                        ? `Scheduled for ${formatDateTime(upcomingCall.scheduledFor) || "soon"}`
-                        : phonePlan.scheduledForISO
-                        ? `Suggested for ${formatDateTime(phonePlan.scheduledForISO)}`
-                        : `Suggested in about ${phonePlan.callDelayDays} day${phonePlan.callDelayDays === 1 ? "" : "s"}`}
-                    </div>
-                    {phonePlan.reason && <div className="text-[11px]">{phonePlan.reason}</div>}
-                    {phonePlan.script && (
-                      <pre className="whitespace-pre-wrap rounded-md border border-blue-100 bg-white/70 p-2 text-[11px] text-blue-900">
-                        {phonePlan.script}
-                      </pre>
-                    )}
-                    {phonePlan.confidence && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] text-blue-800">
-                        {phonePlan.confidence === "learned"
-                          ? callSampleSize
-                            ? `Learned from ${callSampleSize} call${callSampleSize === 1 ? "" : "s"}`
-                            : "Learning from recent calls"
-                          : "Baseline timing while we learn"}
-                      </span>
-                    )}
-                    <div className="flex flex-wrap items-center gap-3">
-                      <label className="inline-flex items-center gap-2 text-blue-900/80">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={Boolean(upcomingCall) || autoScheduleCall}
-                          onChange={(e) => setAutoScheduleCall(e.target.checked)}
-                          disabled={Boolean(upcomingCall)}
-                        />
-                        <span>Auto-schedule after sending</span>
-                      </label>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => scheduleCall(false, phonePlan)}
-                        disabled={schedulingCall || Boolean(upcomingCall)}
-                      >
-                        {upcomingCall ? "Call booked" : schedulingCall ? "Scheduling…" : "Schedule now"}
-                      </Button>
-                    </div>
-                    {upcomingCall && (
-                      <div className="text-[10px] text-blue-800">
-                        Next call booked for {formatDateTime(upcomingCall.scheduledFor) || "soon"}.
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Live preview */}
+                {/* Simple preview */}
                 {(draftSubject || draftBody) && (
                   <div className="mt-4 rounded-lg border bg-slate-50 p-3">
                     <div className="text-[11px] text-slate-500 mb-1">Preview</div>
@@ -978,9 +808,9 @@ export default function OpportunityModal({
 
               {/* History panel */}
               <section className="rounded-xl border p-4 bg-white">
-                <div className="mb-2 text-xs font-semibold text-slate-600">History</div>
+                <div className="mb-2 text-sm font-semibold text-slate-900">Follow-up History</div>
                 {history.length === 0 ? (
-                  <div className="text-xs text-slate-500">No follow-ups sent yet.</div>
+                  <div className="text-xs text-slate-500 py-4 text-center">No follow-ups sent yet.</div>
                 ) : (
                   <div className="space-y-3 max-h-[46vh] overflow-auto pr-1">
                     {history.map((h) => {
@@ -990,51 +820,26 @@ export default function OpportunityModal({
                       const sentLabel = h.sentAt ? formatDateTime(h.sentAt) : null;
                       const scheduledLabel = h.scheduledFor ? formatDateTime(h.scheduledFor) : null;
                       const whenLabel = sentLabel || (scheduledLabel ? `Scheduled ${scheduledLabel}` : "Unknown");
-                      const autoScheduledEmail = !isPhone && !sentLabel && Boolean(scheduledLabel);
 
                       return (
                         <div key={h.id} className="rounded-md border p-3 hover:bg-slate-50">
                           <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                             <span>{whenLabel}</span>
                             <span className="rounded-full border bg-white px-2 py-0.5">
-                              {isPhone ? "Phone" : `Variant ${h.variant}`}
+                              {isPhone ? "📞 Phone" : "📧 Email"}
                             </span>
-                            {autoScheduledEmail ? (
-                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
-                                AI auto
-                              </span>
-                            ) : null}
-                            {!isPhone && h.opened && <span className="text-green-700">· Opened</span>}
-                            {!isPhone && h.replied && <span className="text-blue-700">· Replied</span>}
-                            {!isPhone && h.converted && <span className="text-emerald-700">· Converted</span>}
-                            {isPhone && sentLabel && (
-                              <span className="text-slate-400">booked via AI {sentLabel}</span>
-                            )}
+                            {!isPhone && h.opened && <span className="text-green-700">• Opened</span>}
+                            {!isPhone && h.replied && <span className="text-blue-700">• Replied</span>}
+                            {!isPhone && h.converted && <span className="text-emerald-700">• Converted</span>}
                           </div>
                           <div className="text-sm font-medium">
                             {isPhone ? h.subject || "Phone follow-up" : h.subject}
                           </div>
-                          {scheduledLabel && (
-                            <div className="text-[11px] text-slate-500">
-                              {sentLabel ? `Scheduled ${scheduledLabel}` : `Scheduled for ${scheduledLabel}`}
-                            </div>
-                          )}
                           {h.body && (
-                            <pre className="mt-1 whitespace-pre-wrap rounded-md bg-white/80 p-2 text-xs text-slate-700">
+                            <div className="mt-1 rounded-md bg-slate-50 p-2 text-xs text-slate-700 line-clamp-3">
                               {h.body}
-                            </pre>
-                          )}
-                          {meta.reason && (
-                            <div className="mt-1 text-[11px] text-slate-500">Reason: {meta.reason}</div>
-                          )}
-                          {meta.callDelayDays !== undefined && (
-                            <div className="text-[10px] text-slate-400">
-                              Delay: {meta.callDelayDays} day{meta.callDelayDays === 1 ? "" : "s"}
                             </div>
                           )}
-                          {autoScheduledEmail ? (
-                            <div className="mt-1 text-[10px] text-emerald-700">AI will send this automatically.</div>
-                          ) : null}
                         </div>
                       );
                     })}
