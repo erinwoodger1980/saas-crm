@@ -59,6 +59,45 @@ type MlStatusSummary = {
   };
 };
 
+type FollowupSummaryResponse = {
+  ok: boolean;
+  days: number;
+  totals: {
+    sent: number;
+    openRate: number | null;
+    replyRate: number | null;
+    conversionRate: number | null;
+  };
+  variants: Array<{
+    key: string;
+    label: string;
+    sent: number;
+    openRate: number | null;
+    replyRate: number | null;
+    conversionRate: number | null;
+  }>;
+  winner: string | null;
+  rows: Array<{
+    delayDays: number | null;
+    sent: number;
+    openRate: number | null;
+    replyRate: number | null;
+    conversionRate: number | null;
+  }>;
+};
+
+type MarketingRoiRow = {
+  source: string;
+  leads: number;
+  wins: number;
+  avgJobValue: number | null;
+  spend: number;
+  followupCost: number;
+  costPerWin: number | null;
+  conversionRate: number | null;
+  roi: number | null;
+};
+
 export default function AITrainingPage() {
   const [provider, setProvider] = useState<Provider>("gmail");
   const [gmailConn, setGmailConn] = useState<{ connected: boolean; address?: string | null }>({ connected: false });
@@ -69,6 +108,13 @@ export default function AITrainingPage() {
   const [limit, setLimit] = useState<number>(50);
   const [error, setError] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState<boolean>(false);
+  const [followupSummary, setFollowupSummary] = useState<FollowupSummaryResponse | null>(null);
+  const [followupLoading, setFollowupLoading] = useState<boolean>(false);
+  const [followupError, setFollowupError] = useState<string | null>(null);
+  const [marketingRoi, setMarketingRoi] = useState<MarketingRoiRow[] | null>(null);
+  const [marketingRoiLoading, setMarketingRoiLoading] = useState<boolean>(false);
+  const [marketingRoiError, setMarketingRoiError] = useState<string | null>(null);
+  const [roiPeriodLabel, setRoiPeriodLabel] = useState<string>("");
 
   useEffect(() => {
     (async () => {
@@ -93,6 +139,7 @@ export default function AITrainingPage() {
         // Load samples
         await refreshSamples();
         await loadStatusSummary();
+        await Promise.all([loadFollowupSummary(28), loadMarketingRoi()]);
       } catch (e: any) {
         setError(e?.message || "Failed to load AI training info");
       }
@@ -121,6 +168,40 @@ export default function AITrainingPage() {
     }
   }
 
+  async function loadFollowupSummary(days = 28) {
+    try {
+      setFollowupLoading(true);
+      setFollowupError(null);
+      const summary = await apiFetch<FollowupSummaryResponse>(`/followups/summary?days=${days}`);
+      setFollowupSummary(summary);
+    } catch (e: any) {
+      setFollowupError(e?.message || "Failed to load follow-up summary");
+    } finally {
+      setFollowupLoading(false);
+    }
+  }
+
+  async function loadMarketingRoi() {
+    try {
+      setMarketingRoiLoading(true);
+      setMarketingRoiError(null);
+      const now = new Date();
+      const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      setRoiPeriodLabel(
+        now.toLocaleString(undefined, {
+          month: "short",
+          year: "numeric",
+        }),
+      );
+      const rows = await apiFetch<MarketingRoiRow[]>(`/marketing/roi?period=${encodeURIComponent(period)}`);
+      setMarketingRoi(rows);
+    } catch (e: any) {
+      setMarketingRoiError(e?.message || "Failed to load ROI data");
+    } finally {
+      setMarketingRoiLoading(false);
+    }
+  }
+
   async function collectAndTrain() {
     setBusy(true);
     setError(null);
@@ -132,6 +213,7 @@ export default function AITrainingPage() {
         });
         await refreshSamples();
         await loadStatusSummary();
+        await Promise.all([loadFollowupSummary(), loadMarketingRoi()]);
         alert(`Collected ${r.collected} attachments, saved ${r.saved}. ML: ${r?.ml?.status || "ok"}`);
       } else if (provider === "ms365") {
         const r = await apiFetch<any>("/internal/ml/collect-train-save-ms365", {
@@ -140,6 +222,7 @@ export default function AITrainingPage() {
         });
         await refreshSamples();
         await loadStatusSummary();
+        await Promise.all([loadFollowupSummary(), loadMarketingRoi()]);
         alert(`Collected ${r.collected} attachments, saved ${r.saved}. ML: ${r?.ml?.status || "ok"}`);
       }
     } catch (e: any) {
@@ -153,6 +236,41 @@ export default function AITrainingPage() {
     if (provider === "gmail") return gmailConn.connected ? `Connected${gmailConn.address ? `: ${gmailConn.address}` : ""}` : "Not connected";
     return ms365Enabled ? "Enabled in inbox settings" : "Disabled";
   }, [provider, gmailConn.connected, gmailConn.address, ms365Enabled]);
+
+  const variantHighlights = useMemo(() => {
+    if (!followupSummary || followupSummary.variants.length === 0) return [];
+    const byKey = new Map<string, (typeof followupSummary.variants)[number]>();
+    for (const variant of followupSummary.variants) {
+      byKey.set(variant.key.toUpperCase(), variant);
+    }
+    const picks: (typeof followupSummary.variants)[number][] = [];
+    const variantA = byKey.get("A");
+    const variantB = byKey.get("B");
+    if (variantA) picks.push(variantA);
+    if (variantB) picks.push(variantB);
+    if (picks.length < 2) {
+      for (const variant of followupSummary.variants) {
+        if (picks.includes(variant)) continue;
+        picks.push(variant);
+        if (picks.length === 2) break;
+      }
+    }
+    return picks;
+  }, [followupSummary]);
+
+  const formatPercent = (value: number | null | undefined) => {
+    if (value == null || Number.isNaN(value)) return "–";
+    return `${(value * 100).toFixed(1)}%`;
+  };
+
+  const formatCurrency = (value: number | null | undefined) => {
+    if (value == null || Number.isNaN(value)) return "–";
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: "GBP",
+      maximumFractionDigits: value >= 1000 ? 0 : 1,
+    }).format(value);
+  };
 
   const formatMetricValue = (metric?: { key: string; value: number | null } | null) => {
     if (!metric || metric.value == null) return "–";
@@ -203,6 +321,162 @@ export default function AITrainingPage() {
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
       ) : null}
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border bg-white/90 p-5 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-800">
+              Follow-ups ({followupSummary?.days ?? 28}d)
+            </h2>
+            <Button variant="outline" size="sm" onClick={() => loadFollowupSummary()} disabled={followupLoading}>
+              {followupLoading ? "Loading…" : "Refresh"}
+            </Button>
+          </div>
+          {followupLoading && !followupSummary ? (
+            <p className="text-sm text-slate-500">Loading…</p>
+          ) : followupError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-600">{followupError}</div>
+          ) : followupSummary ? (
+            <div className="space-y-4 text-sm text-slate-700">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-lg border bg-white/80 p-3">
+                  <div className="text-xs text-slate-500">Sent</div>
+                  <div className="text-lg font-semibold text-slate-800">{followupSummary.totals.sent}</div>
+                </div>
+                <div className="rounded-lg border bg-white/80 p-3">
+                  <div className="text-xs text-slate-500">Open rate</div>
+                  <div className="text-lg font-semibold text-slate-800">
+                    {formatPercent(followupSummary.totals.openRate)}
+                  </div>
+                </div>
+                <div className="rounded-lg border bg-white/80 p-3">
+                  <div className="text-xs text-slate-500">Reply rate</div>
+                  <div className="text-lg font-semibold text-slate-800">
+                    {formatPercent(followupSummary.totals.replyRate)}
+                  </div>
+                </div>
+                <div className="rounded-lg border bg-white/80 p-3">
+                  <div className="text-xs text-slate-500">Conversion</div>
+                  <div className="text-lg font-semibold text-slate-800">
+                    {formatPercent(followupSummary.totals.conversionRate)}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border bg-white/70 p-3">
+                <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-500">
+                  <span>A vs B</span>
+                  {followupSummary.winner ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      Winner {followupSummary.winner}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {variantHighlights.length === 0 ? (
+                    <p className="text-xs text-slate-500">No active variants.</p>
+                  ) : (
+                    variantHighlights.map((variant) => (
+                      <div
+                        key={variant.key}
+                        className={`rounded-lg border bg-white/80 p-3 ${
+                          followupSummary.winner && followupSummary.winner === variant.key
+                            ? "border-emerald-400 shadow-sm"
+                            : "border-slate-200"
+                        }`}
+                      >
+                        <div className="text-xs font-semibold uppercase text-slate-500">
+                          {variant.label || variant.key}
+                        </div>
+                        <div className="mt-1 text-lg font-semibold text-slate-800">
+                          {formatPercent(variant.conversionRate)}
+                        </div>
+                        <div className="text-xs text-slate-500">Conversion</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              {followupSummary.rows.length ? (
+                <div className="overflow-auto">
+                  <table className="min-w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b text-slate-500">
+                        <th className="px-3 py-2 font-medium">Delay</th>
+                        <th className="px-3 py-2 font-medium">Sent</th>
+                        <th className="px-3 py-2 font-medium">Open %</th>
+                        <th className="px-3 py-2 font-medium">Reply %</th>
+                        <th className="px-3 py-2 font-medium">Conversion %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {followupSummary.rows.map((row, idx) => (
+                        <tr key={`${row.delayDays ?? "none"}-${idx}`} className="border-b last:border-b-0">
+                          <td className="px-3 py-2 text-[13px] text-slate-600">
+                            {row.delayDays != null ? `${row.delayDays} day${row.delayDays === 1 ? "" : "s"}` : "–"}
+                          </td>
+                          <td className="px-3 py-2 text-[13px] text-slate-600">{row.sent}</td>
+                          <td className="px-3 py-2 text-[13px] text-slate-600">{formatPercent(row.openRate)}</td>
+                          <td className="px-3 py-2 text-[13px] text-slate-600">{formatPercent(row.replyRate)}</td>
+                          <td className="px-3 py-2 text-[13px] text-slate-600">{formatPercent(row.conversionRate)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">No follow-ups in this window.</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">No follow-ups yet.</p>
+          )}
+        </div>
+        <div className="rounded-2xl border bg-white/90 p-5 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-800">Source ROI ({roiPeriodLabel || "current"})</h2>
+            <Button variant="outline" size="sm" onClick={() => loadMarketingRoi()} disabled={marketingRoiLoading}>
+              {marketingRoiLoading ? "Loading…" : "Refresh"}
+            </Button>
+          </div>
+          {marketingRoiLoading && !marketingRoi ? (
+            <p className="text-sm text-slate-500">Loading…</p>
+          ) : marketingRoiError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-600">{marketingRoiError}</div>
+          ) : marketingRoi && marketingRoi.length ? (
+            <div className="overflow-auto">
+              <table className="min-w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b text-slate-500">
+                    <th className="px-3 py-2 font-medium">Source</th>
+                    <th className="px-3 py-2 font-medium">Leads</th>
+                    <th className="px-3 py-2 font-medium">Wins</th>
+                    <th className="px-3 py-2 font-medium">Spend</th>
+                    <th className="px-3 py-2 font-medium">Cost / Win</th>
+                    <th className="px-3 py-2 font-medium">ROI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {marketingRoi.map((row, idx) => {
+                    const totalSpend = (row.spend || 0) + (row.followupCost || 0);
+                    return (
+                      <tr key={`${row.source}-${idx}`} className="border-b last:border-b-0">
+                        <td className="px-3 py-2 text-[13px] text-slate-600">{row.source}</td>
+                        <td className="px-3 py-2 text-[13px] text-slate-600">{row.leads}</td>
+                        <td className="px-3 py-2 text-[13px] text-slate-600">{row.wins}</td>
+                        <td className="px-3 py-2 text-[13px] text-slate-600">{formatCurrency(totalSpend)}</td>
+                        <td className="px-3 py-2 text-[13px] text-slate-600">{formatCurrency(row.costPerWin)}</td>
+                        <td className="px-3 py-2 text-[13px] text-slate-600">{formatPercent(row.roi)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">No ROI data for this period.</p>
+          )}
+        </div>
+      </section>
 
       <section className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border bg-white/90 p-4 shadow-sm">
