@@ -73,8 +73,12 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
       
       // Auto-map fields where column names match
       const autoMapping: Record<string, string> = {};
-      result.headers.forEach(header => {
+      result.headers.forEach(headerRaw => {
+        const header = typeof headerRaw === 'string' ? headerRaw : headerRaw == null ? '' : String(headerRaw);
         const normalizedHeader = header.toLowerCase().trim();
+        if (!normalizedHeader) {
+          return;
+        }
         
         // First check exact matches (case-insensitive)
         let matchingField = result.availableFields.find(field => {
