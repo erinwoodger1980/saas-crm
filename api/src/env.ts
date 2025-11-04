@@ -12,6 +12,45 @@ function requireEnv(name: string): string {
 
 console.log('🔧 Loading environment configuration...');
 
+const resolvedMlUrl = (
+  process.env.ML_URL?.trim() ||
+  process.env.ML_PARSER_URL?.trim() ||
+  process.env.NEXT_PUBLIC_ML_URL?.trim() ||
+  ""
+);
+
+let mlUrlHost = "";
+let isProdMlHost = true;
+let mlWarning: string | null = null;
+
+if (resolvedMlUrl) {
+  try {
+    const parsed = new URL(resolvedMlUrl);
+    mlUrlHost = parsed.host;
+    const loweredHost = mlUrlHost.toLowerCase();
+    if (/(local|test|stage)/.test(loweredHost)) {
+      isProdMlHost = false;
+      mlWarning = `ML host '${mlUrlHost}' appears non-production`;
+      console.error("Non-prod ML URL");
+    }
+  } catch (err) {
+    isProdMlHost = false;
+    mlWarning = `Invalid ML URL configured: '${resolvedMlUrl}'`;
+    console.error("[ml] Failed to parse ML URL", err);
+  }
+} else {
+  mlWarning = "ML URL not configured";
+  isProdMlHost = false;
+  console.warn("[ml] ML URL not configured");
+}
+
+export const mlBootstrap = {
+  resolvedMlUrl,
+  mlUrlHost,
+  isProdMlHost,
+  warning: mlWarning,
+} as const;
+
 const rawJwtSecret =
   (process.env.APP_JWT_SECRET && process.env.APP_JWT_SECRET.trim()) ||
   (process.env.JWT_SECRET && process.env.JWT_SECRET.trim()) ||
