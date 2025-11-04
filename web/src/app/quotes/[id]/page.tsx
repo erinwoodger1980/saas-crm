@@ -25,6 +25,7 @@ export default function QuoteBuilderPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [quote, setQuote] = useState<any | null>(null);
   const [questionnaire, setQuestionnaire] = useState<Array<{ key: string; label: string }>>([]);
@@ -49,7 +50,15 @@ export default function QuoteBuilderPage() {
         apiFetch<any>(`/quotes/${id}`),
         apiFetch<any>(`/tenant/settings`),
       ]);
-  setQuote(q);
+      setQuote(q);
+      const lp = (q?.meta as any)?.lastParse;
+      if (lp?.message) {
+        setNotice(lp.message);
+      } else if (Array.isArray(lp?.warnings) && lp.warnings.length > 0) {
+        setNotice(lp.warnings.join(" "));
+      } else {
+        setNotice(null);
+      }
       // Normalize questionnaire to only client-facing fields
       const normalizeFields = (cfg: any): Array<{ key: string; label: string }> => {
         if (!cfg) return [];
@@ -122,6 +131,7 @@ export default function QuoteBuilderPage() {
   async function runParse() {
     setParsing(true);
     setError(null);
+    setNotice(null);
     try {
       const out = await apiFetch<any>(`/quotes/${id}/parse`, { method: "POST" });
       // If async mode, poll the quote directly (not state) for a short window
@@ -130,23 +140,37 @@ export default function QuoteBuilderPage() {
           await new Promise((r) => setTimeout(r, 750));
           const q = await apiFetch<any>(`/quotes/${id}`);
           setQuote(q);
-          if (Array.isArray(q?.lines) && q.lines.length > 0) break;
           const lp = (q?.meta as any)?.lastParse;
+          if (lp?.message) {
+            setNotice(lp.message);
+          } else if (Array.isArray(lp?.warnings) && lp.warnings.length > 0) {
+            setNotice(lp.warnings.join(" "));
+          }
+          if (Array.isArray(q?.lines) && q.lines.length > 0) break;
           if (lp?.state === "error") {
             const fails = Array.isArray(lp?.fails) ? ` (${lp.fails.length} file errors)` : "";
+            setNotice(null);
             setError(`Parse failed${fails}. Try a different PDF or ensure the ML service can fetch the file URL.`);
             break;
           }
         }
       } else if (typeof out?.created === "number" && out.created === 0) {
+        setNotice(null);
         setError("No lines parsed. Check the PDF is a supplier quote and that ML is online.");
       } else {
+        const messageParts: string[] = [];
+        if (out?.message) messageParts.push(out.message);
+        if (Array.isArray(out?.warnings) && out.warnings.length > 0) {
+          messageParts.push(out.warnings.join(" "));
+        }
+        setNotice(messageParts.length ? messageParts.join(" ") : null);
         await loadAll();
       }
     } catch (e: any) {
       const msg = e?.details?.error === "parse_failed"
         ? "Parse failed: ML service unavailable or file not parsable."
         : (e?.message || "Parse failed");
+      setNotice(null);
       setError(msg);
     } finally {
       setParsing(false);
@@ -287,6 +311,10 @@ export default function QuoteBuilderPage() {
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
 
+      {notice && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">{notice}</div>
+      )}
+
       {loading && <div className="text-sm text-slate-500">Loading…</div>}
 
       {!loading && quote && (
@@ -390,8 +418,17 @@ export default function QuoteBuilderPage() {
                       {lastParse.timeoutMs && <span>Timeout: {lastParse.timeoutMs}ms</span>}
                       {lastParse.startedAt && <span>Started: {new Date(lastParse.startedAt).toLocaleTimeString()}</span>}
                       {lastParse.finishedAt && <span>Finished: {new Date(lastParse.finishedAt).toLocaleTimeString()}</span>}
+                      {typeof lastParse.fallbackUsed === "number" && <span>Fallback: {lastParse.fallbackUsed}</span>}
+                      {lastParse.message && <span className="text-amber-600">{lastParse.message}</span>}
                       <Button size="sm" variant="outline" onClick={() => apiFetch(`/quotes/${id}/parse?async=0`, { method: 'POST' }).then(loadAll).catch((e)=> setError(e?.message || 'Debug parse failed'))}>Parse (debug)</Button>
                     </div>
+                    {Array.isArray(lastParse.warnings) && lastParse.warnings.length > 0 && (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-700">
+                        {lastParse.warnings.map((w: string, idx: number) => (
+                          <li key={idx}>{w}</li>
+                        ))}
+                      </ul>
+                    )}
                     {Array.isArray(lastParse.fails) && lastParse.fails.length > 0 && (
                       <div className="mt-2 space-y-1">
                         {lastParse.fails.map((f: any, i: number) => (
@@ -402,6 +439,36 @@ export default function QuoteBuilderPage() {
                             </div>
                             {f?.error && (
                               <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] text-slate-700">{JSON.stringify(f.error, null, 2)}</pre>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {Array.isArray(lastParse.summaries) && lastParse.summaries.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {lastParse.summaries.map((s: any, i: number) => (
+                          <div key={s?.fileId || i} className="rounded border border-slate-200 bg-white p-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium">{s?.name || s?.fileId || `File ${i + 1}`}</span>
+                              {s?.headStatus != null && <span className="text-slate-500">HEAD: {s.headStatus}</span>}
+                              {s?.lineCount != null && <span>Lines: {s.lineCount}</span>}
+                              {s?.usedFallback && <span className="text-amber-600">Fallback used</span>}
+                              {s?.mlSigned && s.mlSigned.status != null && (
+                                <span>ML URL: {s.mlSigned.status} ({s.mlSigned.tookMs ?? '-'}ms)</span>
+                              )}
+                              {s?.mlUpload && s.mlUpload.status != null && (
+                                <span>ML upload: {s.mlUpload.status} ({s.mlUpload.tookMs ?? '-'}ms)</span>
+                              )}
+                            </div>
+                            {Array.isArray(s?.warnings) && s.warnings.length > 0 && (
+                              <ul className="mt-1 list-disc space-y-1 pl-5 text-[11px] text-amber-700">
+                                {s.warnings.map((w: string, idx: number) => (
+                                  <li key={idx}>{w}</li>
+                                ))}
+                              </ul>
+                            )}
+                            {Array.isArray(s?.mlErrors) && s.mlErrors.length > 0 && (
+                              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px] text-slate-700">{JSON.stringify(s.mlErrors, null, 2)}</pre>
                             )}
                           </div>
                         ))}
