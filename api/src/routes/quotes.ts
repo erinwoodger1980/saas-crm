@@ -15,8 +15,47 @@ import { parseSupplierPdf } from "../lib/supplier/parse";
 import type { SupplierParseResult } from "../types/parse";
 import { logInsight, logInferenceEvent } from "../services/training";
 import { redactSupplierLine } from "../lib/ml/redact";
+import { sendParserErrorAlert, sendParserFallbackAlert } from "../lib/ops/alerts";
 
 const router = Router();
+
+type ParserStageName = NonNullable<SupplierParseResult["usedStages"]>[number];
+
+const FALLBACK_ALERT_RATIO = (() => {
+  const raw = Number(process.env.PARSER_FALLBACK_ALERT_RATIO);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return 0.3;
+})();
+
+async function maybeTriggerFallbackAlert(fallbackCount: number) {
+  if (!fallbackCount || fallbackCount <= 0) return;
+  if (!(FALLBACK_ALERT_RATIO > 0)) return;
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [total, fallback] = await Promise.all([
+      prisma.inferenceEvent.count({
+        where: {
+          model: "supplier_parser",
+          createdAt: { gte: since },
+        },
+      }),
+      prisma.inferenceEvent.count({
+        where: {
+          model: "supplier_parser",
+          createdAt: { gte: since },
+          outputJson: { path: ["meta", "fallbackUsed"], equals: true },
+        },
+      }),
+    ]);
+    if (!total) return;
+    const ratio = fallback / total;
+    if (ratio >= FALLBACK_ALERT_RATIO) {
+      await sendParserFallbackAlert(ratio, { fallback, total });
+    }
+  } catch (err: any) {
+    console.warn("[parse] fallback alert check failed:", err?.message || err);
+  }
+}
 
 function requireAuth(req: any, res: any, next: any) {
   if (!req.auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -309,11 +348,11 @@ router.patch("/:id/preference", requireAuth, async (req: any, res) => {
  * Create QuoteLine rows from parsed output.
  */
 router.post("/:id/parse", requireAuth, async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const quoteId = String(req.params.id);
   try {
-    const tenantId = req.auth.tenantId as string;
-    const id = String(req.params.id);
     const quote = await prisma.quote.findFirst({
-      where: { id, tenantId },
+      where: { id: quoteId, tenantId },
       include: { supplierFiles: true },
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
@@ -474,18 +513,47 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         if (parseResult?.detected_totals) info.detected_totals = parseResult.detected_totals;
         if (mlErrors.length) info.mlErrors = mlErrors;
 
+        const usedStagesArr = Array.isArray(parseResult?.usedStages)
+          ? (parseResult?.usedStages as ParserStageName[]).filter(
+              (stage): stage is ParserStageName => typeof stage === "string",
+            )
+          : [];
+        info.usedStages = usedStagesArr;
+        info.usedOcr = usedStagesArr.includes("ocr");
+
         if (!parseResult || parseResult.lines.length === 0) {
+          const failureReason = parseResult?.error || (mlErrors[0]?.error as string) || "no_lines_detected";
           fails.push({
             fileId: f.id,
             name: f.name,
             status: 422,
             error: {
-              error: parseResult?.error || "no_lines_detected",
+              error: failureReason,
               mlErrors,
               warnings: parseResult?.warnings,
             },
           });
           summaries.push(info);
+          await logInferenceEvent({
+            tenantId,
+            model: "supplier_parser",
+            modelVersionId: "parse-error",
+            inputHash,
+            outputJson: {
+              error: failureReason,
+              warnings: parseResult?.warnings,
+              mlErrors,
+            },
+            latencyMs: latencyMs ?? undefined,
+            meta: {
+              quoteId: quote.id,
+              fileId: f.id,
+              fallbackUsed: info.usedFallback ?? false,
+              usedStages: usedStagesArr,
+              usedOcr: info.usedOcr ?? false,
+              status: "error",
+            },
+          });
           continue;
         }
 
@@ -569,6 +637,14 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           outputJson: sanitizedOutput,
           confidence: inferredConfidence ?? null,
           latencyMs: latencyMs ?? undefined,
+          meta: {
+            quoteId: quote.id,
+            fileId: f.id,
+            fallbackUsed: info.usedFallback ?? false,
+            usedStages: usedStagesArr,
+            usedOcr: info.usedOcr ?? false,
+            status: "ok",
+          },
         });
 
         await logInsight({
@@ -590,6 +666,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
       const warningsArr = [...warnings];
       if (created.length === 0) {
+        await maybeTriggerFallbackAlert(fallbackUsed);
         return {
           error: "parse_failed",
           created: 0,
@@ -616,6 +693,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         }
       }
 
+      await maybeTriggerFallbackAlert(fallbackUsed);
       return {
         ok: true,
         created: created.length,
@@ -657,9 +735,12 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
               },
             } as any);
           } catch {}
-          if ((out as any).error) console.warn(`[parse async] quote ${id} failed:`, out);
+          if ((out as any).error) {
+            console.warn(`[parse async] quote ${quoteId} failed:`, out);
+            await sendParserErrorAlert(tenantId, quote.id, String((out as any).error || "unknown"));
+          }
         } catch (e: any) {
-          console.error(`[parse async] quote ${id} crashed:`, e?.message || e);
+          console.error(`[parse async] quote ${quoteId} crashed:`, e?.message || e);
           try {
             await prisma.quote.update({
               where: { id: quote.id },
@@ -675,6 +756,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
               },
             } as any);
           } catch {}
+          await sendParserErrorAlert(tenantId, quote.id, String(e?.message || e));
         }
       });
       return res.json({ ok: true, async: true });
@@ -682,12 +764,14 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
     const out = await doParse();
     if ((out as any).error) {
+      await sendParserErrorAlert(tenantId, quote.id, String((out as any).error || "unknown"));
       const status = (out as any).error === "no_files" ? 400 : 502;
       return res.status(status).json(out);
     }
     return res.json(out);
   } catch (e: any) {
     console.error("[/quotes/:id/parse] failed:", e?.message || e);
+    await sendParserErrorAlert(tenantId, quoteId, String(e?.message || e));
     return res.status(500).json({ error: "internal_error" });
   }
 });
