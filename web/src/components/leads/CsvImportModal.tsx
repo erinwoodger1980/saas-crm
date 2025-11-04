@@ -63,7 +63,7 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
       const formData = new FormData();
       formData.append('csvFile', selectedFile);
       
-      const result = await apiFetch<CsvPreview>('/api/leads/import/preview', {
+      const result = await apiFetch<CsvPreview>('/leads/import/preview', {
         method: 'POST',
         body: formData,
       });
@@ -161,7 +161,7 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
       formData.append('csvFile', file);
       formData.append('fieldMapping', JSON.stringify(fieldMapping));
       
-      const result = await apiFetch<ImportResult>('/api/leads/import/execute', {
+      const result = await apiFetch<ImportResult>('/leads/import/execute', {
         method: 'POST',
         body: formData,
       });
