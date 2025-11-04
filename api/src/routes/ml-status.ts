@@ -12,6 +12,7 @@ router.get("/", async (req: any, res) => {
   if (scope === "global") {
     try {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const parseSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const productionModels = await prisma.modelVersion.findMany({ where: { isProduction: true }, orderBy: { createdAt: "desc" } });
       const seen = new Set<string>();
       const models = productionModels
@@ -30,11 +31,32 @@ router.get("/", async (req: any, res) => {
           keyMetric: extractKeyMetric(m.model, m.metricsJson as any),
         }));
 
-      const [parsedSupplierLines, estimates, inferenceEvents] = await Promise.all([
-        prisma.parsedSupplierLine.count({ where: { createdAt: { gte: since } } }),
-        prisma.estimate.count({ where: { createdAt: { gte: since } } }),
-        prisma.inferenceEvent.count({ where: { createdAt: { gte: since } } }),
-      ]);
+      const [parsedSupplierLines, estimates, inferenceEvents, parseEvents7d, parseFallback7d, parseErrors7d] =
+        await Promise.all([
+          prisma.parsedSupplierLine.count({ where: { createdAt: { gte: since } } }),
+          prisma.estimate.count({ where: { createdAt: { gte: since } } }),
+          prisma.inferenceEvent.count({ where: { createdAt: { gte: since } } }),
+          prisma.inferenceEvent.count({
+            where: { model: "supplier_parser", createdAt: { gte: parseSince } },
+          }),
+          prisma.inferenceEvent.count({
+            where: {
+              model: "supplier_parser",
+              createdAt: { gte: parseSince },
+              outputJson: { path: ["meta", "fallbackUsed"], equals: true },
+            },
+          }),
+          prisma.inferenceEvent.count({
+            where: {
+              model: "supplier_parser",
+              createdAt: { gte: parseSince },
+              outputJson: { path: ["meta", "status"], equals: "error" },
+            },
+          }),
+        ]);
+
+      const parseFallbackRatio7d = parseEvents7d > 0 ? parseFallback7d / parseEvents7d : 0;
+      const parseErrorRate7d = parseEvents7d > 0 ? parseErrors7d / parseEvents7d : 0;
 
       return res.json({
         ok: true,
@@ -46,6 +68,8 @@ router.get("/", async (req: any, res) => {
           estimates,
           inferenceEvents,
         },
+        parseFallbackRatio7d,
+        parseErrorRate7d,
       });
     } catch (e: any) {
       console.error("[ml/status global] failed:", e?.message || e);
@@ -59,7 +83,18 @@ router.get("/", async (req: any, res) => {
   try {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const [productionModels, trainingRuns, supplierGroupsRaw, totalEstimates, labelledCount, wonCount, lostCount, inferenceCounts, recentEstimates] =
+    const [
+      productionModels,
+      trainingRuns,
+      supplierGroupsRaw,
+      totalEstimates,
+      labelledCount,
+      wonCount,
+      lostCount,
+      inferenceCounts,
+      parseEventCounts,
+      recentEstimates,
+    ] =
       await Promise.all([
         prisma.modelVersion.findMany({ where: { isProduction: true }, orderBy: { createdAt: "desc" } }),
         prisma.trainingRun.findMany({
@@ -81,6 +116,27 @@ router.get("/", async (req: any, res) => {
           prisma.estimate.count({ where: { tenantId, createdAt: { gte: since } } }),
           prisma.inferenceEvent.count({ where: { tenantId, createdAt: { gte: since } } }),
         ]),
+        Promise.all([
+          prisma.inferenceEvent.count({
+            where: { tenantId, model: "supplier_parser", createdAt: { gte: since } },
+          }),
+          prisma.inferenceEvent.count({
+            where: {
+              tenantId,
+              model: "supplier_parser",
+              createdAt: { gte: since },
+              outputJson: { path: ["meta", "fallbackUsed"], equals: true },
+            },
+          }),
+          prisma.inferenceEvent.count({
+            where: {
+              tenantId,
+              model: "supplier_parser",
+              createdAt: { gte: since },
+              outputJson: { path: ["meta", "status"], equals: "error" },
+            },
+          }),
+        ]),
         prisma.estimate.findMany({
           where: { tenantId, actualAcceptedPrice: { not: null } },
           select: { estimatedTotal: true, actualAcceptedPrice: true },
@@ -90,6 +146,10 @@ router.get("/", async (req: any, res) => {
       ]);
 
     const [parsedCount7d, estimatesCount7d, inferenceCount7d] = inferenceCounts;
+    const [parseEvents7d, parseFallback7d, parseErrors7d] = parseEventCounts;
+
+    const parseFallbackRatio7d = parseEvents7d > 0 ? parseFallback7d / parseEvents7d : 0;
+    const parseErrorRate7d = parseEvents7d > 0 ? parseErrors7d / parseEvents7d : 0;
 
     const mapeValues = recentEstimates
       .map((row) => {
@@ -150,7 +210,11 @@ router.get("/", async (req: any, res) => {
         parsedSupplierLines: parsedCount7d,
         estimates: estimatesCount7d,
         inferenceEvents: inferenceCount7d,
+        parseFallbackRatio7d,
+        parseErrorRate7d,
       },
+      parseFallbackRatio7d,
+      parseErrorRate7d,
     });
   } catch (e: any) {
     console.error("[ml/status] failed:", e?.message || e);
