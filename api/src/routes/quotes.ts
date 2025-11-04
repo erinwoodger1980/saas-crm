@@ -3,6 +3,7 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { prisma } from "../prisma";
 import { Prisma } from "@prisma/client";
 import jwt from "jsonwebtoken";
@@ -12,6 +13,7 @@ import { callMlWithSignedUrl, callMlWithUpload, normaliseMlPayload } from "../li
 import { fallbackParseSupplierPdf } from "../lib/pdf/fallback";
 import { parseSupplierPdf } from "../lib/supplier/parse";
 import type { SupplierParseResult } from "../types/parse";
+import { logInsight, logInferenceEvent } from "../services/training";
 
 const router = Router();
 
@@ -57,6 +59,70 @@ function currencySymbol(code: string | undefined): string {
     default:
       return "";
   }
+}
+
+function safeNumber(value: any): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function extractModelVersionId(raw: any): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const maybeMeta = (raw as any).meta && typeof (raw as any).meta === "object" ? (raw as any).meta : null;
+  const candidates: Array<any> = [
+    (raw as any).modelVersionId,
+    (raw as any).model_version,
+    (raw as any).modelVersion,
+    (raw as any).model_version_id,
+    maybeMeta?.modelVersionId,
+    maybeMeta?.model_version,
+    maybeMeta?.modelVersion,
+  ];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function sha256(...chunks: Array<string | Buffer>): string {
+  const hash = crypto.createHash("sha256");
+  for (const chunk of chunks) {
+    if (Buffer.isBuffer(chunk)) {
+      hash.update(chunk);
+    } else if (typeof chunk === "string") {
+      hash.update(chunk);
+    } else if (chunk != null) {
+      hash.update(String(chunk));
+    }
+  }
+  return hash.digest("hex");
+}
+
+function sanitiseParseResult(result: SupplierParseResult, supplier?: string | null, currency?: string) {
+  return {
+    supplier: supplier ?? result.supplier ?? null,
+    currency: currency ?? result.currency ?? null,
+    lineCount: Array.isArray(result.lines) ? result.lines.length : 0,
+    lines: Array.isArray(result.lines)
+      ? result.lines.map((ln) => ({
+          description: ln.description,
+          qty: safeNumber(ln.qty),
+          costUnit: safeNumber(ln.costUnit),
+          sellUnit: safeNumber((ln as any)?.sellUnit),
+          lineTotal: safeNumber(ln.lineTotal),
+        }))
+      : [],
+    detected_totals: result.detected_totals ?? null,
+    confidence: result.confidence ?? null,
+    warnings: result.warnings ?? [],
+    usedStages: Array.isArray(result.usedStages) ? result.usedStages : null,
+  };
 }
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
@@ -220,6 +286,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       const summaries: any[] = [];
       const warnings = new Set<string>();
       let fallbackUsed = 0;
+      const parsedLinesForDb: Prisma.ParsedSupplierLineCreateManyInput[] = [];
 
       const filesToParse = [...quote.supplierFiles]
         .filter((x) => /pdf$/i.test(x.mimeType || "") || /\.pdf$/i.test(x.name || ""))
@@ -237,6 +304,8 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
         const info: any = { fileId: f.id, name: f.name, headStatus: null, usedFallback: false };
         const mlErrors: any[] = [];
+        let latestMlPayload: any = null;
+        let latencyMs: number | null = null;
 
         if (!forceFallback) {
           try {
@@ -298,6 +367,8 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           if (mlSigned.ok) {
             const normalised = normaliseMlPayload(mlSigned.data);
             parseResult = normalised;
+            latestMlPayload = mlSigned.data;
+            latencyMs = mlSigned.tookMs ?? null;
             if (!normalised.lines.length) {
               mlErrors.push({ stage: "signed_url", error: "no_lines" });
             }
@@ -317,6 +388,8 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             if (upload.ok) {
               const normalisedUpload = normaliseMlPayload(upload.data);
               parseResult = normalisedUpload;
+              latestMlPayload = upload.data;
+              latencyMs = upload.tookMs ?? null;
               if (!normalisedUpload.lines.length) {
                 mlErrors.push({ stage: "upload", error: "no_lines" });
               }
@@ -362,6 +435,20 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
         const currency = normalizeCurrency(parseResult.currency || quote.currency || "GBP");
         const supplier = parseResult.supplier || undefined;
+        const usedStages = Array.isArray(parseResult.usedStages)
+          ? parseResult.usedStages.join(",")
+          : info.usedFallback
+          ? "fallback"
+          : null;
+
+        const hashSource = buffer ? buffer : Buffer.from(url);
+        const inputHash = sha256(tenantId, ":", quote.id, ":", f.id, ":", hashSource);
+        const modelVersionId = extractModelVersionId(latestMlPayload) ||
+          (info.usedFallback ? `fallback-${new Date().toISOString().slice(0, 10)}` : `external-${new Date().toISOString().slice(0, 10)}`);
+        const inferredConfidence =
+          safeNumber(parseResult.confidence) ??
+          safeNumber(latestMlPayload?.confidence) ??
+          null;
 
         let lineIndex = 0;
         for (const ln of parseResult.lines) {
@@ -395,12 +482,54 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             },
           });
           created.push(row);
+
+          parsedLinesForDb.push({
+            tenantId,
+            quoteId: quote.id,
+            page: (ln as any)?.page ?? null,
+            rawText: String((ln as any)?.rawText ?? description ?? ""),
+            description: description ?? null,
+            qty: safeNumber(ln.qty),
+            costUnit: safeNumber(ln.costUnit),
+            lineTotal: safeNumber(ln.lineTotal),
+            currency,
+            supplier: supplier ?? null,
+            confidence: safeNumber((ln as any)?.confidence) ?? inferredConfidence,
+            usedStages,
+          });
         }
 
         info.lineCount = parseResult.lines.length;
         info.currency = currency;
         info.supplier = supplier;
         summaries.push(info);
+
+        const sanitizedOutput = sanitiseParseResult(parseResult, supplier, currency);
+        await logInferenceEvent({
+          tenantId,
+          model: "supplier_parser",
+          modelVersionId,
+          inputHash,
+          outputJson: sanitizedOutput,
+          confidence: inferredConfidence ?? null,
+          latencyMs: latencyMs ?? undefined,
+        });
+
+        await logInsight({
+          tenantId,
+          module: "supplier_parser",
+          inputSummary: `quote:${quote.id}:parse:${f.id}`,
+          decision: modelVersionId,
+          confidence: inferredConfidence ?? null,
+          userFeedback: {
+            kind: "supplier_parser",
+            quoteId: quote.id,
+            fileId: f.id,
+            modelVersionId,
+            latencyMs,
+            lineCount: parseResult.lines.length,
+          },
+        });
       }
 
       const warningsArr = [...warnings];
@@ -415,6 +544,20 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           timeoutMs: TIMEOUT_MS,
           message: fallbackUsed ? "ML could not parse the PDF. Fallback parser attempted but produced no lines." : undefined,
         } as const;
+      }
+
+      if (parsedLinesForDb.length > 0) {
+        try {
+          await prisma.$transaction([
+            prisma.parsedSupplierLine.deleteMany({ where: { tenantId, quoteId: quote.id } }),
+            prisma.parsedSupplierLine.createMany({ data: parsedLinesForDb }),
+          ]);
+        } catch (err: any) {
+          console.warn(
+            `[parse] quote ${quote.id} failed to persist ParsedSupplierLine:`,
+            err?.message || err,
+          );
+        }
       }
 
       return {
@@ -897,10 +1040,78 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         process.env.APP_API_URL || process.env.API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`
       ).replace(/\/$/, "");
       const features: any = (quote.lead?.custom as any) || {};
-      const mlResp = await fetch(`${API_BASE}/ml/predict`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(features) });
+      const inputTypeRaw = typeof req.body?.inputType === "string" ? req.body.inputType : undefined;
+      const inputType = inputTypeRaw === "supplier_pdf" ? "supplier_pdf" : "questionnaire";
+
+      const startedAt = Date.now();
+      const mlResp = await fetch(`${API_BASE}/ml/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(features),
+      });
+      const tookMs = Date.now() - startedAt;
+      const mlText = await mlResp.text();
       let ml: any = {};
-      try { ml = await mlResp.json(); } catch {}
-      const predictedTotal = Number(ml?.predicted_total ?? 0) || 0;
+      try {
+        ml = mlText ? JSON.parse(mlText) : {};
+      } catch {
+        ml = mlText ? { raw: mlText } : {};
+      }
+
+      const predictedTotal = safeNumber(ml?.predicted_total ?? ml?.predictedTotal ?? ml?.total) ?? 0;
+      const confidenceRaw = safeNumber(ml?.confidence ?? ml?.probability ?? ml?.score);
+      const confidence = confidenceRaw ?? 0;
+      const modelVersionId = extractModelVersionId(ml) || `external-${new Date().toISOString().slice(0, 10)}`;
+      const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
+
+      let hashPayload: any = features;
+      if (inputType === "supplier_pdf") {
+        try {
+          const parsed = await prisma.parsedSupplierLine.findMany({
+            where: { tenantId, quoteId: quote.id },
+            select: {
+              rawText: true,
+              qty: true,
+              costUnit: true,
+              lineTotal: true,
+              currency: true,
+              supplier: true,
+            },
+            orderBy: { createdAt: "asc" },
+          });
+          hashPayload = parsed;
+        } catch (e: any) {
+          console.warn(`[quotes] failed to load parsed lines for estimate hashing:`, e?.message || e);
+        }
+      }
+
+      const inputHash = sha256(
+        tenantId,
+        ":",
+        quote.id,
+        ":",
+        inputType,
+        ":",
+        JSON.stringify(hashPayload ?? {}),
+      );
+
+      try {
+        await prisma.estimate.create({
+          data: {
+            tenantId,
+            quoteId: quote.id,
+            inputType,
+            inputHash,
+            currency,
+            estimatedTotal: predictedTotal,
+            confidence,
+            modelVersionId,
+          },
+        });
+      } catch (e: any) {
+        console.warn(`[quotes] failed to persist Estimate for quote ${quote.id}:`, e?.message || e);
+      }
+
       const costSum = quote.lines.reduce((s, ln) => s + Number(ln.unitPrice) * Number(ln.qty), 0);
       const scale = costSum > 0 && predictedTotal > 0 ? predictedTotal / costSum : 1;
       let totalGBP = 0;
@@ -909,9 +1120,59 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         const sellUnit = costUnit * scale;
         const sellTotal = sellUnit * Number(ln.qty);
         totalGBP += sellTotal;
-        await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(ln.meta as any || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "ml", scale, predictedTotal } } } as any });
+        await prisma.quoteLine.update({
+          where: { id: ln.id },
+          data: {
+            meta: {
+              set: {
+                ...(ln.meta as any || {}),
+                sellUnitGBP: sellUnit,
+                sellTotalGBP: sellTotal,
+                pricingMethod: "ml",
+                scale,
+                predictedTotal,
+                estimateModelVersionId: modelVersionId,
+              },
+            } as any,
+          },
+        });
       }
-  await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+      await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+
+      const inferenceModel = inputType === "supplier_pdf" ? "supplier_estimator" : "qa_estimator";
+      const sanitizedEstimate = {
+        predictedTotal,
+        currency,
+        confidence,
+        modelVersionId,
+      } as any;
+      if (ml?.metrics) sanitizedEstimate.metrics = ml.metrics;
+
+      await logInferenceEvent({
+        tenantId,
+        model: inferenceModel,
+        modelVersionId,
+        inputHash,
+        outputJson: sanitizedEstimate,
+        confidence,
+        latencyMs: tookMs,
+      });
+
+      await logInsight({
+        tenantId,
+        module: inferenceModel,
+        inputSummary: `quote:${quote.id}:${inputType}`,
+        decision: modelVersionId,
+        confidence,
+        userFeedback: {
+          kind: inferenceModel,
+          quoteId: quote.id,
+          modelVersionId,
+          latencyMs: tookMs,
+          estimatedTotal: predictedTotal,
+        },
+      });
+
       return res.json({ ok: true, method, predictedTotal, totalGBP });
     }
 

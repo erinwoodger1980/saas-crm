@@ -425,6 +425,87 @@ model UploadedFile {
   @@index([tenantId, quoteId])
 }
 
+model ParsedSupplierLine {
+  id         String   @id @default(cuid())
+  tenantId   String
+  quoteId    String
+  page       Int?
+  rawText    String
+  description String?
+  qty        Float?
+  costUnit   Float?
+  lineTotal  Float?
+  currency   String   @default("GBP")
+  supplier   String?
+  confidence Float?
+  usedStages String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, quoteId])
+  @@index([tenantId, supplier])
+}
+
+model Estimate {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  quoteId             String
+  inputType           String
+  inputHash           String
+  currency            String   @default("GBP")
+  estimatedTotal      Float
+  confidence          Float
+  modelVersionId      String
+  promoted            Boolean  @default(false)
+  actualAcceptedPrice Float?
+  outcome             String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([tenantId, quoteId])
+  @@index([tenantId, createdAt])
+}
+
+model InferenceEvent {
+  id             String   @id @default(cuid())
+  tenantId       String
+  model          String
+  modelVersionId String
+  inputHash      String
+  outputJson     Json
+  confidence     Float?
+  latencyMs      Int?
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, model, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+model ModelVersion {
+  id           String   @id @default(cuid())
+  model        String
+  label        String
+  metricsJson  Json
+  datasetHash  String
+  isProduction Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([model, isProduction])
+}
+
+model TrainingRun {
+  id             String   @id @default(cuid())
+  tenantId       String?
+  model          String
+  datasetHash    String
+  metricsJson    Json
+  status         String
+  modelVersionId String?
+  createdAt      DateTime @default(now())
+
+  @@index([model, createdAt])
+  @@index([tenantId, createdAt])
+}
+
 /// *
 ///  * ============== Password reset tokens ==============
 model PasswordResetToken {
