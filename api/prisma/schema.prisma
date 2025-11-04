@@ -548,6 +548,9 @@ model ModelVersion {
   metricsJson  Json
   datasetHash  String
   isProduction Boolean  @default(false)
+  awaitingApproval Boolean @default(false)
+  approvedAt    DateTime?
+  approvedById  String?
   createdAt    DateTime @default(now())
 
   @@index([model, isProduction])

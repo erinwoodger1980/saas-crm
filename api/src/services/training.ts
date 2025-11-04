@@ -138,6 +138,62 @@ function findNumericMetric(metrics: any, keys: string[]): number | null {
   return null;
 }
 
+function normaliseKeyName(input: string): string {
+  return input
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-z0-9]/gi, "_")
+    .replace(/_+/g, "_")
+    .toLowerCase()
+    .replace(/_/g, "");
+}
+
+function findNumericMetricDeep(metrics: any, candidateKeys: string[]): number | null {
+  if (!metrics || typeof metrics !== "object") return null;
+  const candidates = candidateKeys
+    .map((key) => normaliseKeyName(key))
+    .filter(Boolean);
+  if (!candidates.length) return null;
+
+  const stack: any[] = [metrics];
+  const seen = new Set<any>();
+
+  while (stack.length) {
+    const node = stack.pop();
+    if (!node || typeof node !== "object") continue;
+    if (seen.has(node)) continue;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (item && typeof item === "object" && !seen.has(item)) stack.push(item);
+      }
+      continue;
+    }
+
+    for (const [rawKey, value] of Object.entries(node as Record<string, any>)) {
+      const normalised = normaliseKeyName(rawKey);
+      if (
+        normalised &&
+        candidates.some(
+          (candidate) =>
+            normalised === candidate ||
+            normalised.endsWith(candidate) ||
+            normalised.includes(candidate)
+        )
+      ) {
+        const numeric = coerceNumber(value);
+        if (numeric != null) return numeric;
+      }
+
+      if (value && typeof value === "object" && !seen.has(value)) {
+        stack.push(value);
+      }
+    }
+  }
+
+  return null;
+}
+
 export function extractKeyMetric(model: string, metrics: any): {
   key: string;
   value: number | null;
@@ -231,52 +287,138 @@ export async function recordTrainingOutcome(opts: {
   }
 
   const keyMetric = extractKeyMetric(model, metrics);
-  const minDataset = (() => {
-    const raw = Number(process.env.ML_PROMOTION_MIN_DATASET);
-    if (Number.isFinite(raw) && raw > 0) return raw;
+  const minSamples = (() => {
+    const primary = Number(process.env.ML_MIN_SAMPLES);
+    if (Number.isFinite(primary) && primary > 0) return primary;
+    const legacy = Number(process.env.ML_PROMOTION_MIN_DATASET);
+    if (Number.isFinite(legacy) && legacy > 0) return legacy;
     return 200;
+  })();
+  const promotionDelta = (() => {
+    const raw = Number(process.env.ML_PROMOTION_DELTA);
+    if (Number.isFinite(raw) && raw >= 0) return raw;
+    return 0.02;
+  })();
+  const maxRegression = (() => {
+    const raw = Number(process.env.ML_MAX_REGRESSION);
+    if (Number.isFinite(raw) && raw >= 0) return raw;
+    return 0.01;
+  })();
+  const requireHumanApproval = (() => {
+    const raw = process.env.ML_REQUIRE_HUMAN_APPROVAL;
+    return raw ? /^(1|true|yes|on)$/i.test(raw) : false;
   })();
 
   let promoted = false;
+  let awaitingApproval = false;
+  let improvementValue: number | null = null;
+  let regressionValue: number | null = null;
+
   if (modelVersion && status.toLowerCase() === "succeeded") {
-    try {
-      const datasetEnough = (datasetSize ?? 0) >= minDataset;
-      if (datasetEnough && keyMetric.value != null) {
+    const datasetEnough = (datasetSize ?? 0) >= minSamples;
+    if (!datasetEnough && modelVersion.awaitingApproval) {
+      try {
+        modelVersion = await (prisma as any).modelVersion.update({
+          where: { id: modelVersion.id },
+          data: { awaitingApproval: false },
+        });
+      } catch (e) {
+        console.warn(
+          "[training] recordTrainingOutcome:clearAwaiting failed:",
+          (e as any)?.message || e
+        );
+      }
+    }
+
+    if (datasetEnough && keyMetric.value != null) {
+      try {
         const currentProd = await (prisma as any).modelVersion.findFirst({
           where: { model, isProduction: true },
         });
-        let shouldPromote = false;
+
+        let improvementPass = false;
         if (!currentProd || currentProd.id === modelVersion.id) {
-          shouldPromote = true;
+          improvementPass = true;
         } else {
           const currentMetric = extractKeyMetric(model, currentProd.metricsJson as any);
           if (currentMetric.value != null) {
             if (keyMetric.preference === "lower") {
-              shouldPromote = currentMetric.value - keyMetric.value >= 0.02;
+              improvementValue = currentMetric.value - keyMetric.value;
             } else {
-              shouldPromote = keyMetric.value - currentMetric.value >= 0.02;
+              improvementValue = keyMetric.value - currentMetric.value;
             }
+            improvementPass = (improvementValue ?? -Infinity) >= promotionDelta;
           } else {
-            shouldPromote = true;
+            improvementPass = true;
           }
         }
 
-        if (shouldPromote) {
-          await (prisma as any).modelVersion.updateMany({
-            where: { model, isProduction: true, NOT: { id: modelVersion.id } },
-            data: { isProduction: false },
-          });
-          await (prisma as any).modelVersion.update({
-            where: { id: modelVersion.id },
-            data: { isProduction: true },
-          });
-          promoted = true;
+        regressionValue = findNumericMetricDeep(metrics, [
+          "backtest_regression",
+          "holdout_regression",
+          "backtest_degradation",
+          "holdout_degradation",
+          "regression",
+          "degradation",
+          "backtest_drop",
+          "holdout_drop",
+        ]);
+        const regressionPass = regressionValue == null || regressionValue <= maxRegression;
+
+        if (improvementPass && regressionPass) {
+          if (requireHumanApproval) {
+            try {
+              modelVersion = await (prisma as any).modelVersion.update({
+                where: { id: modelVersion.id },
+                data: { awaitingApproval: true, approvedAt: null, approvedById: null },
+              });
+            } catch (e) {
+              console.warn(
+                "[training] recordTrainingOutcome:awaitingApproval failed:",
+                (e as any)?.message || e
+              );
+            }
+          } else {
+            try {
+              await (prisma as any).modelVersion.updateMany({
+                where: { model, isProduction: true, NOT: { id: modelVersion.id } },
+                data: { isProduction: false },
+              });
+              modelVersion = await (prisma as any).modelVersion.update({
+                where: { id: modelVersion.id },
+                data: { isProduction: true, awaitingApproval: false },
+              });
+              promoted = true;
+            } catch (e) {
+              console.warn(
+                "[training] recordTrainingOutcome:promotion failed:",
+                (e as any)?.message || e
+              );
+            }
+          }
+        } else if (modelVersion.awaitingApproval) {
+          try {
+            modelVersion = await (prisma as any).modelVersion.update({
+              where: { id: modelVersion.id },
+              data: { awaitingApproval: false },
+            });
+          } catch (e) {
+            console.warn(
+              "[training] recordTrainingOutcome:clearAwaiting failed:",
+              (e as any)?.message || e
+            );
+          }
         }
+      } catch (e) {
+        console.warn(
+          "[training] recordTrainingOutcome:evaluation failed:",
+          (e as any)?.message || e
+        );
       }
-    } catch (e) {
-      console.warn("[training] recordTrainingOutcome:promotion failed:", (e as any)?.message || e);
     }
   }
+
+  awaitingApproval = !!modelVersion?.awaitingApproval;
 
   try {
     await (prisma as any).trainingRun.create({
@@ -296,8 +438,11 @@ export async function recordTrainingOutcome(opts: {
   return {
     modelVersionId: modelVersion?.id ?? null,
     promoted,
+    awaitingApproval,
     keyMetric,
     datasetSize: datasetSize ?? null,
+    improvement: improvementValue,
+    regression: regressionValue,
   } as const;
 }
 
@@ -356,10 +501,10 @@ export async function applyFeedback(opts: {
       data: { userFeedback: merged },
     });
 
-    const module = (opts.module as any) || existing.module || "unknown";
+    const moduleName = (opts.module as any) || existing.module || "unknown";
     await logEvent({
       tenantId,
-      module,
+      module: moduleName,
       kind: "FEEDBACK",
       payload: { insightId, feedback: opts.feedback },
       actorId: opts.actorId ?? null,
@@ -367,7 +512,7 @@ export async function applyFeedback(opts: {
 
     // Optional: map lead_classifier thumbs to EmailIngest for learning continuity
     try {
-      if (module === "lead_classifier" && typeof (opts.feedback?.isLead) === "boolean") {
+      if (moduleName === "lead_classifier" && typeof (opts.feedback?.isLead) === "boolean") {
         const summary = (existing as any).inputSummary as string | null;
         if (summary && summary.startsWith("email:")) {
           const parts = summary.split(":");

@@ -157,6 +157,7 @@ router.post("/ops/collect-train-save", async (req: any, res) => {
         detail: trainJson,
         saved,
         modelVersionId: recorded?.modelVersionId ?? null,
+        awaitingApproval: recorded?.awaitingApproval ?? false,
       });
     }
 
@@ -169,6 +170,7 @@ router.post("/ops/collect-train-save", async (req: any, res) => {
       ml: trainJson,
       modelVersionId: recorded?.modelVersionId ?? null,
       promoted: recorded?.promoted ?? false,
+      awaitingApproval: recorded?.awaitingApproval ?? false,
     });
   } catch (e: any) {
     console.error("[internal/ml/ops/collect-train-save] failed:", e?.message || e);
