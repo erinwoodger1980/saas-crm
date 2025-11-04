@@ -55,6 +55,7 @@ import eventsRouter from "./routes/events";
 import notificationsRouter from "./routes/notifications";
 import streaksRouter from "./routes/streaks";
 import followupsRouter from "./routes/followups";
+import marketingRoiRouter from "./routes/marketing-roi";
 
 const app = express();
 
@@ -452,6 +453,7 @@ app.use("/events", eventsRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/streaks", streaksRouter);
 app.use("/followups", followupsRouter);
+app.use("/marketing/roi", marketingRoiRouter);
 app.use("/workshop", requireAuth, workshopRouter);
 
 /** ---------- Auth required from here ---------- */
