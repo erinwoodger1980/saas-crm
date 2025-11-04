@@ -226,9 +226,23 @@ export async function logInferenceEvent(opts: {
   outputJson: any;
   confidence?: number | null;
   latencyMs?: number | null;
+  meta?: Record<string, any> | null;
 }) {
   const { tenantId, model, modelVersionId, inputHash } = opts;
   if (!tenantId || !model || !modelVersionId || !inputHash) return;
+  const meta = opts.meta && typeof opts.meta === "object" ? opts.meta : null;
+  let outputJson: any;
+  if (opts.outputJson && typeof opts.outputJson === "object") {
+    outputJson = { ...(opts.outputJson as any) };
+  } else if (opts.outputJson !== undefined && opts.outputJson !== null) {
+    outputJson = { value: opts.outputJson };
+  } else {
+    outputJson = {};
+  }
+  if (meta) {
+    const existingMeta = outputJson.meta && typeof outputJson.meta === "object" ? outputJson.meta : {};
+    outputJson.meta = { ...existingMeta, ...meta };
+  }
   try {
     await (prisma as any).inferenceEvent.create({
       data: {
@@ -236,7 +250,7 @@ export async function logInferenceEvent(opts: {
         model,
         modelVersionId,
         inputHash,
-        outputJson: opts.outputJson ?? {},
+        outputJson,
         confidence: opts.confidence ?? null,
         latencyMs: opts.latencyMs ?? null,
       },

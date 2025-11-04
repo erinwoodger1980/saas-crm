@@ -105,6 +105,58 @@ function sha256(...chunks: Array<string | Buffer>): string {
   return hash.digest("hex");
 }
 
+function stableJsonStringify(value: any): string {
+  const seen = new WeakSet();
+  const normalise = (input: any): any => {
+    if (input === null || input === undefined) return null;
+    if (typeof input === "number") {
+      if (!Number.isFinite(input)) return null;
+      return Number(input);
+    }
+    if (typeof input === "string") return input;
+    if (typeof input === "boolean") return input;
+    if (Array.isArray(input)) return input.map((item) => normalise(item));
+    if (typeof input === "object") {
+      if (seen.has(input)) return null;
+      seen.add(input);
+      const keys = Object.keys(input).sort();
+      const out: Record<string, any> = {};
+      for (const key of keys) {
+        const normalised = normalise((input as any)[key]);
+        if (normalised !== undefined) out[key] = normalised;
+      }
+      seen.delete(input);
+      return out;
+    }
+    return String(input);
+  };
+  return JSON.stringify(normalise(value));
+}
+
+function normaliseSupplierLinesForHash(lines: Array<any>): Array<any> {
+  if (!Array.isArray(lines)) return [];
+  return lines.map((ln) => ({
+    supplier: ln?.supplier ? String(ln.supplier) : null,
+    rawText: ln?.rawText ? String(ln.rawText) : null,
+    qty: safeNumber(ln?.qty),
+    costUnit: safeNumber(ln?.costUnit),
+    lineTotal: safeNumber(ln?.lineTotal),
+    currency: normalizeCurrency(ln?.currency || ""),
+    page: typeof ln?.page === "number" && Number.isFinite(ln.page) ? ln.page : null,
+  }));
+}
+
+function normaliseQuestionnaireForHash(features: any): any {
+  if (!features || typeof features !== "object") return {};
+  return features;
+}
+
+const ESTIMATE_CACHE_DAYS = (() => {
+  const raw = Number(process.env.ESTIMATE_CACHE_DAYS);
+  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+  return 14;
+})();
+
 function sanitiseParseResult(result: SupplierParseResult, supplier?: string | null, currency?: string) {
   return {
     supplier: supplier ?? result.supplier ?? null,
@@ -1047,6 +1099,140 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       const inputTypeRaw = typeof req.body?.inputType === "string" ? req.body.inputType : undefined;
       const inputType = inputTypeRaw === "supplier_pdf" ? "supplier_pdf" : "questionnaire";
 
+      const inferenceModel = inputType === "supplier_pdf" ? "supplier_estimator" : "qa_estimator";
+
+      let supplierLinesForHash: Array<any> = [];
+      if (inputType === "supplier_pdf") {
+        try {
+          const parsed = await prisma.parsedSupplierLine.findMany({
+            where: { tenantId, quoteId: quote.id },
+            select: {
+              rawText: true,
+              qty: true,
+              costUnit: true,
+              lineTotal: true,
+              currency: true,
+              supplier: true,
+              page: true,
+            },
+            orderBy: { createdAt: "asc" },
+          });
+          supplierLinesForHash = parsed;
+        } catch (e: any) {
+          console.warn(`[quotes] failed to load parsed lines for estimate hashing:`, e?.message || e);
+        }
+      }
+
+      const hashPayloadBase =
+        inputType === "supplier_pdf"
+          ? { type: inputType, lines: normaliseSupplierLinesForHash(supplierLinesForHash) }
+          : { type: inputType, questionnaire: normaliseQuestionnaireForHash(features) };
+      const inputHash = sha256(stableJsonStringify(hashPayloadBase));
+
+      let productionModelId: string | null = null;
+      try {
+        const productionModel = await prisma.modelVersion.findFirst({
+          where: { model: inferenceModel, isProduction: true },
+          orderBy: { createdAt: "desc" },
+        });
+        productionModelId = productionModel?.id ?? null;
+      } catch (e: any) {
+        console.warn(`[quotes] failed to load production model for ${inferenceModel}:`, e?.message || e);
+      }
+
+      const cacheSince = new Date(Date.now() - ESTIMATE_CACHE_DAYS * 24 * 60 * 60 * 1000);
+      let cachedEstimate: any = null;
+      if (productionModelId) {
+        try {
+          cachedEstimate = await prisma.estimate.findFirst({
+            where: {
+              tenantId,
+              inputType,
+              inputHash,
+              modelVersionId: productionModelId,
+              createdAt: { gte: cacheSince },
+            },
+            orderBy: { createdAt: "desc" },
+          });
+        } catch (e: any) {
+          console.warn(`[quotes] failed to load cached estimate:`, e?.message || e);
+        }
+      }
+
+      if (cachedEstimate && productionModelId) {
+        const predictedTotalRaw = Number(cachedEstimate.estimatedTotal ?? 0);
+        const predictedTotal = Number.isFinite(predictedTotalRaw) ? predictedTotalRaw : 0;
+        const confidenceRaw = cachedEstimate.confidence;
+        const confidence =
+          confidenceRaw != null && Number.isFinite(Number(confidenceRaw)) ? Number(confidenceRaw) : null;
+        const currency = normalizeCurrency(cachedEstimate.currency || quote.currency || "GBP");
+
+        const costSum = quote.lines.reduce((s, ln) => s + Number(ln.unitPrice) * Number(ln.qty), 0);
+        const scale = costSum > 0 && predictedTotal > 0 ? predictedTotal / costSum : 1;
+        let totalGBP = 0;
+        for (const ln of quote.lines) {
+          const costUnit = Number(ln.unitPrice);
+          const sellUnit = costUnit * scale;
+          const sellTotal = sellUnit * Number(ln.qty);
+          totalGBP += sellTotal;
+          await prisma.quoteLine.update({
+            where: { id: ln.id },
+            data: {
+              meta: {
+                set: {
+                  ...(ln.meta as any || {}),
+                  sellUnitGBP: sellUnit,
+                  sellTotalGBP: sellTotal,
+                  pricingMethod: "ml",
+                  scale,
+                  predictedTotal,
+                  estimateModelVersionId: productionModelId,
+                },
+              } as any,
+            },
+          });
+        }
+        await prisma.quote.update({
+          where: { id: quote.id },
+          data: { totalGBP: new Prisma.Decimal(totalGBP) },
+        });
+
+        const sanitizedEstimate: any = {
+          predictedTotal,
+          currency,
+          confidence,
+          modelVersionId: productionModelId,
+        };
+
+        await logInferenceEvent({
+          tenantId,
+          model: inferenceModel,
+          modelVersionId: productionModelId,
+          inputHash,
+          outputJson: sanitizedEstimate,
+          confidence: confidence ?? undefined,
+          latencyMs: 0,
+          meta: { cacheHit: true },
+        });
+
+        await logInsight({
+          tenantId,
+          module: inferenceModel,
+          inputSummary: `quote:${quote.id}:${inputType}`,
+          decision: productionModelId,
+          confidence,
+          userFeedback: {
+            kind: inferenceModel,
+            quoteId: quote.id,
+            modelVersionId: productionModelId,
+            estimatedTotal: predictedTotal,
+            cacheHit: true,
+          },
+        });
+
+        return res.json({ ok: true, method, predictedTotal, totalGBP, cacheHit: true });
+      }
+
       const startedAt = Date.now();
       const mlResp = await fetch(`${API_BASE}/ml/predict`, {
         method: "POST",
@@ -1065,39 +1251,8 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       const predictedTotal = safeNumber(ml?.predicted_total ?? ml?.predictedTotal ?? ml?.total) ?? 0;
       const confidenceRaw = safeNumber(ml?.confidence ?? ml?.probability ?? ml?.score);
       const confidence = confidenceRaw ?? 0;
-      const modelVersionId = extractModelVersionId(ml) || `external-${new Date().toISOString().slice(0, 10)}`;
+      let modelVersionId = extractModelVersionId(ml) || productionModelId || `external-${new Date().toISOString().slice(0, 10)}`;
       const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
-
-      let hashPayload: any = features;
-      if (inputType === "supplier_pdf") {
-        try {
-          const parsed = await prisma.parsedSupplierLine.findMany({
-            where: { tenantId, quoteId: quote.id },
-            select: {
-              rawText: true,
-              qty: true,
-              costUnit: true,
-              lineTotal: true,
-              currency: true,
-              supplier: true,
-            },
-            orderBy: { createdAt: "asc" },
-          });
-          hashPayload = parsed;
-        } catch (e: any) {
-          console.warn(`[quotes] failed to load parsed lines for estimate hashing:`, e?.message || e);
-        }
-      }
-
-      const inputHash = sha256(
-        tenantId,
-        ":",
-        quote.id,
-        ":",
-        inputType,
-        ":",
-        JSON.stringify(hashPayload ?? {}),
-      );
 
       try {
         await prisma.estimate.create({
@@ -1143,7 +1298,6 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       }
       await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
 
-      const inferenceModel = inputType === "supplier_pdf" ? "supplier_estimator" : "qa_estimator";
       const sanitizedEstimate = {
         predictedTotal,
         currency,
