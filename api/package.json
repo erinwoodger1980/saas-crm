@@ -19,7 +19,8 @@
     "followups:analyse": "ts-node --transpile-only src/scripts/followups-analyse.ts",
     "postinstall": "node scripts/prisma-postinstall.mjs && npx puppeteer browsers install chrome",
     "test:supplier": "ts-node-dev --transpile-only scripts/test-supplier-parse.ts",
-    "audit:prod": "ts-node --transpile-only scripts/prod_ml_audit.ts"
+    "audit:prod": "ts-node --transpile-only scripts/prod_ml_audit.ts",
+    "ttl:ml": "ts-node --transpile-only scripts/ttl-ml-telemetry.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",
