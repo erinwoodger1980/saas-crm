@@ -43,6 +43,9 @@ model Tenant {
   trainingInsights      TrainingInsights[]
   modelOverrides        ModelOverride[]
   trainingEvents        TrainingEvent[]
+  followUpTemplates     FollowUpTemplate[]
+  followUpEvents        FollowUpEvent[]
+  sourceSpends          SourceSpend[]
   // Workshop relations
   processPlans          ProcessPlan[]
   timeEntries           TimeEntry[]
@@ -98,6 +101,7 @@ model Lead {
   emailMessages EmailMessage[]
   emailThreads  EmailThread[]
   followUpLogs  FollowUpLog[]
+  followUpEvents FollowUpEvent[]
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   opportunity   Opportunity?
   Quote         Quote[]
@@ -262,6 +266,49 @@ model FollowUpLog {
   @@index([tenantId, channel, sentAt])
 }
 
+model FollowUpTemplate {
+  id        String   @id @default(cuid())
+  tenantId  String
+  key       String
+  subject   String
+  body      String
+  tone      String?
+  delayDays Int
+  isActive  Boolean  @default(true)
+  variant   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+}
+
+model FollowUpEvent {
+  id           String   @id @default(cuid())
+  tenantId     String
+  leadId       String
+  quoteId      String?
+  variant      String
+  templateKey  String
+  scheduledAt  DateTime
+  sentAt       DateTime?
+  openedAt     DateTime?
+  repliedAt    DateTime?
+  convertedAt  DateTime?
+  result       String?
+  source       String?
+  pixelToken   String?  @unique
+  costPence    Int?
+  meta         Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  lead         Lead     @relation(fields: [leadId], references: [id])
+  quote        Quote?   @relation(fields: [quoteId], references: [id])
+
+  @@index([tenantId, leadId, scheduledAt])
+}
+
 model LeadSourceCost {
   id          String   @id @default(cuid())
   tenantId    String
@@ -284,6 +331,19 @@ model LeadSourceSpend {
   amountGBP Decimal  @default(0)
 
   @@index([tenantId, source, month])
+}
+
+model SourceSpend {
+  id          String   @id @default(cuid())
+  tenantId    String
+  source      String
+  periodStart DateTime
+  periodEnd   DateTime
+  spendPence  Int
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, source, periodStart, periodEnd])
 }
 
 model LeadSourceConfig {
@@ -388,6 +448,7 @@ model Quote {
   tenant              Tenant         @relation(fields: [tenantId], references: [id])
   lines               QuoteLine[]
   supplierFiles       UploadedFile[]
+  followUpEvents      FollowUpEvent[]
 
   @@index([tenantId, leadId])
 }
