@@ -46,6 +46,8 @@ export const env = {
   JWT_SECRET: rawJwtSecret,
   PORT: Number(process.env.PORT ?? 4000),
   DATABASE_URL: requireEnv("DATABASE_URL"),
+  PARSER_MAX_PAGES: Math.max(1, Number(process.env.PARSER_MAX_PAGES ?? 3)),
+  PARSER_OCR_ENABLED: String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false",
 
   // Gmail OAuth
   GMAIL_CLIENT_ID: process.env.GMAIL_CLIENT_ID ?? "",
@@ -72,5 +74,7 @@ console.log(`📡 PORT: ${env.PORT}`);
 console.log(`🌐 WEB_ORIGIN: ${env.WEB_ORIGIN.join(', ')}`);
 console.log(`🔐 JWT configured: ${!!env.APP_JWT_SECRET}`);
 console.log(`🤖 OpenAI configured: ${!!env.OPENAI_API_KEY}`);
+console.log(`📄 Parser pages: ${env.PARSER_MAX_PAGES}`);
+console.log(`👁️‍🗨️ OCR enabled: ${env.PARSER_OCR_ENABLED}`);
 console.log(`📧 Gmail configured: ${!!env.GMAIL_CLIENT_ID}`);
 console.log(`📧 MS365 configured: ${!!env.MS365_CLIENT_ID}`);
