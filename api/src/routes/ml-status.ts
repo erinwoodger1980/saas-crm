@@ -2,12 +2,14 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { extractKeyMetric } from "../services/training";
+import { mlBootstrap } from "../env";
 
 const router = Router();
 
 router.get("/", async (req: any, res) => {
   const scopeRaw = typeof req.query?.scope === "string" ? req.query.scope : Array.isArray(req.query?.scope) ? req.query.scope[0] : "";
   const scope = String(scopeRaw || "").toLowerCase();
+  const { mlUrlHost, isProdMlHost, warning } = mlBootstrap;
 
   if (scope === "global") {
     try {
@@ -70,6 +72,9 @@ router.get("/", async (req: any, res) => {
         },
         parseFallbackRatio7d,
         parseErrorRate7d,
+        mlUrlHost,
+        isProdMlHost,
+        warning,
       });
     } catch (e: any) {
       console.error("[ml/status global] failed:", e?.message || e);
@@ -215,6 +220,9 @@ router.get("/", async (req: any, res) => {
       },
       parseFallbackRatio7d,
       parseErrorRate7d,
+      mlUrlHost,
+      isProdMlHost,
+      warning,
     });
   } catch (e: any) {
     console.error("[ml/status] failed:", e?.message || e);
