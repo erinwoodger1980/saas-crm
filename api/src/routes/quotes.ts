@@ -10,6 +10,7 @@ import { env } from "../env";
 
 import { callMlWithSignedUrl, callMlWithUpload, normaliseMlPayload } from "../lib/ml";
 import { fallbackParseSupplierPdf } from "../lib/pdf/fallback";
+import { parseSupplierPdf } from "../lib/supplier/parse";
 import type { SupplierParseResult } from "../types/parse";
 
 const router = Router();
@@ -264,12 +265,28 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         }
 
         let parseResult: SupplierParseResult | null = null;
+        const supplierHint =
+          (typeof req.body?.supplierHint === "string" && req.body.supplierHint) ||
+          (typeof quote.title === "string" ? quote.title : undefined);
+        try {
+          const hybrid = await parseSupplierPdf(buffer, {
+            supplierHint: supplierHint ?? f.name ?? undefined,
+            currencyHint: quote.currency || "GBP",
+          });
+          parseResult = hybrid;
+          info.hybrid = { used: true, confidence: hybrid.confidence, stages: hybrid.usedStages };
+          if (hybrid.warnings) hybrid.warnings.forEach((w: string) => warnings.add(w));
+        } catch (err: any) {
+          info.hybrid = { used: false, error: err?.message || String(err) };
+          warnings.add(`Hybrid parser failed for ${f.name || f.id}: ${err?.message || err}`);
+        }
+
         const mlHeaders: Record<string, string> = {};
         if (req.headers.authorization) {
           mlHeaders.Authorization = String(req.headers.authorization);
         }
 
-        if (!forceFallback) {
+        if ((!parseResult || parseResult.lines.length === 0) && !forceFallback) {
           const mlSigned = await callMlWithSignedUrl({
             url,
             filename: f.name || undefined,
