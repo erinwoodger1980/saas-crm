@@ -1,5 +1,5 @@
 export type SupplierParseResult = {
-  currency: "GBP" | "EUR" | "USD" | string;
+  currency: string;
   supplier?: string;
   lines: Array<{
     description: string;
@@ -17,4 +17,5 @@ export type SupplierParseResult = {
   confidence?: number;
   warnings?: string[];
   error?: string;
+  usedStages?: Array<"pdfjs" | "ocr" | "llm">;
 };
