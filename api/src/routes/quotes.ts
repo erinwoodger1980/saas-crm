@@ -14,6 +14,7 @@ import { fallbackParseSupplierPdf } from "../lib/pdf/fallback";
 import { parseSupplierPdf } from "../lib/supplier/parse";
 import type { SupplierParseResult } from "../types/parse";
 import { logInsight, logInferenceEvent } from "../services/training";
+import { redactSupplierLine } from "../lib/ml/redact";
 
 const router = Router();
 
@@ -111,7 +112,10 @@ function sanitiseParseResult(result: SupplierParseResult, supplier?: string | nu
     lineCount: Array.isArray(result.lines) ? result.lines.length : 0,
     lines: Array.isArray(result.lines)
       ? result.lines.map((ln) => ({
-          description: ln.description,
+          description:
+            ln?.description != null && ln?.description !== undefined
+              ? redactSupplierLine(String(ln.description))
+              : null,
           qty: safeNumber(ln.qty),
           costUnit: safeNumber(ln.costUnit),
           sellUnit: safeNumber((ln as any)?.sellUnit),
