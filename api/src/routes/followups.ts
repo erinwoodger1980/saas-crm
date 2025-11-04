@@ -65,6 +65,135 @@ router.get("/pixel/:token", async (req, res) => {
 
 router.use(requireAuth);
 
+router.get("/summary", async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const rawDays = Number(req.query.days);
+    const days = Number.isFinite(rawDays) ? Math.max(1, Math.min(90, Math.floor(rawDays))) : 28;
+    const since = dayjs().subtract(days, "day").toDate();
+
+    const logs = await prisma.followUpLog.findMany({
+      where: {
+        tenantId,
+        sentAt: { gte: since },
+      },
+      select: {
+        variant: true,
+        opened: true,
+        replied: true,
+        converted: true,
+        delayDays: true,
+      },
+    });
+
+    const totalSent = logs.length;
+    const totalOpened = logs.filter((log) => log.opened === true).length;
+    const totalReplied = logs.filter((log) => log.replied === true).length;
+    const totalConverted = logs.filter((log) => log.converted === true).length;
+
+    const variants = new Map<
+      string,
+      {
+        label: string;
+        sent: number;
+        opened: number;
+        replied: number;
+        converted: number;
+      }
+    >();
+
+    const delayRows = new Map<
+      number | "__none__",
+      { sent: number; opened: number; replied: number; converted: number }
+    >();
+
+    for (const log of logs) {
+      const variantKey = (log.variant || "").trim() || "Unknown";
+      const normalizedVariant = variantKey.toUpperCase();
+      const existingVariant = variants.get(normalizedVariant) || {
+        label: variantKey,
+        sent: 0,
+        opened: 0,
+        replied: 0,
+        converted: 0,
+      };
+      existingVariant.sent += 1;
+      if (log.opened) existingVariant.opened += 1;
+      if (log.replied) existingVariant.replied += 1;
+      if (log.converted) existingVariant.converted += 1;
+      variants.set(normalizedVariant, existingVariant);
+
+      const delayKey = typeof log.delayDays === "number" && Number.isFinite(log.delayDays)
+        ? log.delayDays
+        : "__none__";
+      const existingDelay = delayRows.get(delayKey) || { sent: 0, opened: 0, replied: 0, converted: 0 };
+      existingDelay.sent += 1;
+      if (log.opened) existingDelay.opened += 1;
+      if (log.replied) existingDelay.replied += 1;
+      if (log.converted) existingDelay.converted += 1;
+      delayRows.set(delayKey, existingDelay);
+    }
+
+    const computeRate = (numerator: number, denominator: number) =>
+      denominator > 0 ? numerator / denominator : null;
+
+    const variantStats = Array.from(variants.entries()).map(([key, data]) => ({
+      key,
+      label: data.label,
+      sent: data.sent,
+      openRate: computeRate(data.opened, data.sent),
+      replyRate: computeRate(data.replied, data.sent),
+      conversionRate: computeRate(data.converted, data.sent),
+    }));
+
+    variantStats.sort((a, b) => a.label.localeCompare(b.label));
+
+    let winner: string | null = null;
+    let bestRate = -1;
+    for (const variant of variantStats) {
+      if (variant.conversionRate == null) continue;
+      if (variant.conversionRate > bestRate) {
+        bestRate = variant.conversionRate;
+        winner = variant.key;
+      }
+    }
+
+    const delayStats = Array.from(delayRows.entries())
+      .map(([key, data]) => ({
+        delayDays: key === "__none__" ? null : (key as number),
+        sent: data.sent,
+        openRate: computeRate(data.opened, data.sent),
+        replyRate: computeRate(data.replied, data.sent),
+        conversionRate: computeRate(data.converted, data.sent),
+      }))
+      .sort((a, b) => {
+        if (a.delayDays == null && b.delayDays == null) return 0;
+        if (a.delayDays == null) return 1;
+        if (b.delayDays == null) return -1;
+        return a.delayDays - b.delayDays;
+      });
+
+    return res.json({
+      ok: true,
+      days,
+      totals: {
+        sent: totalSent,
+        openRate: computeRate(totalOpened, totalSent),
+        replyRate: computeRate(totalReplied, totalSent),
+        conversionRate: computeRate(totalConverted, totalSent),
+      },
+      variants: variantStats,
+      winner,
+      rows: delayStats,
+    });
+  } catch (err) {
+    console.error("[followups:summary]", err);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
 router.post("/schedule", async (req, res) => {
   try {
     const tenantId = req.auth?.tenantId;
