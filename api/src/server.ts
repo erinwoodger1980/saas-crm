@@ -54,6 +54,7 @@ import tasksRouter from "./routes/tasks";
 import eventsRouter from "./routes/events";
 import notificationsRouter from "./routes/notifications";
 import streaksRouter from "./routes/streaks";
+import followupsRouter from "./routes/followups";
 
 const app = express();
 
@@ -450,6 +451,7 @@ app.use("/tasks", tasksRouter);
 app.use("/events", eventsRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/streaks", streaksRouter);
+app.use("/followups", followupsRouter);
 app.use("/workshop", requireAuth, workshopRouter);
 
 /** ---------- Auth required from here ---------- */
