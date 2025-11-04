@@ -5,6 +5,7 @@ import { env } from "../env";
 import { getAccessTokenForTenant, fetchMessage } from "../services/gmail";
 import { getAccessTokenForTenant as getMsAccessToken, listSentWithAttachments as msListSentWithAttachments, listAttachments as msListAttachments } from "../services/ms365";
 import { prisma } from "../db"; // singleton PrismaClient
+import { recordTrainingOutcome } from "../services/training";
 
 type GmailMessageRef = { id: string; threadId?: string };
 type GmailListResponse = { messages?: GmailMessageRef[]; nextPageToken?: string };
@@ -22,6 +23,48 @@ const API_BASE =
     process.env.API_URL?.replace(/\/$/, "") ||
     process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "") ||
     "https://api.joineryai.app");
+
+function summariseTrainingPayload(raw: any) {
+  const obj = raw && typeof raw === "object" ? raw : {};
+  const meta = obj.meta && typeof obj.meta === "object" ? obj.meta : {};
+  const metrics =
+    (obj.metrics && typeof obj.metrics === "object"
+      ? obj.metrics
+      : meta.metrics && typeof meta.metrics === "object"
+      ? meta.metrics
+      : {}) || {};
+  const datasetHash =
+    obj.datasetHash ||
+    obj.dataset_hash ||
+    meta.datasetHash ||
+    meta.dataset_hash ||
+    "unknown";
+  const model = obj.model || obj.modelName || meta.model || "lead_classifier";
+  const modelLabel =
+    obj.modelLabel ||
+    obj.model_label ||
+    obj.version ||
+    meta.modelLabel ||
+    meta.model_label ||
+    meta.label ||
+    undefined;
+  const datasetSize =
+    typeof obj.datasetSize === "number"
+      ? obj.datasetSize
+      : typeof metrics.dataset_size === "number"
+      ? metrics.dataset_size
+      : typeof metrics.samples === "number"
+      ? metrics.samples
+      : undefined;
+
+  return {
+    model: String(model || "lead_classifier"),
+    datasetHash: String(datasetHash || "unknown"),
+    modelLabel: modelLabel ? String(modelLabel) : undefined,
+    metrics,
+    datasetSize: typeof datasetSize === "number" ? datasetSize : undefined,
+  } as const;
+}
 
 // -----------------------------
 // POST /internal/ml/ingest-gmail
@@ -339,10 +382,26 @@ router.post("/collect-train-save", async (req: any, res) => {
       trainJson = { raw: trainText };
     }
 
+    const summary = summariseTrainingPayload(trainJson);
+    const recorded = await recordTrainingOutcome({
+      tenantId,
+      model: summary.model,
+      status: trainResp.ok ? "succeeded" : "failed",
+      datasetHash: summary.datasetHash,
+      metrics: summary.metrics,
+      modelLabel: summary.modelLabel,
+      datasetSize: summary.datasetSize,
+    });
+
     if (!trainResp.ok) {
       return res
         .status(trainResp.status)
-        .json({ error: "ml_train_failed", detail: trainJson, saved });
+        .json({
+          error: "ml_train_failed",
+          detail: trainJson,
+          saved,
+          modelVersionId: recorded?.modelVersionId ?? null,
+        });
     }
 
     return res.json({
@@ -352,6 +411,8 @@ router.post("/collect-train-save", async (req: any, res) => {
       collected: items.length,
       saved,
       ml: trainJson,
+      modelVersionId: recorded?.modelVersionId ?? null,
+      promoted: recorded?.promoted ?? false,
     });
   } catch (e: any) {
     console.error("[internal/ml/collect-train-save] failed:", e?.message || e);
@@ -446,9 +507,26 @@ router.post("/save-train-from-uploaded", async (req: any, res) => {
     const trainText = await trainResp.text();
     let trainJson: any = {};
     try { trainJson = trainText ? JSON.parse(trainText) : {}; } catch { trainJson = { raw: trainText }; }
-    if (!trainResp.ok) return res.status(trainResp.status).json({ error: "ml_train_failed", detail: trainJson, saved });
+    const summary = summariseTrainingPayload(trainJson);
+    const recorded = await recordTrainingOutcome({
+      tenantId,
+      model: summary.model,
+      status: trainResp.ok ? "succeeded" : "failed",
+      datasetHash: summary.datasetHash,
+      metrics: summary.metrics,
+      modelLabel: summary.modelLabel,
+      datasetSize: summary.datasetSize,
+    });
+    if (!trainResp.ok) {
+      return res.status(trainResp.status).json({
+        error: "ml_train_failed",
+        detail: trainJson,
+        saved,
+        modelVersionId: recorded?.modelVersionId ?? null,
+      });
+    }
 
-    return res.json({ ok: true, tenantId, saved, ml: trainJson });
+    return res.json({ ok: true, tenantId, saved, ml: trainJson, modelVersionId: recorded?.modelVersionId ?? null, promoted: recorded?.promoted ?? false });
   } catch (e: any) {
     console.error("[/internal/ml/save-train-from-uploaded] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
@@ -576,9 +654,35 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
     const trainText = await trainResp.text();
     let trainJson: any = {};
     try { trainJson = trainText ? JSON.parse(trainText) : {}; } catch { trainJson = { raw: trainText }; }
-    if (!trainResp.ok) return res.status(trainResp.status).json({ error: "ml_train_failed", detail: trainJson, saved });
+    const summary = summariseTrainingPayload(trainJson);
+    const recorded = await recordTrainingOutcome({
+      tenantId,
+      model: summary.model,
+      status: trainResp.ok ? "succeeded" : "failed",
+      datasetHash: summary.datasetHash,
+      metrics: summary.metrics,
+      modelLabel: summary.modelLabel,
+      datasetSize: summary.datasetSize,
+    });
+    if (!trainResp.ok) {
+      return res.status(trainResp.status).json({
+        error: "ml_train_failed",
+        detail: trainJson,
+        saved,
+        modelVersionId: recorded?.modelVersionId ?? null,
+      });
+    }
 
-    return res.json({ ok: true, tenantId, requested: limit, collected: items.length, saved, ml: trainJson });
+    return res.json({
+      ok: true,
+      tenantId,
+      requested: limit,
+      collected: items.length,
+      saved,
+      ml: trainJson,
+      modelVersionId: recorded?.modelVersionId ?? null,
+      promoted: recorded?.promoted ?? false,
+    });
   } catch (e: any) {
     console.error("[internal/ml/collect-train-save-ms365] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });

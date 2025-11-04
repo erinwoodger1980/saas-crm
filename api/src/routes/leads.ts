@@ -778,6 +778,41 @@ router.patch("/:id", async (req, res) => {
     console.warn("[leads] ensure opportunity on WON failed:", (e as any)?.message || e);
   }
 
+  try {
+    const latestQuote = await prisma.quote.findFirst({
+      where: { tenantId, leadId: id },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, totalGBP: true },
+    });
+    if (latestQuote) {
+      const latestEstimate = await prisma.estimate.findFirst({
+        where: { tenantId, quoteId: latestQuote.id },
+        orderBy: { createdAt: "desc" },
+      });
+      if (latestEstimate) {
+        const acceptedPrice = latestQuote.totalGBP != null ? Number(latestQuote.totalGBP) : null;
+        if (nextUi === "WON") {
+          await prisma.estimate.update({
+            where: { id: latestEstimate.id },
+            data: {
+              actualAcceptedPrice: acceptedPrice ?? undefined,
+              outcome: "won",
+            },
+          });
+        } else if (["DISQUALIFIED", "REJECTED", "LOST"].includes(nextUi)) {
+          await prisma.estimate.update({
+            where: { id: latestEstimate.id },
+            data: {
+              outcome: "lost",
+            },
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[leads] estimate outcome sync failed:", (e as any)?.message || e);
+  }
+
   res.json({ ok: true, lead: updated });
 });
 
