@@ -16,6 +16,7 @@
     "prisma:resolve:ead": "prisma migrate resolve --rolled-back 20251021173644_early_adopter_feedback --schema ./prisma/schema.prisma",
     "seed-template": "node scripts/create-seed-template.mjs",
     "seed:followups": "ts-node --transpile-only src/scripts/seed-followup-templates.ts",
+    "followups:analyse": "ts-node --transpile-only src/scripts/followups-analyse.ts",
     "postinstall": "node scripts/prisma-postinstall.mjs && npx puppeteer browsers install chrome",
     "test:supplier": "ts-node-dev --transpile-only scripts/test-supplier-parse.ts",
     "audit:prod": "ts-node --transpile-only scripts/prod_ml_audit.ts"
