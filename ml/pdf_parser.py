@@ -1,5 +1,6 @@
 # ml/pdf_parser.py
 from __future__ import annotations
+import io
 import re
 from typing import List, Dict, Any
 
@@ -8,6 +9,12 @@ try:
     import fitz  # type: ignore
 except Exception:
     fitz = None  # type: ignore
+
+# Try to import PyPDF2 as a lightweight fallback when PyMuPDF is unavailable
+try:
+    from PyPDF2 import PdfReader  # type: ignore
+except Exception:
+    PdfReader = None  # type: ignore
 
 def _extract_text_pymupdf(pdf_bytes: bytes) -> str:
     """Best-effort text extraction using PyMuPDF. Returns '' if unavailable."""
@@ -21,6 +28,24 @@ def _extract_text_pymupdf(pdf_bytes: bytes) -> str:
             if not t.strip():
                 t = page.get_text("blocks") or ""
             parts.append(t)
+        return "\n".join(parts).strip()
+    except Exception:
+        return ""
+
+def _extract_text_pypdf(pdf_bytes: bytes) -> str:
+    """Fallback text extraction using PyPDF2 when PyMuPDF is unavailable."""
+    if not PdfReader:
+        return ""
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))  # type: ignore
+        parts: List[str] = []
+        for page in reader.pages:
+            try:
+                text = page.extract_text() or ""
+                if text.strip():
+                    parts.append(text)
+            except Exception:
+                continue
         return "\n".join(parts).strip()
     except Exception:
         return ""
@@ -56,12 +81,19 @@ def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
     """
     Public API used by main.py.
     1) Try PyMuPDF
-    2) Fallback to OCR (if libs present)
+    2) Fallback to PyPDF2 if available
+    3) Fallback to OCR (if libs present)
     """
     text = _extract_text_pymupdf(pdf_bytes)
     if text.strip():
         return text
-    # Only try OCR if PyMuPDF failed to get anything useful.
+
+    # Lightweight fallback that works without native dependencies.
+    text = _extract_text_pypdf(pdf_bytes)
+    if text.strip():
+        return text
+
+    # Only try OCR if other methods failed to get anything useful.
     ocr = _ocr_pages(pdf_bytes, max_pages=5)
     return ocr or ""
 
