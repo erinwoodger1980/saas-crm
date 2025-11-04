@@ -8,6 +8,10 @@ import { Prisma } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 
+import { callMlWithSignedUrl, callMlWithUpload, normaliseMlPayload } from "../lib/ml";
+import { fallbackParseSupplierPdf } from "../lib/pdf/fallback";
+import type { SupplierParseResult } from "../types/parse";
+
 const router = Router();
 
 function requireAuth(req: any, res: any, next: any) {
@@ -185,10 +189,12 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
     const id = String(req.params.id);
-    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { supplierFiles: true } });
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { supplierFiles: true },
+    });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
-    // Build base URL for serving files
     const API_BASE = (
       process.env.APP_API_URL ||
       process.env.API_URL ||
@@ -196,142 +202,218 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       `http://localhost:${process.env.PORT || 4000}`
     ).replace(/\/$/, "");
 
-    // Worker to perform parsing
+    const timeoutRaw = Number(process.env.ML_TIMEOUT_MS);
+    const TIMEOUT_MS = Math.min(Math.max(Number.isFinite(timeoutRaw) ? Number(timeoutRaw) : (process.env.NODE_ENV === "production" ? 15000 : 20000), 5000), 25000);
+    const HEAD_TIMEOUT_MS = 5000;
+
+    const forceFallback =
+      req.body?.forceFallback === true ||
+      req.body?.forceFallback === "true" ||
+      req.body?.forceFallback === 1 ||
+      String(req.query.forceFallback ?? "").toLowerCase() === "1" ||
+      String(req.query.forceFallback ?? "").toLowerCase() === "true";
+
     const doParse = async () => {
       const created: any[] = [];
-      const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }>= [];
-      const TIMEOUT_MS = Math.max(2000, Number(process.env.ML_TIMEOUT_MS || (process.env.NODE_ENV === "production" ? 6000 : 10000)));
+      const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }> = [];
+      const summaries: any[] = [];
+      const warnings = new Set<string>();
+      let fallbackUsed = 0;
+
       const filesToParse = [...quote.supplierFiles]
         .filter((x) => /pdf$/i.test(x.mimeType || "") || /\.pdf$/i.test(x.name || ""))
         .sort((a: any, b: any) => new Date(b.uploadedAt || b.createdAt || 0).getTime() - new Date(a.uploadedAt || a.createdAt || 0).getTime())
-        .slice(0, 1);
+        .slice(0, 3);
+
+      if (filesToParse.length === 0) {
+        return { error: "no_files", created: 0, fails: [], warnings: [], fallbackUsed: 0, summaries: [], timeoutMs: TIMEOUT_MS } as const;
+      }
 
       for (const f of filesToParse) {
         const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "30m" });
         const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
-        const ctl = new AbortController();
-        const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
-  let resp: any;
+        console.log(`[parse] quote ${quote.id} file ${f.id} signed URL length=${url.length}`);
+
+        const info: any = { fileId: f.id, name: f.name, headStatus: null, usedFallback: false };
+        const mlErrors: any[] = [];
+
+        if (!forceFallback) {
+          try {
+            const ctl = new AbortController();
+            const timer = setTimeout(() => ctl.abort(), HEAD_TIMEOUT_MS);
+            const headResp = await fetch(url, { method: "HEAD", signal: ctl.signal as any });
+            clearTimeout(timer);
+            info.headStatus = headResp.status;
+            if (!headResp.ok) {
+              warnings.add(`Signed URL head check failed (${headResp.status}) for ${f.name || f.id}`);
+            }
+          } catch (err: any) {
+            warnings.add(`Signed URL head request failed for ${f.name || f.id}: ${err?.message || err}`);
+          }
+        }
+
+        const abs = path.isAbsolute(f.path) ? f.path : path.join(process.cwd(), f.path);
+        let buffer: Buffer;
         try {
-          resp = await fetch(`${API_BASE}/ml/parse-quote`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: req.headers.authorization || "" },
-            body: JSON.stringify({ url, filename: f.name || undefined }),
-            signal: ctl.signal as any,
-          } as any);
+          buffer = await fs.promises.readFile(abs);
         } catch (err: any) {
-          clearTimeout(t);
-          const msg = err?.name === "AbortError" ? `timeout_${TIMEOUT_MS}ms` : err?.message || String(err);
-          fails.push({ fileId: f.id, name: f.name, status: 504, error: { error: msg } });
-          continue;
-        } finally {
-          clearTimeout(t);
-        }
-
-        const text = await resp.text();
-        let parsed: any = {};
-        try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
-        if (!resp.ok) {
-          fails.push({ fileId: f.id, name: f.name, status: resp.status, error: parsed });
+          fails.push({ fileId: f.id, name: f.name, status: 404, error: { error: "file_read_failed", detail: err?.message || err } });
+          warnings.add(`Unable to read supplier file ${f.name || f.id}`);
+          summaries.push({ ...info, error: "file_read_failed" });
           continue;
         }
 
-        // Recent ML responses wrap the useful payload under `parsed`; older
-        // versions returned the fields at the top level. Normalise here so we
-        // can continue handling both shapes without breaking the UI.
-        const normalized = parsed && typeof parsed === "object" && parsed.parsed
-          ? parsed.parsed
-          : parsed;
+        let parseResult: SupplierParseResult | null = null;
+        const mlHeaders: Record<string, string> = {};
+        if (req.headers.authorization) {
+          mlHeaders.Authorization = String(req.headers.authorization);
+        }
 
-        // Accept multiple possible ML shapes for line items
-        const candidateArrays: any[] = [];
-        if (Array.isArray((normalized as any)?.lines)) candidateArrays.push((normalized as any).lines);
-        if (Array.isArray((normalized as any)?.items)) candidateArrays.push((normalized as any).items);
-        if (Array.isArray((normalized as any)?.line_items)) candidateArrays.push((normalized as any).line_items);
-        if (Array.isArray((normalized as any)?.rows)) candidateArrays.push((normalized as any).rows);
-        if (Array.isArray((normalized as any)?.table)) candidateArrays.push((normalized as any).table);
-        if ((normalized as any)?.table && Array.isArray((normalized as any).table.rows)) candidateArrays.push((normalized as any).table.rows);
-        const lines: any[] = candidateArrays.find((a) => Array.isArray(a) && a.length > 0) || [];
-
-        if (lines.length === 0) {
-          // Fallback: create a single umbrella line when we only have totals.
-          const candidates: number[] = [];
-          const est = Number((normalized as any)?.estimated_total ?? (parsed as any)?.estimated_total);
-          if (Number.isFinite(est) && est > 0) candidates.push(est);
-          const totalsArr = Array.isArray((normalized as any)?.detected_totals)
-            ? (normalized as any).detected_totals
-            : Array.isArray((parsed as any)?.detected_totals)
-            ? (parsed as any).detected_totals
-            : [];
-          for (const v of totalsArr) {
-            const n = Number(v);
-            if (Number.isFinite(n) && n > 0) candidates.push(n);
+        if (!forceFallback) {
+          const mlSigned = await callMlWithSignedUrl({
+            url,
+            filename: f.name || undefined,
+            timeoutMs: TIMEOUT_MS,
+            headers: mlHeaders,
+          });
+          info.mlSigned = { status: mlSigned.status, ok: mlSigned.ok, tookMs: mlSigned.tookMs };
+          console.log(`[parse] quote ${quote.id} file ${f.id} ML signed status=${mlSigned.status} ok=${mlSigned.ok} took=${mlSigned.tookMs}ms`);
+          if (mlSigned.ok) {
+            const normalised = normaliseMlPayload(mlSigned.data);
+            parseResult = normalised;
+            if (!normalised.lines.length) {
+              mlErrors.push({ stage: "signed_url", error: "no_lines" });
+            }
+          } else {
+            mlErrors.push({ stage: "signed_url", error: mlSigned.error, status: mlSigned.status, detail: mlSigned.detail });
           }
-          const single = candidates.sort((a, b) => b - a)[0];
-          if (!single) {
-            fails.push({
-              fileId: f.id,
-              name: f.name,
-              status: 200,
-              error: { error: "no_lines_detected", keys: Object.keys(normalized || {}), hint: "Ensure the PDF has a clear table or try another file." },
+
+          if ((!parseResult || parseResult.lines.length === 0) && buffer) {
+            const upload = await callMlWithUpload({
+              buffer,
+              filename: f.name || "supplier-quote.pdf",
+              timeoutMs: TIMEOUT_MS,
+              headers: mlHeaders,
             });
-            continue;
+            info.mlUpload = { status: upload.status, ok: upload.ok, tookMs: upload.tookMs };
+            console.log(`[parse] quote ${quote.id} file ${f.id} ML upload status=${upload.status} ok=${upload.ok} took=${upload.tookMs}ms`);
+            if (upload.ok) {
+              const normalisedUpload = normaliseMlPayload(upload.data);
+              parseResult = normalisedUpload;
+              if (!normalisedUpload.lines.length) {
+                mlErrors.push({ stage: "upload", error: "no_lines" });
+              }
+            } else {
+              mlErrors.push({ stage: "upload", error: upload.error, status: upload.status, detail: upload.detail });
+            }
           }
-          const currency = normalizeCurrency((normalized as any)?.currency || (parsed as any)?.currency || quote.currency || "GBP");
-          const row = await prisma.quoteLine.create({
-            data: {
-              quoteId: quote.id,
-              supplier: (normalized as any)?.supplier || (parsed as any)?.supplier || undefined,
-              sku: undefined,
-              description: `Supplier total — ${f.name || "PDF"}`,
-              qty: 1,
-              unitPrice: new Prisma.Decimal(single),
-              currency,
-              deliveryShareGBP: new Prisma.Decimal(0),
-              lineTotalGBP: new Prisma.Decimal(0),
-              meta: { source: "ml-parse", parsed: normalized || parsed, fallback: true },
+        }
+
+        if (!parseResult || parseResult.lines.length === 0) {
+          const fallback = await fallbackParseSupplierPdf(buffer);
+          parseResult = fallback;
+          info.usedFallback = true;
+          fallbackUsed += 1;
+          console.warn(`[parse] quote ${quote.id} file ${f.id} using fallback parser (mlErrors=${mlErrors.length})`);
+          if (fallback.warnings) fallback.warnings.forEach((w) => warnings.add(w));
+          if (mlErrors.length) {
+            warnings.add(`ML parser failed for ${f.name || f.id}; fallback parser applied.`);
+          }
+        } else if (parseResult.warnings) {
+          parseResult.warnings.forEach((w) => warnings.add(w));
+        }
+
+        info.warnings = parseResult?.warnings || [];
+        if (parseResult?.confidence != null) info.confidence = parseResult.confidence;
+        if (parseResult?.detected_totals) info.detected_totals = parseResult.detected_totals;
+        if (mlErrors.length) info.mlErrors = mlErrors;
+
+        if (!parseResult || parseResult.lines.length === 0) {
+          fails.push({
+            fileId: f.id,
+            name: f.name,
+            status: 422,
+            error: {
+              error: parseResult?.error || "no_lines_detected",
+              mlErrors,
+              warnings: parseResult?.warnings,
             },
           });
-          created.push(row);
+          summaries.push(info);
           continue;
         }
 
-        for (const ln of lines) {
-          const description = String(ln.description || ln.item || ln.name || f.name || "Line");
-          const qty = toNumber(ln.qty ?? ln.quantity ?? ln.count ?? ln.units ?? 1) || 1;
-          const unit = toNumber(ln.unit_price ?? ln.unitPrice ?? ln.price ?? ln.unit_cost ?? ln.unit ?? 0) || 0;
-          const currency = normalizeCurrency(
-            normalized?.currency || parsed?.currency || ln.currency || quote.currency || "GBP",
-          );
+        const currency = normalizeCurrency(parseResult.currency || quote.currency || "GBP");
+        const supplier = parseResult.supplier || undefined;
+
+        let lineIndex = 0;
+        for (const ln of parseResult.lines) {
+          lineIndex += 1;
+          const description = String(ln.description || `${f.name || "Line"} ${lineIndex}`);
+          const qtyRaw = Number(ln.qty ?? 1);
+          const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+          let unitPrice = Number(ln.costUnit ?? (ln.lineTotal != null ? ln.lineTotal / qty : 0));
+          if (!Number.isFinite(unitPrice) || unitPrice < 0) unitPrice = 0;
+
+          const meta: any = {
+            source: info.usedFallback ? "fallback-parser" : "ml-parse",
+            raw: ln,
+            parsed: parseResult,
+            fallback: info.usedFallback,
+            confidence: parseResult.confidence ?? null,
+          };
+
           const row = await prisma.quoteLine.create({
             data: {
               quoteId: quote.id,
-              supplier: (normalized?.supplier || parsed?.supplier || undefined) as any,
-              sku: typeof ln.sku === "string" ? ln.sku : undefined,
+              supplier: supplier as any,
+              sku: undefined,
               description,
               qty,
-              unitPrice: new Prisma.Decimal(unit),
+              unitPrice: new Prisma.Decimal(unitPrice),
               currency,
               deliveryShareGBP: new Prisma.Decimal(0),
               lineTotalGBP: new Prisma.Decimal(0),
-              meta: normalized
-                ? { source: "ml-parse", raw: ln, parsed: normalized }
-                : parsed
-                  ? { source: "ml-parse", raw: ln, parsed }
-                  : undefined,
+              meta,
             },
           });
           created.push(row);
         }
+
+        info.lineCount = parseResult.lines.length;
+        info.currency = currency;
+        info.supplier = supplier;
+        summaries.push(info);
       }
 
-      if (created.length === 0) return { error: "parse_failed", created: 0, fails } as const;
-      return { ok: true, created: created.length, fails: 0 } as const;
+      const warningsArr = [...warnings];
+      if (created.length === 0) {
+        return {
+          error: "parse_failed",
+          created: 0,
+          fails,
+          warnings: warningsArr,
+          fallbackUsed,
+          summaries,
+          timeoutMs: TIMEOUT_MS,
+          message: fallbackUsed ? "ML could not parse the PDF. Fallback parser attempted but produced no lines." : undefined,
+        } as const;
+      }
+
+      return {
+        ok: true,
+        created: created.length,
+        fails,
+        fallbackUsed,
+        summaries,
+        warnings: warningsArr,
+        timeoutMs: TIMEOUT_MS,
+        message: fallbackUsed ? "ML could not parse some files. Fallback parser applied." : undefined,
+      } as const;
     };
 
-    const preferAsync = (process.env.NODE_ENV === "production") && String(req.query.async ?? "1") !== "0";
+    const preferAsync = process.env.NODE_ENV === "production" && String(req.query.async ?? "1") !== "0";
     if (preferAsync) {
-      // Record that a parse started (so UI can surface status)
       try {
         const startedAt = new Date().toISOString();
         const meta0: any = (quote.meta as any) || {};
@@ -365,7 +447,16 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           try {
             await prisma.quote.update({
               where: { id: quote.id },
-              data: { meta: { ...((quote.meta as any) || {}), lastParse: { state: "error", finishedAt: new Date().toISOString(), error: String(e?.message || e) } } as any },
+              data: {
+                meta: {
+                  ...((quote.meta as any) || {}),
+                  lastParse: {
+                    state: "error",
+                    finishedAt: new Date().toISOString(),
+                    error: String(e?.message || e),
+                  },
+                } as any,
+              },
             } as any);
           } catch {}
         }
@@ -374,14 +465,16 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
     }
 
     const out = await doParse();
-    if ((out as any).error) return res.status(502).json(out);
+    if ((out as any).error) {
+      const status = (out as any).error === "no_files" ? 400 : 502;
+      return res.status(status).json(out);
+    }
     return res.json(out);
   } catch (e: any) {
     console.error("[/quotes/:id/parse] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
-
 /**
  * POST /quotes/:id/render-pdf
  * Renders a simple PDF proposal for the quote lines using Puppeteer and stores it as an UploadedFile.
