@@ -37,7 +37,31 @@ if (BUSINESS_WINDOWS.length === 0) {
   BUSINESS_WINDOWS.push({ startMinutes: 9 * 60, endMinutes: 17 * 60 });
 }
 
+const TRANSPARENT_PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wwAAn8B9gWf3gAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 const router = Router();
+
+router.get("/pixel/:token", async (req, res) => {
+  const { token } = req.params;
+
+  if (token) {
+    try {
+      await prisma.followUpEvent.updateMany({
+        where: { pixelToken: token, openedAt: null },
+        data: { openedAt: new Date() },
+      });
+    } catch (err: any) {
+      console.error("[followups:pixel]", err?.message || err);
+    }
+  }
+
+  res.setHeader("Content-Type", "image/png");
+  res.setHeader("Cache-Control", "no-store");
+  return res.send(TRANSPARENT_PIXEL);
+});
 
 router.use(requireAuth);
 
