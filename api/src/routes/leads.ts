@@ -118,41 +118,99 @@ function monthStartUTC(d: Date) {
 /* ------------------------------------------------------------------ */
 
 function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
-  const lines = csvText.split('\n').filter(line => line.trim());
-  if (lines.length === 0) {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentField = '';
+  let inQuotes = false;
+
+  const toString = (value: unknown): string => {
+    if (typeof value === 'string') return value;
+    if (value === undefined || value === null) return '';
+    return String(value);
+  };
+
+  const flushField = () => {
+    let value = currentField;
+    if (!inQuotes) {
+      value = value.replace(/\r/g, '');
+    }
+    currentField = '';
+    currentRow.push(value);
+  };
+
+  const flushRow = () => {
+    flushField();
+    // Remove empty leading row created by extra newline/BOM
+    if (currentRow.length === 1 && toString(currentRow[0]).trim() === '' && rows.length === 0) {
+      currentRow = [];
+      return;
+    }
+    rows.push(
+      currentRow.map((field) =>
+        toString(field)
+          .trim()
+          .replace(/^"|"$/g, '')
+          .replace(/""/g, '"')
+      )
+    );
+    currentRow = [];
+  };
+
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    const nextChar = i + 1 < csvText.length ? csvText[i + 1] : '';
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentField += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      flushField();
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      // handle Windows style \r\n newlines
+      if (char === '\r' && nextChar === '\n') {
+        i++;
+      }
+      flushRow();
+      continue;
+    }
+
+    currentField += char;
+  }
+
+  if (currentField.length > 0 || currentRow.length > 0) {
+    flushRow();
+  }
+
+  if (rows.length === 0) {
     throw new Error('CSV file is empty');
   }
-  
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-  const rows = lines.slice(1).map(line => {
-    // Simple CSV parsing - handle quoted fields
-    const row: string[] = [];
-    let currentField = '';
-    let inQuotes = false;
-    let i = 0;
-    
-    while (i < line.length) {
-      const char = line[i];
-      if (char === '"' && (i === 0 || line[i-1] === ',')) {
-        inQuotes = true;
-      } else if (char === '"' && inQuotes && (i === line.length - 1 || line[i+1] === ',')) {
-        inQuotes = false;
-      } else if (char === ',' && !inQuotes) {
-        row.push(currentField.trim());
-        currentField = '';
-        i++;
-        continue;
-      } else {
-        currentField += char;
-      }
-      i++;
-    }
-    row.push(currentField.trim());
-    
-    return row;
+
+  const [headerRow, ...dataRows] = rows;
+  const headers = headerRow.map((h, idx) => {
+    const base = toString(h).trim();
+    return idx === 0 ? base.replace(/^\ufeff/, '') : base;
   });
-  
-  return { headers, rows };
+
+  const normalizedRows = dataRows
+    .map((row) => row.map((cell) => toString(cell)))
+    .filter((row) => row.some((cell) => toString(cell).trim().length > 0))
+    .map((row) => {
+      const padded = [...row];
+      while (padded.length < headers.length) padded.push('');
+      return padded.slice(0, headers.length).map((cell) => toString(cell).trim());
+    });
+
+  return { headers, rows: normalizedRows };
 }
 
 function validateLeadData(data: any): { valid: boolean; errors: string[] } {
