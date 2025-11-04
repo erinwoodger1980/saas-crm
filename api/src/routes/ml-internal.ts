@@ -401,6 +401,7 @@ router.post("/collect-train-save", async (req: any, res) => {
           detail: trainJson,
           saved,
           modelVersionId: recorded?.modelVersionId ?? null,
+          awaitingApproval: recorded?.awaitingApproval ?? false,
         });
     }
 
@@ -413,6 +414,7 @@ router.post("/collect-train-save", async (req: any, res) => {
       ml: trainJson,
       modelVersionId: recorded?.modelVersionId ?? null,
       promoted: recorded?.promoted ?? false,
+      awaitingApproval: recorded?.awaitingApproval ?? false,
     });
   } catch (e: any) {
     console.error("[internal/ml/collect-train-save] failed:", e?.message || e);
@@ -523,10 +525,19 @@ router.post("/save-train-from-uploaded", async (req: any, res) => {
         detail: trainJson,
         saved,
         modelVersionId: recorded?.modelVersionId ?? null,
+        awaitingApproval: recorded?.awaitingApproval ?? false,
       });
     }
 
-    return res.json({ ok: true, tenantId, saved, ml: trainJson, modelVersionId: recorded?.modelVersionId ?? null, promoted: recorded?.promoted ?? false });
+    return res.json({
+      ok: true,
+      tenantId,
+      saved,
+      ml: trainJson,
+      modelVersionId: recorded?.modelVersionId ?? null,
+      promoted: recorded?.promoted ?? false,
+      awaitingApproval: recorded?.awaitingApproval ?? false,
+    });
   } catch (e: any) {
     console.error("[/internal/ml/save-train-from-uploaded] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
@@ -670,6 +681,7 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
         detail: trainJson,
         saved,
         modelVersionId: recorded?.modelVersionId ?? null,
+        awaitingApproval: recorded?.awaitingApproval ?? false,
       });
     }
 
@@ -682,6 +694,7 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
       ml: trainJson,
       modelVersionId: recorded?.modelVersionId ?? null,
       promoted: recorded?.promoted ?? false,
+      awaitingApproval: recorded?.awaitingApproval ?? false,
     });
   } catch (e: any) {
     console.error("[internal/ml/collect-train-save-ms365] failed:", e?.message || e);
