@@ -3,7 +3,11 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { getAccessTokenForTenant, fetchMessage } from "../services/gmail";
-import { getAccessTokenForTenant as getMsAccessToken, listSentWithAttachments as msListSentWithAttachments, listAttachments as msListAttachments } from "../services/ms365";
+import {
+  getAccessTokenForTenant as getMsAccessToken,
+  listSentWithAttachments as msListSentWithAttachments,
+  listAttachments as msListAttachments,
+} from "../services/ms365";
 import { prisma } from "../db"; // singleton PrismaClient
 import { recordTrainingOutcome } from "../services/training";
 
@@ -23,6 +27,97 @@ const API_BASE =
     process.env.API_URL?.replace(/\/$/, "") ||
     process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "") ||
     "https://api.joineryai.app");
+
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchWithBackoff(
+  url: string,
+  init: Parameters<typeof fetch>[1],
+  label: string,
+  maxAttempts = 5
+) {
+  let attempt = 0;
+  let delayMs = 500;
+  while (attempt < maxAttempts) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || !RETRYABLE_STATUSES.has(res.status)) {
+        return res;
+      }
+      if (attempt === maxAttempts - 1) {
+        return res;
+      }
+      await sleep(delayMs);
+      delayMs = Math.min(delayMs * 2, 16000);
+      attempt += 1;
+    } catch (err) {
+      if (attempt === maxAttempts - 1) throw err;
+      await sleep(delayMs);
+      delayMs = Math.min(delayMs * 2, 16000);
+      attempt += 1;
+    }
+  }
+  throw new Error(`[${label}] fetchWithBackoff exhausted attempts`);
+}
+
+async function withBackoff<T>(fn: () => Promise<T>, label: string, maxAttempts = 5): Promise<T> {
+  let attempt = 0;
+  let delayMs = 500;
+  while (attempt < maxAttempts) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxAttempts - 1) throw err;
+      await sleep(delayMs);
+      delayMs = Math.min(delayMs * 2, 16000);
+      attempt += 1;
+    }
+  }
+  throw new Error(`[${label}] withBackoff exhausted attempts`);
+}
+
+const CHECKPOINT_SOURCES = {
+  gmail: "gmail",
+  ms365: "ms365",
+} as const;
+
+let collectorCheckpointEnsured = false;
+
+async function ensureCollectorCheckpointTable() {
+  if (collectorCheckpointEnsured) return;
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "CollectorCheckpoint" (
+      "tenantId" text NOT NULL,
+      "source" text NOT NULL,
+      "pageToken" text,
+      "updatedAt" timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT collectorcheckpoint_pkey PRIMARY KEY ("tenantId", "source")
+    );
+  `);
+  collectorCheckpointEnsured = true;
+}
+
+async function getCollectorCheckpoint(tenantId: string, source: string) {
+  await ensureCollectorCheckpointTable();
+  const rows = await prisma.$queryRaw<Array<{ pageToken: string | null }>>`
+    SELECT "pageToken" FROM "CollectorCheckpoint"
+    WHERE "tenantId" = ${tenantId} AND "source" = ${source}
+    LIMIT 1
+  `;
+  return rows[0]?.pageToken ?? null;
+}
+
+async function setCollectorCheckpoint(tenantId: string, source: string, pageToken: string | null) {
+  await ensureCollectorCheckpointTable();
+  await prisma.$executeRaw`
+    INSERT INTO "CollectorCheckpoint" ("tenantId", "source", "pageToken", "updatedAt")
+    VALUES (${tenantId}, ${source}, ${pageToken}, now())
+    ON CONFLICT ("tenantId", "source") DO UPDATE
+    SET "pageToken" = EXCLUDED."pageToken", "updatedAt" = now()
+  `;
+}
 
 function summariseTrainingPayload(raw: any) {
   const obj = raw && typeof raw === "object" ? raw : {};
@@ -80,12 +175,18 @@ router.post("/ingest-gmail", async (req: any, res) => {
     const tenantId = req.auth?.tenantId as string | undefined;
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 500), 500));
+    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 100), 500));
     const accessToken = await getAccessTokenForTenant(tenantId);
+
+    const requestedPageToken =
+      typeof req.body?.pageToken === "string" ? req.body.pageToken.trim() : "";
+    const explicitPageToken = requestedPageToken || undefined;
+    const startPageToken = explicitPageToken ?? (await getCollectorCheckpoint(tenantId, CHECKPOINT_SOURCES.gmail));
 
     const q = "in:sent filename:pdf has:attachment";
     const maxPage = 100;
-    let nextPageToken: string | undefined;
+    let pageToken: string | null = startPageToken || null;
+    let nextPageToken: string | null = null;
 
     type Item = {
       messageId: string;
@@ -103,23 +204,27 @@ router.post("/ingest-gmail", async (req: any, res) => {
         new URLSearchParams({
           q,
           maxResults: String(Math.min(limit - out.length, maxPage)),
-          ...(nextPageToken ? { pageToken: nextPageToken } : {}),
+          ...(pageToken ? { pageToken } : {}),
         }).toString();
 
-      const listRes = await fetch(searchUrl, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const listRes = await fetchWithBackoff(
+        searchUrl,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+        "gmail:list"
+      );
 
       const listJson = (await listRes.json()) as GmailListResponse;
       if (!listRes.ok) return res.status(listRes.status).json(listJson);
 
       const msgs = listJson.messages || [];
-      nextPageToken = listJson.nextPageToken;
+      nextPageToken = listJson.nextPageToken ?? null;
 
       for (const m of msgs) {
         if (out.length >= limit) break;
 
-        const msg = await fetchMessage(accessToken, m.id, "full");
+        const msg = await withBackoff(() => fetchMessage(accessToken, m.id, "full"), "gmail:message");
         const headers = msg.payload?.headers || [];
 
         const subject =
@@ -172,9 +277,23 @@ router.post("/ingest-gmail", async (req: any, res) => {
       }
 
       if (!nextPageToken || msgs.length === 0) break;
+      if (out.length >= limit) break;
+      pageToken = nextPageToken;
     }
 
-    return res.json({ ok: true, count: out.length, items: out });
+    try {
+      await setCollectorCheckpoint(tenantId, CHECKPOINT_SOURCES.gmail, nextPageToken);
+    } catch (err) {
+      console.error("[internal/ml/ingest-gmail] checkpoint save failed:", (err as any)?.message || err);
+    }
+
+    return res.json({
+      ok: true,
+      count: out.length,
+      items: out,
+      nextPageToken,
+      startedFromPageToken: startPageToken ?? null,
+    });
   } catch (e: any) {
     console.error("[internal/ml/ingest-gmail] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
@@ -289,7 +408,9 @@ router.post("/collect-train-save", async (req: any, res) => {
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
     if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
 
-    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 50), 500));
+    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 100), 500));
+    const pageTokenRaw = typeof req.body?.pageToken === "string" ? req.body.pageToken.trim() : "";
+    const pageToken = pageTokenRaw || undefined;
 
     // 1) Collect signed attachment URLs via our own endpoint
     const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-gmail`, {
@@ -298,7 +419,7 @@ router.post("/collect-train-save", async (req: any, res) => {
         "Content-Type": "application/json",
         ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
       },
-      body: JSON.stringify({ limit }),
+      body: JSON.stringify({ limit, ...(pageToken ? { pageToken } : {}) }),
     });
 
     const ingestText = await ingestResp.text();
@@ -311,6 +432,13 @@ router.post("/collect-train-save", async (req: any, res) => {
     if (!ingestResp.ok) {
       return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
     }
+
+    const nextPageToken = typeof ingestJson.nextPageToken === "string" ? ingestJson.nextPageToken : null;
+    const startedFromPageTokenRaw = ingestJson.startedFromPageToken;
+    const startedFromPageToken =
+      typeof startedFromPageTokenRaw === "string" || startedFromPageTokenRaw === null
+        ? startedFromPageTokenRaw
+        : null;
 
     type Item = {
       messageId: string;
@@ -402,6 +530,8 @@ router.post("/collect-train-save", async (req: any, res) => {
           saved,
           modelVersionId: recorded?.modelVersionId ?? null,
           awaitingApproval: recorded?.awaitingApproval ?? false,
+          nextPageToken,
+          startedFromPageToken,
         });
     }
 
@@ -415,6 +545,8 @@ router.post("/collect-train-save", async (req: any, res) => {
       modelVersionId: recorded?.modelVersionId ?? null,
       promoted: recorded?.promoted ?? false,
       awaitingApproval: recorded?.awaitingApproval ?? false,
+      nextPageToken,
+      startedFromPageToken,
     });
   } catch (e: any) {
     console.error("[internal/ml/collect-train-save] failed:", e?.message || e);
@@ -555,8 +687,13 @@ router.post("/ingest-ms365", async (req: any, res) => {
     const tenantId = req.auth?.tenantId as string | undefined;
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 500), 500));
+    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 100), 500));
     const accessToken = await getMsAccessToken(tenantId);
+
+    const requestedPageToken =
+      typeof req.body?.pageToken === "string" ? req.body.pageToken.trim() : "";
+    const explicitPageToken = requestedPageToken || undefined;
+    const startPageToken = explicitPageToken ?? (await getCollectorCheckpoint(tenantId, CHECKPOINT_SOURCES.ms365));
 
     type Item = {
       messageId: string;
@@ -567,11 +704,15 @@ router.post("/ingest-ms365", async (req: any, res) => {
     };
     const out: Item[] = [];
 
-    let nextLink: string | undefined;
+    let pageToken: string | null = startPageToken || null;
+    let nextLink: string | null = null;
     while (out.length < limit) {
-      const page = await msListSentWithAttachments(accessToken, Math.min(limit - out.length, 50), nextLink);
+      const page = await withBackoff(
+        () => msListSentWithAttachments(accessToken, Math.min(limit - out.length, 50), pageToken || undefined),
+        "ms365:list"
+      );
       const messages = Array.isArray(page.value) ? page.value : [];
-      nextLink = page['@odata.nextLink'] as string | undefined;
+      nextLink = (page["@odata.nextLink"] as string | undefined) ?? null;
 
       for (const m of messages) {
         if (out.length >= limit) break;
@@ -580,7 +721,7 @@ router.post("/ingest-ms365", async (req: any, res) => {
         const subject = (m?.subject as string | undefined) || null;
         const sentDate = (m?.sentDateTime as string | undefined) || null;
 
-        const atts = await msListAttachments(accessToken, m.id);
+        const atts = await withBackoff(() => msListAttachments(accessToken, m.id), "ms365:attachments");
         const arr = Array.isArray(atts.value) ? atts.value : [];
         for (const a of arr) {
           if (out.length >= limit) break;
@@ -600,9 +741,23 @@ router.post("/ingest-ms365", async (req: any, res) => {
       }
 
       if (!nextLink || messages.length === 0) break;
+      if (out.length >= limit) break;
+      pageToken = nextLink;
     }
 
-    return res.json({ ok: true, count: out.length, items: out });
+    try {
+      await setCollectorCheckpoint(tenantId, CHECKPOINT_SOURCES.ms365, nextLink);
+    } catch (err) {
+      console.error("[internal/ml/ingest-ms365] checkpoint save failed:", (err as any)?.message || err);
+    }
+
+    return res.json({
+      ok: true,
+      count: out.length,
+      items: out,
+      nextPageToken: nextLink,
+      startedFromPageToken: startPageToken ?? null,
+    });
   } catch (e: any) {
     console.error("[internal/ml/ingest-ms365] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
@@ -618,7 +773,9 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
     if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
 
-    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 50), 500));
+    const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 100), 500));
+    const pageTokenRaw = typeof req.body?.pageToken === "string" ? req.body.pageToken.trim() : "";
+    const pageToken = pageTokenRaw || undefined;
 
     const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-ms365`, {
       method: "POST",
@@ -626,13 +783,20 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
         "Content-Type": "application/json",
         ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
       },
-      body: JSON.stringify({ limit }),
+      body: JSON.stringify({ limit, ...(pageToken ? { pageToken } : {}) }),
     });
 
     const ingestText = await ingestResp.text();
     let ingestJson: any = {};
     try { ingestJson = ingestText ? JSON.parse(ingestText) : {}; } catch { ingestJson = { raw: ingestText }; }
     if (!ingestResp.ok) return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
+
+    const nextPageToken = typeof ingestJson.nextPageToken === "string" ? ingestJson.nextPageToken : null;
+    const startedFromPageTokenRaw = ingestJson.startedFromPageToken;
+    const startedFromPageToken =
+      typeof startedFromPageTokenRaw === "string" || startedFromPageTokenRaw === null
+        ? startedFromPageTokenRaw
+        : null;
 
     type Item = { messageId: string; attachmentId: string; url: string; quotedAt?: string | null };
     const items: Item[] = Array.isArray(ingestJson.items)
@@ -682,6 +846,8 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
         saved,
         modelVersionId: recorded?.modelVersionId ?? null,
         awaitingApproval: recorded?.awaitingApproval ?? false,
+        nextPageToken,
+        startedFromPageToken,
       });
     }
 
@@ -695,6 +861,8 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
       modelVersionId: recorded?.modelVersionId ?? null,
       promoted: recorded?.promoted ?? false,
       awaitingApproval: recorded?.awaitingApproval ?? false,
+      nextPageToken,
+      startedFromPageToken,
     });
   } catch (e: any) {
     console.error("[internal/ml/collect-train-save-ms365] failed:", e?.message || e);
