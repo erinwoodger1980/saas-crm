@@ -123,12 +123,6 @@ function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
   let currentField = '';
   let inQuotes = false;
 
-  const toString = (value: unknown): string => {
-    if (typeof value === 'string') return value;
-    if (value === undefined || value === null) return '';
-    return String(value);
-  };
-
   const flushField = () => {
     let value = currentField;
     if (!inQuotes) {
@@ -140,19 +134,12 @@ function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
 
   const flushRow = () => {
     flushField();
-    // Remove empty leading row created by extra newline/BOM
-    if (currentRow.length === 1 && toString(currentRow[0]).trim() === '' && rows.length === 0) {
+    // Remove empty trailing row created by extra newline
+    if (currentRow.length === 1 && currentRow[0] === '' && rows.length === 0) {
       currentRow = [];
       return;
     }
-    rows.push(
-      currentRow.map((field) =>
-        toString(field)
-          .trim()
-          .replace(/^"|"$/g, '')
-          .replace(/""/g, '"')
-      )
-    );
+    rows.push(currentRow.map(field => field.trim().replace(/^"|"$/g, '').replace(/""/g, '"')));
     currentRow = [];
   };
 
@@ -197,17 +184,15 @@ function parseCSV(csvText: string): { headers: string[]; rows: string[][] } {
 
   const [headerRow, ...dataRows] = rows;
   const headers = headerRow.map((h, idx) => {
-    const base = toString(h).trim();
-    return idx === 0 ? base.replace(/^\ufeff/, '') : base;
+    const trimmed = h.trim();
+    return idx === 0 ? trimmed.replace(/^\ufeff/, '') : trimmed;
   });
-
   const normalizedRows = dataRows
-    .map((row) => row.map((cell) => toString(cell)))
-    .filter((row) => row.some((cell) => toString(cell).trim().length > 0))
-    .map((row) => {
+    .filter(row => row.some(cell => cell.trim().length > 0))
+    .map(row => {
       const padded = [...row];
       while (padded.length < headers.length) padded.push('');
-      return padded.slice(0, headers.length).map((cell) => toString(cell).trim());
+      return padded.slice(0, headers.length);
     });
 
   return { headers, rows: normalizedRows };
