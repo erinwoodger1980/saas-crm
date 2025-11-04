@@ -1,5 +1,6 @@
 // api/src/routes/ml.ts
 import { Router } from "express";
+import { prisma } from "../db";
 import { recordTrainingOutcome } from "../services/training";
 
 // Small helper to enforce an upper-bound on ML requests
@@ -243,6 +244,7 @@ router.post("/train", async (req: any, res) => {
         error: "ml_train_failed",
         detail: trainJson,
         modelVersionId: recorded?.modelVersionId ?? null,
+        awaitingApproval: recorded?.awaitingApproval ?? false,
       });
     }
 
@@ -253,6 +255,7 @@ router.post("/train", async (req: any, res) => {
       ml: trainJson,
       modelVersionId: recorded?.modelVersionId ?? null,
       promoted: recorded?.promoted ?? false,
+      awaitingApproval: recorded?.awaitingApproval ?? false,
     });
   } catch (e: any) {
     console.error("[ml/train] failed:", e?.message || e);
@@ -417,6 +420,49 @@ router.post("/train-client-quotes", async (req: any, res) => {
     }
     console.error("[ml proxy] /train-client-quotes failed:", msg);
     return res.status(502).json({ error: "ml_unreachable", detail: msg });
+  }
+});
+
+router.post("/approve-version/:id", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    const userId = req.auth?.userId as string | undefined;
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+    const versionId = String(req.params?.id ?? "").trim();
+    if (!versionId) return res.status(400).json({ error: "invalid_version" });
+
+    const version = await prisma.modelVersion.findUnique({ where: { id: versionId } });
+    if (!version) return res.status(404).json({ error: "not_found" });
+
+    const promoted = await prisma.$transaction(async (tx) => {
+      await tx.modelVersion.updateMany({
+        where: { model: version.model, isProduction: true, NOT: { id: version.id } },
+        data: { isProduction: false },
+      });
+      return tx.modelVersion.update({
+        where: { id: version.id },
+        data: {
+          isProduction: true,
+          awaitingApproval: false,
+          approvedAt: new Date(),
+          approvedById: userId,
+        },
+      });
+    });
+
+    return res.json({
+      ok: true,
+      modelVersionId: promoted.id,
+      model: promoted.model,
+      label: promoted.label,
+      approvedAt: promoted.approvedAt,
+      awaitingApproval: promoted.awaitingApproval,
+      promoted: true,
+    });
+  } catch (e: any) {
+    console.error("[ml/approve-version] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
   }
 });
 
