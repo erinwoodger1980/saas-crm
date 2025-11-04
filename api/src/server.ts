@@ -42,6 +42,7 @@ import gmailAttachmentsRouter from "./routes/gmail-attachments";
 import mlSamples from "./routes/ml-samples";
 import mlOpsRouter from "./routes/ml-ops";
 import mlInsightsRouter from "./routes/ml-insights";
+import mlStatusRouter from "./routes/ml-status";
 import featureFlagsRouter from "./routes/feature-flags";
 import workshopRouter from "./routes/workshop";
 
@@ -441,6 +442,7 @@ app.use("/internal/ml", requireAuth, mlOpsRouter);
 // Move ML insights under a distinct prefix so it doesn't intercept /ml proxy routes
 // This avoids accidental 401s for public ML health/proxy endpoints like /ml/health and /ml/parse-quote.
 app.use("/ml/insights", requireAuth, mlInsightsRouter);
+app.use("/ml/status", requireAuth, mlStatusRouter);
 app.use("/feature-flags", featureFlagsRouter);
 app.use("/feedback", feedbackRouter);
 app.use("/files", filesRouter);
