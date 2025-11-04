@@ -23,14 +23,52 @@ type SamplesResp = {
   }>;
 };
 
+type MlStatusSummary = {
+  ok: boolean;
+  models: Array<{
+    id: string;
+    model: string;
+    label: string;
+    datasetHash: string;
+    createdAt: string;
+    metrics: Record<string, any> | null;
+    keyMetric?: { key: string; value: number | null; preference: "higher" | "lower" };
+  }>;
+  trainingRuns: Array<{
+    id: string;
+    model: string;
+    status: string;
+    createdAt: string;
+    metrics: Record<string, any> | null;
+    modelVersionId?: string | null;
+    datasetHash?: string | null;
+  }>;
+  suppliers: Array<{ supplier: string; count: number }>;
+  estimates: {
+    total: number;
+    withActual: number;
+    won: number;
+    lost: number;
+    averageMape: number | null;
+  };
+  inferenceActivity: {
+    since: string;
+    parsedSupplierLines: number;
+    estimates: number;
+    inferenceEvents: number;
+  };
+};
+
 export default function AITrainingPage() {
   const [provider, setProvider] = useState<Provider>("gmail");
   const [gmailConn, setGmailConn] = useState<{ connected: boolean; address?: string | null }>({ connected: false });
   const [ms365Enabled, setMs365Enabled] = useState<boolean>(false);
   const [samples, setSamples] = useState<SamplesResp | null>(null);
+  const [statusSummary, setStatusSummary] = useState<MlStatusSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [limit, setLimit] = useState<number>(50);
   const [error, setError] = useState<string | null>(null);
+  const [statusLoading, setStatusLoading] = useState<boolean>(false);
 
   useEffect(() => {
     (async () => {
@@ -54,6 +92,7 @@ export default function AITrainingPage() {
         } catch {}
         // Load samples
         await refreshSamples();
+        await loadStatusSummary();
       } catch (e: any) {
         setError(e?.message || "Failed to load AI training info");
       }
@@ -70,6 +109,18 @@ export default function AITrainingPage() {
     }
   }
 
+  async function loadStatusSummary() {
+    try {
+      setStatusLoading(true);
+      const summary = await apiFetch<MlStatusSummary>("/ml/status");
+      setStatusSummary(summary);
+    } catch (e) {
+      console.warn("[ai-training] failed to load ML status", e);
+    } finally {
+      setStatusLoading(false);
+    }
+  }
+
   async function collectAndTrain() {
     setBusy(true);
     setError(null);
@@ -80,6 +131,7 @@ export default function AITrainingPage() {
           json: { limit: Math.max(1, Math.min(500, Number(limit || 50))) },
         });
         await refreshSamples();
+        await loadStatusSummary();
         alert(`Collected ${r.collected} attachments, saved ${r.saved}. ML: ${r?.ml?.status || "ok"}`);
       } else if (provider === "ms365") {
         const r = await apiFetch<any>("/internal/ml/collect-train-save-ms365", {
@@ -87,6 +139,7 @@ export default function AITrainingPage() {
           json: { limit: Math.max(1, Math.min(500, Number(limit || 50))) },
         });
         await refreshSamples();
+        await loadStatusSummary();
         alert(`Collected ${r.collected} attachments, saved ${r.saved}. ML: ${r?.ml?.status || "ok"}`);
       }
     } catch (e: any) {
@@ -100,6 +153,35 @@ export default function AITrainingPage() {
     if (provider === "gmail") return gmailConn.connected ? `Connected${gmailConn.address ? `: ${gmailConn.address}` : ""}` : "Not connected";
     return ms365Enabled ? "Enabled in inbox settings" : "Disabled";
   }, [provider, gmailConn.connected, gmailConn.address, ms365Enabled]);
+
+  const formatMetricValue = (metric?: { key: string; value: number | null } | null) => {
+    if (!metric || metric.value == null) return "–";
+    if (metric.value <= 1) return `${(metric.value * 100).toFixed(1)}%`;
+    return metric.value.toFixed(2);
+  };
+
+  const pickRunMetric = (model: string, metrics?: Record<string, any> | null) => {
+    if (!metrics) return null;
+    const lowerModel = (model || "").toLowerCase();
+    if (lowerModel.includes("estimator")) {
+      const raw = metrics.mape ?? metrics.MAPE ?? metrics.mean_absolute_percentage_error;
+      if (raw == null) return null;
+      const num = Number(raw);
+      return Number.isFinite(num) ? `${(num * 100).toFixed(1)}% MAPE` : null;
+    }
+    if (lowerModel.includes("classifier")) {
+      const raw = metrics.f1 ?? metrics.f1_score ?? metrics.F1;
+      if (raw == null) return null;
+      const num = Number(raw);
+      return Number.isFinite(num) ? `${(num * 100).toFixed(1)}% F1` : null;
+    }
+    const firstKey = Object.keys(metrics).find((key) => typeof metrics[key] === "number");
+    if (!firstKey) return null;
+    const value = Number(metrics[firstKey]);
+    if (!Number.isFinite(value)) return null;
+    const display = value <= 1 ? `${(value * 100).toFixed(1)}%` : value.toFixed(2);
+    return `${display} ${firstKey}`;
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
@@ -121,6 +203,80 @@ export default function AITrainingPage() {
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
       ) : null}
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border bg-white/90 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-700">Models in production</h2>
+          {!statusSummary || statusLoading ? (
+            <p className="mt-2 text-sm text-slate-500">Loading…</p>
+          ) : statusSummary.models.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-500">No production models yet.</p>
+          ) : (
+            <ul className="mt-3 space-y-2 text-sm text-slate-700">
+              {statusSummary.models.slice(0, 3).map((model) => (
+                <li key={model.id} className="flex flex-col">
+                  <span className="font-medium">{model.model}</span>
+                  <span className="text-xs text-slate-500">{model.label}</span>
+                  <span className="text-xs text-slate-500">
+                    {model.keyMetric?.key
+                      ? `${model.keyMetric.key.toUpperCase()}: ${formatMetricValue(model.keyMetric)}`
+                      : "Metric pending"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="rounded-2xl border bg-white/90 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-700">Recent training runs</h2>
+          {!statusSummary || statusLoading ? (
+            <p className="mt-2 text-sm text-slate-500">Loading…</p>
+          ) : statusSummary.trainingRuns.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-500">No runs logged yet.</p>
+          ) : (
+            <ul className="mt-3 space-y-2 text-sm text-slate-700">
+              {statusSummary.trainingRuns.slice(0, 3).map((run) => (
+                <li key={run.id} className="flex flex-col">
+                  <span className="font-medium">{run.model}</span>
+                  <span className="text-xs text-slate-500">
+                    {new Date(run.createdAt).toLocaleString()} • {run.status}
+                  </span>
+                  <span className="text-xs text-slate-500">{pickRunMetric(run.model, run.metrics) || "Metrics pending"}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="rounded-2xl border bg-white/90 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-700">Inference activity (last 7d)</h2>
+          {!statusSummary || statusLoading ? (
+            <p className="mt-2 text-sm text-slate-500">Loading…</p>
+          ) : (
+            <ul className="mt-3 space-y-1 text-sm text-slate-700">
+              <li className="flex items-center justify-between">
+                <span>Parsed supplier lines</span>
+                <span className="font-medium">{statusSummary.inferenceActivity.parsedSupplierLines}</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span>Estimates generated</span>
+                <span className="font-medium">{statusSummary.inferenceActivity.estimates}</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span>Inference events</span>
+                <span className="font-medium">{statusSummary.inferenceActivity.inferenceEvents}</span>
+              </li>
+              <li className="flex items-center justify-between text-xs text-slate-500">
+                <span>Average MAPE</span>
+                <span className="font-medium text-slate-600">
+                  {statusSummary.estimates.averageMape != null
+                    ? `${(statusSummary.estimates.averageMape * 100).toFixed(1)}%`
+                    : "–"}
+                </span>
+              </li>
+            </ul>
+          )}
+        </div>
+      </section>
 
       <section className="rounded-2xl border bg-white/90 p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">

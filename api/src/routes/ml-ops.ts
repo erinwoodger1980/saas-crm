@@ -1,8 +1,51 @@
 // api/src/routes/ml-ops.ts
 import { Router } from "express";
 import { prisma } from "../db";
+import { recordTrainingOutcome } from "../services/training";
 
 const router = Router();
+
+function summariseTrainingPayload(raw: any) {
+  const obj = raw && typeof raw === "object" ? raw : {};
+  const meta = obj.meta && typeof obj.meta === "object" ? obj.meta : {};
+  const metrics =
+    (obj.metrics && typeof obj.metrics === "object"
+      ? obj.metrics
+      : meta.metrics && typeof meta.metrics === "object"
+      ? meta.metrics
+      : {}) || {};
+  const datasetHash =
+    obj.datasetHash ||
+    obj.dataset_hash ||
+    meta.datasetHash ||
+    meta.dataset_hash ||
+    "unknown";
+  const model = obj.model || obj.modelName || meta.model || "lead_classifier";
+  const modelLabel =
+    obj.modelLabel ||
+    obj.model_label ||
+    obj.version ||
+    meta.modelLabel ||
+    meta.model_label ||
+    meta.label ||
+    undefined;
+  const datasetSize =
+    typeof obj.datasetSize === "number"
+      ? obj.datasetSize
+      : typeof metrics.dataset_size === "number"
+      ? metrics.dataset_size
+      : typeof metrics.samples === "number"
+      ? metrics.samples
+      : undefined;
+
+  return {
+    model: String(model || "lead_classifier"),
+    datasetHash: String(datasetHash || "unknown"),
+    modelLabel: modelLabel ? String(modelLabel) : undefined,
+    metrics,
+    datasetSize: typeof datasetSize === "number" ? datasetSize : undefined,
+  } as const;
+}
 
 /**
  * POST /internal/ml/ops/collect-train-save
@@ -70,6 +113,16 @@ router.post("/ops/collect-train-save", async (req: any, res) => {
     const trainText = await trainResp.text();
     let trainJson: any = {};
     try { trainJson = trainText ? JSON.parse(trainText) : {}; } catch { trainJson = { raw: trainText }; }
+    const summary = summariseTrainingPayload(trainJson);
+    const recorded = await recordTrainingOutcome({
+      tenantId,
+      model: summary.model,
+      status: trainResp.ok ? "succeeded" : "failed",
+      datasetHash: summary.datasetHash,
+      metrics: summary.metrics,
+      modelLabel: summary.modelLabel,
+      datasetSize: summary.datasetSize,
+    });
 
     // 3) Save samples to DB (upsert on unique compound key)
     let saved = 0;
@@ -98,6 +151,15 @@ router.post("/ops/collect-train-save", async (req: any, res) => {
       saved += 1;
     }
 
+    if (!trainResp.ok) {
+      return res.status(trainResp.status).json({
+        error: "ml_train_failed",
+        detail: trainJson,
+        saved,
+        modelVersionId: recorded?.modelVersionId ?? null,
+      });
+    }
+
     return res.json({
       ok: true,
       tenantId,
@@ -105,6 +167,8 @@ router.post("/ops/collect-train-save", async (req: any, res) => {
       collected: items.length,
       saved,
       ml: trainJson,
+      modelVersionId: recorded?.modelVersionId ?? null,
+      promoted: recorded?.promoted ?? false,
     });
   } catch (e: any) {
     console.error("[internal/ml/ops/collect-train-save] failed:", e?.message || e);

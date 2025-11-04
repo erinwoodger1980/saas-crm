@@ -13,7 +13,7 @@ export async function logInsight(opts: {
   const { tenantId, module } = opts;
   if (!tenantId || !module) return;
   try {
-  await (prisma as any).trainingInsights.create({
+    await (prisma as any).trainingInsights.create({
       data: {
         tenantId,
         module,
@@ -38,7 +38,7 @@ export async function logEvent(opts: {
   const { tenantId, module, kind } = opts;
   if (!tenantId || !module || !kind) return;
   try {
-  await (prisma as any).trainingEvent.create({
+    await (prisma as any).trainingEvent.create({
       data: {
         tenantId,
         module,
@@ -63,7 +63,7 @@ export async function setParam(opts: {
   const { tenantId, module, key } = opts;
   if (!tenantId || !module || !key) return;
   try {
-  await (prisma as any).modelOverride.create({
+    await (prisma as any).modelOverride.create({
       data: {
         tenantId,
         module,
@@ -76,6 +76,229 @@ export async function setParam(opts: {
   } catch (e) {
     console.warn("[training] setParam failed:", (e as any)?.message || e);
   }
+}
+
+type MetricPreference = "lower" | "higher";
+
+function coerceNumber(input: unknown): number | null {
+  if (typeof input === "number" && Number.isFinite(input)) return input;
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+    const asNum = Number(trimmed);
+    return Number.isFinite(asNum) ? asNum : null;
+  }
+  return null;
+}
+
+function normaliseMetricKey(model: string): { key: string; preference: MetricPreference; fallbackKeys: string[] } | null {
+  const norm = (model || "").toLowerCase();
+  if (norm.includes("estimator")) {
+    return {
+      key: "mape",
+      preference: "lower",
+      fallbackKeys: [
+        "mape",
+        "mean_absolute_percentage_error",
+        "meanAbsolutePercentageError",
+        "MAPE",
+      ],
+    };
+  }
+  if (norm.includes("classifier")) {
+    return {
+      key: "f1",
+      preference: "higher",
+      fallbackKeys: ["f1", "f1_score", "macro_f1", "F1"],
+    };
+  }
+  if (norm.includes("parser")) {
+    return {
+      key: "accuracy",
+      preference: "higher",
+      fallbackKeys: ["accuracy", "exact_match", "ExactMatch", "ACC"],
+    };
+  }
+  return null;
+}
+
+function findNumericMetric(metrics: any, keys: string[]): number | null {
+  if (!metrics || typeof metrics !== "object") return null;
+  for (const key of keys) {
+    if (key in metrics) {
+      const value = coerceNumber((metrics as any)[key]);
+      if (value != null) return value;
+    }
+    const camel = key.replace(/[_-](\w)/g, (_, c: string) => c.toUpperCase());
+    if (camel in (metrics as any)) {
+      const value = coerceNumber((metrics as any)[camel]);
+      if (value != null) return value;
+    }
+  }
+  return null;
+}
+
+export function extractKeyMetric(model: string, metrics: any): {
+  key: string;
+  value: number | null;
+  preference: MetricPreference;
+} {
+  const hint = normaliseMetricKey(model);
+  if (hint) {
+    const value = findNumericMetric(metrics, hint.fallbackKeys);
+    return { key: hint.key, value, preference: hint.preference };
+  }
+
+  // Fallback: pick the first numeric metric we find
+  if (metrics && typeof metrics === "object") {
+    for (const [key, raw] of Object.entries(metrics as Record<string, any>)) {
+      const value = coerceNumber(raw);
+      if (value != null) {
+        return { key, value, preference: "higher" };
+      }
+    }
+  }
+
+  return { key: "metric", value: null, preference: "higher" };
+}
+
+export async function logInferenceEvent(opts: {
+  tenantId: string;
+  model: string;
+  modelVersionId: string;
+  inputHash: string;
+  outputJson: any;
+  confidence?: number | null;
+  latencyMs?: number | null;
+}) {
+  const { tenantId, model, modelVersionId, inputHash } = opts;
+  if (!tenantId || !model || !modelVersionId || !inputHash) return;
+  try {
+    await (prisma as any).inferenceEvent.create({
+      data: {
+        tenantId,
+        model,
+        modelVersionId,
+        inputHash,
+        outputJson: opts.outputJson ?? {},
+        confidence: opts.confidence ?? null,
+        latencyMs: opts.latencyMs ?? null,
+      },
+    });
+  } catch (e) {
+    console.warn("[training] logInferenceEvent failed:", (e as any)?.message || e);
+  }
+}
+
+export async function recordTrainingOutcome(opts: {
+  tenantId?: string | null;
+  model: string;
+  status: string;
+  datasetHash?: string | null;
+  metrics?: any;
+  modelLabel?: string | null;
+  datasetSize?: number | null;
+}) {
+  const model = String(opts.model || "unknown");
+  const status = String(opts.status || "unknown");
+  const datasetHash = String(opts.datasetHash || "unknown");
+  const metrics = (opts.metrics && typeof opts.metrics === "object") ? opts.metrics : {};
+  const label = String(opts.modelLabel || new Date().toISOString());
+  const datasetSize = typeof opts.datasetSize === "number" && Number.isFinite(opts.datasetSize)
+    ? opts.datasetSize
+    : coerceNumber((metrics as any)?.dataset_size ?? (metrics as any)?.samples ?? null);
+
+  let modelVersion: any = null;
+  try {
+    const existing = await (prisma as any).modelVersion.findFirst({ where: { model, label } });
+    if (existing) {
+      modelVersion = await (prisma as any).modelVersion.update({
+        where: { id: existing.id },
+        data: { metricsJson: metrics, datasetHash },
+      });
+    } else {
+      modelVersion = await (prisma as any).modelVersion.create({
+        data: {
+          model,
+          label,
+          metricsJson: metrics,
+          datasetHash,
+        },
+      });
+    }
+  } catch (e) {
+    console.warn("[training] recordTrainingOutcome:modelVersion failed:", (e as any)?.message || e);
+  }
+
+  const keyMetric = extractKeyMetric(model, metrics);
+  const minDataset = (() => {
+    const raw = Number(process.env.ML_PROMOTION_MIN_DATASET);
+    if (Number.isFinite(raw) && raw > 0) return raw;
+    return 200;
+  })();
+
+  let promoted = false;
+  if (modelVersion && status.toLowerCase() === "succeeded") {
+    try {
+      const datasetEnough = (datasetSize ?? 0) >= minDataset;
+      if (datasetEnough && keyMetric.value != null) {
+        const currentProd = await (prisma as any).modelVersion.findFirst({
+          where: { model, isProduction: true },
+        });
+        let shouldPromote = false;
+        if (!currentProd || currentProd.id === modelVersion.id) {
+          shouldPromote = true;
+        } else {
+          const currentMetric = extractKeyMetric(model, currentProd.metricsJson as any);
+          if (currentMetric.value != null) {
+            if (keyMetric.preference === "lower") {
+              shouldPromote = currentMetric.value - keyMetric.value >= 0.02;
+            } else {
+              shouldPromote = keyMetric.value - currentMetric.value >= 0.02;
+            }
+          } else {
+            shouldPromote = true;
+          }
+        }
+
+        if (shouldPromote) {
+          await (prisma as any).modelVersion.updateMany({
+            where: { model, isProduction: true, NOT: { id: modelVersion.id } },
+            data: { isProduction: false },
+          });
+          await (prisma as any).modelVersion.update({
+            where: { id: modelVersion.id },
+            data: { isProduction: true },
+          });
+          promoted = true;
+        }
+      }
+    } catch (e) {
+      console.warn("[training] recordTrainingOutcome:promotion failed:", (e as any)?.message || e);
+    }
+  }
+
+  try {
+    await (prisma as any).trainingRun.create({
+      data: {
+        tenantId: opts.tenantId ?? null,
+        model,
+        datasetHash,
+        metricsJson: metrics,
+        status,
+        modelVersionId: modelVersion?.id ?? null,
+      },
+    });
+  } catch (e) {
+    console.warn("[training] recordTrainingOutcome:trainingRun failed:", (e as any)?.message || e);
+  }
+
+  return {
+    modelVersionId: modelVersion?.id ?? null,
+    promoted,
+    keyMetric,
+    datasetSize: datasetSize ?? null,
+  } as const;
 }
 
 export async function getInsights(tenantId: string, module?: ModuleName, limit = 100) {
