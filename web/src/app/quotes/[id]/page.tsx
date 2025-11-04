@@ -1,590 +1,575 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { apiFetch } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import useSWR from "swr";
+import { QuoteBuilder } from "@/components/quotes/QuoteBuilder";
+import { ActionsBar } from "@/components/quotes/ActionsBar";
+import { ParsedLinesTable } from "@/components/quotes/ParsedLinesTable";
+import { QuestionnaireForm } from "@/components/quotes/QuestionnaireForm";
+import { SupplierFilesCard } from "@/components/quotes/SupplierFilesCard";
+import { EstimatePanel } from "@/components/quotes/EstimatePanel";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
-function fmtMoney(v: unknown) {
-  const n = Number(v);
-  if (!isFinite(n)) return "-";
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(n);
-}
+  fetchQuote,
+  fetchParsedLines,
+  parseSupplierPdfs,
+  generateMlEstimate,
+  uploadSupplierPdf,
+  saveQuoteMappings,
+  updateQuoteLine,
+  normalizeQuestionnaireFields,
+} from "@/lib/api/quotes";
+import type {
+  EstimateResponse,
+  ParsedLineDto,
+  ParseResponse,
+  QuestionnaireField,
+  QuoteDto,
+  SupplierFileDto,
+} from "@/lib/api/quotes";
+import { apiFetch } from "@/lib/api";
+import { useToast } from "@/components/ui/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function QuoteBuilderPage() {
   const params = useParams();
-  const id = String(params?.id || "");
+  const quoteId = String(params?.id ?? "");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { toast } = useToast();
 
-  const [loading, setLoading] = useState(false);
+  const {
+    data: quote,
+    error: quoteError,
+    isLoading: quoteLoading,
+    mutate: mutateQuote,
+  } = useSWR<QuoteDto>(quoteId ? ["quote", quoteId] : null, () => fetchQuote(quoteId), { revalidateOnFocus: false });
+
+  const {
+    data: lines,
+    error: linesError,
+    isLoading: linesLoading,
+    mutate: mutateLines,
+  } = useSWR<ParsedLineDto[]>(quoteId ? ["quote-lines", quoteId] : null, () => fetchParsedLines(quoteId), {
+    revalidateOnFocus: false,
+  });
+
+  const {
+    data: questionnaireFields = [],
+  } = useSWR<QuestionnaireField[]>(quote ? ["tenant-questionnaire", quote.tenantId] : null, async () => {
+    const settings = await apiFetch<any>("/tenant/settings");
+    return normalizeQuestionnaireFields(settings?.questionnaire);
+  });
+
+  const leadId = quote?.leadId ?? null;
+  const { data: lead } = useSWR<any>(leadId ? ["lead", leadId] : null, async () => {
+    const res = await apiFetch<{ lead: any }>(`/leads/${leadId}`);
+    return res?.lead ?? res ?? null;
+  });
+
+  const [mapping, setMapping] = useState<Record<string, string | null>>({});
+  const [parseMeta, setParseMeta] = useState<ParseResponse | null>(null);
+  const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
+  const [lastEstimateAt, setLastEstimateAt] = useState<string | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isSavingMappings, setIsSavingMappings] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isRendering, setIsRendering] = useState(false);
+  const [isEstimating, setIsEstimating] = useState(false);
+  const [questionnaireSaving, setQuestionnaireSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [rawParseOpen, setRawParseOpen] = useState(false);
+  const [lineRevision, setLineRevision] = useState(0);
+  const [estimatedLineRevision, setEstimatedLineRevision] = useState<number | null>(null);
+  const lastLineSnapshotRef = useRef<string | null>(null);
 
-  const [quote, setQuote] = useState<any | null>(null);
-  const [questionnaire, setQuestionnaire] = useState<Array<{ key: string; label: string }>>([]);
-  const [lead, setLead] = useState<any | null>(null);
+  const questionnaireAnswers = useMemo(() => {
+    if (!lead?.custom) return {};
+    return { ...(lead.custom as Record<string, any>) };
+  }, [lead]);
 
-  const [margins, setMargins] = useState<number>(0.25);
-  const [pricingMode, setPricingMode] = useState<"ml" | "margin">("ml");
-  const [mapping, setMapping] = useState<Record<string, string | "">>({});
-  const [savingMap, setSavingMap] = useState(false);
-  const [pricingBusy, setPricingBusy] = useState<"margin" | "ml" | null>(null);
-  const [parsing, setParsing] = useState(false);
-  const autoAppliedRef = useRef(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [rendering, setRendering] = useState(false);
-
-  async function loadAll() {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [q, settings]: [any, any] = await Promise.all([
-        apiFetch<any>(`/quotes/${id}`),
-        apiFetch<any>(`/tenant/settings`),
-      ]);
-      setQuote(q);
-      const lp = (q?.meta as any)?.lastParse;
-      if (lp?.message) {
-        setNotice(lp.message);
-      } else if (Array.isArray(lp?.warnings) && lp.warnings.length > 0) {
-        setNotice(lp.warnings.join(" "));
-      } else {
-        setNotice(null);
-      }
-      // Normalize questionnaire to only client-facing fields
-      const normalizeFields = (cfg: any): Array<{ key: string; label: string }> => {
-        if (!cfg) return [];
-        const rawList = Array.isArray(cfg)
-          ? cfg
-          : (Array.isArray(cfg?.questions) ? cfg.questions : []);
-        return rawList
-          .filter((f: any) => {
-            // Only show questions visible to the client
-            const askInQuestionnaire = f?.askInQuestionnaire !== false;
-            const internalOnly = f?.internalOnly === true;
-            const visibleAfterOrder = f?.visibleAfterOrder === true;
-            return askInQuestionnaire && !internalOnly && !visibleAfterOrder;
-          })
-          .map((f: any) => ({
-            key: typeof f?.key === "string" && f.key.trim() ? f.key.trim() : String(f?.id || ""),
-            label:
-              (typeof f?.label === "string" && f.label.trim()) ||
-              (typeof f?.key === "string" && f.key.trim()) ||
-              String(f?.id || "Field"),
-          }))
-          .filter((f: any) => f.key);
-      };
-      setQuestionnaire(normalizeFields(settings?.questionnaire));
-
-      // Populate mapping from existing meta.questionKey
-      const initial: Record<string, string | ""> = {};
-      (q?.lines || []).forEach((ln: any) => {
-        const key = ln?.meta?.questionKey || "";
-        initial[ln.id] = key;
-      });
-      setMapping(initial);
-
-      // If the quote is linked to a lead, fetch lead to show answers
-      if (q?.leadId) {
-        const ld: any = await apiFetch<any>(`/leads/${q.leadId}`);
-        setLead(ld?.lead || null);
-      } else {
-        setLead(null);
-      }
-
-      // Default margin and pricing mode from quote if available
-      if (q?.markupDefault != null) {
-        const m = Number(q.markupDefault);
-        if (isFinite(m)) setMargins(m);
-      }
-      const mode = (q?.meta as any)?.pricingMode;
-      if (mode === "margin" || mode === "ml") setPricingMode(mode);
-
-      // Auto-apply preferred pricing once when lines are available
-      try {
-        const hasLines = Array.isArray(q?.lines) && q.lines.length > 0;
-        if (hasLines && !autoAppliedRef.current && !pricingBusy && !parsing) {
-          autoAppliedRef.current = true;
-          await applyPreferredPricing();
-        }
-      } catch {}
-    } catch (e: any) {
-      setError(e?.message || "Failed to load quote");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const currency = quote?.currency ?? "GBP";
+  const tenantName = quote?.tenant?.name ?? null;
+  const quoteStatus = quote?.status ?? null;
 
   useEffect(() => {
-    loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    if (!lines) return;
+    const next: Record<string, string | null> = {};
+    lines.forEach((line) => {
+      const key = extractQuestionKey(line);
+      next[line.id] = key;
+    });
+    setMapping((prev) => (shallowEqual(prev, next) ? prev : next));
 
-  async function runParse() {
-    setParsing(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const out = await apiFetch<any>(`/quotes/${id}/parse`, { method: "POST" });
-      // If async mode, poll the quote directly (not state) for a short window
-      if (out && out.async) {
-        for (let i = 0; i < 16; i++) {
-          await new Promise((r) => setTimeout(r, 750));
-          const q = await apiFetch<any>(`/quotes/${id}`);
-          setQuote(q);
-          const lp = (q?.meta as any)?.lastParse;
-          if (lp?.message) {
-            setNotice(lp.message);
-          } else if (Array.isArray(lp?.warnings) && lp.warnings.length > 0) {
-            setNotice(lp.warnings.join(" "));
-          }
-          if (Array.isArray(q?.lines) && q.lines.length > 0) break;
-          if (lp?.state === "error") {
-            const fails = Array.isArray(lp?.fails) ? ` (${lp.fails.length} file errors)` : "";
-            setNotice(null);
-            setError(`Parse failed${fails}. Try a different PDF or ensure the ML service can fetch the file URL.`);
-            break;
-          }
-        }
-      } else if (typeof out?.created === "number" && out.created === 0) {
-        setNotice(null);
-        setError("No lines parsed. Check the PDF is a supplier quote and that ML is online.");
+    const snapshot = JSON.stringify(
+      lines.map((line) => ({
+        id: line.id,
+        qty: line.qty,
+        unitPrice: line.unitPrice,
+        sell: line.meta?.sellTotalGBP ?? line.meta?.sell_total ?? line.sellTotal,
+      })),
+    );
+    if (lastLineSnapshotRef.current !== snapshot) {
+      lastLineSnapshotRef.current = snapshot;
+      setLineRevision((rev) => rev + 1);
+    }
+  }, [lines]);
+
+  useEffect(() => {
+    const lastParse = (quote?.meta as any)?.lastParse ?? null;
+    if (lastParse) {
+      setParseMeta(lastParse);
+      if (lastParse?.message) {
+        setNotice(lastParse.message);
+      } else if (Array.isArray(lastParse?.warnings) && lastParse.warnings.length > 0) {
+        setNotice(lastParse.warnings.join(" \u2022 "));
       } else {
-        const messageParts: string[] = [];
-        if (out?.message) messageParts.push(out.message);
-        if (Array.isArray(out?.warnings) && out.warnings.length > 0) {
-          messageParts.push(out.warnings.join(" "));
+        setNotice(null);
+      }
+    }
+    const lastEstimate = (quote?.meta as any)?.lastEstimate ?? null;
+    if (lastEstimate && !estimate) {
+      setEstimate({
+        estimatedTotal: lastEstimate.predictedTotal ?? lastEstimate.estimatedTotal ?? lastEstimate.totalGBP ?? null,
+        predictedTotal: lastEstimate.predictedTotal ?? lastEstimate.estimatedTotal ?? null,
+        totalGBP: lastEstimate.totalGBP ?? null,
+        confidence: lastEstimate.confidence ?? null,
+        currency: lastEstimate.currency ?? quote?.currency ?? null,
+        modelVersionId: lastEstimate.modelVersionId ?? null,
+        meta: { cacheHit: lastEstimate.cacheHit ?? false, latencyMs: lastEstimate.latencyMs ?? null },
+      });
+      setLastEstimateAt(lastEstimate.finishedAt ?? lastEstimate.createdAt ?? quote?.updatedAt ?? null);
+      setEstimatedLineRevision((rev) => rev ?? lineRevision);
+    }
+  }, [quote, estimate, lineRevision]);
+
+  useEffect(() => {
+    setError(quoteError?.message || linesError?.message || null);
+  }, [quoteError, linesError]);
+
+  const reestimateNeeded = estimate && estimatedLineRevision !== null && estimatedLineRevision !== lineRevision;
+
+  const handleParse = useCallback(async () => {
+    if (!quoteId) return;
+    setIsParsing(true);
+    setError(null);
+    try {
+      const response = await parseSupplierPdfs(quoteId);
+      setParseMeta(response);
+      if (response?.async) {
+        toast({ title: "Parsing supplier PDFs", description: "ML parser started. Refreshing shortly." });
+      } else {
+        toast({ title: "Parse complete", description: `Parsed ${response?.created ?? 0} line(s).` });
+      }
+      await Promise.all([mutateQuote(), mutateLines()]);
+    } catch (err: any) {
+      setError(err?.message || "Parse failed");
+      toast({ title: "Parse failed", description: err?.message || "ML parser returned an error", variant: "destructive" });
+    } finally {
+      setIsParsing(false);
+    }
+  }, [quoteId, mutateQuote, mutateLines, toast]);
+
+  const handleUploadFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!quoteId || !files || files.length === 0) return;
+      setIsUploading(true);
+      setError(null);
+      try {
+        for (const file of Array.from(files)) {
+          await uploadSupplierPdf(quoteId, file);
         }
-        setNotice(messageParts.length ? messageParts.join(" ") : null);
-        await loadAll();
+        toast({ title: "Files uploaded", description: `${files.length} file(s) ready for parsing.` });
+        await Promise.all([mutateQuote(), mutateLines()]);
+      } catch (err: any) {
+        setError(err?.message || "Upload failed");
+        toast({ title: "Upload failed", description: err?.message || "Unable to upload supplier file", variant: "destructive" });
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        setIsUploading(false);
       }
-    } catch (e: any) {
-      const msg = e?.details?.error === "parse_failed"
-        ? "Parse failed: ML service unavailable or file not parsable."
-        : (e?.message || "Parse failed");
-      setNotice(null);
-      setError(msg);
-    } finally {
-      setParsing(false);
-    }
-  }
+    },
+    [quoteId, mutateQuote, mutateLines, toast],
+  );
 
-  async function uploadSupplierFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
+  const handleSaveMappings = useCallback(async () => {
+    if (!quoteId) return;
+    setIsSavingMappings(true);
     setError(null);
     try {
-      const fd = new FormData();
-      Array.from(files).forEach((f) => fd.append("files", f));
-      // Use apiFetch for consistent cookies and base URL handling
-      await apiFetch(`/quotes/${id}/files`, { method: "POST", body: fd as any } as any);
-      // Immediately parse after successful upload
-      await runParse();
-    } catch (e: any) {
-      setError(e?.message || "Upload failed");
+      const payload = Object.entries(mapping).map(([lineId, questionKey]) => ({ lineId, questionKey: questionKey || null }));
+      await saveQuoteMappings(quoteId, payload);
+      toast({ title: "Mappings saved", description: "Line-to-questionnaire mappings updated." });
+      await Promise.all([mutateQuote(), mutateLines()]);
+    } catch (err: any) {
+      setError(err?.message || "Failed to save mappings");
+      toast({ title: "Save failed", description: err?.message || "Unable to save mappings", variant: "destructive" });
     } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setIsSavingMappings(false);
     }
-  }
+  }, [quoteId, mapping, mutateQuote, mutateLines, toast]);
 
-  async function renderProposalPdf() {
-    if (!id) return;
-    setRendering(true);
+  const handleRenderProposal = useCallback(async () => {
+    if (!quoteId) return;
+    setIsRendering(true);
     setError(null);
     try {
-      await apiFetch(`/quotes/${id}/render-pdf`, { method: "POST" });
-      const signed = await apiFetch<{ url: string }>(`/quotes/${id}/proposal/signed`);
+      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-pdf`, { method: "POST" });
+      const signed = await apiFetch<{ url: string }>(`/quotes/${encodeURIComponent(quoteId)}/proposal/signed`);
       if (signed?.url) window.open(signed.url, "_blank");
-    } catch (e: any) {
-      const reason = e?.details?.reason || e?.details?.error || e?.message || "Failed to render proposal";
-      setError(String(reason));
+      toast({ title: "Proposal generated", description: "Proposal PDF opened in a new tab." });
+    } catch (err: any) {
+      setError(err?.message || "Failed to render proposal");
+      toast({ title: "Proposal failed", description: err?.message || "Unable to render proposal", variant: "destructive" });
     } finally {
-      setRendering(false);
+      setIsRendering(false);
     }
-  }
+  }, [quoteId, toast]);
 
-  async function saveMappings() {
-    setSavingMap(true);
+  const handleSaveEstimateToQuote = useCallback(async () => {
+    toast({
+      title: "Estimate saved",
+      description: "Estimate totals are stored on the quote after ML pricing.",
+    });
+    await mutateQuote();
+  }, [mutateQuote, toast]);
+
+  const handleEstimate = useCallback(async () => {
+    if (!quoteId) return;
+    setIsEstimating(true);
     setError(null);
     try {
-      const mappings = Object.entries(mapping).map(([lineId, questionKey]) => ({ lineId, questionKey: questionKey || null }));
-      await apiFetch(`/quotes/${id}/lines/map`, { method: "PATCH", json: { mappings } });
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message || "Failed to save mappings");
+      const response = await generateMlEstimate(quoteId);
+      setEstimate(response);
+      setLastEstimateAt(new Date().toISOString());
+      setEstimatedLineRevision(lineRevision);
+      toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
+      await Promise.all([mutateQuote(), mutateLines()]);
+    } catch (err: any) {
+      setError(err?.message || "Failed to estimate");
+      toast({ title: "Estimate failed", description: err?.message || "Unable to generate ML estimate", variant: "destructive" });
     } finally {
-      setSavingMap(false);
+      setIsEstimating(false);
     }
-  }
+  }, [quoteId, lineRevision, mutateQuote, mutateLines, toast, currency]);
 
-  async function priceByMargin() {
-    setPricingBusy("margin");
-    setError(null);
+  const handleQuestionnaireEstimate = useCallback(async () => {
+    if (!quoteId) return;
+    setIsEstimating(true);
     try {
-      // Treat values > 1 as percent for convenience (e.g., 30 → 0.3)
-      const norm = margins > 1 ? margins / 100 : margins;
-      await apiFetch(`/quotes/${id}/price`, { method: "POST", json: { method: "margin", margin: norm } });
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message || "Failed to price by margin");
+      const response = await generateMlEstimate(quoteId, { source: "questionnaire" });
+      setEstimate(response);
+      setLastEstimateAt(new Date().toISOString());
+      toast({
+        title: "Questionnaire estimate ready",
+        description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.`,
+      });
+      setEstimatedLineRevision(lineRevision);
+      await Promise.all([mutateQuote(), mutateLines()]);
+    } catch (err: any) {
+      toast({
+        title: "Estimate failed",
+        description: err?.message || "Unable to estimate from questionnaire",
+        variant: "destructive",
+      });
     } finally {
-      setPricingBusy(null);
+      setIsEstimating(false);
     }
-  }
+  }, [quoteId, mutateQuote, mutateLines, toast, currency, lineRevision]);
 
-  async function priceByML() {
-    setPricingBusy("ml");
-    setError(null);
-    try {
-      await apiFetch(`/quotes/${id}/price`, { method: "POST", json: { method: "ml" } });
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message || "Failed to price using ML");
-    } finally {
-      setPricingBusy(null);
-    }
-  }
-
-  async function savePreference(nextMode: "ml" | "margin") {
-    try {
-      setPricingMode(nextMode);
-      await apiFetch(`/quotes/${id}/preference`, { method: "PATCH", json: { pricingMode: nextMode, margin: margins } });
-      // Auto-apply immediately after saving preference
-      if (!pricingBusy && !parsing) {
-        await applyPreferredPricing();
+  const handleQuestionnaireSave = useCallback(
+    async (changes: Record<string, any>) => {
+      if (!leadId) return;
+      setQuestionnaireSaving(true);
+      try {
+        await apiFetch(`/leads/${encodeURIComponent(leadId)}`, {
+          method: "PATCH",
+          json: { custom: changes },
+        });
+        toast({ title: "Questionnaire saved", description: "Customer responses updated." });
+        await mutateQuote();
+      } catch (err: any) {
+        setError(err?.message || "Failed to save questionnaire");
+        toast({ title: "Save failed", description: err?.message || "Unable to save questionnaire", variant: "destructive" });
+        throw err;
+      } finally {
+        setQuestionnaireSaving(false);
       }
-    } catch (e: any) {
-      setError(e?.message || "Failed to save preference");
-    }
-  }
+    },
+    [leadId, mutateQuote, toast],
+  );
 
-  async function applyPreferredPricing() {
-    if (pricingMode === "ml") return priceByML();
-    return priceByMargin();
-  }
+  const handleLineChange = useCallback(
+    async (lineId: string, payload: { qty?: number | null; unitPrice?: number | null }) => {
+      if (!quoteId) return;
+      try {
+        await updateQuoteLine(quoteId, lineId, payload);
+        await Promise.all([mutateQuote(), mutateLines()]);
+        toast({ title: "Line updated", description: "Quote line saved." });
+      } catch (err: any) {
+        toast({ title: "Line update failed", description: err?.message || "Unable to save line", variant: "destructive" });
+        throw err;
+      }
+    },
+    [quoteId, mutateQuote, mutateLines, toast],
+  );
 
-  const lineCount = quote?.lines?.length || 0;
-  const lastParse = (quote?.meta as any)?.lastParse;
+  const handleDownloadCsv = useCallback(() => {
+    if (!lines) return;
+    const header = ["Description", "Qty", "Cost/unit", "Sell/unit", "Sell total", "Question key"];
+    const rows = lines.map((line) => [
+      sanitizeCsvValue(line.description),
+      sanitizeCsvValue(line.qty),
+      sanitizeCsvValue(line.unitPrice),
+      sanitizeCsvValue(line.meta?.sellUnitGBP ?? line.meta?.sell_unit ?? line.sellUnit),
+      sanitizeCsvValue(line.meta?.sellTotalGBP ?? line.meta?.sell_total ?? line.sellTotal),
+      sanitizeCsvValue(mapping[line.id]),
+    ]);
+    const csv = [header, ...rows].map((row) => row.map(quoteCsv).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `quote-${quoteId}-lines.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [lines, mapping, quoteId]);
+
+  const openUploadDialog = useCallback(() => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  }, []);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (event.key === "p" || event.key === "P") {
+        event.preventDefault();
+        void handleParse();
+      } else if (event.key === "e" || event.key === "E") {
+        event.preventDefault();
+        void handleEstimate();
+      } else if (event.key === "u" || event.key === "U") {
+        event.preventDefault();
+        openUploadDialog();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [handleEstimate, handleParse, openUploadDialog]);
+
+  const handleOpenFile = useCallback(
+    async (file: SupplierFileDto) => {
+      if (!quoteId || !file?.id) return;
+      try {
+        const signed = await apiFetch<{ url: string }>(
+          `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(file.id)}/signed`,
+        );
+        if (signed?.url) window.open(signed.url, "_blank");
+      } catch (err: any) {
+        toast({ title: "Unable to open file", description: err?.message || "Missing supplier file", variant: "destructive" });
+      }
+    },
+    [quoteId, toast],
+  );
+
+  const breadcrumbs = (
+    <>
+      <Link href="/quotes" className="text-muted-foreground hover:text-foreground">
+        Quotes
+      </Link>
+      <span className="text-muted-foreground/80">/</span>
+      <span className="text-foreground">Quote builder</span>
+    </>
+  );
+
+  const errorBanner = error ? (
+    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
+  ) : null;
+  const noticeBanner = notice ? (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{notice}</div>
+  ) : null;
+
+  const rawSummaries = parseMeta?.summaries ?? [];
+
+  const actionsBar = (
+    <ActionsBar
+      onUploadClick={openUploadDialog}
+      onParse={handleParse}
+      onSaveMappings={handleSaveMappings}
+      onRenderProposal={handleRenderProposal}
+      onGenerateEstimate={handleEstimate}
+      onDownloadCsv={handleDownloadCsv}
+      disabled={quoteLoading || linesLoading}
+      isUploading={isUploading}
+      isParsing={isParsing}
+      isSavingMappings={isSavingMappings}
+      isRendering={isRendering}
+      isEstimating={isEstimating}
+      lastParsedAt={parseMeta?.finishedAt ?? parseMeta?.startedAt ?? null}
+      lastEstimateAt={lastEstimateAt}
+      reestimate={Boolean(reestimateNeeded)}
+      estimateCached={Boolean(estimate?.meta?.cacheHit)}
+    />
+  );
+
+  const questionnaireSection = (
+    <QuestionnaireForm
+      fields={questionnaireFields}
+      answers={questionnaireAnswers}
+      isSaving={questionnaireSaving}
+      disabled={quoteLoading || !leadId}
+      onAutoSave={handleQuestionnaireSave}
+      onEstimateFromAnswers={handleQuestionnaireEstimate}
+      estimateSupported={Boolean(leadId)}
+      estimateDisabledReason={leadId ? undefined : "Quote is not linked to a lead."}
+    />
+  );
+
+  const estimateSection = (
+    <EstimatePanel
+      quote={quote}
+      estimate={estimate}
+      linesCount={lines?.length ?? 0}
+      currency={currency}
+      isEstimating={isEstimating}
+      onEstimate={handleEstimate}
+      onSaveEstimate={handleSaveEstimateToQuote}
+      onApprove={handleRenderProposal}
+      reestimate={Boolean(reestimateNeeded)}
+      lastEstimateAt={lastEstimateAt}
+      cacheHit={estimate?.meta?.cacheHit}
+      latencyMs={estimate?.meta?.latencyMs ?? null}
+    />
+  );
+
+  const linesSection = (
+    <ParsedLinesTable
+      lines={lines}
+      questionnaireFields={questionnaireFields}
+      mapping={mapping}
+      onMappingChange={(lineId, questionKey) => setMapping((prev) => ({ ...prev, [lineId]: questionKey }))}
+      onLineChange={handleLineChange}
+      currency={currency}
+      isParsing={isParsing}
+      parseMeta={parseMeta}
+      onAutoMap={() => {
+        setMapping((prev) => autoMap(lines, questionnaireFields, prev));
+        toast({ title: "Mapping suggested", description: "Mapped similar fields based on keywords." });
+      }}
+      onShowRawParse={() => setRawParseOpen(true)}
+      onDownloadCsv={handleDownloadCsv}
+    />
+  );
+
+  const filesSection = (
+    <SupplierFilesCard
+      files={quote?.supplierFiles}
+      onOpen={handleOpenFile}
+      onUpload={handleUploadFiles}
+      onUploadClick={openUploadDialog}
+      isUploading={isUploading}
+    />
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Quote builder</h1>
-          <p className="text-sm text-slate-500">Parse supplier PDFs, map to questionnaire, and create sell prices</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={runParse} disabled={parsing}>
-            {parsing ? "Parsing…" : "Parse supplier PDFs"}
-          </Button>
-          <Button onClick={saveMappings} disabled={savingMap}>
-            {savingMap ? "Saving…" : "Save mappings"}
-          </Button>
-          <Button onClick={renderProposalPdf} disabled={rendering}>
-            {rendering ? "Rendering…" : "Render proposal PDF"}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf"
-            multiple
-            hidden
-            onChange={(e) => uploadSupplierFiles(e.target.files)}
-          />
-          <Button
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Upload supplier PDF
-          </Button>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-6">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        multiple
+        hidden
+        onChange={(event) => handleUploadFiles(event.target.files)}
+      />
+      <QuoteBuilder
+        header={{ title: "Quote builder", breadcrumbs, tenantName, status: quoteStatus, meta: quoteMeta(quote) }}
+        actionsBar={actionsBar}
+        notice={noticeBanner}
+        error={errorBanner}
+        isLoading={quoteLoading || linesLoading}
+        leftColumn={<>{questionnaireSection}</>}
+        rightColumn={
+          <>
+            {estimateSection}
+            {linesSection}
+            {filesSection}
+          </>
+        }
+      />
 
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
-      )}
-
-      {notice && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">{notice}</div>
-      )}
-
-      {loading && <div className="text-sm text-slate-500">Loading…</div>}
-
-      {!loading && quote && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Left: questionnaire */}
-          <div className="lg:col-span-1 space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-900">Questionnaire</h2>
-                <span className="text-xs text-slate-500">{questionnaire.length} fields</span>
-              </div>
-              <div className="mt-3 divide-y divide-slate-200">
-                {questionnaire.map((f) => {
-                  const answer = (lead?.custom && f.key in (lead.custom as any)) ? (lead.custom as any)[f.key] : "-";
-                  return (
-                    <div key={f.key} className="flex items-start justify-between gap-3 py-2">
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-slate-800">{f.label}</div>
-                        <div className="text-xs text-slate-500 break-words">{f.key}</div>
-                      </div>
-                      <div className="max-w-[50%] truncate text-sm text-slate-900">{String(answer ?? "-")}</div>
-                    </div>
-                  );
-                })}
-                {questionnaire.length === 0 && (
-                  <div className="py-2 text-sm text-slate-500">No questionnaire configured yet.</div>
-                )}
-              </div>
-            </div>
-
-            {/* Pricing card */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-sm font-semibold text-slate-900">Pricing</h3>
-              <div className="mt-3 space-y-3">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-slate-700">Preferred</label>
-                  <select
-                    className="h-8 rounded-md border px-2 text-sm"
-                    value={pricingMode}
-                    onChange={(e) => savePreference(e.target.value as any)}
-                  >
-                    <option value="ml">ML estimate (default)</option>
-                    <option value="margin">Purchase-in (apply margin)</option>
-                  </select>
-                  <Button size="sm" variant="outline" onClick={applyPreferredPricing}>
-                    Apply now
-                  </Button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-slate-700">Margin</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={margins}
-                    onChange={(e) => setMargins(parseFloat(e.target.value))}
-                    onBlur={() => savePreference(pricingMode)}
-                    className="h-8 w-24"
-                  />
-                  <Button size="sm" onClick={priceByMargin} disabled={pricingBusy === "margin"}>
-                    {pricingBusy === "margin" ? "Pricing…" : "Apply margin"}
-                  </Button>
-                </div>
-                <div>
-                  <Button size="sm" variant="outline" onClick={priceByML} disabled={pricingBusy === "ml"}>
-                    {pricingBusy === "ml" ? "Pricing…" : "Use ML prediction"}
-                  </Button>
-                </div>
-              </div>
-              <div className="mt-4 text-sm text-slate-600">
-                <div className="flex items-center justify-between">
-                  <span>Total</span>
-                  <span className="font-semibold text-slate-900">{fmtMoney(quote.totalGBP)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right: lines */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 p-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-slate-900">Parsed lines</h2>
-                  <div className="flex items-center gap-3 text-xs text-slate-500">
-                    <span>{lineCount} lines</span>
-                    {lastParse?.state === 'running' && <span className="text-amber-600">Parsing…</span>}
-                    {lastParse?.state === 'error' && <span className="text-red-600">Last parse failed</span>}
-                    {lastParse?.state === 'ok' && <span className="text-emerald-600">Last parse ok</span>}
-                  </div>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                {/* Debug: show parse details when present */}
-                {lastParse && (
-                  <div className="mx-3 my-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span>Status: <span className="font-medium">{lastParse.state}</span></span>
-                      {lastParse.created != null && <span>Created: {String(lastParse.created)}</span>}
-                      {Array.isArray(lastParse.fails) && <span>Failures: {lastParse.fails.length}</span>}
-                      {lastParse.timeoutMs && <span>Timeout: {lastParse.timeoutMs}ms</span>}
-                      {lastParse.startedAt && <span>Started: {new Date(lastParse.startedAt).toLocaleTimeString()}</span>}
-                      {lastParse.finishedAt && <span>Finished: {new Date(lastParse.finishedAt).toLocaleTimeString()}</span>}
-                      {typeof lastParse.fallbackUsed === "number" && <span>Fallback: {lastParse.fallbackUsed}</span>}
-                      {lastParse.message && <span className="text-amber-600">{lastParse.message}</span>}
-                      <Button size="sm" variant="outline" onClick={() => apiFetch(`/quotes/${id}/parse?async=0`, { method: 'POST' }).then(loadAll).catch((e)=> setError(e?.message || 'Debug parse failed'))}>Parse (debug)</Button>
-                    </div>
-                    {Array.isArray(lastParse.warnings) && lastParse.warnings.length > 0 && (
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-700">
-                        {lastParse.warnings.map((w: string, idx: number) => (
-                          <li key={idx}>{w}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {Array.isArray(lastParse.fails) && lastParse.fails.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {lastParse.fails.map((f: any, i: number) => (
-                          <div key={i} className="rounded border border-slate-200 bg-white p-2">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <span className="font-medium">{f?.name || f?.fileId || 'file'}</span>
-                              {f?.status && <span className="text-slate-500">{f.status}</span>}
-                            </div>
-                            {f?.error && (
-                              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] text-slate-700">{JSON.stringify(f.error, null, 2)}</pre>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {Array.isArray(lastParse.summaries) && lastParse.summaries.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {lastParse.summaries.map((s: any, i: number) => (
-                          <div key={s?.fileId || i} className="rounded border border-slate-200 bg-white p-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{s?.name || s?.fileId || `File ${i + 1}`}</span>
-                              {s?.headStatus != null && <span className="text-slate-500">HEAD: {s.headStatus}</span>}
-                              {s?.lineCount != null && <span>Lines: {s.lineCount}</span>}
-                              {s?.usedFallback && <span className="text-amber-600">Fallback used</span>}
-                              {s?.mlSigned && s.mlSigned.status != null && (
-                                <span>ML URL: {s.mlSigned.status} ({s.mlSigned.tookMs ?? '-'}ms)</span>
-                              )}
-                              {s?.mlUpload && s.mlUpload.status != null && (
-                                <span>ML upload: {s.mlUpload.status} ({s.mlUpload.tookMs ?? '-'}ms)</span>
-                              )}
-                            </div>
-                            {Array.isArray(s?.warnings) && s.warnings.length > 0 && (
-                              <ul className="mt-1 list-disc space-y-1 pl-5 text-[11px] text-amber-700">
-                                {s.warnings.map((w: string, idx: number) => (
-                                  <li key={idx}>{w}</li>
-                                ))}
-                              </ul>
-                            )}
-                            {Array.isArray(s?.mlErrors) && s.mlErrors.length > 0 && (
-                              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[11px] text-slate-700">{JSON.stringify(s.mlErrors, null, 2)}</pre>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Description</th>
-                      <th className="px-3 py-2">Qty</th>
-                      <th className="px-3 py-2">Cost/unit</th>
-                      <th className="px-3 py-2">Map to question</th>
-                      <th className="px-3 py-2">Sell/unit</th>
-                      <th className="px-3 py-2">Sell total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {(quote?.lines || []).map((ln: any) => {
-                      const sellUnit = ln?.meta?.sellUnitGBP;
-                      const sellTotal = ln?.meta?.sellTotalGBP;
-                      const selected = mapping[ln.id] ?? "";
-                      const selectedUi = selected === "" ? "__none__" : selected;
-                      return (
-                        <tr key={ln.id}>
-                          <td className="px-3 py-2 font-medium text-slate-900">{ln.description || "-"}</td>
-                          <td className="px-3 py-2 tabular-nums text-slate-700">{ln.qty}</td>
-                          <td className="px-3 py-2 tabular-nums text-slate-700">{fmtMoney(ln.unitPrice)}</td>
-                          <td className="px-3 py-2">
-                            <Select
-                              value={selectedUi}
-                              onValueChange={(v) => {
-                                const normalized = v === "__none__" ? "" : v;
-                                setMapping((m) => ({ ...m, [ln.id]: normalized }));
-                              }}
-                            >
-                              <SelectTrigger className="h-8 w-72 text-left">
-                                <SelectValue placeholder="Select field…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">— Not mapped —</SelectItem>
-                                {questionnaire.map((f) => (
-                                  <SelectItem key={f.key} value={f.key}>
-                                    {f.label} <span className="text-slate-400">({f.key})</span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td className="px-3 py-2 tabular-nums text-slate-700">{fmtMoney(sellUnit)}</td>
-                          <td className="px-3 py-2 tabular-nums text-slate-900">{fmtMoney(sellTotal)}</td>
-                        </tr>
-                      );
-                    })}
-                    {lineCount === 0 && (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500">
-                          No lines parsed yet. Upload supplier PDFs to the quote or click "Parse supplier PDFs".
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Supplier files */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="text-sm font-semibold text-slate-900">Supplier files</h3>
-              <ul className="mt-2 list-inside list-disc text-sm text-slate-700">
-                {(quote?.supplierFiles || []).map((f: any) => (
-                  <li key={f.id} className="flex items-center justify-between gap-2 truncate py-1">
-                    <div className="min-w-0 truncate">
-                      {f.name} <span className="text-slate-400">({f.mimeType || ""}, {f.sizeBytes || 0} bytes)</span>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const out = await apiFetch<{ ok: boolean; url: string }>(`/quotes/${id}/files/${encodeURIComponent(f.id)}/signed`);
-                          if (out?.url) {
-                            const win = window.open(out.url, "_blank");
-                            // If the file layer returns JSON with {error:"missing_file"}, show guidance
-                            setTimeout(async () => {
-                              try {
-                                const r = await fetch(out.url, { credentials: "include" });
-                                if (!r.ok) return; // will show itself in tab
-                                const ct = r.headers.get("content-type") || "";
-                                if (ct.includes("application/json")) {
-                                  const j = await r.json().catch(() => null);
-                                  if (j && j.error === "missing_file") {
-                                    setError("File is missing on the server. Please re-upload the PDF (server storage is ephemeral without a persistent disk).");
-                                  }
-                                }
-                              } catch {}
-                            }, 300);
-                          }
-                        } catch (e: any) {
-                          setError(e?.message || "Could not open file");
-                        }
-                      }}
-                    >
-                      View
-                    </Button>
-                  </li>
-                ))}
-                {(!quote?.supplierFiles || quote.supplierFiles.length === 0) && (
-                  <li className="text-slate-500">No files attached yet.</li>
-                )}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog open={rawParseOpen} onOpenChange={setRawParseOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Parse summaries</DialogTitle>
+          </DialogHeader>
+          <pre className="max-h-[60vh] overflow-auto rounded-lg bg-muted/40 p-4 text-xs">
+            {JSON.stringify(rawSummaries, null, 2)}
+          </pre>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function shallowEqual(a: Record<string, string | null>, b: Record<string, string | null>) {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+function extractQuestionKey(line: ParsedLineDto): string | null {
+  const meta = line.meta ?? {};
+  const key = meta?.questionKey ?? meta?.question_key ?? null;
+  if (typeof key === "string" && key.trim()) return key.trim();
+  return null;
+}
+
+function quoteMeta(quote?: QuoteDto | null) {
+  if (!quote) return null;
+  const updatedAt = quote.updatedAt ? new Date(quote.updatedAt).toLocaleString() : null;
+  return updatedAt ? <span>Updated {updatedAt}</span> : null;
+}
+
+function autoMap(
+  lines: ParsedLineDto[] | undefined | null,
+  fields: QuestionnaireField[],
+  current: Record<string, string | null>,
+) {
+  if (!lines || lines.length === 0 || fields.length === 0) return current;
+  const next: Record<string, string | null> = { ...current };
+  lines.forEach((line) => {
+    const description = (line.description || "").toLowerCase();
+    if (!description) return;
+    const match = fields.find((field) => description.includes(field.label.toLowerCase()));
+    if (match) next[line.id] = match.key;
+  });
+  return next;
+}
+
+function sanitizeCsvValue(value: unknown) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  return String(value);
+}
+
+function quoteCsv(value: string) {
+  const needsQuotes = value.includes(",") || value.includes("\"") || value.includes("\n");
+  const escaped = value.replace(/"/g, '""');
+  return needsQuotes ? `"${escaped}"` : escaped;
+}
+
+function formatCurrency(value?: number | null, currency?: string | null) {
+  if (value == null) return "—";
+  try {
+    return new Intl.NumberFormat("en-GB", { style: "currency", currency: currency || "GBP" }).format(value);
+  } catch {
+    return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value);
+  }
 }
