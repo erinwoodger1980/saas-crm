@@ -6,6 +6,53 @@ import { extractKeyMetric } from "../services/training";
 const router = Router();
 
 router.get("/", async (req: any, res) => {
+  const scopeRaw = typeof req.query?.scope === "string" ? req.query.scope : Array.isArray(req.query?.scope) ? req.query.scope[0] : "";
+  const scope = String(scopeRaw || "").toLowerCase();
+
+  if (scope === "global") {
+    try {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const productionModels = await prisma.modelVersion.findMany({ where: { isProduction: true }, orderBy: { createdAt: "desc" } });
+      const seen = new Set<string>();
+      const models = productionModels
+        .filter((m) => {
+          if (seen.has(m.model)) return false;
+          seen.add(m.model);
+          return true;
+        })
+        .map((m) => ({
+          id: m.id,
+          model: m.model,
+          label: m.label,
+          datasetHash: m.datasetHash,
+          createdAt: m.createdAt,
+          metrics: m.metricsJson,
+          keyMetric: extractKeyMetric(m.model, m.metricsJson as any),
+        }));
+
+      const [parsedSupplierLines, estimates, inferenceEvents] = await Promise.all([
+        prisma.parsedSupplierLine.count({ where: { createdAt: { gte: since } } }),
+        prisma.estimate.count({ where: { createdAt: { gte: since } } }),
+        prisma.inferenceEvent.count({ where: { createdAt: { gte: since } } }),
+      ]);
+
+      return res.json({
+        ok: true,
+        scope: "global",
+        models,
+        counts: {
+          since: since.toISOString(),
+          parsedSupplierLines,
+          estimates,
+          inferenceEvents,
+        },
+      });
+    } catch (e: any) {
+      console.error("[ml/status global] failed:", e?.message || e);
+      return res.status(500).json({ error: "internal_error" });
+    }
+  }
+
   const tenantId = req.auth?.tenantId as string | undefined;
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 

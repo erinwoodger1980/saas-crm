@@ -1,0 +1,35 @@
+name: Production ML Audit
+
+on:
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Run production ML audit
+        working-directory: api
+        env:
+          API_BASE: ${{ secrets.API_BASE }}
+          ML_URL: ${{ secrets.ML_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TENANT_ID: ${{ secrets.TENANT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+          NODE_ENV: production
+        run: npm run audit:prod
