@@ -148,26 +148,6 @@ export default function QuoteBuilderPage() {
     setError(quoteError?.message || linesError?.message || null);
   }, [quoteError, linesError]);
 
-  useEffect(() => {
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
-      if (event.key === "p" || event.key === "P") {
-        event.preventDefault();
-        void handleParse();
-      } else if (event.key === "e" || event.key === "E") {
-        event.preventDefault();
-        void handleEstimate();
-      } else if (event.key === "u" || event.key === "U") {
-        event.preventDefault();
-        openUploadDialog();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [handleEstimate, handleParse, openUploadDialog]);
-
   const reestimateNeeded = estimate && estimatedLineRevision !== null && estimatedLineRevision !== lineRevision;
 
   const handleParse = useCallback(async () => {
@@ -359,6 +339,26 @@ export default function QuoteBuilderPage() {
   const openUploadDialog = useCallback(() => {
     if (fileInputRef.current) fileInputRef.current.click();
   }, []);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (event.key === "p" || event.key === "P") {
+        event.preventDefault();
+        void handleParse();
+      } else if (event.key === "e" || event.key === "E") {
+        event.preventDefault();
+        void handleEstimate();
+      } else if (event.key === "u" || event.key === "U") {
+        event.preventDefault();
+        openUploadDialog();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [handleEstimate, handleParse, openUploadDialog]);
 
   const handleOpenFile = useCallback(
     async (file: SupplierFileDto) => {
