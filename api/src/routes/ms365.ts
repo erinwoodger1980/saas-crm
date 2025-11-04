@@ -10,6 +10,7 @@ import { getAccessTokenForTenant, getAttachment } from "../services/ms365";
 import OpenAI from "openai";
 import { logInsight } from "../services/training";
 import { load } from "cheerio";
+import { redactEmailBody } from "../lib/ml/redact";
 
 const router = Router();
 
@@ -385,6 +386,11 @@ async function extractLeadWithOpenAI(subject: string, body: string, opts: { snip
   const snippet = opts.snippet || "";
   const from = opts.from || "";
 
+  const safeSubject = redactEmailBody(subject || "");
+  const safeSnippet = redactEmailBody(snippet);
+  const safeFrom = redactEmailBody(from);
+  const safeBody = redactEmailBody(truncatedBody);
+
   const systemPrompt = `You triage inbound emails for a bespoke joinery and carpentry business. Decide if an email is a genuine new sales enquiry from a potential customer.
 
 Treat as NOT a lead if it is any of the following: marketing/newsletters, spam, job applications, vendor sales pitches, order confirmations, shipping or payment notifications, account/security alerts, internal staff messages, or anything unrelated to bespoke joinery/carpentry projects.
@@ -400,7 +406,7 @@ When unsure, err on the side of NOT a lead unless there is explicit interest in 
       { role: "system", content: systemPrompt },
       {
         role: "user",
-        content: `Subject: ${subject || "(no subject)"}\nFrom: ${from || "unknown"}\nSnippet: ${snippet || "(no snippet)"}\nBody:\n${truncatedBody || "(empty)"}`,
+        content: `Subject: ${safeSubject || "(no subject)"}\nFrom: ${safeFrom || "unknown"}\nSnippet: ${safeSnippet || "(no snippet)"}\nBody:\n${safeBody || "(empty)"}`,
       },
     ],
     response_format: {

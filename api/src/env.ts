@@ -67,6 +67,9 @@ export const env = {
 
   // Web origins allowlist for CORS
   WEB_ORIGIN: parsedWebOrigin,
+
+  // ML safety
+  ML_REDACT_PII: String(process.env.ML_REDACT_PII ?? "true").toLowerCase() !== "false",
 } as const;
 
 console.log('✅ Environment configuration loaded successfully');
@@ -78,3 +81,4 @@ console.log(`📄 Parser pages: ${env.PARSER_MAX_PAGES}`);
 console.log(`👁️‍🗨️ OCR enabled: ${env.PARSER_OCR_ENABLED}`);
 console.log(`📧 Gmail configured: ${!!env.GMAIL_CLIENT_ID}`);
 console.log(`📧 MS365 configured: ${!!env.MS365_CLIENT_ID}`);
+console.log(`🛡️ ML redaction enabled: ${env.ML_REDACT_PII}`);
