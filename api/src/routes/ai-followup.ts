@@ -2,6 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import { prisma } from "../prisma";
 import { env } from "../env";
+import { FOLLOWUPS_ENABLED } from "../lib/followups-feature";
 import {
   computeFollowupInsights,
   selectVariantFromInsights,
@@ -40,6 +41,10 @@ function toPlainObject(value: any): Record<string, any> {
  */
 router.post("/suggest", async (req, res) => {
   try {
+    if (!FOLLOWUPS_ENABLED) {
+      return res.status(403).json({ error: "followups_disabled" });
+    }
+
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
@@ -238,6 +243,10 @@ router.post("/suggest", async (req, res) => {
  */
 router.post("/feedback", async (req, res) => {
   try {
+    if (!FOLLOWUPS_ENABLED) {
+      return res.status(403).json({ error: "followups_disabled" });
+    }
+
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
@@ -298,6 +307,10 @@ router.post("/feedback", async (req, res) => {
 
 router.get("/learning", async (req, res) => {
   try {
+    if (!FOLLOWUPS_ENABLED) {
+      return res.status(403).json({ error: "followups_disabled" });
+    }
+
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 

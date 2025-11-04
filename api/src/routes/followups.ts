@@ -7,6 +7,7 @@ import timezone from "dayjs/plugin/timezone";
 
 import { prisma } from "../prisma";
 import { requireAuth } from "../middleware/auth";
+import { FOLLOWUPS_ENABLED } from "../lib/followups-feature";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -45,6 +46,10 @@ const TRANSPARENT_PIXEL = Buffer.from(
 const router = Router();
 
 router.get("/pixel/:token", async (req, res) => {
+  if (!FOLLOWUPS_ENABLED) {
+    return res.status(404).end();
+  }
+
   const { token } = req.params;
 
   if (token) {
@@ -66,6 +71,10 @@ router.get("/pixel/:token", async (req, res) => {
 router.use(requireAuth);
 
 router.get("/summary", async (req, res) => {
+  if (!FOLLOWUPS_ENABLED) {
+    return res.status(403).json({ error: "followups_disabled" });
+  }
+
   try {
     const tenantId = req.auth?.tenantId;
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
@@ -195,6 +204,10 @@ router.get("/summary", async (req, res) => {
 });
 
 router.post("/schedule", async (req, res) => {
+  if (!FOLLOWUPS_ENABLED) {
+    return res.status(403).json({ error: "followups_disabled" });
+  }
+
   try {
     const tenantId = req.auth?.tenantId;
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });

@@ -76,9 +76,36 @@ Login locally using the token from `POST /seed` (paste in the app’s dev login 
 Endpoints of note:
 
 - API
-	- `GET /ml/insights?module=lead_classifier&limit=50`
-	- `POST /ml/feedback` with `{ module, insightId, correct, reason, isLead }`
-	- `POST /gmail/import`, `POST /ms365/import`
-	- `GET /gmail/message/:id`, `GET /ms365/message/:id`
+       - `GET /ml/insights?module=lead_classifier&limit=50`
+       - `POST /ml/feedback` with `{ module, insightId, correct, reason, isLead }`
+       - `POST /gmail/import`, `POST /ms365/import`
+       - `GET /gmail/message/:id`, `GET /ms365/message/:id`
 
 If ML tables are not present in your DB yet, the API responds gracefully with empty sets; run migrations or deploy the provided SQL migration to enable full functionality.# Trigger deployment
+
+## Follow-ups & A/B Testing
+
+- Set `FOLLOWUPS_ENABLED=true` in `api/.env` to expose scheduling, reporting, and AI planning endpoints. When set to `false`, the routes below return `403 followups_disabled` (and the tracking pixel returns `404`).
+- Additional tuning comes from `FOLLOWUPS_DEFAULT_DELAY_DAYS`, `FOLLOWUPS_BUSINESS_HOURS`, `FOLLOWUPS_LOCAL_TZ`, `FOLLOWUPS_COST_PENCE`, `FOLLOWUPS_MIN_SENDS_FOR_TEST`, and `FOLLOWUPS_AB_DELTA_PROMOTE`.
+
+Example cURL calls (replace `$API_ORIGIN`, `$JWT`, and IDs with your values):
+
+```bash
+# Summarise performance over the last 28 days
+curl -H "Authorization: Bearer $JWT" \
+  "$API_ORIGIN/followups/summary?days=28"
+
+# Schedule new follow-up events for leads ready to quote
+curl -X POST -H "Authorization: Bearer $JWT" \
+  "$API_ORIGIN/followups/schedule"
+
+# Generate an AI follow-up suggestion
+curl -X POST -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -d '{"leadId":"<lead-id>","status":"QUOTE_SENT","history":[],"context":{"brand":"Acme Kitchens"}}' \
+  "$API_ORIGIN/ai/followup/suggest"
+
+# Advance to the next experiment variant for a specific opportunity
+curl -X POST -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -d '{"variant":"B"}' \
+  "$API_ORIGIN/opportunities/<lead-id>/next-followup"
+```
