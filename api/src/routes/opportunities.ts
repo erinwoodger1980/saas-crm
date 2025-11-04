@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { getAccessTokenForTenant, gmailSend } from "../services/gmail";
 import { env } from "../env";
 import fetch from "node-fetch";
+import { FOLLOWUPS_ENABLED } from "../lib/followups-feature";
 
 const router = Router();
 
@@ -21,6 +22,10 @@ function getAuth(req: any) {
  * Returns the sent follow-ups (most recent first)
  */
 router.get("/:id/followups", async (req: any, res: any) => {
+  if (!FOLLOWUPS_ENABLED) {
+    return res.status(403).json({ error: "followups_disabled" });
+  }
+
   const { tenantId } = getAuth(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
@@ -43,6 +48,10 @@ router.get("/:id/followups", async (req: any, res: any) => {
  */
 router.post("/:id/send-followup", async (req: any, res: any) => {
   try {
+    if (!FOLLOWUPS_ENABLED) {
+      return res.status(403).json({ error: "followups_disabled" });
+    }
+
     const { tenantId, email: fromEmail } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
@@ -202,6 +211,10 @@ router.post("/:id/send-followup", async (req: any, res: any) => {
  */
 router.post("/:id/next-followup", async (req: any, res: any) => {
   try {
+    if (!FOLLOWUPS_ENABLED) {
+      return res.status(403).json({ error: "followups_disabled" });
+    }
+
     const { tenantId } = getAuth(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
