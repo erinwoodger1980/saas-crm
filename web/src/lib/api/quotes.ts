@@ -105,6 +105,11 @@ export type QuestionnaireField = {
   label: string;
   group?: string | null;
   description?: string | null;
+  type?: "text" | "textarea" | "select" | "number" | "date" | "source" | "file";
+  options?: string[];
+  askInQuestionnaire?: boolean;
+  internalOnly?: boolean;
+  required?: boolean;
 };
 
 export async function fetchQuote(quoteId: string): Promise<QuoteDto> {
@@ -288,9 +293,13 @@ export function normalizeQuestionnaireFields(raw: any): QuestionnaireField[] {
         (typeof item?.label === "string" && item.label.trim()) ||
         (typeof item?.title === "string" && item.title.trim()) ||
         key;
+      const typeRaw = typeof item?.type === "string" && item.type.trim() ? item.type.trim() : "text";
+      const allowed = ["text", "textarea", "select", "number", "date", "source", "file"];
+      const type = allowed.includes(typeRaw) ? typeRaw : "text";
       return {
         key,
         label,
+        type: type as any,
         group:
           (typeof item?.group === "string" && item.group.trim()) ||
           (typeof item?.section === "string" && item.section.trim()) ||
@@ -299,6 +308,10 @@ export function normalizeQuestionnaireFields(raw: any): QuestionnaireField[] {
           (typeof item?.description === "string" && item.description.trim()) ||
           (typeof item?.helpText === "string" && item.helpText.trim()) ||
           null,
+        options: Array.isArray(item?.options) ? item.options.map((o: any) => String(o || "").trim()).filter(Boolean) : undefined,
+        askInQuestionnaire: item?.askInQuestionnaire !== false,
+        internalOnly: item?.internalOnly === true,
+        required: item?.required === true,
       } as QuestionnaireField;
     })
     .filter(Boolean) as QuestionnaireField[];
