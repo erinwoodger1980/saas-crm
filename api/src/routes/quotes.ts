@@ -2130,9 +2130,12 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
     }
 
     if (method === "ml") {
+      // Allow frontend to force questionnaire-driven estimation
+      const sourceRaw = typeof req.body?.source === "string" ? String(req.body.source).toLowerCase() : "";
+      const preferQuestionnaire = sourceRaw === "questionnaire";
       // Prefer per-line pricing via ML when we have supplier costs; fall back to total-scaling from questionnaire
       const hasCostLines = quote.lines.some((ln) => Number(ln.unitPrice) > 0);
-      if (hasCostLines) {
+      if (hasCostLines && !preferQuestionnaire) {
         try {
           const API_BASE = (
             process.env.APP_API_URL || process.env.API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`
@@ -2207,7 +2210,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         process.env.APP_API_URL || process.env.API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`
       ).replace(/\/$/, "");
       const features: any = (quote.lead?.custom as any) || {};
-      const inputTypeRaw = typeof req.body?.inputType === "string" ? req.body.inputType : undefined;
+  const inputTypeRaw = typeof req.body?.inputType === "string" ? req.body.inputType : (preferQuestionnaire ? "questionnaire" : undefined);
       const inputType = inputTypeRaw === "supplier_pdf" ? "supplier_pdf" : "questionnaire";
 
       const inferenceModel = inputType === "supplier_pdf" ? "supplier_estimator" : "qa_estimator";

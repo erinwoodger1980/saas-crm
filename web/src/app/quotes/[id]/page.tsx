@@ -258,22 +258,6 @@ export default function QuoteBuilderPage() {
       setEstimatedLineRevision(lineRevision);
       toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
       await Promise.all([mutateQuote(), mutateLines()]);
-
-      // Auto-render proposal PDF after ML pricing completes
-      setIsRendering(true);
-      try {
-        await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-proposal`, { method: "POST" });
-        const signed = await apiFetch<{ url: string }>(`/quotes/${encodeURIComponent(quoteId)}/proposal/signed`);
-        if (signed?.url) window.open(signed.url, "_blank");
-      } catch (renderErr: any) {
-        toast({
-          title: "Estimate saved, but proposal render failed",
-          description: renderErr?.message || "Try 'Render proposal'",
-          variant: "destructive",
-        });
-      } finally {
-        setIsRendering(false);
-      }
     } catch (err: any) {
       setError(err?.message || "Failed to estimate");
       toast({ title: "Estimate failed", description: err?.message || "Unable to generate ML estimate", variant: "destructive" });
@@ -394,7 +378,7 @@ export default function QuoteBuilderPage() {
         void handleParse();
       } else if (event.key === "e" || event.key === "E") {
         event.preventDefault();
-        void handleEstimate();
+        void handleQuestionnaireEstimate();
       } else if (event.key === "u" || event.key === "U") {
         event.preventDefault();
         openUploadDialog();
@@ -443,7 +427,7 @@ export default function QuoteBuilderPage() {
       onUploadClick={openUploadDialog}
       onProcessSupplier={() => setProcessDialogOpen(true)}
       onRenderProposal={handleRenderProposal}
-      onGenerateEstimate={handleEstimate}
+      onGenerateEstimate={handleQuestionnaireEstimate}
       onDownloadCsv={handleDownloadCsv}
       disabled={quoteLoading || linesLoading}
       isUploading={isUploading}
@@ -476,7 +460,7 @@ export default function QuoteBuilderPage() {
       linesCount={lines?.length ?? 0}
       currency={currency}
       isEstimating={isEstimating}
-      onEstimate={handleEstimate}
+      onEstimate={handleQuestionnaireEstimate}
       onSaveEstimate={handleSaveEstimateToQuote}
       onApprove={handleRenderProposal}
       reestimate={Boolean(reestimateNeeded)}
@@ -534,6 +518,7 @@ export default function QuoteBuilderPage() {
         leftColumn={<>{questionnaireSection}</>}
         rightColumn={
           <>
+            {linesSection}
             {estimateSection}
             {filesSection}
           </>
