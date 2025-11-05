@@ -421,14 +421,45 @@ LIMIT 10;
 - ✅ Manual upload for supplier quotes
 - ✅ Training session tracking
 
-### Phase 2: Model Retraining (IN PROGRESS 🔄)
-- Build actual ML models from training data
-- Train price prediction model (Random Forest)
-- Train win probability model (XGBoost)
-- Train line item classifier
-- Store model versions in ml_models table
+### Phase 2: Model Retraining (DONE ✅)
+- ✅ Load training data from ml_training_data table
+- ✅ Extract features: area_m2, materials_grade, project_type, confidence
+- ✅ Train RandomForest price prediction model
+- ✅ Train RandomForest win probability model  
+- ✅ Validate with train/test split (80/20)
+- ✅ Calculate metrics: MAE (Mean Absolute Error), R² score
+- ✅ Save models to models/price_model.joblib and models/win_model.joblib
+- ✅ Save feature metadata with training statistics
+- ✅ Reload models globally for immediate use
+- ✅ Minimum 10 training samples required (configurable)
 
-### Phase 3: UI Improvements (PLANNED 📋)
+**How it works:**
+1. Click "🎯 Train Models" in AI Training Hub
+2. System loads all stored training data from database
+3. Extracts features and prepares training dataset
+4. Trains two RandomForest models (price + win probability)
+5. Validates performance on test set
+6. Saves models to disk for persistence
+7. Reloads models immediately for predictions
+8. Shows metrics: "Price MAE: £450 | R²: 0.92 | 47 training samples"
+
+**Training Data Requirements:**
+- Minimum 10 samples (can be configured with `minSamples` parameter)
+- Must have `estimated_total > 0`
+- Must have `confidence > 0.3` (filters out low-quality parses)
+- Automatically handles missing features with sensible defaults
+
+**Model Performance:**
+- **Price MAE**: How far predictions are from actual prices (lower is better)
+  - £200-500: Excellent
+  - £500-1000: Good  
+  - £1000+: Needs more training data
+- **R² Score**: How well model explains variance (0-1, higher is better)
+  - 0.9+: Excellent fit
+  - 0.7-0.9: Good fit
+  - <0.7: Needs improvement
+
+### Phase 3: UI Improvements (IN PROGRESS �)
 - Display training statistics in dashboard
 - Show training history timeline
 - Add "Recent Training Sessions" list
@@ -451,8 +482,79 @@ The AI Training system is now fully functional with:
 ✅ **Database storage** for all training examples  
 ✅ **Session tracking** for audit and monitoring  
 ✅ **Batch processing** for efficiency  
+✅ **Actual model retraining** from stored data  
+✅ **sklearn RandomForest models** for price and win prediction  
+✅ **Model validation** with MAE and R² metrics  
 ✅ **Graceful fallbacks** for development without database  
 
-The foundation is in place for continuous model improvement. As you collect more training examples, the ML models will become more accurate at parsing quotes, predicting prices, and matching products.
+### Complete Training Workflow
 
-**Next step**: Implement actual model retraining logic in `/ml/train-client-quotes` to use the stored training data.
+**Step 1: Collect Training Data**
+- Upload supplier PDFs in Quote Builder (stored as SUPPLIER_QUOTE files)
+- Scan Gmail/M365 for client quotes (Email Quote Discovery)
+- Manually upload PDFs (drag-and-drop in AI Training Hub)
+- All stored in `ml_training_data` table with metadata
+
+**Step 2: Train Models** 
+- Click "🎯 Train Models" in AI Training Hub
+- System loads stored training data from database
+- Extracts features (area, materials, project type)
+- Trains RandomForest models (price + win probability)
+- Validates on test set (80/20 split)
+- Saves models to disk: `models/price_model.joblib`, `models/win_model.joblib`
+- Shows metrics: MAE, R², training samples count
+
+**Step 3: Get Predictions**
+- Click "Generate ML estimate" in Quote Builder
+- System checks for trained models
+- If models exist: uses trained RandomForest predictions ✅
+- If no models: uses training data statistics (fallback)
+- If no data: uses simple area-based formula (last resort)
+- Returns: predicted price, win probability, confidence
+
+### Model Training Algorithm
+
+The retraining process:
+
+1. **Load Data**: Query `ml_training_data` WHERE `estimated_total > 0` AND `confidence > 0.3`
+2. **Extract Features**: 
+   - `area_m2` from questionnaire or parsed data (default: 30.0)
+   - `materials_grade`: Premium/Standard/Basic (default: Standard)
+   - `project_type`: windows/doors/other
+   - `confidence`: parser confidence score
+3. **Encode Categoricals**:
+   - One-hot encode materials_grade (3 binary features)
+   - Binary encode project_type (windows, doors flags)
+4. **Prepare Targets**:
+   - `y_price`: quoted_price or estimated_total
+   - `y_win`: estimated win probability based on confidence + price range
+5. **Train/Test Split**: 80% train, 20% test (random_state=42)
+6. **Train Models**:
+   - **Price Model**: RandomForestRegressor(n_estimators=100, max_depth=10)
+   - **Win Model**: RandomForestRegressor(n_estimators=100, max_depth=8)
+7. **Validate**: Calculate MAE and R² on test set
+8. **Save**: joblib.dump() to models/ directory
+9. **Reload**: Update global price_model and win_model variables
+
+### Feature Engineering
+
+Current features (v1.0):
+- `area_m2`: Project area in square meters
+- `materials_grade_Premium`: 1 if Premium, else 0
+- `materials_grade_Standard`: 1 if Standard, else 0
+- `materials_grade_Basic`: 1 if Basic, else 0
+- `project_type_windows`: 1 if contains "window", else 0
+- `project_type_doors`: 1 if contains "door", else 0
+- `confidence`: Parser confidence (0-1)
+
+Future enhancements:
+- Lead source (referral, website, etc.)
+- Region/location
+- Number of windows/doors
+- Timber species
+- Glazing type (double/triple)
+- Compliance requirements (building regs, etc.)
+
+The foundation is in place for continuous model improvement. As you collect more training examples, the ML models will become more accurate at predicting prices and win probabilities.
+
+**Next step**: Add UI to display model version, last trained date, and performance metrics in the dashboard.

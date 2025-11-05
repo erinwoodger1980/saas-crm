@@ -619,37 +619,51 @@ export default function AiTrainingPage() {
   }
 
   async function trainClientQuotes() {
-    setEmailTraining({ status: 'running', progress: 0, message: 'Training ML models with client quotes...' });
+    setEmailTraining({ status: 'running', progress: 0, message: 'Training ML models with stored data...' });
     setError(null);
     
     try {
-      const response = await apiFetch<EmailTrainingResponse>(`/ml/train-client-quotes`, {
+      const response = await apiFetch<any>(`/ml/train-client-quotes`, {
         method: 'POST',
         json: {}
       });
       
+      if (!response.ok) {
+        throw new Error(response.error || response.message || 'Training failed');
+      }
+      
+      const metrics = response.metrics || {};
+      const trainingCount = response.training_samples || 0;
+      
       setEmailTraining({
         status: 'completed',
         progress: 100,
-        message: 'ML model training completed',
-        trainingRecords: response.trainingRecords || 0
+        message: `Models trained successfully with ${trainingCount} examples`,
+        trainingRecords: trainingCount
       });
       
       toast({
-        title: "ML Training Complete",
-        description: `Trained models with ${response.trainingRecords || 0} client quote records`,
-        duration: 5000
+        title: "🎉 ML Models Trained!",
+        description: `Price MAE: £${metrics.price_mae || 0} | R²: ${metrics.price_r2 || 0} | ${trainingCount} training samples`,
+        duration: 7000
       });
       
-      // Refresh insights to show updated model
-      window.location.reload();
+      // Refresh page to show updated model status
+      setTimeout(() => window.location.reload(), 2000);
       
     } catch (e: any) {
+      const errorMsg = e?.message || 'ML training failed';
       setEmailTraining({
         status: 'error',
-        message: e?.message || 'ML training failed'
+        message: errorMsg
       });
-      setError(e?.message || 'ML training failed');
+      setError(errorMsg);
+      toast({
+        title: "Training Failed",
+        description: errorMsg,
+        variant: "destructive",
+        duration: 5000
+      });
     }
   }
 
