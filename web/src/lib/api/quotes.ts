@@ -46,6 +46,8 @@ export type ParseResponse = {
   summaries?: Array<Record<string, any>>;
   usedStages?: string[];
   confidence?: number | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
 };
 
 export type EstimateResponse = {
@@ -57,6 +59,46 @@ export type EstimateResponse = {
   modelVersionId?: string | null;
   meta?: { cacheHit?: boolean; latencyMs?: number | null } | null;
 };
+
+export type ProcessQuoteResponse =
+  | {
+      ok: true;
+      filename?: string | null;
+      quotedAt?: string | null;
+      quote_type: "supplier";
+      supplier_parsed?: Record<string, any>;
+      client_quote: {
+        currency?: string | null;
+        markup_percent?: number | null;
+        vat_percent?: number | null;
+        subtotal?: number | null;
+        vat_amount?: number | null;
+        grand_total?: number | null;
+        lines: Array<{
+          description: string;
+          qty: number;
+          unit_price: number;
+          total: number;
+          unit_price_marked_up: number;
+          total_marked_up: number;
+        }>;
+      };
+    }
+  | {
+      ok: true;
+      filename?: string | null;
+      quotedAt?: string | null;
+      quote_type: "client";
+      training_candidate: Record<string, any>;
+    }
+  | {
+      ok: true;
+      filename?: string | null;
+      quotedAt?: string | null;
+      quote_type: "unknown";
+      raw_text_length?: number;
+      message?: string;
+    };
 
 export type QuestionnaireField = {
   key: string;
@@ -162,6 +204,74 @@ export async function updateQuoteLine(
     },
   );
   return updated;
+}
+
+export async function processQuoteFromUrl(params: {
+  url: string;
+  filename?: string | null;
+  quotedAt?: string | null;
+  markupPercent?: number;
+  vatPercent?: number;
+  markupDelivery?: boolean;
+  amalgamateDelivery?: boolean;
+  clientDeliveryGBP?: number;
+  clientDeliveryDescription?: string;
+}): Promise<ProcessQuoteResponse> {
+  if (!params?.url) throw new Error("url required");
+  const body: Record<string, any> = {
+    url: params.url,
+  };
+  if (params.filename) body.filename = params.filename;
+  if (params.quotedAt) body.quotedAt = params.quotedAt;
+  if (typeof params.markupPercent === "number") body.markupPercent = params.markupPercent;
+  if (typeof params.vatPercent === "number") body.vatPercent = params.vatPercent;
+  if (typeof params.markupDelivery === "boolean") body.markupDelivery = params.markupDelivery;
+  if (typeof params.amalgamateDelivery === "boolean") body.amalgamateDelivery = params.amalgamateDelivery;
+  if (typeof params.clientDeliveryGBP === "number") body.clientDeliveryGBP = params.clientDeliveryGBP;
+  if (typeof params.clientDeliveryDescription === "string") body.clientDeliveryDescription = params.clientDeliveryDescription;
+  return apiFetch<ProcessQuoteResponse>(`/ml/process-quote`, {
+    method: "POST",
+    json: body,
+  });
+}
+
+export async function processQuoteFromFile(
+  quoteId: string,
+  file: SupplierFileDto,
+  opts: { markupPercent?: number; vatPercent?: number; markupDelivery?: boolean; amalgamateDelivery?: boolean; clientDeliveryGBP?: number; clientDeliveryDescription?: string } = {},
+): Promise<ProcessQuoteResponse> {
+  if (!quoteId) throw new Error("quoteId required");
+  if (!file?.id) throw new Error("file.id required");
+  const signed = await apiFetch<{ url: string }>(
+    `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(file.id)}/signed`,
+  );
+  if (!signed?.url) throw new Error("Unable to sign file URL");
+  return processQuoteFromUrl({
+    url: signed.url,
+    filename: file.name || undefined,
+    markupPercent: opts.markupPercent,
+    vatPercent: opts.vatPercent,
+    markupDelivery: opts.markupDelivery,
+    amalgamateDelivery: opts.amalgamateDelivery,
+    clientDeliveryGBP: opts.clientDeliveryGBP,
+    clientDeliveryDescription: opts.clientDeliveryDescription,
+  });
+}
+
+export async function saveClientQuoteLines(
+  quoteId: string,
+  clientQuote: NonNullable<Extract<ProcessQuoteResponse, { quote_type: "supplier" }>['client_quote']>,
+  options: { replace?: boolean } = {},
+): Promise<{ ok: boolean; created: number; totalGBP: number; currency: string }>
+{
+  if (!quoteId) throw new Error("quoteId required");
+  if (!clientQuote || !Array.isArray(clientQuote.lines)) throw new Error("clientQuote with lines required");
+  const body: any = { clientQuote };
+  if (typeof options.replace === 'boolean') body.replace = options.replace;
+  return apiFetch(`/quotes/${encodeURIComponent(quoteId)}/lines/save-processed`, {
+    method: 'POST',
+    json: body,
+  });
 }
 
 export function normalizeQuestionnaireFields(raw: any): QuestionnaireField[] {

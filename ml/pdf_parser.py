@@ -77,25 +77,67 @@ def _ocr_pages(pdf_bytes: bytes, max_pages: int = 5) -> str:
     except Exception:
         return ""
 
+def _is_gibberish(text: str) -> bool:
+    """
+    Detect if extracted text is gibberish (wrong encoding/custom fonts).
+    Returns True if text quality is too low.
+    """
+    if not text or len(text) < 20:
+        return True
+    
+    # Remove whitespace for analysis
+    clean = text.replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '')
+    if not clean:
+        return True
+    
+    # Count alphanumeric characters
+    alpha_count = sum(1 for c in clean if c.isalnum())
+    alpha_ratio = alpha_count / len(clean) if len(clean) > 0 else 0
+    
+    # If less than 50% alphanumeric, it's likely gibberish
+    if alpha_ratio < 0.5:
+        return True
+    
+    # Check for excessive extended ASCII (common in encoding issues)
+    extended_ascii = sum(1 for c in text[:200] if 127 < ord(c) < 160)
+    if extended_ascii > 10:
+        return True
+    
+    # Check if we have recognizable words
+    words = text.split()[:30]
+    alpha_words = [w for w in words if len(w) > 2 and any(c.isalpha() for c in w)]
+    if len(alpha_words) < len(words) * 0.3:  # Less than 30% recognizable words
+        return True
+    
+    return False
+
+
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
     """
     Public API used by main.py.
     1) Try PyMuPDF
-    2) Fallback to PyPDF2 if available
-    3) Fallback to OCR (if libs present)
+    2) Check if result is gibberish, if so try OCR
+    3) Fallback to PyPDF2 if available
+    4) Final fallback to OCR (if libs present)
     """
     text = _extract_text_pymupdf(pdf_bytes)
-    if text.strip():
+    if text.strip() and not _is_gibberish(text):
         return text
+    
+    # If PyMuPDF gave us gibberish, try OCR immediately
+    if text.strip() and _is_gibberish(text):
+        ocr = _ocr_pages(pdf_bytes, max_pages=5)
+        if ocr.strip() and not _is_gibberish(ocr):
+            return ocr
 
     # Lightweight fallback that works without native dependencies.
     text = _extract_text_pypdf(pdf_bytes)
-    if text.strip():
+    if text.strip() and not _is_gibberish(text):
         return text
 
     # Only try OCR if other methods failed to get anything useful.
     ocr = _ocr_pages(pdf_bytes, max_pages=5)
-    return ocr or ""
+    return ocr or text or ""  # Return even gibberish text if OCR fails
 
 def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
     """
@@ -118,24 +160,45 @@ def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
             "supplier": None,
         }
 
-    # Extract currency symbol
+    # Extract currency symbol or code (support GBP/EUR/USD when symbol is missing)
     currency = None
     mcur = re.search(r"(?P<cur>£|\$|€)", text)
     if mcur:
         currency = mcur.group("cur")
+    else:
+        # Look for common currency codes used in table headers like "Price, GBP"
+        if re.search(r"\bGBP\b", text, re.IGNORECASE):
+            currency = "GBP"
+        elif re.search(r"\bEUR\b", text, re.IGNORECASE):
+            currency = "EUR"
+        elif re.search(r"\bUSD\b", text, re.IGNORECASE):
+            currency = "USD"
 
     # Extract supplier name (look for common patterns)
     supplier = None
-    supplier_patterns = [
-        r"(?:from|supplier|vendor)[\s:]+([A-Z][A-Za-z\s&]+?)(?:\n|$)",
-        r"^([A-Z][A-Za-z\s&]+?)\s*(?:ltd|limited|inc|corp|company)\.?\s*$",
-        r"invoice\s+from\s+([A-Z][A-Za-z\s&]+?)(?:\n|$)",
-    ]
-    for pat in supplier_patterns:
-        match = re.search(pat, text, re.IGNORECASE | re.MULTILINE)
-        if match:
-            supplier = match.group(1).strip()
-            break
+    # Prefer explicit known suppliers to avoid false positives like "from the outside"
+    if re.search(r"\bLANGVALDA\b", text, re.IGNORECASE) or re.search(r"@langvalda\.lt", text, re.IGNORECASE):
+        supplier = "Langvalda"
+    elif re.search(r"\bWealden\s+Joinery\b", text, re.IGNORECASE):
+        supplier = "Wealden Joinery"
+    elif re.search(r"\bWoodleys\b", text, re.IGNORECASE):
+        supplier = "Woodleys"
+    else:
+        # Restrict generic patterns to the top section of the document
+        head = "\n".join(text.split("\n")[:80])
+        supplier_patterns = [
+            r"(?:invoice|quotation|quote)\s+from\s+([A-Z][A-Za-z\s&]+?)(?:\n|$)",
+            r"(?:supplier|vendor)\s*[:\-]?\s*([A-Z][A-Za-z\s&]+?)(?:\n|$)",
+            r"^([A-Z][A-Za-z\s&]+?)\s*(?:ltd|limited|inc|corp|company)\.?\s*$",
+        ]
+        for pat in supplier_patterns:
+            match = re.search(pat, head, re.IGNORECASE | re.MULTILINE)
+            if match:
+                cand = match.group(1).strip()
+                # Avoid capturing phrases like "the outside"
+                if not re.search(r"\b(outside|inside|left|right)\b", cand, re.IGNORECASE):
+                    supplier = cand
+                    break
 
     # Extract line items from table-like structures
     lines = []
@@ -146,8 +209,10 @@ def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
         r"^\s*\d+\.\s*(.+?)\s+(\d+(?:\.\d+)?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
         # Pattern: Description [spaces] Qty [spaces] £Unit Price [spaces] £Total  
         r"^(.+?)\s+(\d+(?:\.\d+)?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
-        # Pattern: Description [spaces] Qty [spaces] Unit Price (no currency symbols)
-        r"^(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
+        # Pattern: Unit Price [spaces] Qty [spaces] Total (for lines with price before qty)
+        r"^(\d+(?:,\d{3})*(?:\.\d{2})?)\s+(\d+)\s+(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
+    # Pattern: Description [spaces] Qty [spaces] Unit Price (no currency symbols, must have decimals)
+    r"^(.+?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:,\d{3})*\.\d{2})\s*$",
         # Pattern: Description £Price (assuming qty=1)
         r"^(.+?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s*$",
         # Pattern: Qty x Description @ £Price
@@ -155,6 +220,256 @@ def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
     ]
     
     text_lines = text.split('\n')
+    
+    # First pass: look for structured table data where each number is on its own line
+    # This handles formats like:
+    # Dimensions line (2475x2058mm)
+    # Area line (5.09m²)
+    # Price line (4321.86)
+    # [blank line]
+    # Qty line (1)
+    # Total line (4321.86)
+    i = 0
+    pending_description = None
+    pending_specs = []
+    in_quotation_section = False
+    seen_langvalda_header = False  # Tracks header triplet: Price, GBP / pcs / Total, GBP
+    
+    while i < len(text_lines):
+        line = text_lines[i].strip()
+        
+        if not line:
+            i += 1
+            continue
+        
+        # Skip dates (e.g., "22 07 2025")
+        if re.match(r'^\d{1,2}\s+\d{1,2}\s+\d{4}$', line):
+            i += 1
+            continue
+            
+        # Toggle section on brochure-style PDFs
+        if re.search(r'^(Detailed Quotation|Ref|Description)$', line, re.IGNORECASE):
+            in_quotation_section = True
+        if re.search(r'^(Subtotal|VAT|Total Investment|Wealden Joinery Triple Guarantee|Terms & Conditions|Contact Information)$', line, re.IGNORECASE):
+            in_quotation_section = False
+
+        # Skip obvious header/footer lines  
+        if re.search(r'^(Price,?\s*GBP|pcs|Total,?\s*GBP|Quantity|Pcs:|m2:|Total weight:|TOTAL INVOICE|All prices|Item|Description|Unit|Cost|Validity|Unit / Line|Line Total)', line, re.IGNORECASE):
+            # LANGVALDA table header tokens mark a local table context
+            if re.search(r'^(Price,?\s*GBP|pcs|Total,?\s*GBP)$', line, re.IGNORECASE):
+                seen_langvalda_header = True
+            # Reset pending when we hit table headers
+            if re.search(r'^(Item|Description|Qty|Unit|Cost)', line, re.IGNORECASE):
+                pending_description = None
+                pending_specs = []
+            i += 1
+            continue
+        
+        # Check if this is a dimension line (e.g., "2475x2058mm" or just "880mm")
+        if re.match(r'^\d+x\d+mm', line) or re.match(r'^\d+mm$', line):
+            pending_specs.append(line)
+            i += 1
+            continue
+
+        # Reset local table context when obvious section changes occur
+        if re.search(r'^(LANGVALDA /|TOTAL INVOICE|The quote is valid)', line, re.IGNORECASE):
+            seen_langvalda_header = False
+        
+        # Check if this is an area line (e.g., "5.09m²")
+        if re.match(r'^\d+(?:\.\d+)?m[²2]$', line, re.IGNORECASE):
+            pending_specs.append(line)
+            i += 1
+            continue
+
+        # Handle TYPE lines of the form "TYPE" then next line "C"
+        if in_quotation_section and re.match(r'^TYPE\s*$', line, re.IGNORECASE):
+            if i + 1 < len(text_lines):
+                code = text_lines[i + 1].strip()
+                if re.match(r'^[A-Z0-9]{1,3}$', code):
+                    pending_description = f"TYPE {code}"
+                    i += 2
+                    continue
+        
+        # Check if this looks like a unit price with currency symbol (e.g., "£1,274.24")
+        price_with_currency = re.match(r'^[£$€]\s*(\d+(?:,\d{3})*\.\d{2})$', line)
+        if price_with_currency and (pending_description or pending_specs):
+            unit_price = float(price_with_currency.group(1).replace(',', ''))
+            
+            # Look ahead for total on next line (also with currency)
+            # But first we might need to find qty
+            qty = None
+            total = None
+            
+            # Look backwards for qty - should be a line with just a number a few lines back
+            for back_idx in range(max(0, i-5), i):
+                back_line = text_lines[back_idx].strip()
+                # Look for a standalone number (quantity)
+                if re.match(r'^\d+$', back_line):
+                    qty = float(back_line)
+                    break
+            
+            # Look ahead for total (next non-blank line with currency)
+            j = i + 1
+            while j < len(text_lines) and not text_lines[j].strip():
+                j += 1
+            
+            if j < len(text_lines):
+                total_line = text_lines[j].strip()
+                total_match = re.match(r'^[£$€]\s*(\d+(?:,\d{3})*\.\d{2})$', total_line)
+                if total_match:
+                    total = float(total_match.group(1).replace(',', ''))
+                    
+                    if qty and (in_quotation_section or seen_langvalda_header or pending_description):
+                        # We have everything!
+                        description_parts = []
+                        if pending_description:
+                            description_parts.append(pending_description)
+                        description_parts.extend(pending_specs)
+                        
+                        description = ' '.join(description_parts)
+                        
+                        lines.append({
+                            "description": description,
+                            "qty": qty,
+                            "unit_price": unit_price,
+                            "total": total
+                        })
+                        
+                        # Reset and jump ahead
+                        pending_description = None
+                        pending_specs = []
+                        i = j + 1
+                        continue
+            # Special case: delivery fixed charge with only one currency amount (no qty/total lines)
+            if (pending_description and re.search(r'delivery', pending_description, re.IGNORECASE)) and (in_quotation_section or pending_description):
+                description_parts = []
+                if pending_description:
+                    description_parts.append(pending_description)
+                description_parts.extend(pending_specs)
+                description = ' '.join(description_parts)
+                lines.append({
+                    "description": description,
+                    "qty": 1.0,
+                    "unit_price": unit_price,
+                    "total": unit_price
+                })
+                pending_description = None
+                pending_specs = []
+                i += 1
+                continue
+        
+        # Check if this looks like a unit price (decimal number, possibly with commas)
+        # But make sure we have some context (description or specs) first
+        price_match = re.match(r'^(\d+(?:,\d{3})*\.\d{2})$', line)
+        if price_match and (pending_description or pending_specs) and (in_quotation_section or seen_langvalda_header):
+            unit_price = float(price_match.group(1).replace(',', ''))
+            
+            # Look ahead for qty and total on next lines
+            qty = None
+            total = None
+            
+            # Skip blank lines
+            j = i + 1
+            while j < len(text_lines) and not text_lines[j].strip():
+                j += 1
+            
+            # Next should be quantity (could be "1" or "1 pc.")
+            if j < len(text_lines):
+                qty_line = text_lines[j].strip()
+                qty_match = re.match(r'^(\d+(?:\.\d+)?)\s*(?:pc\.?|pcs\.?)?$', qty_line, re.IGNORECASE)
+                if qty_match:
+                    qty = float(qty_match.group(1))
+                    j += 1
+                    
+                    # Skip blank lines again
+                    while j < len(text_lines) and not text_lines[j].strip():
+                        j += 1
+                    
+                    # Next should be total
+                    if j < len(text_lines):
+                        total_line = text_lines[j].strip()
+                        total_match = re.match(r'^(\d+(?:,\d{3})*\.\d{2})$', total_line)
+                        if total_match:
+                            total = float(total_match.group(1).replace(',', ''))
+                            
+                            # We found a complete line item!
+                            description_parts = []
+                            if pending_description:
+                                description_parts.append(pending_description)
+                            description_parts.extend(pending_specs)
+                            
+                            description = ' '.join(description_parts)
+                            
+                            lines.append({
+                                "description": description,
+                                "qty": qty,
+                                "unit_price": unit_price,
+                                "total": total
+                            })
+                            
+                            # Reset and jump ahead
+                            pending_description = None
+                            pending_specs = []
+                            i = j + 1
+                            continue
+        
+        # Check if this looks like a description line
+        # Must contain letters and not be a header or specification detail
+        if re.search(r'[a-zA-Z]{3,}', line):
+            # Skip company/supplier names at the top
+            if re.search(r'(FENSTERCRAFT|Popieriaus|langvalda|GROUP|^JMS\s+\d|Wealden Joinery)', line, re.IGNORECASE):
+                i += 1
+                continue
+            
+            # Skip reference lines
+            if re.search(r'Offer #|Reference|Brought Forward|Carried Forward|Quotation Number|Date of Quotation|QUOTATION', line, re.IGNORECASE):
+                # Reset pending description if we hit these
+                pending_description = None
+                pending_specs = []
+                i += 1
+                continue
+            
+            # Special handling for "Type:" lines - extract the actual product description
+            type_match = re.match(r'^\d+\.\s*Type:\s*(.+)$', line, re.IGNORECASE)
+            if type_match and not pending_description:
+                pending_description = type_match.group(1).strip()
+                i += 1
+                continue
+            
+            # Special handling for product lines like "Screen - (TYPE C)" or "Door"
+            product_match = re.match(r'^(Screen|Door|Window|Frame)\s*[-\s]*(\(TYPE\s+[A-Z0-9]+\))?', line, re.IGNORECASE)
+            if product_match and not pending_description:
+                pending_description = line.strip()
+                i += 1
+                continue
+            
+            # Special handling for "Delivery" lines - grab next line too if it continues
+            if re.search(r'^Delivery|^Shipping', line, re.IGNORECASE):
+                desc_parts = [line]
+                # Check if next line continues the description (has letters, no numbers at start)
+                if i + 1 < len(text_lines):
+                    next_line = text_lines[i + 1].strip()
+                    if next_line and re.search(r'^[\(\[]', next_line):  # Starts with ( or [
+                        desc_parts.append(next_line)
+                        i += 1
+                pending_description = ' '.join(desc_parts)
+            elif not pending_description:  # Only set if we don't have one yet
+                # Product codes like "FD1" can be good descriptions
+                if re.match(r'^[A-Z]{2,}\d+$', line):
+                    pending_description = line
+                # Skip numbered specification lines (1. Type:, 2. Wood:, etc.)
+                elif not re.match(r'^\d+\.\s*(Type:|Wood:|Finish:|Glass:|Fittings:|Water|sealing:)', line, re.IGNORECASE):
+                    # Skip other spec patterns
+                    if not re.match(r'^(View from|edge |double cylinder)', line):
+                        # Also skip lines that look like they're part of terms/conditions
+                        if not re.search(r'(valid for|excl\. VAT|unloading|tempered panes|Thank you for|represent your|your booking|Price is for|Price does not|Project Overview|Client Details|Specification|Highlights|Project Scope|Unit / Line|Line Total|Ref)', line, re.IGNORECASE):
+                            # Skip contact info and website
+                            if not re.search(r'(\+\d{3}|www\.|@|Tel\.|Email|Telephone:|Phone:|Address:)', line):
+                                pending_description = line
+        
+        i += 1
+    
+    # Second pass: traditional single-line parsing
     for line in text_lines:
         line = line.strip()
         if not line or len(line) < 10:  # Skip very short lines
@@ -163,9 +478,10 @@ def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
         # Skip header lines and footer lines
         skip_patterns = [
             r"(description|item|quantity|qty|price|total|sub.*total)",
-            r"(vat|tax|delivery|payment|terms)",
+            r"(vat|tax|delivery|payment|terms|contact|phone|email|address|business\s+hours)",
             r"^(subtotal|grand.*total|balance|amount.*due)",
             r"^\s*[£$€]\s*[\d,]+\.?\d*\s*$",  # Lines with only money amounts
+            r"^(Wealden Joinery|Project Overview|Client Details|Specification|Highlights|Project Scope)$",
         ]
         
         should_skip = False
@@ -191,17 +507,20 @@ def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
                     qty = float(match.group(2))
                     unit_price = float(match.group(3).replace(',', ''))
                     total = float(match.group(4).replace(',', ''))
-                elif i == 2:  # Description Qty Unit Price
+                elif i == 2:  # Unit Price Qty Total (numbers only)
+                    # This is just numbers, skip it as we handled it above
+                    continue
+                elif i == 3:  # Description Qty Unit Price
                     description = match.group(1).strip()
                     qty = float(match.group(2))
                     unit_price = float(match.group(3).replace(',', ''))
                     total = qty * unit_price
-                elif i == 3:  # Description Price (qty=1)
+                elif i == 4:  # Description Price (qty=1)
                     description = match.group(1).strip()
                     qty = 1.0
                     unit_price = float(match.group(2).replace(',', ''))
                     total = unit_price
-                elif i == 4:  # Qty x Description @ Price
+                elif i == 5:  # Qty x Description @ Price
                     qty = float(match.group(1))
                     description = match.group(2).strip()
                     unit_price = float(match.group(3).replace(',', ''))
@@ -220,6 +539,27 @@ def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
 
     # If no structured lines found, try to extract from more freeform text
     if not lines:
+        # Look for "Delivery" followed by price and quantity on next line
+        # Pattern: Delivery to London area TBC* \n 990.01  1 pc.  990.01
+        for i, line in enumerate(text_lines):
+            if re.search(r'delivery|shipping', line, re.IGNORECASE):
+                # Check next few lines for pricing
+                for j in range(i+1, min(i+4, len(text_lines))):
+                    next_line = text_lines[j].strip()
+                    delivery_match = re.match(r'(\d+(?:,\d{3})*(?:\.\d{2})?)\s+(\d+)\s*(?:pc|pcs)?\.?\s+(\d+(?:,\d{3})*(?:\.\d{2})?)', next_line)
+                    if delivery_match:
+                        unit_price = float(delivery_match.group(1).replace(',', ''))
+                        qty = float(delivery_match.group(2))
+                        total = float(delivery_match.group(3).replace(',', ''))
+                        
+                        lines.append({
+                            "description": line.strip(),
+                            "qty": qty,
+                            "unit_price": unit_price,
+                            "total": total
+                        })
+                        break
+        
         # Look for patterns like "Door £500" or "Window installation £300"
         item_patterns = [
             r"([A-Za-z\s]+(?:door|window|frame|installation|hardware|handle|lock|glass).*?)\s+[£$€]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)",
@@ -254,6 +594,8 @@ def parse_quote_lines_from_text(text: str) -> Dict[str, Any]:
         r"total\s*(?:due|amount)?\s*[:\-]?\s*[£$€]?\s*(\d[\d,]*\.?\d*)",
         r"balance\s*due\s*[:\-]?\s*[£$€]?\s*(\d[\d,]*\.?\d*)",
         r"sub.*total\s*[:\-]?\s*[£$€]?\s*(\d[\d,]*\.?\d*)",
+        r"total\s+invoice\s*[:\-]?\s*[£$€]?\s*(\d[\d,]*\.?\d*)",
+        r"total\s+investment\s*[:\-]?\s*[£$€]?\s*(\d[\d,]*\.?\d*)",
     ]
 
     candidates: List[float] = []

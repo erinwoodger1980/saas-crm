@@ -1263,6 +1263,147 @@ async def predict(req: Request):
         "model_status": "active" if price_model and win_model else "fallback"
     }
 
+# ----------------- supplier→client quote builder -----------------
+def build_client_quote_from_supplier_parsed(
+    supplier_parsed: Dict[str, Any],
+    markup_percent: float = 20.0,
+    vat_percent: float = 20.0,
+    markup_delivery: bool = False,
+    amalgamate_delivery: bool = True,
+    client_delivery_gbp: Optional[float] = None,
+    client_delivery_description: Optional[str] = None,
+    round_to: int = 2,
+) -> Dict[str, Any]:
+    """
+    Transform parsed supplier lines into a client-facing quote with markup and VAT.
+
+    Inputs:
+      - supplier_parsed: output of parse_quote_lines_from_text
+      - markup_percent: percentage uplift applied to unit prices (e.g., 20.0)
+      - vat_percent: VAT percent to compute VAT and total (set 0 for no VAT)
+      - markup_delivery: whether to apply markup to delivery/shipping lines
+      - round_to: rounding precision for prices
+
+        Delivery handling:
+            - Supplier delivery: any supplier 'delivery/shipping' lines are detected. If
+                amalgamate_delivery=True (default), their total is distributed across non-delivery
+                items proportionally to each item's original total. If False, delivery lines are kept
+                and you can control markup on them via markup_delivery.
+            - End-client delivery: if client_delivery_gbp is provided (>0), an extra client-facing
+                'Delivery' line is appended after markups. This value contributes to subtotal and VAT.
+
+        Output shape:
+      - currency, markup_percent, vat_percent
+            - lines: [{ description, qty, unit_price, total, unit_price_marked_up, total_marked_up }]
+            - supplier_delivery_total, client_delivery_charge
+            - subtotal, vat_amount, grand_total
+    """
+    currency = supplier_parsed.get("currency")
+    lines_in: List[Dict[str, Any]] = supplier_parsed.get("lines", []) or []
+
+    client_lines: List[Dict[str, Any]] = []
+    subtotal = 0.0
+    supplier_delivery_total = 0.0
+
+    # Separate delivery lines (supplier side)
+    base_items: List[Dict[str, Any]] = []
+    for ln in lines_in:
+        desc = (ln.get("description") or "").strip()
+        qty = float(ln.get("qty") or ln.get("quantity") or 1)
+        unit = float(ln.get("unit_price") or 0.0)
+        total = float(ln.get("total") or (qty * unit))
+        is_delivery_ln = bool(desc) and ("delivery" in desc.lower() or "shipping" in desc.lower())
+        if is_delivery_ln:
+            supplier_delivery_total += max(0.0, total)
+        else:
+            base_items.append({"description": desc, "qty": qty, "unit": unit, "total": total})
+
+    # Compute proportional weights for amalgamation
+    total_of_items = sum(bi["total"] for bi in base_items) or 0.0
+    delivery_allocations: List[float] = []
+    if amalgamate_delivery and supplier_delivery_total > 0 and total_of_items > 0:
+        for bi in base_items:
+            w = (bi["total"] / total_of_items) if total_of_items > 0 else 0.0
+            delivery_allocations.append(round(supplier_delivery_total * w, round_to))
+    else:
+        delivery_allocations = [0.0 for _ in base_items]
+
+    # Build client lines for base items
+    for idx, bi in enumerate(base_items):
+        desc = bi["description"]
+        qty = bi["qty"]
+        unit = bi["unit"]
+        total = bi["total"]
+
+        # If amalgamating delivery, fold the allocated share into the line total before markup
+        extra_cost = delivery_allocations[idx] if idx < len(delivery_allocations) else 0.0
+        effective_total_before_markup = total + (extra_cost or 0.0)
+        # Convert to an effective unit price for marking up
+        effective_unit_before_markup = (effective_total_before_markup / qty) if qty else unit
+
+        uplift = (1.0 + (markup_percent / 100.0))
+        unit_m = round(effective_unit_before_markup * uplift, round_to)
+        total_m = round(unit_m * qty, round_to)
+
+        client_lines.append({
+            "description": desc,
+            "qty": qty,
+            "unit_price": round(unit, round_to),
+            "total": round(total, round_to),
+            "unit_price_marked_up": unit_m,
+            "total_marked_up": total_m,
+        })
+
+        subtotal += total_m
+
+    # If not amalgamating supplier delivery, keep delivery lines optionally with markup
+    if not amalgamate_delivery and supplier_delivery_total > 0:
+        apply_markup = bool(markup_delivery)
+        uplift = (1.0 + (markup_percent / 100.0)) if apply_markup else 1.0
+        unit_m = round(supplier_delivery_total * uplift, round_to)
+        total_m = unit_m  # qty = 1
+        client_lines.append({
+            "description": "Delivery",
+            "qty": 1,
+            "unit_price": round(supplier_delivery_total, round_to),
+            "total": round(supplier_delivery_total, round_to),
+            "unit_price_marked_up": unit_m,
+            "total_marked_up": total_m,
+        })
+        subtotal += total_m
+
+    # Optional end-client delivery charge (added as a new client-facing line)
+    client_delivery_added = None
+    if client_delivery_gbp is not None and client_delivery_gbp > 0:
+        desc = client_delivery_description or "Delivery"
+        amt = round(float(client_delivery_gbp), round_to)
+        client_lines.append({
+            "description": desc,
+            "qty": 1,
+            "unit_price": 0.0,
+            "total": 0.0,
+            "unit_price_marked_up": amt,
+            "total_marked_up": amt,
+        })
+        subtotal += amt
+        client_delivery_added = amt
+
+    subtotal = round(subtotal, round_to)
+    vat_amount = round(subtotal * (vat_percent / 100.0), round_to) if vat_percent and vat_percent > 0 else 0.0
+    grand_total = round(subtotal + vat_amount, round_to)
+
+    return {
+        "currency": currency,
+        "markup_percent": markup_percent,
+        "vat_percent": vat_percent,
+        "supplier_delivery_total": round(supplier_delivery_total, round_to),
+        "client_delivery_charge": client_delivery_added,
+        "lines": client_lines,
+        "subtotal": subtotal,
+        "vat_amount": vat_amount,
+        "grand_total": grand_total,
+    }
+
 # ----------------- parsing helpers -----------------
 def _http_get_bytes(url: str, timeout: int = 30) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "JoineryAI-ML/1.0"})
@@ -1332,6 +1473,88 @@ async def parse_quote(req: Request):
         "text_chars": len(text),
         "parsed": parsed,
     }
+
+class ProcessQuoteIn(BaseModel):
+    url: str
+    filename: Optional[str] = None
+    quotedAt: Optional[str] = None
+    markupPercent: float = 20.0
+    vatPercent: float = 20.0
+    markupDelivery: bool = False
+    amalgamateDelivery: bool = True
+    clientDeliveryGBP: Optional[float] = None
+    clientDeliveryDescription: Optional[str] = None
+
+@app.post("/process-quote")
+async def process_quote(payload: ProcessQuoteIn):
+    """
+    Classify a PDF as supplier vs client, parse accordingly, and for supplier quotes
+    return a client-facing quote with markup applied.
+
+    Body: { url, filename?, quotedAt?, markupPercent?, vatPercent?, markupDelivery? }
+    """
+    try:
+        pdf_bytes = _http_get_bytes(payload.url)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"download_failed: {e}")
+
+    text = extract_text_from_pdf_bytes(pdf_bytes) or ""
+    if not text.strip():
+        return {
+            "ok": False,
+            "message": "No text extracted from PDF",
+            "filename": payload.filename or "attachment.pdf",
+            "quote_type": "unknown",
+        }
+
+    quote_type = determine_quote_type(text)
+
+    # If unknown, try both parsers and choose by signal strength
+    if quote_type == "unknown":
+        supplier_try = parse_quote_lines_from_text(text)
+        client_try = parse_client_quote_from_text(text)
+        supplier_signal = len(supplier_try.get("lines", []))
+        client_signal = float(client_try.get("confidence", 0.0))
+        quote_type = "supplier" if supplier_signal >= 1 else ("client" if client_signal >= 0.2 else "unknown")
+
+    if quote_type == "supplier":
+        supplier_parsed = parse_quote_lines_from_text(text)
+        client_quote = build_client_quote_from_supplier_parsed(
+            supplier_parsed,
+            markup_percent=payload.markupPercent,
+            vat_percent=payload.vatPercent,
+            markup_delivery=payload.markupDelivery,
+            amalgamate_delivery=payload.amalgamateDelivery,
+            client_delivery_gbp=payload.clientDeliveryGBP,
+            client_delivery_description=payload.clientDeliveryDescription,
+        )
+        return {
+            "ok": True,
+            "filename": payload.filename or "attachment.pdf",
+            "quotedAt": _iso(payload.quotedAt),
+            "quote_type": "supplier",
+            "supplier_parsed": supplier_parsed,
+            "client_quote": client_quote,
+        }
+    elif quote_type == "client":
+        client_parsed = parse_client_quote_from_text(text)
+        return {
+            "ok": True,
+            "filename": payload.filename or "attachment.pdf",
+            "quotedAt": _iso(payload.quotedAt),
+            "quote_type": "client",
+            "training_candidate": client_parsed,
+        }
+    else:
+        # Unknown - return diagnostics
+        return {
+            "ok": True,
+            "filename": payload.filename or "attachment.pdf",
+            "quotedAt": _iso(payload.quotedAt),
+            "quote_type": "unknown",
+            "raw_text_length": len(text),
+            "message": "Could not confidently classify quote type",
+        }
 
 @app.post("/train")
 async def train(payload: TrainPayload):
