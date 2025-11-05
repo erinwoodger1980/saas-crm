@@ -163,6 +163,43 @@ router.get("/health", async (_req, res) => {
 });
 
 /**
+ * POST /ml/predict-lines
+ * Forward per-line pricing requests to the ML service
+ * Body: { lines: [...], currency?, markupPercent?, vatPercent?, markupDelivery?, amalgamateDelivery?, clientDeliveryGBP?, clientDeliveryDescription?, roundTo? }
+ */
+router.post("/predict-lines", async (req, res) => {
+  try {
+    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
+
+    const payload = req.body ?? {};
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
+    const r = await fetch(`${ML_URL}/predict-lines`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    cleanup();
+
+    const text = await r.text();
+    let json: any = {};
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+
+    if (!r.ok) return res.status(r.status).json(json);
+    return res.json(json);
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const isTimeout = /timeout_/i.test(msg) || /The operation was aborted/i.test(msg);
+    if (isTimeout) {
+      console.warn(`[ml proxy] /predict-lines timed out after ${ML_TIMEOUT_MS}ms`);
+      return res.status(504).json({ error: "ml_timeout", timeoutMs: ML_TIMEOUT_MS });
+    }
+    console.error("[ml proxy] /predict-lines failed:", msg);
+    return res.status(502).json({ error: "ml_unreachable", detail: msg });
+  }
+});
+
+/**
  * POST /ml/parse-quote (unchanged except normalization)
  * Body: { url, filename?, quotedAt? }
  */
