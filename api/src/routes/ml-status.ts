@@ -4,6 +4,34 @@ import { prisma } from "../prisma";
 import { extractKeyMetric } from "../services/training";
 import { mlBootstrap } from "../env";
 
+const SERVICE_HEALTH_TIMEOUT_MS = 2000;
+
+async function resolveServiceHealth(): Promise<"online" | "degraded" | "offline"> {
+  const target = mlBootstrap.resolvedMlUrl?.trim();
+  if (!target) return "offline";
+
+  const url = target.endsWith("/") ? `${target}health` : `${target}/health`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SERVICE_HEALTH_TIMEOUT_MS);
+
+  try {
+    const started = Date.now();
+    const res = await fetch(url, { method: "GET", signal: controller.signal }).catch((err) => {
+      // fetch will throw for abort/connection issues which we treat as offline
+      throw err;
+    });
+    const duration = Date.now() - started;
+    if (duration > SERVICE_HEALTH_TIMEOUT_MS) return "degraded";
+    if (res.status >= 500) return "degraded";
+    if (res.status !== 200) return "degraded";
+    return "online";
+  } catch {
+    return "offline";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const router = Router();
 
 router.get("/", async (req: any, res) => {
@@ -104,8 +132,9 @@ router.get("/", async (req: any, res) => {
       recentEstimates,
       estimatorLastRun,
       estimatorProduction,
-      recentTrainingSamples,
-      recentParsedLines,
+      recentSampleCount,
+      recentParsedQuoteIds,
+      serviceHealth,
     ] =
       await Promise.all([
         prisma.modelVersion.findMany({ where: { isProduction: true }, orderBy: { createdAt: "desc" } }),
@@ -163,18 +192,22 @@ router.get("/", async (req: any, res) => {
           where: { model: estimatorModel, isProduction: true },
           orderBy: { createdAt: "desc" },
         }),
-        prisma.mLTrainingSample.findMany({
+        prisma.mLTrainingSample.count({
           where: {
             tenantId,
-            createdAt: { gte: samplesSince },
+            OR: [
+              { createdAt: { gte: samplesSince } },
+              { quotedAt: { gte: samplesSince } },
+            ],
             sourceType: { in: ["client_quote", "supplier_quote"] },
           },
-          select: { id: true, quoteId: true },
         }),
         prisma.parsedSupplierLine.findMany({
           where: { tenantId, createdAt: { gte: samplesSince } },
+          distinct: ["quoteId"],
           select: { quoteId: true },
         }),
+        resolveServiceHealth(),
       ]);
 
     const [parsedCount7d, estimatesCount7d, inferenceCount7d] = inferenceCounts;
@@ -220,14 +253,12 @@ router.get("/", async (req: any, res) => {
       finishedAt: (run as any).finishedAt ?? null,
     }));
 
-    const sampleQuoteIds = new Set<string>();
-    for (const sample of recentTrainingSamples) {
-      if (sample.quoteId) sampleQuoteIds.add(sample.quoteId);
-    }
-    for (const parsed of recentParsedLines) {
-      if (parsed.quoteId) sampleQuoteIds.add(parsed.quoteId);
-    }
-    const recentSamples14d = sampleQuoteIds.size || recentTrainingSamples.length;
+    const uniqueParsedQuoteIds = new Set(
+      recentParsedQuoteIds
+        .map((row) => row.quoteId)
+        .filter((quoteId): quoteId is string => typeof quoteId === "string" && quoteId.length > 0),
+    );
+    const recentSamples14d = recentSampleCount + uniqueParsedQuoteIds.size;
 
     const toNumber = (value: any): number | null => {
       if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -256,6 +287,14 @@ router.get("/", async (req: any, res) => {
     const estimatorMetricsSource = estimatorProd?.metricsJson || estimatorLastRun?.metricsJson || null;
     const estimatorConfidence = deriveConfidence(estimatorMetricsSource);
 
+    const finishedAt = (estimatorLastRun as any)?.finishedAt || null;
+
+    const normalizedServiceHealth = warning
+      ? serviceHealth === "offline"
+        ? "offline"
+        : "degraded"
+      : serviceHealth;
+
     const estimator = {
       recentSamples14d,
       lastTrainingRun: estimatorLastRun
@@ -264,20 +303,22 @@ router.get("/", async (req: any, res) => {
             status: estimatorLastRun.status,
             datasetCount: (estimatorLastRun as any).datasetCount ?? null,
             modelVersionId: estimatorLastRun.modelVersionId ?? null,
-            finishedAt: ((estimatorLastRun as any).finishedAt || estimatorLastRun.createdAt).toISOString(),
-            metrics: estimatorLastRun.metricsJson as any,
+            finishedAt: finishedAt
+              ? new Date(finishedAt as any).toISOString()
+              : estimatorLastRun.createdAt.toISOString(),
+            metrics: (estimatorLastRun.metricsJson as any) ?? null,
           }
         : undefined,
       productionModel: estimatorProd
         ? {
             id: estimatorProd.id,
-            version: estimatorProd.versionId ?? estimatorProd.label,
-            metrics: estimatorProd.metricsJson as any,
-            createdAt: estimatorProd.createdAt.toISOString(),
+            version: estimatorProd.versionId ?? estimatorProd.label ?? null,
+            metrics: (estimatorProd.metricsJson as any) ?? null,
+            createdAt: estimatorProd.createdAt ? estimatorProd.createdAt.toISOString() : null,
           }
         : undefined,
       modelConfidence: estimatorConfidence,
-      serviceHealth: warning ? "degraded" : "online",
+      serviceHealth: normalizedServiceHealth,
     } as const;
 
     const supplierCounts = supplierGroupsRaw
