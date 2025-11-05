@@ -513,21 +513,56 @@ export default function QuoteBuilderPage() {
         hidden
         onChange={(event) => handleUploadFiles(event.target.files)}
       />
-      <QuoteBuilder
-        header={{ title: "Quote builder", breadcrumbs, tenantName, status: quoteStatus, meta: quoteMeta(quote) }}
-        actionsBar={actionsBar}
-        notice={noticeBanner}
-        error={errorBanner}
-        isLoading={quoteLoading || linesLoading}
-        leftColumn={<>{questionnaireSection}</>}
-        rightColumn={
-          <>
-            {linesSection}
-            {estimateSection}
-            {filesSection}
-          </>
-        }
-      />
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">{breadcrumbs}</div>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Quote builder</h1>
+                {quoteStatus && (
+                  <span className="rounded-full border px-3 py-1 text-xs font-medium capitalize">
+                    {quoteStatus.toLowerCase().replace(/_/g, " ")}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                {tenantName && <span className="font-medium text-foreground/80">{tenantName}</span>}
+                {quoteMeta(quote)}
+              </div>
+            </div>
+          </div>
+
+          {/* Actions bar */}
+          <div className="sticky top-0 z-30 -mx-4 border-b bg-background/95 py-3 backdrop-blur lg:-mx-6">
+            <div className="mx-auto w-full max-w-6xl px-4 lg:px-6">{actionsBar}</div>
+          </div>
+
+          {/* Notices */}
+          {errorBanner}
+          {noticeBanner}
+
+          {quoteLoading || linesLoading ? (
+            <div className="space-y-4">
+              <div className="h-64 rounded-2xl bg-muted/40"></div>
+              <div className="h-96 rounded-2xl bg-muted/40"></div>
+            </div>
+          ) : (
+            <>
+              {/* Full-width questionnaire */}
+              <div className="w-full">{questionnaireSection}</div>
+
+              {/* Two-column layout for lines + estimate + files */}
+              <div className="grid gap-4 lg:grid-cols-3 lg:gap-6">
+                <div className="space-y-4 lg:col-span-2">{linesSection}</div>
+                <div className="space-y-4 lg:col-span-1">
+                  {estimateSection}
+                  {filesSection}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
       <Dialog open={rawParseOpen} onOpenChange={setRawParseOpen}>
         <DialogContent className="max-h-[80vh] overflow-y-auto">
