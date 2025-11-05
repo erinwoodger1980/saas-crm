@@ -1211,56 +1211,132 @@ def meta():
 
 @app.post("/predict")
 async def predict(req: Request):
-    if not price_model or not win_model:
-        raise HTTPException(status_code=503, detail="models not loaded")
+    """
+    Predict price and win probability for a quote based on questionnaire answers.
+    Falls back to training data statistics if models aren't loaded.
+    """
     try:
         payload = await req.json()
         q = QuoteIn(**payload)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Validation failed: {e}")
 
-    try:
-        X = build_feature_row(q)
-        
-        # Enhanced error handling for model predictions
+    # If models are loaded, use them
+    if price_model and win_model:
         try:
-            price = float(price_model.predict(X)[0])
-        except Exception as model_error:
-            logger.error(f"Price model prediction failed: {model_error}")
-            # Fallback: simple area-based pricing
-            area = q.area_m2
-            base_price_per_m2 = 800 if q.materials_grade == "Premium" else 600 if q.materials_grade == "Standard" else 400
-            price = area * base_price_per_m2
-            logger.info(f"Using fallback pricing: {area} m² × £{base_price_per_m2} = £{price}")
-        
-        try:
-            if hasattr(win_model, "predict_proba"):
-                win_prob = float(win_model.predict_proba(X)[0][1])
-            else:
-                win_pred = float(win_model.predict(X)[0])
-                win_prob = float(max(0.0, min(1.0, win_pred)))
-        except Exception as model_error:
-            logger.error(f"Win model prediction failed: {model_error}")
-            # Fallback: simple probability based on price range and materials
-            if price < 5000:
-                win_prob = 0.7
-            elif price < 15000:
-                win_prob = 0.5
-            else:
-                win_prob = 0.3
-            if q.materials_grade == "Premium":
-                win_prob *= 0.8  # Premium is harder to win
-            logger.info(f"Using fallback win probability: {win_prob}")
-                
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"predict failed: {e}")
+            X = build_feature_row(q)
+            
+            # Enhanced error handling for model predictions
+            try:
+                price = float(price_model.predict(X)[0])
+            except Exception as model_error:
+                logger.error(f"Price model prediction failed: {model_error}")
+                # Fallback: simple area-based pricing
+                area = q.area_m2
+                base_price_per_m2 = 800 if q.materials_grade == "Premium" else 600 if q.materials_grade == "Standard" else 400
+                price = area * base_price_per_m2
+                logger.info(f"Using fallback pricing: {area} m² × £{base_price_per_m2} = £{price}")
+            
+            try:
+                if hasattr(win_model, "predict_proba"):
+                    win_prob = float(win_model.predict_proba(X)[0][1])
+                else:
+                    win_pred = float(win_model.predict(X)[0])
+                    win_prob = float(max(0.0, min(1.0, win_pred)))
+            except Exception as model_error:
+                logger.error(f"Win model prediction failed: {model_error}")
+                # Fallback: simple probability based on price range and materials
+                if price < 5000:
+                    win_prob = 0.7
+                elif price < 15000:
+                    win_prob = 0.5
+                else:
+                    win_prob = 0.3
+                if q.materials_grade == "Premium":
+                    win_prob *= 0.8  # Premium is harder to win
+                logger.info(f"Using fallback win probability: {win_prob}")
+                    
+        except Exception as e:
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"predict failed: {e}")
 
+        return {
+            "predicted_price": round(price, 2),
+            "win_probability": round(win_prob, 3),
+            "columns_used": COLUMNS,
+            "model_status": "active"
+        }
+    
+    # Models not loaded - use training data statistics
+    logger.info("Models not loaded, using training data statistics for prediction")
+    
+    if EMAIL_TRAINING_AVAILABLE:
+        try:
+            from db_config import get_db_manager
+            
+            # Get average pricing from training data
+            tenant_id = payload.get("tenantId") or payload.get("tenant_id")
+            
+            db_manager = get_db_manager()
+            conn = db_manager.get_connection()
+            with conn.cursor() as cur:
+                # Get average estimated_total from training data
+                cur.execute("""
+                    SELECT 
+                        AVG(estimated_total) as avg_total,
+                        COUNT(*) as count,
+                        AVG(confidence) as avg_confidence
+                    FROM ml_training_data
+                    WHERE estimated_total > 0
+                    AND (tenant_id = %s OR %s IS NULL)
+                """, (tenant_id, tenant_id))
+                
+                result = cur.fetchone()
+                if result and result[0]:
+                    avg_total = float(result[0])
+                    sample_count = int(result[1])
+                    avg_confidence = float(result[2]) if result[2] else 0.5
+                    
+                    # Adjust based on area if provided
+                    area = q.area_m2
+                    # Assume average is for ~30m² project
+                    assumed_avg_area = 30.0
+                    price = avg_total * (area / assumed_avg_area)
+                    
+                    # Adjust for materials grade
+                    if q.materials_grade == "Premium":
+                        price *= 1.3
+                    elif q.materials_grade == "Basic":
+                        price *= 0.7
+                    
+                    logger.info(f"Using training data average: £{avg_total} from {sample_count} examples, adjusted to £{price} for {area}m²")
+                    
+                    return {
+                        "predicted_price": round(price, 2),
+                        "win_probability": round(avg_confidence, 3),
+                        "model_status": "training_data",
+                        "training_samples": sample_count,
+                        "note": f"Prediction based on {sample_count} training examples (models not yet trained)"
+                    }
+            
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to get training data statistics: {e}")
+            traceback.print_exc()
+    
+    # Final fallback: simple area-based pricing
+    area = q.area_m2
+    base_price_per_m2 = 800 if q.materials_grade == "Premium" else 600 if q.materials_grade == "Standard" else 400
+    price = area * base_price_per_m2
+    win_prob = 0.5
+    
+    logger.info(f"Using simple fallback: {area} m² × £{base_price_per_m2} = £{price}")
+    
     return {
         "predicted_price": round(price, 2),
         "win_probability": round(win_prob, 3),
-        "columns_used": COLUMNS,
-        "model_status": "active" if price_model and win_model else "fallback"
+        "model_status": "fallback",
+        "note": "No trained models or training data available - using simple area-based estimate"
     }
 
 # ----------------- supplier→client quote builder -----------------
