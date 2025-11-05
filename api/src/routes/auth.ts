@@ -7,6 +7,7 @@ import { env } from "../env";
 import { normalizeEmail } from "../lib/email";
 
 const router = Router();
+const billingEnabled = env.BILLING_ENABLED;
 
 // ---- JWT & Cookie config (must match server.ts middleware) ----
 const JWT_SECRET = env.APP_JWT_SECRET;
@@ -31,10 +32,21 @@ const COOKIE_OPTS = {
 
 // ---- Stripe (used only to link/create tenant & user) ----
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").trim();
-if (!STRIPE_SECRET_KEY) {
-  throw new Error("Missing STRIPE_SECRET_KEY env for auth routes");
+const stripe: Stripe | null = billingEnabled
+  ? (() => {
+      if (!STRIPE_SECRET_KEY) {
+        throw new Error("Missing STRIPE_SECRET_KEY env for auth routes");
+      }
+      return new Stripe(STRIPE_SECRET_KEY);
+    })()
+  : null;
+
+function requireStripe(): Stripe {
+  if (!stripe) {
+    throw new Error("billing_disabled");
+  }
+  return stripe;
 }
-const stripe = new Stripe(STRIPE_SECRET_KEY);
 
 // Small helper: split a full name into first/last for the UI
 function splitName(fullName?: string | null) {
@@ -53,7 +65,7 @@ function splitName(fullName?: string | null) {
  * we generate a random password and hash it.
  */
 async function resolveTenantAndUserFromSession(sessionId: string) {
-  const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["customer"] });
+  const session = await requireStripe().checkout.sessions.retrieve(sessionId, { expand: ["customer"] });
 
   if (session.status !== "complete") {
     throw new Error("session_incomplete");
@@ -226,6 +238,9 @@ router.post("/logout", async (_req, res) => {
  */
 router.post("/stripe-link-session", async (req, res) => {
   try {
+    if (!billingEnabled) {
+      return res.status(503).json({ error: "billing_disabled" });
+    }
     const { session_id } = req.body || {};
     if (!session_id || typeof session_id !== "string") {
       return res.status(400).json({ error: "invalid_session_id" });
@@ -236,6 +251,7 @@ router.post("/stripe-link-session", async (req, res) => {
     const msg = e?.message || "internal_error";
     if (msg === "session_incomplete") return res.status(400).json({ error: "session_incomplete" });
     if (msg === "missing_email") return res.status(400).json({ error: "missing_email" });
+    if (msg === "billing_disabled") return res.status(503).json({ error: "billing_disabled" });
     console.error("[auth/stripe-link-session] failed:", e);
     return res.status(500).json({ error: "internal_error" });
   }
