@@ -411,20 +411,15 @@ export default function QuoteBuilderPage() {
   const actionsBar = (
     <ActionsBar
       onUploadClick={openUploadDialog}
-      onParse={handleParse}
       onProcessSupplier={() => setProcessDialogOpen(true)}
-      onSaveMappings={handleSaveMappings}
       onRenderProposal={handleRenderProposal}
       onGenerateEstimate={handleEstimate}
       onDownloadCsv={handleDownloadCsv}
       disabled={quoteLoading || linesLoading}
       isUploading={isUploading}
-      isParsing={isParsing}
       isProcessingSupplier={isProcessingSupplier}
-      isSavingMappings={isSavingMappings}
       isRendering={isRendering}
       isEstimating={isEstimating}
-      lastParsedAt={parseMeta?.finishedAt ?? parseMeta?.startedAt ?? null}
       lastEstimateAt={lastEstimateAt}
       reestimate={Boolean(reestimateNeeded)}
       estimateCached={Boolean(estimate?.meta?.cacheHit)}

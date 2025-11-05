@@ -947,8 +947,8 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const subtotal = rows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
     const vatAmount = showVat ? subtotal * vatRate : 0;
     const computedTotal = subtotal + vatAmount;
-    // Prefer explicit quote.totalGBP if set (from pricing), else computed
-    const totalGBP = Number(quote.totalGBP ?? computedTotal);
+    // Always use computed total (subtotal + VAT) for display consistency
+    const totalGBP = computedTotal;
 
     const styles = `
       <style>

@@ -1,4 +1,4 @@
-import { FileUp, Loader2, Save, Sparkles, Wand2, Calculator, Download } from "lucide-react";
+import { FileUp, Loader2, Sparkles, Wand2, Calculator, Download } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,20 +10,15 @@ import { Badge } from "@/components/ui/badge";
 
 export type ActionsBarProps = {
   onUploadClick: () => void;
-  onParse: () => void;
   onProcessSupplier?: () => void;
-  onSaveMappings: () => void;
   onRenderProposal: () => void;
   onGenerateEstimate: () => void;
   onDownloadCsv?: () => void;
   disabled?: boolean;
   isUploading?: boolean;
-  isParsing?: boolean;
   isProcessingSupplier?: boolean;
-  isSavingMappings?: boolean;
   isRendering?: boolean;
   isEstimating?: boolean;
-  lastParsedAt?: string | null;
   lastEstimateAt?: string | null;
   reestimate?: boolean;
   estimateCached?: boolean;
@@ -31,30 +26,24 @@ export type ActionsBarProps = {
 
 export function ActionsBar({
   onUploadClick,
-  onParse,
   onProcessSupplier,
-  onSaveMappings,
   onRenderProposal,
   onGenerateEstimate,
   onDownloadCsv,
   disabled,
   isUploading,
-  isParsing,
   isProcessingSupplier,
-  isSavingMappings,
   isRendering,
   isEstimating,
-  lastParsedAt,
   lastEstimateAt,
   reestimate,
   estimateCached,
 }: ActionsBarProps) {
-  const sharedDisabled = disabled || isUploading || isParsing || isSavingMappings || isRendering;
+  const sharedDisabled = disabled || isUploading || isRendering;
   const estimateLabel = reestimate ? "Re-estimate" : "Generate ML estimate";
 
   const renderMeta = (
     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-      {lastParsedAt && <span>Last parsed {formatTimeAgo(lastParsedAt)}</span>}
       {lastEstimateAt && <span>Last estimate {formatTimeAgo(lastEstimateAt)}</span>}
       {estimateCached && <Badge variant="secondary">Cached result</Badge>}
     </div>
@@ -74,16 +63,6 @@ export function ActionsBar({
           Upload supplier PDF
         </Button>
         <div className="hidden flex-wrap items-center gap-2 md:flex">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onParse}
-            disabled={sharedDisabled || isParsing}
-            className="gap-2"
-          >
-            {isParsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-            {isParsing ? "Parsing" : "Parse supplier PDFs"}
-          </Button>
           {onProcessSupplier && (
             <Button
               type="button"
@@ -100,15 +79,6 @@ export function ActionsBar({
               {isProcessingSupplier ? "Converting" : "Convert → client quote"}
             </Button>
           )}
-          <Button
-            type="button"
-            onClick={onSaveMappings}
-            disabled={sharedDisabled || isSavingMappings}
-            className="gap-2"
-          >
-            {isSavingMappings ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {isSavingMappings ? "Saving" : "Save mappings"}
-          </Button>
           <Button
             type="button"
             variant="outline"
@@ -146,12 +116,6 @@ export function ActionsBar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onParse} disabled={sharedDisabled || isParsing}>
-                <Wand2 className="mr-2 h-4 w-4" /> Parse supplier PDFs
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onSaveMappings} disabled={sharedDisabled || isSavingMappings}>
-                <Save className="mr-2 h-4 w-4" /> Save mappings
-              </DropdownMenuItem>
               {onProcessSupplier && (
                 <DropdownMenuItem onClick={onProcessSupplier} disabled={sharedDisabled || isProcessingSupplier}>
                   <Wand2 className="mr-2 h-4 w-4" /> Convert → client quote
