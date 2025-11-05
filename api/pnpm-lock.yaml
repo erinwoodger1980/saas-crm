@@ -12,8 +12,8 @@ importers:
         specifier: ^6.17.1
         version: 6.17.1(prisma@6.17.1(typescript@5.9.3))(typescript@5.9.3)
       '@sparticuz/chromium':
-        specifier: ^133.0.0
-        version: 133.0.0
+        specifier: ^123.0.1
+        version: 123.0.1
       axios:
         specifier: ^1.12.2
         version: 1.12.2
@@ -53,9 +53,15 @@ importers:
       openai:
         specifier: ^4.104.0
         version: 4.104.0(ws@8.18.3)(zod@3.25.76)
-      puppeteer:
+      pdfjs-dist:
+        specifier: 4.6.82
+        version: 4.6.82
+      puppeteer-core:
         specifier: ^23.7.1
         version: 23.11.1(typescript@5.9.3)
+      tesseract.js:
+        specifier: ^5.0.5
+        version: 5.0.5
       stripe:
         specifier: ^19.1.0
         version: 19.1.0(@types/node@24.9.0)
