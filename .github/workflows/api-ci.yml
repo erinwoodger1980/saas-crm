@@ -24,12 +24,12 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
 
-      # ✅ Correct way to install pnpm on the runner
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
+      # ✅ Enable Corepack and activate pnpm manually (this always works)
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm -v
 
       - name: Show tool versions
         run: |
@@ -46,11 +46,9 @@ jobs:
       - name: TypeScript compile
         run: pnpm run build
 
-      # ✅ Run smoke test to confirm parsing pipeline works (matches Render build)
       - name: Run parse smoke test
         run: pnpm run self:check-parse
 
-      # ✅ Verify compiled API actually starts without errors
       - name: Verify API starts
         run: |
           node dist/index.js &
