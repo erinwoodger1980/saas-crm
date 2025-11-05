@@ -258,6 +258,22 @@ export default function QuoteBuilderPage() {
       setEstimatedLineRevision(lineRevision);
       toast({ title: "Estimate ready", description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.` });
       await Promise.all([mutateQuote(), mutateLines()]);
+
+      // Auto-render proposal PDF after ML pricing completes
+      setIsRendering(true);
+      try {
+        await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-proposal`, { method: "POST" });
+        const signed = await apiFetch<{ url: string }>(`/quotes/${encodeURIComponent(quoteId)}/proposal/signed`);
+        if (signed?.url) window.open(signed.url, "_blank");
+      } catch (renderErr: any) {
+        toast({
+          title: "Estimate saved, but proposal render failed",
+          description: renderErr?.message || "Try 'Render proposal'",
+          variant: "destructive",
+        });
+      } finally {
+        setIsRendering(false);
+      }
     } catch (err: any) {
       setError(err?.message || "Failed to estimate");
       toast({ title: "Estimate failed", description: err?.message || "Unable to generate ML estimate", variant: "destructive" });
@@ -279,6 +295,22 @@ export default function QuoteBuilderPage() {
       });
       setEstimatedLineRevision(lineRevision);
       await Promise.all([mutateQuote(), mutateLines()]);
+
+      // Auto-render proposal after questionnaire-driven ML pricing
+      setIsRendering(true);
+      try {
+        await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-proposal`, { method: "POST" });
+        const signed = await apiFetch<{ url: string }>(`/quotes/${encodeURIComponent(quoteId)}/proposal/signed`);
+        if (signed?.url) window.open(signed.url, "_blank");
+      } catch (renderErr: any) {
+        toast({
+          title: "Estimate saved, but proposal render failed",
+          description: renderErr?.message || "Try 'Render proposal'",
+          variant: "destructive",
+        });
+      } finally {
+        setIsRendering(false);
+      }
     } catch (err: any) {
       toast({
         title: "Estimate failed",
