@@ -79,6 +79,14 @@ const parsedWebOrigin = rawWebOrigin
   .filter(Boolean);
 
 const billingEnabled = String(process.env.BILLING_ENABLED ?? "true").toLowerCase() !== "false";
+const rawOcrEnabled =
+  process.env.OCR_ENABLED ??
+  process.env.PARSER_OCR_ENABLED ??
+  process.env.PARSER_OCR ??
+  "true";
+const ocrEnabled = String(rawOcrEnabled).toLowerCase() !== "false";
+const tessLang = process.env.TESSERACT_LANG?.trim() || "eng";
+const tessCacheDir = process.env.TESSERACT_CACHE_DIR?.trim() || "/tmp/tess-cache";
 
 export const env = {
   // core
@@ -88,7 +96,10 @@ export const env = {
   PORT: Number(process.env.PORT ?? 4000),
   DATABASE_URL: requireEnv("DATABASE_URL"),
   PARSER_MAX_PAGES: Math.max(1, Number(process.env.PARSER_MAX_PAGES ?? 3)),
-  PARSER_OCR_ENABLED: String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false",
+  PARSER_OCR_ENABLED: ocrEnabled,
+  OCR_ENABLED: ocrEnabled,
+  TESSERACT_LANG: tessLang,
+  TESSERACT_CACHE_DIR: tessCacheDir,
   BILLING_ENABLED: billingEnabled,
 
   // Gmail OAuth
@@ -121,6 +132,8 @@ console.log(`🔐 JWT configured: ${!!env.APP_JWT_SECRET}`);
 console.log(`🤖 OpenAI configured: ${!!env.OPENAI_API_KEY}`);
 console.log(`📄 Parser pages: ${env.PARSER_MAX_PAGES}`);
 console.log(`👁️‍🗨️ OCR enabled: ${env.PARSER_OCR_ENABLED}`);
+console.log(`📚 Tesseract lang: ${env.TESSERACT_LANG}`);
+console.log(`🗂️ Tesseract cache dir: ${env.TESSERACT_CACHE_DIR}`);
 console.log(`📧 Gmail configured: ${!!env.GMAIL_CLIENT_ID}`);
 console.log(`📧 MS365 configured: ${!!env.MS365_CLIENT_ID}`);
 console.log(`🛡️ ML redaction enabled: ${env.ML_REDACT_PII}`);
