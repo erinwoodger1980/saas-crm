@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
 
 type Provider = "gmail" | "ms365";
 
@@ -21,6 +22,39 @@ type SamplesResp = {
     quotedAt?: string | null;
     createdAt: string;
   }>;
+};
+
+type CollectTrainResponse = {
+  ok?: boolean;
+  tenantId?: string;
+  requested?: number;
+  collected?: number;
+  saved?: number;
+  datasetCount?: number | null;
+  modelVersionId?: string | null;
+  promoted?: boolean;
+  awaitingApproval?: boolean;
+  metrics?: Record<string, any> | null;
+};
+
+type EstimatorStatus = {
+  recentSamples14d: number;
+  lastTrainingRun?: {
+    id: string;
+    status: string;
+    datasetCount?: number | null;
+    modelVersionId?: string | null;
+    finishedAt?: string | null;
+    metrics?: Record<string, any> | null;
+  };
+  productionModel?: {
+    id: string;
+    version?: string | null;
+    metrics?: Record<string, any> | null;
+    createdAt?: string;
+  };
+  modelConfidence: number | null;
+  serviceHealth: "online" | "degraded" | "offline" | string;
 };
 
 type MlStatusSummary = {
@@ -42,6 +76,9 @@ type MlStatusSummary = {
     metrics: Record<string, any> | null;
     modelVersionId?: string | null;
     datasetHash?: string | null;
+    datasetCount?: number | null;
+    startedAt?: string | null;
+    finishedAt?: string | null;
   }>;
   suppliers: Array<{ supplier: string; count: number }>;
   estimates: {
@@ -57,6 +94,7 @@ type MlStatusSummary = {
     estimates: number;
     inferenceEvents: number;
   };
+  estimator?: EstimatorStatus;
 };
 
 type FollowupSummaryResponse = {
@@ -115,6 +153,43 @@ export default function AITrainingPage() {
   const [marketingRoiLoading, setMarketingRoiLoading] = useState<boolean>(false);
   const [marketingRoiError, setMarketingRoiError] = useState<string | null>(null);
   const [roiPeriodLabel, setRoiPeriodLabel] = useState<string>("");
+  const { toast } = useToast();
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return null;
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return null;
+    try {
+      return dt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    } catch {
+      return dt.toISOString();
+    }
+  };
+
+  const estimatorStatus = statusSummary?.estimator;
+  const estimatorSamples = estimatorStatus?.recentSamples14d ?? 0;
+  const estimatorConfidencePct =
+    typeof estimatorStatus?.modelConfidence === "number"
+      ? Math.round(Math.max(0, Math.min(1, estimatorStatus.modelConfidence)) * 100)
+      : null;
+  const estimatorConfidenceDisplay =
+    estimatorConfidencePct != null ? `${estimatorConfidencePct}%` : undefined;
+  const estimatorLastTrainedLabel = formatDateTime(estimatorStatus?.lastTrainingRun?.finishedAt);
+  const estimatorServiceHealth = typeof estimatorStatus?.serviceHealth === "string"
+    ? estimatorStatus.serviceHealth
+    : "unknown";
+  const estimatorHealthLabel = estimatorServiceHealth
+    ? estimatorServiceHealth.charAt(0).toUpperCase() + estimatorServiceHealth.slice(1)
+    : "Unknown";
+  const estimatorHealthTone =
+    estimatorServiceHealth === "online"
+      ? "text-emerald-600"
+      : estimatorServiceHealth === "degraded"
+      ? "text-amber-600"
+      : estimatorServiceHealth === "offline"
+      ? "text-rose-600"
+      : "text-slate-600";
+  const estimatorProdVersion = estimatorStatus?.productionModel?.version ?? estimatorStatus?.productionModel?.id ?? null;
 
   useEffect(() => {
     (async () => {
@@ -202,28 +277,74 @@ export default function AITrainingPage() {
     }
   }
 
+  async function pollEstimatorStatus(timeoutMs = 60000) {
+    const started = Date.now();
+    setStatusLoading(true);
+    let lastSummary: MlStatusSummary | null = null;
+    try {
+      while (Date.now() - started < timeoutMs) {
+        try {
+          const summary = await apiFetch<MlStatusSummary>("/ml/status");
+          lastSummary = summary;
+          setStatusSummary(summary);
+          const estimator = summary?.estimator;
+          if (estimator) {
+            const hasSamples = (estimator.recentSamples14d ?? 0) > 0;
+            const finishedIso = estimator.lastTrainingRun?.finishedAt;
+            if (hasSamples && finishedIso) {
+              const finished = new Date(finishedIso);
+              if (!Number.isNaN(finished.getTime())) {
+                const isRecent = Date.now() - finished.getTime() < 10 * 60 * 1000;
+                if (isRecent) break;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("[ai-training] estimator status poll failed", err);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      if (!lastSummary) {
+        await loadStatusSummary();
+      }
+    } finally {
+      setStatusLoading(false);
+    }
+  }
+
   async function collectAndTrain() {
     setBusy(true);
     setError(null);
     try {
+      const payload = {
+        method: "POST",
+        json: { limit: Math.max(1, Math.min(500, Number(limit || 50))) },
+      } as const;
+
+      let response: CollectTrainResponse | null = null;
       if (provider === "gmail") {
-        const r = await apiFetch<any>("/internal/ml/collect-train-save", {
-          method: "POST",
-          json: { limit: Math.max(1, Math.min(500, Number(limit || 50))) },
-        });
-        await refreshSamples();
-        await loadStatusSummary();
-        await Promise.all([loadFollowupSummary(), loadMarketingRoi()]);
-        alert(`Collected ${r.collected} attachments, saved ${r.saved}. ML: ${r?.ml?.status || "ok"}`);
+        response = await apiFetch<CollectTrainResponse>("/internal/ml/collect-train-save", payload);
       } else if (provider === "ms365") {
-        const r = await apiFetch<any>("/internal/ml/collect-train-save-ms365", {
-          method: "POST",
-          json: { limit: Math.max(1, Math.min(500, Number(limit || 50))) },
+        response = await apiFetch<CollectTrainResponse>("/internal/ml/collect-train-save-ms365", payload);
+      }
+
+      await refreshSamples();
+      await pollEstimatorStatus();
+      await Promise.all([loadFollowupSummary(), loadMarketingRoi()]);
+
+      if (response) {
+        const savedCount = response.saved ?? 0;
+        const datasetCount = response.datasetCount ?? savedCount;
+        toast({
+          title: "Training started",
+          description: `Saved ${savedCount} samples (dataset size ${datasetCount}).`,
         });
-        await refreshSamples();
-        await loadStatusSummary();
-        await Promise.all([loadFollowupSummary(), loadMarketingRoi()]);
-        alert(`Collected ${r.collected} attachments, saved ${r.saved}. ML: ${r?.ml?.status || "ok"}`);
+        if (response.promoted) {
+          toast({
+            title: "Estimator model promoted",
+            description: "New estimator version is now live for predictions.",
+          });
+        }
       }
     } catch (e: any) {
       setError(e?.message || "Failed to collect/train");
@@ -472,8 +593,56 @@ export default function AITrainingPage() {
                 </tbody>
               </table>
             </div>
+      ) : (
+        <p className="text-sm text-slate-500">No ROI data for this period.</p>
+      )}
+    </div>
+  </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border bg-white/90 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-700">Estimator samples (14d)</h2>
+          {statusLoading && !estimatorStatus ? (
+            <p className="mt-2 text-sm text-slate-500">Loading…</p>
           ) : (
-            <p className="text-sm text-slate-500">No ROI data for this period.</p>
+            <div className="mt-2">
+              <div className="text-3xl font-semibold text-slate-800">{estimatorSamples}</div>
+              <p className="text-xs text-slate-500">
+                Includes supplier &amp; client quotes collected in the last 14 days.
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="rounded-2xl border bg-white/90 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-700">Estimator confidence</h2>
+          {statusLoading && estimatorConfidenceDisplay === undefined ? (
+            <p className="mt-2 text-sm text-slate-500">Loading…</p>
+          ) : (
+            <div className="mt-2">
+              <div className="text-3xl font-semibold text-slate-800">
+                {estimatorConfidenceDisplay ?? "0%"}
+              </div>
+              <p className="text-xs text-slate-500">
+                {estimatorLastTrainedLabel
+                  ? `Last trained ${estimatorLastTrainedLabel}`
+                  : "Train the estimator to build confidence."}
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="rounded-2xl border bg-white/90 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-700">ML service health</h2>
+          {statusLoading && !estimatorStatus ? (
+            <p className="mt-2 text-sm text-slate-500">Loading…</p>
+          ) : (
+            <div className="mt-2">
+              <div className={`text-3xl font-semibold ${estimatorHealthTone}`}>{estimatorHealthLabel}</div>
+              <p className="text-xs text-slate-500">
+                {estimatorProdVersion
+                  ? `Production model ${estimatorProdVersion}`
+                  : "No production model promoted yet."}
+              </p>
+            </div>
           )}
         </div>
       </section>

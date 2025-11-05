@@ -55,6 +55,17 @@ function summariseTrainingPayload(raw: any) {
     meta.model_label ||
     meta.label ||
     undefined;
+  let versionId: any =
+    obj.versionId ||
+    obj.modelVersionId ||
+    obj.model_version_id ||
+    meta.versionId ||
+    meta.modelVersionId ||
+    meta.model_version_id ||
+    undefined;
+  if (!versionId && obj.modelVersion && typeof obj.modelVersion === "object") {
+    versionId = (obj.modelVersion as any).id || (obj.modelVersion as any).versionId || undefined;
+  }
   const datasetSize =
     typeof obj.datasetSize === "number"
       ? obj.datasetSize
@@ -68,6 +79,7 @@ function summariseTrainingPayload(raw: any) {
     model: String(model || "lead_classifier"),
     datasetHash: String(datasetHash || "unknown"),
     modelLabel: modelLabel ? String(modelLabel) : undefined,
+    versionId: versionId ? String(versionId) : undefined,
     metrics,
     datasetSize: typeof datasetSize === "number" ? datasetSize : undefined,
   } as const;
@@ -209,14 +221,20 @@ router.post("/train", async (req: any, res) => {
     }
 
     const items = Array.isArray(ingestJson.items)
-      ? ingestJson.items.map((it: any) => ({
-          messageId: it.messageId,
-          attachmentId: it.attachmentId,
-          url: normalizeAttachmentUrl(it.url ?? it.downloadUrl),
-          filename: it.filename ?? null,
-          quotedAt: it.sentAt ?? null,
-        })).filter((x: any) => !!x.url)
+      ? ingestJson.items
+          .map((it: any) => ({
+            messageId: it.messageId,
+            attachmentId: it.attachmentId,
+            url: normalizeAttachmentUrl(it.url ?? it.downloadUrl),
+            filename: it.filename ?? null,
+            quotedAt: it.sentAt ?? null,
+            sourceType: "supplier_quote",
+          }))
+          .filter((x: any) => !!x.url)
       : [];
+
+    const datasetCount = items.length;
+    const startedAt = new Date();
 
     const trainResp = await fetch(`${ML_URL}/train`, {
       method: "POST",
@@ -228,21 +246,29 @@ router.post("/train", async (req: any, res) => {
     let trainJson: any = {};
     try { trainJson = trainText ? JSON.parse(trainText) : {}; } catch { trainJson = { raw: trainText }; }
 
+    const finishedAt = new Date();
     const summary = summariseTrainingPayload(trainJson);
+    const modelName =
+      summary.model && summary.model !== "lead_classifier" ? summary.model : "supplier_estimator";
     const recorded = await recordTrainingOutcome({
       tenantId,
-      model: summary.model,
+      model: modelName,
       status: trainResp.ok ? "succeeded" : "failed",
       datasetHash: summary.datasetHash,
       metrics: summary.metrics,
       modelLabel: summary.modelLabel,
       datasetSize: summary.datasetSize,
+      datasetCount,
+      versionId: summary.versionId,
+      startedAt,
+      finishedAt,
     });
 
     if (!trainResp.ok) {
       return res.status(trainResp.status).json({
         error: "ml_train_failed",
         detail: trainJson,
+        datasetCount,
         modelVersionId: recorded?.modelVersionId ?? null,
         awaitingApproval: recorded?.awaitingApproval ?? false,
       });
@@ -251,8 +277,10 @@ router.post("/train", async (req: any, res) => {
     return res.json({
       ok: true,
       tenantId,
-      received: items.length,
+      received: datasetCount,
+      datasetCount,
       ml: trainJson,
+      metrics: summary.metrics,
       modelVersionId: recorded?.modelVersionId ?? null,
       promoted: recorded?.promoted ?? false,
       awaitingApproval: recorded?.awaitingApproval ?? false,

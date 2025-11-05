@@ -143,6 +143,17 @@ function summariseTrainingPayload(raw: any) {
     meta.model_label ||
     meta.label ||
     undefined;
+  let versionId: any =
+    obj.versionId ||
+    obj.modelVersionId ||
+    obj.model_version_id ||
+    meta.versionId ||
+    meta.modelVersionId ||
+    meta.model_version_id ||
+    undefined;
+  if (!versionId && obj.modelVersion && typeof obj.modelVersion === "object") {
+    versionId = (obj.modelVersion as any).id || (obj.modelVersion as any).versionId || undefined;
+  }
   const datasetSize =
     typeof obj.datasetSize === "number"
       ? obj.datasetSize
@@ -156,6 +167,7 @@ function summariseTrainingPayload(raw: any) {
     model: String(model || "lead_classifier"),
     datasetHash: String(datasetHash || "unknown"),
     modelLabel: modelLabel ? String(modelLabel) : undefined,
+    versionId: versionId ? String(versionId) : undefined,
     metrics,
     datasetSize: typeof datasetSize === "number" ? datasetSize : undefined,
   } as const;
@@ -440,51 +452,152 @@ router.post("/collect-train-save", async (req: any, res) => {
         ? startedFromPageTokenRaw
         : null;
 
-    type Item = {
-      messageId: string;
-      attachmentId: string;
+    type TrainingItem = {
+      sourceType: "supplier_quote" | "client_quote";
+      messageId: string | null;
+      attachmentId: string | null;
+      quoteId: string | null;
+      fileId: string | null;
       url: string;
       filename?: string | null;
       quotedAt?: string | null;
     };
 
-    const items: Item[] = Array.isArray(ingestJson.items)
+    const emailSamples: TrainingItem[] = Array.isArray(ingestJson.items)
       ? ingestJson.items
           .filter((it: any) => it?.messageId && it?.attachmentId && it?.url)
           .map((it: any) => ({
+            sourceType: "supplier_quote",
             messageId: String(it.messageId),
             attachmentId: String(it.attachmentId),
+            quoteId: null,
+            fileId: null,
             url: String(it.url),
             filename: it.filename ?? null,
-            quotedAt: it.sentAt ?? null, // carry Date header if present
+            quotedAt: it.sentAt ?? null,
           }))
       : [];
 
-    // 2) Save to DB (upsert on tenantId+messageId+attachmentId)
+    const lookback = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+    const clientQuoteSamples: TrainingItem[] = [];
+    const fileIdMap = new Map<string, { quoteId: string; createdAt: Date }>();
+
+    const recentQuotes = await prisma.quote.findMany({
+      where: {
+        tenantId,
+        updatedAt: { gte: lookback },
+      },
+      select: { id: true, proposalPdfUrl: true, meta: true, createdAt: true },
+    });
+
+    for (const quote of recentQuotes) {
+      const meta = (quote.meta as any) || {};
+      const proposalFileId = typeof meta?.proposalFileId === "string" ? meta.proposalFileId : null;
+      const createdAt = new Date(quote.createdAt as any);
+      if (proposalFileId) {
+        fileIdMap.set(proposalFileId, { quoteId: quote.id, createdAt });
+        continue;
+      }
+
+      const proposalUrl = typeof quote.proposalPdfUrl === "string" ? quote.proposalPdfUrl.trim() : "";
+      if (proposalUrl) {
+        clientQuoteSamples.push({
+          sourceType: "client_quote",
+          messageId: `quote:${quote.id}`,
+          attachmentId: `quote:${quote.id}`,
+          quoteId: quote.id,
+          fileId: null,
+          url: proposalUrl,
+          filename: null,
+          quotedAt: createdAt.toISOString(),
+        });
+      }
+    }
+
+    if (fileIdMap.size) {
+      const fileRows = await prisma.uploadedFile.findMany({
+        where: { tenantId, id: { in: Array.from(fileIdMap.keys()) } },
+        select: { id: true, name: true, uploadedAt: true, quoteId: true },
+      });
+
+      for (const file of fileRows) {
+        const mapping = fileIdMap.get(file.id);
+        if (!mapping) continue;
+        const token = jwt.sign(
+          { t: tenantId, q: mapping.quoteId },
+          env.APP_JWT_SECRET,
+          { expiresIn: "30m" }
+        );
+        const signedUrl = `${API_BASE}/files/${encodeURIComponent(file.id)}?jwt=${encodeURIComponent(token)}`;
+        const uploadedAt = file.uploadedAt ? new Date(file.uploadedAt as any) : mapping.createdAt;
+        clientQuoteSamples.push({
+          sourceType: "client_quote",
+          messageId: `quote:${mapping.quoteId}`,
+          attachmentId: file.id,
+          quoteId: mapping.quoteId,
+          fileId: file.id,
+          url: signedUrl,
+          filename: file.name ?? null,
+          quotedAt: uploadedAt.toISOString(),
+        });
+      }
+    }
+
+    const collected = emailSamples.length;
+    const trainingItems: TrainingItem[] = [...emailSamples, ...clientQuoteSamples];
+
+    // 2) Save to DB (upsert on tenantId+messageId+attachmentId or tenantId+quoteId)
     let saved = 0;
-    for (const data of items) {
-      await prisma.mLTrainingSample.upsert({
-        where: {
-          tenantId_messageId_attachmentId: {
+    for (const data of trainingItems) {
+      if (data.quoteId) {
+        await prisma.mLTrainingSample.upsert({
+          where: { tenantId_quoteId: { tenantId, quoteId: data.quoteId } },
+          create: {
+            tenantId,
+            messageId: data.messageId ?? data.quoteId,
+            attachmentId: data.attachmentId ?? data.quoteId,
+            url: data.url,
+            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+            sourceType: data.sourceType,
+            quoteId: data.quoteId,
+            fileId: data.fileId ?? null,
+          },
+          update: {
+            url: data.url,
+            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+            sourceType: data.sourceType,
+            fileId: data.fileId ?? null,
+          },
+        });
+      } else if (data.messageId && data.attachmentId) {
+        await prisma.mLTrainingSample.upsert({
+          where: {
+            tenantId_messageId_attachmentId: {
+              tenantId,
+              messageId: data.messageId,
+              attachmentId: data.attachmentId,
+            },
+          },
+          create: {
             tenantId,
             messageId: data.messageId,
             attachmentId: data.attachmentId,
+            url: data.url,
+            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+            sourceType: data.sourceType,
           },
-        },
-        create: {
-          tenantId,
-          messageId: data.messageId,
-          attachmentId: data.attachmentId,
-          url: data.url,
-          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-        },
-        update: {
-          url: data.url,
-          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-        },
-      });
+          update: {
+            url: data.url,
+            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+            sourceType: data.sourceType,
+          },
+        });
+      }
       saved += 1;
     }
+
+    const datasetCount = trainingItems.length;
+    const startedAt = new Date();
 
     // 3) Trigger ML /train
     const trainResp = await fetch(`${ML_URL}/train`, {
@@ -492,12 +605,14 @@ router.post("/collect-train-save", async (req: any, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         tenantId,
-        items: items.map((it) => ({
+        items: trainingItems.map((it) => ({
           messageId: it.messageId,
           attachmentId: it.attachmentId,
+          quoteId: it.quoteId,
           url: it.url,
           filename: it.filename ?? null,
           quotedAt: it.quotedAt ?? null,
+          sourceType: it.sourceType,
         })),
       }),
     });
@@ -510,15 +625,22 @@ router.post("/collect-train-save", async (req: any, res) => {
       trainJson = { raw: trainText };
     }
 
+    const finishedAt = new Date();
     const summary = summariseTrainingPayload(trainJson);
+    const modelName =
+      summary.model && summary.model !== "lead_classifier" ? summary.model : "supplier_estimator";
     const recorded = await recordTrainingOutcome({
       tenantId,
-      model: summary.model,
+      model: modelName,
       status: trainResp.ok ? "succeeded" : "failed",
       datasetHash: summary.datasetHash,
       metrics: summary.metrics,
       modelLabel: summary.modelLabel,
       datasetSize: summary.datasetSize,
+      datasetCount,
+      versionId: summary.versionId,
+      startedAt,
+      finishedAt,
     });
 
     if (!trainResp.ok) {
@@ -528,6 +650,7 @@ router.post("/collect-train-save", async (req: any, res) => {
           error: "ml_train_failed",
           detail: trainJson,
           saved,
+          datasetCount,
           modelVersionId: recorded?.modelVersionId ?? null,
           awaitingApproval: recorded?.awaitingApproval ?? false,
           nextPageToken,
@@ -539,9 +662,11 @@ router.post("/collect-train-save", async (req: any, res) => {
       ok: true,
       tenantId,
       requested: limit,
-      collected: items.length,
+      collected,
       saved,
+      datasetCount,
       ml: trainJson,
+      metrics: summary.metrics,
       modelVersionId: recorded?.modelVersionId ?? null,
       promoted: recorded?.promoted ?? false,
       awaitingApproval: recorded?.awaitingApproval ?? false,
@@ -814,36 +939,67 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
     for (const data of items) {
       await prisma.mLTrainingSample.upsert({
         where: { tenantId_messageId_attachmentId: { tenantId, messageId: data.messageId, attachmentId: data.attachmentId } },
-        create: { tenantId, messageId: data.messageId, attachmentId: data.attachmentId, url: data.url, quotedAt: data.quotedAt ? new Date(data.quotedAt) : null },
-        update: { url: data.url, quotedAt: data.quotedAt ? new Date(data.quotedAt) : null },
+        create: {
+          tenantId,
+          messageId: data.messageId,
+          attachmentId: data.attachmentId,
+          url: data.url,
+          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+          sourceType: "supplier_quote",
+        },
+        update: {
+          url: data.url,
+          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+          sourceType: "supplier_quote",
+        },
       });
       saved += 1;
     }
 
+    const datasetCount = items.length;
+    const startedAt = new Date();
+
     const trainResp = await fetch(`${ML_URL}/train`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId, items: items.map((it) => ({ messageId: it.messageId, attachmentId: it.attachmentId, url: it.url, quotedAt: it.quotedAt ?? null })) }),
+      body: JSON.stringify({
+        tenantId,
+        items: items.map((it) => ({
+          messageId: it.messageId,
+          attachmentId: it.attachmentId,
+          url: it.url,
+          quotedAt: it.quotedAt ?? null,
+          sourceType: "supplier_quote",
+        })),
+      }),
     });
 
     const trainText = await trainResp.text();
     let trainJson: any = {};
     try { trainJson = trainText ? JSON.parse(trainText) : {}; } catch { trainJson = { raw: trainText }; }
+    const finishedAt = new Date();
     const summary = summariseTrainingPayload(trainJson);
+    const modelName =
+      summary.model && summary.model !== "lead_classifier" ? summary.model : "supplier_estimator";
     const recorded = await recordTrainingOutcome({
       tenantId,
-      model: summary.model,
+      model: modelName,
       status: trainResp.ok ? "succeeded" : "failed",
       datasetHash: summary.datasetHash,
       metrics: summary.metrics,
       modelLabel: summary.modelLabel,
       datasetSize: summary.datasetSize,
+      datasetCount,
+      versionId: summary.versionId,
+      startedAt,
+      finishedAt,
     });
     if (!trainResp.ok) {
       return res.status(trainResp.status).json({
         error: "ml_train_failed",
         detail: trainJson,
         saved,
+        datasetCount,
         modelVersionId: recorded?.modelVersionId ?? null,
         awaitingApproval: recorded?.awaitingApproval ?? false,
         nextPageToken,
@@ -857,7 +1013,9 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
       requested: limit,
       collected: items.length,
       saved,
+      datasetCount,
       ml: trainJson,
+      metrics: summary.metrics,
       modelVersionId: recorded?.modelVersionId ?? null,
       promoted: recorded?.promoted ?? false,
       awaitingApproval: recorded?.awaitingApproval ?? false,
