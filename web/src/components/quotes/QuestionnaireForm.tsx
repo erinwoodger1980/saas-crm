@@ -116,22 +116,24 @@ export function QuestionnaireForm({
                 {open && (
                   <div className="space-y-3 border-t px-4 py-3">
                     {groupFields.map((field) => (
-                      <label key={field.key} className="block text-sm">
-                        <span className="text-xs font-medium text-muted-foreground">{field.label}</span>
+                      <div key={field.key} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <label className="text-xs font-medium text-muted-foreground sm:w-1/3 sm:min-w-[180px]">
+                          {field.label}
+                        </label>
                         <Input
                           value={drafts[field.key] ?? ""}
-                        placeholder={field.description ?? field.label}
-                        onChange={(event) => handleChange(field.key, event.target.value)}
-                        disabled={disabled}
-                        className="mt-1"
-                      />
-                    </label>
-                  ))}
+                          placeholder={field.description ?? field.label}
+                          onChange={(event) => handleChange(field.key, event.target.value)}
+                          disabled={disabled}
+                          className="sm:flex-1"
+                        />
+                      </div>
+                    ))}
                     {groupFields.length === 0 && (
-                    <p className="text-xs text-muted-foreground">No questions configured for this section.</p>
-                  )}
-                </div>
-              )}
+                      <p className="text-xs text-muted-foreground">No questions configured for this section.</p>
+                    )}
+                  </div>
+                )}
             </div>
             );
           })}
