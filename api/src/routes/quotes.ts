@@ -1164,11 +1164,12 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         }
       </style>`;
 
-    const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
-    const jobNumber = quote.lead?.refId || ref;
-    const projectName = quote.title || `Project for ${client}`;
-    const leadMeta: any = (quote.lead?.meta as any) || {};
-    const address = leadMeta?.address || quote.lead?.location || "";
+  const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
+  // Lead model doesn't include refId/location/meta; use custom JSON for optional fields
+  const leadCustom: any = (quote.lead?.custom as any) || {};
+  const jobNumber = (leadCustom?.refId as string) || ref;
+  const projectName = quote.title || `Project for ${client}`;
+  const address = (leadCustom?.address as string) || "";
     const tagline = quoteDefaults?.tagline || "Timber Joinery Specialists";
     
     // Extract specifications from quote meta or lines
@@ -1212,7 +1213,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
               <h3>Client Details</h3>
               <div class="detail-line"><strong>Client:</strong> ${escapeHtml(client)}</div>
               <div class="detail-line"><strong>Project:</strong> ${escapeHtml(projectName)}</div>
-              ${quote.lead?.phone ? `<div class="detail-line"><strong>Phone:</strong> ${escapeHtml(quote.lead.phone)}</div>` : ""}
+              ${leadCustom?.phone ? `<div class="detail-line"><strong>Phone:</strong> ${escapeHtml(leadCustom.phone)}</div>` : ""}
               ${quote.lead?.email ? `<div class="detail-line"><strong>Email:</strong> ${escapeHtml(quote.lead.email)}</div>` : ""}
               <div class="detail-line"><strong>Job Number:</strong> ${escapeHtml(jobNumber)}</div>
               <div class="detail-line"><strong>Date:</strong> ${when}</div>
@@ -1688,11 +1689,12 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
         }
       </style>`;
 
-    const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
-    const jobNumber = quote.lead?.refId || ref;
-    const projectName = quote.title || `Project for ${client}`;
-    const leadMeta: any = (quote.lead?.meta as any) || {};
-    const address = leadMeta?.address || quote.lead?.location || "";
+  const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
+  // Lead model doesn't include refId/location/meta; use custom JSON for optional fields
+  const leadCustom: any = (quote.lead?.custom as any) || {};
+  const jobNumber = (leadCustom?.refId as string) || ref;
+  const projectName = quote.title || `Project for ${client}`;
+  const address = (leadCustom?.address as string) || "";
     const tagline = quoteDefaults?.tagline || "Timber Joinery Specialists";
     
     // Extract specifications from quote meta or lines
@@ -1736,7 +1738,7 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
               <h3>Client Details</h3>
               <div class="detail-line"><strong>Client:</strong> ${escapeHtml(client)}</div>
               <div class="detail-line"><strong>Project:</strong> ${escapeHtml(projectName)}</div>
-              ${quote.lead?.phone ? `<div class="detail-line"><strong>Phone:</strong> ${escapeHtml(quote.lead.phone)}</div>` : ""}
+              ${leadCustom?.phone ? `<div class="detail-line"><strong>Phone:</strong> ${escapeHtml(leadCustom.phone)}</div>` : ""}
               ${quote.lead?.email ? `<div class="detail-line"><strong>Email:</strong> ${escapeHtml(quote.lead.email)}</div>` : ""}
               <div class="detail-line"><strong>Job Number:</strong> ${escapeHtml(jobNumber)}</div>
               <div class="detail-line"><strong>Date:</strong> ${when}</div>
