@@ -12,3 +12,9 @@ INFO:email_trainer:Found 0 client quotes from last 30 days
 INFO:     127.0.0.1:61976 - "POST /preview-email-quotes HTTP/1.1" 200 OK
 INFO:     127.0.0.1:50441 - "GET /health HTTP/1.1" 200 OK
 INFO:     127.0.0.1:50472 - "POST /parse-quote HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51320 - "POST /train HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51544 - "POST /process-quote HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51546 - "POST /process-quote HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51548 - "POST /process-quote HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51550 - "POST /process-quote HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51552 - "POST /train HTTP/1.1" 422 Unprocessable Entity
