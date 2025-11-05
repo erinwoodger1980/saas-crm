@@ -714,6 +714,99 @@ router.post("/train-client-quotes", async (req: any, res) => {
   }
 });
 
+/**
+ * POST /ml/train-supplier-quotes
+ * Train on supplier quotes from uploaded files in Quote Builder
+ */
+router.post("/train-supplier-quotes", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    
+    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
+
+    // Get all uploaded supplier files from quotes
+    const supplierFiles = await prisma.uploadedFile.findMany({
+      where: {
+        tenantId,
+        kind: "SUPPLIER_QUOTE",
+        // Only include files from last 90 days to keep training set fresh
+        uploadedAt: {
+          gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        quoteId: true,
+        uploadedAt: true,
+      },
+      orderBy: { uploadedAt: "desc" },
+      take: 100, // Limit to 100 most recent files
+    });
+
+    if (supplierFiles.length === 0) {
+      return res.json({
+        ok: true,
+        message: "No supplier files found to train on",
+        received_items: 0,
+        parsed_ok: 0,
+        failed: 0,
+        training_records_saved: 0,
+      });
+    }
+
+    // Build training items with signed URLs
+    const items = supplierFiles.map((file) => {
+      const signedUrl = buildSignedFileUrl(file.id, tenantId, file.quoteId);
+      return {
+        url: signedUrl,
+        filename: file.name || `file_${file.id}.pdf`,
+        quotedAt: file.uploadedAt ? new Date(file.uploadedAt as any).toISOString() : null,
+        sourceType: "supplier_quote",
+        fileId: file.id,
+        quoteId: file.quoteId,
+      };
+    });
+
+    // Call ML training endpoint
+    const payload = {
+      tenantId,
+      model: "supplier_parser",
+      items,
+    };
+
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS * 5); // Longer timeout for batch processing
+    const r = await fetch(`${ML_URL}/train`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    cleanup();
+
+    const text = await r.text();
+    let json: any = {};
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+    
+    if (!r.ok) {
+      const msg = json?.detail || json?.error || "ml_train_failed";
+      return res.status(r.status).json({ error: msg, detail: json });
+    }
+    
+    return res.json(json);
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const isTimeout = /timeout_/i.test(msg) || /The operation was aborted/i.test(msg);
+    if (isTimeout) {
+      console.warn(`[ml proxy] /train-supplier-quotes timed out after ${ML_TIMEOUT_MS * 5}ms`);
+      return res.status(504).json({ error: "ml_timeout", timeoutMs: ML_TIMEOUT_MS * 5 });
+    }
+    console.error("[ml proxy] /train-supplier-quotes failed:", msg);
+    return res.status(502).json({ error: "ml_unreachable", detail: msg });
+  }
+});
+
 router.post("/approve-version/:id", async (req: any, res) => {
   try {
     const tenantId = req.auth?.tenantId as string | undefined;

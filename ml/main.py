@@ -1559,50 +1559,151 @@ async def process_quote(payload: ProcessQuoteIn):
 @app.post("/train")
 async def train(payload: TrainPayload):
     """
-    Downloads each signed URL -> extracts text -> finds totals (heuristic).
-    Returns quick stats + a few sample records. Later you can fit/refresh models here.
+    Process supplier quotes and store them as training examples.
+    Can be called with uploaded files or email attachments.
+    Returns stats and stores examples in database for future model training.
     """
+    if not EMAIL_TRAINING_AVAILABLE:
+        # Fall back to simple processing without database storage
+        ok = 0
+        fails: List[Dict[str, Any]] = []
+        samples: List[Dict[str, Any]] = []
+
+        for item in payload.items:
+            try:
+                pdf_bytes = _http_get_bytes(item.url)
+                text = extract_text_from_pdf_bytes(pdf_bytes) or ""
+                parsed = parse_quote_lines_from_text(text) if text else {
+                    "currency": None,
+                    "lines": [],
+                    "estimated_total": None,
+                    "confidence": 0,
+                }
+                ok += 1
+
+                if len(samples) < 5:
+                    samples.append({
+                        "url": item.url,
+                        "filename": item.filename,
+                        "text_chars": len(text),
+                        "parsed": parsed,
+                    })
+            except Exception as e:
+                fails.append({
+                    "url": item.url,
+                    "filename": item.filename,
+                    "error": f"{e}",
+                })
+
+        return {
+            "ok": True,
+            "tenantId": payload.tenantId,
+            "received_items": len(payload.items),
+            "parsed_ok": ok,
+            "failed": len(fails),
+            "samples": samples,
+            "failures": fails,
+            "message": "Training job completed (database not available, examples not stored).",
+        }
+
+    # Full training workflow with database storage
+    from db_config import get_db_manager
+    import datetime
+    
     ok = 0
     fails: List[Dict[str, Any]] = []
     samples: List[Dict[str, Any]] = []
+    training_records: List[Dict[str, Any]] = []
 
     for item in payload.items:
         try:
             pdf_bytes = _http_get_bytes(item.url)
             text = extract_text_from_pdf_bytes(pdf_bytes) or ""
-            parsed = parse_totals_from_text(text) if text else {
-                "currency": None,
-                "lines": [],
-                "detected_totals": [],
-                "estimated_total": None,
-                "confidence": 0,
-            }
+            
+            if not text.strip():
+                fails.append({
+                    "url": item.url,
+                    "filename": item.filename,
+                    "error": "No text extracted from PDF",
+                })
+                continue
+            
+            # Determine quote type and parse accordingly
+            quote_type = determine_quote_type(text)
+            
+            if quote_type == "supplier" or quote_type == "unknown":
+                parsed = parse_quote_lines_from_text(text)
+                training_type = "supplier_quote"
+            else:
+                parsed = parse_client_quote_from_text(text)
+                training_type = "client_quote"
+            
+            confidence = float(parsed.get("confidence", 0.0))
+            lines_count = len(parsed.get("lines", []))
+            
+            # Estimate total value
+            estimated_total = None
+            if quote_type == "supplier":
+                totals = parsed.get("detected_totals", [])
+                if totals:
+                    estimated_total = max(totals)
+            
             ok += 1
 
-            # keep up to 5 samples
+            # Prepare training record
+            training_record = {
+                'tenant_id': payload.tenantId,
+                'email_subject': item.filename or f"Training upload {ok}",
+                'email_date': datetime.datetime.utcnow(),
+                'attachment_name': item.filename or f"quote_{ok}.pdf",
+                'parsed_data': json.dumps(parsed),
+                'project_type': training_type,
+                'quoted_price': estimated_total,
+                'area_m2': None,
+                'materials_grade': None,
+                'confidence': confidence
+            }
+            training_records.append(training_record)
+
+            # Keep sample for response
             if len(samples) < 5:
                 samples.append({
-                    "messageId": item.messageId,
-                    "attachmentId": item.attachmentId,
-                    "quotedAt": _iso(item.quotedAt),
                     "url": item.url,
+                    "filename": item.filename,
+                    "quote_type": quote_type,
                     "text_chars": len(text),
-                    "parsed": parsed,
+                    "lines_extracted": lines_count,
+                    "estimated_total": estimated_total,
+                    "confidence": confidence,
                 })
         except Exception as e:
             fails.append({
-                "messageId": item.messageId,
-                "attachmentId": item.attachmentId,
                 "url": item.url,
+                "filename": item.filename,
                 "error": f"{e}",
             })
 
+    # Save training records to database
+    saved_count = 0
+    if training_records:
+        try:
+            db_manager = get_db_manager()
+            saved_count = db_manager.save_training_data(training_records)
+            
+            # Log training session
+            db_manager.log_training_session({
+                'tenant_id': payload.tenantId,
+                'training_type': 'manual_upload',
+                'quotes_processed': ok,
+                'training_records_created': saved_count,
+                'duration_seconds': 0,
+                'status': 'completed'
+            })
+        except Exception as e:
+            logger.error(f"Failed to save training data: {e}")
+
     avg_est = None
-    vals = [
-        s["parsed"]["estimated_total"]
-        for s in samples
-        if s.get("parsed", {}).get("estimated_total") is not None
-    ]
+    vals = [s.get("estimated_total") for s in samples if s.get("estimated_total") is not None]
     if vals:
         try:
             avg_est = round(float(sum(vals)) / len(vals), 2)
@@ -1615,10 +1716,11 @@ async def train(payload: TrainPayload):
         "received_items": len(payload.items),
         "parsed_ok": ok,
         "failed": len(fails),
+        "training_records_saved": saved_count,
         "avg_estimated_total": avg_est,
         "samples": samples,
         "failures": fails,
-        "message": "Training job accepted (heuristic parser).",
+        "message": f"Training completed: {saved_count} examples saved to database.",
     }
 
 @app.post("/debug-parse")

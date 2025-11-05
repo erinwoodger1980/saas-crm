@@ -161,6 +161,75 @@ class MLDatabaseManager:
             self.logger.error(f"Failed to retrieve training data: {e}")
             raise
     
+    def log_training_session(self, session_data: Dict[str, Any]) -> int:
+        """Log a training session to track progress and history."""
+        insert_sql = """
+        INSERT INTO ml_training_history 
+        (tenant_id, training_type, quotes_processed, training_records_created, 
+         models_updated, duration_seconds, started_at, completed_at, status, error_message)
+        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, %s)
+        RETURNING id
+        """
+        
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(insert_sql, (
+                        session_data['tenant_id'],
+                        session_data['training_type'],
+                        session_data.get('quotes_processed', 0),
+                        session_data.get('training_records_created', 0),
+                        session_data.get('models_updated', []),
+                        session_data.get('duration_seconds', 0),
+                        session_data.get('status', 'completed'),
+                        session_data.get('error_message')
+                    ))
+                    conn.commit()
+                    result = cur.fetchone()
+                    return result[0] if result else None
+        except Exception as e:
+            self.logger.error(f"Failed to log training session: {e}")
+            raise
+    
+    def get_training_stats(self, tenant_id: str) -> Dict[str, Any]:
+        """Get training statistics for a tenant."""
+        stats_sql = """
+        SELECT 
+            COUNT(*) as total_examples,
+            COUNT(DISTINCT project_type) as unique_types,
+            AVG(confidence) as avg_confidence,
+            MAX(created_at) as last_trained
+        FROM ml_training_data 
+        WHERE tenant_id = %s
+        """
+        
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(stats_sql, (tenant_id,))
+                    result = cur.fetchone()
+                    if result:
+                        return {
+                            'total_examples': result[0],
+                            'unique_types': result[1],
+                            'avg_confidence': float(result[2]) if result[2] else 0.0,
+                            'last_trained': result[3]
+                        }
+                    return {
+                        'total_examples': 0,
+                        'unique_types': 0,
+                        'avg_confidence': 0.0,
+                        'last_trained': None
+                    }
+        except Exception as e:
+            self.logger.error(f"Failed to get training stats: {e}")
+            return {
+                'total_examples': 0,
+                'unique_types': 0,
+                'avg_confidence': 0.0,
+                'last_trained': None
+            }
+    
     def execute_query(self, sql: str, params: tuple = None):
         """Execute a query with optional parameters."""
         try:
