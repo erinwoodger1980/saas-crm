@@ -88,6 +88,9 @@ router.get("/", async (req: any, res) => {
   try {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
+    const samplesSince = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const estimatorModel = "supplier_estimator";
+
     const [
       productionModels,
       trainingRuns,
@@ -99,6 +102,10 @@ router.get("/", async (req: any, res) => {
       inferenceCounts,
       parseEventCounts,
       recentEstimates,
+      estimatorLastRun,
+      estimatorProduction,
+      recentTrainingSamples,
+      recentParsedLines,
     ] =
       await Promise.all([
         prisma.modelVersion.findMany({ where: { isProduction: true }, orderBy: { createdAt: "desc" } }),
@@ -148,6 +155,26 @@ router.get("/", async (req: any, res) => {
           orderBy: { updatedAt: "desc" },
           take: 200,
         }),
+        prisma.trainingRun.findFirst({
+          where: { OR: [{ tenantId }, { tenantId: null }], model: estimatorModel },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.modelVersion.findFirst({
+          where: { model: estimatorModel, isProduction: true },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.mLTrainingSample.findMany({
+          where: {
+            tenantId,
+            createdAt: { gte: samplesSince },
+            sourceType: { in: ["client_quote", "supplier_quote"] },
+          },
+          select: { id: true, quoteId: true },
+        }),
+        prisma.parsedSupplierLine.findMany({
+          where: { tenantId, createdAt: { gte: samplesSince } },
+          select: { quoteId: true },
+        }),
       ]);
 
     const [parsedCount7d, estimatesCount7d, inferenceCount7d] = inferenceCounts;
@@ -188,7 +215,70 @@ router.get("/", async (req: any, res) => {
       metrics: run.metricsJson,
       modelVersionId: run.modelVersionId,
       datasetHash: run.datasetHash,
+      datasetCount: (run as any).datasetCount ?? null,
+      startedAt: (run as any).startedAt ?? null,
+      finishedAt: (run as any).finishedAt ?? null,
     }));
+
+    const sampleQuoteIds = new Set<string>();
+    for (const sample of recentTrainingSamples) {
+      if (sample.quoteId) sampleQuoteIds.add(sample.quoteId);
+    }
+    for (const parsed of recentParsedLines) {
+      if (parsed.quoteId) sampleQuoteIds.add(parsed.quoteId);
+    }
+    const recentSamples14d = sampleQuoteIds.size || recentTrainingSamples.length;
+
+    const toNumber = (value: any): number | null => {
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (typeof value === "string") {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    };
+
+    const deriveConfidence = (metrics: any): number | null => {
+      if (!metrics || typeof metrics !== "object") return null;
+      const mape = toNumber((metrics as any).mape ?? (metrics as any).MAPE ?? null);
+      if (mape != null) {
+        const clamped = Math.min(1, Math.max(0, mape));
+        return Math.max(0, Math.min(1, 1 - clamped));
+      }
+      const accuracy = toNumber((metrics as any).accuracy ?? (metrics as any).f1 ?? null);
+      if (accuracy != null) {
+        return Math.max(0, Math.min(1, accuracy));
+      }
+      return null;
+    };
+
+    const estimatorProd = estimatorProduction || productionModels.find((m) => m.model === estimatorModel) || null;
+    const estimatorMetricsSource = estimatorProd?.metricsJson || estimatorLastRun?.metricsJson || null;
+    const estimatorConfidence = deriveConfidence(estimatorMetricsSource);
+
+    const estimator = {
+      recentSamples14d,
+      lastTrainingRun: estimatorLastRun
+        ? {
+            id: estimatorLastRun.id,
+            status: estimatorLastRun.status,
+            datasetCount: (estimatorLastRun as any).datasetCount ?? null,
+            modelVersionId: estimatorLastRun.modelVersionId ?? null,
+            finishedAt: ((estimatorLastRun as any).finishedAt || estimatorLastRun.createdAt).toISOString(),
+            metrics: estimatorLastRun.metricsJson as any,
+          }
+        : undefined,
+      productionModel: estimatorProd
+        ? {
+            id: estimatorProd.id,
+            version: estimatorProd.versionId ?? estimatorProd.label,
+            metrics: estimatorProd.metricsJson as any,
+            createdAt: estimatorProd.createdAt.toISOString(),
+          }
+        : undefined,
+      modelConfidence: estimatorConfidence,
+      serviceHealth: warning ? "degraded" : "online",
+    } as const;
 
     const supplierCounts = supplierGroupsRaw
       .map((group) => ({
@@ -223,6 +313,7 @@ router.get("/", async (req: any, res) => {
       mlUrlHost,
       isProdMlHost,
       warning,
+      estimator,
     });
   } catch (e: any) {
     console.error("[ml/status] failed:", e?.message || e);

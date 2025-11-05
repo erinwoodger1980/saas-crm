@@ -548,6 +548,7 @@ model ModelVersion {
   id           String   @id @default(cuid())
   model        String
   label        String
+  versionId    String?  @unique
   metricsJson  Json
   datasetHash  String
   isProduction Boolean  @default(false)
@@ -567,6 +568,9 @@ model TrainingRun {
   metricsJson    Json
   status         String
   modelVersionId String?
+  datasetCount   Int?
+  startedAt      DateTime?
+  finishedAt     DateTime?
   createdAt      DateTime @default(now())
 
   @@index([model, createdAt])
@@ -589,11 +593,16 @@ model MLTrainingSample {
   attachmentId String
   url          String
   quotedAt     DateTime?
+  sourceType   String    @default("supplier_quote")
+  quoteId      String?
+  fileId       String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   @@unique([tenantId, messageId, attachmentId])
+  @@unique([tenantId, quoteId])
   @@index([tenantId])
+  @@index([tenantId, createdAt])
   @@index([messageId])
   @@index([attachmentId])
   @@index([quotedAt])

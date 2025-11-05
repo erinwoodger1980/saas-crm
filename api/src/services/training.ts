@@ -268,6 +268,10 @@ export async function recordTrainingOutcome(opts: {
   metrics?: any;
   modelLabel?: string | null;
   datasetSize?: number | null;
+  datasetCount?: number | null;
+  versionId?: string | null;
+  startedAt?: Date | string | null;
+  finishedAt?: Date | string | null;
 }) {
   const model = String(opts.model || "unknown");
   const status = String(opts.status || "unknown");
@@ -277,20 +281,42 @@ export async function recordTrainingOutcome(opts: {
   const datasetSize = typeof opts.datasetSize === "number" && Number.isFinite(opts.datasetSize)
     ? opts.datasetSize
     : coerceNumber((metrics as any)?.dataset_size ?? (metrics as any)?.samples ?? null);
+  const datasetCount = typeof opts.datasetCount === "number" && Number.isFinite(opts.datasetCount)
+    ? Math.max(0, Math.round(opts.datasetCount))
+    : datasetSize != null && Number.isFinite(datasetSize)
+    ? Math.max(0, Math.round(datasetSize))
+    : null;
+  const versionId = opts.versionId ? String(opts.versionId) : null;
+
+  const parseDate = (value: any): Date | null => {
+    if (!value) return null;
+    if (value instanceof Date && !isNaN(value.getTime())) return value;
+    const asDate = new Date(value);
+    return isNaN(asDate.getTime()) ? null : asDate;
+  };
+  const startedAt = parseDate(opts.startedAt) ?? new Date();
+  const finishedAt = parseDate(opts.finishedAt) ?? new Date();
 
   let modelVersion: any = null;
   try {
-    const existing = await (prisma as any).modelVersion.findFirst({ where: { model, label } });
+    let existing = null;
+    if (versionId) {
+      existing = await (prisma as any).modelVersion.findFirst({ where: { model, versionId } });
+    }
+    if (!existing) {
+      existing = await (prisma as any).modelVersion.findFirst({ where: { model, label } });
+    }
     if (existing) {
       modelVersion = await (prisma as any).modelVersion.update({
         where: { id: existing.id },
-        data: { metricsJson: metrics, datasetHash },
+        data: { metricsJson: metrics, datasetHash, versionId: versionId ?? existing.versionId ?? null },
       });
     } else {
       modelVersion = await (prisma as any).modelVersion.create({
         data: {
           model,
           label,
+          versionId,
           metricsJson: metrics,
           datasetHash,
         },
@@ -443,6 +469,9 @@ export async function recordTrainingOutcome(opts: {
         metricsJson: metrics,
         status,
         modelVersionId: modelVersion?.id ?? null,
+        datasetCount,
+        startedAt,
+        finishedAt,
       },
     });
   } catch (e) {
