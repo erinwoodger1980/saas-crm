@@ -92,8 +92,6 @@ export default function QuoteBuilderPage() {
   const [markupDelivery, setMarkupDelivery] = useState<boolean>(false);
   const [amalgamateDelivery, setAmalgamateDelivery] = useState<boolean>(true);
   const [clientDeliveryCharge, setClientDeliveryCharge] = useState<number>(0);
-  const [processedQuote, setProcessedQuote] = useState<ProcessQuoteResponse | null>(null);
-  const [isSavingProcessed, setIsSavingProcessed] = useState(false);
   const [lineRevision, setLineRevision] = useState(0);
   const [estimatedLineRevision, setEstimatedLineRevision] = useState<number | null>(null);
   const lastLineSnapshotRef = useRef<string | null>(null);
@@ -505,25 +503,6 @@ export default function QuoteBuilderPage() {
         rightColumn={
           <>
             {estimateSection}
-            <ProcessedQuotePreview
-              result={processedQuote}
-              currency={currency}
-              isSaving={isSavingProcessed}
-              onSave={async () => {
-                if (!quoteId || !processedQuote || processedQuote.quote_type !== "supplier") return;
-                setIsSavingProcessed(true);
-                try {
-                  await saveClientQuoteLines(quoteId, processedQuote.client_quote, { replace: true });
-                  await Promise.all([mutateQuote(), mutateLines()]);
-                  toast({ title: "Saved", description: "Client quote lines have been saved to the quote." });
-                } catch (err: any) {
-                  toast({ title: "Save failed", description: err?.message || "Unable to save processed lines", variant: "destructive" });
-                } finally {
-                  setIsSavingProcessed(false);
-                }
-              }}
-            />
-            {linesSection}
             {filesSection}
           </>
         }
@@ -628,6 +607,8 @@ export default function QuoteBuilderPage() {
                   try {
                     const file = (quote?.supplierFiles ?? []).find((f) => f.id === selectedFileId) as SupplierFile | undefined;
                     if (!file) throw new Error("Select a file to process");
+                    
+                    // Step 1: Process the supplier PDF
                     const resp = await processQuoteFromFile(quoteId, file, {
                       markupPercent,
                       vatPercent,
@@ -636,18 +617,45 @@ export default function QuoteBuilderPage() {
                       clientDeliveryGBP: clientDeliveryCharge > 0 ? clientDeliveryCharge : undefined,
                       clientDeliveryDescription: clientDeliveryCharge > 0 ? "Delivery" : undefined,
                     });
-                    setProcessedQuote(resp);
+                    
                     setProcessDialogOpen(false);
+                    
                     if ((resp as any)?.quote_type === "supplier" && (resp as any)?.client_quote?.grand_total != null) {
                       const gt = (resp as any).client_quote.grand_total as number;
+                      
+                      // Step 2: Auto-save the lines
                       toast({
-                        title: "Client quote ready",
-                        description: `Grand total ${formatCurrency(gt, currency)} (preview below).`,
+                        title: "Converting to client quote",
+                        description: `Saving lines and generating proposal...`,
                       });
+                      
+                      await saveClientQuoteLines(quoteId, (resp as any).client_quote, { replace: true });
+                      await Promise.all([mutateQuote(), mutateLines()]);
+                      
+                      // Step 3: Auto-render the proposal PDF
+                      setIsRendering(true);
+                      try {
+                        await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-proposal`, {
+                          method: "POST",
+                        });
+                        await mutateQuote();
+                        toast({
+                          title: "Client quote ready! 🎉",
+                          description: `Grand total ${formatCurrency(gt, currency)}. Beautiful proposal generated!`,
+                        });
+                      } catch (renderErr: any) {
+                        toast({ 
+                          title: "Lines saved, but proposal render failed", 
+                          description: renderErr?.message || "Try clicking 'Render proposal' button",
+                          variant: "destructive" 
+                        });
+                      } finally {
+                        setIsRendering(false);
+                      }
                     } else if ((resp as any)?.quote_type === "client") {
-                      toast({ title: "Client quote detected", description: "Added as training candidate (preview below)." });
+                      toast({ title: "Client quote detected", description: "Added as training candidate." });
                     } else {
-                      toast({ title: "Processing complete", description: "Could not classify confidently. See preview." });
+                      toast({ title: "Processing complete", description: "Could not classify confidently." });
                     }
                   } catch (err: any) {
                     toast({ title: "Conversion failed", description: err?.message || "ML service error", variant: "destructive" });
@@ -726,67 +734,3 @@ function formatCurrency(value?: number | null, currency?: string | null) {
   }
 }
 
-// Small inline preview renderer for processed quotes (supplier → client)
-function ProcessedQuotePreview({ result, currency, onSave, isSaving }: { result: ProcessQuoteResponse | null; currency?: string | null; onSave?: () => void | Promise<void>; isSaving?: boolean }) {
-  if (!result || !result.ok) return null as any;
-  if (result.quote_type === "supplier") {
-    const cq = result.client_quote;
-    return (
-      <div className="mt-6 rounded-2xl border bg-muted/30 p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-sm text-muted-foreground">Client quote preview</div>
-          <div className="flex items-center gap-3">
-            <div className="text-sm whitespace-nowrap">
-              Subtotal {formatCurrency(cq.subtotal ?? null, currency)} · VAT {formatCurrency(cq.vat_amount ?? null, currency)} ·
-              <span className="ml-1 font-medium">Total {formatCurrency(cq.grand_total ?? null, currency)}</span>
-            </div>
-            {onSave ? (
-              <button
-                className="inline-flex items-center rounded-md bg-foreground px-3 py-1.5 text-xs text-background disabled:opacity-60"
-                onClick={() => void onSave()}
-                disabled={Boolean(isSaving)}
-                title="Replace existing quote lines with this client quote"
-              >
-                {isSaving ? "Saving…" : "Save as lines"}
-              </button>
-            ) : null}
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted-foreground">
-                <th className="px-2 py-1">Description</th>
-                <th className="px-2 py-1">Qty</th>
-                <th className="px-2 py-1">Unit (marked)</th>
-                <th className="px-2 py-1">Total (marked)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cq.lines.map((ln, i) => (
-                <tr key={i} className="border-t">
-                  <td className="px-2 py-1">{ln.description}</td>
-                  <td className="px-2 py-1">{ln.qty}</td>
-                  <td className="px-2 py-1">{formatCurrency(ln.unit_price_marked_up, currency)}</td>
-                  <td className="px-2 py-1">{formatCurrency(ln.total_marked_up, currency)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  }
-  if (result.quote_type === "client") {
-    return (
-      <div className="mt-6 rounded-2xl border bg-muted/30 p-4 text-sm">
-        Detected a client quote. Parsed fields are available for training. Confidence: {(result.training_candidate as any)?.confidence ?? 0}
-      </div>
-    );
-  }
-  return (
-    <div className="mt-6 rounded-2xl border bg-muted/30 p-4 text-sm">
-      Could not confidently classify this PDF. Try adjusting settings or parsing manually.
-    </div>
-  );
-}
