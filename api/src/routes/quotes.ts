@@ -1413,6 +1413,530 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
 });
 
 /**
+ * POST /quotes/:id/render-proposal
+ * Alias for /render-pdf - generates and saves the beautiful proposal PDF
+ * (Complete duplicate implementation to ensure frontend compatibility)
+ */
+router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
+  try {
+    // Dynamically load puppeteer to avoid type issues if not installed yet
+    // @ts-ignore
+    let puppeteer: any;
+    try {
+      puppeteer = require("puppeteer");
+    } catch (err: any) {
+      console.error("[/quotes/:id/render-proposal] puppeteer missing:", err?.message || err);
+      return res.status(500).json({ error: "render_failed", reason: "puppeteer_not_installed" });
+    }
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const quote = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: true, tenant: true, lead: true },
+    });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const quoteDefaults: any = (ts?.quoteDefaults as any) || {};
+    const cur = normalizeCurrency(quote.currency || quoteDefaults?.currency || "GBP");
+    const sym = currencySymbol(cur);
+    const brand = (ts?.brandName || (quote.tenant as any)?.brandName || "Quotation").toString();
+    const logoUrl = (ts?.logoUrl || "").toString();
+    const phone = (ts?.phone || quoteDefaults?.phone || "").toString();
+    const website = (ts?.website || (Array.isArray(ts?.links) ? undefined : (ts?.links as any)?.website) || "").toString();
+    const client = quote.lead?.contactName || quote.lead?.email || "Client";
+    const title = quote.title || `Estimate for ${client}`;
+    const when = new Date().toLocaleDateString();
+    const validDays = Number(quoteDefaults?.validDays ?? 30);
+    const validUntil = new Date(Date.now() + Math.max(0, validDays) * 86400000).toLocaleDateString();
+    const vatRate = Number(quoteDefaults?.vatRate ?? 0.2);
+    const showVat = quoteDefaults?.showVat !== false; // default true for UK
+    const terms = (quoteDefaults?.terms as string) || "Prices are valid for 30 days and subject to site survey. Payment terms: 50% upfront, 50% on delivery unless agreed otherwise.";
+
+    // Summaries
+    const marginDefault = Number(quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25);
+    const rows = quote.lines.map((ln) => {
+      const qty = Number(ln.qty || 1);
+      // Prefer previously priced sellUnitGBP; otherwise apply default margin over supplier unitPrice
+      const metaAny: any = (ln.meta as any) || {};
+      const sellUnit = Number(metaAny?.sellUnitGBP ?? (Number(ln.unitPrice || 0) * (1 + marginDefault)));
+      const total = qty * sellUnit;
+      return {
+        description: ln.description,
+        qty,
+        unit: sellUnit,
+        total,
+      };
+    });
+    const subtotal = rows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
+    const vatAmount = showVat ? subtotal * vatRate : 0;
+    const computedTotal = subtotal + vatAmount;
+    // Always use computed total (subtotal + VAT) for display consistency
+    const totalGBP = computedTotal;
+
+    const styles = `
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+          color: #1e293b; 
+          line-height: 1.6;
+          padding: 0;
+        }
+        .page { padding: 32px 40px; max-width: 210mm; }
+        
+        /* Header Section */
+        .header { 
+          border-bottom: 3px solid #0ea5e9; 
+          padding-bottom: 20px; 
+          margin-bottom: 24px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+        }
+        .header-left { flex: 1; }
+        .header-right { text-align: right; font-size: 11px; color: #64748b; line-height: 1.8; }
+        .brand { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+        .brand img { max-height: 50px; }
+        .brand-name { font-size: 24px; font-weight: 700; color: #0f172a; }
+        .tagline { font-size: 12px; color: #64748b; font-style: italic; margin-bottom: 16px; }
+        h1 { 
+          font-size: 26px; 
+          font-weight: 700; 
+          color: #0f172a; 
+          margin: 0 0 4px; 
+          letter-spacing: -0.5px;
+        }
+        .project-title { font-size: 16px; color: #0ea5e9; font-weight: 600; }
+        .client-name { font-size: 14px; color: #475569; margin-top: 4px; }
+        
+        /* Project Overview Grid */
+        .overview-grid { 
+          display: grid; 
+          grid-template-columns: 1fr 1fr 1fr; 
+          gap: 20px; 
+          margin: 24px 0;
+          padding: 20px;
+          background: #f8fafc;
+          border-radius: 8px;
+          border: 1px solid #e2e8f0;
+        }
+        .overview-section h3 { 
+          font-size: 12px; 
+          font-weight: 700; 
+          text-transform: uppercase; 
+          color: #0ea5e9; 
+          margin-bottom: 12px;
+          letter-spacing: 0.5px;
+        }
+        .overview-section .detail-line { 
+          font-size: 11px; 
+          color: #475569; 
+          margin-bottom: 6px;
+          line-height: 1.5;
+        }
+        .overview-section .detail-line strong { 
+          color: #0f172a; 
+          font-weight: 600;
+        }
+        .project-scope { 
+          font-size: 11px; 
+          color: #475569; 
+          line-height: 1.6;
+        }
+        
+        /* Detailed Quotation Section */
+        .quotation-intro { 
+          font-size: 13px; 
+          color: #475569; 
+          margin: 28px 0 16px;
+          line-height: 1.7;
+        }
+        .section-title {
+          font-size: 18px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 28px 0 12px;
+          padding-bottom: 8px;
+          border-bottom: 2px solid #e2e8f0;
+        }
+        
+        /* Table Styles */
+        table { 
+          width: 100%; 
+          border-collapse: collapse; 
+          margin: 16px 0; 
+          font-size: 11px;
+          background: white;
+        }
+        thead th { 
+          background: #f1f5f9; 
+          color: #475569;
+          font-weight: 600; 
+          text-transform: uppercase;
+          font-size: 10px;
+          letter-spacing: 0.5px;
+          padding: 12px 14px;
+          border-bottom: 2px solid #cbd5e1;
+          text-align: left;
+        }
+        tbody td { 
+          padding: 12px 14px; 
+          border-bottom: 1px solid #e2e8f0; 
+          vertical-align: top;
+          color: #334155;
+        }
+        tbody tr:hover { background: #fafafa; }
+        .right { text-align: right; }
+        .amount-cell { font-weight: 600; color: #0f172a; }
+        
+        /* Totals Section */
+        .totals-wrapper { 
+          display: flex; 
+          justify-content: flex-end; 
+          margin: 20px 0;
+        }
+        .totals { 
+          min-width: 300px;
+          border: 2px solid #e2e8f0;
+          border-radius: 8px;
+          overflow: hidden;
+        }
+        .totals .row { 
+          display: flex; 
+          justify-content: space-between; 
+          padding: 12px 16px; 
+          border-bottom: 1px solid #e2e8f0;
+          font-size: 12px;
+        }
+        .totals .row:last-child { border-bottom: none; }
+        .totals .row.subtotal { background: #f8fafc; }
+        .totals .row.total { 
+          background: #0ea5e9; 
+          color: white; 
+          font-weight: 700;
+          font-size: 14px;
+        }
+        .totals .label { color: #64748b; }
+        .totals .value { font-weight: 600; color: #0f172a; }
+        .totals .row.total .label,
+        .totals .row.total .value { color: white; }
+        
+        /* Guarantee/Benefits Section */
+        .guarantee-section {
+          margin: 32px 0;
+          padding: 24px;
+          background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+          border-radius: 8px;
+          border: 1px solid #bae6fd;
+        }
+        .guarantee-section h2 {
+          font-size: 18px;
+          font-weight: 700;
+          color: #0c4a6e;
+          margin-bottom: 16px;
+          text-align: center;
+        }
+        .guarantee-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 20px;
+        }
+        .guarantee-item {
+          text-align: center;
+          padding: 16px;
+        }
+        .guarantee-item h4 {
+          font-size: 13px;
+          font-weight: 700;
+          color: #0369a1;
+          margin-bottom: 8px;
+        }
+        .guarantee-item p {
+          font-size: 11px;
+          color: #475569;
+          line-height: 1.6;
+        }
+        
+        /* Terms & Footer */
+        .terms-section {
+          margin-top: 28px;
+          padding: 16px;
+          background: #f8fafc;
+          border-left: 4px solid #0ea5e9;
+          border-radius: 4px;
+        }
+        .terms-section h3 {
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #0f172a;
+          margin-bottom: 8px;
+        }
+        .terms-section p {
+          font-size: 11px;
+          color: #475569;
+          line-height: 1.7;
+        }
+        footer { 
+          margin-top: 32px; 
+          padding-top: 16px;
+          border-top: 1px solid #e2e8f0;
+          font-size: 10px; 
+          color: #94a3b8;
+          text-align: center;
+        }
+      </style>`;
+
+    const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
+    const jobNumber = quote.lead?.refId || ref;
+    const projectName = quote.title || `Project for ${client}`;
+    const leadMeta: any = (quote.lead?.meta as any) || {};
+    const address = leadMeta?.address || quote.lead?.location || "";
+    const tagline = quoteDefaults?.tagline || "Timber Joinery Specialists";
+    
+    // Extract specifications from quote meta or lines
+    const quoteMeta: any = (quote.meta as any) || {};
+    const specifications = quoteMeta?.specifications || {};
+    const timber = specifications.timber || quoteDefaults?.defaultTimber || "Engineered timber";
+    const finish = specifications.finish || quoteDefaults?.defaultFinish || "Factory finished";
+    const glazing = specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing";
+    const compliance = specifications.compliance || quoteDefaults?.compliance || "Industry standards";
+    
+    // Project scope description
+    const scopeDescription = quoteMeta?.scopeDescription || 
+      `This project involves supplying bespoke timber joinery products crafted to meet your specifications. All products are manufactured to the highest standards and comply with ${compliance}.`;
+
+    const html = `<!doctype html>
+      <html>
+      <head><meta charset="utf-8" />${styles}</head>
+      <body>
+        <div class="page">
+          <!-- Header Section -->
+          <header class="header">
+            <div class="header-left">
+              <div class="brand">
+                ${logoUrl ? `<img src="${logoUrl}" alt="${escapeHtml(brand)}" />` : `<div class="brand-name">${escapeHtml(brand)}</div>`}
+              </div>
+              ${tagline ? `<div class="tagline">${escapeHtml(tagline)}</div>` : ""}
+              <h1>Project Quotation</h1>
+              <div class="project-title">${escapeHtml(projectName)}</div>
+              <div class="client-name">Client: ${escapeHtml(client)} • ${when}</div>
+            </div>
+            <div class="header-right">
+              ${phone ? `<div>Telephone: ${escapeHtml(phone)}</div>` : ""}
+              ${quoteDefaults?.email ? `<div>Email: ${escapeHtml(quoteDefaults.email)}</div>` : ""}
+              ${address ? `<div>Address: ${escapeHtml(address)}</div>` : ""}
+            </div>
+          </header>
+
+          <!-- Project Overview Section -->
+          <div class="overview-grid">
+            <div class="overview-section">
+              <h3>Client Details</h3>
+              <div class="detail-line"><strong>Client:</strong> ${escapeHtml(client)}</div>
+              <div class="detail-line"><strong>Project:</strong> ${escapeHtml(projectName)}</div>
+              ${quote.lead?.phone ? `<div class="detail-line"><strong>Phone:</strong> ${escapeHtml(quote.lead.phone)}</div>` : ""}
+              ${quote.lead?.email ? `<div class="detail-line"><strong>Email:</strong> ${escapeHtml(quote.lead.email)}</div>` : ""}
+              <div class="detail-line"><strong>Job Number:</strong> ${escapeHtml(jobNumber)}</div>
+              <div class="detail-line"><strong>Date:</strong> ${when}</div>
+              <div class="detail-line"><strong>Valid Until:</strong> ${validUntil}</div>
+              ${address ? `<div class="detail-line"><strong>Delivery:</strong> ${escapeHtml(address)}</div>` : ""}
+            </div>
+            
+            <div class="overview-section">
+              <h3>Specification Summary</h3>
+              <div class="detail-line"><strong>Timber:</strong> ${escapeHtml(timber)}</div>
+              <div class="detail-line"><strong>Finish:</strong> ${escapeHtml(finish)}</div>
+              <div class="detail-line"><strong>Glazing:</strong> ${escapeHtml(glazing)}</div>
+              ${specifications.fittings ? `<div class="detail-line"><strong>Fittings:</strong> ${escapeHtml(specifications.fittings)}</div>` : ""}
+              ${specifications.ventilation ? `<div class="detail-line"><strong>Ventilation:</strong> ${escapeHtml(specifications.ventilation)}</div>` : ""}
+              <div class="detail-line"><strong>Compliance:</strong> ${escapeHtml(compliance)}</div>
+              <div class="detail-line"><strong>Currency:</strong> ${cur}</div>
+            </div>
+            
+            <div class="overview-section">
+              <h3>Project Scope</h3>
+              <div class="project-scope">${escapeHtml(scopeDescription)}</div>
+            </div>
+          </div>
+
+          <!-- Detailed Quotation Section -->
+          <h2 class="section-title">Detailed Quotation</h2>
+          <p class="quotation-intro">
+            Following the technical specifications outlined above, this section provides a comprehensive 
+            breakdown of the proposed investment for your project. The quotation details each component, 
+            quantity, and dimensions, culminating in the total project cost.
+          </p>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width:50%">Item Description</th>
+                <th class="right" style="width:12%">Quantity</th>
+                <th style="width:18%">Dimensions</th>
+                <th class="right" style="width:20%">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows
+                .map(
+                  (r) => {
+                    const lineMeta: any = (quote.lines.find(ln => ln.description === r.description)?.meta as any) || {};
+                    const dimensions = lineMeta?.dimensions || "";
+                    const showAmount = quoteDefaults?.showLineItems !== false;
+                    return `
+                    <tr>
+                      <td>${escapeHtml(r.description || "-")}</td>
+                      <td class="right">${r.qty.toLocaleString()}</td>
+                      <td>${escapeHtml(dimensions)}</td>
+                      <td class="right amount-cell">${showAmount ? sym + r.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "Included"}</td>
+                    </tr>`;
+                  }
+                )
+                .join("")}
+            </tbody>
+          </table>
+
+          <!-- Totals Section -->
+          <div class="totals-wrapper">
+            <div class="totals">
+              <div class="row subtotal">
+                <div class="label">Subtotal (Ex VAT)</div>
+                <div class="value">${sym}${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              </div>
+              ${showVat ? `
+              <div class="row">
+                <div class="label">VAT (${(vatRate*100).toFixed(0)}%)</div>
+                <div class="value">${sym}${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              </div>` : ""}
+              <div class="row total">
+                <div class="label">Grand Total (Incl VAT)</div>
+                <div class="value">${sym}${totalGBP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Guarantee/Benefits Section (if configured) -->
+          ${quoteDefaults?.guarantees && Array.isArray(quoteDefaults.guarantees) && quoteDefaults.guarantees.length > 0 ? `
+          <div class="guarantee-section">
+            <h2>${escapeHtml(quoteDefaults.guaranteeTitle || brand + " Guarantee")}</h2>
+            <div class="guarantee-grid">
+              ${quoteDefaults.guarantees.slice(0, 3).map((g: any) => `
+                <div class="guarantee-item">
+                  <h4>${escapeHtml(g.title || "")}</h4>
+                  <p>${escapeHtml(g.description || "")}</p>
+                </div>
+              `).join("")}
+            </div>
+          </div>` : ""}
+
+          ${renderSections(quoteDefaults)}
+
+          <!-- Terms Section -->
+          <div class="terms-section">
+            <h3>Terms & Conditions</h3>
+            <p>${escapeHtml(terms)}</p>
+          </div>
+
+          <footer>
+            <div>Quote Reference: ${ref} • Valid until ${validUntil}</div>
+            ${website || phone ? `<div>${escapeHtml(website)}${website && phone ? " • " : ""}${escapeHtml(phone)}</div>` : ""}
+            <div style="margin-top:8px;">Thank you for considering ${escapeHtml(brand)} for your project.</div>
+          </footer>
+        </div>
+      </body>
+      </html>`;
+
+    let browser: any;
+    let firstLaunchError: any;
+    try {
+      // Prefer Puppeteer's resolved executable if available; fall back to env
+      const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
+      const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--single-process",
+          "--no-zygote",
+        ],
+        executablePath: execPath,
+      });
+    } catch (err: any) {
+      firstLaunchError = err;
+      console.warn("[/quotes/:id/render-proposal] puppeteer launch failed; trying @sparticuz/chromium fallback:", err?.message || err);
+      try {
+        // Lazy-load Sparticuz Chromium which bundles a compatible binary for serverless/container envs
+        const chromium = require("@sparticuz/chromium");
+        const execPath2 = await chromium.executablePath();
+        browser = await puppeteer.launch({
+          headless: chromium.headless !== undefined ? chromium.headless : true,
+          args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
+          executablePath: execPath2,
+          defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
+          ignoreHTTPSErrors: true,
+        });
+      } catch (fallbackErr: any) {
+        console.error("[/quotes/:id/render-proposal] chromium fallback launch failed:", fallbackErr?.message || fallbackErr);
+        return res.status(500).json({
+          error: "render_failed",
+          reason: "puppeteer_launch_failed",
+          detail: {
+            primary: String(firstLaunchError?.message || firstLaunchError || "unknown"),
+            fallback: String(fallbackErr?.message || fallbackErr || "unknown"),
+          },
+        });
+      }
+    }
+
+    let pdfBuffer: Buffer;
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "networkidle0" });
+      pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" } });
+      await browser.close();
+    } catch (err: any) {
+      try { if (browser) await browser.close(); } catch {}
+      console.error("[/quotes/:id/render-proposal] pdf generation failed:", err?.message || err);
+      return res.status(500).json({ error: "render_failed", reason: "pdf_generation_failed" });
+    }
+
+    const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
+    const filename = `${filenameSafe}.pdf`;
+    const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
+    try {
+      fs.writeFileSync(filepath, pdfBuffer);
+    } catch (err: any) {
+      console.error("[/quotes/:id/render-proposal] write file failed:", err?.message || err);
+      return res.status(500).json({ error: "render_failed", reason: "write_failed" });
+    }
+
+    const fileRow = await prisma.uploadedFile.create({
+      data: {
+        tenantId,
+        quoteId: quote.id,
+        kind: "OTHER",
+        name: filename,
+        path: path.relative(process.cwd(), filepath),
+        mimeType: "application/pdf",
+        sizeBytes: pdfBuffer.length,
+      },
+    });
+
+    const meta0: any = (quote.meta as any) || {};
+    await prisma.quote.update({ where: { id: quote.id }, data: { proposalPdfUrl: null, meta: { ...(meta0 || {}), proposalFileId: fileRow.id } as any } as any });
+    return res.json({ ok: true, fileId: fileRow.id, name: fileRow.name });
+  } catch (e: any) {
+    console.error("[/quotes/:id/render-proposal] failed:", e?.message || e);
+    return res.status(500).json({ error: "render_failed", reason: "unknown" });
+  }
+});
+
+/**
  * GET /quotes/:id/proposal/signed
  * Returns a signed URL for the generated proposal PDF (if any).
  */
