@@ -2287,80 +2287,286 @@ async def preview_email_quotes(payload: EmailTrainingPayload):
         raise HTTPException(status_code=500, detail=f"Email preview failed: {e}")
 
 @app.post("/train-client-quotes")
-async def train_client_quotes(payload: TrainPayload):
+async def train_client_quotes(req: Request):
     """
-    Process client quotes from emails to extract questionnaire answers and pricing
-    for training ML models on how to quote based on client requirements.
+    Train price prediction and win probability models from stored training data.
+    Loads data from ml_training_data table, trains sklearn models, and saves them.
     """
-    ok = 0
-    fails: List[Dict[str, Any]] = []
-    training_samples: List[Dict[str, Any]] = []
-
-    for item in payload.items:
-        try:
-            pdf_bytes = _http_get_bytes(item.url)
-            text = extract_text_from_pdf_bytes(pdf_bytes) or ""
-            
-            # Determine quote type
-            quote_type = determine_quote_type(text)
-            
-            if quote_type == "client":
-                # Parse as client quote for training data
-                parsed = parse_client_quote_from_text(text)
-            else:
-                # Fallback to supplier quote parsing
-                parsed = parse_totals_from_text(text)
-                
-            ok += 1
-
-            # Store training data sample
-            training_sample = {
-                "messageId": item.messageId,
-                "attachmentId": item.attachmentId,
-                "quotedAt": _iso(item.quotedAt),
-                "quote_type": quote_type,
-                "text_chars": len(text),
-                "parsed": parsed,
-            }
-            
-            training_samples.append(training_sample)
-            
-        except Exception as e:
-            fails.append({
-                "messageId": item.messageId,
-                "attachmentId": item.attachmentId,
-                "url": item.url,
-                "error": f"{e}",
-            })
-
-    # Calculate training stats
-    client_quotes = [s for s in training_samples if s["quote_type"] == "client"]
-    avg_quoted_price = None
+    if not EMAIL_TRAINING_AVAILABLE:
+        return {
+            "ok": False,
+            "error": "Training not available - database connection required",
+            "model_status": "unavailable"
+        }
     
-    if client_quotes:
-        quoted_prices = [
-            s["parsed"]["quoted_price"]
-            for s in client_quotes
-            if s.get("parsed", {}).get("quoted_price") is not None
-        ]
-        if quoted_prices:
+    try:
+        payload = await req.json()
+        tenant_id = payload.get("tenantId")
+        min_samples = int(payload.get("minSamples", 10))  # Minimum samples required for training
+        
+        from db_config import get_db_manager
+        import pandas as pd
+        from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+        from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score
+        import joblib
+        
+        logger.info(f"Starting model retraining for tenant: {tenant_id or 'all'}")
+        
+        db_manager = get_db_manager()
+        conn = db_manager.get_connection()
+        
+        # Load training data from database
+        with conn.cursor() as cur:
+            if tenant_id:
+                cur.execute("""
+                    SELECT 
+                        id,
+                        parsed_data,
+                        confidence,
+                        estimated_total,
+                        project_type,
+                        quoted_price,
+                        quote_type
+                    FROM ml_training_data
+                    WHERE tenant_id = %s
+                    AND estimated_total > 0
+                    AND confidence > 0.3
+                    ORDER BY created_at DESC
+                    LIMIT 1000
+                """, (tenant_id,))
+            else:
+                cur.execute("""
+                    SELECT 
+                        id,
+                        parsed_data,
+                        confidence,
+                        estimated_total,
+                        project_type,
+                        quoted_price,
+                        quote_type
+                    FROM ml_training_data
+                    WHERE estimated_total > 0
+                    AND confidence > 0.3
+                    ORDER BY created_at DESC
+                    LIMIT 1000
+                """)
+            
+            rows = cur.fetchall()
+            
+        conn.close()
+        
+        if len(rows) < min_samples:
+            return {
+                "ok": False,
+                "error": f"Insufficient training data: {len(rows)} samples (minimum {min_samples} required)",
+                "samples_found": len(rows),
+                "min_required": min_samples,
+                "message": "Upload more training quotes to enable model training"
+            }
+        
+        logger.info(f"Loaded {len(rows)} training samples from database")
+        
+        # Extract features from training data
+        training_data = []
+        for row in rows:
             try:
-                avg_quoted_price = round(float(sum(quoted_prices)) / len(quoted_prices), 2)
-            except Exception:
-                avg_quoted_price = None
-
-    return {
-        "ok": True,
-        "tenantId": payload.tenantId,
-        "received_items": len(payload.items),
-        "parsed_ok": ok,
-        "failed": len(fails),
-        "client_quotes_found": len(client_quotes),
-        "avg_quoted_price": avg_quoted_price,
-        "training_samples": training_samples[:5],  # Return first 5 samples
-        "failures": fails,
-        "message": "Client quote training data extracted successfully.",
-    }
+                parsed_data = row[1] if isinstance(row[1], dict) else {}
+                
+                # Extract questionnaire answers if available
+                qa = parsed_data.get("questionnaire_answers", {})
+                
+                # Try to extract area_m2 from various sources
+                area_m2 = (
+                    qa.get("area_m2") or 
+                    parsed_data.get("area_m2") or
+                    parsed_data.get("total_area") or
+                    30.0  # default fallback
+                )
+                
+                # Extract materials grade
+                materials_grade = (
+                    qa.get("materials_grade") or
+                    parsed_data.get("materials_grade") or
+                    "Standard"
+                )
+                
+                # Extract project type
+                project_type = (
+                    row[4] or  # project_type column
+                    qa.get("project_type") or
+                    parsed_data.get("project_type") or
+                    "windows"
+                )
+                
+                # Use quoted_price if available, otherwise estimated_total
+                target_price = float(row[5] or row[3] or 0)
+                
+                if target_price <= 0:
+                    continue
+                
+                # Estimate win probability based on confidence and price range
+                confidence = float(row[2] or 0.5)
+                if target_price < 5000:
+                    win_prob = min(0.9, confidence * 1.2)
+                elif target_price < 15000:
+                    win_prob = confidence
+                else:
+                    win_prob = max(0.3, confidence * 0.8)
+                
+                training_data.append({
+                    "area_m2": float(area_m2),
+                    "materials_grade": str(materials_grade),
+                    "project_type": str(project_type),
+                    "target_price": target_price,
+                    "win_probability": win_prob,
+                    "confidence": confidence
+                })
+                
+            except Exception as e:
+                logger.warning(f"Failed to extract features from training sample: {e}")
+                continue
+        
+        if len(training_data) < min_samples:
+            return {
+                "ok": False,
+                "error": f"Insufficient valid training data: {len(training_data)} samples after feature extraction",
+                "samples_found": len(training_data),
+                "min_required": min_samples
+            }
+        
+        # Create DataFrame
+        df = pd.DataFrame(training_data)
+        logger.info(f"Prepared {len(df)} training samples with features")
+        
+        # Prepare features (X) and targets (y)
+        # Encode categorical variables
+        df_encoded = df.copy()
+        df_encoded["materials_grade_Premium"] = (df_encoded["materials_grade"] == "Premium").astype(int)
+        df_encoded["materials_grade_Standard"] = (df_encoded["materials_grade"] == "Standard").astype(int)
+        df_encoded["materials_grade_Basic"] = (df_encoded["materials_grade"] == "Basic").astype(int)
+        
+        # Simple project type encoding (can be enhanced)
+        df_encoded["project_type_windows"] = df_encoded["project_type"].str.contains("window", case=False, na=False).astype(int)
+        df_encoded["project_type_doors"] = df_encoded["project_type"].str.contains("door", case=False, na=False).astype(int)
+        
+        feature_columns = [
+            "area_m2",
+            "materials_grade_Premium",
+            "materials_grade_Standard", 
+            "materials_grade_Basic",
+            "project_type_windows",
+            "project_type_doors",
+            "confidence"
+        ]
+        
+        X = df_encoded[feature_columns]
+        y_price = df_encoded["target_price"]
+        y_win = df_encoded["win_probability"]
+        
+        # Split data for validation
+        X_train, X_test, y_price_train, y_price_test, y_win_train, y_win_test = train_test_split(
+            X, y_price, y_win, test_size=0.2, random_state=42
+        )
+        
+        # Train price prediction model
+        logger.info("Training price prediction model...")
+        price_model_new = RandomForestRegressor(
+            n_estimators=100,
+            max_depth=10,
+            min_samples_split=5,
+            min_samples_leaf=2,
+            random_state=42,
+            n_jobs=-1
+        )
+        price_model_new.fit(X_train, y_price_train)
+        
+        # Evaluate price model
+        y_price_pred = price_model_new.predict(X_test)
+        price_mae = mean_absolute_error(y_price_test, y_price_pred)
+        price_r2 = r2_score(y_price_test, y_price_pred)
+        
+        logger.info(f"Price model - MAE: £{price_mae:.2f}, R²: {price_r2:.3f}")
+        
+        # Train win probability model
+        logger.info("Training win probability model...")
+        win_model_new = RandomForestRegressor(  # Using regressor for probabilities
+            n_estimators=100,
+            max_depth=8,
+            min_samples_split=5,
+            min_samples_leaf=2,
+            random_state=42,
+            n_jobs=-1
+        )
+        win_model_new.fit(X_train, y_win_train)
+        
+        # Evaluate win model
+        y_win_pred = win_model_new.predict(X_test)
+        y_win_pred = np.clip(y_win_pred, 0, 1)  # Ensure probabilities are in [0, 1]
+        win_mae = mean_absolute_error(y_win_test, y_win_pred)
+        
+        logger.info(f"Win model - MAE: {win_mae:.3f}")
+        
+        # Save models to disk
+        os.makedirs("models", exist_ok=True)
+        price_model_path = "models/price_model.joblib"
+        win_model_path = "models/win_model.joblib"
+        feature_meta_path = "models/feature_meta.json"
+        
+        joblib.dump(price_model_new, price_model_path)
+        joblib.dump(win_model_new, win_model_path)
+        
+        # Save feature metadata
+        feature_meta = {
+            "columns": feature_columns,
+            "trained_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "training_samples": len(df),
+            "test_samples": len(X_test),
+            "price_mae": float(price_mae),
+            "price_r2": float(price_r2),
+            "win_mae": float(win_mae),
+            "tenant_id": tenant_id,
+            "version": "1.0"
+        }
+        
+        with open(feature_meta_path, "w") as f:
+            json.dump(feature_meta, f, indent=2)
+        
+        logger.info(f"Models saved to {price_model_path} and {win_model_path}")
+        
+        # Reload models globally
+        global price_model, win_model, COLUMNS, NUMERIC_COLUMNS
+        price_model = load_model(price_model_path)
+        win_model = load_model(win_model_path)
+        COLUMNS = feature_columns
+        NUMERIC_COLUMNS = ["area_m2", "confidence"]
+        
+        logger.info("Models reloaded successfully")
+        
+        return {
+            "ok": True,
+            "message": "Models trained and saved successfully",
+            "training_samples": len(df),
+            "test_samples": len(X_test),
+            "metrics": {
+                "price_mae": round(float(price_mae), 2),
+                "price_r2": round(float(price_r2), 3),
+                "win_mae": round(float(win_mae), 3)
+            },
+            "feature_columns": feature_columns,
+            "model_paths": {
+                "price": price_model_path,
+                "win": win_model_path,
+                "meta": feature_meta_path
+            },
+            "model_status": "trained"
+        }
+        
+    except Exception as e:
+        logger.error(f"Model training failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Model training failed: {str(e)}")
 
 # ============================================================================
 # Lead Classifier Training Endpoints
