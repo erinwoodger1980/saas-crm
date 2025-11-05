@@ -1480,6 +1480,110 @@ def build_client_quote_from_supplier_parsed(
         "grand_total": grand_total,
     }
 
+# ----------------- per-line pricing endpoint -----------------
+class PredictLinesIn(BaseModel):
+    """Input schema for per-line pricing prediction.
+    Accepts pre-parsed supplier lines and returns client-facing quote lines.
+    """
+    lines: List[Dict[str, Any]]
+    currency: Optional[str] = None
+    # Pricing options
+    markupPercent: float = 20.0
+    vatPercent: float = 20.0
+    markupDelivery: bool = False
+    amalgamateDelivery: bool = True
+    clientDeliveryGBP: Optional[float] = None
+    clientDeliveryDescription: Optional[str] = None
+    roundTo: int = 2
+
+@app.post("/predict-lines")
+def predict_lines(payload: PredictLinesIn):
+    """
+    Compute per-line client pricing from supplier lines.
+
+    Body: {
+      lines: [{ description, qty, unit_price?, total?, costUnit?, lineTotal? }],
+      currency?: string,
+      markupPercent?: number,
+      vatPercent?: number,
+      markupDelivery?: boolean,
+      amalgamateDelivery?: boolean,
+      clientDeliveryGBP?: number,
+      clientDeliveryDescription?: string,
+      roundTo?: int
+    }
+
+    Returns: client_quote with line-level unit_price_marked_up/total_marked_up and totals.
+    """
+    try:
+        # Normalise input lines to the internal supplier_parsed shape expected by builder
+        norm_lines: List[Dict[str, Any]] = []
+        for ln in payload.lines or []:
+            desc = str(ln.get("description") or ln.get("desc") or "Item").strip()
+            # qty
+            qty_raw = ln.get("qty") if ln.get("qty") is not None else ln.get("quantity")
+            try:
+                qty = float(qty_raw) if qty_raw is not None else 1.0
+            except Exception:
+                qty = 1.0
+            if qty <= 0:
+                qty = 1.0
+            # unit/total: accept either costUnit/lineTotal or unit_price/total
+            unit = ln.get("unit_price")
+            if unit is None:
+                unit = ln.get("costUnit")
+            try:
+                unit_f = float(unit) if unit is not None else None
+            except Exception:
+                unit_f = None
+
+            total = ln.get("total")
+            if total is None:
+                total = ln.get("lineTotal")
+            try:
+                total_f = float(total) if total is not None else None
+            except Exception:
+                total_f = None
+
+            if unit_f is None and (total_f is not None and qty):
+                unit_f = float(total_f) / float(qty) if qty else 0.0
+            if total_f is None and (unit_f is not None and qty):
+                total_f = float(unit_f) * float(qty)
+
+            norm_lines.append({
+                "description": desc,
+                "qty": qty,
+                "unit_price": float(unit_f or 0.0),
+                "total": float(total_f or 0.0),
+            })
+
+        supplier_parsed = {
+            "currency": payload.currency,
+            "lines": norm_lines,
+        }
+
+        client_quote = build_client_quote_from_supplier_parsed(
+            supplier_parsed,
+            markup_percent=payload.markupPercent,
+            vat_percent=payload.vatPercent,
+            markup_delivery=payload.markupDelivery,
+            amalgamate_delivery=payload.amalgamateDelivery,
+            client_delivery_gbp=payload.clientDeliveryGBP,
+            client_delivery_description=payload.clientDeliveryDescription,
+            round_to=payload.roundTo,
+        )
+
+        return {
+            "ok": True,
+            "client_quote": client_quote,
+            "line_count": len(norm_lines),
+        }
+    except Exception as e:
+        logger.error(f"predict-lines failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"predict-lines failed: {e}")
+
 # ----------------- parsing helpers -----------------
 def _http_get_bytes(url: str, timeout: int = 30) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "JoineryAI-ML/1.0"})

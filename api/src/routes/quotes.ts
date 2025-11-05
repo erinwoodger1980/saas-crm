@@ -2096,6 +2096,78 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
     }
 
     if (method === "ml") {
+      // Prefer per-line pricing via ML when we have supplier costs; fall back to total-scaling from questionnaire
+      const hasCostLines = quote.lines.some((ln) => Number(ln.unitPrice) > 0);
+      if (hasCostLines) {
+        try {
+          const API_BASE = (
+            process.env.APP_API_URL || process.env.API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`
+          ).replace(/\/$/, "");
+          const markupPercent = (() => {
+            const m = Number(req.body?.margin ?? quote.markupDefault ?? 0.25);
+            if (!Number.isFinite(m)) return 25;
+            return m <= 1.5 ? Math.max(0, m * 100) : m; // accept 0.25 or 25
+          })();
+          const payload = {
+            lines: quote.lines.map((ln) => ({
+              description: ln.description,
+              qty: Number(ln.qty || 1),
+              unit_price: Number(ln.unitPrice || 0),
+              total: Number(ln.unitPrice || 0) * Number(ln.qty || 1),
+            })),
+            currency: quote.currency || "GBP",
+            markupPercent,
+            vatPercent: 20,
+            markupDelivery: false,
+            amalgamateDelivery: true,
+          };
+          const startedAt = Date.now();
+          const resp = await fetch(`${API_BASE}/ml/predict-lines`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const text = await resp.text();
+          const tookMs = Date.now() - startedAt;
+          let out: any = {};
+          try { out = text ? JSON.parse(text) : {}; } catch { out = { raw: text }; }
+          if (resp.ok && out?.client_quote?.lines) {
+            const clientQuote = out.client_quote;
+            // Update per-line sell pricing by index
+            let totalGBP = 0;
+            for (let i = 0; i < quote.lines.length; i++) {
+              const ln = quote.lines[i];
+              const priced = clientQuote.lines[i];
+              if (!priced) continue;
+              const sellUnit = Number(priced.unit_price_marked_up ?? 0);
+              const sellTotal = Number(priced.total_marked_up ?? sellUnit * Number(ln.qty || 1));
+              totalGBP += sellTotal;
+              await prisma.quoteLine.update({
+                where: { id: ln.id },
+                data: {
+                  meta: {
+                    set: {
+                      ...(ln.meta as any || {}),
+                      sellUnitGBP: sellUnit,
+                      sellTotalGBP: sellTotal,
+                      pricingMethod: "ml_lines",
+                      markupPercent,
+                      mlLatencyMs: tookMs,
+                    },
+                  } as any,
+                },
+              });
+            }
+            await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(Number(clientQuote.grand_total ?? totalGBP) || 0) } });
+            return res.json({ ok: true, method, totalGBP: Number(clientQuote.grand_total ?? totalGBP) || 0, used: "predict-lines" });
+          }
+          // If ML failed, fall through to total-scaling path
+          console.warn(`[quotes] /ml/predict-lines failed status=${resp.status} detail=${text?.slice?.(0,200)}`);
+        } catch (err: any) {
+          console.warn(`[quotes] per-line ML pricing failed:`, err?.message || err);
+        }
+      }
+
       // Call ML to get an estimated total based on questionnaire answers; then scale per-line proportions by cost
       const API_BASE = (
         process.env.APP_API_URL || process.env.API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`
