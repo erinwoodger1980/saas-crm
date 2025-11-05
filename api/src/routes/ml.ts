@@ -204,6 +204,89 @@ router.post("/parse-quote", async (req, res) => {
 });
 
 /**
+ * POST /ml/process-quote
+ * Classify supplier vs client, parse accordingly, and apply markup/VAT for suppliers.
+ * Body: { url, filename?, quotedAt?, markupPercent?, vatPercent?, markupDelivery?, amalgamateDelivery?, clientDeliveryGBP?, clientDeliveryDescription? }
+ */
+router.post("/process-quote", async (req: any, res) => {
+  try {
+    if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
+
+    const auth = (req as any).auth || {};
+    const tenantId: string | undefined = auth.tenantId;
+
+    const { url, filename, quotedAt } = req.body || {};
+    const safeUrl = normalizeAttachmentUrl(url);
+    if (!safeUrl) return res.status(400).json({ error: "missing url" });
+
+    // Defaults from env
+    let defaultMarkup = Number(process.env.DEFAULT_MARKUP_PERCENT || 20);
+    let defaultVat = Number(process.env.DEFAULT_VAT_PERCENT || 20);
+    let defaultMarkupDelivery = String(process.env.DEFAULT_MARKUP_DELIVERY || "false").toLowerCase() === "true";
+
+    // Try tenant settings if available
+    if (tenantId) {
+      try {
+        const settings = await prisma.tenantSettings.findUnique({ where: { tenantId }, select: { quoteDefaults: true } });
+        const qd: any = (settings?.quoteDefaults as any) || {};
+        const pricing: any = qd.pricing || qd.PRICING || {};
+        if (typeof pricing.markupPercent === "number") defaultMarkup = pricing.markupPercent;
+        if (typeof pricing.vatPercent === "number") defaultVat = pricing.vatPercent;
+        if (typeof pricing.markupDelivery === "boolean") defaultMarkupDelivery = pricing.markupDelivery;
+      } catch (e) {
+        console.warn("[ml proxy] failed to read tenant pricing defaults:", (e as any)?.message || e);
+      }
+    }
+
+    // Allow request overrides
+    const markupPercent = typeof req.body?.markupPercent === "number" ? req.body.markupPercent : defaultMarkup;
+    const vatPercent = typeof req.body?.vatPercent === "number" ? req.body.vatPercent : defaultVat;
+    const markupDelivery = typeof req.body?.markupDelivery === "boolean" ? req.body.markupDelivery : defaultMarkupDelivery;
+
+    const payload = {
+      url: safeUrl,
+      filename,
+      quotedAt,
+      markupPercent,
+      vatPercent,
+      markupDelivery,
+      amalgamateDelivery: typeof req.body?.amalgamateDelivery === "boolean" ? req.body.amalgamateDelivery : true,
+      clientDeliveryGBP: typeof req.body?.clientDeliveryGBP === "number" ? req.body.clientDeliveryGBP : undefined,
+      clientDeliveryDescription:
+        typeof req.body?.clientDeliveryDescription === "string" ? req.body.clientDeliveryDescription : undefined,
+    };
+
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
+    const f = await fetch(`${ML_URL}/process-quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    cleanup();
+
+    const text = await f.text();
+    let json: any = {};
+    try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+
+    if (!f.ok) {
+      const msg = json?.detail || json?.error || "ml_process_failed";
+      return res.status(f.status).json({ error: msg, detail: json });
+    }
+    return res.json(json);
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const isTimeout = /timeout_/i.test(msg) || /The operation was aborted/i.test(msg);
+    if (isTimeout) {
+      console.warn(`[ml proxy] /process-quote timed out after ${ML_TIMEOUT_MS}ms`);
+      return res.status(504).json({ error: "ml_timeout", timeoutMs: ML_TIMEOUT_MS });
+    }
+    console.error("[ml proxy] /process-quote failed:", msg);
+    return res.status(502).json({ error: "ml_unreachable", detail: msg });
+  }
+});
+
+/**
  * POST /ml/train
  * 1) calls /internal/ml/ingest-gmail to collect signed PDF URLs
  * 2) normalizes URLs and forwards to ML /train

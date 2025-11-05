@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 export type ActionsBarProps = {
   onUploadClick: () => void;
   onParse: () => void;
+  onProcessSupplier?: () => void;
   onSaveMappings: () => void;
   onRenderProposal: () => void;
   onGenerateEstimate: () => void;
@@ -18,6 +19,7 @@ export type ActionsBarProps = {
   disabled?: boolean;
   isUploading?: boolean;
   isParsing?: boolean;
+  isProcessingSupplier?: boolean;
   isSavingMappings?: boolean;
   isRendering?: boolean;
   isEstimating?: boolean;
@@ -30,6 +32,7 @@ export type ActionsBarProps = {
 export function ActionsBar({
   onUploadClick,
   onParse,
+  onProcessSupplier,
   onSaveMappings,
   onRenderProposal,
   onGenerateEstimate,
@@ -37,6 +40,7 @@ export function ActionsBar({
   disabled,
   isUploading,
   isParsing,
+  isProcessingSupplier,
   isSavingMappings,
   isRendering,
   isEstimating,
@@ -80,6 +84,22 @@ export function ActionsBar({
             {isParsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
             {isParsing ? "Parsing" : "Parse supplier PDFs"}
           </Button>
+          {onProcessSupplier && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onProcessSupplier}
+              disabled={sharedDisabled || isProcessingSupplier}
+              className="gap-2"
+            >
+              {isProcessingSupplier ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4" />
+              )}
+              {isProcessingSupplier ? "Converting" : "Convert → client quote"}
+            </Button>
+          )}
           <Button
             type="button"
             onClick={onSaveMappings}
@@ -132,6 +152,11 @@ export function ActionsBar({
               <DropdownMenuItem onClick={onSaveMappings} disabled={sharedDisabled || isSavingMappings}>
                 <Save className="mr-2 h-4 w-4" /> Save mappings
               </DropdownMenuItem>
+              {onProcessSupplier && (
+                <DropdownMenuItem onClick={onProcessSupplier} disabled={sharedDisabled || isProcessingSupplier}>
+                  <Wand2 className="mr-2 h-4 w-4" /> Convert → client quote
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={onRenderProposal} disabled={sharedDisabled || isRendering}>
                 <Download className="mr-2 h-4 w-4" /> Render proposal
               </DropdownMenuItem>

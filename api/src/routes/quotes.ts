@@ -230,6 +230,118 @@ const storage = multer.diskStorage({
     cb(null, `${ts}__${base}`);
   },
 });
+
+/**
+ * POST /quotes/:id/lines/save-processed
+ * Persist a processed client quote (from ML /process-quote) as quote lines.
+ * Body: {
+ *   clientQuote: {
+ *     currency?: string,
+ *     markup_percent?: number,
+ *     vat_percent?: number,
+ *     subtotal?: number,
+ *     vat_amount?: number,
+ *     grand_total?: number,
+ *     lines: Array<{
+ *       description: string,
+ *       qty: number,
+ *       unit_price?: number,               // supplier unit cost if available
+ *       total?: number,                    // supplier line total if available
+ *       unit_price_marked_up: number,      // client unit sell price
+ *       total_marked_up: number,           // client line total sell price
+ *     }>
+ *   },
+ *   replace?: boolean                      // when true (default), replaces existing lines
+ * }
+ */
+router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true } });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const body = req.body || {};
+    const clientQuote = body.clientQuote || body.client_quote || null;
+    if (!clientQuote || !Array.isArray(clientQuote.lines)) {
+      return res.status(400).json({ error: "invalid_client_quote" });
+    }
+
+    const replace = body.replace !== false; // default true
+    const currency = normalizeCurrency(clientQuote.currency || quote.currency || "GBP");
+    const markupPercent = typeof clientQuote.markup_percent === "number" ? clientQuote.markup_percent : null;
+    const vatPercent = typeof clientQuote.vat_percent === "number" ? clientQuote.vat_percent : null;
+
+    // Replace existing lines if requested
+    if (replace && quote.lines.length > 0) {
+      await prisma.quoteLine.deleteMany({ where: { quoteId: quote.id } });
+    }
+
+    let created = 0;
+    for (const ln of clientQuote.lines as Array<any>) {
+      const description = String(ln.description || "Item");
+      const qtyRaw = Number(ln.qty ?? 1);
+      const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+      const supplierUnit = Number(ln.unit_price ?? (ln.total != null ? Number(ln.total) / qty : 0));
+      const sellUnit = Number(ln.unit_price_marked_up ?? 0);
+      const sellTotal = Number(ln.total_marked_up ?? sellUnit * qty);
+
+      await prisma.quoteLine.create({
+        data: {
+          quoteId: quote.id,
+          supplier: null as any,
+          sku: undefined,
+          description,
+          qty,
+          unitPrice: new Prisma.Decimal(Number.isFinite(supplierUnit) ? supplierUnit : 0),
+          currency,
+          deliveryShareGBP: new Prisma.Decimal(0),
+          lineTotalGBP: new Prisma.Decimal(Number.isFinite(sellTotal) ? sellTotal : 0),
+          meta: {
+            pricingMethod: "markup",
+            markupPercent,
+            vatPercent,
+            sellUnitGBP: Number.isFinite(sellUnit) ? sellUnit : 0,
+            sellTotalGBP: Number.isFinite(sellTotal) ? sellTotal : 0,
+          } as any,
+        },
+      });
+      created += 1;
+    }
+
+    const subtotal = Number(clientQuote.subtotal ?? 0);
+    const vatAmount = Number(clientQuote.vat_amount ?? 0);
+    const grandTotal = Number(clientQuote.grand_total ?? subtotal + vatAmount);
+
+    // Update quote totals and currency
+    const meta0: any = (quote.meta as any) || {};
+    const meta = {
+      ...(meta0 || {}),
+      lastProcessed: {
+        finishedAt: new Date().toISOString(),
+        subtotal,
+        vatAmount,
+        grandTotal,
+        currency,
+        lineCount: created,
+      },
+    } as any;
+
+    await prisma.quote.update({
+      where: { id: quote.id },
+      data: {
+        currency,
+        totalGBP: new Prisma.Decimal(Number.isFinite(grandTotal) ? grandTotal : 0),
+        meta,
+      },
+    });
+
+    return res.json({ ok: true, created, totalGBP: grandTotal, currency });
+  } catch (e: any) {
+    console.error("[/quotes/:id/lines/save-processed] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
 const upload = multer({ storage });
 
 /** GET /quotes */

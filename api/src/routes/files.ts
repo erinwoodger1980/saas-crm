@@ -46,6 +46,36 @@ router.get("/", async (req: any, res) => {
   }
 });
 
+/**
+ * POST /files/sign
+ * Returns a signed relative URL for a file that the ML service (via API) can access.
+ * Body: { fileId: string, quoteId?: string }
+ */
+router.post("/sign", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const fileId = String(req.body?.fileId || "").trim();
+    const quoteId = req.body?.quoteId ? String(req.body.quoteId) : undefined;
+    if (!fileId) return res.status(400).json({ error: "missing_fileId" });
+
+    const file = await prisma.uploadedFile.findFirst({ where: { id: fileId, tenantId }, select: { id: true } });
+    if (!file) return res.status(404).json({ error: "not_found" });
+
+    const payload: Record<string, string> = { t: tenantId };
+    if (quoteId) payload.q = quoteId;
+    const token = jwt.sign(payload, env.APP_JWT_SECRET, { expiresIn: "30m" });
+
+    // Return a relative path – the frontend can prefix with API base
+    const signedPath = `/files/${encodeURIComponent(fileId)}?jwt=${encodeURIComponent(token)}`;
+    return res.json({ ok: true, url: signedPath });
+  } catch (e: any) {
+    console.error("[/files/sign] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
 async function resolveFileRequest(req: any, res: any) {
   const id = String(req.params.id);
   const token = String((req.query?.jwt as string) || "");
