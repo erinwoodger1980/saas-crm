@@ -18,14 +18,14 @@
     "seed-template": "node scripts/create-seed-template.mjs",
     "seed:followups": "ts-node --transpile-only src/scripts/seed-followup-templates.ts",
     "followups:analyse": "ts-node --transpile-only src/scripts/followups-analyse.ts",
-    "postinstall": "node scripts/prisma-postinstall.mjs && npx puppeteer browsers install chrome",
+    "postinstall": "node scripts/prisma-postinstall.mjs",
     "test:supplier": "ts-node-dev --transpile-only scripts/test-supplier-parse.ts",
     "audit:prod": "ts-node --transpile-only scripts/prod_ml_audit.ts",
     "ttl:ml": "ts-node --transpile-only scripts/ttl-ml-telemetry.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",
-    "@sparticuz/chromium": "^133.0.0",
+    "@sparticuz/chromium": "^123.0.1",
     "axios": "^1.12.2",
     "bcrypt": "^6.0.0",
     "cheerio": "^1.1.2",
@@ -38,7 +38,8 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
-    "puppeteer": "^23.7.1",
+    "pdfjs-dist": "4.6.82",
+    "puppeteer-core": "^23.7.1",
     "openai": "^4.104.0",
     "stripe": "^19.1.0",
     "zod": "^3.25.76"
