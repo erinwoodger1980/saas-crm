@@ -2130,80 +2130,8 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
     }
 
     if (method === "ml") {
-      // Allow frontend to force questionnaire-driven estimation
-      const sourceRaw = typeof req.body?.source === "string" ? String(req.body.source).toLowerCase() : "";
-      const preferQuestionnaire = sourceRaw === "questionnaire";
-      // Prefer per-line pricing via ML when we have supplier costs; fall back to total-scaling from questionnaire
-      const hasCostLines = quote.lines.some((ln) => Number(ln.unitPrice) > 0);
-      if (hasCostLines && !preferQuestionnaire) {
-        try {
-          const API_BASE = (
-            process.env.APP_API_URL || process.env.API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`
-          ).replace(/\/$/, "");
-          const markupPercent = (() => {
-            const m = Number(req.body?.margin ?? quote.markupDefault ?? 0.25);
-            if (!Number.isFinite(m)) return 25;
-            return m <= 1.5 ? Math.max(0, m * 100) : m; // accept 0.25 or 25
-          })();
-          const payload = {
-            lines: quote.lines.map((ln) => ({
-              description: ln.description,
-              qty: Number(ln.qty || 1),
-              unit_price: Number(ln.unitPrice || 0),
-              total: Number(ln.unitPrice || 0) * Number(ln.qty || 1),
-            })),
-            currency: quote.currency || "GBP",
-            markupPercent,
-            vatPercent: 20,
-            markupDelivery: false,
-            amalgamateDelivery: true,
-          };
-          const startedAt = Date.now();
-          const resp = await fetch(`${API_BASE}/ml/predict-lines`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          const text = await resp.text();
-          const tookMs = Date.now() - startedAt;
-          let out: any = {};
-          try { out = text ? JSON.parse(text) : {}; } catch { out = { raw: text }; }
-          if (resp.ok && out?.client_quote?.lines) {
-            const clientQuote = out.client_quote;
-            // Update per-line sell pricing by index
-            let totalGBP = 0;
-            for (let i = 0; i < quote.lines.length; i++) {
-              const ln = quote.lines[i];
-              const priced = clientQuote.lines[i];
-              if (!priced) continue;
-              const sellUnit = Number(priced.unit_price_marked_up ?? 0);
-              const sellTotal = Number(priced.total_marked_up ?? sellUnit * Number(ln.qty || 1));
-              totalGBP += sellTotal;
-              await prisma.quoteLine.update({
-                where: { id: ln.id },
-                data: {
-                  meta: {
-                    set: {
-                      ...(ln.meta as any || {}),
-                      sellUnitGBP: sellUnit,
-                      sellTotalGBP: sellTotal,
-                      pricingMethod: "ml_lines",
-                      markupPercent,
-                      mlLatencyMs: tookMs,
-                    },
-                  } as any,
-                },
-              });
-            }
-            await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(Number(clientQuote.grand_total ?? totalGBP) || 0) } });
-            return res.json({ ok: true, method, totalGBP: Number(clientQuote.grand_total ?? totalGBP) || 0, used: "predict-lines" });
-          }
-          // If ML failed, fall through to total-scaling path
-          console.warn(`[quotes] /ml/predict-lines failed status=${resp.status} detail=${text?.slice?.(0,200)}`);
-        } catch (err: any) {
-          console.warn(`[quotes] per-line ML pricing failed:`, err?.message || err);
-        }
-      }
+      // Force questionnaire-driven estimation only
+      const preferQuestionnaire = true;
 
       // Call ML to get an estimated total based on questionnaire answers; then scale per-line proportions by cost
       const API_BASE = (
@@ -2281,59 +2209,31 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           confidenceRaw != null && Number.isFinite(Number(confidenceRaw)) ? Number(confidenceRaw) : null;
         const currency = normalizeCurrency(cachedEstimate.currency || quote.currency || "GBP");
 
-        const costSum = quote.lines.reduce((s, ln) => s + Number(ln.unitPrice) * Number(ln.qty), 0);
+        // Always distribute predicted total by quantity when using questionnaire-only mode
         let totalGBP = 0;
-        if (predictedTotal > 0 && costSum === 0 && quote.lines.length > 0) {
-          // Distribute predictedTotal across lines by quantity when we have no supplier costs
-          const qtySum = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
-          for (const ln of quote.lines) {
-            const qty = Math.max(1, Number(ln.qty || 1));
-            const sellTotal = (predictedTotal * qty) / qtySum;
-            const sellUnit = sellTotal / qty;
-            totalGBP += sellTotal;
-            await prisma.quoteLine.update({
-              where: { id: ln.id },
-              data: {
-                meta: {
-                  set: {
-                    ...(ln.meta as any || {}),
-                    sellUnitGBP: sellUnit,
-                    sellTotalGBP: sellTotal,
-                    pricingMethod: "ml_distribute",
-                    predictedTotal,
-                    estimateModelVersionId: productionModelId,
-                  },
-                } as any,
-              },
-            });
-          }
-          await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
-        } else {
-          const scale = costSum > 0 && predictedTotal > 0 ? predictedTotal / costSum : 1;
-          for (const ln of quote.lines) {
-            const costUnit = Number(ln.unitPrice);
-            const sellUnit = costUnit * scale;
-            const sellTotal = sellUnit * Number(ln.qty);
-            totalGBP += sellTotal;
-            await prisma.quoteLine.update({
-              where: { id: ln.id },
-              data: {
-                meta: {
-                  set: {
-                    ...(ln.meta as any || {}),
-                    sellUnitGBP: sellUnit,
-                    sellTotalGBP: sellTotal,
-                    pricingMethod: "ml",
-                    scale,
-                    predictedTotal,
-                    estimateModelVersionId: productionModelId,
-                  },
-                } as any,
-              },
-            });
-          }
-          await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+        const qtySum = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
+        for (const ln of quote.lines) {
+          const qty = Math.max(1, Number(ln.qty || 1));
+          const sellTotal = predictedTotal > 0 ? (predictedTotal * qty) / Math.max(1, qtySum) : 0;
+          const sellUnit = qty > 0 ? sellTotal / qty : 0;
+          totalGBP += sellTotal;
+          await prisma.quoteLine.update({
+            where: { id: ln.id },
+            data: {
+              meta: {
+                set: {
+                  ...(ln.meta as any || {}),
+                  sellUnitGBP: sellUnit,
+                  sellTotalGBP: sellTotal,
+                  pricingMethod: "ml_distribute",
+                  predictedTotal,
+                  estimateModelVersionId: productionModelId,
+                },
+              } as any,
+            },
+          });
         }
+        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
 
         const sanitizedEstimate: any = {
           predictedTotal,
@@ -2409,59 +2309,31 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         console.warn(`[quotes] failed to persist Estimate for quote ${quote.id}:`, e?.message || e);
       }
 
-      const costSum = quote.lines.reduce((s, ln) => s + Number(ln.unitPrice) * Number(ln.qty), 0);
+      // Always distribute by quantity in questionnaire-only mode
       let totalGBP = 0;
-      if (predictedTotal > 0 && costSum === 0 && quote.lines.length > 0) {
-        // Distribute predicted total by quantity when no costs are available
-        const qtySum = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
-        for (const ln of quote.lines) {
-          const qty = Math.max(1, Number(ln.qty || 1));
-          const sellTotal = (predictedTotal * qty) / qtySum;
-          const sellUnit = sellTotal / qty;
-          totalGBP += sellTotal;
-          await prisma.quoteLine.update({
-            where: { id: ln.id },
-            data: {
-              meta: {
-                set: {
-                  ...(ln.meta as any || {}),
-                  sellUnitGBP: sellUnit,
-                  sellTotalGBP: sellTotal,
-                  pricingMethod: "ml_distribute",
-                  predictedTotal,
-                  estimateModelVersionId: modelVersionId,
-                },
-              } as any,
-            },
-          });
-        }
-        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
-      } else {
-        const scale = costSum > 0 && predictedTotal > 0 ? predictedTotal / costSum : 1;
-        for (const ln of quote.lines) {
-          const costUnit = Number(ln.unitPrice);
-          const sellUnit = costUnit * scale;
-          const sellTotal = sellUnit * Number(ln.qty);
-          totalGBP += sellTotal;
-          await prisma.quoteLine.update({
-            where: { id: ln.id },
-            data: {
-              meta: {
-                set: {
-                  ...(ln.meta as any || {}),
-                  sellUnitGBP: sellUnit,
-                  sellTotalGBP: sellTotal,
-                  pricingMethod: "ml",
-                  scale,
-                  predictedTotal,
-                  estimateModelVersionId: modelVersionId,
-                },
-              } as any,
-            },
-          });
-        }
-        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+      const qtySum2 = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
+      for (const ln of quote.lines) {
+        const qty = Math.max(1, Number(ln.qty || 1));
+        const sellTotal = predictedTotal > 0 ? (predictedTotal * qty) / Math.max(1, qtySum2) : 0;
+        const sellUnit = qty > 0 ? sellTotal / qty : 0;
+        totalGBP += sellTotal;
+        await prisma.quoteLine.update({
+          where: { id: ln.id },
+          data: {
+            meta: {
+              set: {
+                ...(ln.meta as any || {}),
+                sellUnitGBP: sellUnit,
+                sellTotalGBP: sellTotal,
+                pricingMethod: "ml_distribute",
+                predictedTotal,
+                estimateModelVersionId: modelVersionId,
+              },
+            } as any,
+          },
+        });
       }
+      await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
 
       const sanitizedEstimate = {
         predictedTotal,
