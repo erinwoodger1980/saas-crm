@@ -28,6 +28,7 @@ export type Lead = {
   email?: string | null;
   phone?: string | null;
   quoteId?: string | null;
+  quoteStatus?: string | null;
   status:
     | "NEW_ENQUIRY"
     | "INFO_REQUESTED"
@@ -39,6 +40,10 @@ export type Lead = {
     | "LOST";
   custom?: any;
   description?: string | null;
+  estimatedValue?: number | null;
+  quotedValue?: number | null;
+  dateQuoteSent?: string | null;
+  computed?: Record<string, any> | null;
   communicationLog?: Array<{
     id: string;
     type: 'call' | 'email' | 'note';
@@ -452,6 +457,14 @@ export default function LeadModal({
           description: hasPreviewDescription
             ? previewDescription || null
             : prev.description ?? null,
+          quoteId: leadPreview.quoteId ?? prev.quoteId ?? null,
+          quoteStatus: (leadPreview as any)?.quoteStatus ?? prev.quoteStatus ?? null,
+          estimatedValue:
+            leadPreview.estimatedValue != null ? Number(leadPreview.estimatedValue) : prev.estimatedValue ?? null,
+          quotedValue:
+            leadPreview.quotedValue != null ? Number(leadPreview.quotedValue) : prev.quotedValue ?? null,
+          dateQuoteSent: leadPreview.dateQuoteSent ?? prev.dateQuoteSent ?? null,
+          computed: leadPreview.computed ?? prev.computed ?? null,
           communicationLog: (leadPreview.custom?.communicationLog || prev.communicationLog || []) as Lead['communicationLog'],
         };
         return next;
@@ -464,6 +477,12 @@ export default function LeadModal({
         status: leadPreview.status ?? "NEW_ENQUIRY",
         custom: leadPreview.custom ?? null,
         description: hasPreviewDescription ? previewDescription || null : null,
+        quoteId: leadPreview.quoteId ?? null,
+        quoteStatus: (leadPreview as any)?.quoteStatus ?? null,
+        estimatedValue: leadPreview.estimatedValue != null ? Number(leadPreview.estimatedValue) : null,
+        quotedValue: leadPreview.quotedValue != null ? Number(leadPreview.quotedValue) : null,
+        dateQuoteSent: leadPreview.dateQuoteSent ?? null,
+        computed: leadPreview.computed ?? null,
         communicationLog: (leadPreview.custom?.communicationLog || []) as Lead['communicationLog'],
       };
 
@@ -514,6 +533,12 @@ export default function LeadModal({
             get(leadPreview, "custom.bodyText")
           ) ?? null;
 
+        const toMaybeNumber = (val: any): number | null => {
+          if (val === undefined || val === null || val === "") return null;
+          const num = Number(val);
+          return Number.isNaN(num) ? null : num;
+        };
+
         const normalized: Lead = {
           id: row.id || leadPreview.id,
           contactName,
@@ -523,6 +548,11 @@ export default function LeadModal({
           custom: row.custom ?? row.briefJson ?? null,
           description,
           quoteId: (row as any)?.quoteId ?? null,
+          quoteStatus: (row as any)?.quoteStatus ?? null,
+          estimatedValue: toMaybeNumber(row.estimatedValue),
+          quotedValue: toMaybeNumber(row.quotedValue),
+          dateQuoteSent: row.dateQuoteSent ?? null,
+          computed: row.computed ?? null,
           communicationLog: (row.custom?.communicationLog || []) as Lead['communicationLog'],
         };
         setLead(normalized);
@@ -579,6 +609,79 @@ export default function LeadModal({
     } catch (err) {
       console.error("onUpdated handler failed", err);
     }
+  }
+
+  function applyServerLead(row: any) {
+    if (!row || typeof row !== "object") return;
+    if (typeof row.status === "string") {
+      lastSavedServerStatusRef.current = row.status;
+    }
+    setLead((current) => {
+      const toMaybeNumber = (val: any): number | null => {
+        if (val === undefined || val === null || val === "") return null;
+        const num = Number(val);
+        return Number.isNaN(num) ? null : num;
+      };
+      const base: Lead = current
+        ? { ...current }
+        : {
+            id: row.id ?? "",
+            contactName: row.contactName ?? null,
+            email: row.email ?? null,
+            phone: (row as any)?.phone ?? null,
+            quoteId: (row as any)?.quoteId ?? null,
+            quoteStatus: (row as any)?.quoteStatus ?? null,
+            status: row.status ? serverToUiStatus(row.status) : "NEW_ENQUIRY",
+            custom: row.custom ?? null,
+            description: row.description ?? null,
+            estimatedValue: row.estimatedValue ?? null,
+            quotedValue: row.quotedValue ?? null,
+            dateQuoteSent: row.dateQuoteSent ?? null,
+            computed: row.computed ?? null,
+            communicationLog: (row.custom?.communicationLog || []) as Lead["communicationLog"],
+          };
+
+      const next: Lead = {
+        ...base,
+        contactName: row.contactName ?? base.contactName ?? null,
+        email: row.email ?? base.email ?? null,
+        phone: (row as any)?.phone ?? base.phone ?? null,
+        quoteId: (row as any)?.quoteId ?? base.quoteId ?? null,
+        quoteStatus: (row as any)?.quoteStatus ?? base.quoteStatus ?? null,
+        status: row.status ? serverToUiStatus(row.status) : base.status,
+        custom: row.custom ?? base.custom ?? null,
+        description: row.description ?? base.description ?? null,
+        estimatedValue:
+          toMaybeNumber(row.estimatedValue) ??
+          toMaybeNumber(row.computed?.estimatedValue) ??
+          (base.estimatedValue ?? null),
+        quotedValue:
+          toMaybeNumber(row.quotedValue) ??
+          toMaybeNumber(row.computed?.quotedValue) ??
+          (base.quotedValue ?? null),
+        dateQuoteSent: (() => {
+          const coerce = (val: any): string | null => {
+            if (val === undefined || val === null || val === "") return null;
+            if (val instanceof Date) return val.toISOString();
+            if (typeof val === "string") return val;
+            return String(val);
+          };
+          return coerce(row.dateQuoteSent) ?? coerce(row.computed?.dateQuoteSent) ?? base.dateQuoteSent ?? null;
+        })(),
+        computed:
+          row.computed && typeof row.computed === "object"
+            ? (row.computed as Record<string, any>)
+            : base.computed ?? null,
+      };
+
+      if (next.custom && typeof next.custom === "object" && Array.isArray(next.custom.communicationLog)) {
+        next.communicationLog = next.custom.communicationLog as Lead["communicationLog"];
+      } else if (base.communicationLog) {
+        next.communicationLog = base.communicationLog;
+      }
+
+      return next;
+    });
   }
 
   async function saveStatus(nextUi: Lead["status"]): Promise<boolean> {
@@ -639,44 +742,62 @@ export default function LeadModal({
   async function savePatch(patch: any) {
     if (!lead?.id) return;
     try {
-      await apiFetch(`/leads/${lead.id}`, {
+      const response = await apiFetch<{ lead?: any }>(`/leads/${lead.id}`, {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         json: patch,
       });
-      setLead((current) => {
-        if (!current) return current;
-        const next: Lead = { ...current };
-        if (Object.prototype.hasOwnProperty.call(patch, "contactName")) {
-          next.contactName = patch.contactName ?? null;
-        }
-        if (Object.prototype.hasOwnProperty.call(patch, "email")) {
-          next.email = patch.email ?? null;
-        }
-        if (Object.prototype.hasOwnProperty.call(patch, "phone")) {
-          next.phone = patch.phone ?? null;
-        }
-        if (Object.prototype.hasOwnProperty.call(patch, "description")) {
-          next.description = patch.description ?? null;
-        }
-        if (Object.prototype.hasOwnProperty.call(patch, "custom")) {
-          const customPatch = patch.custom;
-          if (customPatch && typeof customPatch === "object" && !Array.isArray(customPatch)) {
-            const prev =
-              current.custom && typeof current.custom === "object"
-                ? { ...(current.custom as Record<string, any>) }
-                : {};
-            const merged = { ...prev };
-            Object.entries(customPatch).forEach(([k, v]) => {
-              merged[k] = v ?? null;
-            });
-            next.custom = merged;
-          } else {
-            next.custom = customPatch ?? null;
+      const updatedRow = (response && typeof response === "object" ? response.lead ?? response : null) as any;
+      if (updatedRow) {
+        applyServerLead(updatedRow);
+      } else {
+        setLead((current) => {
+          if (!current) return current;
+          const next: Lead = { ...current };
+          if (Object.prototype.hasOwnProperty.call(patch, "contactName")) {
+            next.contactName = patch.contactName ?? null;
           }
-        }
-        return next;
-      });
+          if (Object.prototype.hasOwnProperty.call(patch, "email")) {
+            next.email = patch.email ?? null;
+          }
+          if (Object.prototype.hasOwnProperty.call(patch, "phone")) {
+            next.phone = patch.phone ?? null;
+          }
+          if (Object.prototype.hasOwnProperty.call(patch, "description")) {
+            next.description = patch.description ?? null;
+          }
+          if (Object.prototype.hasOwnProperty.call(patch, "custom")) {
+            const customPatch = patch.custom;
+            if (customPatch && typeof customPatch === "object" && !Array.isArray(customPatch)) {
+              const prev =
+                current.custom && typeof current.custom === "object"
+                  ? { ...(current.custom as Record<string, any>) }
+                  : {};
+              const merged = { ...prev };
+              Object.entries(customPatch).forEach(([k, v]) => {
+                merged[k] = v ?? null;
+              });
+              next.custom = merged;
+            } else {
+              next.custom = customPatch ?? null;
+            }
+          }
+          if (Object.prototype.hasOwnProperty.call(patch, "questionnaire")) {
+            const questionnairePatch = patch.questionnaire;
+            if (questionnairePatch && typeof questionnairePatch === "object" && !Array.isArray(questionnairePatch)) {
+              const prev =
+                next.custom && typeof next.custom === "object"
+                  ? { ...(next.custom as Record<string, any>) }
+                  : {};
+              Object.entries(questionnairePatch).forEach(([k, v]) => {
+                prev[k] = v ?? null;
+              });
+              next.custom = prev;
+            }
+          }
+          return next;
+        });
+      }
       await triggerOnUpdated();
     } catch (e: any) {
       console.error("patch failed", e?.message || e);
@@ -721,7 +842,8 @@ export default function LeadModal({
     let value: any = rawValue;
     if (field.type === "number") {
       const trimmed = rawValue.trim();
-      value = trimmed === "" ? null : Number(trimmed);
+      const cleaned = trimmed.replace(/£/g, "").replace(/,/g, "");
+      value = cleaned === "" ? null : Number(cleaned);
       if (value != null && Number.isNaN(value)) {
         value = null;
       }
@@ -748,7 +870,14 @@ export default function LeadModal({
     const nextNormalized = normalizeForCompare(value);
     if (currentNormalized === nextNormalized) return;
 
-    await savePatch({ custom: { [field.key]: value } });
+    const payload: any = {
+      questionnaire: { [field.key]: value },
+    };
+    if (["estimatedValue", "quotedValue", "dateQuoteSent"].includes(field.key)) {
+      payload[field.key] = value;
+    }
+
+    await savePatch(payload);
   }
 
   async function reloadTasks() {
@@ -1575,7 +1704,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     () => normalizeQuestionnaireFields(settings?.questionnaire ?? null),
     [settings?.questionnaire]
   );
-  const workspaceFields = useMemo(
+  const baseWorkspaceFields = useMemo(
     () =>
       questionnaireFields.filter((field) => {
         if (!field.showOnLead) return false;
@@ -1586,10 +1715,57 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       }),
     [questionnaireFields, uiStatus]
   );
-  const customData = useMemo(
-    () => (lead?.custom && typeof lead.custom === "object" ? (lead.custom as Record<string, any>) : {}),
-    [lead?.custom]
-  );
+  const workspaceFields = useMemo(() => {
+    const existingKeys = new Set(baseWorkspaceFields.map((field) => field.key));
+    const extras: NormalizedQuestionnaireField[] = [];
+    if (!existingKeys.has("estimatedValue")) {
+      extras.push({
+        id: "__estimatedValue",
+        key: "estimatedValue",
+        label: "Estimated Value",
+        required: false,
+        type: "number",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        sortOrder: Number.MAX_SAFE_INTEGER - 2,
+      });
+    }
+    if (!existingKeys.has("quotedValue")) {
+      extras.push({
+        id: "__quotedValue",
+        key: "quotedValue",
+        label: "Quoted Value",
+        required: false,
+        type: "number",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        sortOrder: Number.MAX_SAFE_INTEGER - 1,
+      });
+    }
+    if (!existingKeys.has("dateQuoteSent")) {
+      extras.push({
+        id: "__dateQuoteSent",
+        key: "dateQuoteSent",
+        label: "Date Quote Sent",
+        required: false,
+        type: "date",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        sortOrder: Number.MAX_SAFE_INTEGER,
+      });
+    }
+    return [...baseWorkspaceFields, ...extras];
+  }, [baseWorkspaceFields]);
+  const customData = useMemo(() => {
+    const computed = lead?.computed && typeof lead.computed === "object" ? (lead.computed as Record<string, any>) : {};
+    if (lead?.custom && typeof lead.custom === "object") {
+      return { ...(lead.custom as Record<string, any>), ...computed };
+    }
+    return { ...computed };
+  }, [lead?.custom, lead?.computed]);
   useEffect(() => {
     if (!lead?.id) {
       setCustomDraft({});
@@ -1633,6 +1809,34 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       seen.add(key);
       if (!field.askInQuestionnaire) return;
       responses.push({ field, value: formatAnswer(customData?.[key]) });
+    });
+
+    const canonicalQuestionnaireFields: Array<{
+      key: string;
+      label: string;
+      type: NormalizedQuestionnaireField["type"];
+    }> = [
+      { key: "estimatedValue", label: "Estimated Value", type: "number" },
+      { key: "quotedValue", label: "Quoted Value", type: "number" },
+      { key: "dateQuoteSent", label: "Date Quote Sent", type: "date" },
+    ];
+
+    canonicalQuestionnaireFields.forEach((meta) => {
+      if (seen.has(meta.key)) return;
+      responses.push({
+        field: {
+          id: `__canonical_${meta.key}`,
+          key: meta.key,
+          label: meta.label,
+          required: false,
+          type: meta.type,
+          options: [],
+          askInQuestionnaire: true,
+          showOnLead: true,
+          sortOrder: Number.MAX_SAFE_INTEGER,
+        },
+        value: formatAnswer(customData?.[meta.key]),
+      });
     });
 
     const IGNORED_CUSTOM_KEYS = new Set([
@@ -1695,12 +1899,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
   // Inline edit state for questionnaire responses
   const [qEdit, setQEdit] = useState<Record<string, boolean>>({});
-  const [qDraft, setQDraft] = useState<Record<string, string>>({});
-  function toggleQEdit(key: string, on: boolean, initial?: string) {
+  function toggleQEdit(key: string, on: boolean) {
     setQEdit((prev) => ({ ...prev, [key]: on }));
-    if (on && initial !== undefined) {
-      setQDraft((prev) => ({ ...prev, [key]: initial }));
-    }
   }
   const questionnaireUploads = useMemo<
     Array<{ filename: string; mimeType: string; base64: string; sizeKB: number | null; addedAt: string | null }>
@@ -2814,7 +3014,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       {questionnaireResponses.map(({ field, value }, idx) => {
                         const k = field.key || field.id || String(idx);
                         const isEditing = !!qEdit[k];
-                        const draftVal = qDraft[k] ?? (value ?? "");
+                        const draftVal = customDraft[k] ?? (value ?? "");
                         const inputClasses = "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200";
                         return (
                           <div key={k} className="rounded-xl border border-slate-200/70 bg-white/70 p-3">
@@ -2828,10 +3028,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 className="text-xs font-semibold text-sky-600 hover:underline"
                                 onClick={() => {
                                   if (isEditing) {
-                                    // cancel
                                     toggleQEdit(k, false);
                                   } else {
-                                    toggleQEdit(k, true, value ?? "");
+                                    if (value !== undefined) {
+                                      setCustomDraft((prev) => ({ ...prev, [k]: value ?? "" }));
+                                    }
+                                    toggleQEdit(k, true);
                                   }
                                 }}
                               >
@@ -2844,7 +3046,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                   <textarea
                                     className={`${inputClasses} min-h-[100px]`}
                                     value={draftVal}
-                                    onChange={(e) => setQDraft((prev) => ({ ...prev, [k]: e.target.value }))}
+                                    onChange={(e) => setCustomDraft((prev) => ({ ...prev, [k]: e.target.value }))}
                                     onBlur={async (e) => {
                                       await saveCustomField(field as any, e.target.value);
                                       toggleQEdit(k, false);
@@ -2855,7 +3057,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     className={inputClasses}
                                     type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
                                     value={draftVal}
-                                    onChange={(e) => setQDraft((prev) => ({ ...prev, [k]: e.target.value }))}
+                                    onChange={(e) => setCustomDraft((prev) => ({ ...prev, [k]: e.target.value }))}
                                     onBlur={async (e) => {
                                       await saveCustomField(field as any, e.target.value);
                                       toggleQEdit(k, false);
