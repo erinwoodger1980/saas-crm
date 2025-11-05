@@ -28,6 +28,11 @@ const API_BASE =
     process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "") ||
     "https://api.joineryai.app");
 
+const SAMPLE_LOOKBACK_DAYS = Math.max(
+  1,
+  Number(process.env.ML_TRAIN_SAMPLE_LOOKBACK_DAYS || process.env.ML_TRAIN_LOOKBACK_DAYS || 14),
+);
+
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -494,7 +499,7 @@ router.post("/collect-train-save", async (req: any, res) => {
           }))
       : [];
 
-    const lookback = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+    const lookback = new Date(Date.now() - SAMPLE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
     const clientQuoteSamples: TrainingItem[] = [];
     const fileIdMap = new Map<string, { quoteId: string; createdAt: Date }>();
 
@@ -563,8 +568,9 @@ router.post("/collect-train-save", async (req: any, res) => {
     const standaloneSupplierFiles = await prisma.uploadedFile.findMany({
       where: {
         tenantId,
-        kind: "SUPPLIER_QUOTE",
         uploadedAt: { gte: lookback },
+        quoteId: { not: null },
+        mimeType: { contains: "pdf", mode: "insensitive" },
       },
       select: { id: true, name: true, uploadedAt: true, mimeType: true, quoteId: true },
     });
