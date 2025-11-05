@@ -952,93 +952,375 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
 
     const styles = `
       <style>
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #0f172a; padding: 28px; }
-        h1 { font-size: 22px; margin: 0 0 4px; }
-        .muted { color: #64748b; }
-        .meta { color: #475569; font-size: 12px; }
-        .grid { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
-        .brand { display:flex; align-items:center; gap:12px; }
-        .brand img { max-height: 40px; }
-        .ref { font-size: 12px; color:#334155; }
-        .section { margin-top: 16px; }
-        .section h2 { font-size: 14px; margin: 0 0 6px; color:#0f172a; }
-        .list { margin: 0; padding-left: 18px; font-size:12px; color:#334155; }
-        .box { border:1px solid #e2e8f0; border-radius:6px; padding:10px; background:#f8fafc; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
-        th, td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; vertical-align: top; }
-        th { background: #f8fafc; font-weight: 600; }
-        tfoot td { border-top: 2px solid #0ea5e9; font-weight: 700; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+          color: #1e293b; 
+          line-height: 1.6;
+          padding: 0;
+        }
+        .page { padding: 32px 40px; max-width: 210mm; }
+        
+        /* Header Section */
+        .header { 
+          border-bottom: 3px solid #0ea5e9; 
+          padding-bottom: 20px; 
+          margin-bottom: 24px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+        }
+        .header-left { flex: 1; }
+        .header-right { text-align: right; font-size: 11px; color: #64748b; line-height: 1.8; }
+        .brand { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+        .brand img { max-height: 50px; }
+        .brand-name { font-size: 24px; font-weight: 700; color: #0f172a; }
+        .tagline { font-size: 12px; color: #64748b; font-style: italic; margin-bottom: 16px; }
+        h1 { 
+          font-size: 26px; 
+          font-weight: 700; 
+          color: #0f172a; 
+          margin: 0 0 4px; 
+          letter-spacing: -0.5px;
+        }
+        .project-title { font-size: 16px; color: #0ea5e9; font-weight: 600; }
+        .client-name { font-size: 14px; color: #475569; margin-top: 4px; }
+        
+        /* Project Overview Grid */
+        .overview-grid { 
+          display: grid; 
+          grid-template-columns: 1fr 1fr 1fr; 
+          gap: 20px; 
+          margin: 24px 0;
+          padding: 20px;
+          background: #f8fafc;
+          border-radius: 8px;
+          border: 1px solid #e2e8f0;
+        }
+        .overview-section h3 { 
+          font-size: 12px; 
+          font-weight: 700; 
+          text-transform: uppercase; 
+          color: #0ea5e9; 
+          margin-bottom: 12px;
+          letter-spacing: 0.5px;
+        }
+        .overview-section .detail-line { 
+          font-size: 11px; 
+          color: #475569; 
+          margin-bottom: 6px;
+          line-height: 1.5;
+        }
+        .overview-section .detail-line strong { 
+          color: #0f172a; 
+          font-weight: 600;
+        }
+        .project-scope { 
+          font-size: 11px; 
+          color: #475569; 
+          line-height: 1.6;
+        }
+        
+        /* Detailed Quotation Section */
+        .quotation-intro { 
+          font-size: 13px; 
+          color: #475569; 
+          margin: 28px 0 16px;
+          line-height: 1.7;
+        }
+        .section-title {
+          font-size: 18px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 28px 0 12px;
+          padding-bottom: 8px;
+          border-bottom: 2px solid #e2e8f0;
+        }
+        
+        /* Table Styles */
+        table { 
+          width: 100%; 
+          border-collapse: collapse; 
+          margin: 16px 0; 
+          font-size: 11px;
+          background: white;
+        }
+        thead th { 
+          background: #f1f5f9; 
+          color: #475569;
+          font-weight: 600; 
+          text-transform: uppercase;
+          font-size: 10px;
+          letter-spacing: 0.5px;
+          padding: 12px 14px;
+          border-bottom: 2px solid #cbd5e1;
+          text-align: left;
+        }
+        tbody td { 
+          padding: 12px 14px; 
+          border-bottom: 1px solid #e2e8f0; 
+          vertical-align: top;
+          color: #334155;
+        }
+        tbody tr:hover { background: #fafafa; }
         .right { text-align: right; }
-        .totals { margin-top: 8px; width: 50%; margin-left:auto; }
-        .totals .row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #e2e8f0; }
-        .totals .row.total { border-bottom: none; font-weight:700; }
-        footer { margin-top: 18px; font-size: 11px; color:#475569; }
+        .amount-cell { font-weight: 600; color: #0f172a; }
+        
+        /* Totals Section */
+        .totals-wrapper { 
+          display: flex; 
+          justify-content: flex-end; 
+          margin: 20px 0;
+        }
+        .totals { 
+          min-width: 300px;
+          border: 2px solid #e2e8f0;
+          border-radius: 8px;
+          overflow: hidden;
+        }
+        .totals .row { 
+          display: flex; 
+          justify-content: space-between; 
+          padding: 12px 16px; 
+          border-bottom: 1px solid #e2e8f0;
+          font-size: 12px;
+        }
+        .totals .row:last-child { border-bottom: none; }
+        .totals .row.subtotal { background: #f8fafc; }
+        .totals .row.total { 
+          background: #0ea5e9; 
+          color: white; 
+          font-weight: 700;
+          font-size: 14px;
+        }
+        .totals .label { color: #64748b; }
+        .totals .value { font-weight: 600; color: #0f172a; }
+        .totals .row.total .label,
+        .totals .row.total .value { color: white; }
+        
+        /* Guarantee/Benefits Section */
+        .guarantee-section {
+          margin: 32px 0;
+          padding: 24px;
+          background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+          border-radius: 8px;
+          border: 1px solid #bae6fd;
+        }
+        .guarantee-section h2 {
+          font-size: 18px;
+          font-weight: 700;
+          color: #0c4a6e;
+          margin-bottom: 16px;
+          text-align: center;
+        }
+        .guarantee-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 20px;
+        }
+        .guarantee-item {
+          text-align: center;
+          padding: 16px;
+        }
+        .guarantee-item h4 {
+          font-size: 13px;
+          font-weight: 700;
+          color: #0369a1;
+          margin-bottom: 8px;
+        }
+        .guarantee-item p {
+          font-size: 11px;
+          color: #475569;
+          line-height: 1.6;
+        }
+        
+        /* Terms & Footer */
+        .terms-section {
+          margin-top: 28px;
+          padding: 16px;
+          background: #f8fafc;
+          border-left: 4px solid #0ea5e9;
+          border-radius: 4px;
+        }
+        .terms-section h3 {
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: #0f172a;
+          margin-bottom: 8px;
+        }
+        .terms-section p {
+          font-size: 11px;
+          color: #475569;
+          line-height: 1.7;
+        }
+        footer { 
+          margin-top: 32px; 
+          padding-top: 16px;
+          border-top: 1px solid #e2e8f0;
+          font-size: 10px; 
+          color: #94a3b8;
+          text-align: center;
+        }
       </style>`;
 
     const ref = `Q-${quote.id.slice(0, 8).toUpperCase()}`;
+    const jobNumber = quote.lead?.refId || ref;
+    const projectName = quote.title || `Project for ${client}`;
+    const leadMeta: any = (quote.lead?.meta as any) || {};
+    const address = leadMeta?.address || quote.lead?.location || "";
+    const tagline = quoteDefaults?.tagline || "Timber Joinery Specialists";
+    
+    // Extract specifications from quote meta or lines
+    const quoteMeta: any = (quote.meta as any) || {};
+    const specifications = quoteMeta?.specifications || {};
+    const timber = specifications.timber || quoteDefaults?.defaultTimber || "Engineered timber";
+    const finish = specifications.finish || quoteDefaults?.defaultFinish || "Factory finished";
+    const glazing = specifications.glazing || quoteDefaults?.defaultGlazing || "Low-energy double glazing";
+    const compliance = specifications.compliance || quoteDefaults?.compliance || "Industry standards";
+    
+    // Project scope description
+    const scopeDescription = quoteMeta?.scopeDescription || 
+      `This project involves supplying bespoke timber joinery products crafted to meet your specifications. All products are manufactured to the highest standards and comply with ${compliance}.`;
 
     const html = `<!doctype html>
       <html>
       <head><meta charset="utf-8" />${styles}</head>
       <body>
-        <header class="grid">
-          <div class="brand">
-            ${logoUrl ? `<img src="${logoUrl}" alt="logo" />` : ""}
-            <div>
-              <h1>${escapeHtml(brand)}</h1>
-              <div class="meta">${website || phone ? `${escapeHtml(website)}${website && phone ? " · " : ""}${escapeHtml(phone)}` : ""}</div>
+        <div class="page">
+          <!-- Header Section -->
+          <header class="header">
+            <div class="header-left">
+              <div class="brand">
+                ${logoUrl ? `<img src="${logoUrl}" alt="${escapeHtml(brand)}" />` : `<div class="brand-name">${escapeHtml(brand)}</div>`}
+              </div>
+              ${tagline ? `<div class="tagline">${escapeHtml(tagline)}</div>` : ""}
+              <h1>Project Quotation</h1>
+              <div class="project-title">${escapeHtml(projectName)}</div>
+              <div class="client-name">Client: ${escapeHtml(client)} • ${when}</div>
+            </div>
+            <div class="header-right">
+              ${phone ? `<div>Telephone: ${escapeHtml(phone)}</div>` : ""}
+              ${quoteDefaults?.email ? `<div>Email: ${escapeHtml(quoteDefaults.email)}</div>` : ""}
+              ${address ? `<div>Address: ${escapeHtml(address)}</div>` : ""}
+            </div>
+          </header>
+
+          <!-- Project Overview Section -->
+          <div class="overview-grid">
+            <div class="overview-section">
+              <h3>Client Details</h3>
+              <div class="detail-line"><strong>Client:</strong> ${escapeHtml(client)}</div>
+              <div class="detail-line"><strong>Project:</strong> ${escapeHtml(projectName)}</div>
+              ${quote.lead?.phone ? `<div class="detail-line"><strong>Phone:</strong> ${escapeHtml(quote.lead.phone)}</div>` : ""}
+              ${quote.lead?.email ? `<div class="detail-line"><strong>Email:</strong> ${escapeHtml(quote.lead.email)}</div>` : ""}
+              <div class="detail-line"><strong>Job Number:</strong> ${escapeHtml(jobNumber)}</div>
+              <div class="detail-line"><strong>Date:</strong> ${when}</div>
+              <div class="detail-line"><strong>Valid Until:</strong> ${validUntil}</div>
+              ${address ? `<div class="detail-line"><strong>Delivery:</strong> ${escapeHtml(address)}</div>` : ""}
+            </div>
+            
+            <div class="overview-section">
+              <h3>Specification Summary</h3>
+              <div class="detail-line"><strong>Timber:</strong> ${escapeHtml(timber)}</div>
+              <div class="detail-line"><strong>Finish:</strong> ${escapeHtml(finish)}</div>
+              <div class="detail-line"><strong>Glazing:</strong> ${escapeHtml(glazing)}</div>
+              ${specifications.fittings ? `<div class="detail-line"><strong>Fittings:</strong> ${escapeHtml(specifications.fittings)}</div>` : ""}
+              ${specifications.ventilation ? `<div class="detail-line"><strong>Ventilation:</strong> ${escapeHtml(specifications.ventilation)}</div>` : ""}
+              <div class="detail-line"><strong>Compliance:</strong> ${escapeHtml(compliance)}</div>
+              <div class="detail-line"><strong>Currency:</strong> ${cur}</div>
+            </div>
+            
+            <div class="overview-section">
+              <h3>Project Scope</h3>
+              <div class="project-scope">${escapeHtml(scopeDescription)}</div>
             </div>
           </div>
-          <div class="meta right">
-            <div class="ref"><strong>Quote Ref:</strong> ${ref}</div>
-            <div><strong>Date:</strong> ${when}</div>
-            <div><strong>Valid until:</strong> ${validUntil}</div>
-            <div><strong>Currency:</strong> ${cur}</div>
-          </div>
-        </header>
 
-        <div class="section">
-          <div class="meta"><strong>To:</strong> ${escapeHtml(client)}</div>
-          <div class="meta"><strong>Title:</strong> ${escapeHtml(title)}</div>
+          <!-- Detailed Quotation Section -->
+          <h2 class="section-title">Detailed Quotation</h2>
+          <p class="quotation-intro">
+            Following the technical specifications outlined above, this section provides a comprehensive 
+            breakdown of the proposed investment for your project. The quotation details each component, 
+            quantity, and dimensions, culminating in the total project cost.
+          </p>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width:50%">Item Description</th>
+                <th class="right" style="width:12%">Quantity</th>
+                <th style="width:18%">Dimensions</th>
+                <th class="right" style="width:20%">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows
+                .map(
+                  (r) => {
+                    const lineMeta: any = (quote.lines.find(ln => ln.description === r.description)?.meta as any) || {};
+                    const dimensions = lineMeta?.dimensions || "";
+                    const showAmount = quoteDefaults?.showLineItems !== false;
+                    return `
+                    <tr>
+                      <td>${escapeHtml(r.description || "-")}</td>
+                      <td class="right">${r.qty.toLocaleString()}</td>
+                      <td>${escapeHtml(dimensions)}</td>
+                      <td class="right amount-cell">${showAmount ? sym + r.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "Included"}</td>
+                    </tr>`;
+                  }
+                )
+                .join("")}
+            </tbody>
+          </table>
+
+          <!-- Totals Section -->
+          <div class="totals-wrapper">
+            <div class="totals">
+              <div class="row subtotal">
+                <div class="label">Subtotal (Ex VAT)</div>
+                <div class="value">${sym}${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              </div>
+              ${showVat ? `
+              <div class="row">
+                <div class="label">VAT (${(vatRate*100).toFixed(0)}%)</div>
+                <div class="value">${sym}${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              </div>` : ""}
+              <div class="row total">
+                <div class="label">Grand Total (Incl VAT)</div>
+                <div class="value">${sym}${totalGBP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Guarantee/Benefits Section (if configured) -->
+          ${quoteDefaults?.guarantees && Array.isArray(quoteDefaults.guarantees) && quoteDefaults.guarantees.length > 0 ? `
+          <div class="guarantee-section">
+            <h2>${escapeHtml(quoteDefaults.guaranteeTitle || brand + " Guarantee")}</h2>
+            <div class="guarantee-grid">
+              ${quoteDefaults.guarantees.slice(0, 3).map((g: any) => `
+                <div class="guarantee-item">
+                  <h4>${escapeHtml(g.title || "")}</h4>
+                  <p>${escapeHtml(g.description || "")}</p>
+                </div>
+              `).join("")}
+            </div>
+          </div>` : ""}
+
+          ${renderSections(quoteDefaults)}
+
+          <!-- Terms Section -->
+          <div class="terms-section">
+            <h3>Terms & Conditions</h3>
+            <p>${escapeHtml(terms)}</p>
+          </div>
+
+          <footer>
+            <div>Quote Reference: ${ref} • Valid until ${validUntil}</div>
+            ${website || phone ? `<div>${escapeHtml(website)}${website && phone ? " • " : ""}${escapeHtml(phone)}</div>` : ""}
+            <div style="margin-top:8px;">Thank you for considering ${escapeHtml(brand)} for your project.</div>
+          </footer>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th style="width:60%">Description</th>
-              <th class="right" style="width:10%">Qty</th>
-              <th class="right" style="width:15%">Unit</th>
-              <th class="right" style="width:15%">Line Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows
-              .map(
-                (r) => `
-                <tr>
-                  <td>${escapeHtml(r.description || "-")}</td>
-                  <td class="right">${r.qty.toLocaleString()}</td>
-                  <td class="right">${sym}${r.unit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td class="right">${sym}${r.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                </tr>`
-              )
-              .join("")}
-          </tbody>
-        </table>
-        <div class="section">
-          <div class="box muted">Prices shown include our standard margin${Number.isFinite(marginDefault) && marginDefault>0 ? ` of ${(marginDefault*100).toFixed(0)}%` : ""}.</div>
-        </div>
-        <div class="totals">
-          <div class="row"><div>Subtotal</div><div>${sym}${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
-          ${showVat ? `<div class="row"><div>VAT (${(vatRate*100).toFixed(0)}%)</div><div>${sym}${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>` : ""}
-          <div class="row total"><div>Total</div><div>${sym}${totalGBP.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
-        </div>
-        ${renderSections(quoteDefaults)}
-        <footer>
-          <div><strong>Terms</strong></div>
-          <div class="muted">${escapeHtml(terms)}</div>
-          <div class="muted" style="margin-top:8px;">Thank you for your business.</div>
-        </footer>
       </body>
       </html>`;
 
