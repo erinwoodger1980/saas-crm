@@ -95,6 +95,22 @@ type MlStatusSummary = {
     inferenceEvents: number;
   };
   estimator?: EstimatorStatus;
+  recentSamples14d?: number;
+  modelConfidence?: number | null;
+  lastTrainingRun?: {
+    id: string;
+    status?: string;
+    datasetCount?: number | null;
+    modelVersionId?: string | null;
+    finishedAt?: string | null;
+    metrics?: Record<string, any> | null;
+  } | null;
+  productionModel?: {
+    id: string;
+    version?: string | null;
+    metrics?: Record<string, any> | null;
+    createdAt?: string | null;
+  } | null;
 };
 
 type FollowupSummaryResponse = {
@@ -167,14 +183,19 @@ export default function AITrainingPage() {
   };
 
   const estimatorStatus = statusSummary?.estimator;
-  const estimatorSamples = estimatorStatus?.recentSamples14d ?? 0;
+  const estimatorLastRun = statusSummary?.lastTrainingRun ?? estimatorStatus?.lastTrainingRun;
+  const estimatorProductionSummary = statusSummary?.productionModel ?? estimatorStatus?.productionModel;
+  const estimatorSamples =
+    statusSummary?.recentSamples14d ?? estimatorStatus?.recentSamples14d ?? 0;
+  const rawConfidence =
+    statusSummary?.modelConfidence ?? estimatorStatus?.modelConfidence ?? null;
   const estimatorConfidencePct =
-    typeof estimatorStatus?.modelConfidence === "number"
-      ? Math.round(Math.max(0, Math.min(1, estimatorStatus.modelConfidence)) * 100)
+    typeof rawConfidence === "number"
+      ? Math.round(Math.max(0, Math.min(1, rawConfidence)) * 100)
       : null;
   const estimatorConfidenceDisplay =
     estimatorConfidencePct != null ? `${estimatorConfidencePct}%` : undefined;
-  const estimatorLastTrainedLabel = formatDateTime(estimatorStatus?.lastTrainingRun?.finishedAt);
+  const estimatorLastTrainedLabel = formatDateTime(estimatorLastRun?.finishedAt);
   const estimatorServiceHealth = typeof estimatorStatus?.serviceHealth === "string"
     ? estimatorStatus.serviceHealth
     : "unknown";
@@ -189,7 +210,19 @@ export default function AITrainingPage() {
       : estimatorServiceHealth === "offline"
       ? "text-rose-600"
       : "text-slate-600";
-  const estimatorProdVersion = estimatorStatus?.productionModel?.version ?? estimatorStatus?.productionModel?.id ?? null;
+  const estimatorProdVersion =
+    estimatorProductionSummary?.version ?? estimatorProductionSummary?.id ?? null;
+  const lastRunMetrics = estimatorLastRun?.metrics ?? null;
+  const productionMetrics = estimatorProductionSummary?.metrics ?? null;
+
+  const renderMetrics = (metrics: Record<string, any> | null | undefined) => {
+    if (!metrics || Object.keys(metrics).length === 0) return null;
+    try {
+      return JSON.stringify(metrics, null, 2);
+    } catch {
+      return String(metrics);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -643,6 +676,33 @@ export default function AITrainingPage() {
                   : "No production model promoted yet."}
               </p>
             </div>
+          )}
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border bg-white/90 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-700">Last training run metrics</h2>
+          {statusLoading && !lastRunMetrics ? (
+            <p className="mt-2 text-sm text-slate-500">Loading…</p>
+          ) : renderMetrics(lastRunMetrics) ? (
+            <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-slate-900/90 p-3 text-xs text-slate-100">
+              {renderMetrics(lastRunMetrics)}
+            </pre>
+          ) : (
+            <p className="mt-2 text-sm text-slate-500">No metrics reported for the most recent run.</p>
+          )}
+        </div>
+        <div className="rounded-2xl border bg-white/90 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-700">Production model metrics</h2>
+          {statusLoading && !productionMetrics ? (
+            <p className="mt-2 text-sm text-slate-500">Loading…</p>
+          ) : renderMetrics(productionMetrics) ? (
+            <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-slate-900/90 p-3 text-xs text-slate-100">
+              {renderMetrics(productionMetrics)}
+            </pre>
+          ) : (
+            <p className="mt-2 text-sm text-slate-500">No production metrics available.</p>
           )}
         </div>
       </section>

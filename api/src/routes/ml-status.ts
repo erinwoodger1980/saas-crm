@@ -314,6 +314,10 @@ router.get("/", async (req: any, res) => {
       isProdMlHost,
       warning,
       estimator,
+      recentSamples14d,
+      lastTrainingRun: estimator.lastTrainingRun ?? null,
+      productionModel: estimator.productionModel ?? null,
+      modelConfidence: estimator.modelConfidence,
     });
   } catch (e: any) {
     console.error("[ml/status] failed:", e?.message || e);

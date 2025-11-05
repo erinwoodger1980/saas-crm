@@ -1,6 +1,8 @@
 // api/src/routes/ml.ts
 import { Router } from "express";
+import jwt from "jsonwebtoken";
 import { prisma } from "../db";
+import { env } from "../env";
 import { recordTrainingOutcome } from "../services/training";
 
 // Small helper to enforce an upper-bound on ML requests
@@ -20,6 +22,10 @@ const router = Router();
 const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000")
   .trim()
   .replace(/\/$/, "");
+const SAMPLE_LOOKBACK_DAYS = Math.max(
+  1,
+  Number(process.env.ML_TRAIN_SAMPLE_LOOKBACK_DAYS || process.env.ML_TRAIN_LOOKBACK_DAYS || 14),
+);
 // Default tighter timeout in production to avoid upstream gateway 502s (Cloudflare/Render)
 const ML_TIMEOUT_MS = Math.max(1000, Number(process.env.ML_TIMEOUT_MS || (process.env.NODE_ENV === "production" ? 6000 : 10000)));
 
@@ -100,6 +106,13 @@ function normalizeAttachmentUrl(u?: string | null): string | null {
     if (u.startsWith("/")) return `${API_BASE}${u}`;
     return `${API_BASE}/${u}`;
   }
+}
+
+function buildSignedFileUrl(fileId: string, tenantId: string, quoteId?: string | null) {
+  const payload: Record<string, string> = { t: tenantId };
+  if (quoteId) payload.q = quoteId;
+  const token = jwt.sign(payload, env.APP_JWT_SECRET, { expiresIn: "30m" });
+  return `${API_BASE}/files/${encodeURIComponent(fileId)}?jwt=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -202,6 +215,9 @@ router.post("/train", async (req: any, res) => {
     if (!ML_URL) return res.status(503).json({ error: "ml_unavailable" });
 
     const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 500), 500));
+    const requestedModelRaw = typeof req.body?.model === "string" ? req.body.model.trim() : "";
+    const requestedModel = requestedModelRaw || "supplier_estimator";
+    const lookbackSince = new Date(Date.now() - SAMPLE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
     const ingestResp = await fetch(`${API_BASE}/internal/ml/ingest-gmail`, {
       method: "POST",
@@ -220,26 +236,184 @@ router.post("/train", async (req: any, res) => {
       return res.status(ingestResp.status).json({ error: "ingest_failed", detail: ingestJson });
     }
 
-    const items = Array.isArray(ingestJson.items)
+    type TrainingItem = {
+      messageId: string | null;
+      attachmentId: string | null;
+      quoteId: string | null;
+      fileId: string | null;
+      url: string;
+      filename?: string | null;
+      quotedAt?: string | null;
+      sourceType?: string | null;
+    };
+
+    const normalizedIngest: TrainingItem[] = Array.isArray(ingestJson.items)
       ? ingestJson.items
-          .map((it: any) => ({
-            messageId: it.messageId,
-            attachmentId: it.attachmentId,
-            url: normalizeAttachmentUrl(it.url ?? it.downloadUrl),
-            filename: it.filename ?? null,
-            quotedAt: it.sentAt ?? null,
-            sourceType: "supplier_quote",
-          }))
-          .filter((x: any) => !!x.url)
+          .map((it: any) => {
+            const normalizedUrl = normalizeAttachmentUrl(it.url ?? it.downloadUrl);
+            if (!normalizedUrl) return null;
+            const quotedAtValue = it.sentAt ? new Date(it.sentAt) : null;
+            return {
+              messageId: it.messageId ? String(it.messageId) : null,
+              attachmentId: it.attachmentId ? String(it.attachmentId) : null,
+              quoteId: it.quoteId ? String(it.quoteId) : null,
+              fileId: it.fileId ? String(it.fileId) : null,
+              url: normalizedUrl,
+              filename: it.filename ? String(it.filename) : null,
+              quotedAt: quotedAtValue && !Number.isNaN(quotedAtValue.getTime()) ? quotedAtValue.toISOString() : null,
+              sourceType: it.sourceType ? String(it.sourceType) : "supplier_quote",
+            } as TrainingItem;
+          })
+          .filter((x: TrainingItem | null): x is TrainingItem => !!x && !!x.url)
       : [];
 
-    const datasetCount = items.length;
+    let ingestSaved = 0;
+    for (const item of normalizedIngest) {
+      if (!item.messageId || !item.attachmentId) continue;
+      try {
+        await prisma.mLTrainingSample.upsert({
+          where: {
+            tenantId_messageId_attachmentId: {
+              tenantId,
+              messageId: item.messageId,
+              attachmentId: item.attachmentId,
+            },
+          },
+          create: {
+            tenantId,
+            messageId: item.messageId,
+            attachmentId: item.attachmentId,
+            url: item.url,
+            quotedAt: item.quotedAt ? new Date(item.quotedAt) : null,
+            sourceType: item.sourceType ?? "supplier_quote",
+            quoteId: item.quoteId ?? undefined,
+            fileId: item.fileId ?? undefined,
+          },
+          update: {
+            url: item.url,
+            quotedAt: item.quotedAt ? new Date(item.quotedAt) : null,
+            sourceType: item.sourceType ?? undefined,
+            quoteId: item.quoteId ?? undefined,
+            fileId: item.fileId ?? undefined,
+          },
+        });
+        ingestSaved += 1;
+      } catch (err) {
+        console.warn("[ml/train] failed to upsert ingest sample", err);
+      }
+    }
+
+    const recentSamples = await prisma.mLTrainingSample.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { createdAt: { gte: lookbackSince } },
+          { quotedAt: { gte: lookbackSince } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const datasetKey = (sample: TrainingItem) => {
+      if (sample.quoteId) return `quote:${sample.quoteId}`;
+      const mid = sample.messageId ?? "unknown";
+      const aid = sample.attachmentId ?? sample.fileId ?? "unknown";
+      return `${mid}::${aid}`;
+    };
+
+    const datasetMap = new Map<string, TrainingItem>();
+
+    const fileIds = new Set<string>();
+    for (const sample of recentSamples) {
+      if (sample.fileId) fileIds.add(sample.fileId);
+    }
+    for (const sample of normalizedIngest) {
+      if (sample.fileId) fileIds.add(sample.fileId);
+    }
+
+    const uploadedFiles = fileIds.size
+      ? await prisma.uploadedFile.findMany({
+          where: { tenantId, id: { in: Array.from(fileIds) } },
+          select: { id: true, name: true, uploadedAt: true, quoteId: true },
+        })
+      : [];
+    const uploadedMap = new Map(uploadedFiles.map((row) => [row.id, row]));
+
+    const normaliseForDataset = (sample: TrainingItem): TrainingItem | null => {
+      let url = sample.url ? normalizeAttachmentUrl(sample.url) : null;
+      let quotedAt = sample.quotedAt ?? null;
+      let filename = sample.filename ?? null;
+      if (sample.fileId && uploadedMap.has(sample.fileId)) {
+        const file = uploadedMap.get(sample.fileId)!;
+        try {
+          url = buildSignedFileUrl(sample.fileId, tenantId, sample.quoteId ?? file.quoteId ?? null);
+        } catch (err) {
+          console.warn("[ml/train] failed to sign file", err);
+        }
+        filename = filename ?? file.name ?? null;
+        if (!quotedAt && file.uploadedAt) {
+          const uploadedDate = new Date(file.uploadedAt as any);
+          if (!Number.isNaN(uploadedDate.getTime())) quotedAt = uploadedDate.toISOString();
+        }
+        if (!sample.quoteId && file.quoteId) {
+          sample.quoteId = file.quoteId;
+        }
+      }
+      if (!url) return null;
+      return {
+        messageId: sample.messageId ?? null,
+        attachmentId: sample.attachmentId ?? null,
+        quoteId: sample.quoteId ?? null,
+        fileId: sample.fileId ?? null,
+        url,
+        filename,
+        quotedAt,
+        sourceType: sample.sourceType ?? null,
+      };
+    };
+
+    for (const sample of normalizedIngest) {
+      const normalised = normaliseForDataset({ ...sample });
+      if (!normalised) continue;
+      datasetMap.set(datasetKey(normalised), normalised);
+    }
+
+    for (const sample of recentSamples) {
+      const normalised = normaliseForDataset({
+        messageId: sample.messageId ?? null,
+        attachmentId: sample.attachmentId ?? null,
+        quoteId: sample.quoteId ?? null,
+        fileId: sample.fileId ?? null,
+        url: sample.url,
+        filename: null,
+        quotedAt: sample.quotedAt ? new Date(sample.quotedAt as any).toISOString() : null,
+        sourceType: sample.sourceType ?? null,
+      });
+      if (!normalised) continue;
+      datasetMap.set(datasetKey(normalised), normalised);
+    }
+
+    const dataset = Array.from(datasetMap.values()).sort((a, b) => {
+      const aTime = a.quotedAt ? new Date(a.quotedAt).getTime() : 0;
+      const bTime = b.quotedAt ? new Date(b.quotedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    const datasetCount = dataset.length;
     const startedAt = new Date();
+
+    const mlPayload = {
+      tenantId,
+      model: requestedModel,
+      items: dataset,
+      requestedLimit: limit,
+      recentSampleCount: datasetCount,
+    };
 
     const trainResp = await fetch(`${ML_URL}/train`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId, items }),
+      body: JSON.stringify(mlPayload),
     });
 
     const trainText = await trainResp.text();
@@ -269,6 +443,8 @@ router.post("/train", async (req: any, res) => {
         error: "ml_train_failed",
         detail: trainJson,
         datasetCount,
+        recentSamples14d: datasetCount,
+        ingestSaved,
         modelVersionId: recorded?.modelVersionId ?? null,
         awaitingApproval: recorded?.awaitingApproval ?? false,
       });
@@ -279,6 +455,10 @@ router.post("/train", async (req: any, res) => {
       tenantId,
       received: datasetCount,
       datasetCount,
+      recentSamples14d: datasetCount,
+      ingestSaved,
+      requestedModel,
+      payloadSamples: dataset,
       ml: trainJson,
       metrics: summary.metrics,
       modelVersionId: recorded?.modelVersionId ?? null,
