@@ -78,6 +78,8 @@ const parsedWebOrigin = rawWebOrigin
   .map((s) => s.trim())
   .filter(Boolean);
 
+const billingEnabled = String(process.env.BILLING_ENABLED ?? "true").toLowerCase() !== "false";
+
 export const env = {
   // core
   OPENAI_API_KEY: requireEnv("OPENAI_API_KEY"),
@@ -87,6 +89,7 @@ export const env = {
   DATABASE_URL: requireEnv("DATABASE_URL"),
   PARSER_MAX_PAGES: Math.max(1, Number(process.env.PARSER_MAX_PAGES ?? 3)),
   PARSER_OCR_ENABLED: String(process.env.PARSER_OCR_ENABLED ?? "true").toLowerCase() !== "false",
+  BILLING_ENABLED: billingEnabled,
 
   // Gmail OAuth
   GMAIL_CLIENT_ID: process.env.GMAIL_CLIENT_ID ?? "",
@@ -121,3 +124,4 @@ console.log(`👁️‍🗨️ OCR enabled: ${env.PARSER_OCR_ENABLED}`);
 console.log(`📧 Gmail configured: ${!!env.GMAIL_CLIENT_ID}`);
 console.log(`📧 MS365 configured: ${!!env.MS365_CLIENT_ID}`);
 console.log(`🛡️ ML redaction enabled: ${env.ML_REDACT_PII}`);
+console.log(`💳 Billing enabled: ${env.BILLING_ENABLED}`);

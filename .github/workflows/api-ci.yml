@@ -22,7 +22,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
           run_install: false
 
       - name: Setup Node
@@ -30,6 +29,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          cache-dependency-path: api/pnpm-lock.yaml
 
       - name: Show tool versions
         run: |
@@ -50,6 +50,15 @@ jobs:
         run: pnpm run self:check-parse
 
       - name: Verify API starts
+        env:
+          APP_JWT_SECRET: test-ci-secret
+          JWT_SECRET: test-ci-secret
+          OPENAI_API_KEY: test-ci-openai
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          WEB_ORIGIN: http://localhost:3000
+          BILLING_ENABLED: 'false'
+          SKIP_DEV_BOOTSTRAP: '1'
+          PORT: 4455
         run: |
           node dist/index.js &
           sleep 5

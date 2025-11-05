@@ -1,5 +1,6 @@
 // api/src/server.ts
 import express from "express";
+import type { Router } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
@@ -28,9 +29,7 @@ import opportunitiesRouter from "./routes/opportunities";
 import settingsInboxRouter from "./routes/settings-inbox";
 import sourceCostsRouter from "./routes/source-costs";
 import analyticsRouter from "./routes/analytics";
-import billingRouter, { webhook as stripeWebhook } from "./routes/billing";
 import quotesRouter from "./routes/quotes";
-import publicSignupRouter from "./routes/public-signup";
 import authSetupRouter from "./routes/auth-setup";
 import analyticsDashboardRouter from "./routes/analytics-dashboard";
 import analyticsBusinessRouter from "./routes/analytics-business";
@@ -56,6 +55,24 @@ import notificationsRouter from "./routes/notifications";
 import streaksRouter from "./routes/streaks";
 import followupsRouter from "./routes/followups";
 import marketingRoiRouter from "./routes/marketing-roi";
+
+type BillingModule = typeof import("./routes/billing");
+type PublicSignupModule = typeof import("./routes/public-signup");
+
+let billingRouter: Router | null = null;
+let stripeWebhook: BillingModule["webhook"] | null = null;
+let publicSignupRouter: Router | null = null;
+
+if (env.BILLING_ENABLED) {
+  const billingModule = require("./routes/billing") as BillingModule;
+  billingRouter = billingModule.default;
+  stripeWebhook = billingModule.webhook;
+
+  const publicSignupModule = require("./routes/public-signup") as PublicSignupModule;
+  publicSignupRouter = publicSignupModule.default;
+} else {
+  console.log("💳 Billing disabled; skipping billing/public signup routes");
+}
 
 const app = express();
 
@@ -158,7 +175,13 @@ app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions)); // preflight for all routes
 
 /** ---------- Stripe webhook (raw body) BEFORE express.json() ---------- */
-app.post("/billing/webhook", express.raw({ type: "application/json" }), stripeWebhook);
+if (stripeWebhook) {
+  app.post("/billing/webhook", express.raw({ type: "application/json" }), stripeWebhook);
+} else {
+  app.post("/billing/webhook", (_req, res) => {
+    res.status(503).json({ error: "billing_disabled" });
+  });
+}
 
 /** Parsers */
 app.use(express.json({ limit: "10mb" }));
@@ -176,7 +199,9 @@ app.get("/api-check", (req, res) => {
 /** ---------- Public (no auth required) ---------- */
 app.use("/public", publicRouter);
 /** public-signup exposes /public/signup and friends */
-app.use("/public", publicSignupRouter);
+if (publicSignupRouter) {
+  app.use("/public", publicSignupRouter);
+}
 
 /** ---------- JWT decode middleware (Authorization header OR cookies) ---------- */
 app.use((req, _res, next) => {
@@ -361,10 +386,15 @@ async function ensureDevData() {
   return { tenant, user };
 }
 
-if (process.env.NODE_ENV !== "production") {
+const shouldBootstrapDevData =
+  process.env.NODE_ENV !== "production" && env.BILLING_ENABLED && process.env.SKIP_DEV_BOOTSTRAP !== "1";
+
+if (shouldBootstrapDevData) {
   ensureDevData()
     .then(({ user }) => console.log(`[dev] bootstrap ready for ${user.email}`))
     .catch((e) => console.error("[dev] bootstrap failed:", e));
+} else if (process.env.NODE_ENV !== "production") {
+  console.log("[dev] Skipping bootstrap (billing disabled or explicitly skipped)");
 }
 
 /** Dev seed endpoint */
@@ -432,7 +462,9 @@ app.use("/analytics", requireAuth, analyticsRouter);
 app.use("/analytics/business", requireAuth, analyticsBusinessRouter);
 app.use("/tenant", requireAuth, tenantsRouter);
 app.use("/tenants", requireAuth, tenantDeclineRouter);
-app.use("/billing", billingRouter);
+if (billingRouter) {
+  app.use("/billing", billingRouter);
+}
 app.use("/quotes", quotesRouter);
 app.use("/auth/setup", authSetupRouter);
 app.use("/analytics/dashboard", requireAuth, analyticsDashboardRouter);
