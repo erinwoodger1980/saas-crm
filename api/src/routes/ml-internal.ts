@@ -463,6 +463,22 @@ router.post("/collect-train-save", async (req: any, res) => {
       quotedAt?: string | null;
     };
 
+    const isPdf = (mime?: string | null, name?: string | null) => {
+      if (mime && /pdf/i.test(mime)) return true;
+      if (name && /\.pdf$/i.test(name)) return true;
+      return false;
+    };
+
+    const sampleKey = (item: TrainingItem) => {
+      if (item.quoteId) return `quote:${item.quoteId}`;
+      const mid = item.messageId ?? "";
+      const aid = item.attachmentId ?? item.fileId ?? "";
+      return `${mid}::${aid}`;
+    };
+
+    const seenSamples = new Set<string>();
+    const seenFileIds = new Set<string>();
+
     const emailSamples: TrainingItem[] = Array.isArray(ingestJson.items)
       ? ingestJson.items
           .filter((it: any) => it?.messageId && it?.attachmentId && it?.url)
@@ -540,11 +556,50 @@ router.post("/collect-train-save", async (req: any, res) => {
           filename: file.name ?? null,
           quotedAt: uploadedAt.toISOString(),
         });
+        seenFileIds.add(file.id);
       }
     }
 
+    const standaloneSupplierFiles = await prisma.uploadedFile.findMany({
+      where: {
+        tenantId,
+        kind: "SUPPLIER_QUOTE",
+        uploadedAt: { gte: lookback },
+      },
+      select: { id: true, name: true, uploadedAt: true, mimeType: true, quoteId: true },
+    });
+
+    for (const file of standaloneSupplierFiles) {
+      if (seenFileIds.has(file.id)) continue;
+      if (!isPdf(file.mimeType, file.name)) continue;
+      const relatedQuoteId = file.quoteId ?? fileIdMap.get(file.id)?.quoteId ?? null;
+      const payload: Record<string, string> = { t: tenantId };
+      if (relatedQuoteId) payload.q = relatedQuoteId;
+      const token = jwt.sign(payload, env.APP_JWT_SECRET, { expiresIn: "30m" });
+      const signedUrl = `${API_BASE}/files/${encodeURIComponent(file.id)}?jwt=${encodeURIComponent(token)}`;
+      const uploadedAt = file.uploadedAt ? new Date(file.uploadedAt as any) : new Date();
+      clientQuoteSamples.push({
+        sourceType: relatedQuoteId ? "client_quote" : "supplier_quote",
+        messageId: relatedQuoteId ? `quote:${relatedQuoteId}` : `uploaded:${file.id}`,
+        attachmentId: file.id,
+        quoteId: relatedQuoteId,
+        fileId: file.id,
+        url: signedUrl,
+        filename: file.name ?? null,
+        quotedAt: uploadedAt.toISOString(),
+      });
+      seenFileIds.add(file.id);
+    }
+
     const collected = emailSamples.length;
-    const trainingItems: TrainingItem[] = [...emailSamples, ...clientQuoteSamples];
+    const mergedItems: TrainingItem[] = [...emailSamples, ...clientQuoteSamples];
+    const trainingItems: TrainingItem[] = [];
+    for (const item of mergedItems) {
+      const key = sampleKey(item);
+      if (seenSamples.has(key)) continue;
+      seenSamples.add(key);
+      trainingItems.push(item);
+    }
 
     // 2) Save to DB (upsert on tenantId+messageId+attachmentId or tenantId+quoteId)
     let saved = 0;
