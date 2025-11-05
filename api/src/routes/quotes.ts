@@ -2138,6 +2138,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         process.env.APP_API_URL || process.env.API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`
       ).replace(/\/$/, "");
       const features: any = (quote.lead?.custom as any) || {};
+      console.log(`[quotes/:id/price] ML estimate for quote ${quote.id}, features:`, JSON.stringify(features));
   const inputTypeRaw = typeof req.body?.inputType === "string" ? req.body.inputType : (preferQuestionnaire ? "questionnaire" : undefined);
       const inputType = inputTypeRaw === "supplier_pdf" ? "supplier_pdf" : "questionnaire";
 
@@ -2208,6 +2209,12 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         const confidence =
           confidenceRaw != null && Number.isFinite(Number(confidenceRaw)) ? Number(confidenceRaw) : null;
         const currency = normalizeCurrency(cachedEstimate.currency || quote.currency || "GBP");
+        
+        console.log(`[quotes/:id/price] Using cached estimate for quote ${quote.id}: predictedTotal=${predictedTotal}, confidence=${confidence}`);
+        
+        if (predictedTotal <= 0) {
+          console.warn(`[quotes/:id/price] Cached estimate has predictedTotal=${predictedTotal} for quote ${quote.id}`);
+        }
 
         // Always distribute predicted total by quantity when using questionnaire-only mode
         let totalGBP = 0;
@@ -2289,6 +2296,12 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
   const predictedTotal = safeNumber(ml?.predicted_total ?? ml?.predictedTotal ?? ml?.total) ?? 0;
       const confidenceRaw = safeNumber(ml?.confidence ?? ml?.probability ?? ml?.score);
       const confidence = confidenceRaw ?? 0;
+      console.log(`[quotes/:id/price] ML response for quote ${quote.id}: predictedTotal=${predictedTotal}, confidence=${confidence}, raw:`, JSON.stringify(ml));
+      
+      if (predictedTotal <= 0) {
+        console.warn(`[quotes/:id/price] ML predicted total is ${predictedTotal} for quote ${quote.id}, features:`, JSON.stringify(features));
+      }
+      
       let modelVersionId = extractModelVersionId(ml) || productionModelId || `external-${new Date().toISOString().slice(0, 10)}`;
       const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
 

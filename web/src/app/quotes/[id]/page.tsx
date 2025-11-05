@@ -278,11 +278,15 @@ export default function QuoteBuilderPage() {
         description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.`,
       });
       setEstimatedLineRevision(lineRevision);
+      
+      // Wait for data to refresh BEFORE rendering proposal
       await Promise.all([mutateQuote(), mutateLines()]);
 
       // Auto-render proposal after questionnaire-driven ML pricing
       setIsRendering(true);
       try {
+        // Small delay to ensure DB writes are committed
+        await new Promise(resolve => setTimeout(resolve, 500));
         await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-proposal`, { method: "POST" });
         const signed = await apiFetch<{ url: string }>(`/quotes/${encodeURIComponent(quoteId)}/proposal/signed`);
         if (signed?.url) window.open(signed.url, "_blank");
