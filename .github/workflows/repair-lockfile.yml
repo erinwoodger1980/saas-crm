@@ -1,0 +1,67 @@
+name: Repair lockfile & fix Render build (one-off)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set npm registry (avoid 403s)
+        run: |
+          echo "registry=https://registry.npmjs.org/" > .npmrc
+          cat .npmrc
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Ensure workspace file exists
+        run: |
+          cat > pnpm-workspace.yaml <<'YAML'
+          packages:
+            - "api"
+            - "web"
+            - "ml"
+          YAML
+          cat pnpm-workspace.yaml
+
+      - name: Standardize API deps (remove puppeteer, add core deps)
+        run: |
+          pnpm remove -C api puppeteer || true
+          pnpm add -C api pdfjs-dist@4.6.82 puppeteer-core@23.7.0 @sparticuz/chromium@123.0.1 tesseract.js@5.0.3
+
+      - name: Install (regen lockfile)
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build API
+        run: pnpm --filter api build
+
+      - name: Run parse smoke test
+        run: node api/dist/scripts/self_check_parse.js
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/repair-lockfile
+          title: "chore: repair pnpm-lock.yaml and fix Render build deps"
+          commit-message: "chore: regenerate pnpm-lock.yaml, remove puppeteer, add puppeteer-core + @sparticuz/chromium, build passes"
+          body: |
+            - Regenerated `pnpm-lock.yaml` (no-frozen install)
+            - Removed `puppeteer`; added `puppeteer-core` + `@sparticuz/chromium`
+            - Built API and passed smoke test
+            - Sets root `.npmrc` to npmjs.org to avoid 403s
+          labels: dependencies
+          delete-branch: false
