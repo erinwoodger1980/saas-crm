@@ -8,6 +8,7 @@ import { env } from "../env";
 import { prisma } from "../prisma";
 
 const router = Router();
+import fetch from "node-fetch";
 
 /* ---------- helpers ---------- */
 function filterCustom(custom: any) {
@@ -385,6 +386,30 @@ router.get("/supplier/list", async (req, res) => {
   });
 
   res.json({ ok: true, items });
+});
+
+/**
+ * GET /public/ml/health
+ * Public endpoint to check ML service health and target URL without auth.
+ */
+router.get("/ml/health", async (_req, res) => {
+  const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000")
+    .trim()
+    .replace(/\/$/, "");
+  try {
+    const r = await fetch(`${ML_URL}/`, { method: "GET" } as any);
+    const text = await r.text();
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    res.status(r.ok ? 200 : r.status).json({
+      ok: r.ok,
+      target: ML_URL,
+      status: r.status,
+      body: json ?? (text ? text.slice(0, 500) : null),
+    });
+  } catch (e: any) {
+    res.status(502).json({ ok: false, target: ML_URL, error: e?.message || String(e) });
+  }
 });
 
 export default router;

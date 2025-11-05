@@ -10,7 +10,7 @@ services:
     plan: starter
     envVars:
       - key: ML_URL
-        value: https://saas-crm-ml.onrender.com  # Update this to your actual ML service URL
+        value: https://new-ml-zo9l.onrender.com
       - key: ML_TIMEOUT_MS
         value: 8000
   - type: web
