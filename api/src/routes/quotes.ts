@@ -232,6 +232,40 @@ const storage = multer.diskStorage({
 });
 
 /**
+ * GET /quotes/:id/lines
+ * Fetch quote lines for editing/viewing
+ */
+router.get("/:id/lines", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const lines = await prisma.quoteLine.findMany({
+      where: { quote: { id, tenantId } },
+      orderBy: { id: "asc" },
+    });
+
+    const out = lines.map((ln: any) => ({
+      id: ln.id,
+      description: ln.description,
+      qty: Number(ln.qty),
+      unitPrice: Number(ln.unitPrice),
+      currency: ln.currency,
+      supplier: ln.supplier,
+      sku: ln.sku,
+      meta: ln.meta as any,
+      sellUnit: (ln.meta as any)?.sellUnitGBP ?? null,
+      sellTotal: (ln.meta as any)?.sellTotalGBP ?? null,
+      lineTotalGBP: Number(ln.lineTotalGBP),
+    }));
+
+    return res.json(out);
+  } catch (e: any) {
+    console.error("[/quotes/:id/lines] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
  * POST /quotes/:id/lines/save-processed
  * Persist a processed client quote (from ML /process-quote) as quote lines.
  * Body: {
