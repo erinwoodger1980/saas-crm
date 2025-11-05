@@ -7,6 +7,8 @@ import crypto from "crypto";
 import { prisma } from "../prisma";
 import { Prisma } from "@prisma/client";
 import jwt from "jsonwebtoken";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 import { env } from "../env";
 
 import { callMlWithSignedUrl, callMlWithUpload, normaliseMlPayload } from "../lib/ml";
@@ -783,15 +785,6 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
  */
 router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
   try {
-    // Dynamically load puppeteer to avoid type issues if not installed yet
-    // @ts-ignore
-    let puppeteer: any;
-    try {
-      puppeteer = require("puppeteer");
-    } catch (err: any) {
-      console.error("[/quotes/:id/render-pdf] puppeteer missing:", err?.message || err);
-      return res.status(500).json({ error: "render_failed", reason: "puppeteer_not_installed" });
-    }
     const tenantId = req.auth.tenantId as string;
     const id = String(req.params.id);
     const quote = await prisma.quote.findFirst({
@@ -930,53 +923,36 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       </body>
       </html>`;
 
-    let browser: any;
-    let firstLaunchError: any;
+    let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
     try {
-      // Prefer Puppeteer's resolved executable if available; fall back to env
-      const resolvedExec = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
-      const execPath = resolvedExec || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+      const envExecutable =
+        process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_EXECUTABLE_PATH || undefined;
+      const chromiumExecutable = await chromium.executablePath();
+      const executablePath = envExecutable || chromiumExecutable;
+      if (!executablePath) {
+        throw new Error("No executable path available for Chromium");
+      }
       browser = await puppeteer.launch({
+        args: chromium.args,
+        executablePath,
         headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--single-process",
-          "--no-zygote",
-        ],
-        executablePath: execPath,
+        defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
+        ignoreHTTPSErrors: true,
       });
     } catch (err: any) {
-      firstLaunchError = err;
-      console.warn("[/quotes/:id/render-pdf] puppeteer launch failed; trying @sparticuz/chromium fallback:", err?.message || err);
-      try {
-        // Lazy-load Sparticuz Chromium which bundles a compatible binary for serverless/container envs
-        const chromium = require("@sparticuz/chromium");
-        const execPath2 = await chromium.executablePath();
-        browser = await puppeteer.launch({
-          headless: chromium.headless !== undefined ? chromium.headless : true,
-          args: chromium.args ?? ["--no-sandbox", "--disable-setuid-sandbox"],
-          executablePath: execPath2,
-          defaultViewport: chromium.defaultViewport ?? { width: 1280, height: 800 },
-          ignoreHTTPSErrors: true,
-        });
-      } catch (fallbackErr: any) {
-        console.error("[/quotes/:id/render-pdf] chromium fallback launch failed:", fallbackErr?.message || fallbackErr);
-        return res.status(500).json({
-          error: "render_failed",
-          reason: "puppeteer_launch_failed",
-          detail: {
-            primary: String(firstLaunchError?.message || firstLaunchError || "unknown"),
-            fallback: String(fallbackErr?.message || fallbackErr || "unknown"),
-          },
-        });
-      }
+      console.error("[/quotes/:id/render-pdf] puppeteer launch failed:", err?.message || err);
+      return res.status(500).json({
+        error: "render_failed",
+        reason: "puppeteer_launch_failed",
+        detail: {
+          primary: String(err?.message || err || "unknown"),
+        },
+      });
     }
 
     let pdfBuffer: Buffer;
     try {
+      if (!browser) throw new Error("Browser failed to launch");
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "networkidle0" });
       pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" } });
