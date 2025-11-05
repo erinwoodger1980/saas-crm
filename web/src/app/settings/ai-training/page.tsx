@@ -76,6 +76,11 @@ type EmailTrainingResponse = {
   quotesFound?: number;
   trainingRecords?: number;
   message?: string;
+  parsed_ok?: number;
+  training_records_saved?: number;
+  failed?: number;
+  received_items?: number;
+  avg_estimated_total?: number;
   preview_quotes?: Array<{
     subject: string;
     date_sent: string;
@@ -574,6 +579,42 @@ export default function AiTrainingPage() {
         message: e?.message || 'Email preview failed'
       });
       setError(e?.message || 'Email preview failed');
+    }
+  }
+
+  async function trainSupplierQuotes() {
+    setEmailTraining({ status: 'running', progress: 0, message: 'Training on uploaded supplier quotes...' });
+    setError(null);
+    
+    try {
+      const response = await apiFetch<EmailTrainingResponse>(`/ml/train-supplier-quotes`, {
+        method: 'POST',
+        json: {}
+      });
+      
+      setEmailTraining({
+        status: 'completed',
+        progress: 100,
+        message: `Training complete: ${response.parsed_ok || 0} quotes processed`,
+        trainingRecords: response.training_records_saved || 0,
+        quotesFound: response.parsed_ok || 0
+      });
+      
+      toast({
+        title: "Supplier Training Complete",
+        description: `Processed ${response.parsed_ok || 0} supplier quotes, created ${response.training_records_saved || 0} training records`,
+        duration: 5000
+      });
+      
+      // Refresh insights to show updated model
+      window.location.reload();
+      
+    } catch (e: any) {
+      setEmailTraining({
+        status: 'error',
+        message: e?.message || 'Supplier training failed'
+      });
+      setError(e?.message || 'Supplier training failed');
     }
   }
 
@@ -1087,6 +1128,23 @@ export default function AiTrainingPage() {
                   }
                 </p>
               </div>
+
+              {/* Training Action Buttons */}
+              {selectedQuoteType === 'supplier' && (
+                <div className="mb-4 flex gap-2">
+                  <Button
+                    onClick={trainSupplierQuotes}
+                    disabled={emailTraining.status === 'running' || !mlHealth?.ok}
+                    className="flex-1 bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:from-violet-700 hover:to-purple-700"
+                  >
+                    {emailTraining.status === 'running' ? (
+                      <>⚡ Training...</>
+                    ) : (
+                      <>🚀 Train on All Uploaded Files</>
+                    )}
+                  </Button>
+                </div>
+              )}
 
               {/* Beautiful Drag and Drop Zone */}
               <div
