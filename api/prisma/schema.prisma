@@ -102,6 +102,9 @@ model Lead {
   emailThreads  EmailThread[]
   followUpLogs  FollowUpLog[]
   followUpEvents FollowUpEvent[]
+  estimatedValue Decimal?
+  quotedValue    Decimal?
+  dateQuoteSent  DateTime?
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   opportunity   Opportunity?
   Quote         Quote[]

@@ -8,6 +8,13 @@ import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { randomUUID } from "crypto";
 import multer from "multer";
+import {
+  CANONICAL_FIELD_CONFIG,
+  lookupCsvField,
+  parseFlexibleDate,
+  toNumberGBP,
+  toISODate,
+} from "../lib/leads/fieldMap";
 
 const router = Router();
 
@@ -111,6 +118,135 @@ function dbToUi(db: string): UiStatus {
 
 function monthStartUTC(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0));
+}
+
+const CANONICAL_FIELD_KEYS = Object.keys(CANONICAL_FIELD_CONFIG);
+
+function normalizeCanonicalValue(key: string, input: any): any {
+  const config = CANONICAL_FIELD_CONFIG[key];
+  if (!config) return input;
+  if (input === undefined) return undefined;
+  if (input === null) return null;
+
+  if (config.type === "number") {
+    if (typeof input === "number") {
+      return Number.isFinite(input) ? input : null;
+    }
+    if (typeof input === "string") {
+      const trimmed = input.trim();
+      if (!trimmed) return null;
+      const parsed = toNumberGBP(trimmed);
+      return parsed != null ? parsed : null;
+    }
+    return null;
+  }
+
+  if (config.type === "date") {
+    if (input instanceof Date) {
+      return Number.isNaN(input.getTime()) ? null : input;
+    }
+    if (typeof input === "string") {
+      const trimmed = input.trim();
+      if (!trimmed) return null;
+      const parsed = parseFlexibleDate(trimmed) ?? null;
+      if (parsed) return parsed;
+      const iso = toISODate(trimmed);
+      if (iso) {
+        const next = new Date(iso);
+        return Number.isNaN(next.getTime()) ? null : next;
+      }
+      return null;
+    }
+    return null;
+  }
+
+  return input;
+}
+
+function canonicalToCustomValue(key: string, value: any): any {
+  const config = CANONICAL_FIELD_CONFIG[key];
+  if (!config) return value;
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (config.type === "date") {
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    if (typeof value === "string") {
+      const parsed = parseFlexibleDate(value);
+      return parsed ? parsed.toISOString() : value;
+    }
+  }
+  return value;
+}
+
+function toMaybeNumber(value: any): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "object" && value !== null) {
+    const possible = value as any;
+    if (typeof possible.toNumber === "function") {
+      const num = Number(possible.toNumber());
+      return Number.isNaN(num) ? null : num;
+    }
+    if (typeof possible.valueOf === "function") {
+      const val = possible.valueOf();
+      const num = Number(val);
+      if (!Number.isNaN(num)) return num;
+    }
+  }
+  const num = Number(value);
+  return Number.isNaN(num) ? null : num;
+}
+
+function buildComputedValues(lead: any): Record<string, any> {
+  const base = lead?.custom && typeof lead.custom === "object" ? { ...(lead.custom as Record<string, any>) } : {};
+  for (const key of CANONICAL_FIELD_KEYS) {
+    const raw = (lead as any)[key];
+    if (raw === undefined || raw === null) continue;
+    const cfg = CANONICAL_FIELD_CONFIG[key];
+    if (cfg?.type === "date") {
+      const value = raw instanceof Date ? raw : new Date(raw);
+      if (!Number.isNaN(value.getTime())) {
+        base[key] = value.toISOString();
+      }
+    } else {
+      if (typeof raw === "object" && raw !== null) {
+        const possible = raw as any;
+        if (typeof possible.toNumber === "function") {
+          base[key] = Number(possible.toNumber());
+          continue;
+        }
+        if (typeof possible.valueOf === "function") {
+          const val = possible.valueOf();
+          const num = Number(val);
+          if (!Number.isNaN(num)) {
+            base[key] = num;
+            continue;
+          }
+        }
+      }
+      const num = Number(raw);
+      base[key] = Number.isNaN(num) ? raw : num;
+    }
+  }
+  return base;
+}
+
+function serializeLeadRow(lead: any, extras: Record<string, any> = {}) {
+  const payload: any = {
+    id: lead.id,
+    contactName: lead.contactName,
+    email: lead.email,
+    description: lead.description,
+    status: (lead.custom as any)?.uiStatus || dbToUi(lead.status),
+    custom: lead.custom,
+    estimatedValue: toMaybeNumber(lead.estimatedValue),
+    quotedValue: toMaybeNumber(lead.quotedValue),
+    dateQuoteSent: lead.dateQuoteSent ? lead.dateQuoteSent.toISOString() : null,
+    computed: buildComputedValues(lead),
+    ...extras,
+  };
+  return payload;
 }
 
 /* ------------------------------------------------------------------ */
@@ -250,6 +386,9 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
       { key: 'description', label: 'Description', required: false },
       { key: 'source', label: 'Source', required: false },
       { key: 'status', label: 'Status', required: false },
+      { key: 'estimatedValue', label: 'Estimated Value', required: false },
+      { key: 'quotedValue', label: 'Quoted Value', required: false },
+      { key: 'dateQuoteSent', label: 'Date Quote Sent', required: false },
       // Add questionnaire questions
       ...leadFieldDefs.map(field => ({
         key: `custom.${field.key}`,
@@ -308,21 +447,84 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
       const customData: any = {};
       
       // Map CSV columns to lead fields
+      const mappedColumns = new Set<string>();
       for (const [csvColumn, leadField] of Object.entries(mapping)) {
+        mappedColumns.add(csvColumn);
         const columnIndex = headers.indexOf(csvColumn);
         if (columnIndex >= 0 && columnIndex < row.length) {
-          const value = row[columnIndex]?.trim();
-          if (value) {
-            // Check if this is a questionnaire field (custom.*)
-            if (leadField.startsWith('custom.')) {
-              const questionKey = leadField.substring(7); // Remove 'custom.' prefix
-              customData[questionKey] = value;
+          const rawValue = row[columnIndex]?.trim();
+          if (!rawValue) continue;
+          const config = lookupCsvField(csvColumn);
+          const transformed = config?.transform ? config.transform(rawValue) ?? rawValue : rawValue;
+
+          if (leadField.startsWith('custom.')) {
+            const questionKey = leadField.substring(7);
+            if (CANONICAL_FIELD_CONFIG[questionKey]) {
+              const normalized = normalizeCanonicalValue(questionKey, transformed);
+              if (normalized !== undefined) {
+                leadData[questionKey] = normalized ?? null;
+                const customVal = canonicalToCustomValue(questionKey, normalized);
+                customData[questionKey] = customVal ?? null;
+                continue;
+              }
+            }
+            customData[questionKey] = transformed;
+          } else {
+            const canonical = normalizeCanonicalValue(leadField, transformed);
+            if (canonical !== undefined) {
+              leadData[leadField] = canonical ?? null;
+              if (CANONICAL_FIELD_CONFIG[leadField]) {
+                const customVal = canonicalToCustomValue(leadField, canonical);
+                customData[leadField] = customVal ?? null;
+              }
             } else {
-              leadData[leadField] = value;
+              leadData[leadField] = transformed;
+            }
+
+            if (config?.qKey && !Object.prototype.hasOwnProperty.call(customData, config.qKey)) {
+              if (CANONICAL_FIELD_CONFIG[config.qKey]) {
+                const normalized = normalizeCanonicalValue(config.qKey, transformed);
+                if (normalized !== undefined) {
+                  customData[config.qKey] = canonicalToCustomValue(config.qKey, normalized);
+                }
+              } else {
+                customData[config.qKey] = transformed;
+              }
             }
           }
         }
       }
+
+      // Auto-apply canonical mappings for unmapped columns
+      headers.forEach((header, idx) => {
+        if (idx >= row.length) return;
+        if (mappedColumns.has(header)) return;
+        const config = lookupCsvField(header);
+        if (!config) return;
+        const rawValue = row[idx]?.trim();
+        if (!rawValue) return;
+        const transformed = config.transform ? config.transform(rawValue) ?? rawValue : rawValue;
+
+        if (config.leadKey) {
+          const normalized = normalizeCanonicalValue(config.leadKey, transformed);
+          if (normalized !== undefined) {
+            leadData[config.leadKey] = normalized ?? null;
+            if (CANONICAL_FIELD_CONFIG[config.leadKey]) {
+              customData[config.leadKey] = canonicalToCustomValue(config.leadKey, normalized);
+            }
+          }
+        }
+        if (config.qKey) {
+          if (CANONICAL_FIELD_CONFIG[config.qKey]) {
+            const normalized = normalizeCanonicalValue(config.qKey, transformed);
+            if (normalized !== undefined) {
+              customData[config.qKey] = canonicalToCustomValue(config.qKey, normalized);
+            }
+          } else {
+            customData[config.qKey] = transformed;
+          }
+        }
+      });
       
       // Validate the lead data
       const validation = validateLeadData(leadData);
@@ -350,10 +552,18 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
         
         // Create custom data object with standard fields and questionnaire responses
         const custom: any = { uiStatus, ...customData };
+        for (const key of CANONICAL_FIELD_KEYS) {
+          if (leadData[key] !== undefined) {
+            const customVal = canonicalToCustomValue(key, leadData[key]);
+            if (customVal !== undefined) {
+              custom[key] = customVal;
+            }
+          }
+        }
         if (leadData.phone) custom.phone = leadData.phone;
         if (leadData.company) custom.company = leadData.company;
         if (leadData.source) custom.source = leadData.source;
-        
+
         // Create the lead
         const lead = await prisma.lead.create({
           data: {
@@ -363,6 +573,9 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
             email: leadData.email || "",
             status: uiToDb(uiStatus),
             description: leadData.description || null,
+            ...(leadData.estimatedValue !== undefined ? { estimatedValue: leadData.estimatedValue } : {}),
+            ...(leadData.quotedValue !== undefined ? { quotedValue: leadData.quotedValue } : {}),
+            ...(leadData.dateQuoteSent !== undefined ? { dateQuoteSent: leadData.dateQuoteSent } : {}),
             custom,
           },
         });
@@ -563,15 +776,39 @@ router.patch("/:id", async (req, res) => {
     status?: UiStatus;
     description?: string | null;
     custom?: Record<string, any>;
+    questionnaire?: Record<string, any>;
+    estimatedValue?: number | string | null;
+    quotedValue?: number | string | null;
+    dateQuoteSent?: string | Date | null;
   };
 
   const prevCustom = ((existing.custom as any) || {}) as Record<string, any>;
   const prevUi: UiStatus = (prevCustom.uiStatus as UiStatus) ?? dbToUi(existing.status);
-
-  const nextCustom = { ...prevCustom, ...(body.custom || {}) };
+  const nextCustom: Record<string, any> = { ...prevCustom };
   let nextUi: UiStatus = prevUi;
 
   const data: any = {};
+  const canonicalUpdates: Record<string, any> = {};
+
+  const applyCanonical = (key: string, raw: any) => {
+    if (!CANONICAL_FIELD_CONFIG[key]) return;
+    const normalized = normalizeCanonicalValue(key, raw);
+    if (normalized === undefined) return;
+    canonicalUpdates[key] = normalized;
+    const customVal = canonicalToCustomValue(key, normalized);
+    nextCustom[key] = customVal ?? null;
+  };
+
+  const applyQuestionnairePatch = (patch?: Record<string, any>) => {
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) return;
+    for (const [key, value] of Object.entries(patch)) {
+      if (CANONICAL_FIELD_CONFIG[key]) {
+        applyCanonical(key, value);
+      } else {
+        nextCustom[key] = value === undefined ? null : value;
+      }
+    }
+  };
 
   if (body.contactName !== undefined) data.contactName = body.contactName || null;
   if (body.email !== undefined) data.email = body.email || null;
@@ -583,6 +820,16 @@ router.patch("/:id", async (req, res) => {
     nextCustom.uiStatus = nextUi;
   }
 
+  if (body.estimatedValue !== undefined) applyCanonical("estimatedValue", body.estimatedValue);
+  if (body.quotedValue !== undefined) applyCanonical("quotedValue", body.quotedValue);
+  if (body.dateQuoteSent !== undefined) applyCanonical("dateQuoteSent", body.dateQuoteSent);
+
+  applyQuestionnairePatch(body.questionnaire);
+  applyQuestionnairePatch(body.custom);
+
+  for (const [key, value] of Object.entries(canonicalUpdates)) {
+    data[key] = value;
+  }
   data.custom = nextCustom;
 
   const updated = await prisma.lead.update({ where: { id }, data });
@@ -813,7 +1060,7 @@ router.patch("/:id", async (req, res) => {
     console.warn("[leads] estimate outcome sync failed:", (e as any)?.message || e);
   }
 
-  res.json({ ok: true, lead: updated });
+  res.json({ ok: true, lead: serializeLeadRow(updated) });
 });
 
 /* ------------------------------------------------------------------ */
@@ -838,16 +1085,10 @@ router.get("/:id", async (req, res) => {
   });
 
   res.json({
-    lead: {
-      id: lead.id,
-      contactName: lead.contactName,
-      email: lead.email,
-      description: lead.description,
-      status: (lead.custom as any)?.uiStatus || dbToUi(lead.status),
-      custom: lead.custom,
+    lead: serializeLeadRow(lead, {
       quoteId: existingQuote?.id || null,
       quoteStatus: existingQuote?.status || null,
-    },
+    }),
     fields,
   });
 });
@@ -937,14 +1178,32 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
 
     const answers = (req.body?.answers ?? {}) as Record<string, any>;
     const prev = (lead.custom as any) || {};
-    const merged = { ...prev, ...answers, uiStatus: "INFO_REQUESTED" as UiStatus };
+    const merged: Record<string, any> = { ...prev, uiStatus: "INFO_REQUESTED" as UiStatus };
+    const canonicalUpdates: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(answers)) {
+      if (CANONICAL_FIELD_CONFIG[key]) {
+        const normalized = normalizeCanonicalValue(key, value);
+        if (normalized !== undefined) {
+          canonicalUpdates[key] = normalized;
+          merged[key] = canonicalToCustomValue(key, normalized) ?? null;
+        }
+      } else {
+        merged[key] = value === undefined ? null : value;
+      }
+    }
+
+    const data: any = {
+      status: uiToDb("INFO_REQUESTED"),
+      custom: merged,
+    };
+    for (const [key, value] of Object.entries(canonicalUpdates)) {
+      data[key] = value;
+    }
 
     await prisma.lead.update({
       where: { id },
-      data: {
-        status: uiToDb("INFO_REQUESTED"),
-        custom: merged,
-      },
+      data,
     });
 
     const playbook = await loadTaskPlaybook(tenantId);
