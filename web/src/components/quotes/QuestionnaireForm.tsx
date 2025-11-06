@@ -158,11 +158,11 @@ export function QuestionnaireForm({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {publicFields.map((field) => {
                     const value = item[field.key] ?? "";
                     return (
-                      <div key={field.key} className="space-y-1.5">
+                      <div key={field.key} className="min-w-0 space-y-1.5">
                         <label className="text-xs font-medium text-muted-foreground">
                           {field.label}
                         </label>
@@ -173,7 +173,7 @@ export function QuestionnaireForm({
                             onChange={(e) => handleItemChange(itemIdx, field.key, e.target.value)}
                             disabled={disabled}
                             rows={2}
-                            className="text-sm"
+                            className="w-full text-sm"
                           />
                         ) : field.type === "select" && field.options ? (
                           <Select
@@ -181,8 +181,8 @@ export function QuestionnaireForm({
                             onValueChange={(v) => handleItemChange(itemIdx, field.key, v)}
                             disabled={disabled}
                           >
-                            <SelectTrigger className="text-sm">
-                              <SelectValue placeholder={`Select ${field.label}`} />
+                            <SelectTrigger className="w-full truncate text-sm">
+                              <SelectValue placeholder={`Select ${field.label}`} className="truncate" />
                             </SelectTrigger>
                             <SelectContent>
                               {field.options.map((opt) => (
@@ -199,7 +199,7 @@ export function QuestionnaireForm({
                             placeholder={field.description ?? field.label}
                             onChange={(e) => handleItemChange(itemIdx, field.key, e.target.value)}
                             disabled={disabled}
-                            className="text-sm"
+                            className="w-full text-sm"
                           />
                         )}
                       </div>

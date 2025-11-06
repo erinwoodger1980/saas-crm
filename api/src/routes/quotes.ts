@@ -226,6 +226,13 @@ const ESTIMATE_CACHE_DAYS = (() => {
   return 14;
 })();
 
+// Minimum estimate floor when ML returns a non-positive value
+const MIN_ESTIMATE_GBP = (() => {
+  const raw = Number(process.env.MIN_ESTIMATE_GBP);
+  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
+  return 1500; // sensible default to avoid £0 proposals
+})();
+
 function sanitiseParseResult(result: SupplierParseResult, supplier?: string | null, currency?: string) {
   return {
     supplier: supplier ?? result.supplier ?? null,
@@ -2392,8 +2399,18 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       let modelVersionId = extractModelVersionId(ml) || productionModelId || `external-${new Date().toISOString().slice(0, 10)}`;
       const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
 
+      // Fallback floor if ML prediction is non-positive
+      let predictedTotalFinal = predictedTotal;
+      let usedFallbackFloor = false;
+      if (!(predictedTotalFinal > 0)) {
+        predictedTotalFinal = MIN_ESTIMATE_GBP;
+        usedFallbackFloor = true;
+        modelVersionId = modelVersionId || "fallback-floor";
+        console.warn(`[quotes/:id/price] ML predicted total non-positive; applying floor £${predictedTotalFinal} for quote ${quote.id}`);
+      }
+
       // Only persist positive predictions to avoid poisoning the cache with zeros
-      if (predictedTotal > 0) {
+      if (predictedTotalFinal > 0 && !usedFallbackFloor) {
         try {
           await prisma.estimate.create({
             data: {
@@ -2402,7 +2419,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
               inputType,
               inputHash,
               currency,
-              estimatedTotal: predictedTotal,
+              estimatedTotal: predictedTotalFinal,
               confidence,
               modelVersionId,
             },
@@ -2427,25 +2444,25 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             unitPrice: new Prisma.Decimal(0),
             currency,
             deliveryShareGBP: new Prisma.Decimal(0),
-            lineTotalGBP: new Prisma.Decimal(predictedTotal),
+            lineTotalGBP: new Prisma.Decimal(predictedTotalFinal),
             meta: {
               pricingMethod: "ml_distribute",
-              sellUnitGBP: predictedTotal,
-              sellTotalGBP: predictedTotal,
-              predictedTotal,
+              sellUnitGBP: predictedTotalFinal,
+              sellTotalGBP: predictedTotalFinal,
+              predictedTotal: predictedTotalFinal,
               estimateModelVersionId: modelVersionId,
             } as any,
           },
         });
-        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotal) } });
-        totalGBPForReturn = predictedTotal;
+        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotalFinal) } });
+        totalGBPForReturn = predictedTotalFinal;
       } else {
         // Always distribute by quantity in questionnaire-only mode
         let totalGBP = 0;
         const qtySum2 = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
         for (const ln of quote.lines) {
           const qty = Math.max(1, Number(ln.qty || 1));
-          const sellTotal = predictedTotal > 0 ? (predictedTotal * qty) / Math.max(1, qtySum2) : 0;
+          const sellTotal = predictedTotalFinal > 0 ? (predictedTotalFinal * qty) / Math.max(1, qtySum2) : 0;
           const sellUnit = qty > 0 ? sellTotal / qty : 0;
           totalGBP += sellTotal;
           await prisma.quoteLine.update({
@@ -2457,7 +2474,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
                   sellUnitGBP: sellUnit,
                   sellTotalGBP: sellTotal,
                   pricingMethod: "ml_distribute",
-                  predictedTotal,
+                  predictedTotal: predictedTotalFinal,
                   estimateModelVersionId: modelVersionId,
                 },
               } as any,
@@ -2469,7 +2486,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       }
 
       const sanitizedEstimate = {
-        predictedTotal,
+        predictedTotal: predictedTotalFinal,
         currency,
         confidence,
         modelVersionId,
@@ -2501,7 +2518,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         },
       });
 
-  return res.json({ ok: true, method, predictedTotal, totalGBP: totalGBPForReturn });
+  return res.json({ ok: true, method, predictedTotal: predictedTotalFinal, totalGBP: totalGBPForReturn, fallbackFloor: usedFallbackFloor });
     }
 
     return res.status(400).json({ error: "invalid_method" });
