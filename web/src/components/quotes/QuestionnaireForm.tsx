@@ -233,7 +233,11 @@ export function QuestionnaireForm({
               type="button"
               size="sm"
               variant="secondary"
-              onClick={onEstimateFromAnswers}
+              onClick={async () => {
+                // Ensure any pending auto-saves are flushed before triggering estimate
+                await flush();
+                onEstimateFromAnswers?.();
+              }}
               disabled={!estimateSupported || disabled || !onEstimateFromAnswers}
               title={!estimateSupported && estimateDisabledReason ? estimateDisabledReason : undefined}
               className="self-start"
