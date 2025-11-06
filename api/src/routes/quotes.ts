@@ -2248,6 +2248,60 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           console.warn(`[quotes/:id/price] Cached estimate has predictedTotal=${predictedTotal} for quote ${quote.id} – ignoring cache`);
           // proceed to live ML call by skipping cache branch
         } else {
+          // If there are no lines yet, create a single placeholder line so totals aren't £0
+          if (!quote.lines || quote.lines.length === 0) {
+            const desc = (quote.title && `Estimated: ${quote.title}`) || "Estimated item";
+            await prisma.quoteLine.create({
+              data: {
+                quoteId: quote.id,
+                supplier: null as any,
+                sku: undefined,
+                description: desc,
+                qty: 1,
+                unitPrice: new Prisma.Decimal(0),
+                currency,
+                deliveryShareGBP: new Prisma.Decimal(0),
+                lineTotalGBP: new Prisma.Decimal(predictedTotal),
+                meta: {
+                  pricingMethod: "ml_distribute",
+                  sellUnitGBP: predictedTotal,
+                  sellTotalGBP: predictedTotal,
+                  predictedTotal,
+                  estimateModelVersionId: productionModelId,
+                } as any,
+              },
+            });
+            await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotal) } });
+
+            await logInferenceEvent({
+              tenantId,
+              model: inferenceModel,
+              modelVersionId: productionModelId,
+              inputHash,
+              outputJson: { predictedTotal, currency, confidence, modelVersionId: productionModelId },
+              confidence: confidence ?? undefined,
+              latencyMs: 0,
+              meta: { cacheHit: true, createdPlaceholderLine: true },
+            });
+
+            await logInsight({
+              tenantId,
+              module: inferenceModel,
+              inputSummary: `quote:${quote.id}:${inputType}`,
+              decision: productionModelId,
+              confidence,
+              userFeedback: {
+                kind: inferenceModel,
+                quoteId: quote.id,
+                modelVersionId: productionModelId,
+                estimatedTotal: predictedTotal,
+                cacheHit: true,
+                createdPlaceholderLine: true,
+              },
+            });
+
+            return res.json({ ok: true, method, predictedTotal, totalGBP: predictedTotal, cacheHit: true, createdPlaceholderLine: true });
+          }
           // Always distribute predicted total by quantity when using questionnaire-only mode
           let totalGBP = 0;
           const qtySum = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
@@ -2358,31 +2412,61 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         }
       }
 
-      // Always distribute by quantity in questionnaire-only mode
-      let totalGBP = 0;
-      const qtySum2 = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
-      for (const ln of quote.lines) {
-        const qty = Math.max(1, Number(ln.qty || 1));
-        const sellTotal = predictedTotal > 0 ? (predictedTotal * qty) / Math.max(1, qtySum2) : 0;
-        const sellUnit = qty > 0 ? sellTotal / qty : 0;
-        totalGBP += sellTotal;
-        await prisma.quoteLine.update({
-          where: { id: ln.id },
+      // If there are no lines yet, create a single placeholder line so totals aren't £0
+      let totalGBPForReturn = 0;
+      if (!quote.lines || quote.lines.length === 0) {
+        const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
+        const desc = (quote.title && `Estimated: ${quote.title}`) || "Estimated item";
+        await prisma.quoteLine.create({
           data: {
+            quoteId: quote.id,
+            supplier: null as any,
+            sku: undefined,
+            description: desc,
+            qty: 1,
+            unitPrice: new Prisma.Decimal(0),
+            currency,
+            deliveryShareGBP: new Prisma.Decimal(0),
+            lineTotalGBP: new Prisma.Decimal(predictedTotal),
             meta: {
-              set: {
-                ...(ln.meta as any || {}),
-                sellUnitGBP: sellUnit,
-                sellTotalGBP: sellTotal,
-                pricingMethod: "ml_distribute",
-                predictedTotal,
-                estimateModelVersionId: modelVersionId,
-              },
+              pricingMethod: "ml_distribute",
+              sellUnitGBP: predictedTotal,
+              sellTotalGBP: predictedTotal,
+              predictedTotal,
+              estimateModelVersionId: modelVersionId,
             } as any,
           },
         });
+        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotal) } });
+        totalGBPForReturn = predictedTotal;
+      } else {
+        // Always distribute by quantity in questionnaire-only mode
+        let totalGBP = 0;
+        const qtySum2 = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
+        for (const ln of quote.lines) {
+          const qty = Math.max(1, Number(ln.qty || 1));
+          const sellTotal = predictedTotal > 0 ? (predictedTotal * qty) / Math.max(1, qtySum2) : 0;
+          const sellUnit = qty > 0 ? sellTotal / qty : 0;
+          totalGBP += sellTotal;
+          await prisma.quoteLine.update({
+            where: { id: ln.id },
+            data: {
+              meta: {
+                set: {
+                  ...(ln.meta as any || {}),
+                  sellUnitGBP: sellUnit,
+                  sellTotalGBP: sellTotal,
+                  pricingMethod: "ml_distribute",
+                  predictedTotal,
+                  estimateModelVersionId: modelVersionId,
+                },
+              } as any,
+            },
+          });
+        }
+        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+        totalGBPForReturn = totalGBP;
       }
-      await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
 
       const sanitizedEstimate = {
         predictedTotal,
@@ -2417,7 +2501,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         },
       });
 
-      return res.json({ ok: true, method, predictedTotal, totalGBP });
+  return res.json({ ok: true, method, predictedTotal, totalGBP: totalGBPForReturn });
     }
 
     return res.status(400).json({ error: "invalid_method" });

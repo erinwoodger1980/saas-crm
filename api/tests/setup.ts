@@ -1,9 +1,7 @@
-// Silence noisy console during tests (guard for non-Jest runtimes)
+// Silence only console.warn during tests but keep console.error visible for debugging
 try {
   // @ts-ignore
   jest.spyOn(console, 'warn').mockImplementation(() => {});
-  // @ts-ignore
-  jest.spyOn(console, 'error').mockImplementation(() => {});
 } catch {}
 
 // Provide a basic global.fetch mock for ML calls
