@@ -1015,7 +1015,14 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
         total,
       };
     });
-    const subtotal = rows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
+    let subtotal = rows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
+    // Fallback: if line totals are not populated yet but quote.totalGBP exists, use it for totals
+    if (!(subtotal > 0)) {
+      const fallbackSubtotal = Number(quote.totalGBP ?? 0);
+      if (Number.isFinite(fallbackSubtotal) && fallbackSubtotal > 0) {
+        subtotal = fallbackSubtotal;
+      }
+    }
     const vatAmount = showVat ? subtotal * vatRate : 0;
     const computedTotal = subtotal + vatAmount;
     // Always use computed total (subtotal + VAT) for display consistency
@@ -1540,7 +1547,14 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
         total,
       };
     });
-    const subtotal = rows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
+    let subtotal = rows.reduce((s, r) => s + (Number.isFinite(r.total) ? r.total : 0), 0);
+    // Fallback: if line totals are not populated yet but quote.totalGBP exists, use it for totals
+    if (!(subtotal > 0)) {
+      const fallbackSubtotal = Number(quote.totalGBP ?? 0);
+      if (Number.isFinite(fallbackSubtotal) && fallbackSubtotal > 0) {
+        subtotal = fallbackSubtotal;
+      }
+    }
     const vatAmount = showVat ? subtotal * vatRate : 0;
     const computedTotal = subtotal + vatAmount;
     // Always use computed total (subtotal + VAT) for display consistency
