@@ -187,7 +187,37 @@ function normaliseSupplierLinesForHash(lines: Array<any>): Array<any> {
 
 function normaliseQuestionnaireForHash(features: any): any {
   if (!features || typeof features !== "object") return {};
-  return features;
+  // Ensure the hash uses the flattened feature view so cache keys align with ML inputs
+  return flattenQuestionnaireFeatures(features);
+}
+
+// Flatten lead.custom payloads to the shape expected by ML:
+// - If custom.items exists, merge the first item's fields into the top-level (without keeping the items array)
+// - Preserve any existing top-level keys (e.g., address) unless overridden by non-empty item fields
+// - Strip undefined/empty string values
+function flattenQuestionnaireFeatures(raw: any): Record<string, any> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, any> = {};
+  // Copy top-level (excluding items)
+  try {
+    for (const [k, v] of Object.entries(raw)) {
+      if (k === "items") continue;
+      if (v === undefined || v === null || v === "") continue;
+      out[k] = v as any;
+    }
+  } catch {}
+  // Merge first item if present
+  try {
+    const items: any[] | undefined = Array.isArray((raw as any).items) ? (raw as any).items : undefined;
+    if (items && items.length) {
+      const first = items[0] || {};
+      for (const [k, v] of Object.entries(first)) {
+        if (v === undefined || v === null || v === "") continue;
+        out[k] = v as any;
+      }
+    }
+  } catch {}
+  return out;
 }
 
 const ESTIMATE_CACHE_DAYS = (() => {
@@ -2137,8 +2167,9 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       const API_BASE = (
         process.env.APP_API_URL || process.env.API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`
       ).replace(/\/$/, "");
-      const features: any = (quote.lead?.custom as any) || {};
-      console.log(`[quotes/:id/price] ML estimate for quote ${quote.id}, features:`, JSON.stringify(features));
+  const featuresRaw: any = (quote.lead?.custom as any) || {};
+  const features: any = flattenQuestionnaireFeatures(featuresRaw);
+  console.log(`[quotes/:id/price] ML estimate for quote ${quote.id}, features:`, JSON.stringify(features));
   const inputTypeRaw = typeof req.body?.inputType === "string" ? req.body.inputType : (preferQuestionnaire ? "questionnaire" : undefined);
       const inputType = inputTypeRaw === "supplier_pdf" ? "supplier_pdf" : "questionnaire";
 
@@ -2211,71 +2242,73 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         const currency = normalizeCurrency(cachedEstimate.currency || quote.currency || "GBP");
         
         console.log(`[quotes/:id/price] Using cached estimate for quote ${quote.id}: predictedTotal=${predictedTotal}, confidence=${confidence}`);
-        
-        if (predictedTotal <= 0) {
-          console.warn(`[quotes/:id/price] Cached estimate has predictedTotal=${predictedTotal} for quote ${quote.id}`);
-        }
 
-        // Always distribute predicted total by quantity when using questionnaire-only mode
-        let totalGBP = 0;
-        const qtySum = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
-        for (const ln of quote.lines) {
-          const qty = Math.max(1, Number(ln.qty || 1));
-          const sellTotal = predictedTotal > 0 ? (predictedTotal * qty) / Math.max(1, qtySum) : 0;
-          const sellUnit = qty > 0 ? sellTotal / qty : 0;
-          totalGBP += sellTotal;
-          await prisma.quoteLine.update({
-            where: { id: ln.id },
-            data: {
-              meta: {
-                set: {
-                  ...(ln.meta as any || {}),
-                  sellUnitGBP: sellUnit,
-                  sellTotalGBP: sellTotal,
-                  pricingMethod: "ml_distribute",
-                  predictedTotal,
-                  estimateModelVersionId: productionModelId,
-                },
-              } as any,
+        // If cached value is non-positive, treat as cache miss to allow retraining/updated logic
+        if (predictedTotal <= 0) {
+          console.warn(`[quotes/:id/price] Cached estimate has predictedTotal=${predictedTotal} for quote ${quote.id} – ignoring cache`);
+          // proceed to live ML call by skipping cache branch
+        } else {
+          // Always distribute predicted total by quantity when using questionnaire-only mode
+          let totalGBP = 0;
+          const qtySum = quote.lines.reduce((s, ln) => s + Math.max(1, Number(ln.qty || 1)), 0);
+          for (const ln of quote.lines) {
+            const qty = Math.max(1, Number(ln.qty || 1));
+            const sellTotal = predictedTotal > 0 ? (predictedTotal * qty) / Math.max(1, qtySum) : 0;
+            const sellUnit = qty > 0 ? sellTotal / qty : 0;
+            totalGBP += sellTotal;
+            await prisma.quoteLine.update({
+              where: { id: ln.id },
+              data: {
+                meta: {
+                  set: {
+                    ...(ln.meta as any || {}),
+                    sellUnitGBP: sellUnit,
+                    sellTotalGBP: sellTotal,
+                    pricingMethod: "ml_distribute",
+                    predictedTotal,
+                    estimateModelVersionId: productionModelId,
+                  },
+                } as any,
+              },
+            });
+          }
+          await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+
+          const sanitizedEstimate: any = {
+            predictedTotal,
+            currency,
+            confidence,
+            modelVersionId: productionModelId,
+          };
+
+          await logInferenceEvent({
+            tenantId,
+            model: inferenceModel,
+            modelVersionId: productionModelId,
+            inputHash,
+            outputJson: sanitizedEstimate,
+            confidence: confidence ?? undefined,
+            latencyMs: 0,
+            meta: { cacheHit: true },
+          });
+
+          await logInsight({
+            tenantId,
+            module: inferenceModel,
+            inputSummary: `quote:${quote.id}:${inputType}`,
+            decision: productionModelId,
+            confidence,
+            userFeedback: {
+              kind: inferenceModel,
+              quoteId: quote.id,
+              modelVersionId: productionModelId,
+              estimatedTotal: predictedTotal,
+              cacheHit: true,
             },
           });
+
+          return res.json({ ok: true, method, predictedTotal, totalGBP, cacheHit: true });
         }
-        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
-
-        const sanitizedEstimate: any = {
-          predictedTotal,
-          currency,
-          confidence,
-          modelVersionId: productionModelId,
-        };
-
-        await logInferenceEvent({
-          tenantId,
-          model: inferenceModel,
-          modelVersionId: productionModelId,
-          inputHash,
-          outputJson: sanitizedEstimate,
-          confidence: confidence ?? undefined,
-          latencyMs: 0,
-          meta: { cacheHit: true },
-        });
-
-        await logInsight({
-          tenantId,
-          module: inferenceModel,
-          inputSummary: `quote:${quote.id}:${inputType}`,
-          decision: productionModelId,
-          confidence,
-          userFeedback: {
-            kind: inferenceModel,
-            quoteId: quote.id,
-            modelVersionId: productionModelId,
-            estimatedTotal: predictedTotal,
-            cacheHit: true,
-          },
-        });
-
-        return res.json({ ok: true, method, predictedTotal, totalGBP, cacheHit: true });
       }
 
       const startedAt = Date.now();
@@ -2305,21 +2338,24 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
       let modelVersionId = extractModelVersionId(ml) || productionModelId || `external-${new Date().toISOString().slice(0, 10)}`;
       const currency = normalizeCurrency(ml?.currency || quote.currency || "GBP");
 
-      try {
-        await prisma.estimate.create({
-          data: {
-            tenantId,
-            quoteId: quote.id,
-            inputType,
-            inputHash,
-            currency,
-            estimatedTotal: predictedTotal,
-            confidence,
-            modelVersionId,
-          },
-        });
-      } catch (e: any) {
-        console.warn(`[quotes] failed to persist Estimate for quote ${quote.id}:`, e?.message || e);
+      // Only persist positive predictions to avoid poisoning the cache with zeros
+      if (predictedTotal > 0) {
+        try {
+          await prisma.estimate.create({
+            data: {
+              tenantId,
+              quoteId: quote.id,
+              inputType,
+              inputHash,
+              currency,
+              estimatedTotal: predictedTotal,
+              confidence,
+              modelVersionId,
+            },
+          });
+        } catch (e: any) {
+          console.warn(`[quotes] failed to persist Estimate for quote ${quote.id}:`, e?.message || e);
+        }
       }
 
       // Always distribute by quantity in questionnaire-only mode
