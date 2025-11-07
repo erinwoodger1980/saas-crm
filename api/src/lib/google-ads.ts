@@ -87,20 +87,21 @@ export class GoogleAdsClient {
   /**
    * Update keyword performance for a tenant
    */
-  async updateTenantKeywordPerformance(tenantId: string) {
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: {
-        googleAdsCustomerId: true,
-        googleAdsRefreshToken: true,
-        targetCPL: true,
-      },
-    });
+  async updateKeywordPerformance(tenantId: string, targetCPL: number = 50): Promise<{ success: boolean; error?: string; keywordCount?: number; activeKeywordCount?: number; underperformingCount?: number }> {
+    try {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: {
+          googleAdsCustomerId: true,
+          targetCPL: true,
+        },
+      });
 
-    if (!tenant?.googleAdsCustomerId || !tenant.googleAdsRefreshToken) {
-      console.log(`Tenant ${tenantId} has no Google Ads configuration, skipping`);
-      return { success: false, reason: 'no_ads_config' };
-    }
+      if (!tenant?.googleAdsCustomerId) {
+        throw new Error('Google Ads not configured for this tenant');
+      }
+
+      const actualTargetCPL = tenant.targetCPL ? parseFloat(tenant.targetCPL.toString()) : targetCPL;
 
     // Get date range (last 7 days)
     const endDate = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
@@ -183,7 +184,7 @@ export class GoogleAdsClient {
         activeKeywordCount: activeKeywords.length,
         underperformingCount: keywords.filter(kw => {
           const cpl = kw.conversions > 0 ? kw.cost / kw.conversions : 0;
-          return kw.ctr < 1 || cpl > targetCPL;
+          return kw.ctr < 1 || cpl > actualTargetCPL;
         }).length,
       };
     } catch (error: any) {

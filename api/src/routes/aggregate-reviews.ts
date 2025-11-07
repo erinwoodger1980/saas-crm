@@ -10,10 +10,10 @@ const prisma = new PrismaClient();
  */
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    // Fetch all reviews across all tenants
-    const reviews = await prisma.review.findMany({
+    // Fetch all reviews across all landing tenants
+    const reviews = await prisma.landingTenantReview.findMany({
       select: {
-        stars: true,
+        rating: true,
         createdAt: true
       }
     });
@@ -28,7 +28,7 @@ router.get('/', async (_req: Request, res: Response) => {
     }
 
     // Calculate statistics
-    const totalStars = reviews.reduce((sum, review) => sum + review.stars, 0);
+    const totalStars = reviews.reduce((sum: number, review: any) => sum + review.rating, 0);
     const averageRating = totalStars / reviews.length;
 
     // Rating distribution (1-5 stars)
@@ -40,8 +40,8 @@ router.get('/', async (_req: Request, res: Response) => {
       5: 0
     };
 
-    reviews.forEach(review => {
-      ratingDistribution[review.stars] = (ratingDistribution[review.stars] || 0) + 1;
+    reviews.forEach((review: any) => {
+      ratingDistribution[review.rating] = (ratingDistribution[review.rating] || 0) + 1;
     });
 
     // Generate Organization schema with aggregate rating
@@ -87,11 +87,26 @@ router.get('/:tenantId', async (req: Request, res: Response) => {
   try {
     const { tenantId } = req.params;
 
-    const reviews = await prisma.review.findMany({
+    // Find landing tenant for this tenant
+    const landingTenant = await prisma.landingTenant.findUnique({
       where: { tenantId },
+      select: { id: true }
+    });
+
+    if (!landingTenant) {
+      return res.json({
+        averageRating: null,
+        totalReviews: 0,
+        ratingDistribution: {},
+        recentReviews: []
+      });
+    }
+
+    const reviews = await prisma.landingTenantReview.findMany({
+      where: { landingTenantId: landingTenant.id },
       select: {
-        stars: true,
-        quote: true,
+        rating: true,
+        text: true,
         author: true,
         location: true,
         createdAt: true
@@ -110,7 +125,7 @@ router.get('/:tenantId', async (req: Request, res: Response) => {
       });
     }
 
-    const totalStars = reviews.reduce((sum, review) => sum + review.stars, 0);
+    const totalStars = reviews.reduce((sum: number, review: any) => sum + review.rating, 0);
     const averageRating = totalStars / reviews.length;
 
     const ratingDistribution: Record<number, number> = {
@@ -121,8 +136,8 @@ router.get('/:tenantId', async (req: Request, res: Response) => {
       5: 0
     };
 
-    reviews.forEach(review => {
-      ratingDistribution[review.stars] = (ratingDistribution[review.stars] || 0) + 1;
+    reviews.forEach((review: any) => {
+      ratingDistribution[review.rating] = (ratingDistribution[review.rating] || 0) + 1;
     });
 
     res.json({

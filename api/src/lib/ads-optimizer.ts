@@ -313,7 +313,7 @@ export class AdsOptimizer {
         clicks: kw.clicks,
         ctr: parseFloat(kw.ctr.toString()),
         cpl: parseFloat(kw.cpl.toString()),
-        reason: kw.ctr < 1 ? 'Low CTR' : 'High CPL',
+        reason: parseFloat(kw.ctr.toString()) < 1 ? 'Low CTR' : 'High CPL',
       })),
       suggestions: suggestions.map(s => ({
         id: s.id,

@@ -58,6 +58,8 @@ model Tenant {
   timeEntries           TimeEntry[]
   targets               Target[]
   keywordPerformance    KeywordPerformance[]
+  landingTenant         LandingTenant?
+  slug                  String?                @unique
 }
 
 model User {
@@ -1026,20 +1028,29 @@ model LandingLead {
 
 // Multi-tenant landing page system
 model LandingTenant {
-  id          String                @id @default(cuid())
-  slug        String                @unique
-  name        String
-  homeUrl     String?
-  email       String?
-  phone       String?
-  address     String?
-  brandColor  String?               // hex
-  logoUrl     String?
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
-  content     LandingTenantContent?
-  images      LandingTenantImage[]
-  reviews     LandingTenantReview[]
+  id             String                @id @default(cuid())
+  tenantId       String                @unique
+  slug           String                @unique
+  name           String?
+  homeUrl        String?
+  email          String?
+  phone          String?
+  address        String?
+  brandColor     String?               // hex
+  logoUrl        String?
+  // Editor fields
+  headline       String?
+  subhead        String?
+  urgencyBanner  String?
+  ctaText        String?               @default("Get Your Free Quote")
+  guarantees     Json?                 // Array of guarantee objects
+  publishedAt    DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  content        LandingTenantContent?
+  images         LandingTenantImage[]
+  reviews        LandingTenantReview[]
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model LandingTenantContent {
@@ -1060,28 +1071,29 @@ model LandingTenantContent {
 }
 
 model LandingTenantImage {
-  id        String        @id @default(cuid())
-  tenantId  String
-  src       String        // URL or /public path
-  alt       String?
-  caption   String?
-  sortOrder Int           @default(0)
-  createdAt DateTime      @default(now())
-  tenant    LandingTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  @@index([tenantId, sortOrder])
+  id               String        @id @default(cuid())
+  landingTenantId  String
+  url              String        // Image URL
+  altText          String?
+  caption          String?
+  order            Int           @default(0)
+  createdAt        DateTime      @default(now())
+  tenant           LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+  @@index([landingTenantId, order])
 }
 
 model LandingTenantReview {
-  id        String        @id @default(cuid())
-  tenantId  String
-  quote     String
-  author    String?
-  location  String?
-  stars     Int           @default(5)
-  sortOrder Int           @default(0)
-  createdAt DateTime      @default(now())
-  tenant    LandingTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  @@index([tenantId, sortOrder])
+  id               String        @id @default(cuid())
+  landingTenantId  String
+  author           String
+  text             String
+  rating           Int           @default(5)
+  date             DateTime      @default(now())
+  location         String?
+  order            Int           @default(0)
+  createdAt        DateTime      @default(now())
+  tenant           LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+  @@index([landingTenantId, order])
 }
 
 // Google Ads keyword performance tracking
@@ -1127,6 +1139,7 @@ model KeywordSuggestion {
   conversionRate Decimal // The keyword's conversion rate that prompted this
   status       String   @default("pending") // pending, approved, rejected, applied
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   appliedAt    DateTime?
   
   @@index([tenantId, status])
