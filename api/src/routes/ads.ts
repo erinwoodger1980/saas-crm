@@ -88,6 +88,7 @@ router.post('/tenant/:slug/bootstrap', async (req: Request, res: Response) => {
       radiusMiles = 50,
       dailyBudgetGBP = 10,
       city,
+      campaignName,
     } = req.body;
 
     // Validate required fields
@@ -126,22 +127,19 @@ router.post('/tenant/:slug/bootstrap', async (req: Request, res: Response) => {
       customerId,
       landingUrl,
       postcode,
-      radiusMiles: parseInt(radiusMiles),
-      dailyBudget: dailyBudgetMicros,
-      city: city || 'Sussex',
+      radiusMiles,
+      dailyBudgetGBP,
+      city,
+      campaignName,
     });
 
     res.json({
       success: true,
-      tenantId: tenant.id,
-      customerId,
+      budget: result.budgetResourceName,
       campaign: result.campaignResourceName,
       adGroup: result.adGroupResourceName,
-      budget: result.budgetResourceName,
       ads: result.adResourceNames,
-      sitelinks: result.sitelinkResourceNames,
       keywords: result.keywordResourceNames,
-      message: 'Campaign bootstrap complete. Campaign is PAUSED - enable in Google Ads UI.',
     });
   } catch (error: any) {
     console.error('Error bootstrapping campaign:', error);

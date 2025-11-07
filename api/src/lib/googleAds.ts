@@ -65,58 +65,51 @@ export function getAdsClient(customerId: string): Customer {
  * List all accessible customer accounts (from MCC perspective)
  */
 export async function listAccessibleCustomers(): Promise<string[]> {
-  const loginCustomerId = process.env.LOGIN_CUSTOMER_ID;
-  if (!loginCustomerId) {
-    throw new Error('LOGIN_CUSTOMER_ID not set');
-  }
-
-  const customer = getAdsClient(loginCustomerId);
-
   try {
-    const response = await customer.customerClients.list();
-    return response.map((c: any) => c.customer_client.id?.toString() || '');
+    const mccCustomerId = getMccCustomerId();
+    const customer = getAdsClient(mccCustomerId);
+
+    // Query for all accessible customers
+    const query = `
+      SELECT 
+        customer_client.id,
+        customer_client.descriptive_name,
+        customer_client.manager
+      FROM customer_client
+      WHERE customer_client.status = 'ENABLED'
+    `;
+
+    const results = await customer.query(query);
+
+    return results.map((r: any) => r.customer_client.id);
   } catch (error: any) {
-    console.error('Error listing accessible customers:', error.message);
-    throw error;
+    console.error("Failed to list accessible customers:", error);
+    throw new Error(`Google Ads API error: ${error.message}`);
   }
 }
 
 /**
  * Create a new customer client (sub-account) under the MCC
  */
-export async function createCustomerClient(options: {
+export async function createCustomerClient(params: {
   name: string;
   currency?: string;
   timeZone?: string;
 }): Promise<string> {
-  const { name, currency = 'GBP', timeZone = 'Europe/London' } = options;
-
-  const loginCustomerId = process.env.LOGIN_CUSTOMER_ID;
-  if (!loginCustomerId) {
-    throw new Error('LOGIN_CUSTOMER_ID not set');
-  }
-
-  const customer = getAdsClient(loginCustomerId);
-
   try {
-    const operation = {
-      customer_client: {
-        descriptive_name: name,
-        currency_code: currency,
-        time_zone: timeZone,
-      },
-    };
-
-    const response = await customer.customerClients.create(operation);
+    const mccCustomerId = getMccCustomerId();
     
-    // Extract customer ID from resource name: customers/1234567890
-    const resourceName = response.resource_name || '';
-    const customerId = resourceName.split('/').pop() || '';
+    // Note: Customer creation via API may require special permissions
+    // For now, this is a placeholder that should be replaced with proper implementation
+    // You may need to create customers manually in Google Ads UI or use Customer Lifecycle Management
     
-    console.log(`Created customer client: ${customerId} (${name})`);
-    return customerId;
+    throw new Error(
+      "Customer creation via API requires special access. " +
+      "Please create customers manually in Google Ads UI under your MCC account, " +
+      "then link them to tenants using the TenantAdsConfig model."
+    );
   } catch (error: any) {
-    console.error('Error creating customer client:', error.message);
+    console.error("Failed to create customer client:", error);
     throw error;
   }
 }

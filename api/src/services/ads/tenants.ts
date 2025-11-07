@@ -69,53 +69,46 @@ export async function ensureNegativeList(
   try {
     // Check if list already exists
     const query = `
-      SELECT
-        shared_set.id,
-        shared_set.name,
-        shared_set.type,
-        shared_set.resource_name
+      SELECT shared_set.id, shared_set.name, shared_set.resource_name
       FROM shared_set
-      WHERE shared_set.type = 'NEGATIVE_KEYWORDS'
-        AND shared_set.name = '${listName}'
+      WHERE shared_set.name = '${listName}'
+        AND shared_set.type = 'NEGATIVE_KEYWORDS'
     `;
 
-    const existingLists = await customer.query(query);
-
-    let sharedSetResourceName: string;
-
-    if (existingLists.length > 0) {
-      sharedSetResourceName = existingLists[0].shared_set.resource_name;
-      console.log(`Using existing negative list: ${sharedSetResourceName}`);
-    } else {
-      // Create new shared set
-      const sharedSetOperation = {
-        create: {
-          name: listName,
-          type: 'NEGATIVE_KEYWORDS',
-        },
-      };
-
-      const sharedSetResponse = await customer.sharedSets.create([sharedSetOperation]);
-      sharedSetResourceName = sharedSetResponse.results[0].resource_name;
-      console.log(`Created negative list: ${sharedSetResourceName}`);
-
-      // Add negative keywords to the set
-      const criteriaOperations = DEFAULT_NEGATIVE_KEYWORDS.map((keyword) => ({
-        create: {
-          shared_set: sharedSetResourceName,
-          keyword: {
-            text: keyword,
-            match_type: 'BROAD',
-          },
-          type: 'KEYWORD',
-        },
-      }));
-
-      if (criteriaOperations.length > 0) {
-        await customer.sharedCriteria.create(criteriaOperations);
-        console.log(`Added ${DEFAULT_NEGATIVE_KEYWORDS.length} negative keywords`);
+    const existing = await customer.query(query);
+    if (existing.length > 0) {
+      const resourceName = existing[0]?.shared_set?.resource_name;
+      if (!resourceName) {
+        throw new Error("Invalid shared set resource name");
       }
+      console.log("✓ Negative list already exists:", resourceName);
+      return resourceName;
     }
+
+    // Create new negative keyword list
+    const sharedSetResponse = await customer.sharedSets.create([
+      {
+        name: listName,
+        type: "NEGATIVE_KEYWORDS",
+      },
+    ]);
+    const sharedSetResourceName = sharedSetResponse.results?.[0]?.resource_name || "";
+    if (!sharedSetResourceName) {
+      throw new Error("Failed to create shared set");
+    }
+
+    // Add negative keywords to the list
+    const negativeKeywords = DEFAULT_NEGATIVE_KEYWORDS.map((keyword) => ({
+      shared_set: sharedSetResourceName,
+      keyword: {
+        text: keyword,
+        match_type: "BROAD",
+      },
+      type: "KEYWORD",
+    }));
+
+    await customer.sharedCriteria.create(negativeKeywords as any);
+    console.log(`Added ${DEFAULT_NEGATIVE_KEYWORDS.length} negative keywords to list`);
 
     // Get all campaigns in the account
     const campaignsQuery = `
@@ -152,14 +145,12 @@ export async function ensureNegativeList(
     const attachOperations = campaigns
       .filter((c: any) => !attachedCampaignResourceNames.has(c.campaign.resource_name))
       .map((c: any) => ({
-        create: {
-          campaign: c.campaign.resource_name,
-          shared_set: sharedSetResourceName,
-        },
+        campaign: c.campaign.resource_name,
+        shared_set: sharedSetResourceName,
       }));
 
     if (attachOperations.length > 0) {
-      await customer.campaignSharedSets.create(attachOperations);
+      await customer.campaignSharedSets.create(attachOperations as any);
       console.log(`Attached negative list to ${attachOperations.length} campaigns`);
     } else {
       console.log('Negative list already attached to all campaigns');
