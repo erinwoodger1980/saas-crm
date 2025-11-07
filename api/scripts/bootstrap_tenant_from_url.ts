@@ -131,10 +131,10 @@ async function main() {
       const alt = imgUrl.split('/').pop()?.split('.')[0] || 'Image';
       await prisma.landingTenantImage.create({
         data: {
-          tenantId: tenant.id,
-          src: publicUrl,
-          alt,
-          sortOrder: i,
+          landingTenantId: tenant.id,
+          url: publicUrl,
+          altText: alt,
+          order: i,
         },
       });
 

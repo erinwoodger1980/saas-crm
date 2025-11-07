@@ -8,40 +8,143 @@ datasource db {
   shadowDatabaseUrl = env("postgresql://joineryai_shadow_user:7zmNESACuFyK50AIvvIcRdKrJiJ38RLc@dpg-d3r0aher433s73e2rjtg-a.oregon-postgres.render.com/joineryai_shadow")
 }
 
-model ActivityLog {
-  id        String         @id
-  tenantId  String
-  entity    ActivityEntity
-  entityId  String
-  verb      ActivityVerb
-  actorId   String?
-  data      Json?
-  createdAt DateTime       @default(now())
-  Tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, entity, entityId])
-  @@index([tenantId, verb])
+model Tenant {
+  id                    String                 @id @default(cuid())
+  name                  String
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @default(now()) @updatedAt
+  stripeCustomerId      String?                @unique
+  stripeSubscriptionId  String?                @unique
+  trialEndsAt           DateTime?
+  discountCodeUsed      String?
+  seatsOffice           Int                    @default(5)
+  seatsWorkshop         Int                    @default(10)
+  seatsDisplay          Int                    @default(2)
+  subscriptionStatus    SubscriptionStatus?
+  plan                  Plan?
+  financialYearEnd      String?                @default("12-31") // MM-DD format for financial year end
+  // SEO & Ads optimization fields
+  keywords              String[]               @default([])
+  serviceAreas          String[]               @default([])
+  homeUrl               String?
+  googleAdsCustomerId   String?                // Google Ads customer ID
+  googleAdsRefreshToken String?                // OAuth refresh token for Ads API
+  targetCPL             Decimal?               @default(50) // Target cost per lead
+  emailIngests          EmailIngest[]
+  emailMessages         EmailMessage[]
+  emailThreads          EmailThread[]
+  GmailTenantConnection GmailTenantConnection?
+  leads                 Lead[]
+  leadFieldDefs         LeadFieldDef[]
+  Ms365TenantConnection Ms365TenantConnection?
+  opportunities         Opportunity[]
+  quotes                Quote[]
+  UploadedFile          UploadedFile[]
+  users                 User[]
+  feedbacks             Feedback[]
+  tasks                 Task[]
+  automationRules       AutomationRule[]
+  notifications         Notification[]
+  streaks               Streak[]
+  activityLogs          ActivityLog[]
+  userPreferences       UserPreference[]
+  trainingInsights      TrainingInsights[]
+  modelOverrides        ModelOverride[]
+  trainingEvents        TrainingEvent[]
+  followUpTemplates     FollowUpTemplate[]
+  followUpEvents        FollowUpEvent[]
+  sourceSpends          SourceSpend[]
+  // Workshop relations
+  processPlans          ProcessPlan[]
+  timeEntries           TimeEntry[]
+  targets               Target[]
+  keywordPerformance    KeywordPerformance[]
+  keywordSuggestions    KeywordSuggestion[]
+  landingTenant         LandingTenant?
+  slug                  String?                @unique
 }
 
-model AutomationRule {
-  id          String   @id
-  tenantId    String
-  name        String
-  enabled     Boolean  @default(true)
-  trigger     Json
-  conditions  Json?
-  actions     Json
-  createdById String?
-  updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now())
-  Tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+model User {
+  id                    String                  @id @default(cuid())
+  tenantId              String
+  email                 String                  @unique
+  name                  String?
+  role                  String                  @default("user")
+  isEarlyAdopter        Boolean                 @default(false)
+  passwordHash          String?
+  signupCompleted       Boolean                 @default(false)
+  GmailTenantConnection GmailTenantConnection[]
+  Ms365TenantConnection Ms365TenantConnection[]
+  passwordResetToken    PasswordResetToken?
+  signupTokens          SignupToken[]
+  tenant                Tenant                  @relation(fields: [tenantId], references: [id])
+  feedbacks             Feedback[]              @relation("FeedbackAuthor")
+  resolvedFeedbacks     Feedback[]              @relation("FeedbackResolver")
+  // Workshop relations
+  processPlansAssigned   ProcessPlan[]
+  timeEntries            TimeEntry[]
+}
 
-  @@index([tenantId, enabled])
+model SignupToken {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  token      String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Lead {
+  id            String         @id @default(cuid())
+  tenantId      String
+  createdById   String
+  contactName   String
+  email         String?
+  status        LeadStatus     @default(NEW)
+  capturedAt    DateTime       @default(now())
+  nextActionAt  DateTime?
+  nextAction    String?
+  briefJson     Json?
+  custom        Json?
+  description   String?
+  emailIngests  EmailIngest[]
+  emailMessages EmailMessage[]
+  emailThreads  EmailThread[]
+  followUpLogs  FollowUpLog[]
+  followUpEvents FollowUpEvent[]
+  estimatedValue Decimal?
+  quotedValue    Decimal?
+  dateQuoteSent  DateTime?
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  opportunity   Opportunity?
+  Quote         Quote[]
+}
+
+model Opportunity {
+  id            String         @id @default(cuid())
+  tenantId      String
+  leadId        String         @unique
+  title         String
+  valueGBP      Decimal?
+  stage         OppStage       @default(QUALIFY)
+  wonAt         DateTime?
+  lostAt        DateTime?
+  createdAt     DateTime       @default(now())
+  emailMessages EmailMessage[]
+  emailThreads  EmailThread[]
+  lead          Lead           @relation(fields: [leadId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  // Workshop relations
+  processPlans  ProcessPlan[]
+  timeEntries   TimeEntry[]
+
+  @@index([tenantId, stage])
 }
 
 model EmailIngest {
-  id                String    @id
+  id                String    @id @default(cuid())
   tenantId          String
   provider          String
   messageId         String
@@ -54,15 +157,260 @@ model EmailIngest {
   aiPredictedIsLead Boolean?
   userLabelIsLead   Boolean?
   userLabeledAt     DateTime?
-  Lead              Lead?     @relation(fields: [leadId], references: [id])
-  Tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead              Lead?     @relation(fields: [leadId], references: [id])
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, provider, messageId])
+  @@unique([tenantId, provider, messageId], name: "tenantId_provider_messageId")
   @@index([tenantId])
 }
 
+model LeadFieldDef {
+  id        String  @id @default(cuid())
+  tenantId  String
+  key       String
+  label     String
+  type      String  @default("text")
+  required  Boolean @default(false)
+  config    Json?
+  sortOrder Int     @default(0)
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@index([tenantId, sortOrder])
+}
+
+model GmailTenantConnection {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  connectedById String?
+  gmailAddress  String?
+  refreshToken  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  connectedBy   User?    @relation(fields: [connectedById], references: [id])
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+}
+
+model Ms365TenantConnection {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  connectedById String?
+  ms365Address  String?
+  refreshToken  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  connectedBy   User?    @relation(fields: [connectedById], references: [id])
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+}
+
+model LeadExample {
+  id        String    @id @default(cuid())
+  tenantId  String
+  provider  String
+  messageId String
+  subject   String?
+  body      String?
+  extracted Json?
+  label     LeadLabel @default(UNSURE)
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, provider, messageId])
+}
+
+model LeadTrainingExample {
+  id        String   @id @default(cuid())
+  tenantId  String
+  provider  String
+  messageId String
+  label     String
+  extracted Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, provider, messageId])
+}
+
+/// *
+///  * ✅ Unified TenantSettings (only ONE model)
+model TenantSettings {
+  tenantId          String    @id
+  slug              String    @unique
+  brandName         String
+  introHtml         String?
+  website           String?
+  phone             String?
+  links             Json?
+  questionnaire     Json?
+  logoUrl           String?
+  inbox             Json?
+  inboxLastRun      DateTime?
+  inboxWatchEnabled Boolean   @default(false)
+  quoteDefaults     Json?
+  taskPlaybook      Json?     @default("{}")
+  questionnaireEmailSubject String?
+  questionnaireEmailBody    String?
+  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime  @default(now())
+  beta            Json     @default("{}")
+}
+
+model FollowUpLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  leadId    String
+  variant   String
+  subject   String
+  body      String
+  sentAt    DateTime @default(now())
+  opened    Boolean?
+  replied   Boolean?
+  converted Boolean?
+  delayDays Int?
+  messageId String?
+  provider  String?
+  threadId  String?
+  channel   String   @default("email")
+  scheduledFor DateTime?
+  metadata  Json?
+  lead      Lead     @relation(fields: [leadId], references: [id])
+
+  @@index([tenantId, leadId, sentAt])
+  @@index([tenantId, channel, sentAt])
+}
+
+model FollowUpTemplate {
+  id        String   @id @default(cuid())
+  tenantId  String
+  key       String
+  subject   String
+  body      String
+  tone      String?
+  delayDays Int
+  isActive  Boolean  @default(true)
+  variant   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+}
+
+model FollowUpEvent {
+  id           String   @id @default(cuid())
+  tenantId     String
+  leadId       String
+  quoteId      String?
+  variant      String
+  templateKey  String
+  scheduledAt  DateTime
+  sentAt       DateTime?
+  openedAt     DateTime?
+  repliedAt    DateTime?
+  convertedAt  DateTime?
+  result       String?
+  source       String?
+  pixelToken   String?  @unique
+  costPence    Int?
+  meta         Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  lead         Lead     @relation(fields: [leadId], references: [id])
+  quote        Quote?   @relation(fields: [quoteId], references: [id])
+
+  @@index([tenantId, leadId, scheduledAt])
+}
+
+model LeadSourceCost {
+  id          String   @id @default(cuid())
+  tenantId    String
+  source      String
+  month       DateTime
+  spend       Float    @default(0)
+  leads       Int      @default(0)
+  conversions Int      @default(0)
+  scalable    Boolean  @default(true)
+
+  @@unique([tenantId, source, month])
+  @@index([tenantId, source, month])
+}
+
+model LeadSourceSpend {
+  id        String   @id @default(cuid())
+  tenantId  String
+  source    String
+  month     DateTime
+  amountGBP Decimal  @default(0)
+
+  @@index([tenantId, source, month])
+}
+
+model SourceSpend {
+  id          String   @id @default(cuid())
+  tenantId    String
+  source      String
+  periodStart DateTime
+  periodEnd   DateTime
+  spendPence  Int
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, source, periodStart, periodEnd])
+}
+
+model LeadSourceConfig {
+  id       String  @id @default(cuid())
+  tenantId String
+  source   String
+  scalable Boolean @default(true)
+
+  @@unique([tenantId, source])
+}
+
+model FollowupExperiment {
+  id            String    @id @default(cuid())
+  tenantId      String
+  opportunityId String
+  variant       String
+  source        String
+  suggestedAt   DateTime
+  whenISO       String
+  subject       String
+  body          String
+  sentAt        DateTime?
+  replied       Boolean?
+  outcome       String?
+
+  @@index([tenantId, opportunityId])
+}
+
+model EmailThread {
+  id             String         @id @default(cuid())
+  tenantId       String
+  provider       String
+  threadId       String
+  subject        String?
+  leadId         String?
+  opportunityId  String?
+  lastInboundAt  DateTime?
+  lastOutboundAt DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  messages       EmailMessage[]
+  lead           Lead?          @relation(fields: [leadId], references: [id])
+  opportunity    Opportunity?   @relation(fields: [opportunityId], references: [id])
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, threadId])
+  @@index([tenantId, leadId])
+  @@index([tenantId, opportunityId])
+}
+
 model EmailMessage {
-  id            String       @id
+  id            String       @id @default(cuid())
   tenantId      String
   threadId      String
   provider      String
@@ -80,40 +428,101 @@ model EmailMessage {
   createdAt     DateTime     @default(now())
   leadId        String?
   opportunityId String?
-  Lead          Lead?        @relation(fields: [leadId], references: [id])
-  Opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
-  Tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  EmailThread   EmailThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  lead          Lead?        @relation(fields: [leadId], references: [id])
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  thread        EmailThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, provider, messageId])
-  @@index([tenantId, leadId])
   @@index([tenantId, threadId, sentAt])
+  @@index([tenantId, leadId])
 }
 
-model EmailThread {
-  id             String         @id
-  tenantId       String
-  provider       String
-  threadId       String
-  subject        String?
-  leadId         String?
-  opportunityId  String?
-  lastInboundAt  DateTime?
-  lastOutboundAt DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime
-  EmailMessage   EmailMessage[]
-  Lead           Lead?          @relation(fields: [leadId], references: [id])
-  Opportunity    Opportunity?   @relation(fields: [opportunityId], references: [id])
-  Tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+/// *
+///  * =============== Quoting ===============
+model Quote {
+  id                  String         @id @default(cuid())
+  tenantId            String
+  leadId              String?
+  title               String
+  status              QuoteStatus    @default(DRAFT)
+  currency            String         @default("GBP")
+  exchangeRate        Decimal?
+  deliveryCost        Decimal?       @default(0)
+  markupDefault       Decimal?       @default(0)
+  subtotalMaterialGBP Decimal?       @default(0)
+  subtotalLabourGBP   Decimal?       @default(0)
+  subtotalOtherGBP    Decimal?       @default(0)
+  totalGBP            Decimal?       @default(0)
+  proposalPdfUrl      String?
+  notes               String?
+  meta                Json?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  lead                Lead?          @relation(fields: [leadId], references: [id])
+  tenant              Tenant         @relation(fields: [tenantId], references: [id])
+  lines               QuoteLine[]
+  supplierFiles       UploadedFile[]
+  followUpEvents      FollowUpEvent[]
 
-  @@unique([tenantId, provider, threadId])
   @@index([tenantId, leadId])
-  @@index([tenantId, opportunityId])
+}
+
+model QuoteLine {
+  id               String  @id @default(cuid())
+  quoteId          String
+  supplier         String?
+  sku              String?
+  description      String
+  qty              Decimal @default(1)
+  unitPrice        Decimal @default(0)
+  currency         String  @default("GBP")
+  deliveryShareGBP Decimal @default(0)
+  lineTotalGBP     Decimal @default(0)
+  meta             Json?
+  quote            Quote   @relation(fields: [quoteId], references: [id])
+
+  @@index([quoteId])
+}
+
+model UploadedFile {
+  id         String   @id @default(cuid())
+  tenantId   String
+  quoteId    String?
+  kind       FileKind
+  name       String
+  path       String
+  mimeType   String?
+  sizeBytes  Int?
+  uploadedAt DateTime @default(now())
+  quote      Quote?   @relation(fields: [quoteId], references: [id])
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, quoteId])
+}
+
+model ParsedSupplierLine {
+  id         String   @id @default(cuid())
+  tenantId   String
+  quoteId    String
+  page       Int?
+  rawText    String
+  description String?
+  qty        Float?
+  costUnit   Float?
+  lineTotal  Float?
+  currency   String   @default("GBP")
+  supplier   String?
+  confidence Float?
+  usedStages String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, quoteId])
+  @@index([tenantId, supplier])
 }
 
 model Estimate {
-  id                  String   @id
+  id                  String   @id @default(cuid())
   tenantId            String
   quoteId             String
   inputType           String
@@ -125,134 +534,15 @@ model Estimate {
   promoted            Boolean  @default(false)
   actualAcceptedPrice Float?
   outcome             String?
-  createdAt           DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime @default(now()) @db.Timestamptz(6)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  @@index([tenantId, createdAt], map: "Estimate_tenant_created_idx")
-  @@index([tenantId, quoteId], map: "Estimate_tenant_quote_idx")
-}
-
-model Feedback {
-  id                               String         @id
-  tenantId                         String
-  userId                           String?
-  feature                          String
-  rating                           Int?
-  comment                          String?
-  sourceUrl                        String?
-  status                           FeedbackStatus @default(OPEN)
-  resolvedAt                       DateTime?      @db.Timestamp(6)
-  resolvedById                     String?
-  createdAt                        DateTime       @default(now()) @db.Timestamp(6)
-  updatedAt                        DateTime       @default(now()) @db.Timestamp(6)
-  User_Feedback_resolvedByIdToUser User?          @relation("Feedback_resolvedByIdToUser", fields: [resolvedById], references: [id], onUpdate: NoAction)
-  Tenant                           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  User_Feedback_userIdToUser       User?          @relation("Feedback_userIdToUser", fields: [userId], references: [id], onUpdate: NoAction)
-
-  @@index([tenantId, feature, createdAt])
-  @@index([tenantId, status, createdAt])
-}
-
-model FollowUpEvent {
-  id          String    @id
-  tenantId    String
-  leadId      String
-  quoteId     String?
-  variant     String
-  templateKey String
-  scheduledAt DateTime
-  sentAt      DateTime?
-  openedAt    DateTime?
-  repliedAt   DateTime?
-  convertedAt DateTime?
-  result      String?
-  source      String?
-  pixelToken  String?   @unique
-  costPence   Int?
-  meta        Json?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @default(now())
-  Lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  Quote       Quote?    @relation(fields: [quoteId], references: [id])
-  Tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, leadId, scheduledAt])
-}
-
-model FollowUpLog {
-  id           String    @id
-  tenantId     String
-  leadId       String
-  variant      String
-  subject      String
-  body         String
-  sentAt       DateTime  @default(now())
-  opened       Boolean?
-  replied      Boolean?
-  converted    Boolean?
-  delayDays    Int?
-  messageId    String?
-  provider     String?
-  threadId     String?
-  channel      String    @default("email")
-  scheduledFor DateTime?
-  metadata     Json?
-  Lead         Lead      @relation(fields: [leadId], references: [id])
-
-  @@index([tenantId, channel, sentAt])
-  @@index([tenantId, leadId, sentAt])
-}
-
-model FollowUpTemplate {
-  id        String   @id
-  tenantId  String
-  key       String
-  subject   String
-  body      String
-  tone      String?
-  delayDays Int
-  isActive  Boolean  @default(true)
-  variant   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
-  Tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, key])
-}
-
-model FollowupExperiment {
-  id            String    @id
-  tenantId      String
-  opportunityId String
-  variant       String
-  source        String
-  suggestedAt   DateTime
-  whenISO       String
-  subject       String
-  body          String
-  sentAt        DateTime?
-  replied       Boolean?
-  outcome       String?
-
-  @@index([tenantId, opportunityId])
-}
-
-model GmailTenantConnection {
-  id            String   @id
-  tenantId      String   @unique
-  connectedById String?
-  gmailAddress  String?
-  refreshToken  String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime
-  User          User?    @relation(fields: [connectedById], references: [id])
-  Tenant        Tenant   @relation(fields: [tenantId], references: [id])
-
-  @@index([tenantId])
+  @@index([tenantId, quoteId])
+  @@index([tenantId, createdAt])
 }
 
 model InferenceEvent {
-  id             String   @id
+  id             String   @id @default(cuid())
   tenantId       String
   model          String
   modelVersionId String
@@ -260,635 +550,366 @@ model InferenceEvent {
   outputJson     Json
   confidence     Float?
   latencyMs      Int?
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  createdAt      DateTime @default(now())
 
-  @@index([tenantId, createdAt], map: "InferenceEvent_tenant_created_idx")
-  @@index([tenantId, model, createdAt], map: "InferenceEvent_tenant_model_created_idx")
-}
-
-model Lead {
-  id             String          @id
-  tenantId       String
-  createdById    String
-  contactName    String
-  email          String?
-  status         LeadStatus      @default(NEW)
-  capturedAt     DateTime        @default(now())
-  nextActionAt   DateTime?
-  nextAction     String?
-  briefJson      Json?
-  custom         Json?
-  description    String?
-  estimatedValue Decimal?        @db.Decimal
-  quotedValue    Decimal?        @db.Decimal
-  dateQuoteSent  DateTime?
-  EmailIngest    EmailIngest[]
-  EmailMessage   EmailMessage[]
-  EmailThread    EmailThread[]
-  FollowUpEvent  FollowUpEvent[]
-  FollowUpLog    FollowUpLog[]
-  Tenant         Tenant          @relation(fields: [tenantId], references: [id])
-  Opportunity    Opportunity?
-  Quote          Quote[]
-}
-
-model LeadExample {
-  id        String    @id
-  tenantId  String
-  provider  String
-  messageId String
-  subject   String?
-  body      String?
-  extracted Json?
-  label     LeadLabel @default(UNSURE)
-  createdAt DateTime  @default(now())
-
-  @@index([tenantId, provider, messageId])
-}
-
-model LeadFieldDef {
-  id        String  @id
-  tenantId  String
-  key       String
-  label     String
-  type      String  @default("text")
-  required  Boolean @default(false)
-  config    Json?
-  sortOrder Int     @default(0)
-  Tenant    Tenant  @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, key])
-  @@index([tenantId, sortOrder])
-}
-
-model LeadSourceConfig {
-  id       String  @id
-  tenantId String
-  source   String
-  scalable Boolean @default(true)
-
-  @@unique([tenantId, source])
-}
-
-model LeadSourceCost {
-  id          String   @id
-  tenantId    String
-  source      String
-  month       DateTime
-  spend       Float    @default(0)
-  leads       Int      @default(0)
-  conversions Int      @default(0)
-  scalable    Boolean  @default(true)
-
-  @@unique([tenantId, source, month])
-  @@index([tenantId, source, month])
-}
-
-model LeadSourceSpend {
-  id        String   @id
-  tenantId  String
-  source    String
-  month     DateTime
-  amountGBP Decimal  @default(0)
-
-  @@index([tenantId, source, month])
-}
-
-model LeadTrainingExample {
-  id        String   @id
-  tenantId  String
-  provider  String
-  messageId String
-  label     String
-  extracted Json?
-  createdAt DateTime @default(now())
-
-  @@index([tenantId, provider, messageId])
-}
-
-model MLTrainingSample {
-  id           String    @id
-  tenantId     String
-  messageId    String
-  attachmentId String
-  url          String
-  quotedAt     DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime
-
-  @@unique([tenantId, messageId, attachmentId])
-  @@index([attachmentId])
-  @@index([messageId])
-  @@index([quotedAt])
-  @@index([tenantId])
-}
-
-model ModelOverride {
-  id          String    @id
-  tenantId    String
-  module      String
-  key         String
-  value       Json
-  reason      String?
-  createdById String?
-  createdAt   DateTime? @default(now()) @db.Timestamptz(6)
-  Tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([tenantId, module, key], map: "ModelOverride_tenant_module_key_idx")
+  @@index([tenantId, model, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 model ModelVersion {
-  id               String    @id
-  model            String
-  label            String
-  metricsJson      Json
-  datasetHash      String
-  isProduction     Boolean   @default(false)
-  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
-  awaitingApproval Boolean   @default(false)
-  approvedAt       DateTime?
-  approvedById     String?
+  id           String   @id @default(cuid())
+  model        String
+  label        String
+  versionId    String?  @unique
+  metricsJson  Json
+  datasetHash  String
+  isProduction Boolean  @default(false)
+  awaitingApproval Boolean @default(false)
+  approvedAt    DateTime?
+  approvedById  String?
+  createdAt    DateTime @default(now())
 
   @@index([model, isProduction])
 }
 
-model Ms365TenantConnection {
-  id            String   @id
-  tenantId      String   @unique
-  connectedById String?
-  ms365Address  String?
-  refreshToken  String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime
-  User          User?    @relation(fields: [connectedById], references: [id])
-  Tenant        Tenant   @relation(fields: [tenantId], references: [id])
-
-  @@index([tenantId])
-}
-
-model Notification {
-  id        String           @id
-  tenantId  String
-  userId    String
-  type      NotificationType
-  payload   Json
-  readAt    DateTime?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @default(now())
-  Tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, userId, readAt])
-}
-
-model Opportunity {
-  id           String         @id
-  tenantId     String
-  leadId       String         @unique
-  title        String
-  valueGBP     Decimal?
-  stage        OppStage       @default(QUALIFY)
-  wonAt        DateTime?
-  lostAt       DateTime?
-  createdAt    DateTime       @default(now())
-  EmailMessage EmailMessage[]
-  EmailThread  EmailThread[]
-  Lead         Lead           @relation(fields: [leadId], references: [id])
-  Tenant       Tenant         @relation(fields: [tenantId], references: [id])
-  ProcessPlan  ProcessPlan[]
-  TimeEntry    TimeEntry[]
-
-  @@index([tenantId, stage])
-}
-
-model ParsedSupplierLine {
-  id          String   @id
-  tenantId    String
-  quoteId     String
-  page        Int?
-  rawText     String
-  description String?
-  qty         Float?
-  costUnit    Float?
-  lineTotal   Float?
-  currency    String   @default("GBP")
-  supplier    String?
-  confidence  Float?
-  usedStages  String?
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-
-  @@index([tenantId, quoteId], map: "ParsedSupplierLine_tenant_quote_idx")
-  @@index([tenantId, supplier], map: "ParsedSupplierLine_tenant_supplier_idx")
-}
-
-model PasswordResetToken {
-  userId    String   @id
-  token     String   @unique
-  expiresAt DateTime
-  User      User     @relation(fields: [userId], references: [id])
-}
-
-model ProcessPlan {
-  id             String          @id
-  tenantId       String
-  projectId      String
-  process        WorkshopProcess
-  plannedWeek    Int
-  assignedUserId String?
-  notes          String?
-  createdAt      DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime        @default(now()) @db.Timestamptz(6)
-  User           User?           @relation(fields: [assignedUserId], references: [id], onDelete: NoAction, map: "ProcessPlan_assignee_fkey")
-  Opportunity    Opportunity     @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "ProcessPlan_project_fkey")
-  Tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "ProcessPlan_tenant_fkey")
-
-  @@unique([tenantId, projectId, process], map: "ProcessPlan_tenant_project_process_key")
-  @@index([tenantId, assignedUserId], map: "ProcessPlan_tenant_assignee_idx")
-}
-
-model Quote {
-  id                  String          @id
-  tenantId            String
-  leadId              String?
-  title               String
-  status              QuoteStatus     @default(DRAFT)
-  currency            String          @default("GBP")
-  exchangeRate        Decimal?
-  deliveryCost        Decimal?        @default(0)
-  markupDefault       Decimal?        @default(0)
-  subtotalMaterialGBP Decimal?        @default(0)
-  subtotalLabourGBP   Decimal?        @default(0)
-  subtotalOtherGBP    Decimal?        @default(0)
-  totalGBP            Decimal?        @default(0)
-  proposalPdfUrl      String?
-  notes               String?
-  meta                Json?
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime
-  FollowUpEvent       FollowUpEvent[]
-  Lead                Lead?           @relation(fields: [leadId], references: [id])
-  Tenant              Tenant          @relation(fields: [tenantId], references: [id])
-  QuoteLine           QuoteLine[]
-  UploadedFile        UploadedFile[]
-
-  @@index([tenantId, leadId])
-}
-
-model QuoteLine {
-  id               String  @id
-  quoteId          String
-  supplier         String?
-  sku              String?
-  description      String
-  qty              Decimal @default(1)
-  unitPrice        Decimal @default(0)
-  currency         String  @default("GBP")
-  deliveryShareGBP Decimal @default(0)
-  lineTotalGBP     Decimal @default(0)
-  meta             Json?
-  Quote            Quote   @relation(fields: [quoteId], references: [id])
-
-  @@index([quoteId])
-}
-
-model SignupToken {
-  id         String    @id
-  userId     String
-  token      String    @unique
-  expiresAt  DateTime
-  consumedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @default(now())
-  User       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model SourceSpend {
-  id          String   @id
-  tenantId    String
-  source      String
-  periodStart DateTime
-  periodEnd   DateTime
-  spendPence  Int
-  createdAt   DateTime @default(now())
-  Tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, source, periodStart, periodEnd])
-}
-
-model Streak {
-  id               String    @id
-  tenantId         String
-  userId           String
-  dayCount         Int       @default(0)
-  lastActivityDate DateTime?
-  Tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, userId])
-}
-
-model Subtask {
-  id     String        @id
-  taskId String
-  title  String
-  status SubtaskStatus @default(OPEN)
-  order  Int           @default(0)
-  Task   Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@index([taskId])
-}
-
-model Target {
-  id                String   @id
-  tenantId          String
-  year              Int
-  enquiriesTarget   Int?     @default(0)
-  quotesValueTarget Decimal? @default(0)
-  quotesCountTarget Int?     @default(0)
-  salesValueTarget  Decimal? @default(0)
-  salesCountTarget  Int?     @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime
-  Tenant            Tenant   @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, year])
-}
-
-model Task {
-  id           String         @id
-  tenantId     String
-  title        String
-  description  String?
-  relatedType  RelatedType
-  relatedId    String?
-  status       TaskStatus     @default(OPEN)
-  priority     TaskPriority   @default(MEDIUM)
-  dueAt        DateTime?
-  startedAt    DateTime?
-  completedAt  DateTime?
-  autocreated  Boolean        @default(true)
-  meta         Json?
-  createdById  String?
-  updatedById  String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @default(now())
-  Subtask      Subtask[]
-  Tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  TaskAssignee TaskAssignee[]
-
-  @@index([tenantId, relatedType, relatedId])
-  @@index([tenantId, status, dueAt])
-}
-
-model TaskAssignee {
-  taskId String
-  userId String
-  role   AssigneeRole @default(OWNER)
-  Task   Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@id([taskId, userId])
-}
-
-model Tenant {
-  id                    String                 @id
-  name                  String
-  createdAt             DateTime               @default(now())
-  stripeCustomerId      String?                @unique
-  stripeSubscriptionId  String?                @unique
-  trialEndsAt           DateTime?
-  discountCodeUsed      String?
-  seatsOffice           Int                    @default(5)
-  seatsWorkshop         Int                    @default(10)
-  seatsDisplay          Int                    @default(2)
-  subscriptionStatus    SubscriptionStatus?
-  plan                  Plan?
-  financialYearEnd      String?                @default("12-31")
-  ActivityLog           ActivityLog[]
-  AutomationRule        AutomationRule[]
-  EmailIngest           EmailIngest[]
-  EmailMessage          EmailMessage[]
-  EmailThread           EmailThread[]
-  Feedback              Feedback[]
-  FollowUpEvent         FollowUpEvent[]
-  FollowUpTemplate      FollowUpTemplate[]
-  GmailTenantConnection GmailTenantConnection?
-  Lead                  Lead[]
-  LeadFieldDef          LeadFieldDef[]
-  ModelOverride         ModelOverride[]
-  Ms365TenantConnection Ms365TenantConnection?
-  Notification          Notification[]
-  Opportunity           Opportunity[]
-  ProcessPlan           ProcessPlan[]
-  Quote                 Quote[]
-  SourceSpend           SourceSpend[]
-  Streak                Streak[]
-  Target                Target[]
-  Task                  Task[]
-  TimeEntry             TimeEntry[]
-  TrainingEvent         TrainingEvent[]
-  TrainingInsights      TrainingInsights[]
-  UploadedFile          UploadedFile[]
-  User                  User[]
-  UserPreference        UserPreference[]
-}
-
-model TenantSettings {
-  tenantId                  String    @id
-  slug                      String    @unique
-  brandName                 String
-  introHtml                 String?
-  website                   String?
-  phone                     String?
-  links                     Json?
-  questionnaire             Json?
-  logoUrl                   String?
-  inbox                     Json?
-  inboxLastRun              DateTime?
-  inboxWatchEnabled         Boolean   @default(false)
-  quoteDefaults             Json?
-  updatedAt                 DateTime
-  createdAt                 DateTime  @default(now())
-  beta                      Json      @default("{}")
-  taskPlaybook              Json      @default("{}")
-  questionnaireEmailSubject String?
-  questionnaireEmailBody    String?
-}
-
-model TimeEntry {
-  id          String          @id
-  tenantId    String
-  projectId   String
-  process     WorkshopProcess
-  userId      String
-  date        DateTime        @db.Timestamptz(6)
-  hours       Decimal         @default(0) @db.Decimal
-  notes       String?
-  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
-  Opportunity Opportunity     @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "TimeEntry_project_fkey")
-  Tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "TimeEntry_tenant_fkey")
-  User        User            @relation(fields: [userId], references: [id], onDelete: NoAction, map: "TimeEntry_user_fkey")
-
-  @@index([tenantId, date], map: "TimeEntry_tenant_date_idx")
-  @@index([tenantId, projectId, process], map: "TimeEntry_tenant_project_process_idx")
-}
-
-model TrainingEvent {
-  id        String    @id
-  tenantId  String
-  module    String
-  kind      String
-  payload   Json
-  actorId   String?
-  createdAt DateTime? @default(now()) @db.Timestamptz(6)
-  Tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([tenantId, module, kind, createdAt], map: "TrainingEvent_tenant_module_kind_createdAt_idx")
-}
-
-model TrainingInsights {
-  id           String    @id
-  tenantId     String
-  module       String
-  inputSummary String?
-  decision     String?
-  confidence   Float?
-  userFeedback Json?
-  lastUpdated  DateTime? @default(now()) @db.Timestamptz(6)
-  createdAt    DateTime? @default(now()) @db.Timestamptz(6)
-  Tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([tenantId, module, createdAt], map: "TrainingInsights_tenant_module_createdAt_idx")
-}
-
 model TrainingRun {
-  id             String   @id
+  id             String   @id @default(cuid())
   tenantId       String?
   model          String
   datasetHash    String
   metricsJson    Json
   status         String
   modelVersionId String?
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  datasetCount   Int?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime @default(now())
 
-  @@index([model, createdAt], map: "TrainingRun_model_created_idx")
-  @@index([tenantId, createdAt], map: "TrainingRun_tenant_created_idx")
+  @@index([model, createdAt])
+  @@index([tenantId, createdAt])
 }
 
-model UploadedFile {
-  id         String   @id
-  tenantId   String
-  quoteId    String?
-  kind       FileKind
-  name       String
-  path       String
-  mimeType   String?
-  sizeBytes  Int?
-  uploadedAt DateTime @default(now())
-  Quote      Quote?   @relation(fields: [quoteId], references: [id])
-  Tenant     Tenant   @relation(fields: [tenantId], references: [id])
-
-  @@index([tenantId, quoteId])
+/// *
+///  * ============== Password reset tokens ==============
+model PasswordResetToken {
+  userId    String   @id
+  token     String   @unique
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id])
 }
 
-model User {
-  id                                   String                  @id
-  tenantId                             String
-  email                                String                  @unique
-  name                                 String?
-  role                                 String                  @default("user")
-  passwordHash                         String?
-  isEarlyAdopter                       Boolean                 @default(false)
-  signupCompleted                      Boolean                 @default(false)
-  Feedback_Feedback_resolvedByIdToUser Feedback[]              @relation("Feedback_resolvedByIdToUser")
-  Feedback_Feedback_userIdToUser       Feedback[]              @relation("Feedback_userIdToUser")
-  GmailTenantConnection                GmailTenantConnection[]
-  Ms365TenantConnection                Ms365TenantConnection[]
-  PasswordResetToken                   PasswordResetToken?
-  ProcessPlan                          ProcessPlan[]
-  SignupToken                          SignupToken[]
-  TimeEntry                            TimeEntry[]
-  Tenant                               Tenant                  @relation(fields: [tenantId], references: [id])
+model MLTrainingSample {
+  id           String    @id @default(cuid())
+  tenantId     String
+  messageId    String
+  attachmentId String
+  url          String
+  quotedAt     DateTime?
+  sourceType   String    @default("supplier_quote")
+  quoteId      String?
+  fileId       String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, messageId, attachmentId])
+  @@unique([tenantId, quoteId])
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([messageId])
+  @@index([attachmentId])
+  @@index([quotedAt])
 }
 
-model UserPreference {
-  id            String @id
+/// *
+///  * ============== ML Training Visibility ==============
+model TrainingInsights {
+  id           String   @id @default(cuid())
+  tenantId     String
+  module       String   // lead_classifier | quote_builder | estimator | sales_assistant
+  inputSummary String?
+  decision     String?
+  confidence   Float?
+  userFeedback Json?
+  lastUpdated  DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, module, createdAt])
+}
+
+model ModelOverride {
+  id          String   @id @default(cuid())
+  tenantId    String
+  module      String
+  key         String
+  value       Json
+  reason      String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, module, key])
+}
+
+model TrainingEvent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  module    String
+  kind      String   // FEEDBACK | RETRAIN | RESET | PARAM_CHANGE
+  payload   Json
+  actorId   String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, module, kind, createdAt])
+}
+
+/// *
+///  * =========================
+///  * Enums
+///  * =========================
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  incomplete
+  incomplete_expired
+  paused
+}
+
+enum Plan {
+  monthly
+  annual
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  DISQUALIFIED
+  INFO_REQUESTED
+  REJECTED
+  READY_TO_QUOTE
+  QUOTE_SENT
+  WON
+  LOST
+}
+
+enum OppStage {
+  QUALIFY
+  PROPOSE
+  NEGOTIATE
+  WON
+  LOST
+}
+
+enum LeadLabel {
+  LEAD
+  NOT_LEAD
+  UNSURE
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+enum FileKind {
+  SUPPLIER_QUOTE
+  OTHER
+}
+
+model Feedback {
+  id            String          @id @default(cuid())
   tenantId      String
-  userId        String
-  notifications Json?
-  quietHours    Json?
-  Tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId        String?
+  feature       String // e.g. "quoteParserV2" or area slug
+  rating        Int? // 1–5 optional
+  comment       String?
+  sourceUrl     String?
+  status        FeedbackStatus  @default(OPEN)
+  resolvedAt    DateTime?
+  resolvedById  String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  user       User?  @relation("FeedbackAuthor", fields: [userId], references: [id])
+  resolvedBy User?  @relation("FeedbackResolver", fields: [resolvedById], references: [id])
+
+  @@index([tenantId, feature, createdAt])
+  @@index([tenantId, status, createdAt])
+}
+
+enum FeedbackStatus {
+  OPEN
+  RESOLVED
+}
+
+// ==============================
+// Tasks, Rules, Notifications, Streaks
+// ==============================
+
+model Task {
+  id          String       @id @default(cuid())
+  tenantId    String
+  title       String
+  description String?      @db.Text
+  relatedType RelatedType
+  relatedId   String?
+  status      TaskStatus   @default(OPEN)
+  priority    TaskPriority @default(MEDIUM)
+  dueAt       DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  autocreated Boolean      @default(true)
+  meta        Json?
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignees TaskAssignee[]
+  subtasks  Subtask[]
+
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, relatedType, relatedId])
+}
+
+enum RelatedType {
+  LEAD
+  PROJECT
+  QUOTE
+  EMAIL
+  QUESTIONNAIRE
+  WORKSHOP
+  OTHER
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model TaskAssignee {
+  taskId String
+  userId String
+  role   AssigneeRole @default(OWNER)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+}
+
+enum AssigneeRole {
+  OWNER
+  FOLLOWER
+}
+
+model Subtask {
+  id     String        @id @default(cuid())
+  taskId String
+  title  String
+  status SubtaskStatus @default(OPEN)
+  order  Int           @default(0)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+enum SubtaskStatus {
+  OPEN
+  DONE
+}
+
+model AutomationRule {
+  id         String  @id @default(cuid())
+  tenantId   String
+  name       String
+  enabled    Boolean @default(true)
+  trigger    Json // e.g. { "type": "LEAD_STATUS_CHANGED", "to": "READY_TO_QUOTE" }
+  conditions Json?
+  actions    Json // e.g. { "createTask": {...}, "assignRoles":[...], "setDueInDays":2 }
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, enabled])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  tenantId  String
+  userId    String
+  type      NotificationType
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, readAt])
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_DUE_SOON
+  TASK_OVERDUE
+  MENTION
+  STREAK
+  SUMMARY
+}
+
+model Streak {
+  id               String    @id @default(cuid())
+  tenantId         String
+  userId           String
+  dayCount         Int       @default(0)
+  lastActivityDate DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, userId])
 }
 
-model lead_classifier_retraining_log {
-  id                  Int       @id @default(autoincrement())
-  tenant_id           String
-  examples_used       Int?
-  performance_metrics Json?
-  retrained_at        DateTime? @default(now()) @db.Timestamp(6)
+model ActivityLog {
+  id        String         @id @default(cuid())
+  tenantId  String
+  entity    ActivityEntity
+  entityId  String
+  verb      ActivityVerb
+  actorId   String?
+  data      Json?
+  createdAt DateTime       @default(now())
 
-  @@index([tenant_id, retrained_at], map: "idx_retrain_log_tenant_date")
-}
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-model lead_classifier_training {
-  id         Int       @id @default(autoincrement())
-  tenant_id  String?   @db.VarChar(255)
-  provider   String?   @db.VarChar(50)
-  message_id String?   @db.VarChar(500)
-  email_id   String?   @db.VarChar(600)
-  is_lead    Boolean?
-  subject    String?
-  from_email String?   @db.VarChar(500)
-  snippet    String?
-  confidence Decimal?  @db.Decimal(3, 2)
-  reason     String?
-  created_at DateTime? @default(now()) @db.Timestamp(6)
-
-  @@unique([tenant_id, provider, message_id])
-}
-
-model ml_models {
-  id                  Int       @id @default(autoincrement())
-  model_name          String
-  model_type          String
-  version             String
-  tenant_id           String?
-  training_data_count Int?
-  accuracy_score      Decimal?  @db.Decimal(5, 4)
-  model_path          String?
-  created_at          DateTime? @default(now()) @db.Timestamp(6)
-  is_active           Boolean?  @default(false)
-}
-
-model ml_training_data {
-  id              Int       @id @default(autoincrement())
-  tenant_id       String
-  email_subject   String?
-  email_date      DateTime? @db.Timestamp(6)
-  attachment_name String?
-  parsed_data     Json
-  project_type    String?
-  quoted_price    Decimal?  @db.Decimal(10, 2)
-  area_m2         Decimal?  @db.Decimal(8, 2)
-  materials_grade String?
-  confidence      Decimal?  @db.Decimal(3, 2)
-  created_at      DateTime? @default(now()) @db.Timestamp(6)
-  updated_at      DateTime? @default(now()) @db.Timestamp(6)
-
-  @@index([tenant_id, created_at], map: "idx_ml_training_tenant_date")
-}
-
-model ml_training_history {
-  id                       Int       @id @default(autoincrement())
-  tenant_id                String
-  training_type            String
-  quotes_processed         Int?
-  training_records_created Int?
-  models_updated           String[]
-  duration_seconds         Int?
-  started_at               DateTime? @db.Timestamp(6)
-  completed_at             DateTime? @db.Timestamp(6)
-  status                   String?   @default("completed")
-  error_message            String?
+  @@index([tenantId, entity, entityId])
+  @@index([tenantId, verb])
 }
 
 enum ActivityEntity {
@@ -907,108 +928,21 @@ enum ActivityVerb {
   NUDGED
 }
 
-enum AssigneeRole {
-  OWNER
-  FOLLOWER
+model UserPreference {
+  id            String @id @default(cuid())
+  tenantId      String
+  userId        String
+  notifications Json?
+  quietHours    Json?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
 }
 
-enum FeedbackStatus {
-  OPEN
-  RESOLVED
-}
-
-enum FileKind {
-  SUPPLIER_QUOTE
-  OTHER
-}
-
-enum LeadLabel {
-  LEAD
-  NOT_LEAD
-  UNSURE
-}
-
-enum LeadStatus {
-  NEW
-  CONTACTED
-  QUALIFIED
-  DISQUALIFIED
-  INFO_REQUESTED
-  REJECTED
-  READY_TO_QUOTE
-  QUOTE_SENT
-  WON
-  LOST
-}
-
-enum NotificationType {
-  TASK_ASSIGNED
-  TASK_DUE_SOON
-  TASK_OVERDUE
-  MENTION
-  STREAK
-  SUMMARY
-}
-
-enum OppStage {
-  QUALIFY
-  PROPOSE
-  NEGOTIATE
-  WON
-  LOST
-}
-
-enum Plan {
-  monthly
-  annual
-}
-
-enum QuoteStatus {
-  DRAFT
-  SENT
-  ACCEPTED
-  REJECTED
-}
-
-enum RelatedType {
-  LEAD
-  PROJECT
-  QUOTE
-  EMAIL
-  QUESTIONNAIRE
-  WORKSHOP
-  OTHER
-}
-
-enum SubscriptionStatus {
-  trialing
-  active
-  past_due
-  canceled
-  incomplete
-  incomplete_expired
-  paused
-}
-
-enum SubtaskStatus {
-  OPEN
-  DONE
-}
-
-enum TaskPriority {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
-}
-
-enum TaskStatus {
-  OPEN
-  IN_PROGRESS
-  BLOCKED
-  DONE
-  CANCELLED
-}
+/// ==============================
+/// Workshop Planning & Timekeeping
+/// ==============================
 
 enum WorkshopProcess {
   MACHINING
@@ -1019,4 +953,199 @@ enum WorkshopProcess {
   GLAZING
   IRONMONGERY
   INSTALLATION
+}
+
+model ProcessPlan {
+  id             String           @id @default(cuid())
+  tenantId       String
+  projectId      String           // references Opportunity.id (a WON opportunity acts as a project)
+  process        WorkshopProcess
+  plannedWeek    Int              // 1..4 relative to current week (UI-level convention)
+  assignedUserId String?
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project   Opportunity @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee  User?       @relation(fields: [assignedUserId], references: [id])
+
+  @@unique([tenantId, projectId, process])
+  @@index([tenantId, assignedUserId])
+}
+
+model TimeEntry {
+  id        String           @id @default(cuid())
+  tenantId  String
+  projectId String
+  process   WorkshopProcess
+  userId    String
+  date      DateTime
+  hours     Decimal          @default(0)
+  notes     String?
+  createdAt DateTime         @default(now())
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project Opportunity @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, projectId, process])
+  @@index([tenantId, date])
+}
+
+model Target {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  year                Int
+  enquiriesTarget     Int?     @default(0)
+  quotesValueTarget   Decimal? @default(0)
+  quotesCountTarget   Int?     @default(0)
+  salesValueTarget    Decimal? @default(0)
+  salesCountTarget    Int?     @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, year])
+}
+
+// Landing page lead capture (public, no tenant association)
+model LandingLead {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  source        String
+  name          String
+  email         String
+  phone         String
+  postcode      String
+  projectType   String
+  propertyType  String
+  message       String?
+  userAgent     String?
+  ip            String?
+  // Simple index to speed up dedupe checks:
+  @@index([email, source, createdAt])
+}
+
+// Multi-tenant landing page system
+model LandingTenant {
+  id             String                @id @default(cuid())
+  tenantId       String                @unique
+  slug           String                @unique
+  name           String?
+  homeUrl        String?
+  email          String?
+  phone          String?
+  address        String?
+  brandColor     String?               // hex
+  logoUrl        String?
+  // Editor fields
+  headline       String?
+  subhead        String?
+  urgencyBanner  String?
+  ctaText        String?               @default("Get Your Free Quote")
+  guarantees     Json?                 // Array of guarantee objects
+  publishedAt    DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  content        LandingTenantContent?
+  images         LandingTenantImage[]
+  reviews        LandingTenantReview[]
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model LandingTenantContent {
+  id            String         @id @default(cuid())
+  tenantId      String         @unique
+  headline      String?
+  subhead       String?
+  priceFromText String?
+  priceRange    String?
+  guarantees    String?        // JSON string: { bullets:[], riskReversal:"" }
+  urgency       String?        // JSON string: { text:"", sub:"" }
+  faqJson       String?        // JSON array of Q&As
+  leadMagnet    String?        // JSON { title, cta, url }
+  serviceAreas  String?        // JSON string array
+  published     Boolean        @default(false)
+  updatedAt     DateTime       @updatedAt
+  tenant        LandingTenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model LandingTenantImage {
+  id               String        @id @default(cuid())
+  landingTenantId  String
+  url              String        // Image URL
+  altText          String?
+  caption          String?
+  order            Int           @default(0)
+  createdAt        DateTime      @default(now())
+  tenant           LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+  @@index([landingTenantId, order])
+}
+
+model LandingTenantReview {
+  id               String        @id @default(cuid())
+  landingTenantId  String
+  author           String
+  text             String
+  rating           Int           @default(5)
+  date             DateTime      @default(now())
+  location         String?
+  order            Int           @default(0)
+  createdAt        DateTime      @default(now())
+  tenant           LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+  @@index([landingTenantId, order])
+}
+
+// Google Ads keyword performance tracking
+model KeywordPerformance {
+  id              String   @id @default(cuid())
+  tenantId        String
+  keyword         String
+  matchType       String   // EXACT, PHRASE, BROAD
+  // Performance metrics (7-day rolling)
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  conversions     Int      @default(0)
+  cost            Decimal  @default(0)
+  // Calculated metrics
+  ctr             Decimal  @default(0) // Click-through rate
+  conversionRate  Decimal  @default(0)
+  cpl             Decimal  @default(0) // Cost per lead
+  qualityScore    Int?     // 1-10 from Google Ads
+  // Status flags
+  isActive        Boolean  @default(true)
+  isUnderperforming Boolean @default(false) // CTR < 1% OR CPL > target
+  // Timestamps
+  weekStartDate   DateTime // Monday of the week this data represents
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@unique([tenantId, keyword, weekStartDate])
+  @@index([tenantId, isUnderperforming])
+  @@index([weekStartDate])
+}
+
+// SEO keyword optimization suggestions
+model KeywordSuggestion {
+  id           String   @id @default(cuid())
+  tenantId     String
+  keyword      String
+  suggestedFor String   // 'headline', 'subhead', 'meta_title', 'meta_description'
+  oldText      String?
+  newText      String
+  reason       String   // Why this suggestion was made
+  conversionRate Decimal // The keyword's conversion rate that prompted this
+  status       String   @default("pending") // pending, approved, rejected, applied
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  appliedAt    DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([tenantId, status])
+  @@index([createdAt])
 }

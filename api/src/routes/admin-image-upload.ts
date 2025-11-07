@@ -50,15 +50,22 @@ router.post('/:id/images', requireAdmin, upload.array('images', 10), async (req:
       where: { tenantId: req.params.id },
     });
 
+    const tenantSlug = tenant.slug ?? `tenant-${req.params.id}`;
+
     if (!landingTenant) {
       landingTenant = await prisma.landingTenant.create({
         data: {
           tenantId: req.params.id,
+          slug: tenantSlug,
           headline: '',
           subhead: '',
           urgencyBanner: '',
           ctaText: 'Get Your Free Quote',
           guarantees: [],
+        },
+        include: {
+          images: true,
+          reviews: true,
         },
       });
     }
@@ -70,7 +77,7 @@ router.post('/:id/images', requireAdmin, upload.array('images', 10), async (req:
       const ext = file.originalname.split('.').pop() || 'jpg';
       
       const { publicUrl } = await putObject({
-        tenantSlug: tenant.slug,
+        tenantSlug,
         buffer: file.buffer,
         ext,
       });

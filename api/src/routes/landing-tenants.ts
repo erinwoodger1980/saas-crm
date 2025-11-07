@@ -33,10 +33,10 @@ router.get('/:slug', async (req: Request, res: Response) => {
       include: {
         content: true,
         images: {
-          orderBy: { sortOrder: 'asc' },
+          orderBy: { order: 'asc' },
         },
         reviews: {
-          orderBy: { sortOrder: 'asc' },
+          orderBy: { order: 'asc' },
         },
       },
     });
@@ -87,10 +87,10 @@ router.put('/:slug/content', requireAdmin, async (req: Request, res: Response) =
     }
 
     // Upsert content
-    const content = await prisma.landingTenantContent.upsert({
+  const content = await prisma.landingTenantContent.upsert({
       where: { tenantId: tenant.id },
       create: {
-        tenantId: tenant.id,
+  tenantId: tenant.id,
         headline,
         subhead,
         priceFromText,
@@ -165,11 +165,11 @@ router.post('/:slug/images/upload', requireAdmin, upload.single('file'), async (
     // Create image record
     const image = await prisma.landingTenantImage.create({
       data: {
-        tenantId: tenant.id,
-        src: publicUrl,
-        alt: alt || originalname.split('.')[0],
+        landingTenantId: tenant.id,
+        url: publicUrl,
+        altText: alt || originalname.split('.')[0],
         caption: caption || null,
-        sortOrder: sortOrder ? parseInt(sortOrder) : 0,
+        order: sortOrder ? parseInt(sortOrder) : 0,
       },
     });
 
@@ -192,9 +192,9 @@ router.patch('/:slug/images/:id', requireAdmin, async (req: Request, res: Respon
     const image = await prisma.landingTenantImage.update({
       where: { id },
       data: {
-        alt: alt !== undefined ? alt : undefined,
+        altText: alt !== undefined ? alt : undefined,
         caption: caption !== undefined ? caption : undefined,
-        sortOrder: sortOrder !== undefined ? parseInt(sortOrder) : undefined,
+        order: sortOrder !== undefined ? parseInt(sortOrder) : undefined,
       },
     });
 
@@ -243,12 +243,12 @@ router.post('/:slug/reviews', requireAdmin, async (req: Request, res: Response) 
 
     const review = await prisma.landingTenantReview.create({
       data: {
-        tenantId: tenant.id,
-        quote,
+        landingTenantId: tenant.id,
+        text: quote,
         author: author || null,
         location: location || null,
-        stars: stars || 5,
-        sortOrder: sortOrder || 0,
+        rating: stars || 5,
+        order: sortOrder || 0,
       },
     });
 
@@ -271,11 +271,11 @@ router.patch('/:slug/reviews/:id', requireAdmin, async (req: Request, res: Respo
     const review = await prisma.landingTenantReview.update({
       where: { id },
       data: {
-        quote: quote !== undefined ? quote : undefined,
+        text: quote !== undefined ? quote : undefined,
         author: author !== undefined ? author : undefined,
         location: location !== undefined ? location : undefined,
-        stars: stars !== undefined ? parseInt(stars) : undefined,
-        sortOrder: sortOrder !== undefined ? parseInt(sortOrder) : undefined,
+        rating: stars !== undefined ? parseInt(stars) : undefined,
+        order: sortOrder !== undefined ? parseInt(sortOrder) : undefined,
       },
     });
 
