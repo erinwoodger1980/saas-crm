@@ -1149,3 +1149,15 @@ model KeywordSuggestion {
   @@index([tenantId, status])
   @@index([createdAt])
 }
+
+// Tenant Google Ads configuration (MCC-linked sub-accounts)
+model TenantAdsConfig {
+  id                  String   @id @default(cuid())
+  tenantId            String   @unique
+  googleAdsCustomerId String   // e.g. "448-935-8197" or "4489358197"
+  status              String   @default("active")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@index([googleAdsCustomerId])
+}
