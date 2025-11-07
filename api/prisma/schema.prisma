@@ -58,6 +58,7 @@ model Tenant {
   timeEntries           TimeEntry[]
   targets               Target[]
   keywordPerformance    KeywordPerformance[]
+  keywordSuggestions    KeywordSuggestion[]
   landingTenant         LandingTenant?
   slug                  String?                @unique
 }
@@ -1141,6 +1142,8 @@ model KeywordSuggestion {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   appliedAt    DateTime?
+  
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   
   @@index([tenantId, status])
   @@index([createdAt])

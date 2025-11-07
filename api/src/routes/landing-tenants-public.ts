@@ -24,19 +24,14 @@ router.get('/nearby', async (req: Request, res: Response) => {
           has: location // PostgreSQL array contains operator
         },
         landingTenant: {
-          isNot: null
+          publishedAt: { not: null }
         }
       },
       select: {
         id: true,
         name: true,
         slug: true,
-        serviceAreas: true,
-        landingTenant: {
-          select: {
-            id: true
-          }
-        }
+        serviceAreas: true
       },
       take: parseInt(limit as string, 10),
       orderBy: {
@@ -47,19 +42,24 @@ router.get('/nearby', async (req: Request, res: Response) => {
     // Calculate aggregate ratings for each tenant
     const tenantsWithRatings = await Promise.all(
       tenants.map(async (tenant) => {
-        const reviews = await prisma.review.findMany({
+        const landingTenant = await prisma.landingTenant.findUnique({
           where: { tenantId: tenant.id },
-          select: { stars: true }
+          include: {
+            reviews: {
+              select: { rating: true }
+            }
+          }
         });
 
+        const reviews = landingTenant?.reviews || [];
         const avgRating = reviews.length > 0
-          ? reviews.reduce((sum, r) => sum + r.stars, 0) / reviews.length
+          ? reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviews.length
           : null;
 
         return {
           id: tenant.id,
           name: tenant.name,
-          slug: tenant.slug,
+          slug: tenant.slug || '',
           serviceAreas: tenant.serviceAreas,
           avgRating,
           reviewCount: reviews.length
@@ -83,7 +83,7 @@ router.get('/published', async (_req: Request, res: Response) => {
     const tenants = await prisma.tenant.findMany({
       where: {
         landingTenant: {
-          isNot: null
+          publishedAt: { not: null }
         }
       },
       select: {
@@ -119,19 +119,15 @@ router.get('/by-slug/:slug', async (req: Request, res: Response) => {
       include: {
         landingTenant: {
           include: {
-            content: {
-              where: { published: true },
-              orderBy: { publishedAt: 'desc' },
-              take: 1
+            content: true,
+            images: {
+              orderBy: { order: 'asc' }
+            },
+            reviews: {
+              orderBy: { createdAt: 'desc' },
+              take: 10
             }
           }
-        },
-        images: {
-          orderBy: { order: 'asc' }
-        },
-        reviews: {
-          orderBy: { createdAt: 'desc' },
-          take: 10
         }
       }
     });
@@ -143,7 +139,7 @@ router.get('/by-slug/:slug', async (req: Request, res: Response) => {
     res.json({
       tenant: {
         ...tenant,
-        content: tenant.landingTenant.content[0] || null
+        landingTenant: tenant.landingTenant
       }
     });
   } catch (error: any) {
