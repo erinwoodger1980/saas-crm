@@ -24,6 +24,8 @@ import ms365Router from "./routes/ms365";
 import tenantsRouter from "./routes/tenants";
 import landingTenantsRouter from "./routes/landing-tenants";
 import landingTenantsPublicRouter from "./routes/landing-tenants-public";
+import adminLandingTenantsRouter from "./routes/admin-landing-tenants";
+import adminImageUploadRouter from "./routes/admin-image-upload";
 import tenantDeclineRouter from "./routes/tenant-decline-email";
 import publicRouter from "./routes/public";
 import aiFollowupRouter from "./routes/ai-followup";
@@ -469,6 +471,8 @@ app.use("/analytics", requireAuth, analyticsRouter);
 app.use("/analytics/business", requireAuth, analyticsBusinessRouter);
 app.use("/tenant", requireAuth, tenantsRouter);
 app.use("/landing-tenants", landingTenantsRouter); // Public + admin with x-admin-key
+app.use("/admin/landing-tenants", requireAuth, adminLandingTenantsRouter); // New admin WYSIWYG routes
+app.use("/admin/landing-tenants", requireAuth, adminImageUploadRouter); // Image upload routes
 app.use("/tenants", requireAuth, tenantDeclineRouter);
 if (billingRouter) {
   app.use("/billing", billingRouter);
