@@ -997,3 +997,21 @@ model Target {
 
   @@unique([tenantId, year])
 }
+
+// Landing page lead capture (public, no tenant association)
+model LandingLead {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  source        String
+  name          String
+  email         String
+  phone         String
+  postcode      String
+  projectType   String
+  propertyType  String
+  message       String?
+  userAgent     String?
+  ip            String?
+  // Simple index to speed up dedupe checks:
+  @@index([email, source, createdAt])
+}

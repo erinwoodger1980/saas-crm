@@ -40,7 +40,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const isPublicThankYou =
     pathname === "/thank-you" || pathname?.startsWith("/q/thank-you");
   const isMarketingRoute =
-    pathname === "/" || pathname?.startsWith("/policy");
+    pathname === "/" || pathname?.startsWith("/policy") || pathname?.startsWith("/wealden-landing");
 
   const shouldUseShell = !(
     isAuthRoute ||
