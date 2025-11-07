@@ -64,6 +64,10 @@ router.get('/:id', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Tenant not found' });
     }
 
+    const fallbackSlug = tenant.slug
+      ? tenant.slug
+      : `${tenant.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${req.params.id}`;
+
     let landingTenant = await prisma.landingTenant.findUnique({
       where: { tenantId: req.params.id },
       include: {
@@ -81,6 +85,7 @@ router.get('/:id', requireAdmin, async (req, res) => {
       landingTenant = await prisma.landingTenant.create({
         data: {
           tenantId: req.params.id,
+          slug: fallbackSlug,
           headline: '',
           subhead: '',
           urgencyBanner: '',
@@ -118,11 +123,25 @@ router.put('/:id/content', requireAdmin, async (req, res) => {
       publish,
     } = req.body;
 
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, slug: true, name: true },
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    const fallbackSlug = tenant.slug
+      ? tenant.slug
+      : `${tenant.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${req.params.id}`;
+
     // Update or create landing tenant
     const landingTenant = await prisma.landingTenant.upsert({
       where: { tenantId: req.params.id },
       create: {
         tenantId: req.params.id,
+        slug: fallbackSlug,
         headline: headline || '',
         subhead: subhead || '',
         urgencyBanner: urgencyBanner || '',
@@ -178,7 +197,7 @@ router.put('/:id/content', requireAdmin, async (req, res) => {
     }
 
     // Fetch updated data
-    const tenant = await prisma.tenant.findUnique({
+    const refreshedTenant = await prisma.tenant.findUnique({
       where: { id: req.params.id },
       select: {
         id: true,
@@ -201,7 +220,7 @@ router.put('/:id/content', requireAdmin, async (req, res) => {
 
     res.json({
       ...updated,
-      tenant,
+      tenant: refreshedTenant ?? tenant,
     });
   } catch (error) {
     console.error('Failed to update tenant content:', error);
