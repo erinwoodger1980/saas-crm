@@ -15,7 +15,12 @@ interface PageProps {
 // Generate static params for all tenant/location combinations
 export async function generateStaticParams() {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/landing-tenants/published`, {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiBase) {
+      console.warn('NEXT_PUBLIC_API_URL not set; skipping pre-generation of tenant pages');
+      return [];
+    }
+    const res = await fetch(`${apiBase}/api/landing-tenants/published`, {
       next: { revalidate: 86400 } // Revalidate daily
     });
     const data = await res.json();
@@ -62,8 +67,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { tenantSlug, cityOrKeyword } = params;
   
   try {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiBase) {
+      return {
+        title: 'Joinery AI',
+        description: 'Find trusted joinery specialists near you.'
+      };
+    }
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/landing-tenants/by-slug/${tenantSlug}`,
+      `${apiBase}/api/landing-tenants/by-slug/${tenantSlug}`,
       { next: { revalidate: 3600 } } // Revalidate hourly
     );
     

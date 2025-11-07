@@ -93,6 +93,7 @@ export class GoogleAdsClient {
         where: { id: tenantId },
         select: {
           googleAdsCustomerId: true,
+          googleAdsRefreshToken: true,
           targetCPL: true,
         },
       });
@@ -103,17 +104,16 @@ export class GoogleAdsClient {
 
       const actualTargetCPL = tenant.targetCPL ? parseFloat(tenant.targetCPL.toString()) : targetCPL;
 
-    // Get date range (last 7 days)
-    const endDate = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
-    const startDate = dayjs().subtract(8, 'days').format('YYYY-MM-DD');
-    const weekStartDate = dayjs().startOf('week').toDate();
+      // Get date range (last 7 days)
+      const endDate = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+      const startDate = dayjs().subtract(8, 'days').format('YYYY-MM-DD');
+      const weekStartDate = dayjs().startOf('week').toDate();
 
-    console.log(`Fetching keyword performance for tenant ${tenantId} (${startDate} to ${endDate})`);
+      console.log(`Fetching keyword performance for tenant ${tenantId} (${startDate} to ${endDate})`);
 
-    try {
       const keywords = await this.fetchKeywordPerformance(
         tenant.googleAdsCustomerId,
-        tenant.googleAdsRefreshToken,
+        tenant.googleAdsRefreshToken || '',
         startDate,
         endDate
       );
@@ -124,10 +124,7 @@ export class GoogleAdsClient {
       for (const kw of keywords) {
         const conversionRate = kw.clicks > 0 ? (kw.conversions / kw.clicks) * 100 : 0;
         const cpl = kw.conversions > 0 ? kw.cost / kw.conversions : 0;
-        const targetCPL = tenant.targetCPL ? parseFloat(tenant.targetCPL.toString()) : 50;
-
-        // Flag underperforming keywords
-        const isUnderperforming = kw.ctr < 1 || cpl > targetCPL;
+        const isUnderperforming = kw.ctr < 1 || cpl > actualTargetCPL;
 
         await prisma.keywordPerformance.upsert({
           where: {
@@ -169,9 +166,9 @@ export class GoogleAdsClient {
 
       // Update tenant's keywords array with active keywords
       const activeKeywords = keywords
-        .filter(kw => kw.impressions > 10) // Only keep keywords with significant impressions
+        .filter(kw => kw.impressions > 10)
         .map(kw => kw.keyword)
-        .slice(0, 50); // Limit to top 50
+        .slice(0, 50);
 
       await prisma.tenant.update({
         where: { id: tenantId },
@@ -187,9 +184,9 @@ export class GoogleAdsClient {
           return kw.ctr < 1 || cpl > actualTargetCPL;
         }).length,
       };
-    } catch (error: any) {
-      console.error(`Error updating keyword performance for tenant ${tenantId}:`, error.message);
-      return { success: false, error: error.message };
+    } catch (err: any) {
+      console.error(`Error updating keyword performance for tenant ${tenantId}:`, err.message);
+      return { success: false, error: err.message };
     }
   }
 
