@@ -22,6 +22,7 @@ import gmailRouter from "./routes/gmail";
 import leadsAiRouter from "./routes/leads-ai";
 import ms365Router from "./routes/ms365";
 import tenantsRouter from "./routes/tenants";
+import landingTenantsRouter from "./routes/landing-tenants";
 import tenantDeclineRouter from "./routes/tenant-decline-email";
 import publicRouter from "./routes/public";
 import aiFollowupRouter from "./routes/ai-followup";
@@ -55,6 +56,7 @@ import notificationsRouter from "./routes/notifications";
 import streaksRouter from "./routes/streaks";
 import followupsRouter from "./routes/followups";
 import marketingRoiRouter from "./routes/marketing-roi";
+import keywordsRouter from "./routes/keywords";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -461,6 +463,7 @@ app.use("/source-costs", requireAuth, sourceCostsRouter);
 app.use("/analytics", requireAuth, analyticsRouter);
 app.use("/analytics/business", requireAuth, analyticsBusinessRouter);
 app.use("/tenant", requireAuth, tenantsRouter);
+app.use("/landing-tenants", landingTenantsRouter); // Public + admin with x-admin-key
 app.use("/tenants", requireAuth, tenantDeclineRouter);
 if (billingRouter) {
   app.use("/billing", billingRouter);
@@ -486,6 +489,7 @@ app.use("/notifications", notificationsRouter);
 app.use("/streaks", streaksRouter);
 app.use("/followups", followupsRouter);
 app.use("/marketing/roi", marketingRoiRouter);
+app.use("/keywords", requireAuth, keywordsRouter);
 app.use("/workshop", requireAuth, workshopRouter);
 
 /** ---------- Auth required from here ---------- */

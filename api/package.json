@@ -23,9 +23,12 @@
     "test:supplier": "ts-node-dev --transpile-only scripts/test-supplier-parse.ts",
     "audit:prod": "ts-node --transpile-only scripts/prod_ml_audit.ts",
     "ttl:ml": "ts-node --transpile-only scripts/ttl-ml-telemetry.ts",
-    "images:import": "tsx scripts/import_tenant_images.ts"
+    "images:import": "tsx scripts/import_tenant_images.ts",
+    "images:bootstrap": "tsx scripts/bootstrap_tenant_from_url.ts",
+    "keywords:sync": "tsx scripts/update_keywords_from_ads.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.926.0",
     "@prisma/client": "^6.17.1",
     "@sparticuz/chromium": "^133.0.0",
     "@types/nodemailer": "^7.0.3",
@@ -38,6 +41,7 @@
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "fast-levenshtein": "^3.0.0",
+    "google-ads-api": "^21.0.1",
     "googleapis": "^161.0.0",
     "imghash": "^1.1.0",
     "jsonwebtoken": "^9.0.2",
@@ -50,6 +54,7 @@
     "puppeteer": "^23.7.1",
     "sharp": "^0.34.5",
     "stripe": "^19.1.0",
+    "undici": "^7.16.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

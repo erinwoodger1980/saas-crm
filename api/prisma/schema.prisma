@@ -22,6 +22,13 @@ model Tenant {
   subscriptionStatus    SubscriptionStatus?
   plan                  Plan?
   financialYearEnd      String?                @default("12-31") // MM-DD format for financial year end
+  // SEO & Ads optimization fields
+  keywords              String[]               @default([])
+  serviceAreas          String[]               @default([])
+  homeUrl               String?
+  googleAdsCustomerId   String?                // Google Ads customer ID
+  googleAdsRefreshToken String?                // OAuth refresh token for Ads API
+  targetCPL             Decimal?               @default(50) // Target cost per lead
   emailIngests          EmailIngest[]
   emailMessages         EmailMessage[]
   emailThreads          EmailThread[]
@@ -50,6 +57,7 @@ model Tenant {
   processPlans          ProcessPlan[]
   timeEntries           TimeEntry[]
   targets               Target[]
+  keywordPerformance    KeywordPerformance[]
 }
 
 model User {
@@ -1014,4 +1022,113 @@ model LandingLead {
   ip            String?
   // Simple index to speed up dedupe checks:
   @@index([email, source, createdAt])
+}
+
+// Multi-tenant landing page system
+model LandingTenant {
+  id          String                @id @default(cuid())
+  slug        String                @unique
+  name        String
+  homeUrl     String?
+  email       String?
+  phone       String?
+  address     String?
+  brandColor  String?               // hex
+  logoUrl     String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  content     LandingTenantContent?
+  images      LandingTenantImage[]
+  reviews     LandingTenantReview[]
+}
+
+model LandingTenantContent {
+  id            String         @id @default(cuid())
+  tenantId      String         @unique
+  headline      String?
+  subhead       String?
+  priceFromText String?
+  priceRange    String?
+  guarantees    String?        // JSON string: { bullets:[], riskReversal:"" }
+  urgency       String?        // JSON string: { text:"", sub:"" }
+  faqJson       String?        // JSON array of Q&As
+  leadMagnet    String?        // JSON { title, cta, url }
+  serviceAreas  String?        // JSON string array
+  published     Boolean        @default(false)
+  updatedAt     DateTime       @updatedAt
+  tenant        LandingTenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model LandingTenantImage {
+  id        String        @id @default(cuid())
+  tenantId  String
+  src       String        // URL or /public path
+  alt       String?
+  caption   String?
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+  tenant    LandingTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@index([tenantId, sortOrder])
+}
+
+model LandingTenantReview {
+  id        String        @id @default(cuid())
+  tenantId  String
+  quote     String
+  author    String?
+  location  String?
+  stars     Int           @default(5)
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+  tenant    LandingTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@index([tenantId, sortOrder])
+}
+
+// Google Ads keyword performance tracking
+model KeywordPerformance {
+  id              String   @id @default(cuid())
+  tenantId        String
+  keyword         String
+  matchType       String   // EXACT, PHRASE, BROAD
+  // Performance metrics (7-day rolling)
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  conversions     Int      @default(0)
+  cost            Decimal  @default(0)
+  // Calculated metrics
+  ctr             Decimal  @default(0) // Click-through rate
+  conversionRate  Decimal  @default(0)
+  cpl             Decimal  @default(0) // Cost per lead
+  qualityScore    Int?     // 1-10 from Google Ads
+  // Status flags
+  isActive        Boolean  @default(true)
+  isUnderperforming Boolean @default(false) // CTR < 1% OR CPL > target
+  // Timestamps
+  weekStartDate   DateTime // Monday of the week this data represents
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@unique([tenantId, keyword, weekStartDate])
+  @@index([tenantId, isUnderperforming])
+  @@index([weekStartDate])
+}
+
+// SEO keyword optimization suggestions
+model KeywordSuggestion {
+  id           String   @id @default(cuid())
+  tenantId     String
+  keyword      String
+  suggestedFor String   // 'headline', 'subhead', 'meta_title', 'meta_description'
+  oldText      String?
+  newText      String
+  reason       String   // Why this suggestion was made
+  conversionRate Decimal // The keyword's conversion rate that prompted this
+  status       String   @default("pending") // pending, approved, rejected, applied
+  createdAt    DateTime @default(now())
+  appliedAt    DateTime?
+  
+  @@index([tenantId, status])
+  @@index([createdAt])
 }
