@@ -771,9 +771,9 @@ export default function SettingsPage() {
             >
               Open Landing Page Editor →
             </a>
-            {settings?.slug && (
+            {s?.slug && (
               <a
-                href={`/tenant/${settings.slug}/landing`}
+                href={`/tenant/${s.slug}/landing`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
