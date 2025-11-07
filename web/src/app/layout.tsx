@@ -8,6 +8,7 @@ import AppShell from "./components/AppShell";
 import { TasksButton } from "@/components/tasks/TasksButton";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import { API_BASE, setJwt, apiFetch } from "@/lib/api";
+import Script from "next/script";
 
 function DevAuth() {
   useEffect(() => {
@@ -56,6 +57,20 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   return (
     <html lang="en" className="h-full">
+      <head>
+        <Script
+          async
+          src="https://www.googletagmanager.com/gtag/js?id=AW-17711287541"
+        />
+        <Script id="google-gtag" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'AW-17711287541');
+          `}
+        </Script>
+      </head>
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
         {shouldRunDevAuth && <DevAuth />}
 
