@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Check, X, AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -26,11 +26,17 @@ interface BootstrapResult {
   message: string;
 }
 
+interface AdminTenantOut {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export default function AdsLinkPage() {
   const params = useParams();
-  const router = useRouter();
-  const slug = params.slug as string;
+  const id = params.id as string;
 
+  const [tenant, setTenant] = useState<AdminTenantOut | null>(null);
   const [customerId, setCustomerId] = useState('');
   const [verifyData, setVerifyData] = useState<VerifyResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -41,21 +47,42 @@ export default function AdsLinkPage() {
   const [bootstrapResult, setBootstrapResult] = useState<BootstrapResult | null>(null);
 
   // Bootstrap form fields
-  const [landingUrl, setLandingUrl] = useState(`https://www.joineryai.app/tenant/${slug}/landing`);
+  const [landingUrl, setLandingUrl] = useState<string>('');
   const [postcode, setPostcode] = useState('');
   const [radiusMiles, setRadiusMiles] = useState(50);
   const [dailyBudgetGBP, setDailyBudgetGBP] = useState(10);
 
-  // Load verification data on mount
+  // Load tenant (to resolve slug from id) and initial verify data
   useEffect(() => {
+    let ignore = false;
+    async function loadTenant() {
+      try {
+        setError('');
+        const data = await apiFetch<any>(`/admin/landing-tenants/${id}`);
+        if (ignore) return;
+        const t: AdminTenantOut = { id: data?.tenant?.id || data?.id, name: data?.tenant?.name || data?.name, slug: data?.tenant?.slug || data?.slug };
+        setTenant(t);
+        setLandingUrl(`https://www.joineryai.app/tenant/${t.slug}/landing`);
+      } catch (e: any) {
+        if (!ignore) setError(e?.message || 'Failed to load tenant');
+      }
+    }
+    if (id) loadTenant();
+    return () => { ignore = true; };
+  }, [id]);
+
+  useEffect(() => {
+    if (!tenant?.slug) return;
     loadVerifyData();
-  }, [slug]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenant?.slug]);
 
   async function loadVerifyData() {
+    if (!tenant?.slug) return;
     try {
       setVerifying(true);
       setError('');
-      const data = await apiFetch<VerifyResponse>(`/ads/tenant/${slug}/verify`);
+      const data = await apiFetch<VerifyResponse>(`/ads/tenant/${tenant.slug}/verify`);
       setVerifyData(data);
       if (data.customerId) {
         setCustomerId(data.customerId);
@@ -68,6 +95,7 @@ export default function AdsLinkPage() {
   }
 
   async function handleSaveCustomerId() {
+    if (!tenant?.slug) return;
     // Validate format
     const pattern = /^\d{3}-\d{3}-\d{4}$/;
     if (!pattern.test(customerId)) {
@@ -80,15 +108,13 @@ export default function AdsLinkPage() {
       setError('');
       setSuccess('');
 
-      await apiFetch(`/ads/tenant/${slug}/link`, {
+      await apiFetch(`/ads/tenant/${tenant.slug}/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId }),
       });
 
       setSuccess('Customer ID saved successfully!');
-      
-      // Re-verify after saving
       await loadVerifyData();
     } catch (err: any) {
       setError(err.message || 'Failed to save customer ID');
@@ -98,6 +124,7 @@ export default function AdsLinkPage() {
   }
 
   async function handleBootstrap() {
+    if (!tenant?.slug) return;
     if (!postcode.trim()) {
       setError('Postcode is required');
       return;
@@ -109,7 +136,7 @@ export default function AdsLinkPage() {
       setSuccess('');
       setBootstrapResult(null);
 
-      const result = await apiFetch<BootstrapResult>(`/ads/tenant/${slug}/bootstrap`, {
+      const result = await apiFetch<BootstrapResult>(`/ads/tenant/${tenant.slug}/bootstrap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -142,7 +169,9 @@ export default function AdsLinkPage() {
           Back to Tenants
         </Link>
         <h1 className="text-3xl font-bold text-gray-900">Google Ads Connection</h1>
-        <p className="text-gray-600 mt-1">Tenant: <span className="font-mono font-semibold">{slug}</span></p>
+        <p className="text-gray-600 mt-1">
+          Tenant: <span className="font-mono font-semibold">{tenant?.slug || '...'}</span>
+        </p>
       </div>
 
       {/* Error/Success Messages */}
@@ -173,7 +202,6 @@ export default function AdsLinkPage() {
           Enter the Google Ads Customer ID for this tenant. You must create the customer account manually 
           in Google Ads UI first, then paste the ID here.
         </p>
-        
         <div className="flex gap-3">
           <input
             type="text"
@@ -182,10 +210,11 @@ export default function AdsLinkPage() {
             onChange={(e) => setCustomerId(e.target.value)}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             pattern="\d{3}-\d{3}-\d{4}"
+            disabled={!tenant?.slug}
           />
           <button
             onClick={handleSaveCustomerId}
-            disabled={loading || !customerId}
+            disabled={loading || !customerId || !tenant?.slug}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {loading && <Loader2 className="animate-spin" size={16} />}
@@ -201,7 +230,7 @@ export default function AdsLinkPage() {
           <h2 className="text-xl font-semibold text-gray-900">2. Verify Access</h2>
           <button
             onClick={loadVerifyData}
-            disabled={verifying}
+            disabled={verifying || !tenant?.slug}
             className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
           >
             {verifying && <Loader2 className="animate-spin" size={16} />}
@@ -211,26 +240,11 @@ export default function AdsLinkPage() {
 
         {verifyData ? (
           <div className="space-y-3">
-            <ChecklistItem
-              checked={verifyData.mccOk}
-              label="MCC environment configured"
-            />
-            <ChecklistItem
-              checked={!!verifyData.customerId}
-              label="Customer ID stored"
-              detail={verifyData.customerId || undefined}
-            />
-            <ChecklistItem
-              checked={verifyData.accessOk === true}
-              loading={verifyData.accessOk === null}
-              label="MCC has access to customer"
-            />
-            <ChecklistItem
-              checked={verifyData.ga4IdPresent}
-              label="GA4 tracking ID configured (optional)"
-            />
+            <ChecklistItem checked={verifyData.mccOk} label="MCC environment configured" />
+            <ChecklistItem checked={!!verifyData.customerId} label="Customer ID stored" detail={verifyData.customerId || undefined} />
+            <ChecklistItem checked={verifyData.accessOk === true} loading={verifyData.accessOk === null} label="MCC has access to customer" />
+            <ChecklistItem checked={verifyData.ga4IdPresent} label="GA4 tracking ID configured (optional)" />
 
-            {/* Notes */}
             {verifyData.notes.length > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <p className="text-xs font-semibold text-gray-700 mb-2">Details:</p>
@@ -257,9 +271,7 @@ export default function AdsLinkPage() {
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Landing URL
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Landing URL</label>
             <input
               type="url"
               value={landingUrl}
@@ -271,9 +283,7 @@ export default function AdsLinkPage() {
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Postcode *
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Postcode *</label>
               <input
                 type="text"
                 value={postcode}
@@ -285,9 +295,7 @@ export default function AdsLinkPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Radius (miles)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Radius (miles)</label>
               <input
                 type="number"
                 value={radiusMiles}
@@ -298,9 +306,7 @@ export default function AdsLinkPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Daily Budget (£)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Daily Budget (£)</label>
               <input
                 type="number"
                 value={dailyBudgetGBP}
@@ -321,13 +327,10 @@ export default function AdsLinkPage() {
           </button>
 
           {!isReady && (
-            <p className="text-sm text-amber-600 text-center">
-              ⚠️ Complete verification steps above before bootstrapping
-            </p>
+            <p className="text-sm text-amber-600 text-center">⚠️ Complete verification steps above before bootstrapping</p>
           )}
         </div>
 
-        {/* Bootstrap Result */}
         {bootstrapResult && (
           <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="font-semibold text-blue-900 mb-2">Campaign Created!</p>
@@ -338,9 +341,7 @@ export default function AdsLinkPage() {
               <div><strong>Ads:</strong> {bootstrapResult.ads.length} created</div>
               <div><strong>Keywords:</strong> {bootstrapResult.keywords.length} added</div>
             </div>
-            <p className="text-sm text-blue-700 mt-3">
-              🎉 Review your campaign in Google Ads and enable it when ready!
-            </p>
+            <p className="text-sm text-blue-700 mt-3">🎉 Review your campaign in Google Ads and enable it when ready!</p>
           </div>
         )}
       </div>
@@ -368,12 +369,8 @@ function ChecklistItem({ checked, label, detail, loading }: ChecklistItemProps) 
         )}
       </div>
       <div className="flex-1">
-        <p className={`text-sm font-medium ${checked ? 'text-gray-900' : 'text-gray-600'}`}>
-          {label}
-        </p>
-        {detail && (
-          <p className="text-xs text-gray-500 font-mono mt-1">{detail}</p>
-        )}
+        <p className={`text-sm font-medium ${checked ? 'text-gray-900' : 'text-gray-600'}`}>{label}</p>
+        {detail && <p className="text-xs text-gray-500 font-mono mt-1">{detail}</p>}
       </div>
     </div>
   );
