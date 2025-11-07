@@ -9,6 +9,7 @@ import GalleryEditor from '@/components/admin/editors/GalleryEditor';
 import ReviewsEditor from '@/components/admin/editors/ReviewsEditor';
 import GuaranteesEditor from '@/components/admin/editors/GuaranteesEditor';
 import PreviewPanel from '@/components/admin/PreviewPanel';
+import { apiFetch } from '@/lib/api';
 
 interface LandingTenantData {
   id: string;
@@ -48,27 +49,16 @@ export default function EditTenantPage() {
   useEffect(() => {
     async function fetchTenant() {
       try {
-        const res = await fetch(`/api/admin/landing-tenants/${params.id}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          setTenant(data);
-          
-          // Initialize form state
-          setHeadline(data.headline || '');
-          setSubhead(data.subhead || '');
-          setUrgencyBanner(data.urgencyBanner || '');
-          setCtaText(data.ctaText || 'Get Your Free Quote');
-          setGuarantees(data.guarantees || []);
-          setImages(data.images || []);
-          setReviews(data.reviews || []);
-        } else {
-          console.error('Failed to fetch tenant');
-        }
+        const data = await apiFetch<LandingTenantData>(`/admin/landing-tenants/${params.id}`);
+        setTenant(data);
+        // Initialize form state
+        setHeadline(data.headline || '');
+        setSubhead(data.subhead || '');
+        setUrgencyBanner(data.urgencyBanner || '');
+        setCtaText(data.ctaText || 'Get Your Free Quote');
+        setGuarantees(data.guarantees || []);
+        setImages(data.images || []);
+        setReviews(data.reviews || []);
       } catch (error) {
         console.error('Error fetching tenant:', error);
       } finally {
@@ -112,27 +102,16 @@ export default function EditTenantPage() {
         publish
       };
 
-      const res = await fetch(`/api/admin/landing-tenants/${params.id}/content`, {
+      const data = await apiFetch<LandingTenantData>(`/admin/landing-tenants/${params.id}/content`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(payload)
+        json: payload,
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        setTenant(data);
-        setHasChanges(false);
-        
-        if (publish) {
-          alert('✅ Published successfully!');
-        } else {
-          alert('✅ Draft saved!');
-        }
+      setTenant(data);
+      setHasChanges(false);
+      if (publish) {
+        alert('✅ Published successfully!');
       } else {
-        alert('❌ Save failed. Please try again.');
+        alert('✅ Draft saved!');
       }
     } catch (error) {
       console.error('Save error:', error);

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Eye, Trash2, CheckCircle, Clock, FileText } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 interface Tenant {
   id: string;
@@ -25,16 +26,8 @@ export default function TenantsPage() {
   useEffect(() => {
     async function fetchTenants() {
       try {
-        const res = await fetch('/api/admin/landing-tenants', {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          setTenants(data.tenants || []);
-        }
+        const data = await apiFetch<{ tenants: Tenant[] }>('/admin/landing-tenants');
+        setTenants(data.tenants || []);
       } catch (error) {
         console.error('Failed to fetch tenants:', error);
       } finally {
@@ -141,6 +134,13 @@ export default function TenantsPage() {
                   </td>
                   <td className="p-4">
                     <div className="flex justify-end gap-2">
+                      <Link
+                        href={`/admin/ads/${tenant.id}`}
+                        className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded transition"
+                        title="Ads Insights"
+                      >
+                        Ads
+                      </Link>
                       <Link
                         href={`/admin/tenants/${tenant.id}/edit`}
                         className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition"

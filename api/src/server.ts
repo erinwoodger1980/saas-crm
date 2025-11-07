@@ -61,6 +61,7 @@ import followupsRouter from "./routes/followups";
 import marketingRoiRouter from "./routes/marketing-roi";
 import keywordsRouter from "./routes/keywords";
 import aggregateReviewsRouter from "./routes/aggregate-reviews";
+import adsRouter from "./routes/ads";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -502,6 +503,7 @@ app.use("/streaks", streaksRouter);
 app.use("/followups", followupsRouter);
 app.use("/marketing/roi", marketingRoiRouter);
 app.use("/keywords", requireAuth, keywordsRouter);
+app.use("/ads", requireAuth, adsRouter);
 app.use("/workshop", requireAuth, workshopRouter);
 
 /** ---------- Auth required from here ---------- */
