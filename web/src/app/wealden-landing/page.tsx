@@ -420,14 +420,18 @@ export default function WealdenLandingPage() {
       <section className="premium-section" id="projects">
         <h2>Recent Projects</h2>
         <div className="premium-gallery">
-          <img alt="Project 1" src="/images/wealden/p1.jpg" />
-          <img alt="Project 2" src="/images/wealden/p2.jpg" />
-          <img alt="Project 3" src="/images/wealden/p3.jpg" />
-          <img alt="Project 4" src="/images/wealden/p4.jpg" />
-          <img alt="Project 5" src="/images/wealden/p5.jpg" />
-          <img alt="Project 6" src="/images/wealden/p6.jpg" />
+          <picture>
+            <source srcSet="/tenants/wealden/wealden-002_800.webp" media="(max-width: 768px)" type="image/webp" />
+            <source srcSet="/tenants/wealden/wealden-002_1600.webp" type="image/webp" />
+            <img alt="Window espag" src="/tenants/wealden/wealden-002_1600.jpg" />
+          </picture>
+          <picture>
+            <source srcSet="/tenants/wealden/wealden-003_800.webp" media="(max-width: 768px)" type="image/webp" />
+            <source srcSet="/tenants/wealden/wealden-003_1600.webp" type="image/webp" />
+            <img alt="Custom joinery detail" src="/tenants/wealden/wealden-003_1600.jpg" />
+          </picture>
         </div>
-        <p className="small" style={{ marginTop: 8, textAlign:'center', color:'var(--premium-muted)' }}>Hove | Tunbridge Wells | Lewes | Conservation Areas</p>
+        <p className="small" style={{ marginTop: 8, textAlign:'center', color:'var(--premium-muted)' }}>Premium timber windows & doors for East Sussex & Kent</p>
       </section>
 
       <section className="premium-section" id="testimonials">
