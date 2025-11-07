@@ -1161,3 +1161,46 @@ model TenantAdsConfig {
   
   @@index([googleAdsCustomerId])
 }
+
+enum FeatureStatus {
+  OPEN
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  APPROVED
+  REJECTED
+  APPLIED
+  FAILED
+}
+
+enum FeatureCategory {
+  UI
+  COPY
+  PRICING
+  ANALYTICS
+  INTEGRATION
+  OTHER
+}
+
+model FeatureRequest {
+  id              String          @id @default(cuid())
+  tenantId        String
+  createdByUserId String
+  title           String
+  description     String
+  category        FeatureCategory @default(OTHER)
+  status          FeatureStatus   @default(OPEN)
+  allowedFiles    Json?
+  priority        Int?
+  patchText       String?
+  branchName      String?
+  prUrl           String?
+  checksStatus    String?
+  logs            String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator User   @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+}
