@@ -25,7 +25,7 @@ export default function TenantsPage() {
   useEffect(() => {
     async function fetchTenants() {
       try {
-        const res = await fetch('/api/landing-tenants', {
+        const res = await fetch('/api/admin/landing-tenants', {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`
           }
@@ -127,10 +127,10 @@ export default function TenantsPage() {
                     )}
                   </td>
                   <td className="p-4 text-sm text-gray-600">
-                    {tenant._count && (
+                    {tenant.landingTenant?._count && (
                       <div className="flex gap-3">
-                        <span>{tenant._count.images} images</span>
-                        <span>{tenant._count.reviews} reviews</span>
+                        <span>{tenant.landingTenant._count.images} images</span>
+                        <span>{tenant.landingTenant._count.reviews} reviews</span>
                       </div>
                     )}
                   </td>

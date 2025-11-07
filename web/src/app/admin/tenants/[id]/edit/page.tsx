@@ -48,7 +48,7 @@ export default function EditTenantPage() {
   useEffect(() => {
     async function fetchTenant() {
       try {
-        const res = await fetch(`/api/landing-tenants/${params.id}`, {
+        const res = await fetch(`/api/admin/landing-tenants/${params.id}`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`
           }
@@ -112,7 +112,7 @@ export default function EditTenantPage() {
         publish
       };
 
-      const res = await fetch(`/api/landing-tenants/${params.id}/content`, {
+      const res = await fetch(`/api/admin/landing-tenants/${params.id}/content`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
