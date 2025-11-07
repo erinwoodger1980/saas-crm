@@ -23,6 +23,7 @@ import leadsAiRouter from "./routes/leads-ai";
 import ms365Router from "./routes/ms365";
 import tenantsRouter from "./routes/tenants";
 import landingTenantsRouter from "./routes/landing-tenants";
+import landingTenantsPublicRouter from "./routes/landing-tenants-public";
 import tenantDeclineRouter from "./routes/tenant-decline-email";
 import publicRouter from "./routes/public";
 import aiFollowupRouter from "./routes/ai-followup";
@@ -57,6 +58,7 @@ import streaksRouter from "./routes/streaks";
 import followupsRouter from "./routes/followups";
 import marketingRoiRouter from "./routes/marketing-roi";
 import keywordsRouter from "./routes/keywords";
+import aggregateReviewsRouter from "./routes/aggregate-reviews";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -204,6 +206,9 @@ app.use("/public", publicRouter);
 if (publicSignupRouter) {
   app.use("/public", publicSignupRouter);
 }
+/** Public landing tenant APIs for SEO pages */
+app.use("/api/landing-tenants", landingTenantsPublicRouter);
+app.use("/api/aggregate-reviews", aggregateReviewsRouter);
 
 /** ---------- JWT decode middleware (Authorization header OR cookies) ---------- */
 app.use((req, _res, next) => {
