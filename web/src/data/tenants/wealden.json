@@ -1,0 +1,75 @@
+{
+  "name": "Wealden Joinery",
+  "slug": "wealden",
+  "phone": "01892 770123",
+  "email": "info@wealdenjoinery.com",
+  "address": "East Sussex, United Kingdom",
+  "homeUrl": "https://wealdenjoinery.com",
+  "logo": "/images/wealden/logo.png",
+  "brand": {
+    "primary": "#18332F",
+    "accent": "#C9A14A"
+  },
+  "gallery": [
+    {
+      "src": "/tenants/wealden/wealden-002_1600.jpg",
+      "alt": "Bespoke timber window detail",
+      "caption": "Traditional sash window with modern performance"
+    },
+    {
+      "src": "/tenants/wealden/wealden-003_1600.jpg",
+      "alt": "Custom joinery craftsmanship",
+      "caption": "Handcrafted in our Sussex workshop"
+    }
+  ],
+  "reviews": [
+    {
+      "quote": "The new sash windows have transformed our Georgian home — the detail is superb.",
+      "author": "Sarah H.",
+      "location": "Tunbridge Wells, TN2",
+      "stars": 5
+    },
+    {
+      "quote": "Professional team, beautiful craftsmanship. Worth every penny.",
+      "author": "James R.",
+      "location": "Hove, BN3",
+      "stars": 5
+    },
+    {
+      "quote": "Quote was clear, install tidy, and the draughts are gone.",
+      "author": "Claire M.",
+      "location": "Lewes, BN7",
+      "stars": 5
+    }
+  ],
+  "serviceAreas": [
+    "East Sussex",
+    "Kent",
+    "Surrey",
+    "TN postcodes",
+    "BN postcodes",
+    "RH postcodes"
+  ],
+  "priceAnchor": {
+    "fromText": "Sash windows from £2,500",
+    "rangeText": "Most projects £8k–£25k"
+  },
+  "guarantees": {
+    "bullets": [
+      "10-year factory coating warranty",
+      "PAS 24 security certified",
+      "FENSA registered installation",
+      "50-year Accoya timber warranty"
+    ],
+    "riskReversal": "No-obligation quote. We'll never spam you."
+  },
+  "urgencyBanner": {
+    "text": "Free design consultation — 3 slots left this week",
+    "sub": "Book now to secure your spot"
+  },
+  "leadMagnet": {
+    "title": "The Complete Guide to Timber Windows for Period Homes",
+    "cta": "Download Free Guide",
+    "url": "/downloads/wealden-timber-windows-guide.pdf"
+  }
+}
