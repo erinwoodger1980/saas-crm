@@ -156,7 +156,7 @@ export default function TenantsPage() {
                         <Edit size={18} />
                       </Link>
                       <Link
-                        href={`/${tenant.slug}/kent`}
+                        href={`/tenant/${tenant.slug}/landing`}
                         target="_blank"
                         className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition"
                         title="Preview"
