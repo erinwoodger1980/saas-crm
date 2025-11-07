@@ -748,6 +748,7 @@ export default function SettingsPage() {
           </Button>
         </div>
       </Section>
+      
       <Section 
         title="Landing Page & Marketing" 
         description="Create and manage your SEO-optimized landing pages with the visual editor"
@@ -783,9 +784,11 @@ export default function SettingsPage() {
           </div>
         </div>
       </Section>
+      
       <Section title="Source costs">
         <SourceCosts />
       </Section>
+      
       <Section title="Early Access">
         <label className="flex items-center gap-2">
           <input
