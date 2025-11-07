@@ -1,0 +1,5 @@
+[
+  "web/src/**",
+  "api/src/**",
+  "templates/prompts/**"
+]

@@ -48,6 +48,7 @@ import mlInsightsRouter from "./routes/ml-insights";
 import mlStatusRouter from "./routes/ml-status";
 import featureFlagsRouter from "./routes/feature-flags";
 import workshopRouter from "./routes/workshop";
+import featureRequestsRouter from "./routes/featureRequests";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -359,6 +360,11 @@ function requireAuth(req: any, res: any, next: any) {
   next();
 }
 
+function requireUser(req: any, res: any, next: any) {
+  if (!req.auth?.userId) return res.status(401).json({ error: "unauthorized" });
+  next();
+}
+
 /* ---------------- Dev bootstrap (idempotent) ---------------- */
 async function ensureDevData() {
   let tenant = await prisma.tenant.findFirst({ where: { name: "Demo Tenant" } });
@@ -505,6 +511,15 @@ app.use("/marketing/roi", marketingRoiRouter);
 app.use("/keywords", requireAuth, keywordsRouter);
 app.use("/ads", requireAuth, adsRouter);
 app.use("/workshop", requireAuth, workshopRouter);
+
+app.use((req, res, next) => {
+  const path = req.path || "";
+  if (path.startsWith("/feature-requests") || path.startsWith("/admin/feature-requests")) {
+    return requireUser(req, res, next);
+  }
+  return next();
+});
+app.use(featureRequestsRouter);
 
 /** ---------- Auth required from here ---------- */
 app.use((req, _res, next) => {
