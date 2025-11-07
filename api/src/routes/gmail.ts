@@ -618,6 +618,41 @@ router.get("/oauth/callback", async (req, res) => {
     },
   });
 
+  // Automatically enable inbox watch and set inbox.gmail=true when Gmail is connected
+  try {
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId: parsed.tenantId! },
+      select: { inbox: true, slug: true, brandName: true },
+    });
+
+    const existingInbox = (settings?.inbox as any) || {};
+    const updatedInbox = {
+      ...existingInbox,
+      gmail: true,
+      intervalMinutes: existingInbox.intervalMinutes || 10,
+    };
+
+    await prisma.tenantSettings.upsert({
+      where: { tenantId: parsed.tenantId! },
+      update: {
+        inboxWatchEnabled: true,
+        inbox: updatedInbox,
+      },
+      create: {
+        tenantId: parsed.tenantId!,
+        slug: settings?.slug || `tenant-${parsed.tenantId!.slice(0, 6)}`,
+        brandName: settings?.brandName || "Your Company",
+        inboxWatchEnabled: true,
+        inbox: updatedInbox,
+      },
+    });
+
+    console.log(`[gmail] Auto-enabled inbox watch for tenant ${parsed.tenantId}`);
+  } catch (e) {
+    console.error("[gmail] Failed to auto-enable inbox watch:", e);
+    // Non-fatal - allow connection to succeed even if this fails
+  }
+
   const appUrl = (process.env.APP_URL || "").trim();
   if (appUrl && /^https?:\/\//i.test(appUrl)) {
     const next = `${appUrl.replace(/\/+$/, "")}/settings?gmail=connected`;
