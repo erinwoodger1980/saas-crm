@@ -135,7 +135,7 @@ export default function TenantsPage() {
                   <td className="p-4">
                     <div className="flex justify-end gap-2">
                       <Link
-                        href={`/admin/tenants/${tenant.slug}/ads-link`}
+                        href={`/admin/tenants/${tenant.id}/ads-link`}
                         className="px-3 py-1.5 text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded transition border border-purple-200"
                         title="Ads Setup"
                       >
