@@ -3,11 +3,9 @@
  * Creates Search campaigns with location targeting, ads, sitelinks, and tracking
  */
 
-import { getAdsClient, digitsOnly } from '../../lib/googleAds';
+import { getAdsClient } from '../../lib/googleAds';
 import {
   DEFAULT_CAMPAIGN_SETTINGS,
-  DEFAULT_AD_HEADLINES,
-  DEFAULT_AD_DESCRIPTIONS,
   DEFAULT_KEYWORDS,
   DEFAULT_SITELINKS,
 } from './constants';
@@ -19,8 +17,9 @@ interface BootstrapOptions {
   landingUrl: string;
   postcode: string;
   radiusMiles?: number;
-  dailyBudget?: number; // in micros (e.g., 1000000 = £10)
-  city?: string; // for keyword/ad substitution
+  dailyBudgetGBP?: number;
+  city?: string;
+  campaignName?: string;
 }
 
 interface BootstrapResult {
@@ -28,7 +27,6 @@ interface BootstrapResult {
   campaignResourceName: string;
   adGroupResourceName: string;
   adResourceNames: string[];
-  sitelinkResourceNames: string[];
   keywordResourceNames: string[];
 }
 
@@ -47,6 +45,18 @@ function replaceCityPlaceholder(text: string, city: string): string {
 }
 
 /**
+ * Mock geocoding function - in production, use a real geocoding API
+ */
+async function geocodePostcode(postcode: string): Promise<{ lat: number; lng: number }> {
+  // Mock coordinates for TN22 1AA (Sussex)
+  // In production, integrate with Google Maps Geocoding API or similar
+  return {
+    lat: 50.9097,
+    lng: 0.0143,
+  };
+}
+
+/**
  * Bootstrap a complete Search campaign with all settings
  */
 export async function bootstrapSearchCampaign(
@@ -58,32 +68,33 @@ export async function bootstrapSearchCampaign(
     landingUrl,
     postcode,
     radiusMiles = DEFAULT_CAMPAIGN_SETTINGS.radiusMiles,
-    dailyBudget = DEFAULT_CAMPAIGN_SETTINGS.dailyBudgetMicros,
-    city = 'Sussex', // fallback city
+    dailyBudgetGBP = 10,
+    city = 'Sussex',
+    campaignName = `Search Campaign - ${city}`,
   } = options;
 
   const customer = getAdsClient(customerId);
+  const budgetMicros = gbpToMicros(dailyBudgetGBP);
+  const { lat, lng } = await geocodePostcode(postcode);
 
   console.log(`Bootstrapping campaign for tenant ${tenantId}, customer ${customerId}`);
 
   try {
-    // 1. Create Budget
-    const budgetOperation = {
-      create: {
-        name: `Budget - ${new Date().toISOString().split('T')[0]}`,
-        amount_micros: dailyBudget,
-        delivery_method: 'STANDARD',
+    // 1. Create Campaign Budget
+    const budgetResponse = await customer.campaignBudgets.create([
+      {
+        name: `${campaignName} Budget`,
+        amount_micros: budgetMicros,
+        delivery_method: "STANDARD",
       },
-    };
-
-    const budgetResponse = await customer.campaignBudgets.create([budgetOperation]);
+    ]);
     const budgetResourceName = budgetResponse.results[0].resource_name;
     console.log(`Created budget: ${budgetResourceName}`);
 
     // 2. Create Campaign
-    const campaignOperation = {
-      create: {
-        name: `Search Campaign - ${city}`,
+    const campaignResponse = await customer.campaigns.create([
+      {
+        name: campaignName,
         status: 'PAUSED',
         advertising_channel_type: 'SEARCH',
         campaign_budget: budgetResourceName,
@@ -100,71 +111,61 @@ export async function bootstrapSearchCampaign(
           positive_geo_target_type: 'PRESENCE',
         },
       },
-    };
-
-    const campaignResponse = await customer.campaigns.create([campaignOperation]);
+    ]);
     const campaignResourceName = campaignResponse.results[0].resource_name;
     console.log(`Created campaign: ${campaignResourceName}`);
 
-    // 3. Add Location Targeting (proximity around postcode)
-    const locationOperation = {
-      create: {
+    // 3. Add Location Targeting
+    await customer.campaignCriteria.create([
+      {
         campaign: campaignResourceName,
         proximity: {
           geo_point: {
-            longitude_in_micro_degrees: 0, // Will be geocoded by Google
-            latitude_in_micro_degrees: 0,
+            longitude_in_micro_degrees: Math.round(lng * 1_000_000),
+            latitude_in_micro_degrees: Math.round(lat * 1_000_000),
           },
           radius: radiusMiles,
-          radius_units: 'MILES',
+          radius_units: "MILES",
           address: {
             postal_code: postcode,
-            country_code: 'GB',
+            country_code: "GB",
           },
         },
       },
-    };
-
-    await customer.campaignCriteria.create([locationOperation]);
+    ]);
     console.log(`Added proximity targeting: ${postcode}, ${radiusMiles} miles`);
 
     // 4. Create Ad Group
-    const adGroupOperation = {
-      create: {
+    const adGroupResponse = await customer.adGroups.create([
+      {
         name: `Ad Group - ${city}`,
         campaign: campaignResourceName,
         status: 'ENABLED',
         type: 'SEARCH_STANDARD',
         cpc_bid_micros: 2000000, // £2 starting bid
       },
-    };
-
-    const adGroupResponse = await customer.adGroups.create([adGroupOperation]);
+    ]);
     const adGroupResourceName = adGroupResponse.results[0].resource_name;
     console.log(`Created ad group: ${adGroupResourceName}`);
 
     // 5. Add Keywords
-    const keywordOperations = DEFAULT_KEYWORDS.map((kw) => ({
-      create: {
-        ad_group: adGroupResourceName,
-        status: 'ENABLED',
-        keyword: {
-          text: replaceCityPlaceholder(kw.text, city),
-          match_type: kw.matchType,
-        },
+    const keywordsToAdd = DEFAULT_KEYWORDS.map((kw) => ({
+      ad_group: adGroupResourceName,
+      status: "ENABLED",
+      keyword: {
+        text: replaceCityPlaceholder(kw.text, city),
+        match_type: kw.matchType,
       },
     }));
 
-    const keywordResponse = await customer.adGroupCriteria.create(keywordOperations);
-    const keywordResourceNames = keywordResponse.results.map((r: any) => r.resource_name);
+    const keywordsResponse = await customer.adGroupCriteria.create(keywordsToAdd as any);
+    const keywordResourceNames = keywordsResponse.results.map((r: any) => r.resource_name);
     console.log(`Added ${keywordResourceNames.length} keywords`);
 
     // 6. Create Responsive Search Ads
-    const adOperations = [];
-
-    // Ad 1: Location-focused
-    adOperations.push({
-      create: {
+    const adOperations = [
+      // Ad 1: Location-focused
+      {
         ad_group: adGroupResourceName,
         status: 'ENABLED',
         ad: {
@@ -176,7 +177,7 @@ export async function bootstrapSearchCampaign(
               { text: 'Heritage Window Specialists' },
               { text: 'PAS 24 Security Windows' },
               { text: 'Free Quote - Fast Install' },
-            ].map((h) => ({ text: h.text, pinned_field: undefined })),
+            ],
             descriptions: [
               {
                 text: replaceCityPlaceholder(
@@ -190,17 +191,14 @@ export async function bootstrapSearchCampaign(
                   city
                 ),
               },
-            ].map((d) => ({ text: d.text })),
+            ],
             path1: 'windows',
             path2: city.toLowerCase().replace(/\s+/g, '-'),
           },
         },
       },
-    });
-
-    // Ad 2: Quality-focused
-    adOperations.push({
-      create: {
+      // Ad 2: Quality-focused
+      {
         ad_group: adGroupResourceName,
         status: 'ENABLED',
         ad: {
@@ -212,7 +210,7 @@ export async function bootstrapSearchCampaign(
               { text: 'Expert Craftsmen' },
               { text: 'Premium Quality Joinery' },
               { text: replaceCityPlaceholder('Serving {City}', city) },
-            ].map((h) => ({ text: h.text })),
+            ],
             descriptions: [
               {
                 text: replaceCityPlaceholder(
@@ -223,44 +221,29 @@ export async function bootstrapSearchCampaign(
               {
                 text: 'Transform your home with handcrafted timber windows & doors. Get a free quote today.',
               },
-            ].map((d) => ({ text: d.text })),
+            ],
             path1: 'doors',
             path2: 'quote',
           },
         },
       },
-    });
+    ];
 
-    const adResponse = await customer.adGroupAds.create(adOperations);
+    const adResponse = await customer.adGroupAds.create(adOperations as any);
     const adResourceNames = adResponse.results.map((r: any) => r.resource_name);
     console.log(`Created ${adResourceNames.length} responsive search ads`);
 
-    // 7. Add Sitelink Extensions
-    const sitelinkOperations = DEFAULT_SITELINKS.map((link) => ({
-      create: {
-        campaign: campaignResourceName,
-        sitelink: {
-          link_text: link.text,
-          final_urls: [`${landingUrl}${link.anchor}`],
-        },
-      },
-    }));
-
-    const sitelinkResponse = await customer.campaignExtensionSettings.create(sitelinkOperations);
-    const sitelinkResourceNames = sitelinkResponse.results.map((r: any) => r.resource_name);
-    console.log(`Added ${sitelinkResourceNames.length} sitelink extensions`);
-
-    // 8. Attach Negative Keyword List
+    // 7. Attach Negative Keyword List
     await ensureNegativeList(customerId, 'Joinery AI Default Negatives');
+    console.log('Attached negative keyword list');
 
     console.log('Campaign bootstrap complete!');
 
     return {
-      budgetResourceName,
-      campaignResourceName,
-      adGroupResourceName,
+      budgetResourceName: budgetResourceName!,
+      campaignResourceName: campaignResourceName!,
+      adGroupResourceName: adGroupResourceName!,
       adResourceNames,
-      sitelinkResourceNames,
       keywordResourceNames,
     };
   } catch (error: any) {
