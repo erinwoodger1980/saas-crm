@@ -5,7 +5,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   
   try {
     // Fetch all published tenants
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/landing-tenants/published`, {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiBase) {
+      console.warn('NEXT_PUBLIC_API_URL not set; returning minimal sitemap');
+      return [{
+        url: baseUrl,
+        lastModified: new Date(),
+        changeFrequency: 'daily',
+        priority: 1.0
+      }];
+    }
+    const res = await fetch(`${apiBase}/api/landing-tenants/published`, {
       next: { revalidate: 86400 } // Cache for 1 day
     });
     
