@@ -1647,4 +1647,77 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------ */
+/* PUBLIC Landing Page Lead Capture Endpoint                           */
+/* ------------------------------------------------------------------ */
+router.post("/public", async (req, res) => {
+  try {
+    const {
+      source = "unknown",
+      name = "",
+      email = "",
+      phone = "",
+      postcode = "",
+      projectType = "",
+      propertyType = "",
+      message = "",
+      recaptchaToken = "",
+    } = req.body || {};
+
+    // Basic validation
+    if (!name || !email || !phone || !postcode) {
+      return res.status(400).json({ ok: false, error: "missing_required_fields" });
+    }
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!emailOk) return res.status(400).json({ ok: false, error: "invalid_email" });
+
+    // reCAPTCHA verification (optional, based on env)
+    const { verifyRecaptcha } = await import("../lib/recaptcha");
+    const r = await verifyRecaptcha(recaptchaToken);
+    if (!r.ok && r.score < 0.4) {
+      return res.status(400).json({ ok: false, error: "recaptcha_failed" });
+    }
+
+    // Sanitize strings
+    const s = (v: any) => String(v ?? "").trim().slice(0, 5000);
+
+    // Idempotency check (10-minute window)
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const recent = await prisma.landingLead.findFirst({
+      where: { email: s(email), source: s(source), createdAt: { gte: tenMinAgo } },
+      select: { id: true },
+    });
+    if (recent) {
+      return res.json({ ok: true, deduped: true, id: recent.id });
+    }
+
+    // Persist to database
+    const created = await prisma.landingLead.create({
+      data: {
+        source: s(source),
+        name: s(name),
+        email: s(email),
+        phone: s(phone),
+        postcode: s(postcode),
+        projectType: s(projectType),
+        propertyType: s(propertyType),
+        message: s(message),
+        userAgent: s(req.get("user-agent")),
+        ip: s(req.headers["x-forwarded-for"] || req.socket.remoteAddress),
+      },
+      select: { id: true },
+    });
+
+    // Fire-and-forget email notification
+    const { sendLeadEmail } = await import("../lib/mailer");
+    sendLeadEmail({ source, name, email, phone, postcode, projectType, propertyType, message })
+      .catch(() => { /* ignore email errors */ });
+
+    return res.json({ ok: true, id: created.id });
+  } catch (err: any) {
+    console.error("POST /leads/public error", err);
+    return res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
 export default router;
