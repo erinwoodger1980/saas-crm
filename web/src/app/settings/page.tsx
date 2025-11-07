@@ -10,6 +10,7 @@ import {
   DEFAULT_EMAIL_TEMPLATES,
 } from "@/lib/constants";
 import SourceCosts from "./SourceCosts";
+import { TenantImageImport } from "@/components/settings/TenantImageImport";
 import {
   DEFAULT_TASK_PLAYBOOK,
   MANUAL_TASK_KEYS,
@@ -1187,6 +1188,9 @@ export default function SettingsPage() {
 
       {currentStage === "integrations" && (
       <>
+      <Section title="Tenant Images" description="Import high-quality images from your website to use in landing pages">
+        <TenantImageImport tenantSlug={s.slug} website={s.website || ""} />
+      </Section>
       <Section title="Inbox & Integrations" description="Enable Gmail or Microsoft 365 ingestion">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <label className="inline-flex items-center gap-2">

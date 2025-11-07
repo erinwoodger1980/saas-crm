@@ -663,4 +663,53 @@ router.delete("/costs/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+router.post("/images/import", async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const { slug, url, limit } = req.body || {};
+  if (!slug || !url) {
+    return res.status(400).json({ error: "slug and url required" });
+  }
+
+  try {
+    // Import the script function dynamically
+    const { execSync } = await import("child_process");
+    const path = await import("path");
+    
+    const scriptPath = path.resolve(__dirname, "../../scripts/import_tenant_images.ts");
+    const imageLimit = parseInt(limit) || 12;
+    
+    // Execute the import script
+    const command = `npx tsx "${scriptPath}" --slug "${slug}" --url "${url}" --limit ${imageLimit}`;
+    const output = execSync(command, {
+      cwd: path.resolve(__dirname, "../.."),
+      encoding: "utf-8",
+      timeout: 120000, // 2 minute timeout
+    });
+
+    // Parse the output to extract results
+    const imagesMatch = output.match(/(\d+) images saved/);
+    const imagesImported = imagesMatch ? parseInt(imagesMatch[1]) : 0;
+    
+    const manifestPath = `/src/data/tenants/${slug}_gallery.json`;
+    const outputDir = `/tenants/${slug}/`;
+
+    res.json({
+      success: true,
+      imagesImported,
+      manifestPath,
+      outputDir,
+      message: output.includes("Complete!") ? "Import completed successfully" : output,
+    });
+  } catch (error: any) {
+    console.error("Image import failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Import failed",
+      imagesImported: 0,
+    });
+  }
+});
+
 export default router;
