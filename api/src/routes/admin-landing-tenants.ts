@@ -15,6 +15,74 @@ const requireAdmin = (req: any, res: any, next: any) => {
   next();
 };
 
+// Helper: sanitize slug
+function toSlug(input: string) {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+// POST /api/admin/landing-tenants - Create a new tenant and seed landing tenant
+router.post('/', requireAdmin, async (req, res) => {
+  try {
+    const { name, slug } = req.body || {};
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    let baseSlug = (typeof slug === 'string' && slug.trim()) ? toSlug(slug) : toSlug(name);
+    if (!baseSlug) baseSlug = `tenant-${Date.now().toString(36)}`;
+
+    // Ensure unique slug on tenant
+    let uniqueSlug = baseSlug;
+    let suffix = 1;
+    // check both Tenant.slug and LandingTenant.slug to avoid collisions
+    // (depending on schema, tenant may have slug column)
+    // We attempt a few suffixes; Prisma unique constraints will still protect us.
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const clash = await prisma.tenant.findFirst({ where: { slug: uniqueSlug } });
+      const clashLT = await prisma.landingTenant.findFirst({ where: { slug: uniqueSlug } });
+      if (!clash && !clashLT) break;
+      uniqueSlug = `${baseSlug}-${suffix++}`;
+    }
+
+    // Create tenant
+    const tenant = await prisma.tenant.create({
+      data: { name: name.trim(), slug: uniqueSlug },
+      select: { id: true, name: true, slug: true },
+    });
+
+    // Seed landing tenant row
+    const landing = await prisma.landingTenant.create({
+      data: {
+        tenantId: tenant.id,
+        slug: tenant.slug,
+        headline: '',
+        subhead: '',
+        urgencyBanner: '',
+        ctaText: 'Get Your Free Quote',
+        guarantees: [],
+      },
+      include: {
+        images: true,
+        reviews: true,
+      },
+    });
+
+    return res.status(201).json({
+      ...landing,
+      tenant,
+    });
+  } catch (error) {
+    console.error('Failed to create tenant:', error);
+    return res.status(500).json({ error: 'Failed to create tenant' });
+  }
+});
+
 // GET /api/admin/landing-tenants - List all tenants
 router.get('/', requireAdmin, async (req, res) => {
   try {
