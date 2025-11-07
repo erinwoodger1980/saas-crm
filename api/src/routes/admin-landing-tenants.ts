@@ -27,12 +27,12 @@ router.get('/', requireAdmin, async (req, res) => {
           select: {
             id: true,
             publishedAt: true,
-          },
-        },
-        _count: {
-          select: {
-            images: true,
-            reviews: true,
+            _count: {
+              select: {
+                images: true,
+                reviews: true,
+              },
+            },
           },
         },
       },
@@ -142,12 +142,12 @@ router.put('/:id/content', requireAdmin, async (req, res) => {
 
     // Update images (delete all and recreate for simplicity)
     if (images && Array.isArray(images)) {
-      await prisma.landingImage.deleteMany({
+      await prisma.landingTenantImage.deleteMany({
         where: { landingTenantId: landingTenant.id },
       });
 
       if (images.length > 0) {
-        await prisma.landingImage.createMany({
+        await prisma.landingTenantImage.createMany({
           data: images.map((img, index) => ({
             landingTenantId: landingTenant.id,
             url: img.url,
@@ -160,12 +160,12 @@ router.put('/:id/content', requireAdmin, async (req, res) => {
 
     // Update reviews (delete all and recreate)
     if (reviews && Array.isArray(reviews)) {
-      await prisma.landingReview.deleteMany({
+      await prisma.landingTenantReview.deleteMany({
         where: { landingTenantId: landingTenant.id },
       });
 
       if (reviews.length > 0) {
-        await prisma.landingReview.createMany({
+        await prisma.landingTenantReview.createMany({
           data: reviews.map((review) => ({
             landingTenantId: landingTenant.id,
             author: review.author,

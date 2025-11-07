@@ -211,6 +211,9 @@ if (publicSignupRouter) {
 /** Public landing tenant APIs for SEO pages */
 app.use("/api/landing-tenants", landingTenantsPublicRouter);
 app.use("/api/aggregate-reviews", aggregateReviewsRouter);
+// Admin editor APIs
+app.use("/api/admin/landing-tenants", adminLandingTenantsRouter);
+app.use("/api/admin/landing-tenants", adminImageUploadRouter);
 
 /** ---------- JWT decode middleware (Authorization header OR cookies) ---------- */
 app.use((req, _res, next) => {

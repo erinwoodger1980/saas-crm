@@ -29,7 +29,7 @@ export default function GalleryEditor({ images, onImagesChange, tenantId }: Gall
         formData.append('images', file);
       });
 
-      const res = await fetch(`/api/landing-tenants/${tenantId}/images`, {
+      const res = await fetch(`/api/admin/landing-tenants/${tenantId}/images`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
