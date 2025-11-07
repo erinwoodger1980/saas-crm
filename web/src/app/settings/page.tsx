@@ -748,6 +748,41 @@ export default function SettingsPage() {
           </Button>
         </div>
       </Section>
+      <Section 
+        title="Landing Page & Marketing" 
+        description="Create and manage your SEO-optimized landing pages with the visual editor"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Build beautiful, conversion-optimized landing pages for your business. The landing page editor includes:
+          </p>
+          <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
+            <li>Visual WYSIWYG editor for content</li>
+            <li>Image gallery management</li>
+            <li>Customer reviews showcase</li>
+            <li>SEO optimization tools</li>
+            <li>Preview before publishing</li>
+          </ul>
+          <div className="flex gap-3 pt-2">
+            <a
+              href="/admin/tenants"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+            >
+              Open Landing Page Editor →
+            </a>
+            {settings?.slug && (
+              <a
+                href={`/tenant/${settings.slug}/landing`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+              >
+                View Your Landing Page →
+              </a>
+            )}
+          </div>
+        </div>
+      </Section>
       <Section title="Source costs">
         <SourceCosts />
       </Section>
