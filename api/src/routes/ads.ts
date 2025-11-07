@@ -5,8 +5,10 @@
 
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { z } from 'zod';
 import { createSubAccount, ensureNegativeList, getTenantCustomerId } from '../services/ads/tenants';
 import { bootstrapSearchCampaign, gbpToMicros } from '../services/ads/bootstrap';
+import { checkMccEnv, canAccessCustomer, digitsOnly, formatCustomerId } from '../lib/googleAds';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -79,25 +81,36 @@ router.post('/tenant/:slug/create-subaccount', async (req: Request, res: Respons
  * POST /ads/tenant/:slug/bootstrap
  * Bootstrap a complete Search campaign for a tenant
  */
+const BootstrapCampaignSchema = z.object({
+  landingUrl: z.string().url('Landing URL must be a valid URL'),
+  postcode: z.string().min(1, 'Postcode is required'),
+  radiusMiles: z.number().optional().default(50),
+  dailyBudgetGBP: z.number().optional().default(10),
+  city: z.string().optional(),
+  campaignName: z.string().optional(),
+});
+
 router.post('/tenant/:slug/bootstrap', async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
+    
+    // Validate request body
+    const validation = BootstrapCampaignSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors,
+      });
+    }
+
     const {
       landingUrl,
       postcode,
-      radiusMiles = 50,
-      dailyBudgetGBP = 10,
+      radiusMiles,
+      dailyBudgetGBP,
       city,
       campaignName,
-    } = req.body;
-
-    // Validate required fields
-    if (!landingUrl || !postcode) {
-      return res.status(400).json({
-        error: 'Missing required fields',
-        required: ['landingUrl', 'postcode'],
-      });
-    }
+    } = validation.data;
 
     // Find tenant
     const tenant = await prisma.tenant.findUnique({
@@ -109,37 +122,41 @@ router.post('/tenant/:slug/bootstrap', async (req: Request, res: Response) => {
       return res.status(404).json({ error: `Tenant not found: ${slug}` });
     }
 
-    // Get customer ID
-    const customerId = await getTenantCustomerId(tenant.id);
-    if (!customerId) {
+    // Get customer ID from TenantAdsConfig
+    const config = await prisma.tenantAdsConfig.findUnique({
+      where: { tenantId: tenant.id },
+    });
+
+    if (!config?.googleAdsCustomerId) {
       return res.status(400).json({
-        error: 'Tenant does not have a Google Ads account',
-        message: 'Create sub-account first using POST /ads/tenant/:slug/create-subaccount',
+        error: 'Tenant does not have a Google Ads account linked',
+        message: 'Use POST /ads/tenant/:slug/link to link a customer ID first',
       });
     }
 
-    // Convert budget to micros
-    const dailyBudgetMicros = gbpToMicros(parseFloat(dailyBudgetGBP));
+    const customerId = config.googleAdsCustomerId;
 
-    // Bootstrap campaign
+    // Bootstrap campaign with digits-only customer ID
     const result = await bootstrapSearchCampaign({
       tenantId: tenant.id,
-      customerId,
+      customerId: digitsOnly(customerId),
       landingUrl,
       postcode,
       radiusMiles,
       dailyBudgetGBP,
-      city,
-      campaignName,
+      city: city || tenant.name,
+      campaignName: campaignName || `Search - ${tenant.name}`,
     });
 
     res.json({
       success: true,
+      customerId,
       budget: result.budgetResourceName,
       campaign: result.campaignResourceName,
       adGroup: result.adGroupResourceName,
       ads: result.adResourceNames,
       keywords: result.keywordResourceNames,
+      message: `Campaign bootstrapped successfully. Review in Google Ads and enable when ready.`,
     });
   } catch (error: any) {
     console.error('Error bootstrapping campaign:', error);
@@ -239,6 +256,138 @@ router.get('/tenant/:slug/config', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching config:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /ads/tenant/:slug/link
+ * Link an existing Google Ads customer ID to a tenant
+ */
+const LinkCustomerSchema = z.object({
+  customerId: z.string().regex(/^\d{3}-\d{3}-\d{4}$/, 'Customer ID must be in format 123-456-7890'),
+});
+
+router.post('/tenant/:slug/link', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    
+    // Validate request body
+    const validation = LinkCustomerSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: validation.error.errors,
+      });
+    }
+
+    const { customerId } = validation.data;
+
+    // Find tenant by slug
+    const tenant = await prisma.tenant.findUnique({
+      where: { slug },
+      select: { id: true, name: true },
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ error: `Tenant not found: ${slug}` });
+    }
+
+    // Upsert TenantAdsConfig with customer ID (store with dashes)
+    await prisma.tenantAdsConfig.upsert({
+      where: { tenantId: tenant.id },
+      create: {
+        tenantId: tenant.id,
+        googleAdsCustomerId: customerId,
+        status: 'active',
+      },
+      update: {
+        googleAdsCustomerId: customerId,
+        status: 'active',
+        updatedAt: new Date(),
+      },
+    });
+
+    res.json({
+      ok: true,
+      customerId,
+      message: `Linked customer ${customerId} to tenant ${tenant.name}`,
+    });
+  } catch (error: any) {
+    console.error('Error linking customer:', error);
+    res.status(500).json({
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /ads/tenant/:slug/verify
+ * Verify readiness for Google Ads campaign bootstrap
+ */
+router.get('/tenant/:slug/verify', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+
+    // Find tenant
+    const tenant = await prisma.tenant.findUnique({
+      where: { slug },
+      select: { id: true, name: true },
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ error: `Tenant not found: ${slug}` });
+    }
+
+    // Check MCC environment
+    const { ok: mccOk, notes: mccNotes } = checkMccEnv();
+
+    // Get customer ID from DB
+    const config = await prisma.tenantAdsConfig.findUnique({
+      where: { tenantId: tenant.id },
+    });
+
+    const customerId = config?.googleAdsCustomerId || null;
+    const notes: string[] = [...mccNotes];
+
+    // Test access if customer ID is present
+    let accessOk: boolean | null = null;
+    if (customerId && mccOk) {
+      try {
+        accessOk = await canAccessCustomer(customerId);
+        if (accessOk) {
+          notes.push(`✓ MCC has access to customer ${customerId}`);
+        } else {
+          notes.push(`✗ MCC cannot access customer ${customerId} - check permissions`);
+        }
+      } catch (error: any) {
+        accessOk = false;
+        notes.push(`✗ Error testing access: ${error.message}`);
+      }
+    } else if (!customerId) {
+      notes.push('⚠ No customer ID linked - use POST /ads/tenant/:slug/link first');
+    }
+
+    // Check GA4 ID (from environment)
+    const ga4IdPresent = !!(process.env.NEXT_PUBLIC_GA4_ID || process.env.GA4_MEASUREMENT_ID);
+    if (ga4IdPresent) {
+      notes.push('✓ GA4 tracking ID is configured');
+    } else {
+      notes.push('⚠ GA4 tracking ID not set (optional for tracking)');
+    }
+
+    res.json({
+      mccOk,
+      customerId,
+      accessOk,
+      ga4IdPresent,
+      notes,
+      ready: mccOk && !!customerId && accessOk === true,
+    });
+  } catch (error: any) {
+    console.error('Error verifying readiness:', error);
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 

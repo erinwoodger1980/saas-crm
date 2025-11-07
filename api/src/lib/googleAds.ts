@@ -124,3 +124,54 @@ export function getMccCustomerId(): string {
   }
   return digitsOnly(loginCustomerId);
 }
+
+/**
+ * Check if all required MCC environment variables are set
+ */
+export function checkMccEnv(): { ok: boolean; notes: string[] } {
+  const required = {
+    GOOGLE_ADS_DEVELOPER_TOKEN: process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    GOOGLE_ADS_CLIENT_ID: process.env.GOOGLE_ADS_CLIENT_ID,
+    GOOGLE_ADS_CLIENT_SECRET: process.env.GOOGLE_ADS_CLIENT_SECRET,
+    GOOGLE_ADS_REFRESH_TOKEN: process.env.GOOGLE_ADS_REFRESH_TOKEN,
+    LOGIN_CUSTOMER_ID: process.env.LOGIN_CUSTOMER_ID,
+  };
+
+  const notes: string[] = [];
+  const missing = Object.entries(required)
+    .filter(([_, value]) => !value)
+    .map(([key]) => key);
+
+  if (missing.length > 0) {
+    notes.push(`Missing environment variables: ${missing.join(', ')}`);
+    return { ok: false, notes };
+  }
+
+  notes.push('All Google Ads environment variables are set');
+  return { ok: true, notes };
+}
+
+/**
+ * Test if MCC has access to a specific customer account
+ */
+export async function canAccessCustomer(customerIdWithDashes: string): Promise<boolean> {
+  try {
+    const customerId = digitsOnly(customerIdWithDashes);
+    const customer = getAdsClient(customerId);
+
+    // Try a lightweight query to test access
+    const query = `
+      SELECT
+        customer.id,
+        customer.descriptive_name
+      FROM customer
+      LIMIT 1
+    `;
+
+    await customer.query(query);
+    return true;
+  } catch (error: any) {
+    console.error(`Cannot access customer ${customerIdWithDashes}:`, error.message);
+    return false;
+  }
+}
