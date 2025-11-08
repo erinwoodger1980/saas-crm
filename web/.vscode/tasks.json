@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "lint:web",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"-s",
+				"eslint",
+				"."
+			]
+		}
+	]
+}

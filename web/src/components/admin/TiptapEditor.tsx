@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 
 interface TiptapEditorProps {
   content: string;
-  onChange: (html: string) => void;
+  onChange: (_html: string) => void;
   placeholder?: string;
   className?: string;
 }

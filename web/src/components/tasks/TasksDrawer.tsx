@@ -346,7 +346,7 @@ function ProgressRing({ value, label }: { value: number; label: string }) {
   );
 }
 
-function Seg({ v, on, set, label }: { v: string; on: string; set: (v: any) => void; label: string }) {
+function Seg({ v, on, set, label }: { v: string; on: string; set: (_v: any) => void; label: string }) {
   const active = v === on;
   return (
     <button

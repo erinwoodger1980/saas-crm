@@ -60,9 +60,9 @@ function deriveArea(pathname: string | null): AreaMeta {
   const slug = normalised === "/" ? "home" : normalised.slice(1);
   const cleaned = slug
     .toLowerCase()
-    .replace(/[^a-z0-9\-\/]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^\-|\-$/g, "") || "unknown";
+  .replace(/[^a-z0-9\-/]+/g, "-")
+  .replace(/-+/g, "-")
+  .replace(/^-|-$/g, "") || "unknown";
   const label = cleaned
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

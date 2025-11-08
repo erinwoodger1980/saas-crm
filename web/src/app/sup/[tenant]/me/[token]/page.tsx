@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 
@@ -26,7 +26,7 @@ type ListItem = {
 type ListResponse = { ok: boolean; items: ListItem[] };
 
 export default function SupplierDashboardPage() {
-  const { tenant = "", token = "" } = (useParams() as { tenant?: string; token?: string }) ?? {};
+  const { token = "" } = (useParams() as { tenant?: string; token?: string }) ?? {};
 
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<ListItem[]>([]);

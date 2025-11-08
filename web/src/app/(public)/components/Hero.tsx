@@ -9,7 +9,10 @@ import { buildSignupUrl, describeSeats, formatGBP, getBasePrice } from "@/lib/pr
 type HeroProps = {
   referral?: string;
   onOpenDemo: () => void;
-  onCtaClick?: (source: string) => void;
+  /** 
+   * Callback to track CTA clicks. The 'source' param is used internally. 
+   */
+  onCtaClick?: (_source: string) => void;
 };
 
 type Countdown = {

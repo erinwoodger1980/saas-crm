@@ -9,23 +9,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { 
-  BarChart, 
-  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer, 
-  LineChart, 
   Line,
   ComposedChart,
-  Area,
-  AreaChart,
-  PieChart,
-  Pie,
-  Cell
+  Area
 } from "recharts";
-import { TrendingUp, TrendingDown, Target, Calendar, DollarSign, Users, Award, ArrowUp, ArrowDown } from "lucide-react";
+import { Target, Calendar, DollarSign, Users, Award, ArrowUp, ArrowDown } from "lucide-react";
 
 type MonthlyData = {
   year: number;
@@ -742,7 +735,7 @@ function MetricItem({
   );
 }
 
-function TargetVsActual({
+function _TargetVsActual({
   title,
   target,
   actual,

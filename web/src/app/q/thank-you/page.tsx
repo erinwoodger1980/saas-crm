@@ -3,10 +3,10 @@
 import { Suspense } from "react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { API_BASE, apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
+import Image from "next/image";
 
 async function getJSON<T>(path: string): Promise<T> {
-  const url = `${API_BASE}${path}`;
   return apiFetch<T>(path, { credentials: "omit" });
 }
 
@@ -70,8 +70,8 @@ function ThankYouContent() {
   return (
     <section className="rounded-3xl border border-white/70 bg-white/85 p-8 text-center shadow-[0_24px_70px_-35px_rgba(30,64,175,0.35)] backdrop-blur sm:p-10">
       {tenant?.logoUrl ? (
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
-          <img src={tenant.logoUrl} alt={`${brandName} logo`} className="h-full w-full object-contain" />
+        <div className="mx-auto mb-6 relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
+          <Image src={tenant.logoUrl} alt={`${brandName} logo`} fill sizes="64px" className="object-contain" />
         </div>
       ) : (
         <div className="mx-auto mb-6 grid h-16 w-16 place-items-center rounded-2xl border border-slate-200/70 bg-white text-sm font-semibold text-slate-400">

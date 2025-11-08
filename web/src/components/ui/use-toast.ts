@@ -77,7 +77,7 @@ const reducer = (state: State, action: Action): State => {
   }
 };
 
-const listeners: Array<(state: State) => void> = [];
+const listeners: Array<(_state: State) => void> = [];
 let memoryState: State = { toasts: [] };
 
 function dispatch(action: Action) {
@@ -101,7 +101,7 @@ function useToast() {
       const index = listeners.indexOf(setState);
       if (index > -1) listeners.splice(index, 1);
     };
-  }, []);
+  }, [state]);
 
   return { ...state, toast, dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }) };
 }

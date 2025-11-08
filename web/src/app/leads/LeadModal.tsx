@@ -280,10 +280,10 @@ export default function LeadModal({
   leadPreview,
   onUpdated,
   initialStage = 'overview',
-  showFollowUp = false,
+  _showFollowUp = false,
 }: {
   open: boolean;
-  onOpenChange: (v: boolean) => void;
+  onOpenChange: (_v: boolean) => void;
   leadPreview: Lead | null;
   onUpdated?: () => void | Promise<void>;
   initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up';
@@ -359,9 +359,9 @@ export default function LeadModal({
 
   // Navigation stages configuration
   // Always show follow-up tab for consistent UX across all leads
-  const shouldShowFollowUp = true;
+  const _shouldShowFollowUp = true;
   
-  const stages = [
+  const _stages = [
     {
       id: 'overview' as const,
       title: 'Overview',
@@ -598,7 +598,7 @@ export default function LeadModal({
     if (open && currentStage === 'follow-up' && lead?.id) {
       loadFollowUpTasks();
     }
-  }, [open, currentStage, lead?.id]);
+  }, [open, currentStage, lead?.id, loadFollowUpTasks]);
 
   /* ----------------------------- Save helpers ----------------------------- */
 
@@ -1039,7 +1039,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   }, [tenantOwnerFirstName, followupBrand]);
 
   // Load follow-up tasks for this lead
-  async function loadFollowUpTasks() {
+  const loadFollowUpTasks = useCallback(async () => {
     if (!lead?.id) return;
     setLoadingFollowUpTasks(true);
     try {
@@ -1050,7 +1050,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     } finally {
       setLoadingFollowUpTasks(false);
     }
-  }
+  }, [lead?.id]);
 
   // Create email follow-up task
   async function createEmailTask() {
@@ -1404,7 +1404,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
               deadline: quoteDeadline.toISOString(),
             },
           });
-        } catch (err) {
+        } catch (_err) {
           // Fallback to mailto
           openMailTo(
             to,
@@ -1476,12 +1476,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
   // -------------------- Supplier PDF parse tester --------------------
   const [parseTesterOpen, setParseTesterOpen] = useState(false);
-  const [parseTesterBusy, setParseTesterBusy] = useState(false);
+  const [_parseTesterBusy, setParseTesterBusy] = useState(false);
   const [parseTesterOut, setParseTesterOut] = useState<any>(null);
   const [parseApplyBusy, setParseApplyBusy] = useState(false);
   const [parseApplyResult, setParseApplyResult] = useState<{ url?: string; name?: string; error?: string } | null>(null);
 
-  async function testSupplierParse() {
+  async function _testSupplierParse() {
     if (!lead?.id) return;
     setParseTesterBusy(true);
     setParseTesterOut(null);
@@ -1650,7 +1650,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       } else {
         alert("Couldn't open quote builder – no quote id");
       }
-    } catch (e) {
+    } catch (_e) {
       alert("Failed to open quote builder");
     } finally {
       setSaving(false);
@@ -1861,7 +1861,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
     const humanizeKey = (key: string): string => {
       return key
-        .replace(/[_\-]+/g, " ")
+  .replace(/[-_]+/g, " ")
         .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
         .replace(/\s+/g, " ")
         .trim()
@@ -1934,33 +1934,10 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   const completedCount = tasks.length - openCount;
   const progress = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
 
-  // Stage Navigation Component
-  const StageNavigation = () => (
-    <div className="flex border-b border-gray-200 bg-gray-50">
-      {stages.map((stage) => (
-        <button
-          key={stage.id}
-          onClick={() => setCurrentStage(stage.id)}
-          className={`flex-1 px-4 py-3 text-sm font-medium text-center transition-colors ${
-            currentStage === stage.id
-              ? 'text-blue-600 bg-white border-b-2 border-blue-600'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-          }`}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-lg">{stage.icon}</span>
-            <div className="flex flex-col">
-              <span>{stage.title}</span>
-              <span className="text-xs text-gray-400">{stage.description}</span>
-            </div>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
+  // (Removed unused StageNavigation component; navigation implemented inline below)
 
   // Utility components
-  const StatusBadge = ({ status }: { status: Lead["status"] }) => (
+  const _StatusBadge = ({ status }: { status: Lead["status"] }) => (
     <span className={`px-2 py-1 text-xs font-medium rounded-full ${
       status === 'NEW_ENQUIRY' ? 'bg-blue-100 text-blue-800' :
       status === 'INFO_REQUESTED' ? 'bg-yellow-100 text-yellow-800' :
@@ -1975,65 +1952,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     </span>
   );
 
-  const StatusPipeline = ({ currentStatus, onStatusChange, disabled }: {
-    currentStatus: Lead["status"];
-    onStatusChange: (status: Lead["status"]) => void;
-    disabled?: boolean;
-  }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-    
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-          setIsOpen(false);
-        }
-      };
-      
-      if (isOpen) {
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-      }
-    }, [isOpen]);
-    
-    return (
-      <div className="relative" ref={dropdownRef}>
-        <button
-          type="button"
-          onClick={() => !disabled && setIsOpen(!isOpen)}
-          disabled={disabled}
-          className="w-full flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <StatusBadge status={currentStatus} />
-          <svg className="w-4 h-4 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        
-        {isOpen && !disabled && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
-            <div className="p-2 space-y-1">
-              {(Object.keys(STATUS_LABELS) as Lead["status"][]).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => {
-                    onStatusChange(status);
-                    setIsOpen(false);
-                  }}
-                  className="w-full flex items-start p-2 rounded-md hover:bg-gray-50 focus:outline-none focus:bg-gray-50 transition-colors"
-                >
-                  <StatusBadge status={status} />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
+  // (Removed unused StatusPipeline component)
 
-  const formatDate = (dateStr: string | null | undefined) => {
+  const _formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return "Unknown";
     try {
       return new Date(dateStr).toLocaleDateString();
@@ -2042,462 +1963,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   };
 
-  // Overview Stage Component
-  const OverviewStage = () => (
-    <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">
-            {lead?.contactName || lead?.email || "Unnamed Lead"}
-          </h2>
-          <p className="text-gray-600 mt-1">{lead?.email}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <StatusBadge status={uiStatus} />
-            <span className="text-sm text-gray-500">
-              Lead #{lead?.id?.slice(-8)}
-            </span>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <DeclineEnquiryButton 
-            lead={lead}
-            authHeaders={authHeaders}
-            onMarkedRejected={() => {
-              onUpdated?.();
-              onOpenChange(false);
-            }}
-          />
-        </div>
-      </div>
-
-      {lead?.description && (
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <h3 className="font-medium text-gray-900 mb-2">Initial Enquiry</h3>
-          <p className="text-gray-700 whitespace-pre-wrap">{lead.description}</p>
-        </div>
-      )}
-
-      {/* Communication Log Display */}
-      {lead?.communicationLog && lead.communicationLog.length > 0 && (
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <h3 className="font-medium text-gray-900 mb-3">Communication History</h3>
-          <div className="space-y-3">
-            {lead.communicationLog.slice(0, 5).map((entry) => (
-              <div key={entry.id} className="bg-white p-3 rounded-md border border-blue-100">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm">
-                    {entry.type === 'call' ? '📞' : entry.type === 'email' ? '📧' : '📝'}
-                  </span>
-                  <span className="text-sm font-medium capitalize">{entry.type}</span>
-                  <span className="text-xs text-gray-500">
-                    {new Date(entry.timestamp).toLocaleDateString()} {new Date(entry.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-700">{entry.content}</p>
-              </div>
-            ))}
-            {lead.communicationLog.length > 5 && (
-              <p className="text-xs text-gray-500 text-center">
-                And {lead.communicationLog.length - 5} more entries...
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Supplier Quote Status */}
-      {lead?.custom?.supplierQuoteDeadline && (
-        <div className="bg-orange-50 p-4 rounded-lg">
-          <h3 className="font-medium text-gray-900 mb-2">Supplier Quote Request</h3>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-sm">🧞</span>
-              <span className="text-sm font-medium">Quote Deadline:</span>
-              <span className="text-sm text-gray-700">
-                {new Date(lead.custom.supplierQuoteDeadline).toLocaleDateString()}
-              </span>
-              {new Date(lead.custom.supplierQuoteDeadline) < new Date() && (
-                <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">Overdue</span>
-              )}
-            </div>
-            {lead.custom.supplierQuoteRequested && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm">📅</span>
-                <span className="text-sm font-medium">Requested:</span>
-                <span className="text-sm text-gray-700">
-                  {new Date(lead.custom.supplierQuoteRequested).toLocaleDateString()}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  // Details Stage Component 
-  const DetailsStage = () => (
-    <div className="p-6 space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">Contact Details</h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contact Name
-            </label>
-            <input
-              type="text"
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              placeholder="Enter contact name"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address
-            </label>
-            <input
-              type="email"
-              value={emailInput}
-              onChange={(e) => setEmailInput(e.target.value)}
-              placeholder="Enter email address"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Description
-          </label>
-          <textarea
-            value={descInput}
-            onChange={(e) => setDescInput(e.target.value)}
-            placeholder="Enter lead description"
-            rows={6}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-      </div>
-      
-      <div className="flex justify-end gap-3">
-        <button
-          onClick={() => setCurrentStage('overview')}
-          className="px-4 py-2 text-gray-600 hover:text-gray-800"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={async () => {
-            if (lead?.id) {
-              setSaving(true);
-              try {
-                await apiFetch(`/leads/${lead.id}`, {
-                  method: "PATCH",
-                  headers: { ...authHeaders, "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    contactName: nameInput || null,
-                    email: emailInput || null,
-                    description: descInput || null,
-                  })
-                });
-                onUpdated?.();
-                setCurrentStage('overview');
-              } catch (err) {
-                console.error("Failed to update lead:", err);
-              } finally {
-                setSaving(false);
-              }
-            }
-          }}
-          disabled={saving}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
-    </div>
-  );
-
-  // Questionnaire Stage Component
-  const QuestionnaireStage = () => {
-    const fields = normalizeQuestionnaireFields(settings?.questionnaire);
-    
-    return (
-      <div className="p-6 space-y-6">
-        <h2 className="text-xl font-bold text-gray-900">Questionnaire</h2>
-        
-        {fields.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <p>No questionnaire configured</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {fields.map((field) => {
-              const value = lead?.custom?.[field.key] || "";
-              return (
-                <div key={field.id} className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    {field.label}
-                    {field.required && <span className="text-red-500 ml-1">*</span>}
-                  </label>
-                  
-                  {field.type === "textarea" ? (
-                    <textarea
-                      value={value}
-                      onChange={(e) => {
-                        // Update immediately in the UI
-                        setLead(prev => prev ? {
-                          ...prev,
-                          custom: {
-                            ...prev.custom,
-                            [field.key]: e.target.value
-                          }
-                        } : prev);
-                      }}
-                      onBlur={(e) => saveCustomField(field, e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      rows={3}
-                    />
-                  ) : field.type === "select" ? (
-                    <select
-                      value={value}
-                      onChange={async (e) => {
-                        // Update immediately in the UI
-                        setLead(prev => prev ? {
-                          ...prev,
-                          custom: {
-                            ...prev.custom,
-                            [field.key]: e.target.value
-                          }
-                        } : prev);
-                        // Save to server
-                        await saveCustomField(field, e.target.value);
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Select an option</option>
-                      {field.options.map((option, i) => (
-                        <option key={i} value={option}>{option}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type={field.type}
-                      value={value}
-                      onChange={(e) => {
-                        // Update immediately in the UI
-                        setLead(prev => prev ? {
-                          ...prev,
-                          custom: {
-                            ...prev.custom,
-                            [field.key]: e.target.value
-                          }
-                        } : prev);
-                      }}
-                      onBlur={(e) => saveCustomField(field, e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  )}
-                </div>
-              );
-            })}
-            
-            <div className="pt-4 border-t">
-              <p className="text-sm text-gray-600">
-                Changes are saved automatically when you finish editing each field.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // Tasks Stage Component
-  const TasksStage = () => (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Tasks</h2>
-        <button
-          onClick={() => setShowTaskComposer(!showTaskComposer)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          + Add Task
-        </button>
-      </div>
-      
-      {showTaskComposer && (
-        <div className="bg-gray-50 p-4 rounded-lg space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Task Title
-            </label>
-            <input
-              type="text"
-              value={taskComposer.title}
-              onChange={(e) => setTaskComposer(prev => ({ ...prev, title: e.target.value }))}
-              placeholder="Enter task title"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Description
-            </label>
-            <textarea
-              value={taskComposer.description}
-              onChange={(e) => setTaskComposer(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="Enter task description"
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Priority
-              </label>
-              <select
-                value={taskComposer.priority}
-                onChange={(e) => setTaskComposer(prev => ({ ...prev, priority: e.target.value as Task["priority"] }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-              </select>
-            </div>
-            
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Due Date
-              </label>
-              <input
-                type="date"
-                value={taskComposer.dueAt}
-                onChange={(e) => setTaskComposer(prev => ({ ...prev, dueAt: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-          
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={() => {
-                setShowTaskComposer(false);
-                setTaskComposer({
-                  title: "",
-                  description: "",
-                  priority: "MEDIUM",
-                  dueAt: "",
-                });
-              }}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={async () => {
-                if (!taskComposer.title.trim() || !lead?.id) return;
-                
-                setTaskSaving(true);
-                try {
-                  await apiFetch("/tasks", {
-                    method: "POST",
-                    headers: { ...authHeaders, "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      title: taskComposer.title,
-                      description: taskComposer.description || null,
-                      priority: taskComposer.priority,
-                      dueAt: taskComposer.dueAt || null,
-                      relatedType: "LEAD",
-                      relatedId: lead.id,
-                    })
-                  });
-                  
-                  // Refresh tasks
-                  setTasks(current => [...current, {
-                    id: Math.random().toString(),
-                    title: taskComposer.title,
-                    description: taskComposer.description,
-                    priority: taskComposer.priority,
-                    status: "OPEN",
-                    dueAt: taskComposer.dueAt,
-                  } as Task]);
-                  
-                  setShowTaskComposer(false);
-                  setTaskComposer({
-                    title: "",
-                    description: "",
-                    priority: "MEDIUM",
-                    dueAt: "",
-                  });
-                } catch (err) {
-                  console.error("Failed to create task:", err);
-                } finally {
-                  setTaskSaving(false);
-                }
-              }}
-              disabled={taskSaving || !taskComposer.title.trim()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {taskSaving ? "Creating..." : "Create Task"}
-            </button>
-          </div>
-        </div>
-      )}
-      
-      <div className="space-y-3">
-        {tasks.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <p>No tasks yet</p>
-          </div>
-        ) : (
-          tasks.map((task) => (
-            <div key={task.id} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-medium text-gray-900">{task.title}</h3>
-                  {task.description && (
-                    <p className="text-sm text-gray-600 mt-1">{task.description}</p>
-                  )}
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      task.priority === 'URGENT' ? 'bg-red-100 text-red-800' :
-                      task.priority === 'HIGH' ? 'bg-orange-100 text-orange-800' :
-                      task.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {task.priority}
-                    </span>
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      task.status === 'DONE' ? 'bg-green-100 text-green-800' :
-                      task.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {task.status.replace('_', ' ')}
-                    </span>
-                    {task.dueAt && (
-                      <span className="text-xs text-gray-500">
-                        Due: {formatDate(task.dueAt)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+  // (Removed unused OverviewStage, DetailsStage, QuestionnaireStage, and TasksStage components)
 
   return (
     <div

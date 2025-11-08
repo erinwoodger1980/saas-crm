@@ -13,7 +13,7 @@
     "resolveJsonModule": true,
 
     "verbatimModuleSyntax": false,
-    "types": ["node"]
+  "types": ["node", "jest"]
   },
   "include": ["src/**/*", "src/types/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]

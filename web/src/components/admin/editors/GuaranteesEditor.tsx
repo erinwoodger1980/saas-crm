@@ -10,7 +10,7 @@ interface Guarantee {
 
 interface GuaranteesEditorProps {
   guarantees: Guarantee[];
-  onGuaranteesChange: (guarantees: Guarantee[]) => void;
+  onGuaranteesChange: (_: Guarantee[]) => void;
 }
 
 const iconOptions = [

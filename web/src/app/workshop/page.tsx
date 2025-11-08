@@ -87,7 +87,6 @@ export default function WorkshopPage() {
       }
       if (usersResp?.ok) setUsers(usersResp.items);
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error("Failed to load workshop:", e);
       const msg = (e as any)?.message || (e as any)?.toString?.() || "load_failed";
       setLoadError(String(msg));
@@ -127,7 +126,6 @@ export default function WorkshopPage() {
       cancelAdd(projectId);
       await loadAll();
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error("Failed to save plan", e);
     }
   }
@@ -161,7 +159,6 @@ export default function WorkshopPage() {
       cancelLog(projectId);
       await loadAll();
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error("Failed to log time", e);
     }
   }
@@ -214,8 +211,7 @@ export default function WorkshopPage() {
                   await apiFetch("/workshop/backfill", { method: "POST" });
                   await loadAll();
                 } catch (e) {
-                  // eslint-disable-next-line no-alert
-                  alert((e as any)?.message || "Backfill failed");
+                          alert((e as any)?.message || "Backfill failed");
                 } finally {
                   setBackfillBusy(false);
                 }

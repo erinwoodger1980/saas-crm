@@ -8,10 +8,10 @@ interface HeroEditorProps {
   subhead: string;
   urgencyBanner: string;
   ctaText: string;
-  onHeadlineChange: (value: string) => void;
-  onSubheadChange: (value: string) => void;
-  onUrgencyBannerChange: (value: string) => void;
-  onCtaTextChange: (value: string) => void;
+  onHeadlineChange: (_: string) => void;
+  onSubheadChange: (_: string) => void;
+  onUrgencyBannerChange: (_: string) => void;
+  onCtaTextChange: (_: string) => void;
 }
 
 export default function HeroEditor({

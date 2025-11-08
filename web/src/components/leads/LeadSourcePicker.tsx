@@ -23,11 +23,11 @@ export default function LeadSourcePicker({
   leadId,
   value,
   onSaved,
-  className,
+  className = "",
 }: {
   leadId: string;
   value?: string | null;
-  onSaved?: (next: string | null) => void;
+  onSaved?: (_next: string | null) => void;
   className?: string;
 }) {
   const { toast } = useToast();

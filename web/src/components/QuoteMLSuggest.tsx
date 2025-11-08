@@ -22,9 +22,9 @@ export default function QuoteMLSuggest({
   /** Read current quote/lead fields at click time */
   getPayload: () => PredictIn | null;
   /** Called when user clicks "Apply to quote total" */
-  onApplyPrice?: (priceGBP: number) => void;
+  onApplyPrice?: (_priceGBP: number) => void;
   /** Called when user clicks "Add line item" */
-  onAddLine?: (line: { description: string; qty: number; unitPrice: number; currency?: string }) => void;
+  onAddLine?: (_line: { description: string; qty: number; unitPrice: number; currency?: string }) => void;
   className?: string;
 }) {
   const [loading, setLoading] = useState(false);

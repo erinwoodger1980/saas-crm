@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { API_BASE, apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 /* -------- Tiny public fetch helpers (no auth cookie required) -------- */
 async function getJSON<T>(path: string): Promise<T> {

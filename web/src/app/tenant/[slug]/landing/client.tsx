@@ -25,14 +25,14 @@ export function PublicLandingClient({
   tenant,
   headline,
   subheadline,
-  keyword,
+  _keyword,
   location,
   serviceAreas,
   images,
   reviews,
   guarantees,
   urgency,
-  leadMagnet,
+  _leadMagnet,
 }: PublicLandingClientProps) {
   const [showExitIntent, setShowExitIntent] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -57,6 +57,8 @@ export function PublicLandingClient({
     };
     document.addEventListener('mouseleave', handleMouseLeave);
     return () => document.removeEventListener('mouseleave', handleMouseLeave);
+    // track is stable in this component; only showExitIntent should trigger re-subscription
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showExitIntent]);
 
   // Analytics tracking

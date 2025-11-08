@@ -4,9 +4,14 @@ import { useEffect, useMemo } from "react";
 
 interface DemoModalProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (_open: boolean) => void;
   videoUrl: string;
 }
+
+/**
+ * DemoModal renders an overlay with an autoplay iframe for a video URL.
+ * 'open' prop controls visibility and is read from props parameter.
+ */
 
 export default function DemoModal({ open, onOpenChange, videoUrl }: DemoModalProps) {
   useEffect(() => {

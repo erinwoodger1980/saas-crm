@@ -15,7 +15,10 @@ import {
 
 type PricingProps = {
   referral?: string;
-  onCtaClick?: (source: string) => void;
+  /**
+   * onCtaClick is invoked with a 'source' parameter for analytics tracking.
+   */
+  onCtaClick?: (_source: string) => void;
 };
 
 const PROMO_CODE = "EARLY60";

@@ -275,13 +275,13 @@ export default function OpportunitiesPage() {
 /* ---------- Presentational row card ---------- */
 function CardRow({
   lead,
-  statusLabel,
+  _statusLabel,
   onOpen,
   actionArea,
   accent,
 }: {
   lead: Lead;
-  statusLabel: string;
+  _statusLabel: string;
   onOpen: () => void;
   actionArea?: React.ReactNode;
   accent?: "amber";

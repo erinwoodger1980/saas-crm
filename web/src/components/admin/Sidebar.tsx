@@ -8,7 +8,8 @@ import {
   BarChart3, 
   Settings,
   Image as ImageIcon,
-  Search
+  Search,
+  Wrench
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -17,6 +18,8 @@ export function Sidebar() {
   const navItems = [
     { href: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/admin/tenants', icon: FileText, label: 'Landing Pages' },
+    { href: '/admin/dev-console', icon: Wrench, label: 'Developer Console' },
+    { href: '/admin/features/review', icon: FileText, label: 'Feature Review' },
     { href: '/admin/seo-keywords', icon: Search, label: 'SEO & Keywords' },
     { href: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
     { href: '/admin/media', icon: ImageIcon, label: 'Media Library' },

@@ -15,10 +15,22 @@ const eslintConfig = [
     ignores: [
       "node_modules/**",
       ".next/**",
+      // Ignore nested projects; they lint themselves
+      "web/**",
+      "api/**",
+      ".venv/**",
       "out/**",
       "build/**",
       "next-env.d.ts",
     ],
+  },
+  // Loosen JS-only files: allow require in tooling scripts
+  {
+    files: ["**/*.js", "**/*.cjs", "**/*.mjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-var-requires": "off",
+    },
   },
   {
     rules: {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { Save, Eye, EyeOff, CheckCircle, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import HeroEditor from '@/components/admin/editors/HeroEditor';
@@ -30,7 +30,6 @@ interface LandingTenantData {
 
 export default function EditTenantPage() {
   const params = useParams();
-  const router = useRouter();
   const [tenant, setTenant] = useState<LandingTenantData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -237,13 +236,13 @@ export default function EditTenantPage() {
         {showPreview && (
           <PreviewPanel
             tenantSlug={tenant.tenant.slug}
-            headline={headline}
-            subhead={subhead}
-            urgencyBanner={urgencyBanner}
-            ctaText={ctaText}
-            images={images}
-            reviews={reviews}
-            guarantees={guarantees}
+            _headline={headline}
+            _subhead={subhead}
+            _urgencyBanner={urgencyBanner}
+            _ctaText={ctaText}
+            _images={images}
+            _reviews={reviews}
+            _guarantees={guarantees}
           />
         )}
       </div>

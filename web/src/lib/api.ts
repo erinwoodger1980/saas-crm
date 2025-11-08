@@ -8,14 +8,16 @@ declare const process: { env?: Record<string, string | undefined> };
 
 /**
  * Single source of truth for the browser app to know the API base.
+ * Supports NEXT_PUBLIC_API_BASE_URL (new) and NEXT_PUBLIC_API_BASE (legacy).
  * Keep empty string as a safe fallback (prevents accidentally hitting localhost in prod).
  */
-export const API_BASE = (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_BASE
-  ? String(process.env.NEXT_PUBLIC_API_BASE)
-  : "").replace(/\/+$/g, "");
+const RAW_API_BASE = (typeof process !== "undefined" && (
+  (process as any)?.env?.NEXT_PUBLIC_API_BASE_URL || (process as any)?.env?.NEXT_PUBLIC_API_BASE || ""
+)) as string;
+export const API_BASE = String(RAW_API_BASE).replace(/\/+$/g, "");
+export const API_BASE_URL = API_BASE; // alias
 
 if (!API_BASE && typeof window !== "undefined") {
-  // eslint-disable-next-line no-console
   console.warn("API_BASE is empty; set NEXT_PUBLIC_API_BASE in your env.");
 }
 
@@ -218,4 +220,30 @@ export async function ensureDemoAuth(): Promise<boolean> {
     if (me4 && me4.email) return true;
   } catch {}
   return false;
+}
+
+/* -------------------------------------------------------------- */
+/* Developer Console helpers                                       */
+/* -------------------------------------------------------------- */
+
+export async function runCodex(input: { extraContext: string; files?: string[]; mode?: 'dry-run'|'pr'|'local' }): Promise<{
+  ok: boolean; patch?: string; prUrl?: string; branchName?: string; mode?: string; errors?: string[];
+}> {
+  return apiFetch('/ai/codex/run', { method: 'POST', json: input });
+}
+
+export async function adminFeatureRunAi(id: string, body: { taskKey: string; extraContext?: string }) {
+  return apiFetch(`/feature-requests/admin/${id}/run-ai`, { method: 'POST', json: body });
+}
+
+export async function adminFeatureApprove(id: string) {
+  return apiFetch(`/feature-requests/admin/${id}/approve`, { method: 'POST' });
+}
+
+export async function adminFeatureReject(id: string, reason?: string) {
+  return apiFetch(`/feature-requests/admin/${id}/reject`, { method: 'POST', json: { reason } });
+}
+
+export async function adminPromptKeys(): Promise<{ keys: string[] }> {
+  return apiFetch(`/feature-requests/admin/prompt-keys`);
 }
