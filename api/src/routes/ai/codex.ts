@@ -24,19 +24,38 @@ export async function buildPrompt(taskKey: string, fr: FeatureRequestLike, extra
 }
 
 export async function callOpenAI(prompt: string): Promise<string> {
-  // Minimal streaming unified diff placeholder; real API call omitted for brevity.
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY missing');
-  // Use fetch to OpenAI responses API if available; here we return a stub if disabled.
+  
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  const resp = await fetch('https://api.openai.com/v1/responses', {
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, input: prompt, max_output_tokens: 4096 })
+    headers: { 
+      'Authorization': `Bearer ${apiKey}`, 
+      'Content-Type': 'application/json' 
+    },
+    body: JSON.stringify({ 
+      model, 
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are an expert code generator. Generate unified diff patches in the format:\n*** Add File: path/to/file\n+ line of new code\n\n*** Update File: path/to/file\n@@ context @@\n- old line\n+ new line\n\n*** Delete File: path/to/file' 
+        },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 4096,
+      temperature: 0.7
+    })
   });
+  
+  if (!resp.ok) {
+    const errorText = await resp.text();
+    throw new Error(`OpenAI API error ${resp.status}: ${errorText.slice(0, 500)}`);
+  }
+  
   const data: any = await resp.json();
-  const text = data?.output_text || data?.choices?.[0]?.message?.content || '';
-  if (!text.trim()) throw new Error('empty AI diff');
+  const text = data?.choices?.[0]?.message?.content || '';
+  if (!text.trim()) throw new Error('empty AI diff - no content in response');
   return text.trim();
 }
 
