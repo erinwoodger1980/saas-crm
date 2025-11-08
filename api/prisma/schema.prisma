@@ -1198,6 +1198,32 @@ model KeywordSuggestion {
   @@index([createdAt])
 }
 
+/// ===============================
+/// AI Autonomous Loop Sessions
+/// ===============================
+model AiSession {
+  id          String   @id @default(cuid())
+  taskKey     String
+  description String
+  files       Json
+  mode        String   // "dry-run" | "pr"
+  rounds      Int      @default(0)
+  maxRounds   Int      @default(3)
+  status      String   @default("OPEN") // OPEN|RUNNING|READY|FAILED
+  messages    Json     // [{ role: "system"|"user"|"assistant", content: string }]
+  patchText   String?
+  branch      String?
+  prUrl       String?
+  logs        String?
+  usageInput  Int      @default(0)
+  usageOutput Int      @default(0)
+  costUsd     Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+}
+
 // Tenant Google Ads configuration (MCC-linked sub-accounts)
 model TenantAdsConfig {
   id                  String   @id @default(cuid())

@@ -4,6 +4,7 @@ import path from "path";
 import { prisma } from "../prisma";
 import { z } from "zod";
 import { buildPrompt, callOpenAI, validateAndApplyDiff, runChecks, createBranchAndPR } from "./ai/codex";
+import { normalizeDiffPaths } from "../services/git/normalize";
 import { minimatch } from "minimatch";
 
 const router = Router();
@@ -109,7 +110,15 @@ router.post("/admin/:id/run-ai", requireAuth, async (req: any, res) => {
 
   try {
     const prompt = await buildPrompt(taskKey, fr, String(extraContext || ""));
-    const diff = await callOpenAI(prompt);
+    const diffRaw = await callOpenAI(prompt);
+    let diff = diffRaw;
+    try {
+      const allow = Array.isArray(fr.allowedFiles) ? fr.allowedFiles as string[] : null;
+      const normalized = normalizeDiffPaths(diffRaw, allow, process.env.REPO_ROOT || path.resolve(process.cwd(), '..'));
+      diff = normalized.diff;
+    } catch (e:any) {
+      return res.status(200).json({ error: e?.message || String(e), code: 'PATH_NORMALIZATION_FAILED' });
+    }
     if (dryRun) {
       // Do not persist anything, just return the diff for preview
       return res.json({ id: fr.id, patchText: diff, status: fr.status, dryRun: true });
@@ -158,7 +167,15 @@ router.post("/admin/:id/approve", requireAuth, async (req: any, res) => {
   const base = process.env.GIT_MAIN_BRANCH || "main";
   const branch = fr.branchName || `feat/fr-${fr.id.slice(0, 8)}`;
   try {
-    await validateAndApplyDiff(fr.patchText, base, branch);
+    let diffToApply = fr.patchText;
+    try {
+      const allow = Array.isArray(fr.allowedFiles) ? fr.allowedFiles as string[] : null;
+      const normalized = normalizeDiffPaths(diffToApply, allow, process.env.REPO_ROOT || path.resolve(process.cwd(), '..'));
+      diffToApply = normalized.diff;
+    } catch (e:any) {
+      return res.status(400).json({ error: e?.message || String(e), code: 'PATH_NORMALIZATION_FAILED' });
+    }
+    await validateAndApplyDiff(diffToApply, base, branch);
     const checks = await runChecks();
     if (!checks.ok) {
       await prisma.featureRequest.update({ where: { id }, data: { status: "FAILED" as any, checksStatus: "failed", logs: checks.errors?.slice(0, 20000) || null } });

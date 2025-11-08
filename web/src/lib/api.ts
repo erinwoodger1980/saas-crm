@@ -247,3 +247,15 @@ export async function adminFeatureReject(id: string, reason?: string) {
 export async function adminPromptKeys(): Promise<{ keys: string[] }> {
   return apiFetch(`/feature-requests/admin/prompt-keys`);
 }
+
+/* -------------------------------------------------------------- */
+/* AI Auto Loop helpers                                            */
+/* -------------------------------------------------------------- */
+
+export async function startAutoLoop(body: { taskKey: string; description: string; files?: string[]; mode?: 'dry-run'|'pr'; maxRounds?: number }): Promise<{ sessionId: string }>{
+  return apiFetch(`/ai/loop/start`, { method: 'POST', json: body });
+}
+
+export async function getLoopStatus(sessionId: string): Promise<{ status: string; rounds: number; maxRounds: number; patchText?: string|null; logs?: string|null; prUrl?: string|null; branch?: string|null; usageInput?: number; usageOutput?: number; costUsd?: number }>{
+  return apiFetch(`/ai/loop/status`, { method: 'POST', json: { sessionId } });
+}
