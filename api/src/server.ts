@@ -65,6 +65,7 @@ import adsRouter from "./routes/ads";
 import featureRequestsRouter from "./routes/featureRequests";
 import makeMeAdminRouter from "./routes/make-me-admin";
 import codexRunRouter from "./routes/codexRun";
+import aiLoopRouter from "./routes/ai/loop";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -512,6 +513,7 @@ app.use("/workshop", requireAuth, workshopRouter);
 app.use("/auth", makeMeAdminRouter);
 // Developer Console: AI Codex runner
 app.use("/ai/codex", codexRunRouter);
+app.use("/ai/loop", aiLoopRouter);
 
 /** ---------- Auth required from here ---------- */
 app.use((req, _res, next) => {

@@ -1,5 +1,7 @@
 import { Router } from "express";
+import path from 'path';
 import { buildPrompt, callOpenAI, validateAndApplyDiff, runChecks, createBranchAndPR } from "./ai/codex";
+import { normalizeDiffPaths } from "../services/git/normalize";
 
 const router = Router();
 
@@ -50,7 +52,15 @@ router.post('/run', requireAuth, async (req: any, res) => {
 
   try {
     const prompt = await buildPrompt(taskKey, fr, remainder || '');
-    const diff = openaiKey ? await callOpenAI(prompt) : stubDiff(remainder || '');
+    const diffRaw = openaiKey ? await callOpenAI(prompt) : stubDiff(remainder || '');
+    let diff = diffRaw;
+    try {
+      const allow = Array.isArray(fr.allowedFiles) ? fr.allowedFiles as string[] : null;
+      const normalized = normalizeDiffPaths(diffRaw, allow, process.env.REPO_ROOT || path.resolve(process.cwd(), '..'));
+      diff = normalized.diff;
+    } catch (e:any) {
+      return res.status(200).json({ ok:false, errors:[e?.message||String(e)] });
+    }
 
     if (mode === 'dry-run' || mode === 'local') {
       return res.json({ ok: true, mode, patch: diff });
@@ -64,6 +74,13 @@ router.post('/run', requireAuth, async (req: any, res) => {
     const base = process.env.GIT_MAIN_BRANCH || 'main';
     const branchName = `feat/codex-${Date.now().toString(36)}`;
     try {
+      try {
+        const allow = Array.isArray(fr.allowedFiles) ? fr.allowedFiles as string[] : null;
+        const normalized = normalizeDiffPaths(diff, allow, process.env.REPO_ROOT || path.resolve(process.cwd(), '..'));
+        diff = normalized.diff;
+      } catch (e:any) {
+        return res.status(200).json({ ok:false, errors:[e?.message||String(e)] });
+      }
       await validateAndApplyDiff(diff, base, branchName);
       const checks = await runChecks();
       if (!checks.ok) {

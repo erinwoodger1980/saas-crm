@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import DiffViewer from '@/components/DiffViewer';
 import RunStatus from '@/components/RunStatus';
-import { adminFeatureApprove, adminFeatureReject, adminFeatureRunAi, runCodex } from '@/lib/api';
+import { adminFeatureApprove, adminFeatureReject, adminFeatureRunAi, runCodex, startAutoLoop, getLoopStatus } from '@/lib/api';
 
 type Status = "idle" | "running" | "ready" | "approved" | "failed";
 
@@ -15,6 +15,9 @@ export default function DeveloperConsolePage() {
   const [logs, setLogs] = useState<string[]>([]);
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [branch, setBranch] = useState<string | null>(null);
+  const [loopSessionId, setLoopSessionId] = useState<string | null>(null);
+  const [loopStatus, setLoopStatus] = useState<any | null>(null);
+  const [loopPolling, setLoopPolling] = useState<boolean>(false);
 
   const canApprove = useMemo(() => !!diff && status === 'ready', [diff, status]);
 
@@ -76,6 +79,39 @@ export default function DeveloperConsolePage() {
     }
   }
 
+  async function startLoop() {
+    if (!desc.trim()) return;
+    try {
+      setLoopPolling(true);
+      const start = await startAutoLoop({ taskKey: template, description: desc, files: featureId ? [featureId] : undefined, mode: 'pr', maxRounds: 3 });
+      setLoopSessionId(start.sessionId);
+      pollLoop(start.sessionId);
+    } catch (e: any) {
+      setLogs([e?.message || String(e)]);
+      setLoopPolling(false);
+    }
+  }
+
+  async function pollLoop(id: string) {
+    let active = true;
+    const tick = async () => {
+      if (!active) return;
+      try {
+        const s = await getLoopStatus(id);
+        setLoopStatus(s);
+        if (['READY','FAILED'].includes(s.status)) {
+          setLoopPolling(false);
+          return;
+        }
+      } catch (e) {
+        // swallow
+      } finally {
+        if (active) setTimeout(tick, 2000);
+      }
+    };
+    tick();
+  }
+
   return (
     <div className="p-8 space-y-6">
       <header>
@@ -122,9 +158,14 @@ export default function DeveloperConsolePage() {
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <button onClick={onApprove} disabled={!canApprove} className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50">Approve</button>
             <button onClick={onReject} className="px-4 py-2 bg-red-600 text-white rounded">Reject</button>
+            <button
+              onClick={startLoop}
+              disabled={loopPolling}
+              className="px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-50"
+            >{loopPolling ? 'Loop Running…' : 'Start Auto Loop'}</button>
           </div>
         </div>
 
@@ -132,6 +173,9 @@ export default function DeveloperConsolePage() {
           <RunStatus status={status} logs={logs} prUrl={prUrl || undefined} previewUrl={null} />
           {branch && (
             <div className="text-xs text-gray-600">Branch: <span className="font-mono">{branch}</span></div>
+          )}
+          {loopSessionId && (
+            <LoopStatusPanel status={loopStatus} sessionId={loopSessionId} />
           )}
           <RecentActivity />
         </aside>
@@ -173,3 +217,31 @@ function RecentActivity() {
     </div>
   );
 }
+
+function LoopStatusPanel({ status, sessionId }: { status: any; sessionId: string }) {
+  if (!status) return (
+    <div className="rounded border bg-white p-3 text-sm">
+      <div className="font-medium mb-1">Auto Loop</div>
+      <p className="text-xs text-gray-500">Starting…</p>
+    </div>
+  );
+  return (
+    <div className="rounded border bg-white p-3 text-sm space-y-1">
+      <div className="flex justify-between items-center">
+        <div className="font-medium">Auto Loop</div>
+        <span className="text-xs bg-slate-100 px-2 py-0.5 rounded">{status.status}</span>
+      </div>
+      <div className="text-xs font-mono">Round {status.rounds} / {status.maxRounds}</div>
+      {status.branch && <div className="text-xs">Branch: <span className="font-mono">{status.branch}</span></div>}
+      {status.prUrl && <a href={status.prUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline">PR Link</a>}
+      <div className="text-xs">Usage: in {status.usageInput} / out {status.usageOutput} tokens</div>
+      <div className="text-xs">Cost: ${status.costUsd?.toFixed(4)}</div>
+      {status.logs && <details className="text-xs"><summary className="cursor-pointer">Logs</summary><pre className="whitespace-pre-wrap max-h-48 overflow-auto">{status.logs}</pre></details>}
+      {status.patchText && <details className="text-xs"><summary className="cursor-pointer">Patch</summary><pre className="whitespace-pre-wrap max-h-48 overflow-auto">{status.patchText.slice(0,8000)}</pre></details>}
+      <div className="text-[10px] text-gray-400">Session: {sessionId}</div>
+    </div>
+  );
+}
+
+async function startLoop(this: any) { /* placeholder to satisfy TS until reassigned */ }
+

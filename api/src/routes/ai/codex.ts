@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { Octokit } from '@octokit/rest';
+import { buildInitialPrompt } from '../../services/ai/prompt';
+import { normalizeDiffPaths } from '../../services/git/normalize';
 
 interface FeatureRequestLike {
   id: string;
@@ -17,10 +19,8 @@ export async function buildPrompt(taskKey: string, fr: FeatureRequestLike, extra
   const templatePath = path.join(REPO_ROOT, 'templates', 'prompts', `${taskKey}.prompt.txt`);
   let template = '';
   try { template = fs.readFileSync(templatePath, 'utf8'); } catch { template = 'Implement task'; }
-  const nodeV = process.version;
-  const tsV = safeExec('pnpm list typescript --depth 0 || true');
-  const allow = Array.isArray(fr.allowedFiles) ? JSON.stringify(fr.allowedFiles).slice(0, 500) : 'none';
-  return `${template}\nTASK_TITLE: ${fr.title}\nTASK_DESC: ${fr.description}\nPRIORITY: ${fr.priority || 'n/a'}\nALLOWED: ${allow}\nNODE: ${nodeV}\nTS: ${tsV}\nEXTRA: ${extra}`;
+  const base = buildInitialPrompt(taskKey, fr, extra, REPO_ROOT);
+  return `${template}\n${base}`;
 }
 
 export async function callOpenAI(prompt: string): Promise<string> {
