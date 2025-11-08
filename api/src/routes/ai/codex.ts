@@ -28,6 +28,36 @@ export async function callOpenAI(prompt: string): Promise<string> {
   if (!apiKey) throw new Error('OPENAI_API_KEY missing');
   
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const systemPrompt = `You are an expert code generator. Generate git-compatible unified diff patches.
+
+CRITICAL FORMAT REQUIREMENTS:
+1. Each file change MUST start with these exact headers:
+   --- a/path/to/file
+   +++ b/path/to/file
+2. Follow with hunk headers like: @@ -1,5 +1,6 @@
+3. Use standard diff markers: lines starting with space (unchanged), - (removed), + (added)
+4. For new files, use: --- /dev/null and +++ b/path/to/file
+5. For deleted files, use: --- a/path/to/file and +++ /dev/null
+
+EXAMPLE for updating existing file:
+--- a/web/src/components/Button.tsx
++++ b/web/src/components/Button.tsx
+@@ -1,5 +1,6 @@
+ export function Button() {
+-  return <button>Old text</button>
++  return <button>New text</button>
+ }
+
+EXAMPLE for new file:
+--- /dev/null
++++ b/web/src/components/NewFile.tsx
+@@ -0,0 +1,3 @@
++export function NewComponent() {
++  return <div>New</div>
++}
+
+Generate ONLY the unified diff, no explanations.`;
+
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 
@@ -37,10 +67,7 @@ export async function callOpenAI(prompt: string): Promise<string> {
     body: JSON.stringify({ 
       model, 
       messages: [
-        { 
-          role: 'system', 
-          content: 'You are an expert code generator. Generate unified diff patches in the format:\n*** Add File: path/to/file\n+ line of new code\n\n*** Update File: path/to/file\n@@ context @@\n- old line\n+ new line\n\n*** Delete File: path/to/file' 
-        },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt }
       ],
       max_tokens: 4096,
