@@ -148,16 +148,13 @@ export function FollowupPlanner({
     } catch {}
   }, [draftSubject, draftBody]);
 
-  const hasPhone = !!suggest?.plan?.phoneCall;
-  const callWhen = suggest?.plan?.phoneCall?.scheduledForISO
-    ? new Date(suggest.plan.phoneCall.scheduledForISO)
-    : null;
-
   const callBadge = useMemo(() => {
-    if (!hasPhone) return null;
-    const label = callWhen ? callWhen.toLocaleString() : `${suggest?.plan?.phoneCall?.callDelayDays} day(s)`;
+    const phoneCall = suggest?.plan?.phoneCall;
+    if (!phoneCall) return null;
+    const when = phoneCall.scheduledForISO ? new Date(phoneCall.scheduledForISO) : null;
+    const label = when ? when.toLocaleString() : `${phoneCall.callDelayDays} day(s)`;
     return <Badge variant="secondary" className="text-[10px]">Phone: {label}</Badge>;
-  }, [hasPhone, callWhen, suggest?.plan?.phoneCall?.callDelayDays]);
+  }, [suggest?.plan?.phoneCall]);
 
   return (
     <section className="rounded-2xl border p-4 bg-white">

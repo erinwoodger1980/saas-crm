@@ -18,7 +18,7 @@ export function QuestionFields({
 }: {
   fields: QField[];
   values: Record<string, any>;
-  onChange: (next: Record<string, any>) => void;
+  onChange: (_next: Record<string, any>) => void;
   layout?: "grid" | "stack";
 }) {
   const setVal = (k: string, v: any) => onChange({ ...values, [k]: v });

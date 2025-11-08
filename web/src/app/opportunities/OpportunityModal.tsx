@@ -14,7 +14,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
-import { Badge } from "@/components/ui/badge";
 
 type FollowUpLog = {
   id: string;
@@ -159,7 +158,7 @@ function normaliseSuggestion(raw: any): AiSuggestion {
   };
 }
 
-function percentLabel(value?: number) {
+function _percentLabel(value?: number) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "–";
   const pct = value * 100;
   if (pct >= 10) return `${Math.round(pct)}%`;
@@ -229,7 +228,7 @@ async function fireConfettiAboveModal() {
   setTimeout(() => { try { canvas.remove(); } catch {} }, 1500);
 }
 
-function FollowupStat({
+function _FollowupStat({
   icon,
   label,
   value,
@@ -263,20 +262,20 @@ export default function OpportunityModal({
   onStatusChange,
 }: {
   open: boolean;
-  onOpenChange: (v: boolean) => void;
+  onOpenChange: (_v: boolean) => void;
   leadId: string;
   leadName: string;
   leadEmail: string;
   leadStatus: LeadStatus;
   opportunityId?: string | null;
   onAfterSend?: () => void;
-  onStatusChange?: (next: LeadStatus) => void;
+  onStatusChange?: (_next: LeadStatus) => void;
 }) {
   const { toast } = useToast();
   
   // Auth setup
   const ids = getAuthIdsFromJwt();
-  const tenantId = ids?.tenantId || "";
+  const _tenantId = ids?.tenantId || "";
   const userId = ids?.userId || "";
 
   const {
@@ -532,7 +531,7 @@ export default function OpportunityModal({
     ["email_followup", "phone_followup"].includes(task.meta.type)
   );
 
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
   const [history, setHistory] = useState<FollowUpLog[]>([]);
   const [suggest, setSuggest] = useState<AiSuggestion | null>(null);
   const [draftSubject, setDraftSubject] = useState("");
@@ -540,8 +539,8 @@ export default function OpportunityModal({
   const [sending, setSending] = useState(false);
   const [status, setStatusState] = useState<LeadStatus>(leadStatus);
   const [statusUpdating, setStatusUpdating] = useState<LeadStatus | null>(null);
-  const [autoMode, setAutoMode] = useState(false);
-  const [autoPlan, setAutoPlan] = useState<{
+  const [_autoMode, setAutoMode] = useState(false);
+  const [_autoPlan, setAutoPlan] = useState<{
     whenISO: string | null;
     subject?: string | null;
     body?: string | null;
@@ -549,9 +548,9 @@ export default function OpportunityModal({
     rationale?: string | null;
     logId?: string | null;
   } | null>(null);
-  const [schedulingNext, setSchedulingNext] = useState(false);
+  const [_schedulingNext, setSchedulingNext] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const [schedulingCall, setSchedulingCall] = useState(false);
+  const [_schedulingCall, setSchedulingCall] = useState(false);
   const [autoScheduleCall, setAutoScheduleCall] = useState(true);
   const autoScheduleInitialised = useRef(false);
 
@@ -559,9 +558,9 @@ export default function OpportunityModal({
   const [lastReply, setLastReply] = useState<{ lastInboundAt: string | null; snippet: string | null } | null>(null);
 
   const emailDelayDays = suggest?.plan?.email?.delayDays ?? suggest?.delayDays;
-  const phonePlan = suggest?.plan?.phoneCall;
-  const callSampleSize = suggest?.learning?.call?.sampleSize ?? 0;
-  const upcomingCall = useMemo(() => {
+  const _phonePlan = suggest?.plan?.phoneCall;
+  const _callSampleSize = suggest?.learning?.call?.sampleSize ?? 0;
+  const _upcomingCall = useMemo(() => {
     const now = Date.now();
     return history.find((log) => {
       const channel = (log.channel || "email").toLowerCase();
@@ -627,31 +626,31 @@ export default function OpportunityModal({
       ? suggest.learning.call.avgDelayDays
       : undefined;
 
-  const callAvgLabel = useMemo(() => {
+  const _callAvgLabel = useMemo(() => {
     return typeof callAvgDelayDays === "number" ? formatDaysLabelLocal(callAvgDelayDays) : "–";
   }, [callAvgDelayDays]);
 
   const lastEmailDate = lastSentEmail?.sentAt ? new Date(lastSentEmail.sentAt) : null;
   const sampleSize = suggest?.learning?.sampleSize ?? 0;
-  const nextStatValue = nextSuggestedDate
+  const _nextStatValue = nextSuggestedDate
     ? formatRelativeFuture(nextSuggestedDate)
     : typeof emailDelayDays === "number"
     ? `Every ${formatDaysLabelLocal(emailDelayDays)}`
     : "Let AI decide";
-  const nextStatHint = nextSuggestedDate
+  const _nextStatHint = nextSuggestedDate
     ? nextSuggestedDate.toLocaleString()
     : typeof emailDelayDays === "number"
     ? "Based on recent wins"
     : "AI will recommend timing";
-  const sinceStatValue = lastEmailDate ? formatAgoDays(cadenceStats.sinceLast) : "First follow-up";
-  const sinceStatHint = lastEmailDate ? lastEmailDate.toLocaleString() : "No previous emails";
-  const avgStatValue = cadenceStats.averageGap != null ? formatDaysLabelLocal(cadenceStats.averageGap) : "Learning";
-  const avgStatHint =
+  const _sinceStatValue = lastEmailDate ? formatAgoDays(cadenceStats.sinceLast) : "First follow-up";
+  const _sinceStatHint = lastEmailDate ? lastEmailDate.toLocaleString() : "No previous emails";
+  const _avgStatValue = cadenceStats.averageGap != null ? formatDaysLabelLocal(cadenceStats.averageGap) : "Learning";
+  const _avgStatHint =
     cadenceStats.total > 1
       ? `From ${cadenceStats.total} email${cadenceStats.total === 1 ? "" : "s"}`
       : "Send two follow-ups to tune cadence";
-  const sampleStatValue = sampleSize ? sampleSize.toLocaleString() : "Gathering";
-  const sampleStatHint = sampleSize
+  const _sampleStatValue = sampleSize ? sampleSize.toLocaleString() : "Gathering";
+  const _sampleStatHint = sampleSize
     ? topVariant
       ? `Variant ${topVariant.variant} is winning`
       : "Variants rotating"
@@ -749,7 +748,7 @@ export default function OpportunityModal({
     }
   }, [open, leadStatus, load, loadReplies]);
 
-  async function send() {
+  async function _send() {
     if (!draftSubject || !draftBody) return;
     try {
       setSending(true);
@@ -830,7 +829,7 @@ export default function OpportunityModal({
     }
   }
 
-  async function scheduleNext() {
+  async function _scheduleNext() {
     const idForSchedule = opportunityId || leadId;
     try {
       setSchedulingNext(true);

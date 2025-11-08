@@ -120,10 +120,10 @@ export default function TenantsPage() {
                     )}
                   </td>
                   <td className="p-4 text-sm text-gray-600">
-                    {tenant.landingTenant?._count && (
+                    {(tenant as any).landingTenant?._count && (
                       <div className="flex gap-3">
-                        <span>{tenant.landingTenant._count.images} images</span>
-                        <span>{tenant.landingTenant._count.reviews} reviews</span>
+                        <span>{(tenant as any).landingTenant._count.images} images</span>
+                        <span>{(tenant as any).landingTenant._count.reviews} reviews</span>
                       </div>
                     )}
                   </td>

@@ -7,7 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import AppShell from "./components/AppShell";
 import { TasksButton } from "@/components/tasks/TasksButton";
 import FeedbackWidget from "@/components/FeedbackWidget";
-import { API_BASE, setJwt, apiFetch } from "@/lib/api";
+import { setJwt, apiFetch } from "@/lib/api";
 import Script from "next/script";
 
 function DevAuth() {

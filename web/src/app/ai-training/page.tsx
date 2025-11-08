@@ -252,7 +252,6 @@ export default function AITrainingPage() {
         setError(e?.message || "Failed to load AI training info");
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function refreshSamples() {

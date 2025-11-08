@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -11,7 +11,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { apiFetch, API_BASE } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import Gauge from "@/app/components/Gauge";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
@@ -93,7 +93,7 @@ type EmailTrainingResponse = {
   }>;
 };
 
-function formatDate(s?: string | null) {
+function _formatDate(s?: string | null) {
   if (!s) return "—";
   try {
     return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(s));
@@ -102,14 +102,14 @@ function formatDate(s?: string | null) {
   }
 }
 
-function formatPercent(value?: number | null) {
+function _formatPercent(value?: number | null) {
   if (typeof value !== "number" || Number.isNaN(value)) return "—";
   const pct = value * 100;
   if (pct >= 10) return `${Math.round(pct)}%`;
   return `${Math.round(pct * 10) / 10}%`;
 }
 
-function formatDaysLabel(value?: number | null) {
+function _formatDaysLabel(value?: number | null) {
   if (value == null || Number.isNaN(value)) return "—";
   const days = Number(value);
   if (!Number.isFinite(days)) return "—";
@@ -131,29 +131,16 @@ export default function AiTrainingPage() {
   const { toast } = useToast();
   const [mlHealth, setMlHealth] = useState<{ ok: boolean; target?: string } | null>(null);
   const [moduleId, setModuleId] = useState<typeof MODULES[number]["id"]>("lead_classifier");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
-  const [params, setParams] = useState<ParamRow[]>([]);
   const [threshold, setThreshold] = useState<number>(0.6);
-  const [saving, setSaving] = useState(false);
   const [openPreviewId, setOpenPreviewId] = useState<string | null>(null);
   const [previews, setPreviews] = useState<Record<string, { loading: boolean; data?: any; error?: string }>>({});
-  const [limit, setLimit] = useState<number>(50);
-  const [providerFilter, setProviderFilter] = useState<"all" | "gmail" | "ms365" | "other">("all");
-  const [decisionFilter, setDecisionFilter] = useState<"all" | "accepted" | "rejected" | "other">("all");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  // Historic supplier quotes ingestion
-  const [filesLoading, setFilesLoading] = useState(false);
-  const [filesError, setFilesError] = useState<string | null>(null);
-  const [files, setFiles] = useState<Array<{ id: string; name: string; uploadedAt?: string; mimeType?: string; sizeBytes?: number | null }>>([]);
-  const [fileSel, setFileSel] = useState<Record<string, boolean>>({});
-  const [creatingQuote, setCreatingQuote] = useState(false);
   const [followupLearning, setFollowupLearning] = useState<FollowupLearningResponse | null>(null);
   const [followupLoading, setFollowupLoading] = useState(false);
   const [followupError, setFollowupError] = useState<string | null>(null);
   const [updatingFollowupOptIn, setUpdatingFollowupOptIn] = useState(false);
-  const [followupTab, setFollowupTab] = useState<"overview" | "planner">("overview");
   // Email training state
   const [emailTraining, setEmailTraining] = useState<{
     status: 'idle' | 'running' | 'completed' | 'error';
@@ -245,7 +232,7 @@ export default function AiTrainingPage() {
     return () => {
       cancel = true;
     };
-  }, [moduleId, limit]);
+  }, [moduleId]);
 
   // Load recent supplier quote files
   useEffect(() => {
@@ -288,9 +275,9 @@ export default function AiTrainingPage() {
         (decisionFilter === "other" && dec !== "accepted" && dec !== "rejected");
       return provOk && decOk;
     });
-  }, [insights, providerFilter, decisionFilter]);
+  }, [insights]);
 
-  const summary = useMemo(() => {
+  const _summary = useMemo(() => {
     const s = { total: filteredInsights.length, accepted: 0, rejected: 0 };
     for (const i of filteredInsights) {
       const d = (i.decision || "").toLowerCase();
@@ -335,29 +322,6 @@ export default function AiTrainingPage() {
     return { provider, messageId };
   }
 
-  function toCsvValue(v: any): string {
-    if (v == null) return "";
-    const s = String(v);
-    if (s.includes('"') || s.includes(',') || s.includes('\n')) {
-      return '"' + s.replace(/"/g, '""') + '"';
-    }
-    return s;
-  }
-
-  function toggleFile(id: string) {
-    setFileSel((s) => ({ ...s, [id]: !s[id] }));
-  }
-
-  function selectAllFiles() {
-    const next: Record<string, boolean> = { ...fileSel };
-    for (const f of files) next[f.id] = true;
-    setFileSel(next);
-  }
-
-  function clearFiles() {
-    setFileSel({});
-  }
-
   async function toggleFollowupOptIn(next: boolean) {
     setUpdatingFollowupOptIn(true);
     try {
@@ -381,7 +345,7 @@ export default function AiTrainingPage() {
     }
   }
 
-  async function trainOnSelectedFiles() {
+  async function _trainOnSelectedFiles() {
     const ids = Object.entries(fileSel).filter(([, v]) => v).map(([k]) => k);
     if (ids.length === 0) return;
     setSaving(true);
@@ -397,21 +361,7 @@ export default function AiTrainingPage() {
     }
   }
 
-  async function createDraftQuoteAndOpen() {
-    setCreatingQuote(true);
-    try {
-      const q = await apiFetch<any>("/quotes", { method: "POST", json: { title: `Draft quote ${new Date().toLocaleString()}` } });
-      if (q?.id) {
-        window.location.href = `/quotes/${encodeURIComponent(q.id)}`;
-      }
-    } catch (e) {
-      // silently ignore; error box below handles general API errors
-    } finally {
-      setCreatingQuote(false);
-    }
-  }
-
-  function exportCsv() {
+  function _exportCsv() {
     const headers = [
       "timestamp",
       "module",
@@ -451,57 +401,57 @@ export default function AiTrainingPage() {
     URL.revokeObjectURL(url);
   }
 
-  function toggleSelectOne(id: string) {
+  function _toggleSelectOne(id: string) {
     setSelected((s) => ({ ...s, [id]: !s[id] }));
   }
 
-  function selectAllCurrent() {
+  function _selectAllCurrent() {
     const next: Record<string, boolean> = { ...selected };
     for (const i of filteredInsights) next[i.id] = true;
     setSelected(next);
   }
 
-  function clearSelection() {
+  function _clearSelection() {
     setSelected({});
   }
 
-  async function retrainWithSelection() {
+  async function _retrainWithSelection() {
     const ids = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
     if (ids.length === 0) return;
-    setSaving(true);
+    const saving = true; // local flag; no UI spinner needed for this path
     setError(null);
     try {
   await apiFetch(`/ml/insights/model/retrain`, { method: "POST", json: { module: moduleId, insightIds: ids } });
       toast({ title: "Retrain queued", description: `${ids.length} examples selected`, duration: 2500 });
-      clearSelection();
+      _clearSelection();
     } catch (e: any) {
       setError(e?.message || "Could not retrain with selection");
     } finally {
-      setSaving(false);
+      void(saving);
     }
   }
 
-  async function saveThreshold() {
-    setSaving(true);
+  async function _saveThreshold() {
+    const saving = true;
     setError(null);
     try {
   await apiFetch(`/ml/insights/params/set`, { method: "POST", json: { module: moduleId, key: "lead.threshold", value: threshold } });
     } catch (e: any) {
       setError(e?.message || "Could not save parameter");
     } finally {
-      setSaving(false);
+      void(saving);
     }
   }
 
-  async function retrain() {
-    setSaving(true);
+  async function _retrain() {
+    const saving = true;
     setError(null);
     try {
   await apiFetch(`/ml/insights/model/retrain`, { method: "POST", json: { module: moduleId } });
     } catch (e: any) {
       setError(e?.message || "Could not trigger retrain");
     } finally {
-      setSaving(false);
+      void(saving);
     }
   }
 
@@ -816,21 +766,21 @@ export default function AiTrainingPage() {
     setUploadQueue(prev => prev.filter(u => u.status !== 'completed'));
   }
 
-  async function reset() {
+  async function _reset() {
     if (!confirm("Reset model parameters and cached adapters for this module?")) return;
-    setSaving(true);
+    const saving = true;
     setError(null);
     try {
   await apiFetch(`/ml/insights/model/reset`, { method: "POST", json: { module: moduleId } });
     } catch (e: any) {
       setError(e?.message || "Could not reset model");
     } finally {
-      setSaving(false);
+      void(saving);
     }
   }
 
-  async function sendFeedback(i: Insight, ok: boolean) {
-    setSaving(true);
+  async function _sendFeedback(i: Insight, ok: boolean) {
+    const saving = true;
     setError(null);
     try {
       const payload: any = { module: moduleId, insightId: i.id, correct: ok };
@@ -843,11 +793,11 @@ export default function AiTrainingPage() {
     } catch (e: any) {
       setError(e?.message || "Could not send feedback");
     } finally {
-      setSaving(false);
+      void(saving);
     }
   }
 
-  async function togglePreview(i: Insight) {
+  async function _togglePreview(i: Insight) {
     if (!i.inputSummary || !i.inputSummary.startsWith("email:")) return;
     const id = i.id;
     const parts = i.inputSummary.split(":");

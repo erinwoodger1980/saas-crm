@@ -1,7 +1,5 @@
 import { Suspense } from 'react';
-import Image from 'next/image';
 import { Metadata } from 'next';
-import { Phone, Mail, MapPin, Star, Check, Download, ChevronDown, X } from 'lucide-react';
 import { fetchTenantFromDB } from '@/lib/landing-api';
 import { PublicLandingClient } from './client';
 

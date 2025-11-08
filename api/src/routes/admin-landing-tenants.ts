@@ -60,7 +60,7 @@ router.post('/', requireAdmin, async (req, res) => {
     const landing = await prisma.landingTenant.create({
       data: {
         tenantId: tenant.id,
-        slug: tenant.slug,
+        slug: tenant.slug || uniqueSlug,
         headline: '',
         subhead: '',
         urgencyBanner: '',

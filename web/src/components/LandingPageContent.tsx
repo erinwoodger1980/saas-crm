@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { BeforeAfter } from '@/components/BeforeAfter';
 import { StickyBar } from '@/components/StickyBar';
 import { MobileDock } from '@/components/MobileDock';
 import styles from './LandingPageContent.module.css';
@@ -20,7 +19,7 @@ export default function LandingPageContent({
   content,
   location,
   keyword,
-  searchParams
+  _searchParams
 }: LandingPageContentProps) {
   const [variant, setVariant] = useState<'A' | 'B'>('A');
   const [showExitIntent, setShowExitIntent] = useState(false);

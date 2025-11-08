@@ -11,7 +11,7 @@ export function emit<K extends keyof AppEventMap>(type: K, detail: AppEventMap[K
 
 export function on<K extends keyof AppEventMap>(
   type: K,
-  handler: (detail: AppEventMap[K]) => void
+  handler: (_detail: AppEventMap[K]) => void
 ) {
   if (typeof window === "undefined") return () => {};
   const fn = (e: Event) => handler((e as CustomEvent).detail);

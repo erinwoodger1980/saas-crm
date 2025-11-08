@@ -3,8 +3,9 @@
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, Trash2, ArrowUp, ArrowDown, Image as ImageIcon } from 'lucide-react';
+import Image from 'next/image';
 
-interface Image {
+interface GalleryImage {
   id?: string;
   url: string;
   altText: string;
@@ -12,8 +13,8 @@ interface Image {
 }
 
 interface GalleryEditorProps {
-  images: Image[];
-  onImagesChange: (images: Image[]) => void;
+  images: GalleryImage[];
+  onImagesChange: (_: GalleryImage[]) => void;
   tenantId: string;
 }
 
@@ -134,9 +135,11 @@ export default function GalleryEditor({ images, onImagesChange, tenantId }: Gall
               {/* Thumbnail */}
               <div className="w-24 h-24 flex-shrink-0 bg-gray-200 rounded overflow-hidden">
                 {image.url ? (
-                  <img
+                  <Image
                     src={image.url}
                     alt={image.altText || 'Project image'}
+                    width={96}
+                    height={96}
                     className="w-full h-full object-cover"
                   />
                 ) : (

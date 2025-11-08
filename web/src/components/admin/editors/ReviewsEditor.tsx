@@ -12,7 +12,7 @@ interface Review {
 
 interface ReviewsEditorProps {
   reviews: Review[];
-  onReviewsChange: (reviews: Review[]) => void;
+  onReviewsChange: (_: Review[]) => void;
 }
 
 export default function ReviewsEditor({ reviews, onReviewsChange }: ReviewsEditorProps) {

@@ -88,7 +88,7 @@ function friendlyFeature(feature: string) {
     "marketing-home": "Marketing",
   };
   if (match[feature]) return match[feature];
-  const cleaned = feature.replace(/[\/_]/g, "-");
+  const cleaned = feature.replace(/[_/]/g, "-");
   return cleaned
     .split("-")
     .filter(Boolean)

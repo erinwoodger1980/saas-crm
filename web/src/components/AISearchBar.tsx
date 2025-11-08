@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
@@ -84,7 +84,7 @@ export default function AISearchBar() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isMounted]);
 
-  const handleSearch = async (searchQuery: string) => {
+  const handleSearch = useCallback(async (searchQuery: string) => {
     if (!isMounted || !searchQuery.trim()) {
       setResults(null);
       return;
@@ -106,7 +106,7 @@ export default function AISearchBar() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isMounted]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!isMounted) return;
@@ -121,13 +121,9 @@ export default function AISearchBar() {
       setResults(null);
       return;
     }
-
-    const timeoutId = setTimeout(() => {
-      handleSearch(query);
-    }, 300);
-
+    const timeoutId = setTimeout(() => { handleSearch(query); }, 300);
     return () => clearTimeout(timeoutId);
-  }, [query, isMounted]);
+  }, [query, isMounted, handleSearch]);
 
   const executeAction = async (action: SearchResult['action'], result?: SearchResult) => {
     if (!isMounted) return;

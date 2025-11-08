@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
-import { QuoteBuilder } from "@/components/quotes/QuoteBuilder";
 import { ActionsBar } from "@/components/quotes/ActionsBar";
 import { ParsedLinesTable } from "@/components/quotes/ParsedLinesTable";
 import { QuestionnaireForm } from "@/components/quotes/QuestionnaireForm";
@@ -22,7 +21,6 @@ import {
   processQuoteFromFile,
   saveClientQuoteLines,
   type SupplierFileDto as SupplierFile,
-  type ProcessQuoteResponse,
 } from "@/lib/api/quotes";
 import type {
   EstimateResponse,
@@ -76,7 +74,7 @@ export default function QuoteBuilderPage() {
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
   const [lastEstimateAt, setLastEstimateAt] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
-  const [isSavingMappings, setIsSavingMappings] = useState(false);
+  const [_isSavingMappings, setIsSavingMappings] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingSupplier, setIsProcessingSupplier] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
@@ -205,7 +203,7 @@ export default function QuoteBuilderPage() {
     [quoteId, mutateQuote, mutateLines, toast],
   );
 
-  const handleSaveMappings = useCallback(async () => {
+  const _handleSaveMappings = useCallback(async () => {
     if (!quoteId) return;
     setIsSavingMappings(true);
     setError(null);
@@ -390,7 +388,7 @@ export default function QuoteBuilderPage() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [handleEstimate, handleParse, openUploadDialog]);
+  }, [handleEstimate, handleParse, openUploadDialog, handleQuestionnaireEstimate]);
 
   const handleOpenFile = useCallback(
     async (file: SupplierFileDto) => {

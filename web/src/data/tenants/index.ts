@@ -68,7 +68,7 @@ export function getTenantStatic(slug: string): TenantData | null {
   try {
     const data = require(`./${slug}.json`);
     return data as TenantData;
-  } catch {
+  } catch (_error) {
     console.warn(`Tenant data not found for: ${slug}`);
     return null;
   }
@@ -81,7 +81,7 @@ export async function getTenantGallery(slug: string): Promise<GalleryImage[]> {
   try {
     const gallery = await import(`./${slug}_gallery.json`);
     return gallery.default || [];
-  } catch (error) {
+  } catch (_error) {
     console.warn(`Gallery not found for tenant: ${slug}`);
     return [];
   }
@@ -108,8 +108,8 @@ export async function getTenantEnrichment(url?: string): Promise<TenantEnrichmen
 
     const data = await response.json();
     return data as TenantEnrichment;
-  } catch (error) {
-    console.warn('Failed to fetch tenant enrichment:', error);
+  } catch (_error) {
+    console.warn('Failed to fetch tenant enrichment:', _error);
     return {};
   }
 }

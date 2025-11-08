@@ -11,10 +11,8 @@ import {
   CheckSquare,
   Target,
   Wrench,
-  Settings,
   Sparkles,
   ArrowRight,
-  FileText,
 } from "lucide-react";
 
 import { useTenantBrand } from "@/lib/use-tenant-brand";

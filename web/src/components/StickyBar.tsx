@@ -9,7 +9,7 @@ interface StickyBarProps {
   phone?: string;
   calendlyUrl?: string;
   onGetQuoteClick: () => void;
-  trackEvent?: (event: string, params?: any) => void;
+  trackEvent?: (_event: string, _params?: any) => void;
 }
 
 export function StickyBar({

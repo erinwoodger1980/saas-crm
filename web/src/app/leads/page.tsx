@@ -1,7 +1,7 @@
 // web/src/app/leads/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -95,7 +95,7 @@ function LeadsPageContent() {
   // email upload state
   const [emailUploadQueue, setEmailUploadQueue] = useState<EmailUpload[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragCounter, setDragCounter] = useState(0);
+  const dragCounterRef = useRef(0);
 
   const buildAuthHeaders = (): HeadersInit | undefined => {
     const ids = getAuthIdsFromJwt();
@@ -104,74 +104,7 @@ function LeadsPageContent() {
   };
 
   // Handle URL parameters for direct lead access
-  useEffect(() => {
-    const leadId = searchParams.get('leadId');
-    const modal = searchParams.get('modal');
-    
-    if (leadId && modal === 'lead') {
-      // Open the lead modal with the specified lead ID
-      openLeadById(leadId);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    (async () => {
-      const ok = await ensureDemoAuth();
-      if (!ok) return;
-      await refreshGrouped();
-    })();
-  }, []);
-
-  // 🔗 Listen for "open-lead" from the My Tasks drawer
-  useEffect(() => {
-    return on("open-lead", ({ leadId }) => openLeadById(leadId));
-  }, [grouped]); // grouped in deps so we can search current lists
-
-  // periodic refresh + optional auto-import every 10 minutes
-  useEffect(() => {
-    const id = setInterval(async () => {
-      const auto = localStorage.getItem("autoImportInbox") === "true";
-      try {
-        if (auto) {
-          const headers = buildAuthHeaders();
-          await Promise.allSettled([
-            apiFetch("/gmail/import", {
-              method: "POST",
-              headers,
-              json: { max: 10, q: "newer_than:30d" },
-            }),
-            apiFetch("/ms365/import", { method: "POST", headers, json: { max: 10 } }),
-          ]);
-        }
-      } finally {
-        await refreshGrouped();
-      }
-    }, 10 * 60 * 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  async function refreshGrouped() {
-    setLoading(true);
-    try {
-      const data = await apiFetch<Grouped>("/leads/grouped", {
-        headers: buildAuthHeaders(),
-      });
-      setGrouped(normaliseToNewStatuses(data));
-      setError(null);
-    } catch (e: any) {
-      setError(`Failed to load: ${e?.message ?? "unknown"}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function openLead(l: Lead) {
-    setLeadPreview(l);
-    setOpen(true);
-  }
-
-  // 🔍 Helper: open by id (search current buckets, else fetch)
-  async function openLeadById(leadId: string) {
+  const openLeadById = useCallback(async (leadId: string) => {
     let found: Lead | null = null;
     (Object.keys(grouped) as LeadStatus[]).some((s) => {
       const hit = grouped[s].find((x) => x.id === leadId);
@@ -194,6 +127,68 @@ function LeadsPageContent() {
     } catch {
       // ignore
     }
+  }, [grouped]);
+
+  useEffect(() => {
+    const leadId = searchParams.get('leadId');
+    const modal = searchParams.get('modal');
+    if (leadId && modal === 'lead') openLeadById(leadId);
+  }, [searchParams, openLeadById]);
+
+  const refreshGrouped = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<Grouped>("/leads/grouped", {
+        headers: buildAuthHeaders(),
+      });
+      setGrouped(normaliseToNewStatuses(data));
+      setError(null);
+    } catch (e: any) {
+      setError(`Failed to load: ${e?.message ?? "unknown"}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const ok = await ensureDemoAuth();
+      if (!ok) return;
+      await refreshGrouped();
+    })();
+  }, [refreshGrouped]);
+
+  // 🔗 Listen for "open-lead" from the My Tasks drawer
+  useEffect(() => {
+    return on("open-lead", ({ leadId }) => openLeadById(leadId));
+  }, [openLeadById]);
+
+  // periodic refresh + optional auto-import every 10 minutes
+  useEffect(() => {
+    const id = setInterval(async () => {
+      const auto = localStorage.getItem("autoImportInbox") === "true";
+      try {
+        if (auto) {
+          const headers = buildAuthHeaders();
+          await Promise.allSettled([
+            apiFetch("/gmail/import", {
+              method: "POST",
+              headers,
+              json: { max: 10, q: "newer_than:30d" },
+            }),
+            apiFetch("/ms365/import", { method: "POST", headers, json: { max: 10 } }),
+          ]);
+        }
+      } finally {
+        await refreshGrouped();
+      }
+    }, 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [refreshGrouped]);
+
+  function openLead(l: Lead) {
+    setLeadPreview(l);
+    setOpen(true);
   }
 
   // Normalize server buckets to new statuses and de-dupe by id
@@ -368,7 +363,7 @@ function LeadsPageContent() {
   function handleEmailDragEnter(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    setDragCounter(prev => prev + 1);
+    dragCounterRef.current += 1;
     
     // Check if we have files being dragged
     if (e.dataTransfer.types.includes('Files')) {
@@ -380,14 +375,11 @@ function LeadsPageContent() {
   function handleEmailDragLeave(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    setDragCounter(prev => {
-      const newCount = prev - 1;
-      if (newCount <= 0) {
-        setIsDragging(false);
-        return 0;
-      }
-      return newCount;
-    });
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      setIsDragging(false);
+      dragCounterRef.current = 0;
+    }
   }
 
   function handleEmailDragOver(e: React.DragEvent) {
@@ -401,7 +393,7 @@ function LeadsPageContent() {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    setDragCounter(0);
+    dragCounterRef.current = 0;
 
     console.log('📧 Email drop detected, files:', e.dataTransfer.files.length);
     const files = Array.from(e.dataTransfer.files);

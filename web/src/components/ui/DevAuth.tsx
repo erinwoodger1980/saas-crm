@@ -1,6 +1,6 @@
 "use client";
 import { useEffect } from "react";
-import { API_BASE, setJwt, apiFetch } from "@/lib/api";
+import { setJwt, apiFetch } from "@/lib/api";
 
 export default function DevAuth() {
   useEffect(() => {

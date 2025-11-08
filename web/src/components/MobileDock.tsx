@@ -4,7 +4,7 @@ interface MobileDockProps {
   phone?: string;
   whatsapp?: string;
   onGetQuoteClick: () => void;
-  trackEvent?: (event: string, params?: any) => void;
+  trackEvent?: (_event: string, _params?: any) => void;
 }
 
 export function MobileDock({

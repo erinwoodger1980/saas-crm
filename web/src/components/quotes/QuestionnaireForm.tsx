@@ -18,7 +18,7 @@ export type QuestionnaireFormProps = {
   answers: Record<string, any>;
   isSaving?: boolean;
   disabled?: boolean;
-  onAutoSave: (changes: Record<string, any>) => Promise<void>;
+  onAutoSave: (_changes: Record<string, any>) => Promise<void>;
   onEstimateFromAnswers?: () => void;
   estimateSupported?: boolean;
   estimateDisabledReason?: string;

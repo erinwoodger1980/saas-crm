@@ -17,8 +17,8 @@ export type ParsedLinesTableProps = {
   lines?: ParsedLineDto[] | null;
   questionnaireFields: QuestionnaireField[];
   mapping: Record<string, string | null | undefined>;
-  onMappingChange: (lineId: string, questionKey: string | null) => void;
-  onLineChange: (lineId: string, payload: { qty?: number | null; unitPrice?: number | null }) => Promise<void>;
+  onMappingChange: (_lineId: string, _questionKey: string | null) => void;
+  onLineChange: (_lineId: string, _payload: { qty?: number | null; unitPrice?: number | null }) => Promise<void>;
   currency?: string | null;
   isParsing?: boolean;
   parseMeta?: ParseResponse | null;

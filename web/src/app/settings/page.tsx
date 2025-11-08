@@ -1,14 +1,10 @@
 "use client";
 import { API_BASE, apiFetch, ensureDemoAuth } from "@/lib/api";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useCurrentUser, type CurrentUser } from "@/lib/use-current-user";
-import {
-  DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-  DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-  DEFAULT_EMAIL_TEMPLATES,
-} from "@/lib/constants";
+import { DEFAULT_EMAIL_TEMPLATES } from "@/lib/constants";
 import SourceCosts from "./SourceCosts";
 import { TenantImageImport } from "@/components/settings/TenantImageImport";
 import {
@@ -63,35 +59,7 @@ type Settings = {
   aiFollowupLearning?: { crossTenantOptIn: boolean; lastUpdatedISO?: string | null } | null;
 };
 type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number; recallFirst?: boolean };
-type CostRow = {
-  id: string;
-  tenantId: string;
-  source: string;
-  month: string;
-  spend: number;
-  leads: number;
-  conversions: number;
-  scalable: boolean;
-};
-type AiFollowupInsight = {
-  optIn: boolean;
-  summary?: string;
-  sampleSize?: number;
-  variants?: {
-    variant: string;
-    sampleSize: number;
-    replyRate?: number;
-    conversionRate?: number;
-    avgDelayDays?: number | null;
-    successScore?: number;
-  }[];
-  call?: {
-    sampleSize?: number;
-    avgDelayDays?: number | null;
-    conversionRate?: number | null;
-  };
-  lastUpdatedISO?: string | null;
-};
+// (removed unused local types CostRow, AiFollowupInsight)
 
 /* ---------------- Small UI bits ---------------- */
 function Section({
@@ -246,7 +214,7 @@ export default function SettingsPage() {
         setLoading(false);
       }
     })();
-  }, [mutateCurrentUser, toast]);
+  }, [mutateCurrentUser, toast, user?.firstName, user?.lastName]);
 
   async function saveProfile() {
     if (!user) return;
@@ -280,7 +248,7 @@ export default function SettingsPage() {
   useEffect(() => {
     setProfileFirstName(user?.firstName ?? "");
     setProfileLastName(user?.lastName ?? "");
-  }, [user?.firstName, user?.lastName]);
+  }, [user]);
 
   async function saveSettings() {
     if (!s) return;
@@ -620,16 +588,7 @@ export default function SettingsPage() {
     }
   }
 
-  /* Machine Learning section */
-  async function trainModel() {
-    try {
-      const json = await apiFetch<{ message?: string; error?: string }>("/ml/train", { method: "POST" });
-      alert(`✅ Model training started.\n${json?.message || "Training triggered."}`);
-    } catch (err: any) {
-      console.error("Train model failed:", err);
-      alert(`❌ ${err?.message || "Failed to trigger training"}`);
-    }
-  }
+  // (removed unused trainModel helper)
 
   if (loading || !s) return <div className="p-6 text-sm text-slate-600">Loading…</div>;
 
@@ -666,7 +625,7 @@ export default function SettingsPage() {
 
       {currentStage === "company" && (
       <>
-      <Section title="Company profile" description="Edit basic company and owner details. Enter your website URL and click 'Import Data' to automatically extract company info, logo, and contact details." right={<Button onClick={saveProfile}>Save Profile</Button>}>
+  <Section title="Company profile" description="Edit basic company and owner details. Enter your website URL and click 'Import Data' to automatically extract company info, logo, and contact details." right={<Button onClick={saveProfile} disabled={savingProfile}>{savingProfile ? "Saving…" : "Save Profile"}</Button>}>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Company name">
             <input
@@ -723,14 +682,17 @@ export default function SettingsPage() {
                 placeholder="https://example.com/logo.png"
               />
               {s.logoUrl && (
-                <img 
-                  src={s.logoUrl} 
-                  alt="Logo preview" 
-                  className="w-8 h-8 rounded object-contain border"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded border overflow-hidden bg-white">
+                  {/* Using next/image for optimization; unoptimized to avoid remote pattern config needs */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={s.logoUrl}
+                    alt="Logo preview"
+                    className="w-full h-full object-contain"
+                    loading="lazy"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </span>
               )}
             </div>
           </Field>

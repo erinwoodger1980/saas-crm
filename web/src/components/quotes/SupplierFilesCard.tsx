@@ -6,8 +6,8 @@ import type { SupplierFileDto } from "@/lib/api/quotes";
 
 export type SupplierFilesCardProps = {
   files?: SupplierFileDto[] | null;
-  onOpen: (file: SupplierFileDto) => void;
-  onUpload: (files: FileList | null) => void;
+  onOpen: (_file: SupplierFileDto) => void;
+  onUpload: (_files: FileList | null) => void;
   onUploadClick?: () => void;
   isUploading?: boolean;
 };

@@ -17,13 +17,9 @@ This repository includes a multi-layer ML design across Gmail/MS365 ingest, quot
 
 ---
 
-## Quick start (local)
-
 > Requires: Node 20+, npm, Postgres 14+ (or Docker), and **Prisma** (installed via `devDependencies`).
 
 ### 1) API
-
-```bash
 ## ML service (FastAPI) setup
 
 The API forwards parse/predict/train calls to a separate FastAPI service.
@@ -53,7 +49,6 @@ npm run dev
 # -> http://localhost:4000/healthz   should return "ok"
 # -> POST http://localhost:4000/seed  returns a { jwt, user, tenant }
 
-### 2) Web
 
 ```bash
 cd web

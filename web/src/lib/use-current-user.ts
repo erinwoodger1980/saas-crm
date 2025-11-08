@@ -19,7 +19,8 @@ const fetcher = (path: string) => apiFetch<CurrentUser>(path);
 
 export function useCurrentUser() {
   // Track legacy JWT only for backward-compat; cookie-first auth should still work without it
-  const [jwt, setStoredJwt] = useState<string | null>(() =>
+  // underscore variables retained for potential legacy debugging; unused currently
+  const [_jwt, setStoredJwt] = useState<string | null>(() =>
     typeof window !== "undefined" ? getJwt() : null,
   );
 
@@ -29,9 +30,9 @@ export function useCurrentUser() {
     const syncJwt = () => setStoredJwt(getJwt());
 
     const handleJwtEvent = (event: Event) => {
-      const custom = event as CustomEvent<{ token?: string | null }>;
-      const token = custom?.detail?.token ?? null;
-      setStoredJwt(token ?? getJwt());
+  const custom = event as CustomEvent<{ token?: string | null }>;
+  const token = custom?.detail?.token ?? null;
+  setStoredJwt(token ?? getJwt());
     };
 
     const handleStorage = (event: StorageEvent) => {

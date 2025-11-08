@@ -17,15 +17,8 @@ interface PerformanceRow {
   qualityScore: number | null;
 }
 
-interface SuggestionRow {
-  id: string;
-  keyword: string;
-  suggestedFor: string;
-  newText: string;
-  reason: string;
-  status: string;
-  conversionRate: number;
-}
+// Reserved for future ML suggestions interface
+// interface SuggestionRow { ... }
 
 interface Report {
   topKeywords: Array<{
@@ -90,7 +83,7 @@ export default function AdsInsightsPage() {
       const p = await apiFetch<{ performance: PerformanceRow[] }>(`/keywords/${tenantId}/performance?limit=50`);
       setPerf(p.performance || []);
       alert('Sync complete');
-    } catch (e) {
+    } catch (_e) {
       alert('Sync failed. Check server logs for details.');
     } finally {
       setSyncing(false);
@@ -102,7 +95,9 @@ export default function AdsInsightsPage() {
       await apiFetch(`/keywords/${tenantId}/suggestions/${id}/approve`, { method: 'PATCH' });
       const r = await apiFetch<Report>(`/keywords/${tenantId}/report`);
       setReport(r);
-    } catch {}
+    } catch (_e) {
+      // silent
+    }
   }
 
   async function reject(id: string) {
@@ -110,14 +105,16 @@ export default function AdsInsightsPage() {
       await apiFetch(`/keywords/${tenantId}/suggestions/${id}/reject`, { method: 'PATCH' });
       const r = await apiFetch<Report>(`/keywords/${tenantId}/report`);
       setReport(r);
-    } catch {}
+    } catch (_e) {
+      // silent
+    }
   }
 
   async function applyApproved() {
     try {
       await apiFetch(`/keywords/${tenantId}/apply`, { method: 'POST' });
       alert('Applied approved suggestions to landing content');
-    } catch (e) {
+    } catch (_e) {
       alert('Apply failed.');
     }
   }

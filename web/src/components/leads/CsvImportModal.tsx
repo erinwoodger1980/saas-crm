@@ -93,7 +93,7 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
         if (!matchingField) {
           matchingField = result.availableFields.find(field => {
             const fieldLabel = field.label.toLowerCase();
-            const fieldKey = field.key.toLowerCase();
+            const _fieldKey = field.key.toLowerCase();
             
             // Basic field patterns
             if ((normalizedHeader.includes('name') || normalizedHeader.includes('contact')) && field.key === 'contactName') return true;

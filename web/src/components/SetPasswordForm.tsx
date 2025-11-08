@@ -7,7 +7,7 @@ import { apiFetch, setJwt } from "@/lib/api";
 type Props = {
   token: string | null;
   sessionId?: string | null;
-  onTokenRefreshed?: (token: string) => void;
+  onTokenRefreshed?: (_token: string) => void;
   onResend?: () => Promise<string | null>;
   redirectPath?: string;
 };

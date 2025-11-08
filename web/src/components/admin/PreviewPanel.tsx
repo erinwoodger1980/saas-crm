@@ -5,24 +5,25 @@ import { Monitor, Smartphone } from 'lucide-react';
 
 interface PreviewPanelProps {
   tenantSlug: string;
-  headline: string;
-  subhead: string;
-  urgencyBanner: string;
-  ctaText: string;
-  images: any[];
-  reviews: any[];
-  guarantees: any[];
+  // Unused draft props retained for future live preview enhancements
+  _headline: string;
+  _subhead: string;
+  _urgencyBanner: string;
+  _ctaText: string;
+  _images: any[];
+  _reviews: any[];
+  _guarantees: any[];
 }
 
 export default function PreviewPanel({
   tenantSlug,
-  headline,
-  subhead,
-  urgencyBanner,
-  ctaText,
-  images,
-  reviews,
-  guarantees,
+  _headline,
+  _subhead,
+  _urgencyBanner,
+  _ctaText,
+  _images,
+  _reviews,
+  _guarantees,
 }: PreviewPanelProps) {
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
 
