@@ -64,6 +64,7 @@ import aggregateReviewsRouter from "./routes/aggregate-reviews";
 import adsRouter from "./routes/ads";
 import featureRequestsRouter from "./routes/featureRequests";
 import makeMeAdminRouter from "./routes/make-me-admin";
+import codexRunRouter from "./routes/codexRun";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -509,6 +510,8 @@ app.use("/ads", requireAuth, adsRouter);
 app.use("/feature-requests", featureRequestsRouter);
 app.use("/workshop", requireAuth, workshopRouter);
 app.use("/auth", makeMeAdminRouter);
+// Developer Console: AI Codex runner
+app.use("/ai/codex", codexRunRouter);
 
 /** ---------- Auth required from here ---------- */
 app.use((req, _res, next) => {
