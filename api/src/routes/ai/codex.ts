@@ -28,35 +28,44 @@ export async function callOpenAI(prompt: string): Promise<string> {
   if (!apiKey) throw new Error('OPENAI_API_KEY missing');
   
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  const systemPrompt = `You are an expert code generator. Generate git-compatible unified diff patches.
+  const systemPrompt = `You are an expert code generator. Generate ONLY git-compatible unified diff patches. Do NOT use markdown code blocks.
 
-CRITICAL FORMAT REQUIREMENTS:
-1. Each file change MUST start with these exact headers:
-   --- a/path/to/file
+CRITICAL FORMAT REQUIREMENTS (follow EXACTLY):
+1. Start each file with:
+   --- a/relative/path/to/file
+   +++ b/relative/path/to/file
+
+2. Follow with hunk header:
+   @@ -startLine,lineCount +startLine,lineCount @@
+   
+3. Every hunk MUST have:
+   - At least 3 context lines (starting with space) before changes
+   - Changed lines (starting with - for removals, + for additions)
+   - At least 3 context lines (starting with space) after changes
+
+4. New files:
+   --- /dev/null
    +++ b/path/to/file
-2. Follow with hunk headers like: @@ -1,5 +1,6 @@
-3. Use standard diff markers: lines starting with space (unchanged), - (removed), + (added)
-4. For new files, use: --- /dev/null and +++ b/path/to/file
-5. For deleted files, use: --- a/path/to/file and +++ /dev/null
+   @@ -0,0 +1,N @@
+   +line1
+   +line2
 
-EXAMPLE for updating existing file:
---- a/web/src/components/Button.tsx
-+++ b/web/src/components/Button.tsx
-@@ -1,5 +1,6 @@
- export function Button() {
--  return <button>Old text</button>
-+  return <button>New text</button>
+5. Each line in the diff body must start with: space (context), - (remove), or + (add)
+
+CORRECT EXAMPLE:
+--- a/web/src/app/page.tsx
++++ b/web/src/app/page.tsx
+@@ -10,7 +10,7 @@
+ export default function HomePage() {
+   const [data, setData] = useState(null);
+   
+-  return <div>Old content</div>
++  return <div>Updated content</div>
  }
+ 
+ function helper() {
 
-EXAMPLE for new file:
---- /dev/null
-+++ b/web/src/components/NewFile.tsx
-@@ -0,0 +1,3 @@
-+export function NewComponent() {
-+  return <div>New</div>
-+}
-
-Generate ONLY the unified diff, no explanations.`;
+Generate ONLY the diff. NO explanations. NO code blocks. NO text before or after the diff.`;
 
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -81,8 +90,22 @@ Generate ONLY the unified diff, no explanations.`;
   }
   
   const data: any = await resp.json();
-  const text = data?.choices?.[0]?.message?.content || '';
+  let text = data?.choices?.[0]?.message?.content || '';
   if (!text.trim()) throw new Error('empty AI diff - no content in response');
+  
+  // Clean up the diff: remove markdown code blocks if present
+  text = text.replace(/^```diff\s*\n/gm, '').replace(/^```\s*\n/gm, '').replace(/```$/gm, '');
+  
+  // Validate diff format
+  const lines = text.trim().split('\n');
+  const hasProperHeaders = lines.some((l: string) => l.match(/^--- (a\/|\/dev\/null)/)) && 
+                           lines.some((l: string) => l.match(/^\+\+\+ (b\/|\/dev\/null)/));
+  const hasHunkHeaders = lines.some((l: string) => l.match(/^@@ -\d+,?\d* \+\d+,?\d* @@/));
+  
+  if (!hasProperHeaders || !hasHunkHeaders) {
+    throw new Error('AI generated invalid diff format - missing proper --- a/ +++ b/ headers or @@ hunk markers');
+  }
+  
   return text.trim();
 }
 
