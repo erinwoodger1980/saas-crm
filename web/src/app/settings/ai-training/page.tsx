@@ -133,6 +133,7 @@ export default function AiTrainingPage() {
   const [moduleId, setModuleId] = useState<typeof MODULES[number]["id"]>("lead_classifier");
   const [error, setError] = useState<string | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [params, setParams] = useState<ParamRow[]>([]);
   const [threshold, setThreshold] = useState<number>(0.6);
   const [openPreviewId, setOpenPreviewId] = useState<string | null>(null);
   const [previews, setPreviews] = useState<Record<string, { loading: boolean; data?: any; error?: string }>>({});
@@ -141,6 +142,21 @@ export default function AiTrainingPage() {
   const [followupLoading, setFollowupLoading] = useState(false);
   const [followupError, setFollowupError] = useState<string | null>(null);
   const [updatingFollowupOptIn, setUpdatingFollowupOptIn] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [providerFilter, setProviderFilter] = useState<"all" | "gmail" | "ms365" | "other">("all");
+  const [decisionFilter, setDecisionFilter] = useState<"all" | "accepted" | "rejected" | "other">("all");
+  const [files, setFiles] = useState<Array<{ id: string; name: string; uploadedAt: string; mimeType?: string; sizeBytes?: number }>>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
+  const [fileSel, setFileSel] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState(false);
+  const limit = 100;
+  
+  const clearFiles = () => {
+    setFiles([]);
+    setFileSel({});
+  };
+  
   // Email training state
   const [emailTraining, setEmailTraining] = useState<{
     status: 'idle' | 'running' | 'completed' | 'error';
