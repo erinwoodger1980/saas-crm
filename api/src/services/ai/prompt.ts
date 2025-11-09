@@ -4,6 +4,7 @@ import { listFilesWithAllowlist, readExcerpt, searchByKeywords } from '../retrie
 import { extractErrorHints } from '../retriever/errors';
 import { buildOrLoadIndex, queryIndex } from '../retriever/embeddings';
 import { ensurePosixRelative } from '../guard/filters';
+import { DIFF_CONTRACT_INSTRUCTIONS } from './diffContract';
 
 // Constants
 const FILE_MANIFEST_LIMIT = Number(process.env.FILE_MANIFEST_LIMIT || 500);
@@ -157,6 +158,16 @@ export async function buildInitialPromptWithContext(
   const truncated = bundle.manifest.length >= FILE_MANIFEST_LIMIT;
   
   const sections = [
+    DIFF_CONTRACT_INSTRUCTIONS.trim(),
+    '',
+    'Example:',
+    '--- a/app/example.txt',
+    '+++ b/app/example.txt',
+    '@@ -1,2 +1,3 @@',
+    '-old line',
+    '+new line',
+    ' unchanged',
+    '',
     `TASK_KEY: ${taskKey}`,
     `TITLE: ${fr.title}`,
     `DESCRIPTION: ${fr.description}`,
@@ -214,6 +225,16 @@ export async function buildFollowupPromptWithContext(
   });
   
   const sections = [
+    DIFF_CONTRACT_INSTRUCTIONS.trim(),
+    '',
+    'Example:',
+    '--- a/app/example.txt',
+    '+++ b/app/example.txt',
+    '@@ -1,2 +1,3 @@',
+    '-old line',
+    '+new line',
+    ' unchanged',
+    '',
     previousPrompt,
     '',
     '=== PREVIOUS ATTEMPT FAILED ===',
@@ -254,6 +275,16 @@ export function buildInitialPrompt(taskKey: string, fr: FeatureLike, extra: stri
   const truncated = manifest.length >= FILE_MANIFEST_LIMIT;
   
   const sections = [
+    DIFF_CONTRACT_INSTRUCTIONS.trim(),
+    '',
+    'Example:',
+    '--- a/app/example.txt',
+    '+++ b/app/example.txt',
+    '@@ -1,2 +1,3 @@',
+    '-old line',
+    '+new line',
+    ' unchanged',
+    '',
     `TASK_KEY: ${taskKey}`,
     `TITLE: ${fr.title}`,
     `DESCRIPTION: ${fr.description}`,
@@ -287,5 +318,18 @@ export function buildInitialPrompt(taskKey: string, fr: FeatureLike, extra: stri
  * Legacy synchronous version (kept for backward compatibility).
  */
 export function buildFollowupPrompt(previousPrompt: string): string {
-  return previousPrompt + '\nREMINDER: Stick strictly to manifest paths; avoid hallucinated filenames.';
+  return [
+    DIFF_CONTRACT_INSTRUCTIONS.trim(),
+    '',
+    'Example:',
+    '--- a/app/example.txt',
+    '+++ b/app/example.txt',
+    '@@ -1,2 +1,3 @@',
+    '-old line',
+    '+new line',
+    ' unchanged',
+    '',
+    previousPrompt,
+    'REMINDER: Stick strictly to manifest paths; avoid hallucinated filenames.'
+  ].join('\n');
 }
