@@ -3,6 +3,7 @@ import { send, computeCostUsd, ChatMessage } from './openai';
 import { normalizeDiffPaths } from '../git/normalize';
 import { validateDiff, applyDiffOnBranch } from '../git/patch';
 import { createBranchAndPR, runChecks } from '../../routes/ai/codex';
+import { buildContextBundle } from './prompt';
 import path from 'path';
 
 const REPO_ROOT = process.env.REPO_ROOT || path.resolve(process.cwd(), '..');
@@ -46,14 +47,13 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
   for (let round = session.rounds + 1; round <= session.maxRounds; round++) {
     let prompt: string;
     if (round === 1) {
-      prompt = buildInitialPrompt(session.taskKey, session.description, allow);
+      prompt = await buildInitialPromptWithContext(session.taskKey, session.description, allow);
       messages = [messages[0], { role: 'user', content: prompt }]; // system preserved
     } else {
-      const failedLogs = lastPatch ? 'Previous patch failed tests.' : 'Previous attempt failed validation.';
-  const recentSession = await prisma.aiSession.findUnique({ where: { id: sessionId } });
+      const recentSession = await prisma.aiSession.findUnique({ where: { id: sessionId } });
       const logs = truncate(redactSecrets(String(recentSession?.logs || '')), MAX_LOG_CHARS);
-      const fuPrompt = buildFollowupPrompt(logs);
-      messages = [messages[0], { role: 'user', content: fuPrompt }]; // keep system only + new user message
+      prompt = await buildFollowupPromptWithContext(logs, allow);
+      messages = [messages[0], { role: 'user', content: prompt }]; // keep system only + new user message
     }
 
     let openaiText: string = '';
@@ -122,28 +122,74 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
   await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: 'maxRounds exhausted', usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
 }
 
-function buildInitialPrompt(taskKey: string, description: string, allow: string[] | null): string {
-  return [
+async function buildInitialPromptWithContext(taskKey: string, description: string, allow: string[] | null): Promise<string> {
+  const bundle = await buildContextBundle({
+    taskKey,
+    description,
+    allowGlobs: allow,
+    logs: '',
+    repoRoot: REPO_ROOT,
+  });
+  
+  const sections = [
     `TASK: ${taskKey}`,
     'DESCRIPTION:', description,
-    'ALLOWED FILES (read-only):', ...(allow || ['(none)']).slice(0,200),
+    '',
+    'File Manifest (allowlisted, truncated):',
+    ...bundle.manifest.slice(0, 200),
+  ];
+  
+  if (bundle.excerpts.length > 0) {
+    sections.push('', 'Relevant Code Excerpts:');
+    for (const { path, text, clipped } of bundle.excerpts) {
+      sections.push(`--- FILE: ${path} (clipped=${clipped}) ---`);
+      sections.push(text);
+      sections.push('');
+    }
+  }
+  
+  sections.push(
     '',
     'CONSTRAINTS:',
     '- OUTPUT ONLY unified diffs; no prose.',
+    '- Use ONLY paths from File Manifest.',
     '- Keep change surface minimal; prefer small edits.',
     '- Preserve public exports & existing behavior unless required.',
     '- If adding deps, include package.json diff only (no lockfiles).',
-    '- Do not invent paths outside allowlist.',
-  ].join('\n');
+    '- Do not invent paths outside allowlist.'
+  );
+  
+  return sections.join('\n');
 }
 
-function buildFollowupPrompt(logs: string): string {
-  return [
-    'Previous attempt failed. LOGS (truncated):', logs,
+async function buildFollowupPromptWithContext(logs: string, allow: string[] | null): Promise<string> {
+  const bundle = await buildContextBundle({
+    description: 'Fix errors from previous attempt',
+    allowGlobs: allow,
+    logs,
+    repoRoot: REPO_ROOT,
+  });
+  
+  const sections = [
+    'Previous attempt failed. LOGS (truncated):', bundle.errorsExcerpt,
+  ];
+  
+  if (bundle.excerpts.length > 0) {
+    sections.push('', 'Code Around Errors:');
+    for (const { path, text, clipped } of bundle.excerpts) {
+      sections.push(`--- FILE: ${path} (clipped=${clipped}) ---`);
+      sections.push(text);
+      sections.push('');
+    }
+  }
+  
+  sections.push(
     '',
     'Produce a MINIMAL correction unified diff touching as few files as possible.',
-    'NO commentary; ONLY diff output.',
-  ].join('\n');
+    'NO commentary; ONLY diff output.'
+  );
+  
+  return sections.join('\n');
 }
 
 // Simple in-memory runner queue to avoid overlapping runs
