@@ -26,7 +26,7 @@ router.post('/start', requireAuth, async (req: any, res) => {
         'No prose, no code fences. Keep changes minimal. Respect allowlist paths.',
       ].join('\n')
     } as const;
-  const session = await (prisma as any).aiSession.create({
+  const session = await prisma.aiSession.create({
       data: {
         taskKey,
         description,
@@ -49,7 +49,7 @@ router.post('/status', requireAuth, async (req: any, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: 'admin_only' });
   const { sessionId } = (req.body || {}) as { sessionId: string };
   if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
-  const s = await (prisma as any).aiSession.findUnique({ where: { id: sessionId } });
+  const s = await prisma.aiSession.findUnique({ where: { id: sessionId } });
   if (!s) return res.status(404).json({ error: 'not_found' });
   const out = {
     status: s.status,
