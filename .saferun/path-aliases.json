@@ -1,0 +1,14 @@
+{
+  "comment": "Path alias mappings for AI-generated diffs. Supports exact paths and simple ** wildcards.",
+  "aliases": {
+    "web/src/app/admin/dashboard/page.tsx": "app/(admin)/dashboard/page.tsx",
+    "src/admin/dashboard.js": "app/(admin)/dashboard/page.tsx",
+    "src/admin/dashboard.tsx": "app/(admin)/dashboard/page.tsx",
+    "web/src/app/dashboard/page.tsx": "app/(admin)/dashboard/page.tsx",
+    "src/components/AdminNav.tsx": "app/(admin)/_components/AdminNav.tsx",
+    "web/src/app/**": "app/**",
+    "src/app/**": "app/**",
+    "packages/web/app/**": "app/**",
+    "apps/web/app/**": "app/**"
+  }
+}

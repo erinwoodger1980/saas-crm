@@ -168,6 +168,12 @@ export async function buildInitialPromptWithContext(
     truncated ? '...(truncated)' : '',
   ];
   
+  // Add path hints for common locations
+  const dashboardPath = bundle.manifest.find(p => p.includes('(admin)/dashboard/page.tsx'));
+  if (dashboardPath) {
+    sections.push('', `Hint: Admin dashboard is at ${dashboardPath}`);
+  }
+  
   // Add relevant excerpts if any
   if (bundle.excerpts.length > 0) {
     sections.push('', 'Relevant Code Excerpts:');
@@ -246,7 +252,8 @@ export function buildInitialPrompt(taskKey: string, fr: FeatureLike, extra: stri
   const allowGlobs = Array.isArray(fr.allowedFiles) ? fr.allowedFiles as string[] : null;
   const manifest = expandAllowlistToPaths(allowGlobs, repoRoot).slice(0, FILE_MANIFEST_LIMIT);
   const truncated = manifest.length >= FILE_MANIFEST_LIMIT;
-  return [
+  
+  const sections = [
     `TASK_KEY: ${taskKey}`,
     `TITLE: ${fr.title}`,
     `DESCRIPTION: ${fr.description}`,
@@ -256,13 +263,24 @@ export function buildInitialPrompt(taskKey: string, fr: FeatureLike, extra: stri
     'File Manifest (read-only, allowlisted):',
     ...manifest,
     truncated ? '...(truncated)' : '',
+  ];
+  
+  // Add path hint for admin dashboard if it exists
+  const dashboardPath = manifest.find(p => p.includes('(admin)/dashboard/page.tsx'));
+  if (dashboardPath) {
+    sections.push('', `Hint: Admin dashboard is at ${dashboardPath}`);
+  }
+  
+  sections.push(
     '',
     'Constraints:',
     '- Use ONLY paths from File Manifest.',
     '- Prefer Next.js App Router convention: routeDir/page.tsx rather than inventing dashboard.tsx.',
     '- Do not create new top-level folders unless explicitly allowlisted.',
     '- Output ONLY unified git diffs.'
-  ].filter(Boolean).join('\n');
+  );
+  
+  return sections.filter(Boolean).join('\n');
 }
 
 /**

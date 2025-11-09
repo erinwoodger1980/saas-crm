@@ -94,3 +94,12 @@ export function findClosestPath(requested: string, index: RepoTreeIndex, maxDist
   }
   return best;
 }
+
+/**
+ * Build a Set of allowlisted paths for quick lookup.
+ * Convenience wrapper around buildRepoTreeIndex for normalizer use.
+ */
+export function buildManifest(repoRoot: string, allowGlobs: string[] | null): Set<string> {
+  const index = buildRepoTreeIndex(repoRoot, allowGlobs);
+  return index.paths;
+}
