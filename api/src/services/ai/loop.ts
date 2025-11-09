@@ -26,13 +26,13 @@ interface SessionContext {
 }
 
 export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
-  let session: any = await (prisma as any).aiSession.findUnique({ where: { id: sessionId } });
+  let session = await prisma.aiSession.findUnique({ where: { id: sessionId } });
   if (!session) return;
   if (session.status !== 'OPEN') {
     // Avoid double run
     return;
   }
-  session = await (prisma as any).aiSession.update({ where: { id: sessionId }, data: { status: 'RUNNING' } });
+  session = await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'RUNNING' } });
 
   const allow = Array.isArray(session.files) ? session.files as string[] : null;
   const baseBranch = process.env.GIT_MAIN_BRANCH || 'main';
@@ -41,7 +41,7 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
   let cumulativeOutput = session.usageOutput || 0;
   let cost = session.costUsd || 0;
   let lastPatch: string | null = null;
-  let messages: ChatMessage[] = session.messages as ChatMessage[];
+  let messages: ChatMessage[] = Array.isArray(session.messages) ? session.messages as unknown as ChatMessage[] : [];
 
   for (let round = session.rounds + 1; round <= session.maxRounds; round++) {
     let prompt: string;
@@ -50,7 +50,7 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
       messages = [messages[0], { role: 'user', content: prompt }]; // system preserved
     } else {
       const failedLogs = lastPatch ? 'Previous patch failed tests.' : 'Previous attempt failed validation.';
-  const recentSession = await (prisma as any).aiSession.findUnique({ where: { id: sessionId } });
+  const recentSession = await prisma.aiSession.findUnique({ where: { id: sessionId } });
       const logs = truncate(redactSecrets(String(recentSession?.logs || '')), MAX_LOG_CHARS);
       const fuPrompt = buildFollowupPrompt(logs);
       messages = [messages[0], { role: 'user', content: fuPrompt }]; // keep system only + new user message
@@ -70,7 +70,7 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
       const diffLines = openaiText.split(/\n/);
       if (diffLines.length > MAX_DIFF_LINES) throw new Error(`diff too large lines=${diffLines.length}`);
     } catch (e: any) {
-  await (prisma as any).aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: truncate(e?.message || String(e), MAX_LOG_CHARS), rounds: round, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+  await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: truncate(e?.message || String(e), MAX_LOG_CHARS), rounds: round, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       return;
     }
 
@@ -81,14 +81,14 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
       normalized = norm.diff;
       // TODO explicit allowlist rejection already enforced by normalizeDiffPaths throwing
     } catch (e: any) {
-  await (prisma as any).aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: truncate(`allowlist/normalize failed: ${e?.message || e}`, MAX_LOG_CHARS), rounds: round, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+  await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: truncate(`allowlist/normalize failed: ${e?.message || e}`, MAX_LOG_CHARS), rounds: round, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       return;
     }
 
     // Dry validation
     const valid = validateDiff(normalized);
     if (!valid.ok) {
-  await (prisma as any).aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`validation failed: ${valid.error}`, MAX_LOG_CHARS), usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+  await prisma.aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`validation failed: ${valid.error}`, MAX_LOG_CHARS), usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       lastPatch = normalized;
       continue; // next round
     }
@@ -96,7 +96,7 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
     // Apply patch
     const applied = applyDiffOnBranch(normalized, baseBranch, branchName);
     if (!applied.ok) {
-  await (prisma as any).aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`apply failed: ${applied.error}`, MAX_LOG_CHARS), usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+  await prisma.aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`apply failed: ${applied.error}`, MAX_LOG_CHARS), usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       lastPatch = normalized;
       continue;
     }
@@ -104,7 +104,7 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
     // Run checks
     const checks = await runChecks();
     if (!checks.ok) {
-  await (prisma as any).aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`checks failed:\n${checks.errors}`, MAX_LOG_CHARS), patchText: normalized, branch: branchName, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+  await prisma.aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`checks failed:\n${checks.errors}`, MAX_LOG_CHARS), patchText: normalized, branch: branchName, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       lastPatch = normalized;
       continue; // attempt next round with logs
     }
@@ -114,12 +114,12 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
     if (session.mode === 'pr') {
       prUrl = await createBranchAndPR(branchName, session.description.slice(0,80), session.description);
     }
-  await (prisma as any).aiSession.update({ where: { id: sessionId }, data: { status: 'READY', rounds: round, patchText: normalized, branch: branchName, prUrl, logs: 'checks passed', usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+  await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'READY', rounds: round, patchText: normalized, branch: branchName, prUrl, logs: 'checks passed', usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
     return;
   }
 
   // Exhausted rounds
-  await (prisma as any).aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: 'maxRounds exhausted', usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+  await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: 'maxRounds exhausted', usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
 }
 
 function buildInitialPrompt(taskKey: string, description: string, allow: string[] | null): string {
