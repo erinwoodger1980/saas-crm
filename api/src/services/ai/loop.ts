@@ -5,6 +5,7 @@ import { validateDiff, applyDiffOnBranch } from '../git/patch';
 import { createBranchAndPR, runChecks } from '../../routes/ai/codex';
 import { buildContextBundle } from './prompt';
 import path from 'path';
+import { isUnifiedDiff, ensureDiffPrefixes } from './diffContract';
 
 const REPO_ROOT = process.env.REPO_ROOT || path.resolve(process.cwd(), '..');
 const MAX_LOG_CHARS = 20_000;
@@ -56,7 +57,8 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
       messages = [messages[0], { role: 'user', content: prompt }]; // keep system only + new user message
     }
 
-    let openaiText: string = '';
+    let reply = '';
+    let finalTxt = '';
     try {
       const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
       const resp = await send(model, messages, { temperature: 0.3, max_tokens: 3000 });
@@ -65,30 +67,43 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
         cumulativeOutput += resp.usage.completion_tokens;
         cost += computeCostUsd(resp.usage);
       }
-      openaiText = resp.text.replace(/^```diff\n?|```$/g, '').trim();
-      if (!isUnifiedDiff(openaiText)) throw new Error('model did not return unified diff');
-      const diffLines = openaiText.split(/\n/);
+      reply = resp.text.replace(/^```diff\n?|```$/g, '').trim();
+      const txt = reply.trim();
+      if (!isUnifiedDiff(txt)) {
+        // 1st retry: convert-to-diff
+        const convertMsg = `\nYour last output was not a unified diff.\nConvert it into a SINGLE unified diff now.\nFollow the CONTRACT exactly. Do not add explanations.\n`;
+        const txt2 = await send(model, messages.concat({role:"user", content: convertMsg + "\n\n<<BEGIN-OUTPUT>>\n" + txt.slice(0, 20000) + "\n<<END-OUTPUT>>"}), { temperature: 0.2, max_tokens: 3000 });
+        const diff2 = txt2.text.replace(/^```diff\n?|```$/g, '').trim();
+        if (!isUnifiedDiff(diff2)) {
+          await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: truncate('NON_DIFF_OUTPUT', MAX_LOG_CHARS), rounds: round, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+          return;
+        }
+        finalTxt = ensureDiffPrefixes(diff2);
+      } else {
+        finalTxt = ensureDiffPrefixes(txt);
+      }
+      const diffLines = finalTxt.split(/\n/);
       if (diffLines.length > MAX_DIFF_LINES) throw new Error(`diff too large lines=${diffLines.length}`);
     } catch (e: any) {
-  await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: truncate(e?.message || String(e), MAX_LOG_CHARS), rounds: round, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+      await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: truncate(e?.message || String(e), MAX_LOG_CHARS), rounds: round, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       return;
     }
 
     // Normalize & allowlist
-    let normalized: string = openaiText;
+    let normalized: string = finalTxt;
     try {
-      const norm = normalizeDiffPaths(openaiText, allow, REPO_ROOT);
+      const norm = normalizeDiffPaths(finalTxt, allow, REPO_ROOT);
       normalized = norm.diff;
       // TODO explicit allowlist rejection already enforced by normalizeDiffPaths throwing
     } catch (e: any) {
-  await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: truncate(`allowlist/normalize failed: ${e?.message || e}`, MAX_LOG_CHARS), rounds: round, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+      await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'FAILED', logs: truncate(`allowlist/normalize failed: ${e?.message || e}`, MAX_LOG_CHARS), rounds: round, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       return;
     }
 
     // Dry validation
     const valid = validateDiff(normalized);
     if (!valid.ok) {
-  await prisma.aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`validation failed: ${valid.error}`, MAX_LOG_CHARS), usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+      await prisma.aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`validation failed: ${valid.error}`, MAX_LOG_CHARS), usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       lastPatch = normalized;
       continue; // next round
     }
@@ -96,7 +111,7 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
     // Apply patch
     const applied = applyDiffOnBranch(normalized, baseBranch, branchName);
     if (!applied.ok) {
-  await prisma.aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`apply failed: ${applied.error}`, MAX_LOG_CHARS), usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+      await prisma.aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`apply failed: ${applied.error}`, MAX_LOG_CHARS), usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       lastPatch = normalized;
       continue;
     }
@@ -104,7 +119,7 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
     // Run checks
     const checks = await runChecks();
     if (!checks.ok) {
-  await prisma.aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`checks failed:\n${checks.errors}`, MAX_LOG_CHARS), patchText: normalized, branch: branchName, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+      await prisma.aiSession.update({ where: { id: sessionId }, data: { rounds: round, logs: truncate(`checks failed:\n${checks.errors}`, MAX_LOG_CHARS), patchText: normalized, branch: branchName, usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
       lastPatch = normalized;
       continue; // attempt next round with logs
     }
@@ -114,7 +129,7 @@ export async function runCodexWithAutoFix(sessionId: string): Promise<void> {
     if (session.mode === 'pr') {
       prUrl = await createBranchAndPR(branchName, session.description.slice(0,80), session.description);
     }
-  await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'READY', rounds: round, patchText: normalized, branch: branchName, prUrl, logs: 'checks passed', usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
+    await prisma.aiSession.update({ where: { id: sessionId }, data: { status: 'READY', rounds: round, patchText: normalized, branch: branchName, prUrl, logs: 'checks passed', usageInput: cumulativeInput, usageOutput: cumulativeOutput, costUsd: cost } });
     return;
   }
 

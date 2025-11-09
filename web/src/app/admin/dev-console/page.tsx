@@ -225,6 +225,20 @@ function LoopStatusPanel({ status, sessionId }: { status: any; sessionId: string
       <p className="text-xs text-gray-500">Starting…</p>
     </div>
   );
+  const [retrying, setRetrying] = useState(false);
+  async function onRetry() {
+    setRetrying(true);
+    try {
+      await fetch('/api/ai/loop/retry-convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      });
+      // Optionally, trigger status refresh
+      setTimeout(()=>window.location.reload(), 1200);
+    } catch {}
+    setRetrying(false);
+  }
   return (
     <div className="rounded border bg-white p-3 text-sm space-y-1">
       <div className="flex justify-between items-center">
@@ -238,6 +252,13 @@ function LoopStatusPanel({ status, sessionId }: { status: any; sessionId: string
       <div className="text-xs">Cost: ${status.costUsd?.toFixed(4)}</div>
       {status.logs && <details className="text-xs"><summary className="cursor-pointer">Logs</summary><pre className="whitespace-pre-wrap max-h-48 overflow-auto">{status.logs}</pre></details>}
       {status.patchText && <details className="text-xs"><summary className="cursor-pointer">Patch</summary><pre className="whitespace-pre-wrap max-h-48 overflow-auto">{status.patchText.slice(0,8000)}</pre></details>}
+      {status.hint === 'Clicked Retry as diff to convert.' && (
+        <button
+          className="px-3 py-1 bg-orange-500 text-white rounded mt-2 disabled:opacity-50"
+          disabled={retrying}
+          onClick={onRetry}
+        >{retrying ? 'Retrying…' : 'Retry as diff'}</button>
+      )}
       <div className="text-[10px] text-gray-400">Session: {sessionId}</div>
     </div>
   );
