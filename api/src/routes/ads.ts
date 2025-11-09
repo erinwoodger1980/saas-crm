@@ -13,6 +13,58 @@ import { checkMccEnv, canAccessCustomer, digitsOnly, formatCustomerId } from '..
 const router = Router();
 const prisma = new PrismaClient();
 
+// Reusable resolver that accepts either id or slug
+async function resolveTenant(param: string) {
+  let t = await prisma.tenant.findUnique({ where: { id: param } });
+  if (t) return t;
+  t = await prisma.tenant.findUnique({ where: { slug: param } });
+  return t;
+}
+
+const CustomerIdSchema = z.string().regex(/^[0-9]{3}-[0-9]{3}-[0-9]{4}$/, "Google Ads Customer ID must be like 123-456-7890");
+
+// POST /ads/tenant/:tenant/save
+router.post("/tenant/:tenant/save", async (req, res) => {
+  try {
+    const tenantParam = req.params.tenant;
+    const tenant = await resolveTenant(tenantParam);
+    if (!tenant) return res.status(404).json({ error: `Tenant not found: ${tenantParam}` });
+
+    const body = z.object({ customerId: CustomerIdSchema }).parse(req.body);
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: { googleAdsCustomerId: body.customerId },
+    });
+    return res.json({ ok: true });
+  } catch (e:any) {
+    return res.status(400).json({ error: e.message || "Invalid request" });
+  }
+});
+
+// POST /ads/tenant/:tenant/verify
+router.post("/tenant/:tenant/verify", async (req, res) => {
+  try {
+    const tenantParam = req.params.tenant;
+    const tenant = await resolveTenant(tenantParam);
+    if (!tenant) return res.status(404).json({ error: `Tenant not found: ${tenantParam}` });
+
+    if (!tenant.googleAdsCustomerId) {
+      return res.status(400).json({ error: "No Google Ads Customer ID saved for this tenant" });
+    }
+
+    // Basic readiness check: env present
+    const { GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_DEVELOPER_TOKEN } = process.env;
+    if (!GOOGLE_ADS_CLIENT_ID || !GOOGLE_ADS_CLIENT_SECRET || !GOOGLE_ADS_DEVELOPER_TOKEN) {
+      return res.status(400).json({ error: "Server missing Google Ads env vars (CLIENT_ID/SECRET/DEVELOPER_TOKEN)" });
+    }
+
+    // (Optional real API probe can be added later)
+    return res.json({ ok: true, customerId: tenant.googleAdsCustomerId });
+  } catch (e:any) {
+    return res.status(500).json({ error: e.message || "Verify failed" });
+  }
+});
+
 /**
  * Middleware to check Google Ads environment variables
  */

@@ -78,14 +78,15 @@ export default function AdsLinkPage() {
   }, [tenant?.slug]);
 
   async function loadVerifyData() {
-    if (!tenant?.slug) return;
+    if (!tenant?.id) return;
     try {
       setVerifying(true);
       setError('');
-      const data = await apiFetch<VerifyResponse>(`/ads/tenant/${tenant.slug}/verify`);
-      setVerifyData(data);
-      if (data.customerId) {
-        setCustomerId(data.customerId);
+      const resp = await apiFetch(`/ads/tenant/${tenant.id}/verify`, { method: 'POST' });
+      if (resp.error) setError(resp.error);
+      setVerifyData(resp);
+      if (resp.customerId) {
+        setCustomerId(resp.customerId);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to verify');
@@ -95,7 +96,7 @@ export default function AdsLinkPage() {
   }
 
   async function handleSaveCustomerId() {
-    if (!tenant?.slug) return;
+    if (!tenant?.id) return;
     // Validate format
     const pattern = /^\d{3}-\d{3}-\d{4}$/;
     if (!pattern.test(customerId)) {
@@ -108,13 +109,13 @@ export default function AdsLinkPage() {
       setError('');
       setSuccess('');
 
-      await apiFetch(`/ads/tenant/${tenant.slug}/link`, {
+      const resp = await apiFetch(`/ads/tenant/${tenant.id}/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId }),
       });
-
-      setSuccess('Customer ID saved successfully!');
+      if (resp.error) setError(resp.error);
+      else setSuccess('Customer ID saved successfully!');
       await loadVerifyData();
     } catch (err: any) {
       setError(err.message || 'Failed to save customer ID');
