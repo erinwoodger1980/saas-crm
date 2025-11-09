@@ -82,7 +82,7 @@ router.post('/retry-convert', requireAuth, async (req: any, res) => {
   const lastOutput = String(session.patchText || session.logs || '').slice(0, 20000);
   // Compose convert-to-diff prompt
   const convertMsg = `\nYour last output was not a unified diff.\nConvert it into a SINGLE unified diff now.\nFollow the CONTRACT exactly. Do not add explanations.\n`;
-  const messages = Array.isArray(session.messages) ? session.messages : [];
+  const messages = Array.isArray(session.messages) ? session.messages.filter(Boolean) as any[] : [];
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const { send } = await import('../../services/ai/openai');
   const { isUnifiedDiff, ensureDiffPrefixes } = await import('../../services/ai/diffContract');
