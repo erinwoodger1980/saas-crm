@@ -19,9 +19,6 @@ function redactSecrets(text: string): string {
 
 function truncate(s: string, max: number): string { return s.length > max ? s.slice(0, max) + '\n...[truncated]' : s; }
 
-function isUnifiedDiff(text: string): boolean {
-  return /^---\s+(a\/|\/dev\/null)/m.test(text) && /^\+\+\+\s+(b\/|\/dev\/null)/m.test(text);
-}
 
 interface SessionContext {
   id: string; taskKey: string; description: string; files: any; mode: string; maxRounds: number; rounds: number; messages: any[];
