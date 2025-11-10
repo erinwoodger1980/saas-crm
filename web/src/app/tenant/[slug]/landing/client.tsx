@@ -535,17 +535,37 @@ export function PublicLandingClient({
               <CardContent className="p-8">
                 <div className="text-center">
                   <h3 className="text-2xl font-bold mb-2">Free Guide: 10 Questions Before You Buy</h3>
-                  <p className="text-stone-700 mb-6">Make a confident decision with our 5-minute buyers guide.</p>
+                  <p className="text-stone-700 mb-6">Make a confident decision with our 5-minute buyers guide.</p>
                   <form
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                       e.preventDefault();
-                      track('generate_lead', { method: 'lead_magnet' });
-                      alert('Guide requested! (Demo)');
-                      window.open('/guide.pdf', '_blank');
+                      const form = e.currentTarget as HTMLFormElement;
+                      const email = (form.elements.namedItem('guide-email') as HTMLInputElement)?.value.trim();
+                      if (!email) return;
+                      
+                      // Create lead for guide download
+                      const resp = await createPublicLead({
+                        source: 'landing-guide',
+                        email,
+                        name: 'Guide Download',
+                      });
+                      
+                      if (resp.ok) {
+                        track('generate_lead', { method: 'lead_magnet', status: 'success' });
+                        // Trigger download
+                        const link = document.createElement('a');
+                        link.href = '/free-guide.pdf';
+                        link.download = 'joinery-buying-guide.pdf';
+                        link.click();
+                        form.reset();
+                      } else {
+                        track('generate_lead', { method: 'lead_magnet', status: 'error' });
+                        alert('Sorry, something went wrong. Please try again or contact us directly.');
+                      }
                     }}
                     className="grid md:grid-cols-3 gap-3"
                   >
-                    <input type="email" required placeholder="Your email" className="md:col-span-2 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-600" />
+                    <input type="email" name="guide-email" required placeholder="Your email" className="md:col-span-2 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-600" />
                     <Button type="submit" className="bg-amber-600 hover:bg-amber-700">Get the Guide</Button>
                   </form>
                 </div>
@@ -862,18 +882,49 @@ export function PublicLandingClient({
                 <p className="text-gray-600 mb-6">
                   Download our FREE guide: &quot;10 Questions to Ask Before Choosing Windows&quot;
                 </p>
-                <Button
-                  size="lg"
-                  className="w-full bg-green-600 hover:bg-green-700"
-                  onClick={() => {
-                    track('generate_lead', { method: 'exit_intent_download' });
-                    setShowExitIntent(false);
-                    window.open('/guide.pdf', '_blank');
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const form = e.currentTarget as HTMLFormElement;
+                    const email = (form.elements.namedItem('exit-email') as HTMLInputElement)?.value.trim();
+                    if (!email) return;
+                    
+                    const resp = await createPublicLead({
+                      source: 'landing-exit-guide',
+                      email,
+                      name: 'Exit Guide Download',
+                    });
+                    
+                    if (resp.ok) {
+                      track('generate_lead', { method: 'exit_intent_download', status: 'success' });
+                      const link = document.createElement('a');
+                      link.href = '/free-guide.pdf';
+                      link.download = 'joinery-buying-guide.pdf';
+                      link.click();
+                      setShowExitIntent(false);
+                    } else {
+                      track('generate_lead', { method: 'exit_intent_download', status: 'error' });
+                      alert('Sorry, something went wrong. Please try again.');
+                    }
                   }}
+                  className="space-y-4"
                 >
-                  <Download className="w-5 h-5 mr-2" />
-                  Download Free Guide
-                </Button>
+                  <input
+                    type="email"
+                    name="exit-email"
+                    required
+                    placeholder="Enter your email"
+                    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-600"
+                  />
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full bg-green-600 hover:bg-green-700"
+                  >
+                    <Download className="w-5 h-5 mr-2" />
+                    Download Free Guide
+                  </Button>
+                </form>
               </div>
             </CardContent>
           </Card>
