@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import LeadModal from "../leads/LeadModal";
+import dynamic from "next/dynamic";
+// Lazy load LeadModal to avoid evaluating its heavy module until needed (prevents init errors)
+const LeadModal = dynamic(() => import("../leads/LeadModal"), { ssr: false });
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -173,11 +175,11 @@ export default function OpportunitiesPage() {
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {repliedNow.map((l) => (
-                <CardRow
+                  <CardRow
                   key={l.id}
                   lead={l}
-                  accent="amber"
-                  statusLabel="Replied · Quote sent"
+                    accent="amber"
+                    _statusLabel="Replied · Quote sent"
                   onOpen={() => {
                     setSelected(l);
                     setOpen(true);
@@ -203,7 +205,7 @@ export default function OpportunitiesPage() {
               <CardRow
                 key={l.id}
                 lead={l}
-                statusLabel={STATUS_LABELS[tab]}
+                _statusLabel={STATUS_LABELS[tab]}
                 onOpen={() => {
                   setSelected(l);
                   setOpen(true);
