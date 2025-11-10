@@ -80,12 +80,6 @@ export default async function TenantLandingPage({ params, searchParams }: PagePr
     );
   }
 
-  // Transform DB data to component-friendly format
-  const location = tenant.content?.serviceAreas?.[0] || 'Your Area';
-  const serviceAreas = tenant.content?.serviceAreas || [];
-  const images = tenant.images || [];
-  const reviews = tenant.reviews || [];
-  
   // Safe JSON parser helper
   function safeJsonParse<T>(value: unknown, fallback: T): T {
     try {
@@ -97,6 +91,12 @@ export default async function TenantLandingPage({ params, searchParams }: PagePr
       return fallback;
     }
   }
+  
+  // Transform DB data to component-friendly format - safely parse arrays
+  const serviceAreas = safeJsonParse<string[]>(tenant.content?.serviceAreas, []);
+  const location = serviceAreas[0] || 'Your Area';
+  const images = safeJsonParse<any[]>(tenant.images, []);
+  const reviews = safeJsonParse<any[]>(tenant.reviews, []);
   
   // Parse JSON fields if they're strings
   const guarantees = safeJsonParse(tenant.content?.guarantees, {
