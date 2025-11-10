@@ -1,19 +1,18 @@
+
 import { getTenantBySlug } from '@/lib/tenant/getTenantBySlug';
 import { redirect } from 'next/navigation';
-import { Metadata } from 'next';
 import { cookies } from 'next/headers';
-import { PrismaClient } from '@prisma/client';
 
-// Helper: TitleCase
 function titleCase(str: string) {
   return str.replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// Server action to create tenant if missing
-export async function createTenantIfMissing(slug: string) {
+async function createTenantIfMissing(slug: string) {
+  'use server';
   const cookieStore = cookies();
   const role = cookieStore.get('role')?.value;
   if (role !== 'admin' && role !== 'owner') throw new Error('Not authorized');
+  const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
   let tenant = await prisma.tenant.findUnique({ where: { slug } });
   if (!tenant) {
@@ -42,7 +41,6 @@ export default async function LandingPage({ params }: { params: { slug: string }
         <p className="mb-4">The landing page for <span className="font-mono">{params.slug}</span> could not be loaded.</p>
         {role === 'admin' || role === 'owner' ? (
           <form action={async () => {
-            'use server';
             await createTenantIfMissing(params.slug);
             redirect(`/tenant/${params.slug}/landing`);
           }}>
@@ -53,18 +51,9 @@ export default async function LandingPage({ params }: { params: { slug: string }
     );
   }
 
-  // SEO metadata
-  const meta: Metadata = {
-    title: `${tenant.name} | Joinery AI`,
-    description: `Get a quote for your joinery project with ${tenant.name}.`,
-    openGraph: {
-      title: `${tenant.name} | Joinery AI`,
-      description: `Get a quote for your joinery project with ${tenant.name}.`,
-      images: [tenant.logoUrl || '/logo.png'],
-    },
-  };
+  // SEO metadata (Next.js App Router uses generateMetadata, not direct assignment)
+  // ...existing code...
 
-  // Branded hero + form
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto py-12">

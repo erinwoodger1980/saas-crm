@@ -6,7 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import { createSubAccount, ensureNegativeList, getTenantCustomerId } from '../services/ads/tenants';
+import { createSubAccount, ensureNegativeList, getTenantCustomerId, listCampaigns } from '../services/ads/tenants';
 import { bootstrapSearchCampaign, gbpToMicros } from '../services/ads/bootstrap';
 import { checkMccEnv, canAccessCustomer, digitsOnly, formatCustomerId } from '../lib/googleAds';
 
@@ -437,6 +437,52 @@ router.get('/tenant/:slug/verify', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error verifying readiness:', error);
+    res.status(500).json({
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /ads/tenant/:slug/campaigns
+ * List existing campaigns for a tenant
+ */
+router.get('/tenant/:slug/campaigns', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+
+    // Find tenant
+    const tenant = await prisma.tenant.findUnique({
+      where: { slug },
+      select: { id: true, name: true },
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ error: `Tenant not found: ${slug}` });
+    }
+
+    // Get customer ID from DB
+    const config = await prisma.tenantAdsConfig.findUnique({
+      where: { tenantId: tenant.id },
+    });
+
+    if (!config?.googleAdsCustomerId) {
+      return res.status(400).json({
+        error: 'No Google Ads account linked',
+        message: 'Use POST /ads/tenant/:slug/link to link a customer ID first',
+      });
+    }
+
+    // Fetch campaigns
+    const campaigns = await listCampaigns(config.googleAdsCustomerId);
+
+    res.json({
+      customerId: config.googleAdsCustomerId,
+      campaigns,
+      count: campaigns.length,
+    });
+  } catch (error: any) {
+    console.error('Error fetching campaigns:', error);
     res.status(500).json({
       error: error.message,
     });
