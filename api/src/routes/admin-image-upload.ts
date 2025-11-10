@@ -17,18 +17,20 @@ const upload = multer({
   },
 });
 
-// Admin authentication middleware
-const requireAdmin = (req: any, res: any, next: any) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-};
-
 // POST /api/admin/landing-tenants/:id/images - Upload images
-router.post('/:id/images', requireAdmin, upload.array('images', 10), async (req: any, res: any) => {
+// Note: server mounts this router behind requireAuth (cookie or Bearer). Do an extra sanity check here.
+router.post('/:id/images', upload.array('images', 10), async (req: any, res: any) => {
   try {
+    if (!req.auth?.tenantId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    // Optional: enforce tenant matches path (owners/admins may upload only for their tenant)
+    if (req.params?.id && req.auth?.tenantId && req.params.id !== req.auth.tenantId) {
+      // Allow admins/owners to upload for other tenants if role permits
+      const role = String(req.auth?.role || '').toLowerCase();
+      const isAdmin = role === 'admin' || role === 'owner';
+      if (!isAdmin) return res.status(403).json({ error: 'forbidden' });
+    }
     const files = req.files as Express.Multer.File[];
     
     if (!files || files.length === 0) {
