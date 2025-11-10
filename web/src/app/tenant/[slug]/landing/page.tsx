@@ -86,33 +86,39 @@ export default async function TenantLandingPage({ params, searchParams }: PagePr
   const images = tenant.images || [];
   const reviews = tenant.reviews || [];
   
+  // Safe JSON parser helper
+  function safeJsonParse<T>(value: unknown, fallback: T): T {
+    try {
+      if (value == null) return fallback;
+      if (typeof value === 'string') return JSON.parse(value) as T;
+      if (typeof value === 'object') return value as T;
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  
   // Parse JSON fields if they're strings
-  const guarantees = typeof tenant.content?.guarantees === 'string' 
-    ? JSON.parse(tenant.content.guarantees) 
-    : tenant.content?.guarantees || {
-        bullets: [
-          '50-year anti-rot guarantee on Accoya timber',
-          'PAS 24 security certification',
-          'FENSA approved installation',
-          'Insurance-backed warranty',
-          'Free design consultation',
-        ],
-        riskReversal: 'If you\'re not 100% satisfied with your quote, we\'ll refund your deposit.',
-      };
+  const guarantees = safeJsonParse(tenant.content?.guarantees, {
+    bullets: [
+      '50-year anti-rot guarantee on Accoya timber',
+      'PAS 24 security certification',
+      'FENSA approved installation',
+      'Insurance-backed warranty',
+      'Free design consultation',
+    ],
+    riskReversal: 'If you\'re not 100% satisfied with your quote, we\'ll refund your deposit.',
+  });
       
-  const urgency = typeof tenant.content?.urgency === 'string'
-    ? JSON.parse(tenant.content.urgency)
-    : tenant.content?.urgency || {
-        text: '🔥 Book a survey in January and save 10%',
-        sub: 'Limited slots available',
-      };
+  const urgency = safeJsonParse(tenant.content?.urgency, {
+    text: '🔥 Book a survey in January and save 10%',
+    sub: 'Limited slots available',
+  });
       
-  const leadMagnet = typeof tenant.content?.leadMagnet === 'string'
-    ? JSON.parse(tenant.content.leadMagnet)
-    : tenant.content?.leadMagnet || {
-        title: '10 Questions to Ask Before Choosing Windows',
-        description: 'Free guide to making the right choice for your home',
-      };
+  const leadMagnet = safeJsonParse(tenant.content?.leadMagnet, {
+    title: '10 Questions to Ask Before Choosing Windows',
+    description: 'Free guide to making the right choice for your home',
+  });
 
   const headline = keyword
     ? `Expert ${keyword} in ${location}`

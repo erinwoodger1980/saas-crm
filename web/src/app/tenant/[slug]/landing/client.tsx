@@ -303,7 +303,7 @@ export function PublicLandingClient({
               </div>
               
               <div className="grid md:grid-cols-3 gap-6">
-                {reviews.slice(0, 6).map((review, idx) => (
+                {Array.isArray(reviews) && reviews.slice(0, 6).map((review, idx) => (
                   <Card key={idx} className="hover:shadow-xl transition-all hover:-translate-y-1 border-2 border-amber-100 bg-white">
                     <CardContent className="p-6">
                       <div className="flex gap-1 mb-4">
@@ -342,7 +342,7 @@ export function PublicLandingClient({
               </h2>
               
               <div className="grid md:grid-cols-3 gap-4">
-                {images.slice(0, 6).map((img, idx) => (
+                {Array.isArray(images) && images.slice(0, 6).map((img, idx) => (
                   <div
                     key={idx}
                     className="relative aspect-[4/3] rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition"
@@ -375,7 +375,7 @@ export function PublicLandingClient({
                     <h2 className="text-3xl font-bold text-gray-900">Our Guarantees</h2>
                   </div>
                   <ul className="space-y-4">
-                    {guarantees.bullets?.map((bullet: string, idx: number) => (
+                    {Array.isArray(guarantees.bullets) && guarantees.bullets.map((bullet: string, idx: number) => (
                       <li key={idx} className="flex items-start gap-3 group">
                         <Check className="w-6 h-6 text-amber-600 flex-shrink-0 mt-1 group-hover:scale-110 transition-transform" />
                         <span className="text-gray-700 text-lg leading-relaxed">{bullet}</span>
@@ -615,7 +615,7 @@ export function PublicLandingClient({
               <div>
                 <h3 className="font-bold text-lg mb-4">Service Areas</h3>
                 <div className="text-gray-400 space-y-1">
-                  {serviceAreas.map((area, idx) => (
+                  {Array.isArray(serviceAreas) && serviceAreas.map((area, idx) => (
                     <div key={idx}>{area}</div>
                   ))}
                 </div>
