@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, lazy, Suspense } from "react";
-// Lazy-load LeadModal using React.lazy for finer error boundary handling, wrapped in Suspense when used
-const LeadModalLazy = lazy(() => import("../leads/LeadModal"));
+import React, { useEffect, useMemo, useState, Suspense } from "react";
+import dynamic from "next/dynamic";
+// Lazy-load LeadModal with SSR disabled to prevent hydration/TDZ issues
+const LeadModalLazy = dynamic(() => import("../leads/LeadModal"), { ssr: false });
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -251,25 +252,27 @@ export default function OpportunitiesPage() {
       </DeskSurface>
 
       {selected && (
-        <Suspense fallback={<div className="p-6 text-sm">Loading follow-up...</div>}>
-        <LeadModalLazy
-          open={open}
-          onOpenChange={(v: boolean) => {
-            setOpen(v);
-            if (!v) setSelected(null);
-          }}
-          leadPreview={{
-            id: selected.id,
-            contactName: selected.contactName,
-            email: selected.email,
-            status: (selected.status as any) || "QUOTE_SENT",
-            custom: selected.custom
-          }}
-          onUpdated={load}
-          initialStage="follow-up"
-          showFollowUp={true}
-        />
-        </Suspense>
+        <ErrorBoundary fallback={<div className="p-6 text-sm text-red-600">Follow-up modal failed to load.</div>}>
+          <Suspense fallback={<div className="p-6 text-sm">Loading follow-up...</div>}>
+            <LeadModalLazy
+              open={open}
+              onOpenChange={(v: boolean) => {
+                setOpen(v);
+                if (!v) setSelected(null);
+              }}
+              leadPreview={{
+                id: selected.id,
+                contactName: selected.contactName,
+                email: selected.email,
+                status: (selected.status as any) || "QUOTE_SENT",
+                custom: selected.custom
+              }}
+              onUpdated={load}
+              initialStage="follow-up"
+              showFollowUp={true}
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
     </>
   );
@@ -323,4 +326,15 @@ function avatarText(name?: string | null) {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+// Simple client-side error boundary for the modal
+class ErrorBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { fallback: React.ReactNode; children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: any, info: any) { console.error('Opportunity modal error boundary caught:', err, info); }
+  render() { if (this.state.hasError) return this.props.fallback; return this.props.children; }
 }
