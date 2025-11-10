@@ -53,11 +53,14 @@ async function main() {
       },
     });
   } else {
-    console.log('📍 Processing all tenants with Google Ads configured\n');
+    const hasGlobalRefresh = !!process.env.GOOGLE_ADS_REFRESH_TOKEN;
+    console.log(`📍 Processing all tenants with Google Ads configured (global refresh token present? ${hasGlobalRefresh})\n`);
     tenants = await prisma.tenant.findMany({
       where: {
         googleAdsCustomerId: { not: null },
-        googleAdsRefreshToken: { not: null },
+        ...(hasGlobalRefresh
+          ? {} // allow tenants without per-tenant refresh (will fallback to global)
+          : { googleAdsRefreshToken: { not: null } }),
       },
       select: {
         id: true,
@@ -90,22 +93,22 @@ async function main() {
     console.log('─'.repeat(60));
 
     try {
-      // Update keyword performance
-      const result = await adsClient.updateTenantKeywordPerformance(tenant.id);
+  // Update keyword performance
+  const result = await adsClient.updateTenantKeywordPerformance(tenant.id);
 
       if (result.success === false) {
         if (result.reason === 'no_ads_config') {
           console.log('   ⊘ Skipped: No Google Ads configuration');
           results.skipped++;
         } else {
-          console.log(`   ❌ Failed: ${result.error}`);
+          console.log(`   ❌ Failed: ${result.error} (reason: ${result.reason})`);
           results.failed++;
           results.errors.push({ tenantId: tenant.id, error: result.error || 'Unknown error' });
         }
         continue;
       }
 
-      console.log(`   ✅ Success`);
+  console.log(`   ✅ Success${!tenant.googleAdsRefreshToken && process.env.GOOGLE_ADS_REFRESH_TOKEN ? ' (used global refresh token)' : ''}`);
       console.log(`      - Keywords updated: ${result.keywordCount}`);
       console.log(`      - Active keywords: ${result.activeKeywordCount}`);
       console.log(`      - Underperforming: ${result.underperformingCount}`);
