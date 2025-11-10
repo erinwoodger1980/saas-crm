@@ -1,7 +1,7 @@
 // web/src/app/leads/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
+import { useEffect, useMemo, useState, Suspense, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
