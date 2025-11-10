@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { Phone, Mail, MapPin, Star, Check, Download, ChevronDown, X, MessageCircle, Image as ImageIcon, Hammer, Calendar, Ruler, Home } from 'lucide-react';
+import { Phone, Mail, MapPin, Star, Check, Download, ChevronDown, X, MessageCircle, Image as ImageIcon, Hammer, Ruler, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -37,6 +37,8 @@ export function PublicLandingClient({
   const [showExitIntent, setShowExitIntent] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [selectedImage, setSelectedImage] = useState<number | null>(null);
+  const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [formError, setFormError] = useState<string | null>(null);
   const hasImages = Array.isArray(images) && images.length > 0;
 
   // Scroll detection for sticky header
@@ -77,6 +79,45 @@ export function PublicLandingClient({
     track('select_content', { content_type: 'cta_button' });
   };
 
+  // Create a landing lead via the public capture endpoint
+  async function createPublicLead(input: {
+    source: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+    postcode?: string;
+    projectType?: string;
+    propertyType?: string;
+    message?: string;
+  }) {
+    try {
+      const res = await fetch('/api/leads/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        console.warn('[landing] lead capture failed', res.status, json);
+        return { ok: false };
+      }
+      return { ok: true, id: json.id as string | undefined };
+    } catch (e: any) {
+      console.warn('[landing] lead capture error', e?.message || e);
+      return { ok: false };
+    }
+  }
+
+  // Phone click → create a lightweight phone-only lead (non-blocking)
+  async function handlePhoneClick(locationTag: string) {
+    try {
+      track('click_contact_phone', { location: locationTag });
+      if (!tenant?.phone) return;
+      // Fire and forget; don't block the call
+      createPublicLead({ source: 'landing-phone', phone: tenant.phone, name: 'Phone Enquiry' });
+    } catch {}
+  }
+
   const avgRating = reviews.length
     ? (reviews.reduce((sum, r) => sum + (r.rating || r.stars || 5), 0) / reviews.length).toFixed(1)
     : '5.0';
@@ -109,7 +150,7 @@ export function PublicLandingClient({
         }}
       />
 
-      {/* FAQ Schema */}
+      {/* FAQ Schema (finance question removed) */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -127,14 +168,6 @@ export function PublicLandingClient({
               },
               {
                 '@type': 'Question',
-                name: 'Do you offer finance options?',
-                acceptedAnswer: {
-                  '@type': 'Answer',
-                  text: 'Yes, we offer flexible 0% APR finance options for projects over £2,000.',
-                },
-              },
-              {
-                '@type': 'Question',
                 name: 'What areas do you cover?',
                 acceptedAnswer: {
                   '@type': 'Answer',
@@ -147,7 +180,7 @@ export function PublicLandingClient({
       />
 
       {/* Fixed Sticky Header */}
-      <header
+  <header id="hero"
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
           scrolled ? 'bg-white shadow-lg py-3' : 'bg-white/95 backdrop-blur-sm py-4'
         }`}
@@ -164,7 +197,7 @@ export function PublicLandingClient({
             <a
               href={`tel:${tenant.phone}`}
               className="flex items-center gap-2 text-gray-700 hover:text-gray-900 transition"
-              onClick={() => track('click_contact_phone', { location: 'header' })}
+              onClick={() => handlePhoneClick('header')}
             >
               <Phone className="w-5 h-5" />
               <span className="font-semibold">{tenant.phone}</span>
@@ -182,7 +215,7 @@ export function PublicLandingClient({
             <a
               href={`tel:${tenant.phone}`}
               className="p-2 bg-amber-600 text-white rounded-full shadow-md"
-              onClick={() => track('click_contact_phone', { location: 'header_mobile' })}
+              onClick={() => handlePhoneClick('header_mobile')}
             >
               <Phone className="w-5 h-5" />
             </a>
@@ -193,7 +226,7 @@ export function PublicLandingClient({
       {/* Main Content */}
       <main className="pt-20">
         {/* Hero Section */}
-        <section className="relative min-h-[90vh] flex items-center justify-center bg-gradient-to-br from-amber-900 via-amber-800 to-stone-900 text-white overflow-hidden">
+  <section id="hero-main" className="relative min-h-[90vh] flex items-center justify-center bg-gradient-to-br from-amber-900 via-amber-800 to-stone-900 text-white overflow-hidden">
           {/* Background Image */}
           {hasImages && images[0]?.url && (
             <div className="absolute inset-0 opacity-40">
@@ -235,7 +268,7 @@ export function PublicLandingClient({
               </Button>
               <a
                 href={`tel:${tenant.phone}`}
-                onClick={() => track('click_contact_phone', { location: 'hero' })}
+                onClick={() => handlePhoneClick('hero')}
               >
                 <Button
                   size="lg"
@@ -289,7 +322,7 @@ export function PublicLandingClient({
         )}
 
         {/* Trust Strip */}
-        <section className="py-12 bg-gray-50 border-y">
+  <section id="trust" className="py-12 bg-gray-50 border-y">
           <div className="container mx-auto px-4">
             <div className="flex flex-wrap justify-center items-center gap-8 md:gap-12">
               <TrustBadge src="/trust-fensa.png" alt="FENSA Approved" />
@@ -305,7 +338,7 @@ export function PublicLandingClient({
 
         {/* Reviews Section */}
         {reviews.length > 0 && (
-          <section className="py-20 bg-gradient-to-b from-white to-amber-50">
+          <section id="reviews" className="py-20 bg-gradient-to-b from-white to-amber-50">
             <div className="container mx-auto px-4">
               <div className="text-center mb-12">
                 <div className="inline-block px-6 py-2 bg-amber-100 rounded-full mb-4">
@@ -348,7 +381,7 @@ export function PublicLandingClient({
         )}
 
         {/* Process Timeline */}
-        <section className="py-20 bg-white">
+  <section id="process" className="py-20 bg-white">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">How It Works</h2>
             <div className="grid md:grid-cols-4 gap-6">
@@ -377,7 +410,7 @@ export function PublicLandingClient({
         </section>
 
         {/* Gallery Section */}
-        <section className="py-20 bg-gray-50">
+  <section id="gallery" className="py-20 bg-gray-50">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
               View Recent Projects
@@ -427,7 +460,7 @@ export function PublicLandingClient({
 
         {/* Guarantees & Pricing */}
         {guarantees && (
-          <section className="py-20 bg-gradient-to-br from-amber-50 via-white to-stone-50">
+          <section id="guarantees" className="py-20 bg-gradient-to-br from-amber-50 via-white to-stone-50">
             <div className="container mx-auto px-4">
               <div className="grid md:grid-cols-2 gap-12 max-w-6xl mx-auto">
                 {/* Guarantees */}
@@ -455,43 +488,14 @@ export function PublicLandingClient({
                   )}
                 </div>
 
-                {/* Pricing */}
-                <div className="bg-white p-8 rounded-xl shadow-lg border-2 border-stone-100">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-3 bg-stone-100 rounded-full">
-                      <span className="text-2xl">💷</span>
-                    </div>
-                    <h2 className="text-3xl font-bold text-gray-900">Investment Guide</h2>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="p-6 bg-gradient-to-br from-amber-50 to-stone-50 rounded-xl border border-amber-200 hover:shadow-md transition">
-                      <div className="text-sm text-amber-800 mb-2 font-semibold">Premium Oak Sash Windows from</div>
-                      <div className="text-4xl font-bold text-amber-900">£2,500</div>
-                      <p className="text-xs text-amber-700 mt-2">Per window, fully installed</p>
-                    </div>
-                    <div className="p-6 bg-gradient-to-br from-stone-50 to-amber-50 rounded-xl border border-stone-200 hover:shadow-md transition">
-                      <div className="text-sm text-stone-700 mb-2 font-semibold">Typical Full Project</div>
-                      <div className="text-2xl font-bold text-stone-900">£8,000 - £25,000</div>
-                      <p className="text-xs text-stone-600 mt-2">Complete home transformation</p>
-                    </div>
-                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <p className="text-sm text-blue-900">
-                        <span className="font-semibold">0% Finance Available</span> on projects over £2,000
-                      </p>
-                    </div>
-                    <p className="text-xs text-gray-600 leading-relaxed">
-                      *Final price depends on timber grade, size, specification, and installation complexity.
-                      Every project is bespoke and quoted individually.
-                    </p>
-                  </div>
-                </div>
+                {/* Pricing removed per request */}
               </div>
             </div>
           </section>
         )}
 
-        {/* Comparison Section */}
-        <section className="py-16 bg-white">
+  {/* Comparison Section */}
+  <section id="comparison" className="py-16 bg-white">
           <div className="container mx-auto px-4 max-w-5xl">
             <h2 className="text-3xl md:text-4xl font-bold text-center mb-10">Timber vs uPVC</h2>
             <div className="overflow-hidden rounded-xl border">
@@ -524,8 +528,8 @@ export function PublicLandingClient({
           </div>
         </section>
 
-        {/* Lead Magnet */}
-        <section className="py-16 bg-gradient-to-r from-amber-50 to-stone-50">
+  {/* Lead Magnet */}
+  <section id="guide" className="py-16 bg-gradient-to-r from-amber-50 to-stone-50">
           <div className="container mx-auto px-4 max-w-3xl">
             <Card className="border-2 border-amber-200">
               <CardContent className="p-8">
@@ -575,23 +579,57 @@ export function PublicLandingClient({
             
             <Card className="bg-white shadow-2xl">
               <CardContent className="p-6 md:p-8">
+                {formStatus === 'success' ? (
+                  <div className="space-y-4 text-center">
+                    <h3 className="text-2xl font-bold text-stone-900">Thanks! Your request has been received.</h3>
+                    <p className="text-stone-600">We'll be in touch shortly. If it's urgent, call us on <a href={`tel:${tenant.phone}`} className="underline font-semibold">{tenant.phone}</a>.</p>
+                  </div>
+                ) : (
                 <form
-                  onSubmit={(e) => {
+                  onSubmit={async (e) => {
                     e.preventDefault();
-                    track('generate_lead', { method: 'quote_form' });
-                    alert('Form submitted! (Demo)');
+                    setFormError(null);
+                    setFormStatus('submitting');
+                    const form = e.currentTarget as HTMLFormElement;
+                    const fd = new FormData(form);
+                    const name = (fd.get('name') as string || '').trim();
+                    const email = (fd.get('email') as string || '').trim();
+                    const phone = (fd.get('phone') as string || '').trim();
+                    const postcode = (fd.get('postcode') as string || '').trim();
+                    const projectType = (fd.get('interest') as string || '').trim();
+                    const message = (fd.get('message') as string || '').trim();
+                    const resp = await createPublicLead({
+                      source: 'landing-form',
+                      name,
+                      email,
+                      phone,
+                      postcode,
+                      projectType,
+                      message,
+                    });
+                    if (resp.ok) {
+                      track('generate_lead', { method: 'quote_form', status: 'success' });
+                      setFormStatus('success');
+                      form.reset();
+                    } else {
+                      track('generate_lead', { method: 'quote_form', status: 'error' });
+                      setFormError('Sorry, something went wrong. Please try again or call us.');
+                      setFormStatus('error');
+                    }
                   }}
                   className="space-y-4"
                 >
                   <div className="grid md:grid-cols-2 gap-4">
                     <input
                       type="text"
+                      name="name"
                       placeholder="Full Name *"
                       required
                       className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
                     />
                     <input
                       type="email"
+                      name="email"
                       placeholder="Email *"
                       required
                       className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
@@ -601,12 +639,14 @@ export function PublicLandingClient({
                   <div className="grid md:grid-cols-2 gap-4">
                     <input
                       type="tel"
+                      name="phone"
                       placeholder="Phone *"
                       required
                       className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
                     />
                     <input
                       type="text"
+                      name="postcode"
                       placeholder="Postcode *"
                       required
                       className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
@@ -615,6 +655,7 @@ export function PublicLandingClient({
                   
                   <select
                     required
+                    name="interest"
                     className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
                   >
                     <option value="">What are you interested in? *</option>
@@ -627,6 +668,7 @@ export function PublicLandingClient({
                   </select>
                   
                   <textarea
+                    name="message"
                     placeholder="Tell us about your project (optional)"
                     rows={4}
                     className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-600 focus:border-transparent"
@@ -643,10 +685,16 @@ export function PublicLandingClient({
                   <Button
                     type="submit"
                     size="lg"
-                    className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-lg py-7 shadow-xl font-bold"
+                    disabled={formStatus === 'submitting'}
+                    className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-lg py-7 shadow-xl font-bold disabled:opacity-70"
                   >
-                    Get My Free Quote →
+                    {formStatus === 'submitting' ? 'Submitting…' : 'Get My Free Quote →'}
                   </Button>
+                  {formError && (
+                    <div className="bg-red-50 p-3 rounded-lg border border-red-200 text-red-800 text-sm text-center">
+                      {formError}
+                    </div>
+                  )}
                   
                   <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
                     <p className="text-xs text-center text-amber-900">
@@ -654,41 +702,22 @@ export function PublicLandingClient({
                     </p>
                   </div>
                 </form>
+                )}
               </CardContent>
             </Card>
           </div>
         </section>
 
-        {/* Project Examples */}
-        <section className="py-20 bg-amber-50/50">
-          <div className="container mx-auto px-4">
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">Recent Project Examples</h2>
-            <div className="grid md:grid-cols-3 gap-6">
-              {[
-                { title: 'Victorian Sash Window Restoration', price: '£12,800', desc: '8 windows replaced in Tunbridge Wells' },
-                { title: 'Front Door + Side Panels', price: '£3,900', desc: 'Custom oak door in Sevenoaks' },
-                { title: 'Casement Windows Upgrade', price: '£9,400', desc: 'Energy-efficient units in Heathfield' },
-              ].map((p, idx) => (
-                <Card key={idx} className="border-2 border-amber-200 bg-white">
-                  <CardContent className="p-6">
-                    <div className="text-sm text-amber-800 font-semibold mb-2">From {p.price}</div>
-                    <h3 className="font-bold text-xl mb-1">{p.title}</h3>
-                    <p className="text-stone-600">{p.desc}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
+        {/* Project Examples removed per request */}
 
-        {/* FAQ Section */}
-        <section className="py-20 bg-gray-50">
+  {/* FAQ Section */}
+  <section id="faq" className="py-20 bg-gray-50">
           <div className="container mx-auto px-4 max-w-3xl">
             <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
               Frequently Asked Questions
             </h2>
             
-            <Accordion type="multiple" defaultValue={["item-1","item-2"]} className="space-y-4">
+            <Accordion type="multiple" defaultValue={["item-1"]} className="space-y-4">
               <AccordionItem value="item-1" className="bg-white rounded-lg px-6">
                 <AccordionTrigger className="text-left font-semibold">
                   How long do timber windows last?
@@ -698,14 +727,6 @@ export function PublicLandingClient({
                 </AccordionContent>
               </AccordionItem>
               
-              <AccordionItem value="item-2" className="bg-white rounded-lg px-6">
-                <AccordionTrigger className="text-left font-semibold">
-                  Do you offer finance options?
-                </AccordionTrigger>
-                <AccordionContent className="text-gray-600">
-                  Yes, we offer flexible 0% APR finance options for projects over £2,000. Speak to our team for details.
-                </AccordionContent>
-              </AccordionItem>
               
               <AccordionItem value="item-3" className="bg-white rounded-lg px-6">
                 <AccordionTrigger className="text-left font-semibold">
@@ -810,8 +831,8 @@ export function PublicLandingClient({
 
       {/* Mobile Sticky CTA */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-r from-stone-900 to-amber-900 border-t-2 border-amber-600 shadow-2xl p-4 z-40 flex gap-3">
-        <a href={`tel:${tenant.phone}`} className="flex-1">
-          <Button className="w-full bg-stone-800 hover:bg-stone-700 text-white font-semibold" onClick={() => track('click_contact_phone', { location: 'mobile_sticky' })}>
+        <a href={`tel:${tenant.phone}`} className="flex-1" onClick={() => handlePhoneClick('mobile_sticky')}>
+          <Button className="w-full bg-stone-800 hover:bg-stone-700 text-white font-semibold">
             <Phone className="w-5 h-5 mr-2" />
             Call Now
           </Button>

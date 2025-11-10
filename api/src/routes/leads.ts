@@ -1664,39 +1664,56 @@ router.post("/public", async (req, res) => {
       recaptchaToken = "",
     } = req.body || {};
 
-    // Basic validation
-    if (!name || !email || !phone || !postcode) {
-      return res.status(400).json({ ok: false, error: "missing_required_fields" });
-    }
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (!emailOk) return res.status(400).json({ ok: false, error: "invalid_email" });
+    const src = String(source || "unknown").toLowerCase();
+    const phoneClick = src.includes("phone_click") || src.includes("phone-click") || src.includes("landing-phone");
 
-    // reCAPTCHA verification (optional, based on env)
-    const { verifyRecaptcha } = await import("../lib/recaptcha");
-    const r = await verifyRecaptcha(recaptchaToken);
-    if (!r.ok && r.score < 0.4) {
-      return res.status(400).json({ ok: false, error: "recaptcha_failed" });
+    // Basic validation (relax if from phone click)
+    if (!phoneClick) {
+      if (!name || !email || !phone || !postcode) {
+        return res.status(400).json({ ok: false, error: "missing_required_fields" });
+      }
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!emailOk) return res.status(400).json({ ok: false, error: "invalid_email" });
+    } else {
+      if (!phone) return res.status(400).json({ ok: false, error: "phone_required" });
+    }
+
+    // reCAPTCHA verification only if a token was provided (allows simpler dev + phone click capture)
+    if (recaptchaToken) {
+      try {
+        const { verifyRecaptcha } = await import("../lib/recaptcha");
+        const r = await verifyRecaptcha(recaptchaToken);
+        if (!r.ok && r.score < 0.4) {
+          return res.status(400).json({ ok: false, error: "recaptcha_failed" });
+        }
+      } catch (e) {
+        console.warn("[leads/public] recaptcha verification skipped:", (e as any)?.message || e);
+      }
     }
 
     // Sanitize strings
     const s = (v: any) => String(v ?? "").trim().slice(0, 5000);
 
-    // Idempotency check (10-minute window)
-    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
-    const recent = await prisma.landingLead.findFirst({
-      where: { email: s(email), source: s(source), createdAt: { gte: tenMinAgo } },
-      select: { id: true },
-    });
-    if (recent) {
-      return res.json({ ok: true, deduped: true, id: recent.id });
+    // Idempotency check (10-minute window) – only when we have an email to key by
+    if (email) {
+      const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+      const recent = await prisma.landingLead.findFirst({
+        where: { email: s(email), source: s(source), createdAt: { gte: tenMinAgo } },
+        select: { id: true },
+      });
+      if (recent) {
+        return res.json({ ok: true, deduped: true, id: recent.id });
+      }
     }
+
+    const finalName = name || (phoneClick ? "Phone Enquiry" : name);
 
     // Persist to database
     const created = await prisma.landingLead.create({
       data: {
         source: s(source),
-        name: s(name),
-        email: s(email),
+        name: s(finalName),
+        email: email ? s(email) : phoneClick ? null : "", // allow null for phone-only
         phone: s(phone),
         postcode: s(postcode),
         projectType: s(projectType),
@@ -1708,12 +1725,14 @@ router.post("/public", async (req, res) => {
       select: { id: true },
     });
 
-    // Fire-and-forget email notification
-    const { sendLeadEmail } = await import("../lib/mailer");
-    sendLeadEmail({ source, name, email, phone, postcode, projectType, propertyType, message })
-      .catch(() => { /* ignore email errors */ });
+    // Fire-and-forget email notification (skip for obvious spamminess if no email & not phone click? we still notify for phone leads)
+    try {
+      const { sendLeadEmail } = await import("../lib/mailer");
+      sendLeadEmail({ source, name: finalName, email, phone, postcode, projectType, propertyType, message })
+        .catch(() => {});
+    } catch {}
 
-    return res.json({ ok: true, id: created.id });
+    return res.json({ ok: true, id: created.id, phoneOnly: phoneClick && !email });
   } catch (err: any) {
     console.error("POST /leads/public error", err);
     return res.status(500).json({ ok: false, error: "server_error" });
