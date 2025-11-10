@@ -73,6 +73,8 @@ import notificationsRouter from "./routes/notifications";
 import streaksRouter from "./routes/streaks";
 import followupsRouter from "./routes/followups";
 import marketingRoiRouter from "./routes/marketing-roi";
+import interestRouter from "./routes/interest";
+import earlyAccessRouter from "./routes/early-access";
 import keywordsRouter from "./routes/keywords";
 import aggregateReviewsRouter from "./routes/aggregate-reviews";
 import adsRouter from "./routes/ads";
@@ -233,6 +235,10 @@ app.use("/api/aggregate-reviews", aggregateReviewsRouter);
 // Admin editor APIs
 app.use("/api/admin/landing-tenants", adminLandingTenantsRouter);
 app.use("/api/admin/landing-tenants", adminImageUploadRouter);
+/** Interest registration (pre-launch waitlist) */
+app.use("/api/interest", interestRouter);
+/** Early adopter signup */
+app.use("/api/early-access", earlyAccessRouter);
 
 /** ---------- JWT decode middleware (Authorization header OR cookies) ---------- */
 app.use((req, _res, next) => {

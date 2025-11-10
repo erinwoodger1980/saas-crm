@@ -1223,6 +1223,21 @@ model AiSession {
   @@index([status])
 }
 
+/// ===============================
+/// Interest Registration (Pre-launch Waitlist)
+/// ===============================
+model InterestRegistration {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  company   String?
+  message   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
 // Tenant Google Ads configuration (MCC-linked sub-accounts)
 model TenantAdsConfig {
   id                  String   @id @default(cuid())
