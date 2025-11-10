@@ -1,4 +1,29 @@
 import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export async function getTenantBySlug(slug: string): Promise<{
+  id: string;
+  slug: string;
+  name: string;
+  logoUrl?: string | null;
+  primary?: string | null;
+  secondary?: string | null;
+} | null> {
+  if (!slug) return null;
+  const tenant = await prisma.tenant.findUnique({
+    where: { slug },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      logoUrl: true,
+      primary: true,
+      secondary: true,
+    },
+  });
+  return tenant;
+}import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export async function getTenantBySlug(slug: string) {

@@ -177,3 +177,79 @@ export async function getTenantCustomerId(tenantId: string): Promise<string | nu
 
   return config?.googleAdsCustomerId || null;
 }
+
+/**
+ * List campaigns for a customer account
+ */
+export interface CampaignInfo {
+  id: string;
+  resourceName: string;
+  name: string;
+  status: string;
+  budgetAmount?: number;
+  budgetCurrency?: string;
+  adGroupCount?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export async function listCampaigns(customerId: string): Promise<CampaignInfo[]> {
+  const customer = getAdsClient(digitsOnly(customerId));
+
+  try {
+    const query = `
+      SELECT
+        campaign.id,
+        campaign.name,
+        campaign.resource_name,
+        campaign.status,
+        campaign.start_date,
+        campaign.end_date,
+        campaign_budget.amount_micros,
+        campaign_budget.explicitly_shared
+      FROM campaign
+      WHERE campaign.status != 'REMOVED'
+      ORDER BY campaign.name
+    `;
+
+    const results = await customer.query(query);
+
+    // Get ad group count for each campaign
+    const campaigns: CampaignInfo[] = [];
+    
+    for (const row of results) {
+      const campaign = row.campaign;
+      const budget = row.campaign_budget;
+
+      // Query ad groups for this campaign
+      const adGroupQuery = `
+        SELECT ad_group.id
+        FROM ad_group
+        WHERE campaign.id = ${campaign.id}
+          AND ad_group.status != 'REMOVED'
+      `;
+
+      const adGroups = await customer.query(adGroupQuery);
+
+      campaigns.push({
+        id: campaign.id.toString(),
+        resourceName: campaign.resource_name,
+        name: campaign.name,
+        status: campaign.status,
+        budgetAmount: budget?.amount_micros ? Math.round(budget.amount_micros / 1_000_000) : undefined,
+        budgetCurrency: 'GBP',
+        adGroupCount: adGroups.length,
+        startDate: campaign.start_date,
+        endDate: campaign.end_date,
+      });
+    }
+
+    return campaigns;
+  } catch (error: any) {
+    console.error('Error listing campaigns:', error.message);
+    if (error.failure) {
+      console.error('Partial failure details:', JSON.stringify(error.failure, null, 2));
+    }
+    throw error;
+  }
+}

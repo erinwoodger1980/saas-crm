@@ -26,6 +26,24 @@ interface BootstrapResult {
   message: string;
 }
 
+interface CampaignInfo {
+  id: string;
+  resourceName: string;
+  name: string;
+  status: string;
+  budgetAmount?: number;
+  budgetCurrency?: string;
+  adGroupCount?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+interface CampaignsResponse {
+  customerId: string;
+  campaigns: CampaignInfo[];
+  count: number;
+}
+
 interface AdminTenantOut {
   id: string;
   name: string;
@@ -39,6 +57,8 @@ export default function AdsLinkPage() {
   const [tenant, setTenant] = useState<AdminTenantOut | null>(null);
   const [customerId, setCustomerId] = useState('');
   const [verifyData, setVerifyData] = useState<VerifyResponse | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignInfo[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
@@ -46,6 +66,7 @@ export default function AdsLinkPage() {
   const [success, setSuccess] = useState('');
   const [bootstrapResult, setBootstrapResult] = useState<BootstrapResult | null>(null);
   const [loadingTenant, setLoadingTenant] = useState(true);
+  const [showBootstrap, setShowBootstrap] = useState(false);
 
   // Bootstrap form fields
   const [landingUrl, setLandingUrl] = useState<string>('');
@@ -72,11 +93,28 @@ export default function AdsLinkPage() {
       }
     }
     if (id) loadTenant();
-    return () => { ignore = true; };
-  }, [id]);
-
   useEffect(() => {
     if (!tenant?.slug) return;
+    loadVerifyData();
+    loadCampaigns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenant?.slug]);
+
+  async function loadCampaigns() {
+    if (!tenant?.slug) return;
+    try {
+      setLoadingCampaigns(true);
+      const resp = await apiFetch<CampaignsResponse>(`/ads/tenant/${tenant.slug}/campaigns`);
+      if (resp?.campaigns) {
+        setCampaigns(resp.campaigns);
+      }
+    } catch (err: any) {
+      // Ignore errors - tenant may not have campaigns yet
+      console.log('No campaigns found or error loading:', err.message);
+    } finally {
+      setLoadingCampaigns(false);
+    }
+  }) return;
     loadVerifyData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenant?.slug]);
@@ -173,6 +211,9 @@ export default function AdsLinkPage() {
       if (result?.success) {
         setBootstrapResult(result);
         setSuccess(result.message || 'Campaign created successfully');
+        // Reload campaigns to show the new one
+        await loadCampaigns();
+        setShowBootstrap(false);
       } else {
         setError((result as any)?.message || 'Bootstrap failed');
       }
@@ -311,9 +352,110 @@ export default function AdsLinkPage() {
         )}
       </div>
 
-      {/* Step 3: Bootstrap Campaign */}
+      {/* Step 3: Existing Campaigns */}
+      {isReady && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">3. Existing Campaigns</h2>
+            <button
+              onClick={loadCampaigns}
+              disabled={loadingCampaigns}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+            >
+              {loadingCampaigns && <Loader2 className="animate-spin" size={16} />}
+              Refresh
+            </button>
+          </div>
+
+          {loadingCampaigns ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="animate-spin text-blue-600" size={24} />
+            </div>
+          ) : campaigns.length > 0 ? (
+            <div className="space-y-3">
+              {campaigns.map((campaign) => (
+                <div key={campaign.id} className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">{campaign.name}</h3>
+                      <div className="flex gap-4 mt-2 text-sm text-gray-600">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          campaign.status === 'ENABLED' ? 'bg-green-100 text-green-800' :
+                          campaign.status === 'PAUSED' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {campaign.status}
+                        </span>
+                        {campaign.budgetAmount && (
+                          <span>Budget: £{campaign.budgetAmount}/day</span>
+                        )}
+                        {campaign.adGroupCount !== undefined && (
+                          <span>{campaign.adGroupCount} ad group{campaign.adGroupCount !== 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                      {(campaign.startDate || campaign.endDate) && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          {campaign.startDate && `Start: ${campaign.startDate}`}
+                          {campaign.startDate && campaign.endDate && ' • '}
+                          {campaign.endDate && `End: ${campaign.endDate}`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <p className="text-sm text-gray-600 mt-4">
+                💡 Found {campaigns.length} campaign{campaigns.length !== 1 ? 's' : ''}. Manage them directly in{' '}
+                <a 
+                  href={`https://ads.google.com/aw/campaigns?campaignId=${campaigns[0]?.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-700 underline"
+                >
+                  Google Ads
+                </a>
+              </p>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-600 mb-4">No campaigns found for this account.</p>
+              <button
+                onClick={() => setShowBootstrap(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Create Your First Campaign
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 4: Bootstrap Campaign (Optional) */}
+      {isReady && (showBootstrap || campaigns.length > 0) && (
       <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">3. Bootstrap Campaign</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">
+            {campaigns.length > 0 ? '4. Create Additional Campaign' : '4. Bootstrap Campaign'}
+          </h2>
+          {campaigns.length > 0 && !showBootstrap && (
+            <button
+              onClick={() => setShowBootstrap(true)}
+              className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50"
+            >
+              Show Bootstrap Form
+            </button>
+          )}
+        </div>
+
+        {(!showBootstrap && campaigns.length > 0) ? (
+          <p className="text-gray-600 text-sm">
+            You already have campaigns running. Use the form above to create additional campaigns if needed.
+          </p>
+        ) : (
+          <>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          {campaigns.length > 0 ? 'Create Additional Campaign' : 'Bootstrap Campaign'}
+        </h2>
         <p className="text-gray-600 text-sm mb-4">
           Create a complete Search campaign with ads, keywords, and negative keywords. 
           The campaign will be created in PAUSED state for your review.
@@ -394,7 +536,10 @@ export default function AdsLinkPage() {
             <p className="text-sm text-blue-700 mt-3">🎉 Review your campaign in Google Ads and enable it when ready!</p>
           </div>
         )}
+          </>
+        )}
       </div>
+      )}
     </div>
   );
 }
