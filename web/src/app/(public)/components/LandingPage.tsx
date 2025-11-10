@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Hero from "./Hero";
+import PreLaunchHero from "./PreLaunchHero";
 import ValueProps from "./ValueProps";
 import SocialProof from "./SocialProof";
-import Pricing from "./Pricing";
 import HowItWorks from "./HowItWorks";
 import FAQ from "./FAQ";
 import Footer from "./Footer";
@@ -33,7 +32,7 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
-    console.log("JoineryAI landing page viewed", { referral: referral ?? null });
+    console.log("JoineryAI landing page viewed (pre-launch)", { referral: referral ?? null });
   }, [referral]);
 
   const handleCta = useCallback(
@@ -45,12 +44,12 @@ export default function LandingPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
-      <Hero referral={referral} onOpenDemo={() => setIsDemoOpen(true)} onCtaClick={handleCta} />
+      <PreLaunchHero onOpenDemo={() => setIsDemoOpen(true)} onCtaClick={handleCta} />
       <main className="flex-1">
         <ValueProps />
         <FeatureDetailBand />
         <SocialProof />
-        <Pricing referral={referral} onCtaClick={handleCta} />
+        {/* Removed Pricing section for pre-launch */}
         <HowItWorks />
         <FAQ />
       </main>
