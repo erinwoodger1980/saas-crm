@@ -22,27 +22,32 @@ export default function GalleryEditor({ images, onImagesChange, tenantId }: Gall
   const [uploading, setUploading] = useState(false);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    if (!acceptedFiles.length) return;
     setUploading(true);
-
     try {
       const formData = new FormData();
-      acceptedFiles.forEach((file) => {
-        formData.append('images', file);
-      });
+      acceptedFiles.forEach((file) => formData.append('images', file));
 
+      // Use relative /api path (rewritten to API origin) and rely on HttpOnly auth cookie rather than Bearer localStorage token.
       const res = await fetch(`/api/admin/landing-tenants/${tenantId}/images`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        },
         body: formData,
+        credentials: 'include',
       });
 
-      if (res.ok) {
-        const uploadedImages = await res.json();
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('Gallery upload failed', res.status, text);
+        alert(`Upload failed (${res.status}).`);
+        return;
+      }
+      const uploadedImages = await res.json();
+      if (Array.isArray(uploadedImages)) {
         onImagesChange([...images, ...uploadedImages]);
+      } else if (uploadedImages?.images) {
+        onImagesChange([...images, ...uploadedImages.images]);
       } else {
-        alert('Upload failed. Please try again.');
+        onImagesChange([...images]); // no change but avoid silent failure
       }
     } catch (error) {
       console.error('Upload error:', error);
