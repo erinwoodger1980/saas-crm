@@ -20,6 +20,12 @@ const nextConfig: NextConfig = {
       destination: "/tenant/:slug/landing",
     });
 
+    // Guide PDF legacy path: some code opened /guide.pdf, real asset is /free-guide.pdf
+    rewrites.push({
+      source: "/guide.pdf",
+      destination: "/free-guide.pdf",
+    });
+
     // Prefer an explicit API origin when provided (works in prod or dev)
     const configured = (process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_BASE || "").trim();
     if (configured) {
