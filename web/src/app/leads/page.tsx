@@ -1,7 +1,7 @@
 // web/src/app/leads/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState, Suspense, useCallback, useRef } from "react";
+import React, { useEffect, useMemo, useState, Suspense, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
@@ -811,24 +811,33 @@ function LeadsPageContent() {
         )}
       </DeskSurface>
 
-      <LeadModal
-        open={open}
-        onOpenChange={(v) => {
-          setOpen(v);
-          if (!v) setLeadPreview(null);
-        }}
-        leadPreview={leadPreview}
-        onUpdated={refreshGrouped}
-      />
+      {/* Mount modals only when needed to avoid import-time crashes */}
+      {open && (
+        <ErrorBoundary
+          fallback={<div className="p-4 text-sm text-red-600 border rounded bg-red-50">Lead modal failed to load.</div>}
+        >
+          <LeadModal
+            open={open}
+            onOpenChange={(v) => {
+              setOpen(v);
+              if (!v) setLeadPreview(null);
+            }}
+            leadPreview={leadPreview}
+            onUpdated={refreshGrouped}
+          />
+        </ErrorBoundary>
+      )}
 
-      <CsvImportModal
-        open={csvImportOpen}
-        onClose={() => setCsvImportOpen(false)}
-        onImportComplete={() => {
-          refreshGrouped();
-          setCsvImportOpen(false);
-        }}
-      />
+      {csvImportOpen && (
+        <CsvImportModal
+          open={csvImportOpen}
+          onClose={() => setCsvImportOpen(false)}
+          onImportComplete={() => {
+            refreshGrouped();
+            setCsvImportOpen(false);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -984,4 +993,15 @@ function avatarText(name?: string | null) {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+// Simple client-side error boundary
+class ErrorBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { fallback: React.ReactNode; children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: any, info: any) { console.error('Lead modal error boundary caught:', err, info); }
+  render() { if (this.state.hasError) return this.props.fallback; return this.props.children; }
 }
