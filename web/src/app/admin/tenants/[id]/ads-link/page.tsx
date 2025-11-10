@@ -45,6 +45,7 @@ export default function AdsLinkPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [bootstrapResult, setBootstrapResult] = useState<BootstrapResult | null>(null);
+  const [loadingTenant, setLoadingTenant] = useState(true);
 
   // Bootstrap form fields
   const [landingUrl, setLandingUrl] = useState<string>('');
@@ -57,6 +58,7 @@ export default function AdsLinkPage() {
     let ignore = false;
     async function loadTenant() {
       try {
+        setLoadingTenant(true);
         setError('');
         const data = await apiFetch<any>(`/admin/landing-tenants/${id}`);
         if (ignore) return;
@@ -65,6 +67,8 @@ export default function AdsLinkPage() {
         setLandingUrl(`https://www.joineryai.app/tenant/${t.slug}/landing`);
       } catch (e: any) {
         if (!ignore) setError(e?.message || 'Failed to load tenant');
+      } finally {
+        if (!ignore) setLoadingTenant(false);
       }
     }
     if (id) loadTenant();
@@ -78,15 +82,21 @@ export default function AdsLinkPage() {
   }, [tenant?.slug]);
 
   async function loadVerifyData() {
-    if (!tenant?.id) return;
+    if (!tenant?.id) {
+      setError('Tenant not loaded');
+      return;
+    }
     try {
       setVerifying(true);
       setError('');
-      const resp = await apiFetch(`/ads/tenant/${tenant.id}/verify`, { method: 'POST' });
-      if (resp.error) setError(resp.error);
-      setVerifyData(resp);
-      if (resp.customerId) {
-        setCustomerId(resp.customerId);
+      const resp = await apiFetch<VerifyResponse>(`/ads/tenant/${tenant.id}/verify`, { method: 'POST' });
+      if ((resp as any)?.error) {
+        setError((resp as any).error);
+      } else {
+        setVerifyData(resp);
+        if (resp.customerId) {
+          setCustomerId(resp.customerId);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to verify');
@@ -96,7 +106,10 @@ export default function AdsLinkPage() {
   }
 
   async function handleSaveCustomerId() {
-    if (!tenant?.id) return;
+    if (!tenant?.id) {
+      setError('Tenant not loaded');
+      return;
+    }
     // Validate format
     const pattern = /^\d{3}-\d{3}-\d{4}$/;
     if (!pattern.test(customerId)) {
@@ -109,14 +122,16 @@ export default function AdsLinkPage() {
       setError('');
       setSuccess('');
 
-      const resp = await apiFetch(`/ads/tenant/${tenant.id}/save`, {
+      const resp = await apiFetch<any>(`/ads/tenant/${tenant.id}/save`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId }),
+        json: { customerId },
       });
-      if (resp.error) setError(resp.error);
-      else setSuccess('Customer ID saved successfully!');
-      await loadVerifyData();
+      if (resp?.error) {
+        setError(resp.error);
+      } else {
+        setSuccess('Customer ID saved successfully!');
+        await loadVerifyData();
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to save customer ID');
     } finally {
@@ -125,7 +140,10 @@ export default function AdsLinkPage() {
   }
 
   async function handleBootstrap() {
-    if (!tenant?.slug) return;
+    if (!tenant?.slug) {
+      setError('Tenant not loaded');
+      return;
+    }
     if (!postcode.trim()) {
       setError('Postcode is required');
       return;
@@ -139,17 +157,20 @@ export default function AdsLinkPage() {
 
       const result = await apiFetch<BootstrapResult>(`/ads/tenant/${tenant.slug}/bootstrap`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        json: {
           landingUrl,
           postcode,
           radiusMiles,
           dailyBudgetGBP,
-        }),
+        },
       });
 
-      setBootstrapResult(result);
-      setSuccess(result.message);
+      if (result?.success) {
+        setBootstrapResult(result);
+        setSuccess(result.message || 'Campaign created successfully');
+      } else {
+        setError((result as any)?.message || 'Bootstrap failed');
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to bootstrap campaign');
     } finally {
@@ -158,6 +179,29 @@ export default function AdsLinkPage() {
   }
 
   const isReady = verifyData?.ready === true;
+
+  if (loadingTenant) {
+    return (
+      <div className="p-8 max-w-4xl">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Loader2 className="animate-spin text-blue-600" size={32} />
+        </div>
+      </div>
+    );
+  }
+
+  if (!tenant) {
+    return (
+      <div className="p-8 max-w-4xl">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-900">Failed to load tenant</p>
+          <Link href="/admin/tenants" className="text-blue-600 hover:text-blue-700 text-sm mt-2 inline-block">
+            ← Back to Tenants
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-4xl">
@@ -171,7 +215,7 @@ export default function AdsLinkPage() {
         </Link>
         <h1 className="text-3xl font-bold text-gray-900">Google Ads Connection</h1>
         <p className="text-gray-600 mt-1">
-          Tenant: <span className="font-mono font-semibold">{tenant?.slug || '...'}</span>
+          Tenant: <span className="font-mono font-semibold">{tenant.slug}</span>
         </p>
       </div>
 
