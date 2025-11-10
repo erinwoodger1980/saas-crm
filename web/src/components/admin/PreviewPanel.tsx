@@ -27,8 +27,9 @@ export default function PreviewPanel({
 }: PreviewPanelProps) {
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
 
-  // Build preview URL with query params to show draft content
-  const previewUrl = `/${tenantSlug}/kent?preview=true&t=${Date.now()}`;
+  // Build preview URL targeting the public landing page (vanity path -> rewrite to /tenant/:slug/landing)
+  // Include a cache-busting timestamp and preview flag so client component can optionally read it later.
+  const previewUrl = `/${tenantSlug}/landing?preview=true&t=${Date.now()}`;
 
   return (
     <div className="w-1/2 border-l border-gray-200 bg-gray-100 flex flex-col">
