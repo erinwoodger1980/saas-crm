@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { StickyBar } from '@/components/StickyBar';
 import { MobileDock } from '@/components/MobileDock';
@@ -14,15 +14,30 @@ interface LandingPageContentProps {
   searchParams?: { [key: string]: string | string[] | undefined };
 }
 
+function safeJson<T = any>(v: unknown): T | null {
+  try {
+    if (v == null) return null;
+    if (typeof v === 'string') return JSON.parse(v) as T;
+    if (typeof v === 'object') return v as T;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export default function LandingPageContent({
   tenant,
   content,
   location,
   keyword,
-  _searchParams
+  searchParams: _searchParams
 }: LandingPageContentProps) {
   const [variant, setVariant] = useState<'A' | 'B'>('A');
   const [showExitIntent, setShowExitIntent] = useState(false);
+
+  // Normalize optional JSON blobs once (guarantees, leadMagnet)
+  const guarantees = useMemo(() => safeJson<{ bullets?: any[]; riskReversal?: string }>(content?.guarantees) || { bullets: [], riskReversal: '' }, [content?.guarantees]);
+  const leadMagnet = useMemo(() => safeJson<{ title?: string; cta?: string; url?: string }>(content?.leadMagnet), [content?.leadMagnet]);
 
   // A/B test variant (localStorage persistence)
   useEffect(() => {
@@ -160,7 +175,7 @@ export default function LandingPageContent({
         </section>
 
         {/* Reviews Carousel */}
-        {tenant.reviews && tenant.reviews.length > 0 && (
+        {Array.isArray(tenant.reviews) && tenant.reviews.length > 0 && (
           <section className={styles.reviewsSection}>
             <h2 className={styles.sectionTitle}>What Our Customers Say</h2>
             <div className={styles.reviewsCarousel}>
@@ -181,19 +196,21 @@ export default function LandingPageContent({
         )}
 
         {/* Guarantees */}
-        {content?.guarantees && (
+        {guarantees && (guarantees.bullets?.length || guarantees.riskReversal) && (
           <section className={styles.guaranteesSection}>
             <h2 className={styles.sectionTitle}>Our Guarantees</h2>
-            <ul className={styles.guaranteesList}>
-              {JSON.parse(content.guarantees).bullets?.map((bullet: string, idx: number) => (
-                <li key={idx} className={styles.guaranteeItem}>
-                  ✅ {bullet}
-                </li>
-              ))}
-            </ul>
-            {JSON.parse(content.guarantees).riskReversal && (
+            {Array.isArray(guarantees.bullets) && guarantees.bullets.length > 0 && (
+              <ul className={styles.guaranteesList}>
+                {guarantees.bullets.map((bullet: any, idx: number) => (
+                  <li key={idx} className={styles.guaranteeItem}>
+                    ✅ {typeof bullet === 'string' ? bullet : bullet?.text || ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {guarantees.riskReversal && (
               <p className={styles.riskReversal}>
-                🛡️ <strong>Risk-Free:</strong> {JSON.parse(content.guarantees).riskReversal}
+                🛡️ <strong>Risk-Free:</strong> {guarantees.riskReversal}
               </p>
             )}
           </section>
@@ -211,7 +228,7 @@ export default function LandingPageContent({
         )}
 
         {/* Gallery */}
-        {tenant.images && tenant.images.length >= 2 && (
+        {Array.isArray(tenant.images) && tenant.images.length >= 2 && (
           <section className={styles.gallerySection}>
             <h2 className={styles.sectionTitle}>Our Work</h2>
             <div className={styles.galleryGrid}>
@@ -232,14 +249,14 @@ export default function LandingPageContent({
         )}
 
         {/* Lead Magnet */}
-        {content?.leadMagnet && (
+        {leadMagnet && (
           <section className={styles.leadMagnetSection}>
             <div className={styles.leadMagnetCard}>
               <h3 className={styles.leadMagnetTitle}>
-                📥 {JSON.parse(content.leadMagnet).title || 'Free Download'}
+                📥 {leadMagnet.title || 'Free Download'}
               </h3>
               <a
-                href={JSON.parse(content.leadMagnet).url || '/brochure.pdf'}
+                href={leadMagnet.url || '/brochure.pdf'}
                 className={styles.buttonPrimary}
                 onClick={() => track('generate_lead', {
                   method: 'download_brochure',
@@ -248,7 +265,7 @@ export default function LandingPageContent({
                 })}
                 download
               >
-                {JSON.parse(content.leadMagnet).cta || 'Download Now'}
+                {leadMagnet.cta || 'Download Now'}
               </a>
             </div>
           </section>

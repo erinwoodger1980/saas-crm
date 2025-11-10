@@ -203,10 +203,14 @@ router.post('/:tenantId/sync', async (req: Request, res: Response) => {
     }
 
     // Update keyword performance
-  const result = await adsClient.updateKeywordPerformance(tenantId);
+    const result = await adsClient.updateKeywordPerformance(tenantId);
 
     if (result.success === false) {
-      return res.status(400).json({ error: result.error || 'Sync failed' });
+      // Provide more structured diagnostics to caller
+      return res.status(result.reason === 'exception' ? 500 : 400).json({
+        error: result.error || 'Sync failed',
+        reason: result.reason,
+      });
     }
 
     // Generate suggestions
