@@ -2,11 +2,13 @@
 "use client";
 
 import { useEffect, useMemo, useState, Suspense, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import LeadModal, { Lead } from "./LeadModal";
-import CsvImportModal from "@/components/leads/CsvImportModal";
+const LeadModal = dynamic(() => import("./LeadModal"), { ssr: false });
+const CsvImportModal = dynamic(() => import("@/components/leads/CsvImportModal"), { ssr: false });
+import type { Lead } from "./LeadModal";
 import { on } from "@/lib/events";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import { useToast } from "@/components/ui/use-toast";

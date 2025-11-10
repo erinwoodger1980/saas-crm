@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-// Lazy load LeadModal to avoid evaluating its heavy module until needed (prevents init errors)
-const LeadModal = dynamic(() => import("../leads/LeadModal"), { ssr: false });
+import { useEffect, useMemo, useState, lazy, Suspense } from "react";
+// Lazy-load LeadModal using React.lazy for finer error boundary handling, wrapped in Suspense when used
+const LeadModalLazy = lazy(() => import("../leads/LeadModal"));
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -252,7 +251,8 @@ export default function OpportunitiesPage() {
       </DeskSurface>
 
       {selected && (
-        <LeadModal
+        <Suspense fallback={<div className="p-6 text-sm">Loading follow-up...</div>}>
+        <LeadModalLazy
           open={open}
           onOpenChange={(v: boolean) => {
             setOpen(v);
@@ -269,6 +269,7 @@ export default function OpportunitiesPage() {
           initialStage="follow-up"
           showFollowUp={true}
         />
+        </Suspense>
       )}
     </>
   );
