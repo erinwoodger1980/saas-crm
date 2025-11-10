@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { Metadata } from 'next';
 import { fetchTenantFromDB } from '@/lib/landing-api';
 import { PublicLandingClient } from './client';
+import { cookies } from 'next/headers';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -128,6 +129,23 @@ export default async function TenantLandingPage({ params, searchParams }: PagePr
     ? `Heritage quality meets modern performance — made by ${tenant.name}`
     : tenant.content?.subhead || `Heritage quality meets modern performance — made by ${tenant.name}`;
 
+  // Determine if current viewer is the owner of this tenant (auth-based)
+  let showOwnerCta = false;
+  try {
+    const jar = await cookies();
+    const token = jar?.get('jauth')?.value || '';
+    if (token) {
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+        const viewerTenantId = payload?.tenantId || payload?.tenant?.id || null;
+        if (viewerTenantId && tenant?.id) {
+          showOwnerCta = String(viewerTenantId) === String(tenant.id);
+        }
+      }
+    }
+  } catch {}
+
   return (
     <Suspense fallback={<LoadingState />}>
       <PublicLandingClient
@@ -142,6 +160,7 @@ export default async function TenantLandingPage({ params, searchParams }: PagePr
         guarantees={guarantees}
         urgency={urgency}
         leadMagnet={leadMagnet}
+        showOwnerCta={showOwnerCta}
       />
     </Suspense>
   );

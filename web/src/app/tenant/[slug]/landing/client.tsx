@@ -19,6 +19,7 @@ interface PublicLandingClientProps {
   guarantees: any;
   urgency: any;
   leadMagnet: any;
+  showOwnerCta: boolean;
 }
 
 export function PublicLandingClient({
@@ -33,6 +34,7 @@ export function PublicLandingClient({
   guarantees,
   urgency,
   leadMagnet: _leadMagnet,
+  showOwnerCta,
 }: PublicLandingClientProps) {
   const [showExitIntent, setShowExitIntent] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -291,7 +293,7 @@ export function PublicLandingClient({
               <span>Serving {serviceAreas.slice(0, 3).join(', ')}</span>
             </div>
 
-            {!hasImages && process.env.NODE_ENV !== 'production' && (
+            {showOwnerCta && !hasImages && (
               <div className="mt-6 text-sm text-amber-100/90">
                 No project photos yet. Owner? <a href={`/admin/tenants/${tenant.id}/edit?tab=gallery`} className="underline font-semibold hover:text-white">Upload your images</a> to showcase your work.
               </div>
@@ -445,23 +447,15 @@ export function PublicLandingClient({
                     </div>
                   ))}
                 </div>
-                {process.env.NODE_ENV !== 'production' && (
+                {showOwnerCta && (
                   <div className="text-center">
-                    {tenant?.id ? (
-                      <a href={`/admin/tenants/${tenant.id}/edit?tab=gallery`}>
-                        <Button variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50">
-                          Owner? Upload your photos →
-                        </Button>
-                      </a>
-                    ) : (
-                      <Button disabled variant="outline" className="border-amber-300 text-amber-400">
-                        Upload (login required)
+                    <a href={`/admin/tenants/${tenant.id}/edit?tab=gallery`}>
+                      <Button variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50">
+                        Owner? Upload your photos →
                       </Button>
-                    )}
+                    </a>
                     <p className="text-xs text-gray-500 mt-2">
-                      {tenant?.id
-                        ? 'Images appear instantly after upload. They help build trust and drive conversions.'
-                        : 'Log in as the business owner to upload project photos.'}
+                      Images appear instantly after upload. They help build trust and drive conversions.
                     </p>
                   </div>
                 )}
