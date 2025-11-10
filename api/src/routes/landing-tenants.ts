@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { putObject } from '../lib/storage';
 import multer from 'multer';
+import openai from '../ai';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -302,6 +303,146 @@ router.delete('/:slug/reviews/:id', requireAdmin, async (req: Request, res: Resp
   } catch (error: any) {
     console.error('Error deleting review:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /:tenantId/ai-suggest
+ * Generate AI headline and subhead suggestions for landing page
+ */
+router.post('/:tenantId/ai-suggest', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.params;
+    const { currentHeadline, currentSubhead, context } = req.body;
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({ 
+        error: 'AI service not configured',
+        message: 'OPENAI_API_KEY is not set' 
+      });
+    }
+
+    // Fetch tenant info for context
+    const tenant = await prisma.landingTenant.findUnique({
+      where: { id: tenantId },
+      include: {
+        tenant: {
+          select: { name: true, slug: true }
+        },
+        content: true,
+        reviews: {
+          take: 3,
+          orderBy: { order: 'asc' }
+        }
+      }
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    // Build context for AI
+    const businessName = tenant.tenant?.name || tenant.brandName || 'the business';
+    const industry = 'joinery and carpentry services';
+    const reviewContext = tenant.reviews.length > 0 
+      ? `Customer reviews highlight: ${tenant.reviews.map(r => r.text?.slice(0, 100)).filter(Boolean).join('; ')}`
+      : '';
+
+    const prompt = `You are an expert copywriter specializing in local service business landing pages for joiners, carpenters, and home renovation businesses.
+
+Business: ${businessName}
+Industry: ${industry}
+Current headline: ${currentHeadline || 'Not set'}
+Current subhead: ${currentSubhead || 'Not set'}
+${reviewContext}
+${context ? `Additional context: ${context}` : ''}
+
+Generate 3 compelling headline and subhead pairs for this joinery business landing page. Each should:
+- Be concise, benefit-focused, and locally relevant
+- Highlight expertise, quality, or trust
+- Include emotional appeal or urgency where appropriate
+- Be SEO-friendly (under 60 chars for headline)
+- Sound natural and professional
+
+Return your response as a JSON array with exactly 3 objects, each containing "headline" and "subhead" fields.
+Example format:
+[
+  {
+    "headline": "Expert Joiners in Kent | Custom Kitchens & Renovations",
+    "subhead": "Transform your home with bespoke joinery. Family-run, fully insured, 20+ years experience."
+  },
+  {
+    "headline": "...",
+    "subhead": "..."
+  },
+  {
+    "headline": "...",
+    "subhead": "..."
+  }
+]`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are an expert copywriter. Always respond with valid JSON arrays only, no markdown formatting or extra text.' 
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.8,
+      max_tokens: 800,
+    });
+
+    const responseText = completion.choices[0]?.message?.content?.trim() || '[]';
+    
+    // Parse JSON response, handling potential markdown code blocks
+    let suggestions = [];
+    try {
+      // Remove markdown code blocks if present
+      const cleanedText = responseText
+        .replace(/^```json\n?/i, '')
+        .replace(/^```\n?/i, '')
+        .replace(/\n?```$/i, '')
+        .trim();
+      
+      suggestions = JSON.parse(cleanedText);
+      
+      // Validate structure
+      if (!Array.isArray(suggestions) || suggestions.length === 0) {
+        throw new Error('Invalid suggestions format');
+      }
+      
+      // Ensure each suggestion has required fields
+      suggestions = suggestions.filter(s => s.headline && s.subhead).slice(0, 3);
+      
+      if (suggestions.length === 0) {
+        throw new Error('No valid suggestions found');
+      }
+      
+    } catch (parseError: any) {
+      console.error('Failed to parse AI response:', parseError.message, 'Response:', responseText);
+      
+      // Fallback suggestions
+      suggestions = [
+        {
+          headline: `Expert ${industry} in Your Area`,
+          subhead: 'Quality craftsmanship you can trust. Get your free quote today.'
+        }
+      ];
+    }
+
+    res.json({ 
+      suggestions,
+      model: 'gpt-4o-mini'
+    });
+
+  } catch (error: any) {
+    console.error('Error generating AI suggestions:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate suggestions',
+      message: error.message 
+    });
   }
 });
 

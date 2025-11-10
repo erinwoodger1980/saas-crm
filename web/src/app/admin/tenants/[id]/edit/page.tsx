@@ -205,6 +205,7 @@ export default function EditTenantPage() {
         {/* Editors */}
         <div className={`${showPreview ? 'w-1/2' : 'w-full'} overflow-y-auto p-6 space-y-6`}>
           <HeroEditor
+            tenantId={params.id as string}
             headline={headline}
             subhead={subhead}
             urgencyBanner={urgencyBanner}
