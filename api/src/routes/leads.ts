@@ -1666,16 +1666,24 @@ router.post("/public", async (req, res) => {
 
     const src = String(source || "unknown").toLowerCase();
     const phoneClick = src.includes("phone_click") || src.includes("phone-click") || src.includes("landing-phone");
+    const guideDownload = src.includes("guide") || src.includes("exit-guide") || src.includes("lead_magnet");
 
-    // Basic validation (relax if from phone click)
-    if (!phoneClick) {
+    // Basic validation
+    // - Phone click: only needs phone
+    // - Guide download: only needs email and name
+    // - Full form: needs name, email, phone, postcode
+    if (phoneClick) {
+      if (!phone) return res.status(400).json({ ok: false, error: "phone_required" });
+    } else if (guideDownload) {
+      if (!email) return res.status(400).json({ ok: false, error: "email_required" });
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!emailOk) return res.status(400).json({ ok: false, error: "invalid_email" });
+    } else {
       if (!name || !email || !phone || !postcode) {
         return res.status(400).json({ ok: false, error: "missing_required_fields" });
       }
       const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
       if (!emailOk) return res.status(400).json({ ok: false, error: "invalid_email" });
-    } else {
-      if (!phone) return res.status(400).json({ ok: false, error: "phone_required" });
     }
 
     // reCAPTCHA verification only if a token was provided (allows simpler dev + phone click capture)
