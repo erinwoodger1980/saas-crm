@@ -89,13 +89,21 @@ export default function AdsLinkPage() {
     try {
       setVerifying(true);
       setError('');
-      const resp = await apiFetch<VerifyResponse>(`/ads/tenant/${tenant.id}/verify`, { method: 'POST' });
-      if ((resp as any)?.error) {
-        setError((resp as any).error);
+      const resp = await apiFetch<Partial<VerifyResponse> & { error?: string }>(`/ads/tenant/${tenant.id}/verify`, { method: 'POST' });
+      if (resp?.error) {
+        setError(resp.error);
       } else {
-        setVerifyData(resp);
-        if (resp.customerId) {
-          setCustomerId(resp.customerId);
+        const normalized: VerifyResponse = {
+          mccOk: !!(resp as any)?.mccOk,
+          customerId: (resp as any)?.customerId ?? null,
+          accessOk: (resp as any)?.accessOk ?? null,
+          ga4IdPresent: !!(resp as any)?.ga4IdPresent,
+          notes: Array.isArray((resp as any)?.notes) ? ((resp as any)?.notes as string[]) : [],
+          ready: !!(resp as any)?.ready,
+        };
+        setVerifyData(normalized);
+        if (normalized.customerId) {
+          setCustomerId(normalized.customerId);
         }
       }
     } catch (err: any) {
@@ -290,11 +298,11 @@ export default function AdsLinkPage() {
             <ChecklistItem checked={verifyData.accessOk === true} loading={verifyData.accessOk === null} label="MCC has access to customer" />
             <ChecklistItem checked={verifyData.ga4IdPresent} label="GA4 tracking ID configured (optional)" />
 
-            {verifyData.notes.length > 0 && (
+            {(verifyData?.notes?.length ?? 0) > 0 && (
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <p className="text-xs font-semibold text-gray-700 mb-2">Details:</p>
                 <ul className="text-xs text-gray-600 space-y-1">
-                  {verifyData.notes.map((note, i) => (
+                  {(verifyData.notes ?? []).map((note, i) => (
                     <li key={i}>{note}</li>
                   ))}
                 </ul>
@@ -383,8 +391,8 @@ export default function AdsLinkPage() {
               <div><strong>Customer:</strong> {bootstrapResult.customerId}</div>
               <div><strong>Campaign:</strong> {bootstrapResult.campaign}</div>
               <div><strong>Ad Group:</strong> {bootstrapResult.adGroup}</div>
-              <div><strong>Ads:</strong> {bootstrapResult.ads.length} created</div>
-              <div><strong>Keywords:</strong> {bootstrapResult.keywords.length} added</div>
+              <div><strong>Ads:</strong> {bootstrapResult.ads?.length ?? 0} created</div>
+              <div><strong>Keywords:</strong> {bootstrapResult.keywords?.length ?? 0} added</div>
             </div>
             <p className="text-sm text-blue-700 mt-3">🎉 Review your campaign in Google Ads and enable it when ready!</p>
           </div>
