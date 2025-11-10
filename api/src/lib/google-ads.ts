@@ -42,11 +42,14 @@ export class GoogleAdsClient {
    * Get customer instance for a tenant
    */
   private getCustomer(customerId: string, refreshToken: string): Customer {
+    // Sanitize customer ID (API expects digits-only)
+    const sanitizedId = (customerId || '').replace(/-/g, '').trim();
     const opts: any = {
-      customer_id: customerId,
+      customer_id: sanitizedId,
       refresh_token: refreshToken,
     };
     if (this.mccLoginId) opts.login_customer_id = this.mccLoginId;
+    logAds('Creating customer handle', { originalCustomerId: customerId, sanitizedCustomerId: sanitizedId, hasRefreshToken: !!refreshToken });
     return this.client.Customer(opts);
   }
 
@@ -146,7 +149,7 @@ export class GoogleAdsClient {
         return { success: false, error: 'Tenant not found', reason: 'not_found' };
       }
 
-      let customerId = tenant.googleAdsCustomerId || null;
+  let customerId = tenant.googleAdsCustomerId || null;
 
       // Fallback: read from TenantAdsConfig if not on Tenant row
       if (!customerId) {
@@ -184,6 +187,7 @@ export class GoogleAdsClient {
       logAds('Fetching keyword performance', { tenantId, startDate, endDate, customerId });
 
       const keywords = await this.fetchKeywordPerformance(
+        // Pass through original (will be sanitized in getCustomer)
         customerId,
         refreshToken,
         startDate,
