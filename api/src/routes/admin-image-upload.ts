@@ -56,7 +56,6 @@ router.post('/:id/images', requireAdmin, upload.array('images', 10), async (req:
       landingTenant = await prisma.landingTenant.create({
         data: {
           tenantId: req.params.id,
-          slug: tenantSlug,
           headline: '',
           subhead: '',
           urgencyBanner: '',

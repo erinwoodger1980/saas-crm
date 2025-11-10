@@ -88,7 +88,7 @@ export default function AdsLinkPage() {
         const t: AdminTenantOut = { 
           id: tenantId, 
           name: data?.tenant?.name || data?.name, 
-          slug: data?.slug || data?.tenant?.slug || 'tenant' 
+          slug: data?.tenant?.slug || 'tenant' 
         };
         setTenant(t);
         setLandingUrl(`https://www.joineryai.app/tenant/${t.slug}/landing`);

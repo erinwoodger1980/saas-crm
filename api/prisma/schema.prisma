@@ -61,7 +61,7 @@ model Tenant {
   keywordPerformance    KeywordPerformance[]
   keywordSuggestions    KeywordSuggestion[]
   landingTenant         LandingTenant?
-  slug                  String?                @unique
+  slug                  String                 @unique // Required for landing pages and URLs
   // Feature Requests (inverse relation)
   featureRequests       FeatureRequest[]
 }
@@ -1080,7 +1080,6 @@ model LandingLead {
 model LandingTenant {
   id             String                @id @default(cuid())
   tenantId       String                @unique
-  slug           String                @unique
   name           String?
   homeUrl        String?
   email          String?

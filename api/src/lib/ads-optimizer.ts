@@ -212,10 +212,10 @@ export class AdsOptimizer {
       return { applied: 0, message: 'No approved suggestions to apply' };
     }
 
-    // Find corresponding LandingTenant
-    const landingTenant = await prisma.landingTenant.findFirst({
+    // Find corresponding LandingTenant via tenantId
+    const landingTenant = await prisma.landingTenant.findUnique({
       where: {
-        slug: { contains: tenantId.substring(0, 8) }, // Fuzzy match by tenant ID prefix
+        tenantId: tenantId,
       },
       include: {
         content: true,

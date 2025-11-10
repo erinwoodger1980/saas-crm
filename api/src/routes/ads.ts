@@ -168,7 +168,7 @@ router.post('/tenant/:slugOrId/bootstrap', async (req: Request, res: Response) =
     const tenant = await resolveTenant(slugOrId);
 
     if (!tenant) {
-      return res.status(404).json({ error: `Tenant not found: ${slug}` });
+      return res.status(404).json({ error: `Tenant not found: ${slugOrId}` });
     }
 
     // Get customer ID from TenantAdsConfig

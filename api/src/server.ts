@@ -12,6 +12,20 @@ import { env } from "./env";
 import { prisma } from "./prisma";
 import { normalizeEmail } from "./lib/email";
 
+// Helper to generate unique tenant slug
+async function generateUniqueSlug(baseName: string): Promise<string> {
+  let slug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  let suffix = 0;
+  let finalSlug = slug;
+  
+  while (await prisma.tenant.findUnique({ where: { slug: finalSlug } })) {
+    suffix++;
+    finalSlug = `${slug}-${suffix}`;
+  }
+  
+  return finalSlug;
+}
+
 /* Routers */
 import authRouter from "./routes/auth";
 import aiRouter from "./routes/ai";
@@ -367,7 +381,8 @@ function requireAuth(req: any, res: any, next: any) {
 async function ensureDevData() {
   let tenant = await prisma.tenant.findFirst({ where: { name: "Demo Tenant" } });
   if (!tenant) {
-    tenant = await prisma.tenant.create({ data: { name: "Demo Tenant" } });
+    const slug = await generateUniqueSlug("Demo Tenant");
+    tenant = await prisma.tenant.create({ data: { name: "Demo Tenant", slug } });
   }
 
   const demoEmail = "erin@acme.test";
