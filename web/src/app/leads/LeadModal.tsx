@@ -280,7 +280,7 @@ export default function LeadModal({
   leadPreview,
   onUpdated,
   initialStage = 'overview',
-  _showFollowUp = false,
+  showFollowUp = false,
 }: {
   open: boolean;
   onOpenChange: (_v: boolean) => void;
@@ -594,11 +594,28 @@ export default function LeadModal({
   }, [open, leadPreview?.id, initialStage]);
 
   // Load follow-up tasks when follow-up tab is opened
+  // Note: Inline the logic to avoid referencing a not-yet-initialized callback
+  // which can trigger a Temporal Dead Zone error during render.
   useEffect(() => {
-    if (open && currentStage === 'follow-up' && lead?.id) {
-      loadFollowUpTasks();
-    }
-  }, [open, currentStage, lead?.id, loadFollowUpTasks]);
+    if (!(open && currentStage === 'follow-up' && lead?.id)) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingFollowUpTasks(true);
+      try {
+        const data = await apiFetch<{ items: any[] }>(
+          `/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(lead.id)}&mine=false`
+        );
+        if (!cancelled) setFollowUpTasks(data.items || []);
+      } catch (error) {
+        console.error("Failed to load follow-up tasks:", error);
+      } finally {
+        if (!cancelled) setLoadingFollowUpTasks(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, currentStage, lead?.id]);
 
   /* ----------------------------- Save helpers ----------------------------- */
 
