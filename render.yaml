@@ -5,7 +5,7 @@ services:
     rootDir: api
     buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
     startCommand: pnpm run start
-    preDeployCommand: npx prisma migrate deploy
+    preDeployCommand: npx prisma migrate deploy && pnpm tsx scripts/update-wealden-landing-prod.ts || true
     healthCheckPath: /health
     plan: starter
     envVars:

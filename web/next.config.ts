@@ -12,31 +12,37 @@ const nextConfig: NextConfig = {
     // keep other experimental flags here if you need them
   },
   async rewrites() {
+    const rewrites = [];
+    
+    // Tenant landing page rewrite: /:slug/landing -> /tenant/:slug/landing
+    rewrites.push({
+      source: "/:slug/landing",
+      destination: "/tenant/:slug/landing",
+    });
+
     // Prefer an explicit API origin when provided (works in prod or dev)
     const configured = (process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_BASE || "").trim();
     if (configured) {
       const base = configured.replace(/\/+$/g, "");
-      return [
-        {
-          source: "/api/:path*",
-          destination: `${base}/:path*`,
-        },
-      ];
+      rewrites.push({
+        source: "/api/:path*",
+        destination: `${base}/:path*`,
+      });
+      return rewrites;
     }
 
     // Fallback: in dev, proxy to local API (port 4000)
     const isProd = process.env.NODE_ENV === "production";
     if (!isProd) {
-      return [
-        {
-          source: "/api/:path*",
-          destination: "http://localhost:4000/:path*",
-        },
-      ];
+      rewrites.push({
+        source: "/api/:path*",
+        destination: "http://localhost:4000/:path*",
+      });
+      return rewrites;
     }
 
-    // In prod with no configured origin, do not rewrite (caller must set NEXT_PUBLIC_API_BASE)
-    return [];
+    // In prod with no configured origin, return just the tenant landing rewrite
+    return rewrites;
   },
 };
 
