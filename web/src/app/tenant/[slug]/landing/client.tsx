@@ -170,7 +170,7 @@ export function PublicLandingClient({
             </a>
             <Button
               onClick={scrollToForm}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-md"
             >
               Get Free Quote
             </Button>
@@ -180,7 +180,7 @@ export function PublicLandingClient({
           <div className="md:hidden flex items-center gap-2">
             <a
               href={`tel:${tenant.phone}`}
-              className="p-2 bg-green-600 text-white rounded-full"
+              className="p-2 bg-amber-600 text-white rounded-full shadow-md"
               onClick={() => track('click_contact_phone', { location: 'header_mobile' })}
             >
               <Phone className="w-5 h-5" />
@@ -192,10 +192,10 @@ export function PublicLandingClient({
       {/* Main Content */}
       <main className="pt-20">
         {/* Hero Section */}
-        <section className="relative min-h-[90vh] flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white overflow-hidden">
+        <section className="relative min-h-[90vh] flex items-center justify-center bg-gradient-to-br from-amber-900 via-amber-800 to-stone-900 text-white overflow-hidden">
           {/* Background Image */}
           {images[0]?.url && (
-            <div className="absolute inset-0 opacity-30">
+            <div className="absolute inset-0 opacity-40">
               <Image
                 src={images[0].url}
                 alt="Hero background"
@@ -206,12 +206,21 @@ export function PublicLandingClient({
             </div>
           )}
           
+          {/* Wood Grain Texture Overlay */}
+          <div className="absolute inset-0 opacity-10" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h60v60H0V0zm30 30h30v30H30V30z' fill='%23000000' fill-opacity='0.1'/%3E%3C/svg%3E")`,
+            backgroundSize: '120px 120px'
+          }}></div>
+          
           {/* Hero Content */}
           <div className="relative z-10 container mx-auto px-4 text-center animate-fade-in">
-            <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
+            <div className="inline-block px-4 py-2 bg-amber-600/30 backdrop-blur-sm rounded-full mb-6 border border-amber-400/30">
+              <span className="text-amber-100 text-sm font-semibold">🏡 Hand-Crafted by Master Craftsmen</span>
+            </div>
+            <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight drop-shadow-lg">
               {headline}
             </h1>
-            <p className="text-xl md:text-2xl mb-8 text-gray-200 max-w-3xl mx-auto">
+            <p className="text-xl md:text-2xl mb-8 text-amber-50 max-w-3xl mx-auto drop-shadow">
               {subheadline}
             </p>
             
@@ -219,9 +228,9 @@ export function PublicLandingClient({
               <Button
                 size="lg"
                 onClick={scrollToForm}
-                className="bg-green-600 hover:bg-green-700 text-white text-lg px-8 py-6"
+                className="bg-amber-600 hover:bg-amber-700 text-white text-lg px-10 py-7 font-bold shadow-2xl hover:scale-105 transition-transform"
               >
-                Get My Free Quote
+                Get My Free Quote →
               </Button>
               <a
                 href={`tel:${tenant.phone}`}
@@ -230,7 +239,7 @@ export function PublicLandingClient({
                 <Button
                   size="lg"
                   variant="outline"
-                  className="bg-white/10 backdrop-blur-sm border-white hover:bg-white/20 text-white text-lg px-8 py-6"
+                  className="bg-white/15 backdrop-blur-sm border-2 border-white hover:bg-white/25 text-white text-lg px-8 py-7 font-semibold shadow-xl"
                 >
                   <Phone className="w-5 h-5 mr-2" />
                   Call {tenant.phone}
@@ -257,10 +266,10 @@ export function PublicLandingClient({
 
         {/* Urgency Banner */}
         {urgency && (
-          <div className="bg-red-600 text-white py-3 text-center">
-            <p className="font-semibold">
-              ⚡ {urgency.text}
-              {urgency.sub && <span className="ml-2 text-sm opacity-90">{urgency.sub}</span>}
+          <div className="bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700 text-white py-4 text-center shadow-lg">
+            <p className="font-semibold text-lg">
+              {urgency.text}
+              {urgency.sub && <span className="ml-2 text-sm opacity-95">• {urgency.sub}</span>}
             </p>
           </div>
         )}
@@ -282,30 +291,40 @@ export function PublicLandingClient({
 
         {/* Reviews Section */}
         {reviews.length > 0 && (
-          <section className="py-20 bg-white">
+          <section className="py-20 bg-gradient-to-b from-white to-amber-50">
             <div className="container mx-auto px-4">
-              <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
-                What Our Customers Say
-              </h2>
+              <div className="text-center mb-12">
+                <div className="inline-block px-6 py-2 bg-amber-100 rounded-full mb-4">
+                  <span className="text-amber-800 font-semibold">⭐ Trusted by Homeowners Across the South East</span>
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
+                  What Our Customers Say
+                </h2>
+              </div>
               
               <div className="grid md:grid-cols-3 gap-6">
                 {reviews.slice(0, 6).map((review, idx) => (
-                  <Card key={idx} className="hover:shadow-lg transition">
+                  <Card key={idx} className="hover:shadow-xl transition-all hover:-translate-y-1 border-2 border-amber-100 bg-white">
                     <CardContent className="p-6">
-                      <div className="flex gap-1 mb-3">
+                      <div className="flex gap-1 mb-4">
                         {[...Array(review.rating || review.stars || 5)].map((_, i) => (
-                          <Star key={i} className="w-5 h-5 fill-yellow-400 text-yellow-400" />
+                          <Star key={i} className="w-5 h-5 fill-amber-400 text-amber-400" />
                         ))}
                       </div>
-                      <p className="text-gray-700 mb-4 italic">
+                      <p className="text-gray-700 mb-5 italic leading-relaxed">
                         &quot;{review.text || review.quote}&quot;
                       </p>
-                      <div className="text-sm font-semibold text-gray-900">
-                        {review.author}
+                      <div className="border-t pt-4 border-amber-100">
+                        <div className="text-sm font-bold text-gray-900">
+                          {review.author}
+                        </div>
+                        {review.location && (
+                          <div className="text-sm text-amber-700 flex items-center gap-1 mt-1">
+                            <MapPin className="w-3 h-3" />
+                            {review.location}
+                          </div>
+                        )}
                       </div>
-                      {review.location && (
-                        <div className="text-sm text-gray-500">{review.location}</div>
-                      )}
                     </CardContent>
                   </Card>
                 ))}
@@ -344,44 +363,61 @@ export function PublicLandingClient({
 
         {/* Guarantees & Pricing */}
         {guarantees && (
-          <section className="py-20 bg-white">
+          <section className="py-20 bg-gradient-to-br from-amber-50 via-white to-stone-50">
             <div className="container mx-auto px-4">
               <div className="grid md:grid-cols-2 gap-12 max-w-6xl mx-auto">
                 {/* Guarantees */}
-                <div>
-                  <h2 className="text-3xl font-bold mb-6">Our Guarantees</h2>
-                  <ul className="space-y-3">
+                <div className="bg-white p-8 rounded-xl shadow-lg border-2 border-amber-100">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 bg-amber-100 rounded-full">
+                      <Check className="w-6 h-6 text-amber-700" />
+                    </div>
+                    <h2 className="text-3xl font-bold text-gray-900">Our Guarantees</h2>
+                  </div>
+                  <ul className="space-y-4">
                     {guarantees.bullets?.map((bullet: string, idx: number) => (
-                      <li key={idx} className="flex items-start gap-3">
-                        <Check className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
-                        <span className="text-gray-700">{bullet}</span>
+                      <li key={idx} className="flex items-start gap-3 group">
+                        <Check className="w-6 h-6 text-amber-600 flex-shrink-0 mt-1 group-hover:scale-110 transition-transform" />
+                        <span className="text-gray-700 text-lg leading-relaxed">{bullet}</span>
                       </li>
                     ))}
                   </ul>
                   {guarantees.riskReversal && (
-                    <div className="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
-                      <p className="text-green-900">
-                        <span className="font-semibold">Risk-Free:</span> {guarantees.riskReversal}
+                    <div className="mt-8 p-5 bg-gradient-to-r from-amber-50 to-amber-100 rounded-lg border-l-4 border-amber-600">
+                      <p className="text-amber-900">
+                        <span className="font-bold">Risk-Free Promise:</span> {guarantees.riskReversal}
                       </p>
                     </div>
                   )}
                 </div>
 
                 {/* Pricing */}
-                <div>
-                  <h2 className="text-3xl font-bold mb-6">Transparent Pricing</h2>
+                <div className="bg-white p-8 rounded-xl shadow-lg border-2 border-stone-100">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-3 bg-stone-100 rounded-full">
+                      <span className="text-2xl">💷</span>
+                    </div>
+                    <h2 className="text-3xl font-bold text-gray-900">Investment Guide</h2>
+                  </div>
                   <div className="space-y-4">
-                    <div className="p-6 bg-gray-50 rounded-lg">
-                      <div className="text-sm text-gray-600 mb-2">Sash Windows from</div>
-                      <div className="text-4xl font-bold text-gray-900">£2,500</div>
+                    <div className="p-6 bg-gradient-to-br from-amber-50 to-stone-50 rounded-xl border border-amber-200 hover:shadow-md transition">
+                      <div className="text-sm text-amber-800 mb-2 font-semibold">Premium Oak Sash Windows from</div>
+                      <div className="text-4xl font-bold text-amber-900">£2,500</div>
+                      <p className="text-xs text-amber-700 mt-2">Per window, fully installed</p>
                     </div>
-                    <div className="p-6 bg-gray-50 rounded-lg">
-                      <div className="text-sm text-gray-600 mb-2">Most projects</div>
-                      <div className="text-2xl font-bold text-gray-900">£8,000 - £25,000</div>
+                    <div className="p-6 bg-gradient-to-br from-stone-50 to-amber-50 rounded-xl border border-stone-200 hover:shadow-md transition">
+                      <div className="text-sm text-stone-700 mb-2 font-semibold">Typical Full Project</div>
+                      <div className="text-2xl font-bold text-stone-900">£8,000 - £25,000</div>
+                      <p className="text-xs text-stone-600 mt-2">Complete home transformation</p>
                     </div>
-                    <p className="text-sm text-gray-600">
-                      *Final price depends on size, specification, and installation complexity.
-                      Get your accurate quote today.
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-sm text-blue-900">
+                        <span className="font-semibold">0% Finance Available</span> on projects over £2,000
+                      </p>
+                    </div>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      *Final price depends on timber grade, size, specification, and installation complexity.
+                      Every project is bespoke and quoted individually.
                     </p>
                   </div>
                 </div>
@@ -391,16 +427,29 @@ export function PublicLandingClient({
         )}
 
         {/* Lead Form Section */}
-        <section id="quote-form" className="py-20 bg-gradient-to-br from-green-600 to-green-700 text-white">
-          <div className="container mx-auto px-4 max-w-2xl">
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">
-              Get Your Free Quote
-            </h2>
-            <p className="text-center text-green-100 mb-8">
-              Takes 2 minutes • No obligation • Expert advice
-            </p>
+        <section id="quote-form" className="py-20 bg-gradient-to-br from-amber-800 via-amber-700 to-stone-800 text-white relative overflow-hidden">
+          {/* Decorative wood grain pattern */}
+          <div className="absolute inset-0 opacity-5" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0 L100 0 L100 5 L0 5 Z M0 20 L100 20 L100 23 L0 23 Z M0 40 L100 40 L100 44 L0 44 Z M0 60 L100 60 L100 62 L0 62 Z M0 80 L100 80 L100 85 L0 85 Z' fill='%23000000'/%3E%3C/svg%3E")`
+          }}></div>
+          
+          <div className="container mx-auto px-4 max-w-2xl relative z-10">
+            <div className="text-center mb-8">
+              <div className="inline-block px-6 py-3 bg-amber-600/40 backdrop-blur-sm rounded-full mb-4 border border-amber-400/40">
+                <span className="text-amber-50 font-semibold">✨ Start Your Project Today</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4 drop-shadow-lg">
+                Get Your Free Quote
+              </h2>
+              <p className="text-amber-100 mb-2 text-lg">
+                Takes 2 minutes • No obligation • Expert advice
+              </p>
+              <p className="text-amber-200 text-sm">
+                📞 Or call us now: <a href={`tel:${tenant.phone}`} className="font-bold hover:text-white transition">{tenant.phone}</a>
+              </p>
+            </div>
             
-            <Card className="bg-white">
+            <Card className="bg-white shadow-2xl">
               <CardContent className="p-6 md:p-8">
                 <form
                   onSubmit={(e) => {
@@ -470,14 +519,16 @@ export function PublicLandingClient({
                   <Button
                     type="submit"
                     size="lg"
-                    className="w-full bg-green-600 hover:bg-green-700 text-white text-lg py-6"
+                    className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-lg py-7 shadow-xl font-bold"
                   >
-                    Get My Free Quote
+                    Get My Free Quote →
                   </Button>
                   
-                  <p className="text-xs text-center text-gray-500">
-                    We typically respond within 2 hours during business hours
-                  </p>
+                  <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                    <p className="text-xs text-center text-amber-900">
+                      ⚡ <span className="font-semibold">Quick Response:</span> We typically respond within 2 hours during business hours
+                    </p>
+                  </div>
                 </form>
               </CardContent>
             </Card>
@@ -532,7 +583,7 @@ export function PublicLandingClient({
         </section>
 
         {/* Footer */}
-        <footer className="bg-gray-900 text-white py-12">
+        <footer className="bg-gradient-to-b from-stone-900 to-stone-950 text-white py-12 border-t-4 border-amber-600">
           <div className="container mx-auto px-4">
             <div className="grid md:grid-cols-3 gap-8 mb-8">
               {/* Company Info */}
@@ -587,9 +638,12 @@ export function PublicLandingClient({
               </div>
             </div>
 
-            <div className="border-t border-gray-800 pt-8 text-center text-gray-400 text-sm">
+            <div className="border-t border-stone-800 pt-8 text-center text-stone-400 text-sm">
               <p>© {new Date().getFullYear()} {tenant.name}. All rights reserved.</p>
-              <p className="mt-2">Campaign managed by Joinery AI</p>
+              <p className="mt-2 flex items-center justify-center gap-2">
+                <span className="text-amber-500">✨</span>
+                Campaign powered by <span className="text-amber-400 font-semibold">Joinery AI</span>
+              </p>
             </div>
           </div>
         </footer>
@@ -609,14 +663,14 @@ export function PublicLandingClient({
       )}
 
       {/* Mobile Sticky CTA */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 z-40 flex gap-3">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-r from-stone-900 to-amber-900 border-t-2 border-amber-600 shadow-2xl p-4 z-40 flex gap-3">
         <a href={`tel:${tenant.phone}`} className="flex-1">
-          <Button className="w-full bg-gray-900 hover:bg-gray-800" onClick={() => track('click_contact_phone', { location: 'mobile_sticky' })}>
+          <Button className="w-full bg-stone-800 hover:bg-stone-700 text-white font-semibold" onClick={() => track('click_contact_phone', { location: 'mobile_sticky' })}>
             <Phone className="w-5 h-5 mr-2" />
             Call Now
           </Button>
         </a>
-        <Button onClick={scrollToForm} className="flex-1 bg-green-600 hover:bg-green-700">
+        <Button onClick={scrollToForm} className="flex-1 bg-amber-600 hover:bg-amber-700 font-semibold">
           Get Quote
         </Button>
       </div>
