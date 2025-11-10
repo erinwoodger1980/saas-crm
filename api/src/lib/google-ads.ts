@@ -59,6 +59,15 @@ export class GoogleAdsClient {
     startDate: string,
     endDate: string
   ) {
+    logAds('Fetching keyword performance', { 
+      customerId, 
+      hasRefreshToken: !!refreshToken,
+      refreshTokenLength: refreshToken?.length,
+      startDate, 
+      endDate,
+      hasMccLoginId: !!this.mccLoginId
+    });
+
     const customer = this.getCustomer(customerId, refreshToken);
 
     const query = `
@@ -83,6 +92,7 @@ export class GoogleAdsClient {
     `;
 
     try {
+      logAds('Executing Google Ads query');
       const results = await customer.query(query);
       return results.map((row: any) => ({
         keyword: row.ad_group_criterion.keyword.text,
@@ -95,7 +105,13 @@ export class GoogleAdsClient {
         qualityScore: parseInt(row.ad_group_criterion.quality_info?.quality_score) || null,
       }));
     } catch (error: any) {
-      console.error(`Error fetching keyword performance:`, error.message);
+      console.error(`Error fetching keyword performance:`, error);
+      logAds('Google Ads query failed', { 
+        errorMessage: error.message, 
+        errorStack: error.stack,
+        customerId,
+        hasRefreshToken: !!refreshToken
+      });
       throw error;
     }
   }
