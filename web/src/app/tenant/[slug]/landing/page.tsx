@@ -4,14 +4,14 @@ import { fetchTenantFromDB } from '@/lib/landing-api';
 import { PublicLandingClient } from './client';
 
 interface PageProps {
-  params: { slug: string };
-  searchParams: { kw?: string };
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ kw?: string }>;
 }
 
 // Generate metadata for SEO
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
-  const { slug } = params;
-  const keyword = searchParams.kw;
+  const { slug } = await params;
+  const { kw: keyword } = await searchParams;
   
   try {
     const tenant = await fetchTenantFromDB(slug, false);
@@ -51,8 +51,8 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 }
 
 export default async function TenantLandingPage({ params, searchParams }: PageProps) {
-  const { slug } = params;
-  const keyword = searchParams.kw;
+  const { slug } = await params;
+  const { kw: keyword } = await searchParams;
 
   let tenant;
   try {
