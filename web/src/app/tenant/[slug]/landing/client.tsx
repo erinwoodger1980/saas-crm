@@ -25,14 +25,14 @@ export function PublicLandingClient({
   tenant,
   headline,
   subheadline,
-  _keyword,
+  keyword: _keyword,
   location,
   serviceAreas,
   images,
   reviews,
   guarantees,
   urgency,
-  _leadMagnet,
+  leadMagnet: _leadMagnet,
 }: PublicLandingClientProps) {
   const [showExitIntent, setShowExitIntent] = useState(false);
   const [scrolled, setScrolled] = useState(false);
