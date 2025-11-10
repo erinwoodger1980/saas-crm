@@ -93,6 +93,9 @@ export default function AdsLinkPage() {
       }
     }
     if (id) loadTenant();
+    return () => { ignore = true; };
+  }, [id]);
+
   useEffect(() => {
     if (!tenant?.slug) return;
     loadVerifyData();
@@ -114,10 +117,7 @@ export default function AdsLinkPage() {
     } finally {
       setLoadingCampaigns(false);
     }
-  }) return;
-    loadVerifyData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenant?.slug]);
+  }
 
   async function loadVerifyData() {
     if (!tenant?.id) {

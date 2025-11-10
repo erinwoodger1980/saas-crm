@@ -342,7 +342,7 @@ router.post('/:tenantId/ai-suggest', requireAdmin, async (req: Request, res: Res
     }
 
     // Build context for AI
-    const businessName = tenant.tenant?.name || tenant.brandName || 'the business';
+    const businessName = tenant.tenant?.name || 'the business';
     const industry = 'joinery and carpentry services';
     const reviewContext = tenant.reviews.length > 0 
       ? `Customer reviews highlight: ${tenant.reviews.map(r => r.text?.slice(0, 100)).filter(Boolean).join('; ')}`

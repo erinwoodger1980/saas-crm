@@ -221,6 +221,8 @@ export async function listCampaigns(customerId: string): Promise<CampaignInfo[]>
       const campaign = row.campaign;
       const budget = row.campaign_budget;
 
+      if (!campaign?.id) continue; // Skip if campaign data is missing
+
       // Query ad groups for this campaign
       const adGroupQuery = `
         SELECT ad_group.id
@@ -232,15 +234,15 @@ export async function listCampaigns(customerId: string): Promise<CampaignInfo[]>
       const adGroups = await customer.query(adGroupQuery);
 
       campaigns.push({
-        id: campaign.id.toString(),
-        resourceName: campaign.resource_name,
-        name: campaign.name,
-        status: campaign.status,
+        id: campaign.id?.toString() || '',
+        resourceName: campaign.resource_name || '',
+        name: campaign.name || '',
+        status: (campaign.status as string) || 'UNKNOWN',
         budgetAmount: budget?.amount_micros ? Math.round(budget.amount_micros / 1_000_000) : undefined,
         budgetCurrency: 'GBP',
         adGroupCount: adGroups.length,
-        startDate: campaign.start_date,
-        endDate: campaign.end_date,
+        startDate: campaign.start_date || undefined,
+        endDate: campaign.end_date || undefined,
       });
     }
 
