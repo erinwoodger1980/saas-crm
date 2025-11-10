@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { Phone, Mail, MapPin, Star, Check, Download, ChevronDown, X, MessageCircle } from 'lucide-react';
+import { Phone, Mail, MapPin, Star, Check, Download, ChevronDown, X, MessageCircle, Image as ImageIcon, Hammer, Calendar, Ruler, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -37,6 +37,7 @@ export function PublicLandingClient({
   const [showExitIntent, setShowExitIntent] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [selectedImage, setSelectedImage] = useState<number | null>(null);
+  const hasImages = Array.isArray(images) && images.length > 0;
 
   // Scroll detection for sticky header
   useEffect(() => {
@@ -194,7 +195,7 @@ export function PublicLandingClient({
         {/* Hero Section */}
         <section className="relative min-h-[90vh] flex items-center justify-center bg-gradient-to-br from-amber-900 via-amber-800 to-stone-900 text-white overflow-hidden">
           {/* Background Image */}
-          {images[0]?.url && (
+          {hasImages && images[0]?.url && (
             <div className="absolute inset-0 opacity-40">
               <Image
                 src={images[0].url}
@@ -256,6 +257,12 @@ export function PublicLandingClient({
               <span>•</span>
               <span>Serving {serviceAreas.slice(0, 3).join(', ')}</span>
             </div>
+
+            {!hasImages && (
+              <div className="mt-6 text-sm text-amber-100/90">
+                No project photos yet. Owner? <a href={`/admin/tenants/${tenant.id}/edit?tab=gallery`} className="underline font-semibold hover:text-white">Upload your images</a> to showcase your work.
+              </div>
+            )}
           </div>
 
           {/* Scroll indicator */}
@@ -265,6 +272,13 @@ export function PublicLandingClient({
         </section>
 
         {/* Urgency Banner */}
+        {(!urgency) && (
+          <div className="bg-gradient-to-r from-amber-900 via-stone-800 to-amber-900 text-white py-4 text-center shadow-inner">
+            <p className="font-semibold text-sm md:text-base">
+              November Installation Slots: <span className="text-amber-300 font-bold">3 remaining</span> • Book now to secure pre-Christmas completion
+            </p>
+          </div>
+        )}
         {urgency && (
           <div className="bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700 text-white py-4 text-center shadow-lg">
             <p className="font-semibold text-lg">
@@ -333,16 +347,45 @@ export function PublicLandingClient({
           </section>
         )}
 
+        {/* Process Timeline */}
+        <section className="py-20 bg-white">
+          <div className="container mx-auto px-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">How It Works</h2>
+            <div className="grid md:grid-cols-4 gap-6">
+              <div className="bg-white rounded-xl border p-6 text-center shadow-sm">
+                <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center"><Phone className="text-amber-700" /></div>
+                <h3 className="font-semibold mb-1">1. Quick Call</h3>
+                <p className="text-sm text-gray-600">We learn about your home and goals.</p>
+              </div>
+              <div className="bg-white rounded-xl border p-6 text-center shadow-sm">
+                <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center"><Ruler className="text-amber-700" /></div>
+                <h3 className="font-semibold mb-1">2. Site Survey</h3>
+                <p className="text-sm text-gray-600">Detailed measurements and specification.</p>
+              </div>
+              <div className="bg-white rounded-xl border p-6 text-center shadow-sm">
+                <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center"><Hammer className="text-amber-700" /></div>
+                <h3 className="font-semibold mb-1">3. Craft & Install</h3>
+                <p className="text-sm text-gray-600">Hand-built joinery, fitted by experts.</p>
+              </div>
+              <div className="bg-white rounded-xl border p-6 text-center shadow-sm">
+                <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center"><Home className="text-amber-700" /></div>
+                <h3 className="font-semibold mb-1">4. Aftercare</h3>
+                <p className="text-sm text-gray-600">50-year anti-rot guarantee, zero stress.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Gallery Section */}
-        {images.length > 0 && (
-          <section className="py-20 bg-gray-50">
-            <div className="container mx-auto px-4">
-              <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
-                View Recent Projects
-              </h2>
-              
+        <section className="py-20 bg-gray-50">
+          <div className="container mx-auto px-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
+              View Recent Projects
+            </h2>
+
+            {hasImages ? (
               <div className="grid md:grid-cols-3 gap-4">
-                {Array.isArray(images) && images.slice(0, 6).map((img, idx) => (
+                {images.slice(0, 6).map((img, idx) => (
                   <div
                     key={idx}
                     className="relative aspect-[4/3] rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition"
@@ -357,9 +400,30 @@ export function PublicLandingClient({
                   </div>
                 ))}
               </div>
-            </div>
-          </section>
-        )}
+            ) : (
+              <div>
+                <div className="grid md:grid-cols-3 gap-4 mb-6">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <div key={idx} className="relative aspect-[4/3] rounded-lg border-2 border-dashed border-amber-200 bg-white flex items-center justify-center text-amber-700">
+                      <div className="flex flex-col items-center gap-2">
+                        <ImageIcon className="w-8 h-8" />
+                        <span className="text-sm font-medium">Project photo placeholder</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-center">
+                  <a href={`/admin/tenants/${tenant.id}/edit?tab=gallery`}>
+                    <Button variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50">
+                      Upload your photos
+                    </Button>
+                  </a>
+                  <p className="text-xs text-gray-500 mt-2">Add images in the Gallery tab of your admin.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* Guarantees & Pricing */}
         {guarantees && (
@@ -425,6 +489,66 @@ export function PublicLandingClient({
             </div>
           </section>
         )}
+
+        {/* Comparison Section */}
+        <section className="py-16 bg-white">
+          <div className="container mx-auto px-4 max-w-5xl">
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-10">Timber vs uPVC</h2>
+            <div className="overflow-hidden rounded-xl border">
+              <table className="w-full text-left">
+                <thead className="bg-stone-50">
+                  <tr>
+                    <th className="p-4 text-sm font-semibold text-stone-700">Feature</th>
+                    <th className="p-4 text-sm font-semibold text-stone-700">Premium Timber</th>
+                    <th className="p-4 text-sm font-semibold text-stone-700">uPVC</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {[
+                    { f: 'Lifespan', t: '60+ years', u: '20-30 years' },
+                    { f: 'Maintenance', t: 'Low with Accoya', u: 'Can discolor/warp' },
+                    { f: 'Thermal Performance', t: 'Excellent with double/triple glazing', u: 'Good' },
+                    { f: 'Aesthetics', t: 'Natural wood grain, heritage look', u: 'Plastic appearance' },
+                    { f: 'Sustainability', t: 'Renewable, FSC-certified timber', u: 'Plastic-based' },
+                    { f: 'Resale Value', t: 'Adds character and value', u: 'Neutral' },
+                  ].map((row, idx) => (
+                    <tr key={idx} className="bg-white">
+                      <td className="p-4 font-medium text-stone-900">{row.f}</td>
+                      <td className="p-4 text-stone-700">{row.t}</td>
+                      <td className="p-4 text-stone-700">{row.u}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        {/* Lead Magnet */}
+        <section className="py-16 bg-gradient-to-r from-amber-50 to-stone-50">
+          <div className="container mx-auto px-4 max-w-3xl">
+            <Card className="border-2 border-amber-200">
+              <CardContent className="p-8">
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold mb-2">Free Guide: 10 Questions Before You Buy</h3>
+                  <p className="text-stone-700 mb-6">Make a confident decision with our 5-minute buyers guide.</p>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      track('generate_lead', { method: 'lead_magnet' });
+                      alert('Guide requested! (Demo)');
+                      window.open('/guide.pdf', '_blank');
+                    }}
+                    className="grid md:grid-cols-3 gap-3"
+                  >
+                    <input type="email" required placeholder="Your email" className="md:col-span-2 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-600" />
+                    <Button type="submit" className="bg-amber-600 hover:bg-amber-700">Get the Guide</Button>
+                  </form>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
 
         {/* Lead Form Section */}
         <section id="quote-form" className="py-20 bg-gradient-to-br from-amber-800 via-amber-700 to-stone-800 text-white relative overflow-hidden">
@@ -535,6 +659,28 @@ export function PublicLandingClient({
           </div>
         </section>
 
+        {/* Project Examples */}
+        <section className="py-20 bg-amber-50/50">
+          <div className="container mx-auto px-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">Recent Project Examples</h2>
+            <div className="grid md:grid-cols-3 gap-6">
+              {[
+                { title: 'Victorian Sash Window Restoration', price: '£12,800', desc: '8 windows replaced in Tunbridge Wells' },
+                { title: 'Front Door + Side Panels', price: '£3,900', desc: 'Custom oak door in Sevenoaks' },
+                { title: 'Casement Windows Upgrade', price: '£9,400', desc: 'Energy-efficient units in Heathfield' },
+              ].map((p, idx) => (
+                <Card key={idx} className="border-2 border-amber-200 bg-white">
+                  <CardContent className="p-6">
+                    <div className="text-sm text-amber-800 font-semibold mb-2">From {p.price}</div>
+                    <h3 className="font-bold text-xl mb-1">{p.title}</h3>
+                    <p className="text-stone-600">{p.desc}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* FAQ Section */}
         <section className="py-20 bg-gray-50">
           <div className="container mx-auto px-4 max-w-3xl">
@@ -542,7 +688,7 @@ export function PublicLandingClient({
               Frequently Asked Questions
             </h2>
             
-            <Accordion type="single" collapsible className="space-y-4">
+            <Accordion type="multiple" defaultValue={["item-1","item-2"]} className="space-y-4">
               <AccordionItem value="item-1" className="bg-white rounded-lg px-6">
                 <AccordionTrigger className="text-left font-semibold">
                   How long do timber windows last?

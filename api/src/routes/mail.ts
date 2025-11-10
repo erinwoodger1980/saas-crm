@@ -52,15 +52,19 @@ router.post("/ingest", async (req, res) => {
 
     // 1) Create a lightweight EmailIngest row first (so repeated calls are idempotent)
     const snippet = body.replace(/\s+/g, " ").slice(0, 200);
-    await prisma.emailIngest.create({
-      data: {
-        tenantId,
-        provider,
-        messageId,
-        fromEmail: from,
-        subject,
-        snippet,
-      },
+    // Avoid race-condition unique errors by using createMany with skipDuplicates.
+    const createRes = await prisma.emailIngest.createMany({
+      data: [
+        {
+          tenantId,
+          provider,
+          messageId,
+          fromEmail: from,
+          subject,
+          snippet,
+        },
+      ],
+      skipDuplicates: true,
     });
 
     // 2) Classify as lead vs not lead using OpenAI with explicit subject + full body
