@@ -6,7 +6,54 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-const LeadModal = dynamic(() => import("./LeadModal"), { ssr: false });
+// Robust dynamic import with typed props & fallback component
+interface LeadModalProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  leadPreview: Lead | null;
+  onUpdated?: () => void | Promise<void>;
+  initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up';
+  showFollowUp?: boolean;
+}
+
+const LeadModal = dynamic<LeadModalProps>(
+  () =>
+    import("./LeadModal")
+      .then((m) => ({ default: m.default }))
+      .catch((err) => {
+        console.error("LeadModal dynamic import failed:", err);
+        const Fallback: React.FC<LeadModalProps> = (props) => {
+          if (!props.open) return null;
+          return (
+            <div
+              className="fixed inset-0 z-[60] bg-black/20 backdrop-blur flex items-center justify-center p-6"
+              role="dialog"
+              aria-modal="true"
+              onClick={() => props.onOpenChange(false)}
+            >
+              <div
+                className="max-w-lg w-full rounded-xl bg-white shadow p-6 border border-slate-200"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="text-sm font-semibold mb-2">Lead modal failed to load</div>
+                <div className="text-sm text-slate-600 mb-4">Please retry or refresh the page.</div>
+                <div className="flex justify-end">
+                  <button
+                    className="rounded-md border px-3 py-2 text-sm"
+                    onClick={() => props.onOpenChange(false)}
+                    type="button"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+        return { default: Fallback } as any;
+      }),
+  { ssr: false, loading: () => null }
+);
 const CsvImportModal = dynamic(() => import("@/components/leads/CsvImportModal"), { ssr: false });
 import type { Lead } from "./LeadModal";
 import { on } from "@/lib/events";
@@ -206,6 +253,32 @@ function LeadsPageContent() {
       LOST: [],
     };
 
+    // Helpers to reduce obvious email-import duplicates (same message/thread/subject)
+    const normalizeSubject = (s: unknown): string => {
+      if (typeof s !== "string") return "";
+      const lower = s.trim().toLowerCase();
+      // strip common prefixes and excessive whitespace
+      return lower
+        .replace(/^(re|fw|fwd)\s*:\s*/g, "")
+        .replace(/\s+/g, " ")
+        .slice(0, 240);
+    };
+    const normalizeEmail = (s: unknown): string => {
+      if (typeof s !== "string") return "";
+      return s.trim().toLowerCase();
+    };
+    const dedupeKey = (l: any): string | null => {
+      const c = l?.custom || l?.briefJson || null;
+      const msgId = typeof c?.messageId === "string" && c.messageId.trim() ? c.messageId.trim() : undefined;
+      if (msgId) return `msg:${msgId.toLowerCase()}`;
+      const threadId = typeof c?.threadId === "string" && c.threadId.trim() ? c.threadId.trim() : undefined;
+      const subject = normalizeSubject(c?.subject || l?.subject);
+      const fromEmail = normalizeEmail(c?.fromEmail || l?.email);
+      if (threadId && subject) return `thread:${threadId}|${subject}`;
+      if (fromEmail && subject) return `fromsub:${fromEmail}|${subject}`;
+      return null;
+    };
+
     const mapLegacyToNew = (legacy: string | undefined): LeadStatus => {
       switch ((legacy || "").toUpperCase()) {
         case "NEW":
@@ -229,10 +302,16 @@ function LeadsPageContent() {
       }
     };
 
-    const seen = new Set<string>();
+    const seenIds = new Set<string>();
+    const seenSigs = new Set<string>();
     const insert = (l: any) => {
-      if (!l?.id || seen.has(l.id)) return;
-      seen.add(l.id);
+      if (!l?.id) return;
+      if (seenIds.has(l.id)) return;
+      const sig = dedupeKey(l);
+      if (sig && seenSigs.has(sig)) return;
+
+      seenIds.add(l.id);
+      if (sig) seenSigs.add(sig);
       const s = mapLegacyToNew(l.status as string);
 
       const contactNameCandidate =

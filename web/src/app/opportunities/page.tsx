@@ -2,8 +2,47 @@
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import dynamic from "next/dynamic";
-// Lazy-load LeadModal with SSR disabled to prevent hydration/TDZ issues
-const LeadModalLazy = dynamic(() => import("../leads/LeadModal"), { ssr: false });
+// Lazy-load LeadModal with SSR disabled and a robust fallback
+type LeadModalProps = {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  leadPreview: any;
+  onUpdated?: () => void | Promise<void>;
+  initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up';
+  showFollowUp?: boolean;
+};
+
+const LeadModalLazy = dynamic<LeadModalProps>(
+  () =>
+    import("../leads/LeadModal")
+      .then((m) => ({ default: m.default }))
+      .catch((err) => {
+        console.error("LeadModal (opportunities) dynamic import failed:", err);
+        const Fallback: React.FC<LeadModalProps> = (props) => {
+          if (!props.open) return null;
+          return (
+            <div
+              className="fixed inset-0 z-[60] bg-black/20 backdrop-blur flex items-center justify-center p-6"
+              role="dialog"
+              aria-modal="true"
+              onClick={() => props.onOpenChange(false)}
+            >
+              <div className="max-w-lg w-full rounded-xl bg-white shadow p-6 border border-slate-200" onClick={(e) => e.stopPropagation()}>
+                <div className="text-sm font-semibold mb-2">Follow-up modal failed to load</div>
+                <div className="text-sm text-slate-600 mb-4">Please retry or refresh the page.</div>
+                <div className="flex justify-end">
+                  <button className="rounded-md border px-3 py-2 text-sm" onClick={() => props.onOpenChange(false)} type="button">
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+        return { default: Fallback } as any;
+      }),
+  { ssr: false, loading: () => null }
+);
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
