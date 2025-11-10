@@ -1,4 +1,14 @@
-%PDF-1.4
+#!/usr/bin/env node
+/**
+ * Generate a professional-looking PDF guide for joinery customers
+ * Uses pure Node.js without external dependencies
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// Minimal PDF structure with actual content
+const pdfContent = `%PDF-1.4
 1 0 obj
 <<
 /Type /Catalog
@@ -125,7 +135,7 @@ BT
 0 -20 Td
 (Modern timber windows with double or triple glazing achieve excellent) Tj
 0 -15 Td
-(U-values \(0.8-1.2 W/m2K\), often outperforming uPVC. Wood is a) Tj
+(U-values \\(0.8-1.2 W/m2K\\), often outperforming uPVC. Wood is a) Tj
 0 -15 Td
 (natural insulator, reducing heating costs and improving comfort.) Tj
 
@@ -202,7 +212,7 @@ BT
 0 -20 Td
 (You can choose double or triple glazing, acoustic glass, Low-E) Tj
 0 -15 Td
-(coatings, and various glass types \(clear, obscured, decorative\).) Tj
+(coatings, and various glass types \\(clear, obscured, decorative\\).) Tj
 0 -15 Td
 (Your installer can recommend the best option for your needs.) Tj
 
@@ -336,3 +346,8 @@ trailer
 startxref
 7102
 %%EOF
+`;
+
+const outputPath = path.join(__dirname, '../web/public/free-guide.pdf');
+fs.writeFileSync(outputPath, pdfContent);
+console.log('✅ Generated free-guide.pdf at:', outputPath);
