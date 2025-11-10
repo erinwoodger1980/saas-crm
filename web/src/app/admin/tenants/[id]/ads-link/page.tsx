@@ -89,7 +89,7 @@ export default function AdsLinkPage() {
     try {
       setVerifying(true);
       setError('');
-      const resp = await apiFetch<Partial<VerifyResponse> & { error?: string }>(`/ads/tenant/${tenant.id}/verify`, { method: 'POST' });
+      const resp = await apiFetch<Partial<VerifyResponse> & { error?: string }>(`/ads/tenant/${tenant.slug}/verify`);
       if (resp?.error) {
         setError(resp.error);
       } else {
@@ -114,7 +114,7 @@ export default function AdsLinkPage() {
   }
 
   async function handleSaveCustomerId() {
-    if (!tenant?.id) {
+    if (!tenant?.slug) {
       setError('Tenant not loaded');
       return;
     }
@@ -130,10 +130,7 @@ export default function AdsLinkPage() {
       setError('');
       setSuccess('');
 
-      const resp = await apiFetch<any>(`/ads/tenant/${tenant.id}/save`, {
-        method: 'POST',
-        json: { customerId },
-      });
+      const resp = await apiFetch<any>(`/ads/tenant/${tenant.slug}/link`, { method: 'POST', json: { customerId } });
       if (resp?.error) {
         setError(resp.error);
       } else {
