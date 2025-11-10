@@ -9,6 +9,20 @@ const router = Router();
 
 /* ---------------------- Env & Stripe setup ---------------------- */
 
+// Helper to generate unique tenant slug
+async function generateUniqueSlug(baseName: string): Promise<string> {
+  let slug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  let suffix = 0;
+  let finalSlug = slug;
+  
+  while (await prisma.tenant.findUnique({ where: { slug: finalSlug } })) {
+    suffix++;
+    finalSlug = `${slug}-${suffix}`;
+  }
+  
+  return finalSlug;
+}
+
 function mustGet(name: string) {
   const v = (process.env[name] || "").trim();
   if (!v) throw new Error(`Missing required env: ${name}`);
@@ -68,7 +82,8 @@ router.post("/signup", async (req, res) => {
     /* 1) Find-or-create Tenant */
     let tenant = await prisma.tenant.findFirst({ where: { name: company } });
     if (!tenant) {
-      tenant = await prisma.tenant.create({ data: { name: company } });
+      const slug = await generateUniqueSlug(company);
+      tenant = await prisma.tenant.create({ data: { name: company, slug } });
 
       // Initialize new tenant with seed template data
       try {

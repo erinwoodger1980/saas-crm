@@ -9,6 +9,20 @@ const router = Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 /* ---------- helpers ---------- */
+
+// Helper to generate unique tenant slug
+async function generateUniqueSlug(baseName: string): Promise<string> {
+  let slug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  let suffix = 0;
+  let finalSlug = slug;
+  
+  while (await prisma.tenant.findUnique({ where: { slug: finalSlug } })) {
+    suffix++;
+    finalSlug = `${slug}-${suffix}`;
+  }
+  
+  return finalSlug;
+}
 async function resolvePromotionCodeId(codeOrId?: string | null): Promise<string | null> {
   if (!codeOrId) return null;
   if (codeOrId.startsWith("promo_")) return codeOrId; // already an ID
@@ -155,9 +169,13 @@ export const webhook = async (req: express.Request, res: express.Response) => {
         }
 
         if (!tenant) {
+          const tenantName = metadataCompany || customerEmail || `Tenant ${cs.id}`;
+          const slug = await generateUniqueSlug(tenantName);
+          
           tenant = await prisma.tenant.create({
             data: {
-              name: metadataCompany || customerEmail || `Tenant ${cs.id}`,
+              name: tenantName,
+              slug,
               stripeCustomerId: customerId || undefined,
             },
           });

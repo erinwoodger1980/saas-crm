@@ -40,14 +40,11 @@ router.post('/', requireAdmin, async (req, res) => {
     // Ensure unique slug on tenant
     let uniqueSlug = baseSlug;
     let suffix = 1;
-    // check both Tenant.slug and LandingTenant.slug to avoid collisions
-    // (depending on schema, tenant may have slug column)
-    // We attempt a few suffixes; Prisma unique constraints will still protect us.
+    // Prisma unique constraint will protect us
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const clash = await prisma.tenant.findFirst({ where: { slug: uniqueSlug } });
-      const clashLT = await prisma.landingTenant.findFirst({ where: { slug: uniqueSlug } });
-      if (!clash && !clashLT) break;
+      if (!clash) break;
       uniqueSlug = `${baseSlug}-${suffix++}`;
     }
 
@@ -61,7 +58,6 @@ router.post('/', requireAdmin, async (req, res) => {
     const landing = await prisma.landingTenant.create({
       data: {
         tenantId: tenant.id,
-        slug: tenant.slug || uniqueSlug,
         headline: '',
         subhead: '',
         urgencyBanner: '',
@@ -133,10 +129,6 @@ router.get('/:id', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Tenant not found' });
     }
 
-    const fallbackSlug = tenant.slug
-      ? tenant.slug
-      : `${tenant.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${req.params.id}`;
-
     let landingTenant = await prisma.landingTenant.findUnique({
       where: { tenantId: req.params.id },
       include: {
@@ -154,7 +146,6 @@ router.get('/:id', requireAdmin, async (req, res) => {
       landingTenant = await prisma.landingTenant.create({
         data: {
           tenantId: req.params.id,
-          slug: fallbackSlug,
           headline: '',
           subhead: '',
           urgencyBanner: '',
@@ -201,16 +192,11 @@ router.put('/:id/content', requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Tenant not found' });
     }
 
-    const fallbackSlug = tenant.slug
-      ? tenant.slug
-      : `${tenant.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${req.params.id}`;
-
     // Update or create landing tenant
     const landingTenant = await prisma.landingTenant.upsert({
       where: { tenantId: req.params.id },
       create: {
         tenantId: req.params.id,
-        slug: fallbackSlug,
         headline: headline || '',
         subhead: subhead || '',
         urgencyBanner: urgencyBanner || '',

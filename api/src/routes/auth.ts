@@ -9,6 +9,20 @@ import { normalizeEmail } from "../lib/email";
 const router = Router();
 const billingEnabled = env.BILLING_ENABLED;
 
+// Helper to generate unique tenant slug
+async function generateUniqueSlug(baseName: string): Promise<string> {
+  let slug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  let suffix = 0;
+  let finalSlug = slug;
+  
+  while (await prisma.tenant.findUnique({ where: { slug: finalSlug } })) {
+    suffix++;
+    finalSlug = `${slug}-${suffix}`;
+  }
+  
+  return finalSlug;
+}
+
 // ---- JWT & Cookie config (must match server.ts middleware) ----
 const JWT_SECRET = env.APP_JWT_SECRET;
 
@@ -105,9 +119,13 @@ async function resolveTenantAndUserFromSession(sessionId: string) {
     null;
 
   if (!tenant) {
+    const tenantName = company || customerEmail || `Tenant ${session.id}`;
+    const slug = await generateUniqueSlug(tenantName);
+    
     tenant = await prisma.tenant.create({
       data: {
-        name: company || customerEmail || `Tenant ${session.id}`,
+        name: tenantName,
+        slug,
         stripeCustomerId: customerId || undefined,
       },
     });
@@ -282,7 +300,10 @@ router.post("/dev-seed", async (req, res) => {
     const company = typeof body.company === "string" && body.company ? body.company : "Acme";
 
     let tenant = await prisma.tenant.findFirst();
-    if (!tenant) tenant = await prisma.tenant.create({ data: { name: company } });
+    if (!tenant) {
+      const slug = await generateUniqueSlug(company);
+      tenant = await prisma.tenant.create({ data: { name: company, slug } });
+    }
 
     const normalizedEmail = normalizeEmail(emailRaw) || emailRaw;
 

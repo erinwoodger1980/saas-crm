@@ -9,6 +9,20 @@ import { normalizeEmail } from "../lib/email";
 import { getAccessTokenForTenant, getAttachment } from "../services/ms365";
 import OpenAI from "openai";
 import { logInsight } from "../services/training";
+
+// Helper to generate unique tenant slug
+async function generateUniqueSlug(baseName: string): Promise<string> {
+  let slug = baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  let suffix = 0;
+  let finalSlug = slug;
+  
+  while (await prisma.tenant.findUnique({ where: { slug: finalSlug } })) {
+    suffix++;
+    finalSlug = `${slug}-${suffix}`;
+  }
+  
+  return finalSlug;
+}
 import { load } from "cheerio";
 import { redactEmailBody } from "../lib/ml/redact";
 
@@ -90,7 +104,8 @@ router.get("/ms365/callback", async (req, res) => {
     const TENANT_NAME = "MS365 Tenant";
     let msTenant = await prisma.tenant.findFirst({ where: { name: TENANT_NAME } });
     if (!msTenant) {
-      msTenant = await prisma.tenant.create({ data: { name: TENANT_NAME } });
+      const slug = await generateUniqueSlug(TENANT_NAME);
+      msTenant = await prisma.tenant.create({ data: { name: TENANT_NAME, slug } });
     }
 
     // ---------- Find-or-create user; ensure it belongs to msTenant ----------

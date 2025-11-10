@@ -29,22 +29,29 @@ router.get('/:slug', async (req: Request, res: Response) => {
     const { slug } = req.params;
     const draft = req.query.draft === '1';
 
-    const tenant = await prisma.landingTenant.findUnique({
+    // Find tenant by slug and include landing tenant data
+    const tenantRecord = await prisma.tenant.findUnique({
       where: { slug },
       include: {
-        content: true,
-        images: {
-          orderBy: { order: 'asc' },
-        },
-        reviews: {
-          orderBy: { order: 'asc' },
+        landingTenant: {
+          include: {
+            content: true,
+            images: {
+              orderBy: { order: 'asc' },
+            },
+            reviews: {
+              orderBy: { order: 'asc' },
+            },
+          },
         },
       },
     });
 
-    if (!tenant) {
+    if (!tenantRecord || !tenantRecord.landingTenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
+
+    const tenant = tenantRecord.landingTenant;
 
     // Filter published content unless draft=1
     if (!draft && tenant.content && !tenant.content.published) {
@@ -78,14 +85,17 @@ router.put('/:slug/content', requireAdmin, async (req: Request, res: Response) =
       published,
     } = req.body;
 
-    // Find tenant
-    const tenant = await prisma.landingTenant.findUnique({
+    // Find tenant by slug
+    const tenantRecord = await prisma.tenant.findUnique({
       where: { slug },
+      include: { landingTenant: true },
     });
 
-    if (!tenant) {
+    if (!tenantRecord || !tenantRecord.landingTenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
+
+    const tenant = tenantRecord.landingTenant;
 
     // Upsert content
   const content = await prisma.landingTenantContent.upsert({
@@ -138,14 +148,17 @@ router.post('/:slug/images/upload', requireAdmin, upload.single('file'), async (
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Find tenant
-    const tenant = await prisma.landingTenant.findUnique({
+    // Find tenant by slug
+    const tenantRecord = await prisma.tenant.findUnique({
       where: { slug },
+      include: { landingTenant: true },
     });
 
-    if (!tenant) {
+    if (!tenantRecord || !tenantRecord.landingTenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
+
+    const tenant = tenantRecord.landingTenant;
 
     // Determine file extension
     const originalname = req.file.originalname;
@@ -234,13 +247,17 @@ router.post('/:slug/reviews', requireAdmin, async (req: Request, res: Response) 
     const { slug } = req.params;
     const { quote, author, location, stars, sortOrder } = req.body;
 
-    const tenant = await prisma.landingTenant.findUnique({
+    // Find tenant by slug
+    const tenantRecord = await prisma.tenant.findUnique({
       where: { slug },
+      include: { landingTenant: true },
     });
 
-    if (!tenant) {
+    if (!tenantRecord || !tenantRecord.landingTenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
+
+    const tenant = tenantRecord.landingTenant;
 
     const review = await prisma.landingTenantReview.create({
       data: {
