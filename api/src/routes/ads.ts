@@ -142,9 +142,9 @@ const BootstrapCampaignSchema = z.object({
   campaignName: z.string().optional(),
 });
 
-router.post('/tenant/:slug/bootstrap', async (req: Request, res: Response) => {
+router.post('/tenant/:slugOrId/bootstrap', async (req: Request, res: Response) => {
   try {
-    const { slug } = req.params;
+    const { slugOrId } = req.params;
     
     // Validate request body
     const validation = BootstrapCampaignSchema.safeParse(req.body);
@@ -164,11 +164,8 @@ router.post('/tenant/:slug/bootstrap', async (req: Request, res: Response) => {
       campaignName,
     } = validation.data;
 
-    // Find tenant
-    const tenant = await prisma.tenant.findUnique({
-      where: { slug },
-      select: { id: true, name: true },
-    });
+    // Find tenant by ID or slug
+    const tenant = await resolveTenant(slugOrId);
 
     if (!tenant) {
       return res.status(404).json({ error: `Tenant not found: ${slug}` });
@@ -319,9 +316,9 @@ const LinkCustomerSchema = z.object({
   customerId: z.string().regex(/^\d{3}-\d{3}-\d{4}$/, 'Customer ID must be in format 123-456-7890'),
 });
 
-router.post('/tenant/:slug/link', async (req: Request, res: Response) => {
+router.post('/tenant/:slugOrId/link', async (req: Request, res: Response) => {
   try {
-    const { slug } = req.params;
+    const { slugOrId } = req.params;
     
     // Validate request body
     const validation = LinkCustomerSchema.safeParse(req.body);
@@ -334,14 +331,11 @@ router.post('/tenant/:slug/link', async (req: Request, res: Response) => {
 
     const { customerId } = validation.data;
 
-    // Find tenant by slug
-    const tenant = await prisma.tenant.findUnique({
-      where: { slug },
-      select: { id: true, name: true },
-    });
+    // Find tenant by ID or slug
+    const tenant = await resolveTenant(slugOrId);
 
     if (!tenant) {
-      return res.status(404).json({ error: `Tenant not found: ${slug}` });
+      return res.status(404).json({ error: `Tenant not found: ${slugOrId}` });
     }
 
     // Upsert TenantAdsConfig with customer ID (store with dashes)
@@ -373,21 +367,18 @@ router.post('/tenant/:slug/link', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /ads/tenant/:slug/verify
+ * GET /ads/tenant/:slugOrId/verify
  * Verify readiness for Google Ads campaign bootstrap
  */
-router.get('/tenant/:slug/verify', async (req: Request, res: Response) => {
+router.get('/tenant/:slugOrId/verify', async (req: Request, res: Response) => {
   try {
-    const { slug } = req.params;
+    const { slugOrId } = req.params;
 
-    // Find tenant
-    const tenant = await prisma.tenant.findUnique({
-      where: { slug },
-      select: { id: true, name: true },
-    });
+    // Find tenant by ID or slug
+    const tenant = await resolveTenant(slugOrId);
 
     if (!tenant) {
-      return res.status(404).json({ error: `Tenant not found: ${slug}` });
+      return res.status(404).json({ error: `Tenant not found: ${slugOrId}` });
     }
 
     // Check MCC environment
@@ -444,21 +435,18 @@ router.get('/tenant/:slug/verify', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /ads/tenant/:slug/campaigns
+ * GET /ads/tenant/:slugOrId/campaigns
  * List existing campaigns for a tenant
  */
-router.get('/tenant/:slug/campaigns', async (req: Request, res: Response) => {
+router.get('/tenant/:slugOrId/campaigns', async (req: Request, res: Response) => {
   try {
-    const { slug } = req.params;
+    const { slugOrId } = req.params;
 
-    // Find tenant
-    const tenant = await prisma.tenant.findUnique({
-      where: { slug },
-      select: { id: true, name: true },
-    });
+    // Find tenant by ID or slug
+    const tenant = await resolveTenant(slugOrId);
 
     if (!tenant) {
-      return res.status(404).json({ error: `Tenant not found: ${slug}` });
+      return res.status(404).json({ error: `Tenant not found: ${slugOrId}` });
     }
 
     // Get customer ID from DB
