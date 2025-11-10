@@ -42,17 +42,20 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     pathname === "/thank-you" || pathname?.startsWith("/q/thank-you");
   const isMarketingRoute =
     pathname === "/" || pathname?.startsWith("/policy") || pathname?.startsWith("/wealden-landing");
+  const isTenantLandingPage = pathname?.match(/^\/tenant\/[^/]+\/landing/);
 
   const shouldUseShell = !(
     isAuthRoute ||
     isPublicQuestionnaire ||
     isPublicThankYou ||
-    isMarketingRoute
+    isMarketingRoute ||
+    isTenantLandingPage
   );
   const shouldRunDevAuth = !(
     isPublicQuestionnaire ||
     isPublicThankYou ||
-    isMarketingRoute
+    isMarketingRoute ||
+    isTenantLandingPage
   );
 
   return (
