@@ -83,7 +83,13 @@ export default function AdsLinkPage() {
         setError('');
         const data = await apiFetch<any>(`/admin/landing-tenants/${id}`);
         if (ignore) return;
-        const t: AdminTenantOut = { id: data?.tenant?.id || data?.id, name: data?.tenant?.name || data?.name, slug: data?.tenant?.slug || data?.slug };
+        // Use tenant ID for ads routes (more reliable than slug which may be null)
+        const tenantId = data?.tenant?.id || data?.tenantId || id;
+        const t: AdminTenantOut = { 
+          id: tenantId, 
+          name: data?.tenant?.name || data?.name, 
+          slug: data?.slug || data?.tenant?.slug || 'tenant' 
+        };
         setTenant(t);
         setLandingUrl(`https://www.joineryai.app/tenant/${t.slug}/landing`);
       } catch (e: any) {
@@ -97,17 +103,17 @@ export default function AdsLinkPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!tenant?.slug) return;
+    if (!tenant?.id) return;
     loadVerifyData();
     loadCampaigns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenant?.slug]);
+  }, [tenant?.id]);
 
   async function loadCampaigns() {
-    if (!tenant?.slug) return;
+    if (!tenant?.id) return;
     try {
       setLoadingCampaigns(true);
-      const resp = await apiFetch<CampaignsResponse>(`/ads/tenant/${tenant.slug}/campaigns`);
+      const resp = await apiFetch<CampaignsResponse>(`/ads/tenant/${tenant.id}/campaigns`);
       if (resp?.campaigns) {
         setCampaigns(resp.campaigns);
       }
@@ -127,7 +133,7 @@ export default function AdsLinkPage() {
     try {
       setVerifying(true);
       setError('');
-      const resp = await apiFetch<Partial<VerifyResponse> & { error?: string }>(`/ads/tenant/${tenant.slug}/verify`);
+      const resp = await apiFetch<Partial<VerifyResponse> & { error?: string }>(`/ads/tenant/${tenant.id}/verify`);
       if (resp?.error) {
         setError(resp.error);
       } else {
@@ -152,7 +158,7 @@ export default function AdsLinkPage() {
   }
 
   async function handleSaveCustomerId() {
-    if (!tenant?.slug) {
+    if (!tenant?.id) {
       setError('Tenant not loaded');
       return;
     }
@@ -168,7 +174,7 @@ export default function AdsLinkPage() {
       setError('');
       setSuccess('');
 
-      const resp = await apiFetch<any>(`/ads/tenant/${tenant.slug}/link`, { method: 'POST', json: { customerId } });
+      const resp = await apiFetch<any>(`/ads/tenant/${tenant.id}/link`, { method: 'POST', json: { customerId } });
       if (resp?.error) {
         setError(resp.error);
       } else {
@@ -183,7 +189,7 @@ export default function AdsLinkPage() {
   }
 
   async function handleBootstrap() {
-    if (!tenant?.slug) {
+    if (!tenant?.id) {
       setError('Tenant not loaded');
       return;
     }
@@ -198,7 +204,7 @@ export default function AdsLinkPage() {
       setSuccess('');
       setBootstrapResult(null);
 
-      const result = await apiFetch<BootstrapResult>(`/ads/tenant/${tenant.slug}/bootstrap`, {
+      const result = await apiFetch<BootstrapResult>(`/ads/tenant/${tenant.id}/bootstrap`, {
         method: 'POST',
         json: {
           landingUrl,
