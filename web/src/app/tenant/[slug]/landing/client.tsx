@@ -446,12 +446,22 @@ export function PublicLandingClient({
                   ))}
                 </div>
                 <div className="text-center">
-                  <a href={`/admin/tenants/${tenant.id}/edit?tab=gallery`}>
-                    <Button variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50">
-                      Upload your photos
+                  {tenant?.id ? (
+                    <a href={`/admin/tenants/${tenant.id}/edit?tab=gallery`}>
+                      <Button variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50">
+                        Owner? Upload your photos →
+                      </Button>
+                    </a>
+                  ) : (
+                    <Button disabled variant="outline" className="border-amber-300 text-amber-400">
+                      Upload (login required)
                     </Button>
-                  </a>
-                  <p className="text-xs text-gray-500 mt-2">Add images in the Gallery tab of your admin.</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-2">
+                    {tenant?.id
+                      ? 'Images appear instantly after upload. They help build trust and drive conversions.'
+                      : 'Log in as the business owner to upload project photos.'}
+                  </p>
                 </div>
               </div>
             )}

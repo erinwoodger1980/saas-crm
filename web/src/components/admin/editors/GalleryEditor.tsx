@@ -205,6 +205,14 @@ export default function GalleryEditor({ images, onImagesChange, tenantId }: Gall
           <p className="text-gray-500 text-sm">No images uploaded yet</p>
         </div>
       )}
+
+      {/* Hint about auto-persist behavior */}
+      <div className="mt-6 text-xs text-gray-500 border-t pt-4">
+        <p>
+          Images are now auto-saved as soon as they finish uploading. You can still reorder or edit alt text
+          and then click <span className="font-semibold">Save Draft</span> or <span className="font-semibold">Publish</span> to update other content.
+        </p>
+      </div>
     </div>
   );
 }

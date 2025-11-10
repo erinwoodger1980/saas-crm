@@ -71,12 +71,12 @@ router.post('/:id/images', upload.array('images', 10), async (req: any, res: any
       });
     }
 
-    // Upload files and create records
-    const uploadedImages = [];
+  // Upload files and (optionally) persist them immediately to landingTenantImage
+  const uploadedImages: Array<{ url: string; altText: string }> = [];
 
     for (const file of files) {
       const ext = file.originalname.split('.').pop() || 'jpg';
-      
+
       const { publicUrl } = await putObject({
         tenantSlug,
         buffer: file.buffer,
@@ -87,6 +87,24 @@ router.post('/:id/images', upload.array('images', 10), async (req: any, res: any
         url: publicUrl,
         altText: file.originalname.split('.')[0],
       });
+    }
+
+    // Persist uploaded images directly so they appear without requiring a manual save
+    try {
+      const existingCount = await prisma.landingTenantImage.count({
+        where: { landingTenantId: landingTenant.id },
+      });
+      // Create records with sequential order appended after existing images
+      await prisma.landingTenantImage.createMany({
+        data: uploadedImages.map((img, idx) => ({
+          landingTenantId: landingTenant!.id,
+            url: img.url,
+            altText: img.altText,
+            order: existingCount + idx,
+        })),
+      });
+    } catch (persistErr) {
+      console.warn('[admin-image-upload] failed to persist images automatically', (persistErr as any)?.message || persistErr);
     }
 
     res.json(uploadedImages);
