@@ -906,16 +906,21 @@ router.post("/import", async (req, res) => {
       // Create EmailIngest row first (idempotent). If present, skip FULL processing but do minimal thread sync.
       let createdIngest = false;
       try {
-        await prisma.emailIngest.create({
-          data: {
-            tenantId,
-            provider: "gmail",
-            messageId: m.id,
-          },
+        // Use createMany + skipDuplicates to avoid throwing P2002 (unique constraint) and spamming logs.
+        const createRes = await prisma.emailIngest.createMany({
+          data: [
+            {
+              tenantId,
+              provider: "gmail",
+              messageId: m.id,
+            },
+          ],
+          skipDuplicates: true,
         });
-        createdIngest = true;
-      } catch {
-        // already indexed previously — still try to ensure thread+message exist (defensive)
+        createdIngest = createRes.count === 1;
+      } catch (e) {
+        // Should not normally throw now; log once if unexpected.
+        console.warn("[gmail] emailIngest createMany failed:", (e as any)?.message || e);
       }
 
       // Pull message

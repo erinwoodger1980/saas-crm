@@ -491,11 +491,16 @@ router.post("/import", async (req, res) => {
       // idempotent ingest row
       let createdIngest = false;
       try {
-        await prisma.emailIngest.create({
-          data: { tenantId, provider: "ms365", messageId: m.id },
+        const createRes = await prisma.emailIngest.createMany({
+          data: [
+            { tenantId, provider: "ms365", messageId: m.id },
+          ],
+          skipDuplicates: true,
         });
-        createdIngest = true;
-      } catch {}
+        createdIngest = createRes.count === 1;
+      } catch (e) {
+        console.warn("[ms365] emailIngest createMany failed:", (e as any)?.message || e);
+      }
 
       // Fetch full message for headers/body
       const msgUrl = `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(m.id)}?$select=id,subject,receivedDateTime,from,toRecipients,ccRecipients,conversationId,body,bodyPreview`;
