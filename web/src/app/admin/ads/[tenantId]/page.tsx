@@ -83,8 +83,26 @@ export default function AdsInsightsPage() {
       const p = await apiFetch<{ performance: PerformanceRow[] }>(`/keywords/${tenantId}/performance?limit=50`);
       setPerf(p.performance || []);
       alert('Sync complete');
-    } catch (_e) {
-      alert('Sync failed. Check server logs for details.');
+    } catch (e: any) {
+      // Extract error details (apiFetch puts parsed response in error.details)
+      const details = e?.details || {};
+      const errorMsg = details.error || e?.message || 'Sync failed';
+      const reason = details.reason;
+      let detailedMsg = errorMsg;
+      
+      // Provide user-friendly explanations based on reason
+      if (reason === 'not_found') {
+        detailedMsg += '\n\nTenant not found in database.';
+      } else if (reason === 'no_customer_id') {
+        detailedMsg += '\n\nGoogle Ads Customer ID not configured. Please set up Google Ads integration first.';
+      } else if (reason === 'no_refresh_token') {
+        detailedMsg += '\n\nGoogle Ads refresh token not found. Please authorize this tenant with Google Ads.';
+      } else if (reason === 'exception') {
+        detailedMsg += '\n\nInternal error occurred. Check API server logs for details.';
+      }
+      
+      alert(detailedMsg);
+      console.error('Sync error:', e, 'Details:', details);
     } finally {
       setSyncing(false);
     }
