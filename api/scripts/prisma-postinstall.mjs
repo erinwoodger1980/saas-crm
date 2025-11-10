@@ -58,5 +58,16 @@ await run('npx', [
   schemaPath,
 ], { ignoreFailure: true });
 
+console.log('[prisma-postinstall] Resolving failed landing slug migration if present...');
+await run('npx', [
+  'prisma',
+  'migrate',
+  'resolve',
+  '--rolled-back',
+  '20251110_remove_landing_slug',
+  '--schema',
+  schemaPath,
+], { ignoreFailure: true });
+
 console.log('[prisma-postinstall] Running prisma migrate deploy...');
 await run('npx', ['prisma', 'migrate', 'deploy', '--schema', schemaPath]);
