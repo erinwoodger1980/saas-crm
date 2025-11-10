@@ -1713,7 +1713,7 @@ router.post("/public", async (req, res) => {
       data: {
         source: s(source),
         name: s(finalName),
-        email: email ? s(email) : phoneClick ? null : "", // allow null for phone-only
+        email: email ? s(email) : "", // empty string for phone-only leads
         phone: s(phone),
         postcode: s(postcode),
         projectType: s(projectType),
