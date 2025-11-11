@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Calendar } from "lucide-react";
 
 // Mirror of schema enum
 const PROCESSES = [
@@ -24,6 +25,30 @@ type WorkshopProcess = typeof PROCESSES[number];
 
 type UserLite = { id: string; name: string | null; email: string };
 
+type Month = {
+  year: number;
+  month: number;
+  label: string;
+};
+
+type CalendarProject = {
+  id: string;
+  title: string;
+  valueGBP: number;
+  wonAt: string | null;
+  startDate: string;
+  deliveryDate: string;
+  totalDays: number;
+  monthlyValues: Record<string, number>;
+};
+
+type CalendarResponse = {
+  ok: boolean;
+  months: Month[];
+  projects: CalendarProject[];
+  monthlyTotals: Record<string, number>;
+};
+
 type Plan = {
   id: string;
   process: WorkshopProcess;
@@ -37,6 +62,8 @@ type Project = {
   name: string;
   valueGBP?: string | number | null;
   wonAt?: string | null;
+  startDate?: string | null;
+  deliveryDate?: string | null;
   weeks: number;
   processPlans: Plan[];
   totalHoursByProcess: Record<string, number>;
@@ -55,15 +82,22 @@ function formatProcess(p: string) {
   return p.replace(/_/g, " ");
 }
 
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+}
+
 export default function WorkshopPage() {
+  const [viewMode, setViewMode] = useState<'calendar' | 'legacy'>('calendar');
   const [loading, setLoading] = useState(true);
   const [weeks, setWeeks] = useState(4);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [calendarData, setCalendarData] = useState<CalendarResponse | null>(null);
   const [users, setUsers] = useState<UserLite[]>([]);
   const [adding, setAdding] = useState<Record<string, NewPlan>>({});
   const [loggingFor, setLoggingFor] = useState<Record<string, LogForm | null>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [backfillBusy, setBackfillBusy] = useState(false);
+  const [editingDates, setEditingDates] = useState<Record<string, { startDate: string; deliveryDate: string }>>({});
 
   async function loadAll() {
     setLoading(true);
@@ -77,15 +111,26 @@ export default function WorkshopPage() {
         }
       }
 
-      const [sched, usersResp] = await Promise.all([
-        apiFetch<ScheduleResponse>("/workshop/schedule?weeks=4"),
-        apiFetch<UsersResponse>("/workshop/users"),
-      ]);
-      if (sched?.ok) {
-        setWeeks(sched.weeks);
-        setProjects(sched.projects);
+      if (viewMode === 'calendar') {
+        const [calendar, usersResp] = await Promise.all([
+          apiFetch<CalendarResponse>("/workshop/calendar"),
+          apiFetch<UsersResponse>("/workshop/users"),
+        ]);
+        if (calendar?.ok) {
+          setCalendarData(calendar);
+        }
+        if (usersResp?.ok) setUsers(usersResp.items);
+      } else {
+        const [sched, usersResp] = await Promise.all([
+          apiFetch<ScheduleResponse>("/workshop/schedule?weeks=4"),
+          apiFetch<UsersResponse>("/workshop/users"),
+        ]);
+        if (sched?.ok) {
+          setWeeks(sched.weeks);
+          setProjects(sched.projects);
+        }
+        if (usersResp?.ok) setUsers(usersResp.items);
       }
-      if (usersResp?.ok) setUsers(usersResp.items);
     } catch (e) {
       console.error("Failed to load workshop:", e);
       const msg = (e as any)?.message || (e as any)?.toString?.() || "load_failed";
@@ -97,7 +142,7 @@ export default function WorkshopPage() {
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [viewMode]);
 
   function initAdd(projectId: string) {
     setAdding((prev) => ({
@@ -163,6 +208,43 @@ export default function WorkshopPage() {
     }
   }
 
+  function startEditDates(projectId: string, startDate: string | null, deliveryDate: string | null) {
+    setEditingDates(prev => ({
+      ...prev,
+      [projectId]: {
+        startDate: startDate || '',
+        deliveryDate: deliveryDate || ''
+      }
+    }));
+  }
+
+  function cancelEditDates(projectId: string) {
+    setEditingDates(prev => {
+      const next = { ...prev };
+      delete next[projectId];
+      return next;
+    });
+  }
+
+  async function saveDates(projectId: string) {
+    const dates = editingDates[projectId];
+    if (!dates || !dates.startDate || !dates.deliveryDate) return;
+
+    try {
+      await apiFetch(`/workshop/project/${projectId}`, {
+        method: "PATCH",
+        json: {
+          startDate: dates.startDate,
+          deliveryDate: dates.deliveryDate
+        }
+      });
+      cancelEditDates(projectId);
+      await loadAll();
+    } catch (e) {
+      console.error("Failed to save dates", e);
+    }
+  }
+
   const weeksArray = useMemo(() => Array.from({ length: weeks }, (_, i) => i + 1), [weeks]);
 
   if (loading) return (
@@ -172,12 +254,200 @@ export default function WorkshopPage() {
     </div>
   );
 
+  // Calendar view
+  if (viewMode === 'calendar') {
+    const projectCount = calendarData?.projects.length || 0;
+    
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">Workshop Calendar</h1>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">{projectCount} projects</span>
+            <Button variant="outline" size="sm" onClick={() => setViewMode('legacy')}>
+              Switch to Process View
+            </Button>
+            <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
+          </div>
+        </div>
+
+        {projectCount === 0 ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+            <div>
+              <div className="font-semibold">No projects with dates set.</div>
+              <div>Add start and delivery dates to your won projects to see them in the calendar.</div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  setBackfillBusy(true);
+                  try {
+                    await apiFetch("/workshop/backfill", { method: "POST" });
+                    await loadAll();
+                  } catch (e) {
+                    alert((e as any)?.message || "Backfill failed");
+                  } finally {
+                    setBackfillBusy(false);
+                  }
+                }}
+                disabled={backfillBusy}
+              >
+                {backfillBusy ? "Backfilling…" : "Backfill Won leads → Projects"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setViewMode('legacy')}>
+                View All Projects
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Calendar header with months */}
+            <div className="overflow-x-auto">
+              <div className="inline-block min-w-full">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b-2">
+                      <th className="sticky left-0 bg-background z-10 p-2 text-left font-semibold w-64 border-r">
+                        Project
+                      </th>
+                      {calendarData?.months.map(m => (
+                        <th key={`${m.year}-${m.month}`} className="p-2 text-center font-semibold min-w-32 border-r">
+                          {m.label}
+                        </th>
+                      ))}
+                      <th className="p-2 text-right font-semibold min-w-32">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calendarData?.projects.map(proj => {
+                      const editing = editingDates[proj.id];
+                      
+                      return (
+                        <tr key={proj.id} className="border-b hover:bg-muted/50">
+                          <td className="sticky left-0 bg-background z-10 p-2 border-r">
+                            <div className="font-medium">{proj.title}</div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {editing ? (
+                                <div className="space-y-1">
+                                  <Input
+                                    type="date"
+                                    value={editing.startDate}
+                                    onChange={(e) => setEditingDates(prev => ({
+                                      ...prev,
+                                      [proj.id]: { ...prev[proj.id], startDate: e.target.value }
+                                    }))}
+                                    className="h-6 text-xs"
+                                  />
+                                  <Input
+                                    type="date"
+                                    value={editing.deliveryDate}
+                                    onChange={(e) => setEditingDates(prev => ({
+                                      ...prev,
+                                      [proj.id]: { ...prev[proj.id], deliveryDate: e.target.value }
+                                    }))}
+                                    className="h-6 text-xs"
+                                  />
+                                  <div className="flex gap-1">
+                                    <Button size="sm" className="h-6 text-xs" onClick={() => saveDates(proj.id)}>Save</Button>
+                                    <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => cancelEditDates(proj.id)}>Cancel</Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => startEditDates(proj.id, proj.startDate, proj.deliveryDate)}
+                                  className="text-left hover:text-primary"
+                                >
+                                  {new Date(proj.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {new Date(proj.deliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  <br />
+                                  {proj.totalDays} days
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          {calendarData?.months.map(m => {
+                            const key = `${m.year}-${String(m.month).padStart(2, '0')}`;
+                            const value = proj.monthlyValues[key] || 0;
+                            const hasValue = value > 0;
+                            
+                            return (
+                              <td key={key} className={`p-1 text-center border-r ${hasValue ? 'bg-primary/5' : ''}`}>
+                                {hasValue && (
+                                  <div className="text-xs font-medium text-primary">
+                                    {formatCurrency(value)}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className="p-2 text-right font-semibold">
+                            {formatCurrency(proj.valueGBP)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    
+                    {/* Monthly totals row */}
+                    <tr className="border-t-2 font-semibold bg-muted/30">
+                      <td className="sticky left-0 bg-muted/30 z-10 p-2 border-r">
+                        Monthly Total
+                      </td>
+                      {calendarData?.months.map(m => {
+                        const key = `${m.year}-${String(m.month).padStart(2, '0')}`;
+                        const total = calendarData?.monthlyTotals[key] || 0;
+                        
+                        return (
+                          <td key={key} className="p-2 text-center border-r bg-primary/10">
+                            <div className="text-sm font-bold text-primary">
+                              {total > 0 ? formatCurrency(total) : '—'}
+                            </div>
+                          </td>
+                        );
+                      })}
+                      <td className="p-2 text-right">
+                        {formatCurrency(calendarData?.projects.reduce((sum, p) => sum + p.valueGBP, 0) || 0)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Project list for setting dates */}
+            <div className="mt-8">
+              <h2 className="text-lg font-semibold mb-3">All Won Projects</h2>
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {calendarData?.projects.map(proj => (
+                  <Card key={proj.id} className="p-3">
+                    <div className="font-medium">{proj.title}</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      Value: {formatCurrency(proj.valueGBP)}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {new Date(proj.startDate).toLocaleDateString()} → {new Date(proj.deliveryDate).toLocaleDateString()}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // Legacy process view
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Workshop</h1>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <span>{projects.length} projects</span>
+          <Button variant="outline" size="sm" onClick={() => setViewMode('calendar')}>
+            <Calendar className="w-4 h-4 mr-2" />
+            Switch to Calendar
+          </Button>
           <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
         </div>
       </div>
@@ -225,14 +495,64 @@ export default function WorkshopPage() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {projects.map((proj) => (
+        {projects.map((proj) => {
+          const editing = editingDates[proj.id];
+          
+          return (
           <Card key={proj.id} className="p-4 space-y-3">
             <div className="flex items-baseline justify-between">
-              <div>
+              <div className="flex-1">
                 <div className="font-medium">{proj.name}</div>
                 {proj.valueGBP != null && (
                   <div className="text-xs text-muted-foreground">£{Number(proj.valueGBP).toLocaleString()}</div>
                 )}
+                
+                {/* Date editing */}
+                <div className="mt-2">
+                  {editing ? (
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-xs text-muted-foreground">Start Date</label>
+                        <Input
+                          type="date"
+                          value={editing.startDate}
+                          onChange={(e) => setEditingDates(prev => ({
+                            ...prev,
+                            [proj.id]: { ...prev[proj.id], startDate: e.target.value }
+                          }))}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Delivery Date</label>
+                        <Input
+                          type="date"
+                          value={editing.deliveryDate}
+                          onChange={(e) => setEditingDates(prev => ({
+                            ...prev,
+                            [proj.id]: { ...prev[proj.id], deliveryDate: e.target.value }
+                          }))}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => saveDates(proj.id)}>Save</Button>
+                        <Button size="sm" variant="ghost" onClick={() => cancelEditDates(proj.id)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => startEditDates(proj.id, proj.startDate || null, proj.deliveryDate || null)}
+                      className="text-xs text-muted-foreground hover:text-primary"
+                    >
+                      {proj.startDate && proj.deliveryDate ? (
+                        <>📅 {new Date(proj.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {new Date(proj.deliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</>
+                      ) : (
+                        <>📅 Set dates for calendar</>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="text-xs text-muted-foreground">Total hours: {proj.totalProjectHours || 0}</div>
             </div>
@@ -341,7 +661,8 @@ export default function WorkshopPage() {
               </div>
             ) : null}
           </Card>
-        ))}
+        );
+        })}
       </div>
     </div>
   );
