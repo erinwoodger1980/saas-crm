@@ -1,16 +1,16 @@
-// Service to initialize new tenants with seed template data from Wealden Joinery
+// Service to initialize new tenants with seed template data from Demo Tenant
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const WEALDEN_SLUG = 'wealden'; // Use Wealden Joinery as the template
+const TEMPLATE_SLUG = 'demo-tenant'; // Use Demo Tenant as the template (contains questionnaire from acme.test)
 
 export async function initializeTenantWithSeedData(tenantId: string) {
   try {
-    console.log(`🌱 Initializing tenant ${tenantId} with Wealden Joinery seed data...`);
+    console.log(`🌱 Initializing tenant ${tenantId} with Demo Tenant seed data...`);
 
-    // Find Wealden Joinery tenant
-    const wealdenTenant = await prisma.tenant.findUnique({
-      where: { slug: WEALDEN_SLUG },
+    // Find Demo Tenant (template)
+    const templateTenant = await prisma.tenant.findUnique({
+      where: { slug: TEMPLATE_SLUG },
       include: {
         leadFieldDefs: true,
         tasks: true,
@@ -18,8 +18,8 @@ export async function initializeTenantWithSeedData(tenantId: string) {
       }
     });
 
-    if (!wealdenTenant) {
-      console.warn(`⚠️  Wealden Joinery tenant not found. Skipping seed data initialization.`);
+    if (!templateTenant) {
+      console.warn(`⚠️  Demo Tenant template not found. Skipping seed data initialization.`);
       return {
         success: false,
         message: 'Template tenant not found'
@@ -29,8 +29,8 @@ export async function initializeTenantWithSeedData(tenantId: string) {
     let copiedItems = 0;
 
     // Copy questionnaire fields
-    if (wealdenTenant.leadFieldDefs && wealdenTenant.leadFieldDefs.length > 0) {
-      for (const field of wealdenTenant.leadFieldDefs) {
+    if (templateTenant.leadFieldDefs && templateTenant.leadFieldDefs.length > 0) {
+      for (const field of templateTenant.leadFieldDefs) {
         await prisma.leadFieldDef.create({
           data: {
             tenantId,
@@ -44,12 +44,12 @@ export async function initializeTenantWithSeedData(tenantId: string) {
         });
         copiedItems++;
       }
-      console.log(`✅ Copied ${wealdenTenant.leadFieldDefs.length} questionnaire fields`);
+      console.log(`✅ Copied ${templateTenant.leadFieldDefs.length} questionnaire fields`);
     }
 
     // Copy task templates (only uncompleted templates)
-    if (wealdenTenant.tasks && wealdenTenant.tasks.length > 0) {
-      const templateTasks = wealdenTenant.tasks.filter(t => 
+    if (templateTenant.tasks && templateTenant.tasks.length > 0) {
+      const templateTasks = templateTenant.tasks.filter((t: any) => 
         !t.completedAt && t.relatedType === 'OTHER'
       );
       
@@ -75,8 +75,8 @@ export async function initializeTenantWithSeedData(tenantId: string) {
     }
 
     // Copy automation rules
-    if (wealdenTenant.automationRules && wealdenTenant.automationRules.length > 0) {
-      const activeRules = wealdenTenant.automationRules.filter(r => r.enabled);
+    if (templateTenant.automationRules && templateTenant.automationRules.length > 0) {
+      const activeRules = templateTenant.automationRules.filter((r: any) => r.enabled);
       
       for (const rule of activeRules) {
         await prisma.automationRule.create({
@@ -96,13 +96,13 @@ export async function initializeTenantWithSeedData(tenantId: string) {
       }
     }
 
-    console.log(`✅ Successfully initialized tenant ${tenantId} with ${copiedItems} items from Wealden Joinery`);
+    console.log(`✅ Successfully initialized tenant ${tenantId} with ${copiedItems} items from Demo Tenant`);
 
     return {
       success: true,
-      questionnaireFields: wealdenTenant.leadFieldDefs?.length || 0,
-      tasks: wealdenTenant.tasks?.filter(t => !t.completedAt && t.relatedType === 'OTHER').length || 0,
-      automationRules: wealdenTenant.automationRules?.filter(r => r.enabled).length || 0,
+      questionnaireFields: templateTenant.leadFieldDefs?.length || 0,
+      tasks: templateTenant.tasks?.filter((t: any) => !t.completedAt && t.relatedType === 'OTHER').length || 0,
+      automationRules: templateTenant.automationRules?.filter((r: any) => r.enabled).length || 0,
       totalItems: copiedItems
     };
 
@@ -114,12 +114,12 @@ export async function initializeTenantWithSeedData(tenantId: string) {
 
 export async function ensureSeedTemplateExists() {
   try {
-    const wealdenTenant = await prisma.tenant.findUnique({
-      where: { slug: WEALDEN_SLUG }
+    const templateTenant = await prisma.tenant.findUnique({
+      where: { slug: TEMPLATE_SLUG }
     });
 
-    if (!wealdenTenant) {
-      console.log('⚠️  Wealden Joinery template tenant not found. Please ensure Wealden tenant exists.');
+    if (!templateTenant) {
+      console.log('⚠️  Demo Tenant template not found. Please ensure demo-tenant exists.');
       return false;
     }
 
