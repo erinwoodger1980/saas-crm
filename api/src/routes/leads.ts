@@ -1747,4 +1747,8 @@ router.post("/public", async (req, res) => {
   }
 });
 
+// Align React versions to Next supported
+// Downgrade React to version 18.2.0
+// Redeploy the application
+
 export default router;
