@@ -22,7 +22,117 @@ router.get("/users", async (req: any, res) => {
   res.json({ ok: true, items: users });
 });
 
-// GET /workshop/schedule?weeks=4
+// GET /workshop/calendar - Calendar view showing projects spread across months
+router.get("/calendar", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  
+  // Get all WON opportunities with start and delivery dates
+  const projects = await prisma.opportunity.findMany({
+    where: { 
+      tenantId, 
+      stage: "WON",
+      startDate: { not: null },
+      deliveryDate: { not: null }
+    },
+    select: { 
+      id: true, 
+      title: true, 
+      valueGBP: true, 
+      wonAt: true,
+      startDate: true,
+      deliveryDate: true
+    },
+    orderBy: [{ startDate: "asc" }, { title: "asc" }],
+  });
+
+  // Calculate months to show (6 months from earliest start to latest delivery)
+  const now = new Date();
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+  const sixMonthsAhead = new Date(now.getFullYear(), now.getMonth() + 6, 1);
+
+  let earliestStart = sixMonthsAgo;
+  let latestDelivery = sixMonthsAhead;
+
+  projects.forEach(p => {
+    if (p.startDate && p.startDate < earliestStart) earliestStart = p.startDate;
+    if (p.deliveryDate && p.deliveryDate > latestDelivery) latestDelivery = p.deliveryDate;
+  });
+
+  // Generate month list
+  const months: Array<{ year: number; month: number; label: string }> = [];
+  const current = new Date(earliestStart.getFullYear(), earliestStart.getMonth(), 1);
+  const end = new Date(latestDelivery.getFullYear(), latestDelivery.getMonth(), 1);
+
+  while (current <= end) {
+    months.push({
+      year: current.getFullYear(),
+      month: current.getMonth() + 1, // 1-indexed
+      label: current.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+    });
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  // Calculate value distribution per month for each project
+  const projectsWithMonthlyValues = projects.map(proj => {
+    const value = Number(proj.valueGBP || 0);
+    const start = proj.startDate!;
+    const delivery = proj.deliveryDate!;
+    
+    // Calculate total days in project
+    const totalDays = Math.max(1, Math.ceil((delivery.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+    
+    // Calculate value distribution per month
+    const monthlyValues: Record<string, number> = {};
+    
+    months.forEach(m => {
+      const monthStart = new Date(m.year, m.month - 1, 1);
+      const monthEnd = new Date(m.year, m.month, 0, 23, 59, 59); // Last day of month
+      
+      // Check if this month overlaps with the project period
+      if (monthEnd >= start && monthStart <= delivery) {
+        // Calculate overlap days
+        const overlapStart = monthStart < start ? start : monthStart;
+        const overlapEnd = monthEnd > delivery ? delivery : monthEnd;
+        const overlapDays = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        
+        // Calculate percentage of total project in this month
+        const percentage = overlapDays / totalDays;
+        const monthValue = value * percentage;
+        
+        const key = `${m.year}-${String(m.month).padStart(2, '0')}`;
+        monthlyValues[key] = monthValue;
+      }
+    });
+
+    return {
+      id: proj.id,
+      title: proj.title,
+      valueGBP: value,
+      wonAt: proj.wonAt,
+      startDate: proj.startDate,
+      deliveryDate: proj.deliveryDate,
+      totalDays,
+      monthlyValues
+    };
+  });
+
+  // Calculate totals per month
+  const monthlyTotals: Record<string, number> = {};
+  projectsWithMonthlyValues.forEach(proj => {
+    Object.entries(proj.monthlyValues).forEach(([key, value]) => {
+      monthlyTotals[key] = (monthlyTotals[key] || 0) + value;
+    });
+  });
+
+  res.json({ 
+    ok: true, 
+    months,
+    projects: projectsWithMonthlyValues,
+    monthlyTotals
+  });
+});
+
+// GET /workshop/schedule?weeks=4 - Legacy week-based view
 router.get("/schedule", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const weeks = Math.max(1, Math.min(Number(req.query.weeks ?? 4), 8));
@@ -30,7 +140,7 @@ router.get("/schedule", async (req: any, res) => {
   // Projects = WON opportunities
   const projects = await prisma.opportunity.findMany({
     where: { tenantId, stage: "WON" },
-    select: { id: true, title: true, valueGBP: true, wonAt: true },
+    select: { id: true, title: true, valueGBP: true, wonAt: true, startDate: true, deliveryDate: true },
     orderBy: [{ wonAt: "desc" }, { title: "asc" }],
   });
 
@@ -79,6 +189,8 @@ router.get("/schedule", async (req: any, res) => {
     name: proj.title,
     valueGBP: proj.valueGBP,
     wonAt: proj.wonAt,
+    startDate: proj.startDate,
+    deliveryDate: proj.deliveryDate,
     weeks,
     processPlans: plansByProject[proj.id] || [],
     totalHoursByProcess: totalsByProject[proj.id]?.byProcess || {},
@@ -173,6 +285,32 @@ router.delete("/time/:id", async (req: any, res) => {
   if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: "not_found" });
   await (prisma as any).timeEntry.delete({ where: { id } });
   res.json({ ok: true });
+});
+
+// PATCH /workshop/project/:id - Update project start and delivery dates
+router.patch("/project/:id", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const id = String(req.params.id);
+  
+  const opportunity = await prisma.opportunity.findUnique({ where: { id } });
+  if (!opportunity || opportunity.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  const updates: any = {};
+  if (req.body.startDate !== undefined) {
+    updates.startDate = req.body.startDate ? new Date(req.body.startDate) : null;
+  }
+  if (req.body.deliveryDate !== undefined) {
+    updates.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null;
+  }
+
+  const updated = await prisma.opportunity.update({
+    where: { id },
+    data: updates
+  });
+
+  res.json({ ok: true, opportunity: updated });
 });
 
 // POST /workshop/backfill

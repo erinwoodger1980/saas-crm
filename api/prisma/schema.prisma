@@ -179,6 +179,8 @@ model Opportunity {
   stage         OppStage       @default(QUALIFY)
   wonAt         DateTime?
   lostAt        DateTime?
+  startDate     DateTime?      // Start date for workshop calendar
+  deliveryDate  DateTime?      // Delivery date for workshop calendar
   createdAt     DateTime       @default(now())
   emailMessages EmailMessage[]
   emailThreads  EmailThread[]
