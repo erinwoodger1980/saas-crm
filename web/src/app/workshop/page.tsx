@@ -103,6 +103,9 @@ export default function WorkshopPage() {
   const [editValueForm, setEditValueForm] = useState<{ projectId: string; value: string }>({ projectId: '', value: '' });
   const [draggingProject, setDraggingProject] = useState<string | null>(null);
   const [dragType, setDragType] = useState<'start' | 'end' | 'move' | null>(null);
+  const [dragAnchorDate, setDragAnchorDate] = useState<Date | null>(null);
+  const [dragOriginalRange, setDragOriginalRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [dragPreview, setDragPreview] = useState<{ start: Date; end: Date } | null>(null);
 
   async function loadAll() {
     setLoading(true);
@@ -320,6 +323,18 @@ export default function WorkshopPage() {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
+  const toISODate = (d: Date) => d.toISOString().split('T')[0];
+  const addDays = (d: Date, n: number) => {
+    const dd = new Date(d);
+    dd.setDate(dd.getDate() + n);
+    return dd;
+  };
+  const diffInDays = (a: Date, b: Date) => {
+    const A = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+    const B = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+    return Math.round((B - A) / (1000 * 60 * 60 * 24));
+  };
+
   const previousMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
   };
@@ -353,6 +368,87 @@ export default function WorkshopPage() {
     }
     return result;
   }, [days]);
+
+  // Drag-and-drop handlers for calendar bars
+  useEffect(() => {
+    if (!draggingProject || !dragType) return;
+
+    function getDateFromPoint(clientX: number, clientY: number): Date | null {
+      const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+      if (!el) return null;
+      let node: HTMLElement | null = el;
+      while (node) {
+        const iso = node.getAttribute?.('data-date');
+        if (iso) {
+          const d = new Date(iso);
+          if (!isNaN(d.getTime())) return d;
+        }
+        node = node.parentElement;
+      }
+      return null;
+    }
+
+    const onMove = (e: MouseEvent) => {
+      const hover = getDateFromPoint(e.clientX, e.clientY);
+      if (!hover || !dragAnchorDate || !dragOriginalRange) return;
+      if (dragType === 'move') {
+        const delta = diffInDays(dragAnchorDate, hover);
+        const start = addDays(dragOriginalRange.start, delta);
+        const end = addDays(dragOriginalRange.end, delta);
+        setDragPreview({ start, end });
+      } else if (dragType === 'start') {
+        const start = hover <= dragOriginalRange.end ? hover : dragOriginalRange.end;
+        setDragPreview({ start, end: dragOriginalRange.end });
+      } else if (dragType === 'end') {
+        const end = hover >= dragOriginalRange.start ? hover : dragOriginalRange.start;
+        setDragPreview({ start: dragOriginalRange.start, end });
+      }
+    };
+
+    const onUp = async (e: MouseEvent) => {
+      const drop = getDateFromPoint(e.clientX, e.clientY);
+      let nextRange = dragPreview || null;
+      if (!nextRange && drop && dragAnchorDate && dragOriginalRange) {
+        if (dragType === 'move') {
+          const delta = diffInDays(dragAnchorDate, drop);
+          nextRange = { start: addDays(dragOriginalRange.start, delta), end: addDays(dragOriginalRange.end, delta) };
+        } else if (dragType === 'start') {
+          nextRange = { start: drop <= dragOriginalRange.end ? drop : dragOriginalRange.end, end: dragOriginalRange.end };
+        } else if (dragType === 'end') {
+          nextRange = { start: dragOriginalRange.start, end: drop >= dragOriginalRange.start ? drop : dragOriginalRange.start };
+        }
+      }
+
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+
+      try {
+        if (nextRange) {
+          await apiFetch(`/workshop/project/${draggingProject}`, {
+            method: 'PATCH',
+            json: {
+              startDate: toISODate(nextRange.start),
+              deliveryDate: toISODate(nextRange.end),
+            },
+          });
+          await loadAll();
+        }
+      } finally {
+        setDraggingProject(null);
+        setDragType(null);
+        setDragAnchorDate(null);
+        setDragOriginalRange(null);
+        setDragPreview(null);
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [draggingProject, dragType, dragAnchorDate, dragOriginalRange]);
 
   // Calendar view
   if (viewMode === 'calendar') {
@@ -437,14 +533,18 @@ export default function WorkshopPage() {
                   week.map((day, dayIdx) => {
                     const projectsOnDay = getProjectsForDate(day.date);
                     const today = isToday(day.date);
+                    const isoDay = toISODate(day.date);
+                    const inPreview = dragPreview ? (isoDay >= toISODate(dragPreview.start) && isoDay <= toISODate(dragPreview.end)) : false;
                     
                     return (
                       <div
                         key={`${weekIdx}-${dayIdx}`}
+                        data-date={toISODate(day.date)}
                         className={`
                           bg-background p-2 min-h-[100px] relative
                           ${!day.isCurrentMonth ? 'opacity-40' : ''}
                           ${today ? 'ring-2 ring-primary' : ''}
+                          ${inPreview ? 'outline outline-1 outline-primary/40' : ''}
                         `}
                       >
                         <div className={`text-sm mb-1 ${today ? 'font-bold text-primary' : ''}`}>
@@ -462,7 +562,17 @@ export default function WorkshopPage() {
                             return (
                               <div
                                 key={proj.id}
-                                className="text-xs p-1 rounded bg-primary/20 text-primary cursor-pointer hover:bg-primary/30 truncate"
+                                className="group text-xs p-1 rounded bg-primary/20 text-primary cursor-pointer hover:bg-primary/30 truncate relative"
+                                onMouseDown={(e) => {
+                                  if (!isFirstDay) return; // attach drag start only on first-day chip to avoid duplicates
+                                  // If clicked near edges, don't start move here; edge spans handle it
+                                  setDraggingProject(proj.id);
+                                  setDragType('move');
+                                  setDragAnchorDate(day.date);
+                                  setDragOriginalRange({ start: projectStart, end: projectEnd });
+                                  setDragPreview({ start: projectStart, end: projectEnd });
+                                  e.preventDefault();
+                                }}
                                 onClick={() => {
                                   if (editingValue === proj.id) {
                                     setEditingValue(null);
@@ -474,6 +584,35 @@ export default function WorkshopPage() {
                               >
                                 {isFirstDay && (
                                   <span className="font-semibold">{proj.title}</span>
+                                )}
+                                {/* Drag handles only on first/last day chips so UX is predictable */}
+                                {isFirstDay && (
+                                  <span
+                                    className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary/40 opacity-0 group-hover:opacity-100 cursor-ew-resize rounded-l"
+                                    onMouseDown={(e) => {
+                                      setDraggingProject(proj.id);
+                                      setDragType('start');
+                                      setDragAnchorDate(day.date);
+                                      setDragOriginalRange({ start: projectStart, end: projectEnd });
+                                      setDragPreview({ start: projectStart, end: projectEnd });
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                    }}
+                                  />
+                                )}
+                                {isLastDay && (
+                                  <span
+                                    className="absolute right-0 top-0 bottom-0 w-1.5 bg-primary/40 opacity-0 group-hover:opacity-100 cursor-ew-resize rounded-r"
+                                    onMouseDown={(e) => {
+                                      setDraggingProject(proj.id);
+                                      setDragType('end');
+                                      setDragAnchorDate(day.date);
+                                      setDragOriginalRange({ start: projectStart, end: projectEnd });
+                                      setDragPreview({ start: projectStart, end: projectEnd });
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                    }}
+                                  />
                                 )}
                                 {editingValue === proj.id && isFirstDay && (
                                   <input
