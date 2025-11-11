@@ -304,6 +304,9 @@ router.patch("/project/:id", async (req: any, res) => {
   if (req.body.deliveryDate !== undefined) {
     updates.deliveryDate = req.body.deliveryDate ? new Date(req.body.deliveryDate) : null;
   }
+  if (req.body.valueGBP !== undefined) {
+    updates.valueGBP = req.body.valueGBP ? Number(req.body.valueGBP) : null;
+  }
 
   const updated = await prisma.opportunity.update({
     where: { id },

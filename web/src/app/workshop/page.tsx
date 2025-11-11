@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Calendar } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
 
 // Mirror of schema enum
 const PROCESSES = [
@@ -98,6 +98,11 @@ export default function WorkshopPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [backfillBusy, setBackfillBusy] = useState(false);
   const [editingDates, setEditingDates] = useState<Record<string, { startDate: string; deliveryDate: string }>>({});
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [editingValue, setEditingValue] = useState<string | null>(null);
+  const [editValueForm, setEditValueForm] = useState<{ projectId: string; value: string }>({ projectId: '', value: '' });
+  const [draggingProject, setDraggingProject] = useState<string | null>(null);
+  const [dragType, setDragType] = useState<'start' | 'end' | 'move' | null>(null);
 
   async function loadAll() {
     setLoading(true);
