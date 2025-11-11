@@ -89,7 +89,7 @@ function formatCurrency(value: number): string {
 export default function WorkshopPage() {
   const [viewMode, setViewMode] = useState<'calendar' | 'legacy'>('calendar');
   const [loading, setLoading] = useState(true);
-  const [weeks, setWeeks] = useState(4);
+  const [weeksCount, setWeeksCount] = useState(4);
   const [projects, setProjects] = useState<Project[]>([]);
   const [calendarData, setCalendarData] = useState<CalendarResponse | null>(null);
   const [users, setUsers] = useState<UserLite[]>([]);
@@ -131,7 +131,7 @@ export default function WorkshopPage() {
           apiFetch<UsersResponse>("/workshop/users"),
         ]);
         if (sched?.ok) {
-          setWeeks(sched.weeks);
+          setWeeksCount(sched.weeks);
           setProjects(sched.projects);
         }
         if (usersResp?.ok) setUsers(usersResp.items);
@@ -250,7 +250,7 @@ export default function WorkshopPage() {
     }
   }
 
-  const weeksArray = useMemo(() => Array.from({ length: weeks }, (_, i) => i + 1), [weeks]);
+  const weeksArray = useMemo(() => Array.from({ length: weeksCount }, (_, i) => i + 1), [weeksCount]);
 
   if (loading) return (
     <div className="p-2">
@@ -259,18 +259,116 @@ export default function WorkshopPage() {
     </div>
   );
 
+  // Helper functions for calendar
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startDayOfWeek = firstDay.getDay(); // 0 = Sunday
+    
+    const days: Array<{ date: Date; isCurrentMonth: boolean }> = [];
+    
+    // Add days from previous month to fill first week
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      days.push({
+        date: new Date(year, month - 1, prevMonthLastDay - i),
+        isCurrentMonth: false
+      });
+    }
+    
+    // Add days of current month
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push({
+        date: new Date(year, month, i),
+        isCurrentMonth: true
+      });
+    }
+    
+    // Add days from next month to complete the grid
+    const remainingDays = 42 - days.length; // 6 weeks * 7 days
+    for (let i = 1; i <= remainingDays; i++) {
+      days.push({
+        date: new Date(year, month + 1, i),
+        isCurrentMonth: false
+      });
+    }
+    
+    return days;
+  };
+
+  const getProjectsForDate = (date: Date) => {
+    if (!calendarData) return [];
+    const dateStr = date.toISOString().split('T')[0];
+    return calendarData.projects.filter(proj => {
+      const start = new Date(proj.startDate).toISOString().split('T')[0];
+      const end = new Date(proj.deliveryDate).toISOString().split('T')[0];
+      return dateStr >= start && dateStr <= end;
+    });
+  };
+
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+  };
+
+  const formatMonthYear = (date: Date) => {
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  const previousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+  };
+
+  const goToToday = () => {
+    setCurrentMonth(new Date());
+  };
+
+  async function updateProjectValue(projectId: string, newValue: string) {
+    try {
+      await apiFetch(`/workshop/project/${projectId}`, {
+        method: "PATCH",
+        json: { valueGBP: Number(newValue) }
+      });
+      setEditingValue(null);
+      await loadAll();
+    } catch (e) {
+      console.error("Failed to update value", e);
+    }
+  }
+
+  const days = useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
+  const weeks = useMemo(() => {
+    const result: typeof days[] = [];
+    for (let i = 0; i < days.length; i += 7) {
+      result.push(days.slice(i, i + 7));
+    }
+    return result;
+  }, [days]);
+
   // Calendar view
   if (viewMode === 'calendar') {
     const projectCount = calendarData?.projects.length || 0;
     
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Workshop Calendar</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-semibold">Workshop Calendar</h1>
             <span className="text-sm text-muted-foreground">{projectCount} projects</span>
+          </div>
+          <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" onClick={() => setViewMode('legacy')}>
-              Switch to Process View
+              Process View
             </Button>
             <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
           </div>
@@ -308,114 +406,145 @@ export default function WorkshopPage() {
           </div>
         ) : (
           <>
-            {/* Calendar header with months */}
-            <div className="overflow-x-auto">
-              <div className="inline-block min-w-full">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="border-b-2">
-                      <th className="sticky left-0 bg-background z-10 p-2 text-left font-semibold w-64 border-r">
-                        Project
-                      </th>
-                      {calendarData?.months.map(m => (
-                        <th key={`${m.year}-${m.month}`} className="p-2 text-center font-semibold min-w-32 border-r">
-                          {m.label}
-                        </th>
-                      ))}
-                      <th className="p-2 text-right font-semibold min-w-32">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {calendarData?.projects.map(proj => {
-                      const editing = editingDates[proj.id];
-                      
-                      return (
-                        <tr key={proj.id} className="border-b hover:bg-muted/50">
-                          <td className="sticky left-0 bg-background z-10 p-2 border-r">
-                            <div className="font-medium">{proj.title}</div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {editing ? (
-                                <div className="space-y-1">
-                                  <Input
-                                    type="date"
-                                    value={editing.startDate}
-                                    onChange={(e) => setEditingDates(prev => ({
-                                      ...prev,
-                                      [proj.id]: { ...prev[proj.id], startDate: e.target.value }
-                                    }))}
-                                    className="h-6 text-xs"
-                                  />
-                                  <Input
-                                    type="date"
-                                    value={editing.deliveryDate}
-                                    onChange={(e) => setEditingDates(prev => ({
-                                      ...prev,
-                                      [proj.id]: { ...prev[proj.id], deliveryDate: e.target.value }
-                                    }))}
-                                    className="h-6 text-xs"
-                                  />
-                                  <div className="flex gap-1">
-                                    <Button size="sm" className="h-6 text-xs" onClick={() => saveDates(proj.id)}>Save</Button>
-                                    <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => cancelEditDates(proj.id)}>Cancel</Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => startEditDates(proj.id, proj.startDate, proj.deliveryDate)}
-                                  className="text-left hover:text-primary"
-                                >
-                                  {new Date(proj.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {new Date(proj.deliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                  <br />
-                                  {proj.totalDays} days
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                          {calendarData?.months.map(m => {
-                            const key = `${m.year}-${String(m.month).padStart(2, '0')}`;
-                            const value = proj.monthlyValues[key] || 0;
-                            const hasValue = value > 0;
+            {/* Monthly calendar grid */}
+            <div className="space-y-6">
+              {/* Month navigation */}
+              <div className="flex items-center justify-between">
+                <Button variant="outline" size="sm" onClick={previousMonth}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <h2 className="text-2xl font-semibold">
+                  {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </h2>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={goToToday}>Today</Button>
+                  <Button variant="outline" size="sm" onClick={nextMonth}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Day headers */}
+              <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                  <div key={day} className="bg-muted p-2 text-center text-sm font-semibold">
+                    {day}
+                  </div>
+                ))}
+                
+                {/* Calendar days */}
+                {weeks.map((week, weekIdx) => (
+                  week.map((day, dayIdx) => {
+                    const projectsOnDay = getProjectsForDate(day.date);
+                    const today = isToday(day.date);
+                    
+                    return (
+                      <div
+                        key={`${weekIdx}-${dayIdx}`}
+                        className={`
+                          bg-background p-2 min-h-[100px] relative
+                          ${!day.isCurrentMonth ? 'opacity-40' : ''}
+                          ${today ? 'ring-2 ring-primary' : ''}
+                        `}
+                      >
+                        <div className={`text-sm mb-1 ${today ? 'font-bold text-primary' : ''}`}>
+                          {day.date.getDate()}
+                        </div>
+                        
+                        {/* Project bars for this day */}
+                        <div className="space-y-1">
+                          {projectsOnDay.map(proj => {
+                            const projectStart = new Date(proj.startDate);
+                            const projectEnd = new Date(proj.deliveryDate);
+                            const isFirstDay = day.date.toDateString() === projectStart.toDateString();
+                            const isLastDay = day.date.toDateString() === projectEnd.toDateString();
                             
                             return (
-                              <td key={key} className={`p-1 text-center border-r ${hasValue ? 'bg-primary/5' : ''}`}>
-                                {hasValue && (
-                                  <div className="text-xs font-medium text-primary">
-                                    {formatCurrency(value)}
-                                  </div>
+                              <div
+                                key={proj.id}
+                                className="text-xs p-1 rounded bg-primary/20 text-primary cursor-pointer hover:bg-primary/30 truncate"
+                                onClick={() => {
+                                  if (editingValue === proj.id) {
+                                    setEditingValue(null);
+                                  } else {
+                                    setEditingValue(proj.id);
+                                  }
+                                }}
+                                title={`${proj.title} - ${formatCurrency(proj.valueGBP)}`}
+                              >
+                                {isFirstDay && (
+                                  <span className="font-semibold">{proj.title}</span>
                                 )}
-                              </td>
+                                {editingValue === proj.id && isFirstDay && (
+                                  <input
+                                    type="number"
+                                    className="w-full mt-1 px-1 py-0.5 text-xs rounded border"
+                                    defaultValue={proj.valueGBP}
+                                    onBlur={(e) => {
+                                      updateProjectValue(proj.id, e.target.value);
+                                      setEditingValue(null);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        updateProjectValue(proj.id, e.currentTarget.value);
+                                        setEditingValue(null);
+                                      }
+                                    }}
+                                    autoFocus
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                )}
+                              </div>
                             );
                           })}
-                          <td className="p-2 text-right font-semibold">
-                            {formatCurrency(proj.valueGBP)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    
-                    {/* Monthly totals row */}
-                    <tr className="border-t-2 font-semibold bg-muted/30">
-                      <td className="sticky left-0 bg-muted/30 z-10 p-2 border-r">
-                        Monthly Total
-                      </td>
-                      {calendarData?.months.map(m => {
-                        const key = `${m.year}-${String(m.month).padStart(2, '0')}`;
-                        const total = calendarData?.monthlyTotals[key] || 0;
-                        
-                        return (
-                          <td key={key} className="p-2 text-center border-r bg-primary/10">
-                            <div className="text-sm font-bold text-primary">
-                              {total > 0 ? formatCurrency(total) : '—'}
-                            </div>
-                          </td>
-                        );
-                      })}
-                      <td className="p-2 text-right">
-                        {formatCurrency(calendarData?.projects.reduce((sum, p) => sum + p.valueGBP, 0) || 0)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                    );
+                  })
+                ))}
+              </div>
+
+              {/* Monthly summary */}
+              <div className="bg-muted/50 p-4 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Total for {currentMonth.toLocaleDateString('en-US', { month: 'long' })}</div>
+                    <div className="text-2xl font-bold">
+                      {formatCurrency(
+                        projects
+                          .filter(p => p.startDate && p.deliveryDate)
+                          .reduce((sum, proj) => {
+                            const projectStart = new Date(proj.startDate!);
+                            const projectEnd = new Date(proj.deliveryDate!);
+                            const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+                            const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+                            
+                            // Calculate overlap
+                            const overlapStart = new Date(Math.max(projectStart.getTime(), monthStart.getTime()));
+                            const overlapEnd = new Date(Math.min(projectEnd.getTime(), monthEnd.getTime()));
+                            
+                            if (overlapStart <= overlapEnd) {
+                              const overlapDays = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                              const totalDays = Math.ceil((projectEnd.getTime() - projectStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                              const value = typeof proj.valueGBP === 'string' ? parseFloat(proj.valueGBP) : (proj.valueGBP || 0);
+                              const monthValue = (value * overlapDays) / totalDays;
+                              return sum + monthValue;
+                            }
+                            return sum;
+                          }, 0)
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-muted-foreground">Active Projects</div>
+                    <div className="text-2xl font-bold">
+                      {getDaysInMonth(currentMonth).flat().reduce((count, day) => {
+                        const projectsOnDay = getProjectsForDate(day.date);
+                        return Math.max(count, new Set(projectsOnDay.map(p => p.id)).size);
+                      }, 0)}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
