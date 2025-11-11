@@ -38,6 +38,8 @@ type Project = {
   name: string;
   valueGBP?: string | number | null;
   wonAt?: string | null;
+  startDate?: string | null;
+  deliveryDate?: string | null;
   weeks: number;
   processPlans: Plan[];
   totalHoursByProcess: Record<string, number>;
@@ -71,6 +73,7 @@ export default function WorkshopPage() {
   const [loggingFor, setLoggingFor] = useState<Record<string, LogForm | null>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [backfillBusy, setBackfillBusy] = useState(false);
+  const [editingDates, setEditingDates] = useState<Record<string, { startDate: string; deliveryDate: string; value: string }>>({});
 
   async function loadAll() {
     setLoading(true);
@@ -170,6 +173,49 @@ export default function WorkshopPage() {
     }
   }
 
+  async function updateProjectDates(projectId: string) {
+    const data = editingDates[projectId];
+    if (!data) return;
+    
+    try {
+      await apiFetch(`/workshop/project/${projectId}`, {
+        method: "PATCH",
+        json: {
+          startDate: data.startDate || null,
+          deliveryDate: data.deliveryDate || null,
+          valueGBP: data.value ? Number(data.value) : null,
+        },
+      });
+      setEditingDates(prev => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
+      await loadAll();
+    } catch (e) {
+      console.error("Failed to update project dates", e);
+    }
+  }
+
+  function startEditingDates(proj: Project) {
+    setEditingDates(prev => ({
+      ...prev,
+      [proj.id]: {
+        startDate: proj.startDate || '',
+        deliveryDate: proj.deliveryDate || '',
+        value: proj.valueGBP?.toString() || '',
+      }
+    }));
+  }
+
+  function cancelEditingDates(projectId: string) {
+    setEditingDates(prev => {
+      const next = { ...prev };
+      delete next[projectId];
+      return next;
+    });
+  }
+
   const weeksArray = Array.from({ length: weeks }, (_, i) => i + 1);
 
   // Calendar helper functions
@@ -198,6 +244,35 @@ export default function WorkshopPage() {
     return projects.filter(proj => 
       proj.processPlans.some(plan => plan.plannedWeek === weekNumber)
     );
+  };
+
+  const getWeekTotal = (weekNumber: number) => {
+    const weekProjects = getProjectsForWeek(weekNumber);
+    return weekProjects.reduce((sum, proj) => sum + (Number(proj.valueGBP) || 0), 0);
+  };
+
+  const getMonthTotal = () => {
+    // Get all unique projects with scheduled work
+    const activeProjects = new Set<string>();
+    projects.forEach(proj => {
+      if (proj.processPlans.length > 0) {
+        activeProjects.add(proj.id);
+      }
+    });
+    return Array.from(activeProjects).reduce((sum, projId) => {
+      const proj = projects.find(p => p.id === projId);
+      return sum + (Number(proj?.valueGBP) || 0);
+    }, 0);
+  };
+
+  const getProjectsForDate = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return projects.filter(proj => {
+      if (!proj.startDate || !proj.deliveryDate) return false;
+      const start = proj.startDate.split('T')[0];
+      const end = proj.deliveryDate.split('T')[0];
+      return dateStr >= start && dateStr <= end;
+    });
   };
 
   const previousMonth = () => {
@@ -289,21 +364,29 @@ export default function WorkshopPage() {
       {/* Calendar View */}
       {viewMode === 'calendar' && projects.length > 0 && (
         <div className="space-y-4">
-          {/* Month Navigation */}
-          <div className="flex items-center justify-between bg-white p-4 rounded-lg border">
-            <Button variant="outline" size="sm" onClick={previousMonth}>
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <h2 className="text-xl font-semibold">
-              {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </h2>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={goToToday}>
-                Today
+          {/* Month Navigation with Total */}
+          <div className="bg-white p-4 rounded-lg border">
+            <div className="flex items-center justify-between mb-3">
+              <Button variant="outline" size="sm" onClick={previousMonth}>
+                <ChevronLeft className="w-4 h-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={nextMonth}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+              <h2 className="text-xl font-semibold">
+                {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </h2>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={goToToday}>
+                  Today
+                </Button>
+                <Button variant="outline" size="sm" onClick={nextMonth}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-sm text-muted-foreground">Month Total Value</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {formatCurrency(getMonthTotal())}
+              </div>
             </div>
           </div>
 
@@ -323,11 +406,12 @@ export default function WorkshopPage() {
               {getDaysInMonth(currentMonth).map((date, idx) => {
                 const isToday = date && 
                   date.toDateString() === new Date().toDateString();
+                const projectsOnDate = date ? getProjectsForDate(date) : [];
                 
                 return (
                   <div
                     key={idx}
-                    className={`min-h-[100px] p-2 border-r border-b ${
+                    className={`min-h-[120px] p-2 border-r border-b ${
                       !date ? 'bg-slate-50' : ''
                     } ${isToday ? 'bg-blue-50' : ''}`}
                   >
@@ -336,9 +420,25 @@ export default function WorkshopPage() {
                         <div className={`text-sm mb-2 ${isToday ? 'font-bold text-blue-600' : 'text-slate-600'}`}>
                           {date.getDate()}
                         </div>
-                        {/* Show projects scheduled for this day's week */}
                         <div className="space-y-1">
-                          {/* This is a simple week-based view - you can enhance to show actual date-based projects */}
+                          {projectsOnDate.map(proj => {
+                            const isStartDate = proj.startDate && 
+                              new Date(proj.startDate).toDateString() === date.toDateString();
+                            const isDeliveryDate = proj.deliveryDate && 
+                              new Date(proj.deliveryDate).toDateString() === date.toDateString();
+                            
+                            return (
+                              <div 
+                                key={proj.id} 
+                                className="text-xs p-1 rounded bg-blue-100 text-blue-800 truncate"
+                                title={`${proj.name} - ${formatCurrency(Number(proj.valueGBP) || 0)}`}
+                              >
+                                {isStartDate && <span className="font-bold">▶ </span>}
+                                {proj.name.length > 15 ? proj.name.substring(0, 15) + '...' : proj.name}
+                                {isDeliveryDate && <span className="font-bold"> ✓</span>}
+                              </div>
+                            );
+                          })}
                         </div>
                       </>
                     )}
@@ -352,21 +452,33 @@ export default function WorkshopPage() {
           <div className="grid gap-4 md:grid-cols-4">
             {weeksArray.map((weekNum: number) => {
               const projectsInWeek = getProjectsForWeek(weekNum);
+              const weekTotal = getWeekTotal(weekNum);
               return (
                 <Card key={weekNum} className="p-4">
-                  <div className="font-semibold mb-2">Week {weekNum}</div>
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="font-semibold">Week {weekNum}</div>
+                    <div className="text-sm font-bold text-green-600">
+                      {formatCurrency(weekTotal)}
+                    </div>
+                  </div>
                   <div className="text-sm text-muted-foreground mb-3">
-                    {projectsInWeek.length} projects
+                    {projectsInWeek.length} project{projectsInWeek.length !== 1 ? 's' : ''}
                   </div>
                   <div className="space-y-2">
                     {projectsInWeek.slice(0, 3).map(proj => (
-                      <div key={proj.id} className="text-sm truncate">
-                        <div className="font-medium">{proj.name}</div>
-                        {proj.valueGBP && (
-                          <div className="text-xs text-muted-foreground">
-                            {formatCurrency(Number(proj.valueGBP))}
-                          </div>
-                        )}
+                      <div key={proj.id} className="text-sm">
+                        <div className="font-medium truncate" title={proj.name}>{proj.name}</div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          {proj.valueGBP && (
+                            <span>{formatCurrency(Number(proj.valueGBP))}</span>
+                          )}
+                          {proj.startDate && proj.deliveryDate && (
+                            <span className="text-xs">
+                              {new Date(proj.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - 
+                              {new Date(proj.deliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ))}
                     {projectsInWeek.length > 3 && (
@@ -388,13 +500,82 @@ export default function WorkshopPage() {
         {projects.map((proj) => (
           <Card key={proj.id} className="p-4 space-y-3">
             <div className="flex items-baseline justify-between">
-              <div>
+              <div className="flex-1">
                 <div className="font-medium">{proj.name}</div>
                 {proj.valueGBP != null && (
                   <div className="text-xs text-muted-foreground">£{Number(proj.valueGBP).toLocaleString()}</div>
                 )}
               </div>
               <div className="text-xs text-muted-foreground">Total hours: {proj.totalProjectHours || 0}</div>
+            </div>
+
+            {/* Date and Value Editing */}
+            <div className="pt-2 border-t">
+              {editingDates[proj.id] ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Start Date</label>
+                      <Input
+                        type="date"
+                        value={editingDates[proj.id].startDate}
+                        onChange={(e) => setEditingDates(prev => ({
+                          ...prev,
+                          [proj.id]: { ...prev[proj.id], startDate: e.target.value }
+                        }))}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Delivery Date</label>
+                      <Input
+                        type="date"
+                        value={editingDates[proj.id].deliveryDate}
+                        onChange={(e) => setEditingDates(prev => ({
+                          ...prev,
+                          [proj.id]: { ...prev[proj.id], deliveryDate: e.target.value }
+                        }))}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Value (£)</label>
+                    <Input
+                      type="number"
+                      value={editingDates[proj.id].value}
+                      onChange={(e) => setEditingDates(prev => ({
+                        ...prev,
+                        [proj.id]: { ...prev[proj.id], value: e.target.value }
+                      }))}
+                      className="h-8 text-sm"
+                      placeholder="Project value"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => updateProjectDates(proj.id)}>
+                      Save Dates
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => cancelEditingDates(proj.id)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => startEditingDates(proj)}
+                  className="text-xs text-muted-foreground hover:text-primary w-full text-left"
+                >
+                  {proj.startDate && proj.deliveryDate ? (
+                    <>
+                      📅 {new Date(proj.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {' '}
+                      {new Date(proj.deliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </>
+                  ) : (
+                    <>📅 Set start & delivery dates</>
+                  )}
+                </button>
+              )}
             </div>
 
             <div className="overflow-auto">
