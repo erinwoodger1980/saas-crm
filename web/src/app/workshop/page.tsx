@@ -253,7 +253,7 @@ export default function WorkshopPage() {
     }
   }
 
-  const weeksArray = useMemo(() => Array.from({ length: weeksCount }, (_, i) => i + 1), [weeksCount]);
+  const weeksArray = Array.from({ length: weeksCount }, (_, i) => i + 1);
 
   if (loading) return (
     <div className="p-2">
@@ -360,14 +360,14 @@ export default function WorkshopPage() {
     }
   }
 
-  const days = useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
-  const weeks = useMemo(() => {
+  const days = getDaysInMonth(currentMonth);
+  const weeks = (() => {
     const result: typeof days[] = [];
     for (let i = 0; i < days.length; i += 7) {
       result.push(days.slice(i, i + 7));
     }
     return result;
-  }, [days]);
+  })();
 
   // Drag-and-drop handlers for calendar bars
   useEffect(() => {
