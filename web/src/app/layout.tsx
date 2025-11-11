@@ -44,6 +44,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     pathname === "/" || pathname?.startsWith("/policy") || pathname?.startsWith("/wealden-landing");
   const isTenantLandingPage = pathname?.match(/^\/tenant\/[^/]+\/landing(\/|$)/);
   const isVanityTenantLandingPage = pathname?.match(/^\/[A-Za-z0-9-]+\/landing(\/|$)/);
+  const isEarlyAccessRoute = pathname?.startsWith("/early-access");
 
   const shouldUseShell = !(
     isAuthRoute ||
@@ -51,31 +52,40 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isPublicThankYou ||
     isMarketingRoute ||
     isTenantLandingPage ||
-    isVanityTenantLandingPage
+    isVanityTenantLandingPage ||
+    isEarlyAccessRoute
   );
   const shouldRunDevAuth = !(
     isPublicQuestionnaire ||
     isPublicThankYou ||
     isMarketingRoute ||
     isTenantLandingPage ||
-    isVanityTenantLandingPage
+    isVanityTenantLandingPage ||
+    isEarlyAccessRoute
+  );
+  const shouldLoadAnalytics = !(
+    isEarlyAccessRoute
   );
 
   return (
     <html lang="en" className="h-full">
       <head>
-        <Script
-          async
-          src="https://www.googletagmanager.com/gtag/js?id=AW-17711287541"
-        />
-        <Script id="google-gtag" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'AW-17711287541');
-          `}
-        </Script>
+        {shouldLoadAnalytics && (
+          <>
+            <Script
+              async
+              src="https://www.googletagmanager.com/gtag/js?id=AW-17711287541"
+            />
+            <Script id="google-gtag" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', 'AW-17711287541');
+              `}
+            </Script>
+          </>
+        )}
       </head>
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
         {shouldRunDevAuth && <DevAuth />}
