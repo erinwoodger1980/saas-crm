@@ -650,26 +650,21 @@ export default function WorkshopPage() {
                     <div className="text-sm text-muted-foreground">Total for {currentMonth.toLocaleDateString('en-US', { month: 'long' })}</div>
                     <div className="text-2xl font-bold">
                       {formatCurrency(
-                        projects
+                        (calendarData?.projects || [])
                           .filter(p => p.startDate && p.deliveryDate)
                           .reduce((sum, proj) => {
-                            const projectStart = new Date(proj.startDate!);
-                            const projectEnd = new Date(proj.deliveryDate!);
+                            const projectStart = new Date(proj.startDate);
+                            const projectEnd = new Date(proj.deliveryDate);
+                            if (isNaN(projectStart.getTime()) || isNaN(projectEnd.getTime())) return sum;
                             const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
                             const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-                            
-                            // Calculate overlap
                             const overlapStart = new Date(Math.max(projectStart.getTime(), monthStart.getTime()));
                             const overlapEnd = new Date(Math.min(projectEnd.getTime(), monthEnd.getTime()));
-                            
-                            if (overlapStart <= overlapEnd) {
-                              const overlapDays = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                              const totalDays = Math.ceil((projectEnd.getTime() - projectStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                              const value = typeof proj.valueGBP === 'string' ? parseFloat(proj.valueGBP) : (proj.valueGBP || 0);
-                              const monthValue = (value * overlapDays) / totalDays;
-                              return sum + monthValue;
-                            }
-                            return sum;
+                            if (overlapStart > overlapEnd) return sum;
+                            const overlapDays = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                            const totalDays = Math.max(1, Math.ceil((projectEnd.getTime() - projectStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+                            const value = proj.valueGBP || 0;
+                            return sum + (value * overlapDays) / totalDays;
                           }, 0)
                       )}
                     </div>
@@ -677,9 +672,11 @@ export default function WorkshopPage() {
                   <div className="text-right">
                     <div className="text-sm text-muted-foreground">Active Projects</div>
                     <div className="text-2xl font-bold">
-                      {getDaysInMonth(currentMonth).flat().reduce((count, day) => {
-                        const projectsOnDay = getProjectsForDate(day.date);
-                        return Math.max(count, new Set(projectsOnDay.map(p => p.id)).size);
+                      {weeks.reduce((maxActive, week) => {
+                        return Math.max(
+                          maxActive,
+                          ...week.map(day => new Set(getProjectsForDate(day.date).map(p => p.id)).size)
+                        );
                       }, 0)}
                     </div>
                   </div>
