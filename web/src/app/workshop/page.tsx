@@ -87,6 +87,7 @@ function formatCurrency(value: number): string {
 }
 
 export default function WorkshopPage() {
+  const [mounted, setMounted] = useState(false);
   const [viewMode, setViewMode] = useState<'calendar' | 'legacy'>('calendar');
   const [loading, setLoading] = useState(true);
   const [weeksCount, setWeeksCount] = useState(4);
@@ -112,7 +113,7 @@ export default function WorkshopPage() {
     setLoadError(null);
     try {
       // In local dev, try to ensure a demo session; in prod, rely on existing auth
-      if (typeof window !== "undefined") {
+      if (mounted && typeof window !== "undefined") {
         const host = window.location.hostname;
         if (host === "localhost" || host === "127.0.0.1") {
           try { await ensureDemoAuth(); } catch {}
@@ -147,6 +148,10 @@ export default function WorkshopPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     loadAll();
@@ -255,6 +260,10 @@ export default function WorkshopPage() {
 
   const weeksArray = Array.from({ length: weeksCount }, (_, i) => i + 1);
 
+  if (!mounted) {
+    return null;
+  }
+
   if (loading) return (
     <div className="p-2">
       <h1 className="text-2xl font-semibold mb-2">Workshop</h1>
@@ -360,14 +369,14 @@ export default function WorkshopPage() {
     }
   }
 
-  const days = getDaysInMonth(currentMonth);
-  const weeks = (() => {
+  const days = mounted ? getDaysInMonth(currentMonth) : [];
+  const weeks = mounted ? (() => {
     const result: typeof days[] = [];
     for (let i = 0; i < days.length; i += 7) {
       result.push(days.slice(i, i + 7));
     }
     return result;
-  })();
+  })() : [];
 
   // Drag-and-drop handlers for calendar bars
   useEffect(() => {
