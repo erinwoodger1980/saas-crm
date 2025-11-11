@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch, ensureDemoAuth, API_BASE } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 
 // Mirror of schema enum
 const PROCESSES = [
@@ -55,7 +56,13 @@ function formatProcess(p: string) {
   return p.replace(/_/g, " ");
 }
 
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
+}
+
 export default function WorkshopPage() {
+  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [weeks, setWeeks] = useState(4);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -163,7 +170,47 @@ export default function WorkshopPage() {
     }
   }
 
-  const weeksArray = useMemo(() => Array.from({ length: weeks }, (_, i) => i + 1), [weeks]);
+  const weeksArray = Array.from({ length: weeks }, (_, i) => i + 1);
+
+  // Calendar helper functions
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayOfWeek = new Date(year, month, 1).getDay();
+    
+    const days = [];
+    
+    // Add empty cells for days before month starts
+    for (let i = 0; i < firstDayOfWeek; i++) {
+      days.push(null);
+    }
+    
+    // Add actual days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(new Date(year, month, day));
+    }
+    
+    return days;
+  };
+
+  const getProjectsForWeek = (weekNumber: number) => {
+    return projects.filter(proj => 
+      proj.processPlans.some(plan => plan.plannedWeek === weekNumber)
+    );
+  };
+
+  const previousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
+  const goToToday = () => {
+    setCurrentMonth(new Date());
+  };
 
   if (loading) return (
     <div className="p-2">
@@ -176,8 +223,23 @@ export default function WorkshopPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Workshop</h1>
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <span>{projects.length} projects</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">{projects.length} projects</span>
+          <Button 
+            variant={viewMode === 'calendar' ? 'default' : 'outline'} 
+            size="sm" 
+            onClick={() => setViewMode('calendar')}
+          >
+            <CalendarIcon className="w-4 h-4 mr-2" />
+            Calendar
+          </Button>
+          <Button 
+            variant={viewMode === 'list' ? 'default' : 'outline'} 
+            size="sm" 
+            onClick={() => setViewMode('list')}
+          >
+            List
+          </Button>
           <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
         </div>
       </div>
@@ -224,6 +286,104 @@ export default function WorkshopPage() {
         </div>
       )}
 
+      {/* Calendar View */}
+      {viewMode === 'calendar' && projects.length > 0 && (
+        <div className="space-y-4">
+          {/* Month Navigation */}
+          <div className="flex items-center justify-between bg-white p-4 rounded-lg border">
+            <Button variant="outline" size="sm" onClick={previousMonth}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <h2 className="text-xl font-semibold">
+              {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </h2>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={goToToday}>
+                Today
+              </Button>
+              <Button variant="outline" size="sm" onClick={nextMonth}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Calendar Grid */}
+          <div className="bg-white rounded-lg border overflow-hidden">
+            {/* Day Headers */}
+            <div className="grid grid-cols-7 bg-slate-50 border-b">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                <div key={day} className="p-3 text-center text-sm font-semibold text-slate-600">
+                  {day}
+                </div>
+              ))}
+            </div>
+            
+            {/* Calendar Days */}
+            <div className="grid grid-cols-7">
+              {getDaysInMonth(currentMonth).map((date, idx) => {
+                const isToday = date && 
+                  date.toDateString() === new Date().toDateString();
+                
+                return (
+                  <div
+                    key={idx}
+                    className={`min-h-[100px] p-2 border-r border-b ${
+                      !date ? 'bg-slate-50' : ''
+                    } ${isToday ? 'bg-blue-50' : ''}`}
+                  >
+                    {date && (
+                      <>
+                        <div className={`text-sm mb-2 ${isToday ? 'font-bold text-blue-600' : 'text-slate-600'}`}>
+                          {date.getDate()}
+                        </div>
+                        {/* Show projects scheduled for this day's week */}
+                        <div className="space-y-1">
+                          {/* This is a simple week-based view - you can enhance to show actual date-based projects */}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Week Summary below calendar */}
+          <div className="grid gap-4 md:grid-cols-4">
+            {weeksArray.map((weekNum: number) => {
+              const projectsInWeek = getProjectsForWeek(weekNum);
+              return (
+                <Card key={weekNum} className="p-4">
+                  <div className="font-semibold mb-2">Week {weekNum}</div>
+                  <div className="text-sm text-muted-foreground mb-3">
+                    {projectsInWeek.length} projects
+                  </div>
+                  <div className="space-y-2">
+                    {projectsInWeek.slice(0, 3).map(proj => (
+                      <div key={proj.id} className="text-sm truncate">
+                        <div className="font-medium">{proj.name}</div>
+                        {proj.valueGBP && (
+                          <div className="text-xs text-muted-foreground">
+                            {formatCurrency(Number(proj.valueGBP))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {projectsInWeek.length > 3 && (
+                      <div className="text-xs text-muted-foreground">
+                        +{projectsInWeek.length - 3} more
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* List View */}
+      {viewMode === 'list' && (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {projects.map((proj) => (
           <Card key={proj.id} className="p-4 space-y-3">
@@ -343,6 +503,7 @@ export default function WorkshopPage() {
           </Card>
         ))}
       </div>
+      )}
     </div>
   );
 }
