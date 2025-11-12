@@ -697,6 +697,11 @@ router.get("/grouped", async (req, res) => {
   const rows = await prisma.lead.findMany({
     where: { tenantId },
     orderBy: [{ capturedAt: "desc" }],
+    include: {
+      opportunity: {
+        select: { id: true }
+      }
+    }
   });
 
   const grouped: Record<UiStatus, any[]> = Object.fromEntries(
@@ -706,7 +711,10 @@ router.get("/grouped", async (req, res) => {
   for (const l of rows) {
     const ui = (l.custom as any)?.uiStatus as UiStatus | undefined;
     const bucket = ui ?? dbToUi(l.status);
-    (grouped[bucket] || grouped.NEW_ENQUIRY).push(l);
+    (grouped[bucket] || grouped.NEW_ENQUIRY).push({
+      ...l,
+      opportunityId: l.opportunity?.id || null
+    });
   }
 
   res.json(grouped);
