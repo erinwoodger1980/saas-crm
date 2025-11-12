@@ -42,6 +42,17 @@ function requiresAuth(pathname: string) {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const authToken = req.cookies.get(AUTH_COOKIE_NAME)?.value;
+  // Extract role from a lightweight JWT (no verification here) to gate workshop-only users
+  let role: string | null = null;
+  if (authToken) {
+    try {
+      const payloadPart = authToken.split('.')[1];
+      if (payloadPart) {
+        const json = JSON.parse(Buffer.from(payloadPart, 'base64').toString('utf8'));
+        role = typeof json.role === 'string' ? json.role : null;
+      }
+    } catch {}
+  }
 
   if (pathname === "/") {
     if (authToken) {
@@ -63,6 +74,17 @@ export function middleware(req: NextRequest) {
       loginUrl.searchParams.set("next", pathname);
     }
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Restrict workshop-only role: allow ONLY /workshop, /login, and public paths
+  if (authToken && role === 'workshop') {
+    const allowedPrefixes = ['/workshop'];
+    const isAllowed = isPublicPath(pathname) || allowedPrefixes.some(p => pathname === p || pathname.startsWith(p + '/'));
+    if (!isAllowed) {
+      const redirectUrl = req.nextUrl.clone();
+      redirectUrl.pathname = '/workshop';
+      return NextResponse.redirect(redirectUrl);
+    }
   }
 
   return NextResponse.next();
