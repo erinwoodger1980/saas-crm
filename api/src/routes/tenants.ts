@@ -129,6 +129,20 @@ router.get("/settings", async (req, res) => {
 
   let s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
   if (!s) {
+    // Seed a sensible default questionnaire for new tenants
+    const defaultQuestions = normalizeQuestionnaire([
+      { id: "contact_name", key: "contact_name", label: "Your name", type: "text", required: true, askInQuestionnaire: true, showOnLead: true, sortOrder: 0 },
+      { id: "email", key: "email", label: "Email", type: "text", required: true, askInQuestionnaire: true, showOnLead: true, sortOrder: 1 },
+      { id: "phone", key: "phone", label: "Phone", type: "text", required: false, askInQuestionnaire: true, showOnLead: true, sortOrder: 2 },
+      { id: "project_type", key: "project_type", label: "Project type", type: "select", options: ["Windows","Doors","Staircase","Kitchen","Wardrobes","Alcove Units","Other"], required: true, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 3 },
+      { id: "dimensions", key: "dimensions", label: "Sizes / dimensions (optional)", type: "textarea", required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 4 },
+      { id: "budget", key: "budget", label: "Estimated budget (optional)", type: "number", required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 5 },
+      { id: "timeframe", key: "timeframe", label: "Ideal timeframe", type: "select", options: ["ASAP","1-2 months","3-6 months","Flexible"], required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 6 },
+      { id: "photos", key: "photos", label: "Photos / drawings (optional)", type: "file", required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 7 },
+      { id: "notes", key: "notes", label: "Anything else we should know?", type: "textarea", required: false, askInQuestionnaire: true, showOnLead: true, sortOrder: 8 },
+    ]);
+    const preparedQuestions = (await import("../lib/questionnaire")).prepareQuestionnaireForSave(defaultQuestions);
+
     s = await prisma.tenantSettings.create({
       data: {
         tenantId,
@@ -140,6 +154,7 @@ router.get("/settings", async (req, res) => {
         taskPlaybook: DEFAULT_TASK_PLAYBOOK,
         questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
         questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+        questionnaire: preparedQuestions,
       },
     });
   }
