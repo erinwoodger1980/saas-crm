@@ -246,22 +246,46 @@ export default function WorkshopPage() {
     );
   };
 
+  // Calculate proportional value for a date range
+  const getProportionalValue = (proj: Project, rangeStart: Date, rangeEnd: Date) => {
+    if (!proj.startDate || !proj.deliveryDate || !proj.valueGBP) return 0;
+    
+    const projectStart = new Date(proj.startDate);
+    const projectEnd = new Date(proj.deliveryDate);
+    const value = Number(proj.valueGBP) || 0;
+    
+    // Calculate overlap between project dates and range
+    const overlapStart = new Date(Math.max(projectStart.getTime(), rangeStart.getTime()));
+    const overlapEnd = new Date(Math.min(projectEnd.getTime(), rangeEnd.getTime()));
+    
+    if (overlapStart > overlapEnd) return 0;
+    
+    // Calculate days
+    const overlapDays = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const totalProjectDays = Math.ceil((projectEnd.getTime() - projectStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    
+    return (value * overlapDays) / totalProjectDays;
+  };
+
   const getWeekTotal = (weekNumber: number) => {
-    const weekProjects = getProjectsForWeek(weekNumber);
-    return weekProjects.reduce((sum, proj) => sum + (Number(proj.valueGBP) || 0), 0);
+    // Get first day of the week (assuming week 1 starts at beginning of schedule)
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay() + ((weekNumber - 1) * 7));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    
+    return projects.reduce((sum, proj) => {
+      return sum + getProportionalValue(proj, weekStart, weekEnd);
+    }, 0);
   };
 
   const getMonthTotal = () => {
-    // Get all unique projects with scheduled work
-    const activeProjects = new Set<string>();
-    projects.forEach(proj => {
-      if (proj.processPlans.length > 0) {
-        activeProjects.add(proj.id);
-      }
-    });
-    return Array.from(activeProjects).reduce((sum, projId) => {
-      const proj = projects.find(p => p.id === projId);
-      return sum + (Number(proj?.valueGBP) || 0);
+    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+    
+    return projects.reduce((sum, proj) => {
+      return sum + getProportionalValue(proj, monthStart, monthEnd);
     }, 0);
   };
 
@@ -273,6 +297,33 @@ export default function WorkshopPage() {
       const end = proj.deliveryDate.split('T')[0];
       return dateStr >= start && dateStr <= end;
     });
+  };
+
+  // Calculate project progress percentage
+  const getProjectProgress = (proj: Project) => {
+    if (!proj.startDate || !proj.deliveryDate) return 0;
+    
+    const now = new Date();
+    const start = new Date(proj.startDate);
+    const end = new Date(proj.deliveryDate);
+    
+    if (now < start) return 0;
+    if (now > end) return 100;
+    
+    const total = end.getTime() - start.getTime();
+    const elapsed = now.getTime() - start.getTime();
+    
+    return Math.round((elapsed / total) * 100);
+  };
+
+  // Get color based on progress
+  const getProgressColor = (progress: number) => {
+    if (progress === 0) return 'bg-slate-100 text-slate-800';
+    if (progress < 25) return 'bg-green-100 text-green-800';
+    if (progress < 50) return 'bg-green-200 text-green-900';
+    if (progress < 75) return 'bg-green-300 text-green-900';
+    if (progress < 100) return 'bg-green-400 text-green-950';
+    return 'bg-green-500 text-white';
   };
 
   const previousMonth = () => {
@@ -426,12 +477,14 @@ export default function WorkshopPage() {
                               new Date(proj.startDate).toDateString() === date.toDateString();
                             const isDeliveryDate = proj.deliveryDate && 
                               new Date(proj.deliveryDate).toDateString() === date.toDateString();
+                            const progress = getProjectProgress(proj);
+                            const colorClass = getProgressColor(progress);
                             
                             return (
                               <div 
                                 key={proj.id} 
-                                className="text-xs p-1 rounded bg-blue-100 text-blue-800 truncate"
-                                title={`${proj.name} - ${formatCurrency(Number(proj.valueGBP) || 0)}`}
+                                className={`text-xs p-1 rounded truncate ${colorClass}`}
+                                title={`${proj.name} - ${formatCurrency(Number(proj.valueGBP) || 0)} - ${progress}% complete`}
                               >
                                 {isStartDate && <span className="font-bold">▶ </span>}
                                 {proj.name.length > 15 ? proj.name.substring(0, 15) + '...' : proj.name}
@@ -465,10 +518,19 @@ export default function WorkshopPage() {
                     {projectsInWeek.length} project{projectsInWeek.length !== 1 ? 's' : ''}
                   </div>
                   <div className="space-y-2">
-                    {projectsInWeek.slice(0, 3).map(proj => (
+                    {projectsInWeek.slice(0, 3).map(proj => {
+                      const progress = getProjectProgress(proj);
+                      return (
                       <div key={proj.id} className="text-sm">
-                        <div className="font-medium truncate" title={proj.name}>{proj.name}</div>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium truncate flex-1" title={proj.name}>{proj.name}</div>
+                          {proj.startDate && proj.deliveryDate && (
+                            <span className={`text-xs px-2 py-0.5 rounded ${getProgressColor(progress)}`}>
+                              {progress}%
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
                           {proj.valueGBP && (
                             <span>{formatCurrency(Number(proj.valueGBP))}</span>
                           )}
@@ -480,7 +542,8 @@ export default function WorkshopPage() {
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                     {projectsInWeek.length > 3 && (
                       <div className="text-xs text-muted-foreground">
                         +{projectsInWeek.length - 3} more
