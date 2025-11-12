@@ -235,6 +235,15 @@ router.get("/schedule", async (req: any, res) => {
     return res.json({ ok: true, weeks, projects: [] });
   }
 
+  // Fetch new process assignments (with user assignments)
+  const processAssignments = await (prisma as any).projectProcessAssignment.findMany({
+    where: { tenantId, opportunityId: { in: projectIds } },
+    include: {
+      processDefinition: true,
+      assignedUser: { select: { id: true, name: true, email: true } },
+    },
+  });
+
   const plans = await (prisma as any).processPlan.findMany({
     where: { tenantId, projectId: { in: projectIds } },
     include: { assignee: { select: { id: true, name: true } } },
@@ -268,6 +277,23 @@ router.get("/schedule", async (req: any, res) => {
     });
   }
 
+  const processAssignmentsByProject: Record<string, any[]> = {};
+  for (const pa of processAssignments) {
+    const list = (processAssignmentsByProject[pa.opportunityId] ||= []);
+    list.push({
+      id: pa.id,
+      processCode: pa.processDefinition.code,
+      processName: pa.processDefinition.name,
+      required: pa.required,
+      estimatedHours: pa.estimatedHours || pa.processDefinition.estimatedHours,
+      assignedUser: pa.assignedUser ? {
+        id: pa.assignedUser.id,
+        name: pa.assignedUser.name,
+        email: pa.assignedUser.email,
+      } : null,
+    });
+  }
+
   const out = (projects as any[]).map((proj: any) => ({
     id: proj.id,
     name: proj.title,
@@ -277,6 +303,7 @@ router.get("/schedule", async (req: any, res) => {
     deliveryDate: proj.deliveryDate,
     weeks,
     processPlans: plansByProject[proj.id] || [],
+    processAssignments: processAssignmentsByProject[proj.id] || [], // New process assignments
     totalHoursByProcess: totalsByProject[proj.id]?.byProcess || {},
     totalProjectHours: totalsByProject[proj.id]?.total || 0,
   }));
