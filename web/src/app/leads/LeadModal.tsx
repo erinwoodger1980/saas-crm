@@ -778,17 +778,25 @@ export default function LeadModal({
     if (!lead?.id) return null;
     try {
       // First, if the current id is already an opportunity id (modal opened from Opportunities), use it
+      // Probe the project assignments endpoint to see if lead.id is actually an opportunityId
       try {
         const probe = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`);
-        if (probe && probe.ok === true) {
+        // If we get a valid response (even if assignments is empty), this is an opportunityId
+        if (probe && (probe.ok === true || probe.assignments !== undefined)) {
+          console.log('[ensureOpportunity] detected lead.id is already opportunityId:', lead.id);
           setOpportunityId(String(lead.id));
           return String(lead.id);
         }
-      } catch {}
-      // Try resolve/create on the server
+      } catch (probeErr: any) {
+        // If we get 404, lead.id is not an opportunityId, proceed to ensure-for-lead
+        console.log('[ensureOpportunity] probe failed, will try ensure-for-lead:', probeErr?.status || probeErr?.message);
+      }
+      // Try resolve/create on the server using leadId
+      console.log('[ensureOpportunity] calling ensure-for-lead with:', lead.id);
       const out = await apiFetch<any>(`/opportunities/ensure-for-lead/${encodeURIComponent(lead.id)}`, { method: 'POST', headers: authHeaders });
       const id = String(out?.opportunity?.id || '');
       if (id) {
+        console.log('[ensureOpportunity] resolved opportunityId:', id);
         setOpportunityId(id);
         return id;
       }
