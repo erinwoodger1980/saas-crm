@@ -375,15 +375,19 @@ export default function LeadModal({
     timberOrderedAt?: string | null;
     timberExpectedAt?: string | null;
     timberReceivedAt?: string | null;
+    timberNotApplicable?: boolean;
     glassOrderedAt?: string | null;
     glassExpectedAt?: string | null;
     glassReceivedAt?: string | null;
+    glassNotApplicable?: boolean;
     ironmongeryOrderedAt?: string | null;
     ironmongeryExpectedAt?: string | null;
     ironmongeryReceivedAt?: string | null;
+    ironmongeryNotApplicable?: boolean;
     paintOrderedAt?: string | null;
     paintExpectedAt?: string | null;
     paintReceivedAt?: string | null;
+    paintNotApplicable?: boolean;
   };
   const [materialDates, setMaterialDates] = useState<MaterialDates>({});
   const [materialSaving, setMaterialSaving] = useState(false);
@@ -671,15 +675,19 @@ export default function LeadModal({
             timberOrderedAt: opp.timberOrderedAt || null,
             timberExpectedAt: opp.timberExpectedAt || null,
             timberReceivedAt: opp.timberReceivedAt || null,
+            timberNotApplicable: opp.timberNotApplicable || false,
             glassOrderedAt: opp.glassOrderedAt || null,
             glassExpectedAt: opp.glassExpectedAt || null,
             glassReceivedAt: opp.glassReceivedAt || null,
+            glassNotApplicable: opp.glassNotApplicable || false,
             ironmongeryOrderedAt: opp.ironmongeryOrderedAt || null,
             ironmongeryExpectedAt: opp.ironmongeryExpectedAt || null,
             ironmongeryReceivedAt: opp.ironmongeryReceivedAt || null,
+            ironmongeryNotApplicable: opp.ironmongeryNotApplicable || false,
             paintOrderedAt: opp.paintOrderedAt || null,
             paintExpectedAt: opp.paintExpectedAt || null,
             paintReceivedAt: opp.paintReceivedAt || null,
+            paintNotApplicable: opp.paintNotApplicable || false,
           });
           setProjectStartDate(opp.startDate || "");
           setProjectDeliveryDate(opp.deliveryDate || "");
@@ -3577,52 +3585,84 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       { key: 'glass', label: 'Glass', icon: '🪟' },
                       { key: 'ironmongery', label: 'Ironmongery', icon: '🔩' },
                       { key: 'paint', label: 'Paint', icon: '🎨' },
-                    ].map((material) => (
-                      <div key={material.key} className="rounded-xl border bg-white/80 p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <span>{material.icon}</span>
-                          <span className="text-sm font-medium text-slate-900">{material.label}</span>
+                    ].map((material) => {
+                      const notApplicableKey = `${material.key}NotApplicable` as keyof MaterialDates;
+                      const isNA = materialDates[notApplicableKey] || false;
+                      
+                      return (
+                        <div key={material.key} className="rounded-xl border bg-white/80 p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <span>{material.icon}</span>
+                              <span className="text-sm font-medium text-slate-900">{material.label}</span>
+                            </div>
+                            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!isNA}
+                                onChange={(e) => setMaterialDates(prev => ({
+                                  ...prev,
+                                  [notApplicableKey]: e.target.checked,
+                                  // Clear dates when marking as N/A
+                                  ...(e.target.checked ? {
+                                    [`${material.key}OrderedAt`]: null,
+                                    [`${material.key}ExpectedAt`]: null,
+                                    [`${material.key}ReceivedAt`]: null,
+                                  } : {})
+                                }))}
+                                className="rounded"
+                              />
+                              N/A
+                            </label>
+                          </div>
+                          {!isNA && (
+                            <div className="space-y-2">
+                              <label className="block">
+                                <span className="text-xs text-slate-600">Ordered</span>
+                                <input
+                                  type="date"
+                                  className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                                  value={materialDates[`${material.key}OrderedAt` as keyof MaterialDates] || ""}
+                                  onChange={(e) => setMaterialDates(prev => ({
+                                    ...prev,
+                                    [`${material.key}OrderedAt`]: e.target.value || null
+                                  }))}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs text-slate-600">Expected</span>
+                                <input
+                                  type="date"
+                                  className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                                  value={materialDates[`${material.key}ExpectedAt` as keyof MaterialDates] || ""}
+                                  onChange={(e) => setMaterialDates(prev => ({
+                                    ...prev,
+                                    [`${material.key}ExpectedAt`]: e.target.value || null
+                                  }))}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs text-slate-600">Received</span>
+                                <input
+                                  type="date"
+                                  className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                                  value={materialDates[`${material.key}ReceivedAt` as keyof MaterialDates] || ""}
+                                  onChange={(e) => setMaterialDates(prev => ({
+                                    ...prev,
+                                    [`${material.key}ReceivedAt`]: e.target.value || null
+                                  }))}
+                                />
+                              </label>
+                            </div>
+                          )}
+                          {isNA && (
+                            <div className="text-sm text-gray-500 italic text-center py-4">
+                              Not applicable for this project
+                            </div>
+                          )}
                         </div>
-                        <div className="space-y-2">
-                          <label className="block">
-                            <span className="text-xs text-slate-600">Ordered</span>
-                            <input
-                              type="date"
-                              className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                              value={materialDates[`${material.key}OrderedAt` as keyof MaterialDates] || ""}
-                              onChange={(e) => setMaterialDates(prev => ({
-                                ...prev,
-                                [`${material.key}OrderedAt`]: e.target.value || null
-                              }))}
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="text-xs text-slate-600">Expected</span>
-                            <input
-                              type="date"
-                              className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                              value={materialDates[`${material.key}ExpectedAt` as keyof MaterialDates] || ""}
-                              onChange={(e) => setMaterialDates(prev => ({
-                                ...prev,
-                                [`${material.key}ExpectedAt`]: e.target.value || null
-                              }))}
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="text-xs text-slate-600">Received</span>
-                            <input
-                              type="date"
-                              className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                              value={materialDates[`${material.key}ReceivedAt` as keyof MaterialDates] || ""}
-                              onChange={(e) => setMaterialDates(prev => ({
-                                ...prev,
-                                [`${material.key}ReceivedAt`]: e.target.value || null
-                              }))}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
 

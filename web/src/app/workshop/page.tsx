@@ -175,15 +175,19 @@ type Project = {
   timberOrderedAt?: string | null;
   timberExpectedAt?: string | null;
   timberReceivedAt?: string | null;
+  timberNotApplicable?: boolean;
   glassOrderedAt?: string | null;
   glassExpectedAt?: string | null;
   glassReceivedAt?: string | null;
+  glassNotApplicable?: boolean;
   ironmongeryOrderedAt?: string | null;
   ironmongeryExpectedAt?: string | null;
   ironmongeryReceivedAt?: string | null;
+  ironmongeryNotApplicable?: boolean;
   paintOrderedAt?: string | null;
   paintExpectedAt?: string | null;
   paintReceivedAt?: string | null;
+  paintNotApplicable?: boolean;
 };
 
 type ScheduleResponse = { ok: boolean; weeks: number; projects: Project[] };
@@ -237,9 +241,10 @@ function getProjectColor(proj: Project, users: UserLite[]): string {
   return '#60a5fa';
 }
 
-type MaterialStatus = 'not-ordered' | 'ordered' | 'received';
+type MaterialStatus = 'not-applicable' | 'not-ordered' | 'ordered' | 'received';
 
-function getMaterialStatus(orderedAt?: string | null, receivedAt?: string | null): MaterialStatus {
+function getMaterialStatus(orderedAt?: string | null, receivedAt?: string | null, notApplicable?: boolean): MaterialStatus {
+  if (notApplicable) return 'not-applicable';
   if (receivedAt) return 'received';
   if (orderedAt) return 'ordered';
   return 'not-ordered';
@@ -247,6 +252,7 @@ function getMaterialStatus(orderedAt?: string | null, receivedAt?: string | null
 
 function getMaterialColor(status: MaterialStatus): string {
   switch (status) {
+    case 'not-applicable': return '#6b7280'; // Grey
     case 'received': return '#22c55e'; // Green
     case 'ordered': return '#f59e0b'; // Amber
     case 'not-ordered': return '#ef4444'; // Red
@@ -1090,10 +1096,10 @@ export default function WorkshopPage() {
                             : `linear-gradient(90deg, #22c55e ${progress}%, ${projectColor} ${progress}%)`;
                           
                           // Material status indicators
-                          const timberStatus = getMaterialStatus(proj.timberOrderedAt, proj.timberReceivedAt);
-                          const glassStatus = getMaterialStatus(proj.glassOrderedAt, proj.glassReceivedAt);
-                          const ironmongeryStatus = getMaterialStatus(proj.ironmongeryOrderedAt, proj.ironmongeryReceivedAt);
-                          const paintStatus = getMaterialStatus(proj.paintOrderedAt, proj.paintReceivedAt);
+                          const timberStatus = getMaterialStatus(proj.timberOrderedAt, proj.timberReceivedAt, proj.timberNotApplicable);
+                          const glassStatus = getMaterialStatus(proj.glassOrderedAt, proj.glassReceivedAt, proj.glassNotApplicable);
+                          const ironmongeryStatus = getMaterialStatus(proj.ironmongeryOrderedAt, proj.ironmongeryReceivedAt, proj.ironmongeryNotApplicable);
+                          const paintStatus = getMaterialStatus(proj.paintOrderedAt, proj.paintReceivedAt, proj.paintNotApplicable);
                           
                           return (
                             <div
@@ -1110,28 +1116,40 @@ export default function WorkshopPage() {
                               onClick={() => setShowProjectDetails(proj.id)}
                               title={`${proj.name} (${progress}% complete)${usersSummary}`}
                             >
-                              {/* Traffic lights for materials */}
+                              {/* Traffic lights for materials with labels */}
                               <div className="flex gap-0.5 shrink-0">
-                                <div 
-                                  className="w-2 h-2 rounded-full border border-white/30" 
-                                  style={{ backgroundColor: getMaterialColor(timberStatus) }}
-                                  title="Timber"
-                                />
-                                <div 
-                                  className="w-2 h-2 rounded-full border border-white/30" 
-                                  style={{ backgroundColor: getMaterialColor(glassStatus) }}
-                                  title="Glass"
-                                />
-                                <div 
-                                  className="w-2 h-2 rounded-full border border-white/30" 
-                                  style={{ backgroundColor: getMaterialColor(ironmongeryStatus) }}
-                                  title="Ironmongery"
-                                />
-                                <div 
-                                  className="w-2 h-2 rounded-full border border-white/30" 
-                                  style={{ backgroundColor: getMaterialColor(paintStatus) }}
-                                  title="Paint"
-                                />
+                                <div className="flex flex-col items-center">
+                                  <div className="text-[8px] font-bold leading-none mb-0.5">T</div>
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: getMaterialColor(timberStatus) }}
+                                    title="Timber"
+                                  />
+                                </div>
+                                <div className="flex flex-col items-center">
+                                  <div className="text-[8px] font-bold leading-none mb-0.5">G</div>
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: getMaterialColor(glassStatus) }}
+                                    title="Glass"
+                                  />
+                                </div>
+                                <div className="flex flex-col items-center">
+                                  <div className="text-[8px] font-bold leading-none mb-0.5">I</div>
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: getMaterialColor(ironmongeryStatus) }}
+                                    title="Ironmongery"
+                                  />
+                                </div>
+                                <div className="flex flex-col items-center">
+                                  <div className="text-[8px] font-bold leading-none mb-0.5">P</div>
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: getMaterialColor(paintStatus) }}
+                                    title="Paint"
+                                  />
+                                </div>
                               </div>
                               
                               <div className="truncate flex-1">{proj.name}</div>
@@ -1700,64 +1718,100 @@ export default function WorkshopPage() {
                     {/* Timber */}
                     <div className="p-3 border rounded">
                       <div className="flex items-center gap-2 mb-2">
-                        <div 
-                          className="w-3 h-3 rounded-full border border-gray-300" 
-                          style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.timberOrderedAt, project.timberReceivedAt)) }}
-                        />
+                        <div className="flex flex-col items-center"></div>
+                          <div className="text-[10px] font-bold leading-none mb-0.5">T</div>
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.timberOrderedAt, project.timberReceivedAt, project.timberNotApplicable)) }}
+                          />
+                        </div>
                         <span className="font-medium">Timber</span>
                       </div>
                       <div className="space-y-1 text-xs text-gray-600">
-                        <div>Ordered: {project.timberOrderedAt ? new Date(project.timberOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
-                        <div>Expected: {project.timberExpectedAt ? new Date(project.timberExpectedAt).toLocaleDateString() : '-'}</div>
-                        <div>Received: {project.timberReceivedAt ? new Date(project.timberReceivedAt).toLocaleDateString() : '-'}</div>
+                        {project.timberNotApplicable ? (
+                          <div className="font-medium text-gray-500">N/A</div>
+                        ) : (
+                          <>
+                            <div>Ordered: {project.timberOrderedAt ? new Date(project.timberOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
+                            <div>Expected: {project.timberExpectedAt ? new Date(project.timberExpectedAt).toLocaleDateString() : '-'}</div>
+                            <div>Received: {project.timberReceivedAt ? new Date(project.timberReceivedAt).toLocaleDateString() : '-'}</div>
+                          </>
+                        )}
                       </div>
                     </div>
                     
                     {/* Glass */}
                     <div className="p-3 border rounded">
                       <div className="flex items-center gap-2 mb-2">
-                        <div 
-                          className="w-3 h-3 rounded-full border border-gray-300" 
-                          style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.glassOrderedAt, project.glassReceivedAt)) }}
-                        />
+                        <div className="flex flex-col items-center">
+                          <div className="text-[10px] font-bold leading-none mb-0.5">G</div>
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.glassOrderedAt, project.glassReceivedAt, project.glassNotApplicable)) }}
+                          />
+                        </div>
                         <span className="font-medium">Glass</span>
                       </div>
                       <div className="space-y-1 text-xs text-gray-600">
-                        <div>Ordered: {project.glassOrderedAt ? new Date(project.glassOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
-                        <div>Expected: {project.glassExpectedAt ? new Date(project.glassExpectedAt).toLocaleDateString() : '-'}</div>
-                        <div>Received: {project.glassReceivedAt ? new Date(project.glassReceivedAt).toLocaleDateString() : '-'}</div>
+                        {project.glassNotApplicable ? (
+                          <div className="font-medium text-gray-500">N/A</div>
+                        ) : (
+                          <>
+                            <div>Ordered: {project.glassOrderedAt ? new Date(project.glassOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
+                            <div>Expected: {project.glassExpectedAt ? new Date(project.glassExpectedAt).toLocaleDateString() : '-'}</div>
+                            <div>Received: {project.glassReceivedAt ? new Date(project.glassReceivedAt).toLocaleDateString() : '-'}</div>
+                          </>
+                        )}
                       </div>
                     </div>
                     
                     {/* Ironmongery */}
                     <div className="p-3 border rounded">
                       <div className="flex items-center gap-2 mb-2">
-                        <div 
-                          className="w-3 h-3 rounded-full border border-gray-300" 
-                          style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.ironmongeryOrderedAt, project.ironmongeryReceivedAt)) }}
-                        />
+                        <div className="flex flex-col items-center">
+                          <div className="text-[10px] font-bold leading-none mb-0.5">I</div>
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.ironmongeryOrderedAt, project.ironmongeryReceivedAt, project.ironmongeryNotApplicable)) }}
+                          />
+                        </div>
                         <span className="font-medium">Ironmongery</span>
                       </div>
                       <div className="space-y-1 text-xs text-gray-600">
-                        <div>Ordered: {project.ironmongeryOrderedAt ? new Date(project.ironmongeryOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
-                        <div>Expected: {project.ironmongeryExpectedAt ? new Date(project.ironmongeryExpectedAt).toLocaleDateString() : '-'}</div>
-                        <div>Received: {project.ironmongeryReceivedAt ? new Date(project.ironmongeryReceivedAt).toLocaleDateString() : '-'}</div>
+                        {project.ironmongeryNotApplicable ? (
+                          <div className="font-medium text-gray-500">N/A</div>
+                        ) : (
+                          <>
+                            <div>Ordered: {project.ironmongeryOrderedAt ? new Date(project.ironmongeryOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
+                            <div>Expected: {project.ironmongeryExpectedAt ? new Date(project.ironmongeryExpectedAt).toLocaleDateString() : '-'}</div>
+                            <div>Received: {project.ironmongeryReceivedAt ? new Date(project.ironmongeryReceivedAt).toLocaleDateString() : '-'}</div>
+                          </>
+                        )}
                       </div>
                     </div>
                     
                     {/* Paint */}
                     <div className="p-3 border rounded">
                       <div className="flex items-center gap-2 mb-2">
-                        <div 
-                          className="w-3 h-3 rounded-full border border-gray-300" 
-                          style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.paintOrderedAt, project.paintReceivedAt)) }}
-                        />
+                        <div className="flex flex-col items-center">
+                          <div className="text-[10px] font-bold leading-none mb-0.5">P</div>
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.paintOrderedAt, project.paintReceivedAt, project.paintNotApplicable)) }}
+                          />
+                        </div>
                         <span className="font-medium">Paint</span>
                       </div>
                       <div className="space-y-1 text-xs text-gray-600">
-                        <div>Ordered: {project.paintOrderedAt ? new Date(project.paintOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
-                        <div>Expected: {project.paintExpectedAt ? new Date(project.paintExpectedAt).toLocaleDateString() : '-'}</div>
-                        <div>Received: {project.paintReceivedAt ? new Date(project.paintReceivedAt).toLocaleDateString() : '-'}</div>
+                        {project.paintNotApplicable ? (
+                          <div className="font-medium text-gray-500">N/A</div>
+                        ) : (
+                          <>
+                            <div>Ordered: {project.paintOrderedAt ? new Date(project.paintOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
+                            <div>Expected: {project.paintExpectedAt ? new Date(project.paintExpectedAt).toLocaleDateString() : '-'}</div>
+                            <div>Received: {project.paintReceivedAt ? new Date(project.paintReceivedAt).toLocaleDateString() : '-'}</div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
