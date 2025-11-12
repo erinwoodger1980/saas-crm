@@ -396,6 +396,7 @@ export default function LeadModal({
   const [projectStartDate, setProjectStartDate] = useState<string>("");
   const [projectDeliveryDate, setProjectDeliveryDate] = useState<string>("");
   const [projectValueGBP, setProjectValueGBP] = useState<string>("");
+  const [opportunityId, setOpportunityId] = useState<string | null>(null);
 
   const lastSavedServerStatusRef = useRef<string | null>(null);
 
@@ -672,6 +673,7 @@ export default function LeadModal({
         // Load material dates and project details
         const opp = (oppByLead && (oppByLead.opportunity || oppByLead)) || (oppDetails && (oppDetails.lead || oppDetails)) || null;
         if (opp) {
+          if (opp.id) setOpportunityId(String(opp.id));
           setMaterialDates({
             timberOrderedAt: opp.timberOrderedAt || null,
             timberExpectedAt: opp.timberExpectedAt || null,
@@ -759,10 +761,11 @@ export default function LeadModal({
   }
 
   async function saveMaterialDates() {
-    if (!lead?.id) return;
+    const projectId = opportunityId || lead?.id;
+    if (!projectId) return;
     setMaterialSaving(true);
     try {
-      await apiFetch(`/workshop/project/${encodeURIComponent(lead.id)}/materials`, {
+      await apiFetch(`/workshop/project/${encodeURIComponent(projectId)}/materials`, {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         body: JSON.stringify(materialDates),
@@ -776,12 +779,13 @@ export default function LeadModal({
   }
 
   async function saveOpportunityField(field: string, value: any) {
-    if (!lead?.id) return;
+    const id = opportunityId || lead?.id;
+    if (!id) return;
     try {
       const payload: any = {};
       payload[field] = value;
       
-      await apiFetch(`/opportunities/${encodeURIComponent(lead.id)}`, {
+      await apiFetch(`/opportunities/${encodeURIComponent(id)}` , {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
