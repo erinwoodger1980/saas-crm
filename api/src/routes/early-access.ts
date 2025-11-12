@@ -136,7 +136,21 @@ router.post("/signup", async (req, res) => {
     });
   } catch (error: any) {
     console.error("Failed to create early adopter account:", error);
-    res.status(500).json({ error: "Failed to create account" });
+    console.error("Error details:", {
+      message: error.message,
+      code: error.code,
+      meta: error.meta,
+      stack: error.stack?.split('\n').slice(0, 3).join('\n')
+    });
+    
+    // Return more specific error in development/staging
+    const isDev = process.env.NODE_ENV !== "production";
+    const errorMessage = isDev && error.message ? error.message : "Failed to create account";
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      ...(isDev && { details: error.message, code: error.code })
+    });
   }
 });
 
