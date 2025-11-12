@@ -536,6 +536,29 @@ app.use("/auth", makeMeAdminRouter);
 app.use("/ai/codex", codexRunRouter);
 app.use("/ai/loop", aiLoopRouter);
 
+/**
+ * Minimal migration trigger endpoint.
+ * Protected: requires auth and admin/owner role.
+ * Runs `prisma migrate deploy` and returns status JSON.
+ * Useful for one-click healing when new tables (e.g., Holiday) are added.
+ */
+import { execSync } from "child_process";
+app.post("/admin/run-migrations", requireAuth, async (req: any, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.auth.userId } });
+    const role = (user?.role || "").toLowerCase();
+    if (!user || !["admin", "owner"].includes(role)) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    const outGenerate = execSync("npx prisma generate", { stdio: "pipe" }).toString();
+    const outDeploy = execSync("npx prisma migrate deploy", { stdio: "pipe" }).toString();
+    return res.json({ ok: true, generate: outGenerate, deploy: outDeploy });
+  } catch (e: any) {
+    console.error("[/admin/run-migrations] failed:", e?.message || e);
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
 /** ---------- Auth required from here ---------- */
 app.use((req, _res, next) => {
   next();
