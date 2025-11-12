@@ -178,6 +178,8 @@ model Opportunity {
   tenantId      String
   leadId        String         @unique
   title         String
+  startDate     DateTime?
+  deliveryDate  DateTime?
   valueGBP      Decimal?
   stage         OppStage       @default(QUALIFY)
   wonAt         DateTime?
