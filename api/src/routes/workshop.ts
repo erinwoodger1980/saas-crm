@@ -267,15 +267,19 @@ router.get("/schedule", async (req: any, res) => {
       timberOrderedAt: true,
       timberExpectedAt: true,
       timberReceivedAt: true,
+      timberNotApplicable: true,
       glassOrderedAt: true,
       glassExpectedAt: true,
       glassReceivedAt: true,
+      glassNotApplicable: true,
       ironmongeryOrderedAt: true,
       ironmongeryExpectedAt: true,
       ironmongeryReceivedAt: true,
+      ironmongeryNotApplicable: true,
       paintOrderedAt: true,
       paintExpectedAt: true,
       paintReceivedAt: true,
+      paintNotApplicable: true,
     } as any),
     orderBy: [{ wonAt: "desc" }, { title: "asc" }],
   });
@@ -540,15 +544,19 @@ router.patch("/project/:projectId/materials", async (req: any, res) => {
     timberOrderedAt,
     timberExpectedAt,
     timberReceivedAt,
+    timberNotApplicable,
     glassOrderedAt,
     glassExpectedAt,
     glassReceivedAt,
+    glassNotApplicable,
     ironmongeryOrderedAt,
     ironmongeryExpectedAt,
     ironmongeryReceivedAt,
+    ironmongeryNotApplicable,
     paintOrderedAt,
     paintExpectedAt,
     paintReceivedAt,
+    paintNotApplicable,
   } = req.body;
 
   // Verify opportunity belongs to tenant
@@ -565,15 +573,19 @@ router.patch("/project/:projectId/materials", async (req: any, res) => {
   if (timberOrderedAt !== undefined) updates.timberOrderedAt = timberOrderedAt ? new Date(timberOrderedAt) : null;
   if (timberExpectedAt !== undefined) updates.timberExpectedAt = timberExpectedAt ? new Date(timberExpectedAt) : null;
   if (timberReceivedAt !== undefined) updates.timberReceivedAt = timberReceivedAt ? new Date(timberReceivedAt) : null;
+  if (timberNotApplicable !== undefined) updates.timberNotApplicable = Boolean(timberNotApplicable);
   if (glassOrderedAt !== undefined) updates.glassOrderedAt = glassOrderedAt ? new Date(glassOrderedAt) : null;
   if (glassExpectedAt !== undefined) updates.glassExpectedAt = glassExpectedAt ? new Date(glassExpectedAt) : null;
   if (glassReceivedAt !== undefined) updates.glassReceivedAt = glassReceivedAt ? new Date(glassReceivedAt) : null;
+  if (glassNotApplicable !== undefined) updates.glassNotApplicable = Boolean(glassNotApplicable);
   if (ironmongeryOrderedAt !== undefined) updates.ironmongeryOrderedAt = ironmongeryOrderedAt ? new Date(ironmongeryOrderedAt) : null;
   if (ironmongeryExpectedAt !== undefined) updates.ironmongeryExpectedAt = ironmongeryExpectedAt ? new Date(ironmongeryExpectedAt) : null;
   if (ironmongeryReceivedAt !== undefined) updates.ironmongeryReceivedAt = ironmongeryReceivedAt ? new Date(ironmongeryReceivedAt) : null;
+  if (ironmongeryNotApplicable !== undefined) updates.ironmongeryNotApplicable = Boolean(ironmongeryNotApplicable);
   if (paintOrderedAt !== undefined) updates.paintOrderedAt = paintOrderedAt ? new Date(paintOrderedAt) : null;
   if (paintExpectedAt !== undefined) updates.paintExpectedAt = paintExpectedAt ? new Date(paintExpectedAt) : null;
   if (paintReceivedAt !== undefined) updates.paintReceivedAt = paintReceivedAt ? new Date(paintReceivedAt) : null;
+  if (paintNotApplicable !== undefined) updates.paintNotApplicable = Boolean(paintNotApplicable);
 
   const updated = await prisma.opportunity.update({
     where: { id: projectId },

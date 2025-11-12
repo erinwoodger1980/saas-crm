@@ -193,15 +193,19 @@ model Opportunity {
   timberOrderedAt   DateTime?
   timberExpectedAt  DateTime?
   timberReceivedAt  DateTime?
+  timberNotApplicable Boolean @default(false)
   glassOrderedAt    DateTime?
   glassExpectedAt   DateTime?
   glassReceivedAt   DateTime?
+  glassNotApplicable Boolean @default(false)
   ironmongeryOrderedAt   DateTime?
   ironmongeryExpectedAt  DateTime?
   ironmongeryReceivedAt  DateTime?
+  ironmongeryNotApplicable Boolean @default(false)
   paintOrderedAt    DateTime?
   paintExpectedAt   DateTime?
   paintReceivedAt   DateTime?
+  paintNotApplicable Boolean @default(false)
   emailMessages EmailMessage[]
   emailThreads  EmailThread[]
   lead          Lead           @relation(fields: [leadId], references: [id])
