@@ -55,6 +55,60 @@ router.post("/signup", async (req, res) => {
     });
 
     if (existingUser) {
+      // Allow signup if user was invited but never set a password
+      if (!existingUser.passwordHash || !existingUser.signupCompleted) {
+        console.log(`User ${normalizedEmail} exists but incomplete - allowing to set password`);
+        const passwordHash = await bcrypt.hash(password, 10);
+        const updatedUser = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            name: name || company,
+            passwordHash,
+            signupCompleted: true,
+            isEarlyAdopter: true,
+          },
+        });
+        
+        // Generate JWT
+        const token = jwt.sign(
+          { userId: updatedUser.id, tenantId: updatedUser.tenantId, role: updatedUser.role },
+          JWT_SECRET,
+          { expiresIn: "7d" }
+        );
+
+        // Set cookie
+        res.cookie(COOKIE_NAME, token, {
+          httpOnly: true,
+          secure: isProd,
+          sameSite: isProd ? "none" : "lax",
+          maxAge: COOKIE_MAX_AGE,
+          domain: cookieDomain,
+        });
+
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: updatedUser.tenantId },
+        });
+
+        return res.json({
+          success: true,
+          token,
+          user: {
+            id: updatedUser.id,
+            email: updatedUser.email,
+            name: updatedUser.name,
+            role: updatedUser.role,
+            tenantId: updatedUser.tenantId,
+            isEarlyAdopter: true,
+          },
+          tenant: {
+            id: tenant!.id,
+            name: tenant!.name,
+            slug: tenant!.slug,
+            trialEndsAt: tenant!.trialEndsAt,
+          },
+        });
+      }
+      
       return res.status(400).json({ error: "User with this email already exists" });
     }
 
