@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-type UserRow = { id: string; name: string | null; email: string; role?: string };
+type UserRow = { id: string; name: string | null; email: string; role?: string; workshopHoursPerDay?: number | null };
 
 type UsersResponse = { ok: boolean; items: UserRow[] };
 
@@ -20,6 +20,7 @@ export default function UsersSettingsPage() {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
   const [migrateMsg, setMigrateMsg] = useState<string | null>(null);
+  const [editingHours, setEditingHours] = useState<Record<string, string>>({});
 
   async function loadUsers() {
     setLoading(true);
@@ -65,6 +66,23 @@ export default function UsersSettingsPage() {
       }
     } catch (e: any) {
       setError(e?.message || "Invite failed");
+    }
+  }
+
+  async function updateUserHours(userId: string, hoursPerDay: number) {
+    try {
+      await apiFetch(`/workshop/users/${userId}/hours`, {
+        method: "PATCH",
+        json: { hoursPerDay },
+      });
+      await loadUsers();
+      setEditingHours(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    } catch (e: any) {
+      setError(e?.message || "Failed to update hours");
     }
   }
 
@@ -127,12 +145,64 @@ export default function UsersSettingsPage() {
         ) : (
           <div className="divide-y">
             {users.map((u) => (
-              <div key={u.id} className="py-2 flex items-center justify-between">
-                <div>
+              <div key={u.id} className="py-3 flex items-center justify-between gap-4">
+                <div className="flex-1">
                   <div className="font-medium">{u.name || u.email}</div>
                   <div className="text-xs text-muted-foreground">{u.email}</div>
                 </div>
-                <div className="text-xs uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{(u.role || 'user').toString()}</div>
+                <div className="flex items-center gap-3">
+                  <div className="text-xs uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{(u.role || 'user').toString()}</div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground whitespace-nowrap">Workshop hrs/day:</label>
+                    {editingHours[u.id] !== undefined ? (
+                      <>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          max="24"
+                          value={editingHours[u.id]}
+                          onChange={(e) => setEditingHours(prev => ({ ...prev, [u.id]: e.target.value }))}
+                          className="w-20 h-8 text-sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => updateUserHours(u.id, Number(editingHours[u.id]))}
+                          disabled={!editingHours[u.id] || isNaN(Number(editingHours[u.id]))}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingHours(prev => {
+                            const next = { ...prev };
+                            delete next[u.id];
+                            return next;
+                          })}
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm font-medium w-12 text-right">
+                          {u.workshopHoursPerDay != null ? Number(u.workshopHoursPerDay) : 8}h
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingHours(prev => ({
+                            ...prev,
+                            [u.id]: String(u.workshopHoursPerDay != null ? Number(u.workshopHoursPerDay) : 8)
+                          }))}
+                        >
+                          Edit
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             ))}
           </div>

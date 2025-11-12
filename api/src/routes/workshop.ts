@@ -16,10 +16,38 @@ router.get("/users", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const users = await prisma.user.findMany({
     where: { tenantId },
-    select: { id: true, name: true, email: true, role: true },
+    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true },
     orderBy: { name: "asc" },
   });
   res.json({ ok: true, items: users });
+});
+
+// PATCH /workshop/users/:userId/hours { hoursPerDay: number }
+router.patch("/users/:userId/hours", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = String(req.params.userId);
+  const { hoursPerDay } = req.body || {};
+  
+  if (hoursPerDay == null || isNaN(Number(hoursPerDay))) {
+    return res.status(400).json({ error: "invalid_hours" });
+  }
+  
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, tenantId: true },
+  });
+  
+  if (!user || user.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { workshopHoursPerDay: Number(hoursPerDay) },
+    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true },
+  });
+  
+  res.json({ ok: true, user: updated });
 });
 
 // GET /workshop/holidays?from=YYYY-MM-DD&to=YYYY-MM-DD – list tenant holidays

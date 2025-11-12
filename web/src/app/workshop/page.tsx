@@ -94,7 +94,7 @@ const PROCESSES = [
 
 type WorkshopProcess = typeof PROCESSES[number];
 
-type UserLite = { id: string; name: string | null; email: string };
+type UserLite = { id: string; name: string | null; email: string; workshopHoursPerDay?: number | null };
 
 type Plan = {
   id: string;
@@ -476,8 +476,6 @@ export default function WorkshopPage() {
     return dc >= sd && dc <= ed;
   };
 
-  const workingHoursPerDay = 8;
-
   const getWeekCapacity = (weekNumber: number) => {
     // Same week start logic as value calc
     const today = new Date();
@@ -490,9 +488,10 @@ export default function WorkshopPage() {
     // For each user, count working weekdays not covered by a holiday
     let totalHrs = 0;
     for (const u of users) {
+      const userHoursPerDay = u.workshopHoursPerDay != null ? Number(u.workshopHoursPerDay) : 8;
       const userHols = holidays.filter(h => h.userId === u.id);
       const workingDays = days.filter(d => !userHols.some(h => dayInHoliday(d, h))).length;
-      totalHrs += workingDays * workingHoursPerDay;
+      totalHrs += workingDays * userHoursPerDay;
     }
     return totalHrs;
   };

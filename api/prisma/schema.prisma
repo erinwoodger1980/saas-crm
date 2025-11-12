@@ -137,6 +137,7 @@ model User {
   isEarlyAdopter        Boolean                 @default(false)
   passwordHash          String?
   signupCompleted       Boolean                 @default(false)
+  workshopHoursPerDay   Decimal?                @default(8) // Daily workshop capacity hours
   GmailTenantConnection GmailTenantConnection[]
   Ms365TenantConnection Ms365TenantConnection[]
   passwordResetToken    PasswordResetToken?
