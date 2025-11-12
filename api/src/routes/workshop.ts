@@ -256,7 +256,27 @@ router.get("/schedule", async (req: any, res) => {
   // Projects = WON opportunities
   const projects = await (prisma as any).opportunity.findMany({
     where: { tenantId, stage: "WON" },
-    select: ({ id: true, title: true, valueGBP: true, wonAt: true, startDate: true, deliveryDate: true } as any),
+    select: ({ 
+      id: true, 
+      title: true, 
+      valueGBP: true, 
+      wonAt: true, 
+      startDate: true, 
+      deliveryDate: true,
+      // Material tracking
+      timberOrderedAt: true,
+      timberExpectedAt: true,
+      timberReceivedAt: true,
+      glassOrderedAt: true,
+      glassExpectedAt: true,
+      glassReceivedAt: true,
+      ironmongeryOrderedAt: true,
+      ironmongeryExpectedAt: true,
+      ironmongeryReceivedAt: true,
+      paintOrderedAt: true,
+      paintExpectedAt: true,
+      paintReceivedAt: true,
+    } as any),
     orderBy: [{ wonAt: "desc" }, { title: "asc" }],
   });
 
@@ -316,6 +336,7 @@ router.get("/schedule", async (req: any, res) => {
       id: pa.id,
       processCode: pa.processDefinition.code,
       processName: pa.processDefinition.name,
+      sortOrder: pa.processDefinition.sortOrder || 0,
       required: pa.required,
       estimatedHours: pa.estimatedHours || pa.processDefinition.estimatedHours,
       isColorKey: pa.processDefinition.isColorKey || false,
@@ -509,6 +530,57 @@ router.post("/backfill", async (req: any, res) => {
   }
 
   res.json({ ok: true, created: created.length, details: created });
+});
+
+// PATCH /workshop/project/:projectId/materials - Update material tracking
+router.patch("/project/:projectId/materials", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const projectId = req.params.projectId;
+  const {
+    timberOrderedAt,
+    timberExpectedAt,
+    timberReceivedAt,
+    glassOrderedAt,
+    glassExpectedAt,
+    glassReceivedAt,
+    ironmongeryOrderedAt,
+    ironmongeryExpectedAt,
+    ironmongeryReceivedAt,
+    paintOrderedAt,
+    paintExpectedAt,
+    paintReceivedAt,
+  } = req.body;
+
+  // Verify opportunity belongs to tenant
+  const opp = await prisma.opportunity.findFirst({
+    where: { id: projectId, tenantId },
+  });
+
+  if (!opp) {
+    return res.status(404).json({ error: "project_not_found" });
+  }
+
+  // Build update object with only provided fields
+  const updates: any = {};
+  if (timberOrderedAt !== undefined) updates.timberOrderedAt = timberOrderedAt ? new Date(timberOrderedAt) : null;
+  if (timberExpectedAt !== undefined) updates.timberExpectedAt = timberExpectedAt ? new Date(timberExpectedAt) : null;
+  if (timberReceivedAt !== undefined) updates.timberReceivedAt = timberReceivedAt ? new Date(timberReceivedAt) : null;
+  if (glassOrderedAt !== undefined) updates.glassOrderedAt = glassOrderedAt ? new Date(glassOrderedAt) : null;
+  if (glassExpectedAt !== undefined) updates.glassExpectedAt = glassExpectedAt ? new Date(glassExpectedAt) : null;
+  if (glassReceivedAt !== undefined) updates.glassReceivedAt = glassReceivedAt ? new Date(glassReceivedAt) : null;
+  if (ironmongeryOrderedAt !== undefined) updates.ironmongeryOrderedAt = ironmongeryOrderedAt ? new Date(ironmongeryOrderedAt) : null;
+  if (ironmongeryExpectedAt !== undefined) updates.ironmongeryExpectedAt = ironmongeryExpectedAt ? new Date(ironmongeryExpectedAt) : null;
+  if (ironmongeryReceivedAt !== undefined) updates.ironmongeryReceivedAt = ironmongeryReceivedAt ? new Date(ironmongeryReceivedAt) : null;
+  if (paintOrderedAt !== undefined) updates.paintOrderedAt = paintOrderedAt ? new Date(paintOrderedAt) : null;
+  if (paintExpectedAt !== undefined) updates.paintExpectedAt = paintExpectedAt ? new Date(paintExpectedAt) : null;
+  if (paintReceivedAt !== undefined) updates.paintReceivedAt = paintReceivedAt ? new Date(paintReceivedAt) : null;
+
+  const updated = await prisma.opportunity.update({
+    where: { id: projectId },
+    data: updates,
+  });
+
+  res.json({ ok: true, project: updated });
 });
 
 export default router;

@@ -145,6 +145,7 @@ type ProcessAssignment = {
   id: string;
   processCode: string;
   processName: string;
+  sortOrder?: number;
   required: boolean;
   estimatedHours?: number | null;
   isColorKey?: boolean; // True if this process determines project color
@@ -170,6 +171,19 @@ type Project = {
   totalProjectHours: number;
   expectedHours?: number | string | null;
   actualHours?: number | string | null;
+  // Material tracking
+  timberOrderedAt?: string | null;
+  timberExpectedAt?: string | null;
+  timberReceivedAt?: string | null;
+  glassOrderedAt?: string | null;
+  glassExpectedAt?: string | null;
+  glassReceivedAt?: string | null;
+  ironmongeryOrderedAt?: string | null;
+  ironmongeryExpectedAt?: string | null;
+  ironmongeryReceivedAt?: string | null;
+  paintOrderedAt?: string | null;
+  paintExpectedAt?: string | null;
+  paintReceivedAt?: string | null;
 };
 
 type ScheduleResponse = { ok: boolean; weeks: number; projects: Project[] };
@@ -221,6 +235,22 @@ function getProjectColor(proj: Project, users: UserLite[]): string {
   
   // No assignments: default blue
   return '#60a5fa';
+}
+
+type MaterialStatus = 'not-ordered' | 'ordered' | 'received';
+
+function getMaterialStatus(orderedAt?: string | null, receivedAt?: string | null): MaterialStatus {
+  if (receivedAt) return 'received';
+  if (orderedAt) return 'ordered';
+  return 'not-ordered';
+}
+
+function getMaterialColor(status: MaterialStatus): string {
+  switch (status) {
+    case 'received': return '#22c55e'; // Green
+    case 'ordered': return '#f59e0b'; // Amber
+    case 'not-ordered': return '#ef4444'; // Red
+  }
 }
 
 export default function WorkshopPage() {
@@ -1059,10 +1089,16 @@ export default function WorkshopPage() {
                             ? projectColor // Use gradient as-is for multi-user projects
                             : `linear-gradient(90deg, #22c55e ${progress}%, ${projectColor} ${progress}%)`;
                           
+                          // Material status indicators
+                          const timberStatus = getMaterialStatus(proj.timberOrderedAt, proj.timberReceivedAt);
+                          const glassStatus = getMaterialStatus(proj.glassOrderedAt, proj.glassReceivedAt);
+                          const ironmongeryStatus = getMaterialStatus(proj.ironmongeryOrderedAt, proj.ironmongeryReceivedAt);
+                          const paintStatus = getMaterialStatus(proj.paintOrderedAt, proj.paintReceivedAt);
+                          
                           return (
                             <div
                               key={`${proj.id}-${segIdx}`}
-                              className="absolute rounded px-2 py-1 text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto"
+                              className="absolute rounded px-2 py-1 text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto flex items-center gap-1"
                               style={{
                                 top: `${segment.row * 128}px`,
                                 left: `${(segment.col / 7) * 100}%`,
@@ -1074,9 +1110,33 @@ export default function WorkshopPage() {
                               onClick={() => setShowProjectDetails(proj.id)}
                               title={`${proj.name} (${progress}% complete)${usersSummary}`}
                             >
-                              <div className="truncate">{proj.name}</div>
+                              {/* Traffic lights for materials */}
+                              <div className="flex gap-0.5 shrink-0">
+                                <div 
+                                  className="w-2 h-2 rounded-full border border-white/30" 
+                                  style={{ backgroundColor: getMaterialColor(timberStatus) }}
+                                  title="Timber"
+                                />
+                                <div 
+                                  className="w-2 h-2 rounded-full border border-white/30" 
+                                  style={{ backgroundColor: getMaterialColor(glassStatus) }}
+                                  title="Glass"
+                                />
+                                <div 
+                                  className="w-2 h-2 rounded-full border border-white/30" 
+                                  style={{ backgroundColor: getMaterialColor(ironmongeryStatus) }}
+                                  title="Ironmongery"
+                                />
+                                <div 
+                                  className="w-2 h-2 rounded-full border border-white/30" 
+                                  style={{ backgroundColor: getMaterialColor(paintStatus) }}
+                                  title="Paint"
+                                />
+                              </div>
+                              
+                              <div className="truncate flex-1">{proj.name}</div>
                               {assignedUsers.length > 0 && (
-                                <div className="text-[10px] opacity-90 truncate">
+                                <div className="text-[10px] opacity-90 truncate shrink-0">
                                   👤 {assignedUsers.slice(0, 2).join(', ')}
                                   {assignedUsers.length > 2 && ` +${assignedUsers.length - 2}`}
                                 </div>
@@ -1633,12 +1693,89 @@ export default function WorkshopPage() {
                   )}
                 </div>
                 
+                {/* Material Tracking */}
+                <div>
+                  <h3 className="font-semibold mb-2">Material Status</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Timber */}
+                    <div className="p-3 border rounded">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div 
+                          className="w-3 h-3 rounded-full border border-gray-300" 
+                          style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.timberOrderedAt, project.timberReceivedAt)) }}
+                        />
+                        <span className="font-medium">Timber</span>
+                      </div>
+                      <div className="space-y-1 text-xs text-gray-600">
+                        <div>Ordered: {project.timberOrderedAt ? new Date(project.timberOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
+                        <div>Expected: {project.timberExpectedAt ? new Date(project.timberExpectedAt).toLocaleDateString() : '-'}</div>
+                        <div>Received: {project.timberReceivedAt ? new Date(project.timberReceivedAt).toLocaleDateString() : '-'}</div>
+                      </div>
+                    </div>
+                    
+                    {/* Glass */}
+                    <div className="p-3 border rounded">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div 
+                          className="w-3 h-3 rounded-full border border-gray-300" 
+                          style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.glassOrderedAt, project.glassReceivedAt)) }}
+                        />
+                        <span className="font-medium">Glass</span>
+                      </div>
+                      <div className="space-y-1 text-xs text-gray-600">
+                        <div>Ordered: {project.glassOrderedAt ? new Date(project.glassOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
+                        <div>Expected: {project.glassExpectedAt ? new Date(project.glassExpectedAt).toLocaleDateString() : '-'}</div>
+                        <div>Received: {project.glassReceivedAt ? new Date(project.glassReceivedAt).toLocaleDateString() : '-'}</div>
+                      </div>
+                    </div>
+                    
+                    {/* Ironmongery */}
+                    <div className="p-3 border rounded">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div 
+                          className="w-3 h-3 rounded-full border border-gray-300" 
+                          style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.ironmongeryOrderedAt, project.ironmongeryReceivedAt)) }}
+                        />
+                        <span className="font-medium">Ironmongery</span>
+                      </div>
+                      <div className="space-y-1 text-xs text-gray-600">
+                        <div>Ordered: {project.ironmongeryOrderedAt ? new Date(project.ironmongeryOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
+                        <div>Expected: {project.ironmongeryExpectedAt ? new Date(project.ironmongeryExpectedAt).toLocaleDateString() : '-'}</div>
+                        <div>Received: {project.ironmongeryReceivedAt ? new Date(project.ironmongeryReceivedAt).toLocaleDateString() : '-'}</div>
+                      </div>
+                    </div>
+                    
+                    {/* Paint */}
+                    <div className="p-3 border rounded">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div 
+                          className="w-3 h-3 rounded-full border border-gray-300" 
+                          style={{ backgroundColor: getMaterialColor(getMaterialStatus(project.paintOrderedAt, project.paintReceivedAt)) }}
+                        />
+                        <span className="font-medium">Paint</span>
+                      </div>
+                      <div className="space-y-1 text-xs text-gray-600">
+                        <div>Ordered: {project.paintOrderedAt ? new Date(project.paintOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
+                        <div>Expected: {project.paintExpectedAt ? new Date(project.paintExpectedAt).toLocaleDateString() : '-'}</div>
+                        <div>Received: {project.paintReceivedAt ? new Date(project.paintReceivedAt).toLocaleDateString() : '-'}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
                 {/* Process Assignments */}
                 <div>
                   <h3 className="font-semibold mb-2">Process Assignments</h3>
                   {project.processAssignments && project.processAssignments.length > 0 ? (
                     <div className="space-y-2">
-                      {project.processAssignments.map((pa) => {
+                      {[...project.processAssignments]
+                        .sort((a, b) => {
+                          // Sort by sortOrder first, then by name
+                          const orderDiff = (a.sortOrder || 0) - (b.sortOrder || 0);
+                          if (orderDiff !== 0) return orderDiff;
+                          return (a.processName || '').localeCompare(b.processName || '');
+                        })
+                        .map((pa) => {
                         const processTime = Number(project.totalHoursByProcess?.[pa.processCode] || 0);
                         
                         return (

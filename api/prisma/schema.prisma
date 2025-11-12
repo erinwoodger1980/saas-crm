@@ -189,6 +189,19 @@ model Opportunity {
   wonAt         DateTime?
   lostAt        DateTime?
   createdAt     DateTime       @default(now())
+  // Material tracking
+  timberOrderedAt   DateTime?
+  timberExpectedAt  DateTime?
+  timberReceivedAt  DateTime?
+  glassOrderedAt    DateTime?
+  glassExpectedAt   DateTime?
+  glassReceivedAt   DateTime?
+  ironmongeryOrderedAt   DateTime?
+  ironmongeryExpectedAt  DateTime?
+  ironmongeryReceivedAt  DateTime?
+  paintOrderedAt    DateTime?
+  paintExpectedAt   DateTime?
+  paintReceivedAt   DateTime?
   emailMessages EmailMessage[]
   emailThreads  EmailThread[]
   lead          Lead           @relation(fields: [leadId], references: [id])
