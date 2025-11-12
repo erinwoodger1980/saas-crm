@@ -731,45 +731,77 @@ export default function WorkshopPage() {
           </div>
 
           {/* Calendar Grid */}
-          <div className="bg-white rounded-lg border overflow-hidden p-4">
-            {/* Render each project as a solid bar spanning its date range */}
-            {projects.map(proj => {
-              if (!proj.startDate || !proj.deliveryDate) return null;
-              const start = new Date(proj.startDate);
-              const end = new Date(proj.deliveryDate);
-              const daysInMonth = getDaysInMonth(currentMonth);
-              const monthStart = daysInMonth[0] || new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-              const monthEnd = daysInMonth[daysInMonth.length - 1] || new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-              // Clamp project bar to visible month
-              const barStart = start < monthStart ? monthStart : start;
-              const barEnd = end > monthEnd ? monthEnd : end;
-              if (!barStart || !barEnd || !monthStart || !monthEnd) return null;
-              const totalDays = Math.max(1, Math.ceil((barEnd.getTime() - barStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-              const monthDays = Math.max(1, daysInMonth.length);
-              const leftPercent = ((barStart.getTime() - monthStart.getTime()) / (monthEnd.getTime() - monthStart.getTime())) * 100;
-              const widthPercent = (totalDays / monthDays) * 100;
-              const progress = getProjectProgress(proj);
-              return (
-                <div
-                  key={proj.id}
-                  className="relative h-8 w-full mb-4 flex items-center"
-                  style={{ left: `${leftPercent}%`, width: `${widthPercent}%`, position: 'absolute' }}
-                  draggable
-                  onDragStart={() => handleDragStart(proj.id)}
-                  onClick={() => openHoursModal(proj.id, proj.name)}
-                  title={`${proj.name} (${progress}% complete)`}
-                >
-                  <div className="absolute left-0 top-0 h-full w-full bg-blue-400 rounded-full" />
-                  <div
-                    className="absolute left-0 top-0 h-full bg-green-500 rounded-full"
-                    style={{ width: `${progress}%`, transition: 'width 0.3s' }}
-                  />
-                  <span className="relative z-10 px-2 text-xs text-white font-semibold truncate">
-                    {proj.name} ({progress}%)
-                  </span>
+          <div className="bg-white rounded-lg border overflow-hidden">
+            {/* Calendar header - days of week */}
+            <div className="grid grid-cols-7 border-b bg-slate-50">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                <div key={day} className="p-2 text-center text-xs font-semibold text-slate-600 border-r last:border-r-0">
+                  {day}
                 </div>
-              );
-            })}
+              ))}
+            </div>
+            
+            {/* Calendar body - days */}
+            <div className="grid grid-cols-7">
+              {getDaysInMonth(currentMonth).map((date, idx) => {
+                const isToday = date && 
+                  date.getDate() === new Date().getDate() &&
+                  date.getMonth() === new Date().getMonth() &&
+                  date.getFullYear() === new Date().getFullYear();
+                
+                const projectsForDay = date ? getProjectsForDate(date) : [];
+                
+                return (
+                  <div
+                    key={idx}
+                    className={`min-h-24 border-r border-b last:border-r-0 p-2 ${
+                      !date ? 'bg-slate-50' : isToday ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (date) handleDrop(date);
+                    }}
+                  >
+                    {date && (
+                      <>
+                        <div className={`text-sm font-medium mb-1 ${isToday ? 'text-blue-600' : 'text-slate-700'}`}>
+                          {date.getDate()}
+                        </div>
+                        <div className="space-y-1">
+                          {projectsForDay.slice(0, 3).map(proj => {
+                            const progress = getProjectProgress(proj);
+                            return (
+                              <div
+                                key={proj.id}
+                                className="text-xs p-1 rounded cursor-pointer hover:opacity-80 relative overflow-hidden"
+                                style={{
+                                  background: `linear-gradient(90deg, #22c55e ${progress}%, #60a5fa ${progress}%)`,
+                                  color: 'white'
+                                }}
+                                draggable
+                                onDragStart={() => handleDragStart(proj.id)}
+                                onClick={() => openHoursModal(proj.id, proj.name)}
+                                title={`${proj.name} (${progress}% complete)`}
+                              >
+                                <div className="truncate font-medium">
+                                  {proj.name}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {projectsForDay.length > 3 && (
+                            <div className="text-[10px] text-slate-500 text-center">
+                              +{projectsForDay.length - 3} more
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Week Summary below calendar */}
