@@ -31,8 +31,21 @@ export async function initializeTenantWithSeedData(tenantId: string) {
     // Copy questionnaire fields
     if (templateTenant.leadFieldDefs && templateTenant.leadFieldDefs.length > 0) {
       for (const field of templateTenant.leadFieldDefs) {
-        await prisma.leadFieldDef.create({
-          data: {
+        await prisma.leadFieldDef.upsert({
+          where: {
+            tenantId_key: {
+              tenantId,
+              key: field.key
+            }
+          },
+          update: {
+            label: field.label,
+            type: field.type,
+            required: field.required,
+            config: field.config as any,
+            sortOrder: field.sortOrder
+          },
+          create: {
             tenantId,
             key: field.key,
             label: field.label,
