@@ -201,6 +201,8 @@ export default function WorkshopPage() {
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showHolidayModal, setShowHolidayModal] = useState(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [hoursForm, setHoursForm] = useState<{ process: WorkshopProcess | ""; userId: string; hours: string; date: string }>({
     process: "",
     userId: "",
@@ -262,12 +264,24 @@ export default function WorkshopPage() {
       setLoadError(String(msg));
     } finally {
       setLoading(false);
+      setLastRefresh(new Date());
     }
   }
 
   useEffect(() => {
     loadAll();
   }, []);
+
+  // Auto-refresh in fullscreen mode every 5 minutes
+  useEffect(() => {
+    if (!isFullscreen) return;
+    
+    const interval = setInterval(() => {
+      loadAll();
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => clearInterval(interval);
+  }, [isFullscreen]);
 
   function initAdd(projectId: string) {
     setAdding((prev) => ({
@@ -415,6 +429,50 @@ export default function WorkshopPage() {
       setDraggingProject(null);
     }
   }
+
+  // Fullscreen toggle for workshop display
+  function toggleFullscreen() {
+    if (!isFullscreen) {
+      // Enter fullscreen
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen();
+      } else if ((elem as any).webkitRequestFullscreen) {
+        (elem as any).webkitRequestFullscreen();
+      } else if ((elem as any).msRequestFullscreen) {
+        (elem as any).msRequestFullscreen();
+      }
+      setIsFullscreen(true);
+    } else {
+      // Exit fullscreen
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen();
+      } else if ((document as any).msExitFullscreen) {
+        (document as any).msExitFullscreen();
+      }
+      setIsFullscreen(false);
+    }
+  }
+
+  // Listen for fullscreen changes (e.g., user presses ESC)
+  useEffect(() => {
+    function handleFullscreenChange() {
+      const isCurrentlyFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement || (document as any).msFullscreenElement);
+      setIsFullscreen(isCurrentlyFullscreen);
+    }
+    
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+    
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // Hours tracking
   function openHoursModal(projectId: string, projectName: string) {
@@ -665,14 +723,22 @@ export default function WorkshopPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${isFullscreen ? 'p-8 bg-slate-50 min-h-screen' : ''}`}>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Workshop</h1>
-        <Button variant="outline" size="sm" onClick={() => setShowQuickLog(true)}>
-          Quick Log Hours
-        </Button>
+        <div>
+          <h1 className="text-2xl font-semibold">Workshop</h1>
+          {isFullscreen && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Last updated: {lastRefresh.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+              {' • '}Auto-refreshes every 5 minutes
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{projects.length} projects</span>
+          <Button variant="outline" size="sm" onClick={() => setShowQuickLog(true)}>
+            Quick Log Hours
+          </Button>
           <Button 
             variant={viewMode === 'calendar' ? 'default' : 'outline'} 
             size="sm" 
@@ -690,6 +756,14 @@ export default function WorkshopPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowHolidayModal(true)}>Holidays</Button>
           <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
+          <Button 
+            variant={isFullscreen ? "default" : "outline"} 
+            size="sm" 
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen display mode" : "Enter fullscreen display mode (auto-refreshes every 5 min)"}
+          >
+            {isFullscreen ? "Exit Display" : "📺 Display Mode"}
+          </Button>
         </div>
       </div>
 
