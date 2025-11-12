@@ -24,26 +24,33 @@ router.get("/users", async (req: any, res) => {
 
 // GET /workshop/holidays?from=YYYY-MM-DD&to=YYYY-MM-DD – list tenant holidays
 router.get("/holidays", async (req: any, res) => {
-  const tenantId = req.auth.tenantId as string;
-  const from = req.query.from ? new Date(String(req.query.from)) : null;
-  const to = req.query.to ? new Date(String(req.query.to)) : null;
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const from = req.query.from ? new Date(String(req.query.from)) : null;
+    const to = req.query.to ? new Date(String(req.query.to)) : null;
 
-  const where: any = { tenantId };
-  if (from && to) {
-    // Overlap filter: holiday where (endDate >= from && startDate <= to)
-    where.AND = [
-      { endDate: { gte: from } },
-      { startDate: { lte: to } },
-    ];
+    const where: any = { tenantId };
+    if (from && to) {
+      // Overlap filter: holiday where (endDate >= from && startDate <= to)
+      where.AND = [
+        { endDate: { gte: from } },
+        { startDate: { lte: to } },
+      ];
+    }
+
+    const items = await (prisma as any).holiday.findMany({
+      where,
+      orderBy: { startDate: "asc" },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    res.json({ ok: true, items });
+  } catch (e: any) {
+    console.error("[workshop/holidays] failed:", e?.message || e);
+    // Graceful fallback to avoid breaking the schedule UI
+    res.setHeader("X-Workshop-Holidays-Fallback", "1");
+    res.json({ ok: true, items: [], warn: "holidays_unavailable" });
   }
-
-  const items = await (prisma as any).holiday.findMany({
-    where,
-    orderBy: { startDate: "asc" },
-    include: { user: { select: { id: true, name: true, email: true } } },
-  });
-
-  res.json({ ok: true, items });
 });
 
 // POST /workshop/holidays { userId, startDate, endDate, notes? }

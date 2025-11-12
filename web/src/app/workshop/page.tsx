@@ -24,8 +24,8 @@ function QuickLogModal({ users, processes, onSave, onClose }: QuickLogModalProps
   const [form, setForm] = useState<Pick<QuickLogSaveInput, 'userId' | 'process' | 'hours' | 'notes'>>({ userId: '', process: '', hours: '', notes: '' });
   const today = new Date().toISOString().slice(0, 10);
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <Card className="p-6 max-w-md w-full m-4" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+      <Card className="p-6 max-w-md w-full m-4 bg-white shadow-2xl border" onClick={e => e.stopPropagation()}>
         <h2 className="text-xl font-semibold mb-4">Log Hours for Today</h2>
         <div className="space-y-4">
           <div>
@@ -156,6 +156,7 @@ export default function WorkshopPage() {
   const [adding, setAdding] = useState<Record<string, NewPlan>>({});
   const [loggingFor, setLoggingFor] = useState<Record<string, LogForm | null>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [holidayError, setHolidayError] = useState<string | null>(null);
   const [backfillBusy, setBackfillBusy] = useState(false);
   const [editingDates, setEditingDates] = useState<Record<string, { startDate: string; deliveryDate: string; value: string; expectedHours?: string; actualHours?: string }>>({});
   const [draggingProject, setDraggingProject] = useState<string | null>(null);
@@ -188,17 +189,36 @@ export default function WorkshopPage() {
       const from = rangeStart.toISOString().split('T')[0];
       const to = rangeEnd.toISOString().split('T')[0];
 
-      const [sched, usersResp, holidaysResp] = await Promise.all([
+      setHolidayError(null);
+      const [schedR, usersR, holsR] = await Promise.allSettled([
         apiFetch<ScheduleResponse>("/workshop/schedule?weeks=4"),
         apiFetch<UsersResponse>("/workshop/users"),
         apiFetch<HolidaysResponse>(`/workshop/holidays?from=${from}&to=${to}`),
       ]);
-      if (sched?.ok) {
-        setWeeks(sched.weeks);
-        setProjects(sched.projects);
+
+      // Schedule load is critical; if it fails we set loadError
+      if (schedR.status === 'fulfilled' && (schedR.value as any)?.ok) {
+        setWeeks((schedR.value as any).weeks);
+        setProjects((schedR.value as any).projects);
+      } else if (schedR.status === 'rejected') {
+        const msg = (schedR.reason?.message || 'Failed to load schedule').toString();
+        setLoadError(msg);
       }
-      if (usersResp?.ok) setUsers(usersResp.items);
-      if (holidaysResp?.ok) setHolidays(holidaysResp.items);
+
+      // Users load – non-fatal
+      if (usersR.status === 'fulfilled' && (usersR.value as any)?.ok) {
+        setUsers((usersR.value as any).items);
+      }
+
+      // Holidays load – non-fatal; show separate warning
+      if (holsR.status === 'fulfilled' && (holsR.value as any)?.ok) {
+        setHolidays((holsR.value as any).items);
+        if ((holsR.value as any).warn) {
+          setHolidayError((holsR.value as any).warn);
+        }
+      } else if (holsR.status === 'rejected') {
+        setHolidayError((holsR.reason?.message || 'Failed to load holidays').toString());
+      }
     } catch (e) {
       console.error("Failed to load workshop:", e);
       const msg = (e as any)?.message || (e as any)?.toString?.() || "load_failed";
@@ -650,6 +670,9 @@ export default function WorkshopPage() {
               <div>Mark a lead as Won to create a project automatically, or backfill existing Won leads.</div>
             </div>
           )}
+          {holidayError && (
+            <div className="text-amber-800/80">Holidays couldn’t be loaded: {holidayError}</div>
+          )}
           {(!API_BASE && typeof window !== "undefined") ? (
             <div className="text-amber-800/80">
               Tip: API base isn’t configured for the browser. Either set NEXT_PUBLIC_API_BASE, or set API_ORIGIN for server rewrites.
@@ -769,11 +792,28 @@ export default function WorkshopPage() {
                       const dem = getWeekDemand(weekNum);
                       const free = Math.round(cap - dem);
                       const freeColor = free < 0 ? 'text-red-600' : 'text-emerald-700';
+                      // Holiday day counts in this week
+                      const today = new Date();
+                      const weekStart = new Date(today);
+                      weekStart.setDate(today.getDate() - today.getDay() + ((weekNum - 1) * 7));
+                      const weekEnd = new Date(weekStart);
+                      weekEnd.setDate(weekStart.getDate() + 6);
+                      const weekdayList = eachDay(weekStart, weekEnd).filter(isWeekday);
+                      let holidayDays = 0;
+                      for (const u of users) {
+                        const userHols = holidays.filter(h => h.userId === u.id);
+                        holidayDays += weekdayList.filter(d => userHols.some(h => dayInHoliday(d, h))).length;
+                      }
+                      const holidayInfo = holidayDays > 0 ? `Holiday weekdays: ${holidayDays}` : 'No holidays';
                       return (
-                        <div className="flex flex-wrap gap-3">
+                        <div className="flex flex-wrap gap-3 items-center">
                           <span>Capacity: <strong>{cap}h</strong></span>
                           <span>Demand: <strong>{dem}h</strong></span>
-                          <span className={freeColor}>Free: <strong>{free}h</strong></span>
+                          <span className={freeColor + (free < 0 ? ' font-semibold' : '')}>Free: <strong>{free}h</strong></span>
+                          <span className="text-slate-500">{holidayInfo}</span>
+                          {free < 0 && (
+                            <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-medium">Overbooked</span>
+                          )}
                         </div>
                       );
                     })()}
@@ -1087,11 +1127,11 @@ export default function WorkshopPage() {
       )}
       {showHoursModal && (
         <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
           onClick={closeHoursModal}
         >
           <Card 
-            className="p-6 max-w-md w-full m-4"
+            className="p-6 max-w-md w-full m-4 bg-white shadow-2xl border"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-xl font-semibold mb-4">
@@ -1199,8 +1239,8 @@ function HolidayModal({ users, holidays, onAdd, onDelete, onClose }: HolidayModa
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <Card className="p-6 max-w-3xl w-full m-4" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+      <Card className="p-6 max-w-3xl w-full m-4 bg-white shadow-2xl border" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Manage Holidays</h2>
           <Button variant="ghost" onClick={onClose}>Close</Button>
