@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import * as cheerio from "cheerio";
 import { env } from "../env";
 import { DEFAULT_TASK_PLAYBOOK, normalizeTaskPlaybook } from "../task-playbook";
+import { initializeTenantWithSeedData } from "../services/seed-template";
 import {
   QuestionnaireField,
   normalizeQuestionnaire,
@@ -118,6 +119,47 @@ async function syncLeadFieldDefs(tenantId: string, fields: QuestionnaireField[])
   }
 }
 
+/** Build questionnaire fields from this tenant's LeadFieldDef rows (typically copied from demo template). */
+async function buildQuestionnaireFromLeadFieldDefs(tenantId: string): Promise<QuestionnaireField[]> {
+  const defs = await prisma.leadFieldDef.findMany({
+    where: { tenantId },
+    orderBy: { sortOrder: "asc" },
+    select: { key: true, label: true, type: true, required: true, config: true, sortOrder: true },
+  });
+
+  const mapped = defs.map((d, idx) => {
+    const cfg = (d.config as any) || {};
+    // Determine field type
+    let qType: QuestionnaireField["type"] = "text";
+    const typeLower = String(d.type || "").toLowerCase();
+    if (typeLower === "select") qType = "select";
+    else if (cfg.kind === "number") qType = "number";
+    else if (cfg.kind === "date") qType = "date";
+    else if (cfg.kind === "source") qType = "source";
+    else if (cfg.kind === "file") qType = "file";
+    else if (typeLower === "textarea") qType = "textarea";
+
+    const options = qType === "select" && Array.isArray(cfg.options)
+      ? cfg.options.map((o: any) => (typeof o === "string" ? o : String(o))).filter(Boolean)
+      : [];
+
+    const field: QuestionnaireField = {
+      id: d.key,
+      key: d.key,
+      label: d.label,
+      type: qType,
+      required: !!d.required,
+      options,
+      askInQuestionnaire: true,
+      showOnLead: true,
+      sortOrder: Number.isFinite(d.sortOrder) ? (d.sortOrder as number) : idx,
+    };
+    return field;
+  });
+
+  return normalizeQuestionnaire(mapped);
+}
+
 /* ============================================================
    SETTINGS
 ============================================================ */
@@ -129,19 +171,27 @@ router.get("/settings", async (req, res) => {
 
   let s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
   if (!s) {
-    // Seed a sensible default questionnaire for new tenants
-    const defaultQuestions = normalizeQuestionnaire([
-      { id: "contact_name", key: "contact_name", label: "Your name", type: "text", required: true, askInQuestionnaire: true, showOnLead: true, sortOrder: 0 },
-      { id: "email", key: "email", label: "Email", type: "text", required: true, askInQuestionnaire: true, showOnLead: true, sortOrder: 1 },
-      { id: "phone", key: "phone", label: "Phone", type: "text", required: false, askInQuestionnaire: true, showOnLead: true, sortOrder: 2 },
-      { id: "project_type", key: "project_type", label: "Project type", type: "select", options: ["Windows","Doors","Staircase","Kitchen","Wardrobes","Alcove Units","Other"], required: true, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 3 },
-      { id: "dimensions", key: "dimensions", label: "Sizes / dimensions (optional)", type: "textarea", required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 4 },
-      { id: "budget", key: "budget", label: "Estimated budget (optional)", type: "number", required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 5 },
-      { id: "timeframe", key: "timeframe", label: "Ideal timeframe", type: "select", options: ["ASAP","1-2 months","3-6 months","Flexible"], required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 6 },
-      { id: "photos", key: "photos", label: "Photos / drawings (optional)", type: "file", required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 7 },
-      { id: "notes", key: "notes", label: "Anything else we should know?", type: "textarea", required: false, askInQuestionnaire: true, showOnLead: true, sortOrder: 8 },
-    ]);
-    const preparedQuestions = (await import("../lib/questionnaire")).prepareQuestionnaireForSave(defaultQuestions);
+    // Prefer seeding from Demo Tenant template so new tenants start with the demo client's questionnaire
+    let preparedQuestions: any[] | null = null;
+    try {
+      await initializeTenantWithSeedData(tenantId);
+      const demoQ = await buildQuestionnaireFromLeadFieldDefs(tenantId);
+      preparedQuestions = prepareQuestionnaireForSave(demoQ);
+    } catch (e) {
+      // Fall back to a sensible default if template not available
+      const fallback = normalizeQuestionnaire([
+        { id: "contact_name", key: "contact_name", label: "Your name", type: "text", required: true, askInQuestionnaire: true, showOnLead: true, sortOrder: 0 },
+        { id: "email", key: "email", label: "Email", type: "text", required: true, askInQuestionnaire: true, showOnLead: true, sortOrder: 1 },
+        { id: "phone", key: "phone", label: "Phone", type: "text", required: false, askInQuestionnaire: true, showOnLead: true, sortOrder: 2 },
+        { id: "project_type", key: "project_type", label: "Project type", type: "select", options: ["Windows","Doors","Staircase","Kitchen","Wardrobes","Alcove Units","Other"], required: true, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 3 },
+        { id: "dimensions", key: "dimensions", label: "Sizes / dimensions (optional)", type: "textarea", required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 4 },
+        { id: "budget", key: "budget", label: "Estimated budget (optional)", type: "number", required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 5 },
+        { id: "timeframe", key: "timeframe", label: "Ideal timeframe", type: "select", options: ["ASAP","1-2 months","3-6 months","Flexible"], required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 6 },
+        { id: "photos", key: "photos", label: "Photos / drawings (optional)", type: "file", required: false, askInQuestionnaire: true, showOnLead: true, group: "Project", sortOrder: 7 },
+        { id: "notes", key: "notes", label: "Anything else we should know?", type: "textarea", required: false, askInQuestionnaire: true, showOnLead: true, sortOrder: 8 },
+      ]);
+      preparedQuestions = prepareQuestionnaireForSave(fallback);
+    }
 
     s = await prisma.tenantSettings.create({
       data: {
@@ -154,7 +204,7 @@ router.get("/settings", async (req, res) => {
         taskPlaybook: DEFAULT_TASK_PLAYBOOK,
         questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
         questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-        questionnaire: preparedQuestions,
+        questionnaire: preparedQuestions || [],
       },
     });
   }
@@ -331,6 +381,50 @@ async function updateSettings(req: any, res: any) {
 
 router.patch("/settings", updateSettings);
 router.put("/settings", updateSettings);
+
+/** Apply the Demo Tenant's questionnaire to the current tenant (idempotent). */
+router.post("/settings/apply-demo-questionnaire", async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  try {
+    // Ensure settings row exists
+    let settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!settings) {
+      settings = await prisma.tenantSettings.create({
+        data: {
+          tenantId,
+          slug: `tenant-${tenantId.slice(0, 6).toLowerCase()}`,
+          brandName: "Your Company",
+          links: [],
+          taskPlaybook: DEFAULT_TASK_PLAYBOOK,
+          questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+          questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+        },
+      });
+    }
+
+    // Copy from demo template into this tenant (LeadFieldDef, tasks, rules)
+    await initializeTenantWithSeedData(tenantId);
+
+    // Build questionnaire from the copied LeadFieldDefs
+    const q = await buildQuestionnaireFromLeadFieldDefs(tenantId);
+    const prepared = prepareQuestionnaireForSave(q);
+
+    const saved = await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: { questionnaire: prepared, updatedAt: new Date() },
+    });
+
+    // Keep LeadFieldDef in sync with questionnaire (adds managedBy metadata/options)
+    await syncLeadFieldDefs(tenantId, q);
+
+    res.json({ ok: true, settings: { ...saved, questionnaire: q } });
+  } catch (e: any) {
+    console.error("[tenant/apply-demo-questionnaire] failed:", e);
+    res.status(500).json({ error: "apply_failed", detail: e?.message || String(e) });
+  }
+});
 
 /** Quick update: brand / website */
 router.patch("/settings/basic", async (req, res) => {
