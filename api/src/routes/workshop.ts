@@ -81,13 +81,6 @@ router.patch("/users/:userId/color", async (req: any, res) => {
   
   res.json({ ok: true, user: updated });
 });
-    where: { id: userId },
-    data: { workshopHoursPerDay: Number(hoursPerDay) },
-    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true },
-  });
-  
-  res.json({ ok: true, user: updated });
-});
 
 // GET /workshop/holidays?from=YYYY-MM-DD&to=YYYY-MM-DD – list tenant holidays
 // GET /workshop/holidays - fetch holidays for calendar
