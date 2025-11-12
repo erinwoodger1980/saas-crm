@@ -56,6 +56,7 @@ type Lead = {
   nextAction?: string | null;
   nextActionAt?: string | null;
   custom?: Record<string, any>;
+  opportunityId?: string | null;
 };
 
 type Grouped = Record<string, Lead[]>;
@@ -300,7 +301,7 @@ export default function OpportunitiesPage() {
                 if (!v) setSelected(null);
               }}
               leadPreview={{
-                id: selected.id,
+                id: selected.opportunityId || selected.id, // Use opportunity ID if available, fallback to lead ID
                 contactName: selected.contactName,
                 email: selected.email,
                 status: (selected.status as any) || "QUOTE_SENT",
