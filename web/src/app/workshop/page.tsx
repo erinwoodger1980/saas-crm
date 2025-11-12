@@ -6,7 +6,12 @@ interface QuickLogUser {
   name: string | null;
   email: string;
 }
+interface QuickLogProject {
+  id: string;
+  name: string;
+}
 interface QuickLogSaveInput {
+  projectId?: string | null;
   userId: string;
   process: string; // Will be constrained via UI from PROCESSES
   hours: string; // kept as string until converted on save
@@ -15,14 +20,21 @@ interface QuickLogSaveInput {
 }
 interface QuickLogModalProps {
   users: QuickLogUser[];
+  projects: QuickLogProject[];
   processes: readonly string[]; // PROCESSES constant
   onSave: (data: QuickLogSaveInput) => void | Promise<void>;
   onClose: () => void;
 }
 // Quick log modal for staff to log hours for today
-function QuickLogModal({ users, processes, onSave, onClose }: QuickLogModalProps) {
-  const [form, setForm] = useState<Pick<QuickLogSaveInput, 'userId' | 'process' | 'hours' | 'notes'>>({ userId: '', process: '', hours: '', notes: '' });
+function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLogModalProps) {
+  const [form, setForm] = useState<{ projectId: string; userId: string; process: string; hours: string; notes: string }>({ 
+    projectId: '', userId: '', process: '', hours: '', notes: '' 
+  });
   const today = new Date().toISOString().slice(0, 10);
+  
+  // Check if selected process is a generic category (CLEANING, ADMIN, HOLIDAY)
+  const isGenericCategory = ['CLEANING', 'ADMIN', 'HOLIDAY'].includes(form.process);
+  
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
       <Card className="p-6 max-w-md w-full m-4 bg-white shadow-2xl border" onClick={e => e.stopPropagation()}>
@@ -41,7 +53,7 @@ function QuickLogModal({ users, processes, onSave, onClose }: QuickLogModalProps
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">Process/Category</label>
-            <Select value={form.process} onValueChange={v => setForm(f => ({ ...f, process: v }))}>
+            <Select value={form.process} onValueChange={v => setForm(f => ({ ...f, process: v, projectId: '' }))}>
               <SelectTrigger><SelectValue placeholder="Select process or category" /></SelectTrigger>
               <SelectContent>
                 {processes.map((p: string) => (
@@ -50,6 +62,19 @@ function QuickLogModal({ users, processes, onSave, onClose }: QuickLogModalProps
               </SelectContent>
             </Select>
           </div>
+          {!isGenericCategory && (
+            <div>
+              <label className="text-sm font-medium mb-1 block">Project</label>
+              <Select value={form.projectId} onValueChange={v => setForm(f => ({ ...f, projectId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select project" /></SelectTrigger>
+                <SelectContent>
+                  {projects.map((p: QuickLogProject) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium mb-1 block">Hours</label>
             <Input type="number" min="0" step="0.25" value={form.hours} onChange={e => setForm(f => ({ ...f, hours: e.target.value }))} />
@@ -59,7 +84,19 @@ function QuickLogModal({ users, processes, onSave, onClose }: QuickLogModalProps
             <Input type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
           <div className="flex gap-2 pt-2">
-            <Button onClick={() => onSave({ ...form, date: today })} disabled={!form.userId || !form.process || !form.hours}>Log Hours</Button>
+            <Button 
+              onClick={() => onSave({ 
+                projectId: isGenericCategory ? null : (form.projectId || null),
+                userId: form.userId,
+                process: form.process,
+                hours: form.hours,
+                notes: form.notes,
+                date: today 
+              })} 
+              disabled={!form.userId || !form.process || !form.hours || (!isGenericCategory && !form.projectId)}
+            >
+              Log Hours
+            </Button>
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
           </div>
         </div>
@@ -410,7 +447,8 @@ export default function WorkshopPage() {
       });
       closeHoursModal();
       await loadAll();
-    } catch (e) {
+    } catch (e: any) {
+      alert('Failed to log hours: ' + (e?.message || 'Unknown error'));
       console.error("Failed to log hours", e);
     }
   }
@@ -741,7 +779,7 @@ export default function WorkshopPage() {
             </div>
             
             {/* Calendar body - days with date numbers only */}
-            <div className="grid grid-cols-7 relative">
+            <div className="grid grid-cols-7 relative" style={{ minHeight: '600px' }}>
               {getDaysInMonth(currentMonth).map((date, idx) => {
                 const isToday = date && 
                   date.getDate() === new Date().getDate() &&
@@ -751,9 +789,10 @@ export default function WorkshopPage() {
                 return (
                   <div
                     key={idx}
-                    className={`min-h-32 border-r border-b last:border-r-0 p-2 ${
+                    className={`min-h-32 border-r border-b last:border-r-0 p-2 relative ${
                       !date ? 'bg-slate-50' : isToday ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'
                     }`}
+                    style={{ zIndex: 1 }}
                     onDragOver={handleDragOver}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -770,7 +809,7 @@ export default function WorkshopPage() {
               })}
               
               {/* Project bars overlay - absolute positioned to span across days */}
-              <div className="absolute inset-0 pointer-events-none" style={{ paddingTop: '2.5rem' }}>
+              <div className="absolute inset-0 pointer-events-none" style={{ paddingTop: '2.5rem', zIndex: 10 }}>
                 {(() => {
                   const daysArray = getDaysInMonth(currentMonth);
                   const validDays = daysArray.filter(d => d !== null) as Date[];
@@ -1185,12 +1224,14 @@ export default function WorkshopPage() {
       {showQuickLog && (
         <QuickLogModal
           users={users}
+          projects={projects.map(p => ({ id: p.id, name: p.name }))}
           processes={PROCESSES}
           onSave={async (form: QuickLogSaveInput) => {
             try {
               await apiFetch('/workshop/time', {
                 method: 'POST',
                 json: {
+                  projectId: form.projectId,
                   userId: form.userId,
                   process: form.process,
                   date: form.date,
@@ -1200,8 +1241,9 @@ export default function WorkshopPage() {
               });
               setShowQuickLog(false);
               await loadAll();
-            } catch (e) {
-              alert('Failed to log hours');
+            } catch (e: any) {
+              alert('Failed to log hours: ' + (e?.message || 'Unknown error'));
+              console.error(e);
             }
           }}
           onClose={() => setShowQuickLog(false)}
@@ -1213,12 +1255,22 @@ export default function WorkshopPage() {
           users={users}
           holidays={holidays}
           onAdd={async (payload) => {
-            await apiFetch('/workshop/holidays', { method: 'POST', json: payload });
-            await loadAll();
+            try {
+              await apiFetch('/workshop/holidays', { method: 'POST', json: payload });
+              await loadAll();
+            } catch (e: any) {
+              alert('Failed to add holiday: ' + (e?.message || 'Unknown error'));
+              console.error(e);
+            }
           }}
           onDelete={async (id) => {
-            await apiFetch(`/workshop/holidays/${id}`, { method: 'DELETE' });
-            await loadAll();
+            try {
+              await apiFetch(`/workshop/holidays/${id}`, { method: 'DELETE' });
+              await loadAll();
+            } catch (e: any) {
+              alert('Failed to delete holiday: ' + (e?.message || 'Unknown error'));
+              console.error(e);
+            }
           }}
           onClose={() => setShowHolidayModal(false)}
         />
