@@ -1115,10 +1115,10 @@ export default function WorkshopPage() {
                               onClick={() => setShowProjectDetails(proj.id)}
                               title={`${proj.name} (${progress}% complete)${usersSummary}`}
                             >
-                              {/* Traffic lights for materials with labels (no background behind these) */}
-                              <div className="flex gap-0.5 shrink-0 items-center pl-1 pr-0.5 py-1">
+                              {/* Traffic lights for materials with labels on white background */}
+                              <div className="flex gap-0.5 shrink-0 items-center pl-1 pr-0.5 py-1 bg-white rounded-l">
                                 <div className="flex flex-col items-center">
-                                  <div className="text-[8px] font-bold leading-none mb-0.5">T</div>
+                                  <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">T</div>
                                   <div 
                                     className="w-2 h-2 rounded-full" 
                                     style={{ backgroundColor: getMaterialColor(timberStatus) }}
@@ -1126,7 +1126,7 @@ export default function WorkshopPage() {
                                   />
                                 </div>
                                 <div className="flex flex-col items-center">
-                                  <div className="text-[8px] font-bold leading-none mb-0.5">G</div>
+                                  <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">G</div>
                                   <div 
                                     className="w-2 h-2 rounded-full" 
                                     style={{ backgroundColor: getMaterialColor(glassStatus) }}
@@ -1134,7 +1134,7 @@ export default function WorkshopPage() {
                                   />
                                 </div>
                                 <div className="flex flex-col items-center">
-                                  <div className="text-[8px] font-bold leading-none mb-0.5">I</div>
+                                  <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">I</div>
                                   <div 
                                     className="w-2 h-2 rounded-full" 
                                     style={{ backgroundColor: getMaterialColor(ironmongeryStatus) }}
@@ -1142,7 +1142,7 @@ export default function WorkshopPage() {
                                   />
                                 </div>
                                 <div className="flex flex-col items-center">
-                                  <div className="text-[8px] font-bold leading-none mb-0.5">P</div>
+                                  <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">P</div>
                                   <div 
                                     className="w-2 h-2 rounded-full" 
                                     style={{ backgroundColor: getMaterialColor(paintStatus) }}
@@ -1150,7 +1150,7 @@ export default function WorkshopPage() {
                                   />
                                 </div>
                               </div>
-                              {/* Content area with gradient background (kept separate from lights) */}
+                              {/* Content area with gradient background */}
                               <div
                                 className="flex items-center gap-1 rounded px-2 py-1 flex-1"
                                 style={{ background }}
