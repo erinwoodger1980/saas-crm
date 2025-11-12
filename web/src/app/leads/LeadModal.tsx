@@ -766,8 +766,29 @@ export default function LeadModal({
     }
   }
 
+  // Ensure we have a concrete opportunityId for this lead (idempotent)
+  async function ensureOpportunity(): Promise<string | null> {
+    if (opportunityId) return opportunityId;
+    if (!lead?.id) return null;
+    try {
+      // Try resolve/create on the server
+      const out = await apiFetch<any>(`/opportunities/ensure-for-lead/${encodeURIComponent(lead.id)}`, { method: 'POST', headers: authHeaders });
+      const id = String(out?.opportunity?.id || '');
+      if (id) {
+        setOpportunityId(id);
+        return id;
+      }
+    } catch (err) {
+      console.error('[LeadModal] ensureOpportunity error:', err);
+    }
+    return null;
+  }
+
   async function saveMaterialDates() {
-    const projectId = opportunityId || lead?.id;
+    let projectId = opportunityId || null;
+    if (!projectId) {
+      projectId = await ensureOpportunity();
+    }
     if (!projectId) return;
     setMaterialSaving(true);
     try {
@@ -785,7 +806,10 @@ export default function LeadModal({
   }
 
   async function saveOpportunityField(field: string, value: any) {
-    const id = opportunityId || lead?.id;
+    let id = opportunityId || null;
+    if (!id) {
+      id = await ensureOpportunity();
+    }
     console.log('[saveOpportunityField]', { field, value, opportunityId, leadId: lead?.id, usingId: id });
     if (!id) return;
     try {
@@ -3455,9 +3479,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         className="w-full rounded-md border px-3 py-2 text-sm"
                         value={projectStartDate}
                         onChange={(e) => setProjectStartDate(e.target.value)}
-                        disabled={!opportunityId}
                         onBlur={() => {
-                          if (opportunityId && projectStartDate) {
+                          if (projectStartDate) {
                             saveOpportunityField('startDate', projectStartDate);
                           }
                         }}
@@ -3470,9 +3493,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         className="w-full rounded-md border px-3 py-2 text-sm"
                         value={projectDeliveryDate}
                         onChange={(e) => setProjectDeliveryDate(e.target.value)}
-                        disabled={!opportunityId}
                         onBlur={() => {
-                          if (opportunityId && projectDeliveryDate) {
+                          if (projectDeliveryDate) {
                             saveOpportunityField('deliveryDate', projectDeliveryDate);
                           }
                         }}
@@ -3486,9 +3508,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         className="w-full rounded-md border px-3 py-2 text-sm"
                         value={projectValueGBP}
                         onChange={(e) => setProjectValueGBP(e.target.value)}
-                        disabled={!opportunityId}
                         onBlur={() => {
-                          if (opportunityId && projectValueGBP) {
+                          if (projectValueGBP) {
                             saveOpportunityField('valueGBP', Number(projectValueGBP));
                           }
                         }}
