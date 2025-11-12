@@ -1574,7 +1574,7 @@ export default function WorkshopPage() {
         
         const progress = getProjectProgress(project);
         const totalEstimated = (project.processAssignments || [])
-          .reduce((sum: number, pa) => sum + (pa.estimatedHours || 0), 0);
+          .reduce((sum: number, pa) => sum + Number(pa.estimatedHours || 0), 0);
         const totalLogged = Number(project.totalProjectHours || 0);
         
         return (
