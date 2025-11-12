@@ -16,7 +16,7 @@ router.get("/users", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const users = await prisma.user.findMany({
     where: { tenantId },
-    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true },
+    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true, workshopColor: true },
     orderBy: { name: "asc" },
   });
   res.json({ ok: true, items: users });
@@ -42,6 +42,45 @@ router.patch("/users/:userId/hours", async (req: any, res) => {
   }
   
   const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { workshopHoursPerDay: Number(hoursPerDay) },
+    select: { id: true, name: true, email: true, workshopHoursPerDay: true, workshopColor: true },
+  });
+  
+  res.json({ ok: true, user: updated });
+});
+
+// PATCH /workshop/users/:userId/color { color: string }
+router.patch("/users/:userId/color", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = String(req.params.userId);
+  const { color } = req.body || {};
+  
+  // Validate hex color format (optional field)
+  if (color !== null && color !== undefined && color !== "") {
+    const hexPattern = /^#[0-9A-Fa-f]{6}$/;
+    if (!hexPattern.test(color)) {
+      return res.status(400).json({ error: "invalid_color_format", detail: "Color must be a hex code like #3b82f6" });
+    }
+  }
+  
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, tenantId: true },
+  });
+  
+  if (!user || user.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { workshopColor: color || null },
+    select: { id: true, name: true, email: true, workshopHoursPerDay: true, workshopColor: true },
+  });
+  
+  res.json({ ok: true, user: updated });
+});
     where: { id: userId },
     data: { workshopHoursPerDay: Number(hoursPerDay) },
     select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true },

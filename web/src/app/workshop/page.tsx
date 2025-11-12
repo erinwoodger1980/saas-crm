@@ -131,7 +131,7 @@ const PROCESSES = [
 
 type WorkshopProcess = typeof PROCESSES[number];
 
-type UserLite = { id: string; name: string | null; email: string; workshopHoursPerDay?: number | null };
+type UserLite = { id: string; name: string | null; email: string; workshopHoursPerDay?: number | null; workshopColor?: string | null };
 
 type Plan = {
   id: string;
@@ -197,6 +197,24 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(value);
 }
 
+function getUserColor(userId: string, users: UserLite[]): string {
+  const user = users.find(u => u.id === userId);
+  return user?.workshopColor || '#60a5fa'; // Default to blue
+}
+
+function getProjectColor(proj: Project, users: UserLite[]): string {
+  const assignedUserIds = (proj.processAssignments || [])
+    .filter(pa => pa.assignedUser)
+    .map(pa => pa.assignedUser!.id)
+    .filter((id, idx, arr) => arr.indexOf(id) === idx);
+  
+  if (assignedUserIds.length === 0) return '#60a5fa';
+  if (assignedUserIds.length === 1) return getUserColor(assignedUserIds[0], users);
+  
+  const colors = assignedUserIds.slice(0, 3).map(id => getUserColor(id, users));
+  return `linear-gradient(90deg, ${colors.join(', ')})`;
+}
+
 export default function WorkshopPage() {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
@@ -214,6 +232,8 @@ export default function WorkshopPage() {
   const [showHoursModal, setShowHoursModal] = useState<{ projectId: string; projectName: string } | null>(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showHolidayModal, setShowHolidayModal] = useState(false);
+  const [showProjectDetails, setShowProjectDetails] = useState<string | null>(null);
+  const [showUserColors, setShowUserColors] = useState(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -811,6 +831,7 @@ export default function WorkshopPage() {
             List
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowHolidayModal(true)}>Holidays</Button>
+          <Button variant="outline" size="sm" onClick={() => setShowUserColors(true)}>User Colors</Button>
           <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
           <Button 
             variant={isFullscreen ? "default" : "outline"} 
@@ -1012,6 +1033,7 @@ export default function WorkshopPage() {
                         }
                         
                         const progress = getProjectProgress(proj);
+                        const projectColor = getProjectColor(proj, users);
                         
                         return segments.map((segment, segIdx) => {
                           // Get assigned users from process assignments
@@ -1024,6 +1046,11 @@ export default function WorkshopPage() {
                             ? ` | Assigned: ${assignedUsers.join(', ')}`
                             : '';
                           
+                          // Create background with project color and progress indicator
+                          const background = projectColor.startsWith('linear-gradient')
+                            ? projectColor // Use gradient as-is for multi-user projects
+                            : `linear-gradient(90deg, #22c55e ${progress}%, ${projectColor} ${progress}%)`;
+                          
                           return (
                             <div
                               key={`${proj.id}-${segIdx}`}
@@ -1032,11 +1059,11 @@ export default function WorkshopPage() {
                                 top: `${segment.row * 128}px`,
                                 left: `${(segment.col / 7) * 100}%`,
                                 width: `${(segment.span / 7) * 100}%`,
-                                background: `linear-gradient(90deg, #22c55e ${progress}%, #60a5fa ${progress}%)`,
+                                background,
                               }}
                               draggable
                               onDragStart={() => handleDragStart(proj.id)}
-                              onClick={() => openHoursModal(proj.id, proj.name)}
+                              onClick={() => setShowProjectDetails(proj.id)}
                               title={`${proj.name} (${progress}% complete)${usersSummary}`}
                             >
                               <div className="truncate">{proj.name}</div>
@@ -1527,6 +1554,179 @@ export default function WorkshopPage() {
                   Cancel
                 </Button>
               </div>
+            </div>
+          </Card>
+        </div>
+      )}
+      
+      {/* Project Details Modal */}
+      {showProjectDetails && (() => {
+        const project = projects.find(p => p.id === showProjectDetails);
+        if (!project) return null;
+        
+        const progress = getProjectProgress(project);
+        const totalEstimated = (project.processAssignments || [])
+          .reduce((sum: number, pa) => sum + (pa.estimatedHours || 0), 0);
+        const totalLogged = project.totalProjectHours || 0;
+        
+        return (
+          <div 
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+            onClick={() => setShowProjectDetails(null)}
+          >
+            <Card 
+              className="p-6 max-w-2xl w-full m-4 bg-white shadow-2xl border max-h-[80vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-xl font-semibold mb-4">{project.name}</h2>
+              
+              <div className="space-y-4">
+                {/* Project Overview */}
+                <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded">
+                  <div>
+                    <span className="text-sm text-gray-600">Value:</span>
+                    <span className="ml-2 font-semibold">
+                      {formatCurrency(typeof project.valueGBP === 'string' 
+                        ? parseFloat(project.valueGBP) 
+                        : (project.valueGBP || 0)
+                      )}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-600">Progress:</span>
+                    <span className="ml-2 font-semibold">{progress}%</span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-600">Start:</span>
+                    <span className="ml-2">{project.startDate ? new Date(project.startDate).toLocaleDateString() : 'Not set'}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-600">Delivery:</span>
+                    <span className="ml-2">{project.deliveryDate ? new Date(project.deliveryDate).toLocaleDateString() : 'Not set'}</span>
+                  </div>
+                </div>
+                
+                {/* Time Tracking Summary */}
+                <div className="p-4 bg-blue-50 rounded">
+                  <h3 className="font-semibold mb-2">Time Tracking</h3>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>Estimated Hours: <span className="font-semibold">{totalEstimated.toFixed(1)}h</span></div>
+                    <div>Logged Hours: <span className="font-semibold">{totalLogged.toFixed(1)}h</span></div>
+                  </div>
+                  {totalEstimated > 0 && (
+                    <div className="mt-2 text-sm">
+                      <span className={totalLogged > totalEstimated ? 'text-red-600 font-semibold' : 'text-green-600'}>
+                        {totalLogged > totalEstimated 
+                          ? `Over by ${(totalLogged - totalEstimated).toFixed(1)}h`
+                          : `${(totalEstimated - totalLogged).toFixed(1)}h remaining`
+                        }
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Process Assignments */}
+                <div>
+                  <h3 className="font-semibold mb-2">Process Assignments</h3>
+                  {project.processAssignments && project.processAssignments.length > 0 ? (
+                    <div className="space-y-2">
+                      {project.processAssignments.map((pa) => {
+                        const processTime = project.totalHoursByProcess?.[pa.processCode] || 0;
+                        
+                        return (
+                          <div key={pa.id} className="p-3 border rounded flex justify-between items-center">
+                            <div className="flex-1">
+                              <div className="font-medium">{pa.processName}</div>
+                              <div className="text-sm text-gray-600">
+                                {pa.assignedUser 
+                                  ? (pa.assignedUser.name || pa.assignedUser.email)
+                                  : 'Unassigned'
+                                }
+                              </div>
+                            </div>
+                            <div className="text-right text-sm">
+                              <div className="font-semibold">{processTime.toFixed(1)}h logged</div>
+                              {pa.estimatedHours && (
+                                <div className="text-gray-600">of {pa.estimatedHours}h estimated</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm">No process assignments yet</p>
+                  )}
+                </div>
+                
+                {/* Quick Actions */}
+                <div className="flex gap-2 pt-4 border-t">
+                  <Button 
+                    onClick={() => {
+                      setShowProjectDetails(null);
+                      openHoursModal(project.id, project.name);
+                    }}
+                  >
+                    Log Hours
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowProjectDetails(null)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        );
+      })()}
+      
+      {/* User Colors Modal */}
+      {showUserColors && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+          onClick={() => setShowUserColors(false)}
+        >
+          <Card 
+            className="p-6 max-w-md w-full m-4 bg-white shadow-2xl border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-semibold mb-4">User Schedule Colors</h2>
+            
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {users.map((user) => (
+                <div key={user.id} className="flex items-center gap-3 p-2 border rounded">
+                  <input
+                    type="color"
+                    value={user.workshopColor || '#60a5fa'}
+                    onChange={async (e) => {
+                      const newColor = e.target.value;
+                      try {
+                        await apiFetch(`/workshop/users/${user.id}/color`, {
+                          method: 'PATCH',
+                          json: { color: newColor }
+                        });
+                        // Update local state
+                        setUsers(prev => prev.map(u => 
+                          u.id === user.id ? { ...u, workshopColor: newColor } : u
+                        ));
+                      } catch (err) {
+                        console.error('Failed to update color:', err);
+                        alert('Failed to update color. Please try again.');
+                      }
+                    }}
+                    className="w-12 h-12 cursor-pointer rounded border"
+                  />
+                  <div className="flex-1">
+                    <div className="font-medium">{user.name || user.email}</div>
+                    <div className="text-xs text-gray-500">{user.workshopColor || 'Default blue'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="flex gap-2 pt-4 border-t mt-4">
+              <Button variant="ghost" onClick={() => setShowUserColors(false)}>
+                Close
+              </Button>
             </div>
           </Card>
         </div>
