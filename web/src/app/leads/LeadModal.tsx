@@ -645,7 +645,7 @@ export default function LeadModal({
     if (!lead?.id) return;
     setWkSavingId(def.id);
     try {
-      await apiFetch(`/workshop-processes/project/${encodeURIComponent(lead.id)}`, {
+      const response = await apiFetch(`/workshop-processes/project/${encodeURIComponent(lead.id)}`, {
         method: "POST",
         json: {
           processDefinitionId: def.id,
@@ -654,8 +654,13 @@ export default function LeadModal({
           estimatedHours: patch.estimatedHours == null ? null : Number(patch.estimatedHours),
         },
       });
+      
+      if (!response || !(response as any).ok) {
+        throw new Error((response as any)?.error || "Assignment failed");
+      }
+      
       // reload assignments only
-      const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []);
+      const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => ({ assignments: [] }));
       const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
       const norm: ProcAssignment[] = arr.map((it: any) => ({
         id: String(it.id || it.assignmentId || crypto.randomUUID()),
@@ -667,8 +672,10 @@ export default function LeadModal({
         assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
       }));
       setWkAssignments(norm);
-    } catch (e) {
-      alert((e as any)?.message || "Failed to save assignment");
+    } catch (e: any) {
+      console.error("Workshop assignment error:", e);
+      const message = e?.message || e?.detail || "Failed to save assignment";
+      alert(`Could not assign user to process: ${message}\n\nPlease check your connection and try again.`);
     } finally {
       setWkSavingId(null);
     }

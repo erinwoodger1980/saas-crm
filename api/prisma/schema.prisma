@@ -125,6 +125,7 @@ model User {
   passwordHash          String?
   signupCompleted       Boolean                 @default(false)
   workshopHoursPerDay   Decimal?                @default(8)
+  workshopColor         String?                 // Hex color for schedule display (e.g. "#3b82f6")
   GmailTenantConnection GmailTenantConnection[]
   Ms365TenantConnection Ms365TenantConnection[]
   passwordResetToken    PasswordResetToken?
