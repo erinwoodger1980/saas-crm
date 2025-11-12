@@ -651,14 +651,14 @@ export default function LeadModal({
         const [defs, users, project, oppDetails, oppByLead] = await Promise.all([
           apiFetch<ProcDef[]>(`/workshop-processes`).catch(() => [] as ProcDef[]),
           apiFetch<{ ok: boolean; items: ProcUser[] }>(`/workshop/users`).then((r) => (r as any)?.items || []).catch(() => [] as ProcUser[]),
-          apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []),
+          apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch((err) => { console.warn('[LeadModal] project assignments fetch err (treating as not-an-opportunity id):', err?.message || err); return null; }),
           apiFetch<any>(`/leads/${lead.id}`, { headers: authHeaders }).catch((err) => { console.error('[LeadModal] /leads fetch error:', err); return null; }),
           apiFetch<any>(`/opportunities/by-lead/${encodeURIComponent(lead.id)}`, { headers: authHeaders }).catch((err) => { console.error('[LeadModal] /opportunities/by-lead fetch error:', err); return null; }),
         ]);
         if (cancelled) return;
         setWkDefs((Array.isArray(defs) ? defs : []).sort((a, b) => (Number(a.sortOrder||0) - Number(b.sortOrder||0)) || a.name.localeCompare(b.name)));
         setWkUsers(Array.isArray(users) ? users : []);
-        const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
+  const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
         const norm: ProcAssignment[] = arr.map((it: any) => ({
           id: String(it.id || it.assignmentId || crypto.randomUUID()),
           processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
@@ -669,6 +669,12 @@ export default function LeadModal({
           assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
         }));
         setWkAssignments(norm);
+        // If the modal was launched from Opportunities page, lead.id may already be the opportunityId.
+        // Detect this by checking the project assignments shape { ok: true, assignments: [...] }.
+        if (!cancelled && project && project.ok === true && !opportunityId) {
+          console.log('[LeadModal] inferring opportunityId from modal context:', lead.id);
+          setOpportunityId(String(lead.id));
+        }
         
         // Load material dates and project details
         console.log('[LeadModal] oppByLead response:', oppByLead);
@@ -771,6 +777,14 @@ export default function LeadModal({
     if (opportunityId) return opportunityId;
     if (!lead?.id) return null;
     try {
+      // First, if the current id is already an opportunity id (modal opened from Opportunities), use it
+      try {
+        const probe = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`);
+        if (probe && probe.ok === true) {
+          setOpportunityId(String(lead.id));
+          return String(lead.id);
+        }
+      } catch {}
       // Try resolve/create on the server
       const out = await apiFetch<any>(`/opportunities/ensure-for-lead/${encodeURIComponent(lead.id)}`, { method: 'POST', headers: authHeaders });
       const id = String(out?.opportunity?.id || '');
