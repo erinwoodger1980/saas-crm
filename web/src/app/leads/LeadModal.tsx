@@ -350,6 +350,24 @@ export default function LeadModal({
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
+  // ---- Workshop Processes (WON flow) ----
+  type ProcDef = { id: string; code: string; name: string; sortOrder?: number|null; requiredByDefault?: boolean; estimatedHours?: number|null };
+  type ProcUser = { id: string; name?: string|null; email: string };
+  type ProcAssignment = {
+    id: string;
+    processDefinitionId?: string;
+    processCode?: string;
+    processName?: string;
+    required?: boolean;
+    estimatedHours?: number|null;
+    assignedUser?: ProcUser | null;
+  };
+  const [wkLoading, setWkLoading] = useState(false);
+  const [wkDefs, setWkDefs] = useState<ProcDef[]>([]);
+  const [wkUsers, setWkUsers] = useState<ProcUser[]>([]);
+  const [wkAssignments, setWkAssignments] = useState<ProcAssignment[]>([]);
+  const [wkSavingId, setWkSavingId] = useState<string | null>(null);
+
   const lastSavedServerStatusRef = useRef<string | null>(null);
 
   const playbook = useMemo(
@@ -585,6 +603,76 @@ export default function LeadModal({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, leadPreview?.id]);
+
+  // Load workshop data when lead is WON and modal is open
+  useEffect(() => {
+    if (!open || !lead?.id || uiStatus !== "WON") return;
+    let cancelled = false;
+    (async () => {
+      setWkLoading(true);
+      try {
+        const [defs, users, project] = await Promise.all([
+          apiFetch<ProcDef[]>(`/workshop-processes`).catch(() => [] as ProcDef[]),
+          apiFetch<{ ok: boolean; items: ProcUser[] }>(`/workshop/users`).then((r) => (r as any)?.items || []).catch(() => [] as ProcUser[]),
+          apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []),
+        ]);
+        if (cancelled) return;
+        setWkDefs((Array.isArray(defs) ? defs : []).sort((a, b) => (Number(a.sortOrder||0) - Number(b.sortOrder||0)) || a.name.localeCompare(b.name)));
+        setWkUsers(Array.isArray(users) ? users : []);
+        const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
+        const norm: ProcAssignment[] = arr.map((it: any) => ({
+          id: String(it.id || it.assignmentId || crypto.randomUUID()),
+          processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
+          processCode: it.processCode || it.processDefinition?.code,
+          processName: it.processName || it.processDefinition?.name,
+          required: Boolean(it.required ?? true),
+          estimatedHours: it.estimatedHours ?? it.processDefinition?.estimatedHours ?? null,
+          assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
+        }));
+        setWkAssignments(norm);
+      } finally {
+        if (!cancelled) setWkLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, lead?.id, uiStatus]);
+
+  function getAssignmentFor(defId: string): ProcAssignment | undefined {
+    return wkAssignments.find((a) => (a.processDefinitionId === defId) || (a.processCode && wkDefs.find(d => d.id===defId)?.code === a.processCode));
+  }
+
+  async function saveProjectAssignment(def: ProcDef, patch: { required?: boolean; assignedUserId?: string|null; estimatedHours?: number|null }) {
+    if (!lead?.id) return;
+    setWkSavingId(def.id);
+    try {
+      await apiFetch(`/workshop-processes/project/${encodeURIComponent(lead.id)}`, {
+        method: "POST",
+        json: {
+          processDefinitionId: def.id,
+          required: patch.required,
+          assignedUserId: patch.assignedUserId ?? undefined,
+          estimatedHours: patch.estimatedHours == null ? null : Number(patch.estimatedHours),
+        },
+      });
+      // reload assignments only
+      const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []);
+      const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
+      const norm: ProcAssignment[] = arr.map((it: any) => ({
+        id: String(it.id || it.assignmentId || crypto.randomUUID()),
+        processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
+        processCode: it.processCode || it.processDefinition?.code,
+        processName: it.processName || it.processDefinition?.name,
+        required: Boolean(it.required ?? true),
+        estimatedHours: it.estimatedHours ?? it.processDefinition?.estimatedHours ?? null,
+        assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
+      }));
+      setWkAssignments(norm);
+    } catch (e) {
+      alert((e as any)?.message || "Failed to save assignment");
+    } finally {
+      setWkSavingId(null);
+    }
+  }
 
   // Reset to initial stage when modal opens or lead changes (but not during navigation)
   useEffect(() => {
@@ -2483,6 +2571,111 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 </div>
               </section>
             )}
+            {uiStatus === 'WON' && (
+              <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm backdrop-blur">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                    <span aria-hidden>🛠️</span>
+                    Workshop processes for this project
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs text-emerald-700 hover:text-emerald-900"
+                    onClick={() => {
+                      // trigger refetch
+                      (async () => {
+                        setWkLoading(true);
+                        try {
+                          const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []);
+                          const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
+                          const norm: ProcAssignment[] = arr.map((it: any) => ({
+                            id: String(it.id || it.assignmentId || crypto.randomUUID()),
+                            processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
+                            processCode: it.processCode || it.processDefinition?.code,
+                            processName: it.processName || it.processDefinition?.name,
+                            required: Boolean(it.required ?? true),
+                            estimatedHours: it.estimatedHours ?? it.processDefinition?.estimatedHours ?? null,
+                            assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
+                          }));
+                          setWkAssignments(norm);
+                        } finally {
+                          setWkLoading(false);
+                        }
+                      })();
+                    }}
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                {wkLoading ? (
+                  <div className="text-sm text-emerald-800">Loading processes…</div>
+                ) : wkDefs.length === 0 ? (
+                  <div className="text-sm text-emerald-800">No tenant processes defined. Configure them in Settings → Workshop Processes.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {wkDefs.map((def) => {
+                      const asn = getAssignmentFor(def.id);
+                      const required = asn?.required ?? !!def.requiredByDefault;
+                      const est = (asn?.estimatedHours ?? def.estimatedHours) ?? null;
+                      const userIdSel = asn?.assignedUser?.id || "";
+                      return (
+                        <div key={def.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-xl border bg-white/80 px-3 py-2">
+                          <div>
+                            <div className="text-sm font-medium text-slate-900">{def.name}</div>
+                            <div className="text-[11px] text-slate-500">{def.code}</div>
+                          </div>
+                          <label className="inline-flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={required}
+                              onChange={(e) => saveProjectAssignment(def, { required: e.target.checked, assignedUserId: userIdSel || null, estimatedHours: est })}
+                              disabled={wkSavingId === def.id}
+                            />
+                            Required
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-600 whitespace-nowrap">Assign</span>
+                            <select
+                              className="rounded-md border px-2 py-1 text-sm"
+                              value={userIdSel}
+                              onChange={(e) => saveProjectAssignment(def, { required, assignedUserId: e.target.value || null, estimatedHours: est })}
+                              disabled={wkSavingId === def.id}
+                            >
+                              <option value="">Unassigned</option>
+                              {wkUsers.map((u) => (
+                                <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-600 whitespace-nowrap">Hours</span>
+                            <input
+                              type="number"
+                              className="w-24 rounded-md border px-2 py-1 text-sm"
+                              value={est ?? ""}
+                              onChange={(e) => {
+                                const val = e.target.value === "" ? null : Number(e.target.value);
+                                saveProjectAssignment(def, { required, assignedUserId: userIdSel || null, estimatedHours: val });
+                              }}
+                              disabled={wkSavingId === def.id}
+                            />
+                          </div>
+                          <div className="text-right">
+                            {asn ? (
+                              <span className="inline-block text-[11px] text-slate-500">Saved</span>
+                            ) : (
+                              <span className="inline-block text-[11px] text-slate-500">Not yet assigned</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
+
 
             {(emailSubject || emailSnippet || fromEmail) && (
               <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
