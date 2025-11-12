@@ -79,3 +79,19 @@ body {
   border-color: rgb(var(--border));
   color: rgb(var(--text-muted));
 }
+
+/* Workshop display mode - hide app shell for fullscreen TV display */
+body.workshop-display-mode nav,
+body.workshop-display-mode header,
+body.workshop-display-mode aside,
+body.workshop-display-mode [class*="sidebar"],
+body.workshop-display-mode [class*="AppShell"] > *:not(main) {
+  display: none !important;
+}
+
+body.workshop-display-mode main {
+  margin: 0 !important;
+  padding: 2rem !important;
+  max-width: 100% !important;
+  width: 100vw !important;
+}
