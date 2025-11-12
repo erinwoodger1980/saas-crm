@@ -286,7 +286,7 @@ export default function LeadModal({
   onOpenChange: (_v: boolean) => void;
   leadPreview: Lead | null;
   onUpdated?: () => void | Promise<void>;
-  initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up';
+  initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up' | 'workshop';
   showFollowUp?: boolean;
 }) {
   const ids = getAuthIdsFromJwt();
@@ -300,7 +300,9 @@ export default function LeadModal({
 
   // Core state
   const [lead, setLead] = useState<Lead | null>(leadPreview);
-  const [uiStatus, setUiStatus] = useState<Lead["status"]>("NEW_ENQUIRY");
+  const [uiStatus, setUiStatus] = useState<Lead["status"]>(
+    leadPreview?.status ? serverToUiStatus(String(leadPreview.status)) : "NEW_ENQUIRY"
+  );
   const [tasks, setTasks] = useState<Task[]>([]);
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [loading, setLoading] = useState(false);
@@ -310,7 +312,7 @@ export default function LeadModal({
   const [taskAssignToMe, setTaskAssignToMe] = useState(true);
 
   // Stage navigation
-  const [currentStage, setCurrentStage] = useState<'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up'>(initialStage);
+  const [currentStage, setCurrentStage] = useState<'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up' | 'workshop'>(initialStage);
 
   // Form inputs
   const [nameInput, setNameInput] = useState("");
@@ -368,6 +370,29 @@ export default function LeadModal({
   const [wkAssignments, setWkAssignments] = useState<ProcAssignment[]>([]);
   const [wkSavingId, setWkSavingId] = useState<string | null>(null);
 
+  // Material tracking state
+  type MaterialDates = {
+    timberOrderedAt?: string | null;
+    timberExpectedAt?: string | null;
+    timberReceivedAt?: string | null;
+    glassOrderedAt?: string | null;
+    glassExpectedAt?: string | null;
+    glassReceivedAt?: string | null;
+    ironmongeryOrderedAt?: string | null;
+    ironmongeryExpectedAt?: string | null;
+    ironmongeryReceivedAt?: string | null;
+    paintOrderedAt?: string | null;
+    paintExpectedAt?: string | null;
+    paintReceivedAt?: string | null;
+  };
+  const [materialDates, setMaterialDates] = useState<MaterialDates>({});
+  const [materialSaving, setMaterialSaving] = useState(false);
+
+  // Project details state
+  const [projectStartDate, setProjectStartDate] = useState<string>("");
+  const [projectDeliveryDate, setProjectDeliveryDate] = useState<string>("");
+  const [projectValueGBP, setProjectValueGBP] = useState<string>("");
+
   const lastSavedServerStatusRef = useRef<string | null>(null);
 
   const playbook = useMemo(
@@ -413,7 +438,14 @@ export default function LeadModal({
   ];
 
   useEffect(() => {
-    if (open) return;
+    if (open) {
+      // When opening, initialize uiStatus from leadPreview
+      if (leadPreview?.status) {
+        setUiStatus(serverToUiStatus(String(leadPreview.status)));
+      }
+      return;
+    }
+    // When closing, reset everything
     setLead(null);
     setNameInput("");
     setEmailInput("");
@@ -431,7 +463,7 @@ export default function LeadModal({
     setTaskAssignToMe(true);
     setTaskError(null);
     setTaskSaving(false);
-  }, [open]);
+  }, [open, leadPreview?.status]);
 
   useEffect(() => {
     if (!open) return;
@@ -611,10 +643,11 @@ export default function LeadModal({
     (async () => {
       setWkLoading(true);
       try {
-        const [defs, users, project] = await Promise.all([
+        const [defs, users, project, oppDetails] = await Promise.all([
           apiFetch<ProcDef[]>(`/workshop-processes`).catch(() => [] as ProcDef[]),
           apiFetch<{ ok: boolean; items: ProcUser[] }>(`/workshop/users`).then((r) => (r as any)?.items || []).catch(() => [] as ProcUser[]),
           apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []),
+          apiFetch<any>(`/leads/${lead.id}`, { headers: authHeaders }).catch(() => null),
         ]);
         if (cancelled) return;
         setWkDefs((Array.isArray(defs) ? defs : []).sort((a, b) => (Number(a.sortOrder||0) - Number(b.sortOrder||0)) || a.name.localeCompare(b.name)));
@@ -630,12 +663,34 @@ export default function LeadModal({
           assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
         }));
         setWkAssignments(norm);
+        
+        // Load material dates and project details
+        if (oppDetails) {
+          const opp = oppDetails.lead || oppDetails;
+          setMaterialDates({
+            timberOrderedAt: opp.timberOrderedAt || null,
+            timberExpectedAt: opp.timberExpectedAt || null,
+            timberReceivedAt: opp.timberReceivedAt || null,
+            glassOrderedAt: opp.glassOrderedAt || null,
+            glassExpectedAt: opp.glassExpectedAt || null,
+            glassReceivedAt: opp.glassReceivedAt || null,
+            ironmongeryOrderedAt: opp.ironmongeryOrderedAt || null,
+            ironmongeryExpectedAt: opp.ironmongeryExpectedAt || null,
+            ironmongeryReceivedAt: opp.ironmongeryReceivedAt || null,
+            paintOrderedAt: opp.paintOrderedAt || null,
+            paintExpectedAt: opp.paintExpectedAt || null,
+            paintReceivedAt: opp.paintReceivedAt || null,
+          });
+          setProjectStartDate(opp.startDate || "");
+          setProjectDeliveryDate(opp.deliveryDate || "");
+          setProjectValueGBP(opp.valueGBP ? String(opp.valueGBP) : "");
+        }
       } finally {
         if (!cancelled) setWkLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [open, lead?.id, uiStatus]);
+  }, [open, lead?.id, uiStatus, authHeaders]);
 
   function getAssignmentFor(defId: string): ProcAssignment | undefined {
     return wkAssignments.find((a) => (a.processDefinitionId === defId) || (a.processCode && wkDefs.find(d => d.id===defId)?.code === a.processCode));
@@ -681,6 +736,23 @@ export default function LeadModal({
       alert(`Could not assign user to process: ${message}\n\nOpportunity ID: ${lead.id}\nPlease check your connection and try again.`);
     } finally {
       setWkSavingId(null);
+    }
+  }
+
+  async function saveMaterialDates() {
+    if (!lead?.id) return;
+    setMaterialSaving(true);
+    try {
+      await apiFetch(`/workshop/project/${encodeURIComponent(lead.id)}/materials`, {
+        method: "PATCH",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify(materialDates),
+      });
+    } catch (e: any) {
+      console.error("Material dates save error:", e);
+      alert("Could not save material dates. Please try again.");
+    } finally {
+      setMaterialSaving(false);
     }
   }
 
@@ -2178,6 +2250,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             { key: "details", label: "Details", icon: "📝", description: "Contact info and notes" },
             { key: "questionnaire", label: "Questionnaire", icon: "📋", description: "Client responses" },
             { key: "tasks", label: "Tasks", icon: "✅", description: "Action items" },
+            ...(uiStatus === 'WON' ? [{ key: "workshop" as const, label: "Workshop", icon: "🛠️", description: "Production management" }] : []),
           ].map((stage) => (
             <button
               key={stage.key}
@@ -2581,111 +2654,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 </div>
               </section>
             )}
-            {uiStatus === 'WON' && (
-              <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm backdrop-blur">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
-                    <span aria-hidden>🛠️</span>
-                    Workshop processes for this project
-                  </div>
-                  <button
-                    type="button"
-                    className="text-xs text-emerald-700 hover:text-emerald-900"
-                    onClick={() => {
-                      // trigger refetch
-                      (async () => {
-                        setWkLoading(true);
-                        try {
-                          const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []);
-                          const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
-                          const norm: ProcAssignment[] = arr.map((it: any) => ({
-                            id: String(it.id || it.assignmentId || crypto.randomUUID()),
-                            processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
-                            processCode: it.processCode || it.processDefinition?.code,
-                            processName: it.processName || it.processDefinition?.name,
-                            required: Boolean(it.required ?? true),
-                            estimatedHours: it.estimatedHours ?? it.processDefinition?.estimatedHours ?? null,
-                            assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
-                          }));
-                          setWkAssignments(norm);
-                        } finally {
-                          setWkLoading(false);
-                        }
-                      })();
-                    }}
-                  >
-                    Refresh
-                  </button>
-                </div>
-
-                {wkLoading ? (
-                  <div className="text-sm text-emerald-800">Loading processes…</div>
-                ) : wkDefs.length === 0 ? (
-                  <div className="text-sm text-emerald-800">No tenant processes defined. Configure them in Settings → Workshop Processes.</div>
-                ) : (
-                  <div className="space-y-2">
-                    {wkDefs.map((def) => {
-                      const asn = getAssignmentFor(def.id);
-                      const required = asn?.required ?? !!def.requiredByDefault;
-                      const est = (asn?.estimatedHours ?? def.estimatedHours) ?? null;
-                      const userIdSel = asn?.assignedUser?.id || "";
-                      return (
-                        <div key={def.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-xl border bg-white/80 px-3 py-2">
-                          <div>
-                            <div className="text-sm font-medium text-slate-900">{def.name}</div>
-                            <div className="text-[11px] text-slate-500">{def.code}</div>
-                          </div>
-                          <label className="inline-flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={required}
-                              onChange={(e) => saveProjectAssignment(def, { required: e.target.checked, assignedUserId: userIdSel || null, estimatedHours: est })}
-                              disabled={wkSavingId === def.id}
-                            />
-                            Required
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-600 whitespace-nowrap">Assign</span>
-                            <select
-                              className="rounded-md border px-2 py-1 text-sm"
-                              value={userIdSel}
-                              onChange={(e) => saveProjectAssignment(def, { required, assignedUserId: e.target.value || null, estimatedHours: est })}
-                              disabled={wkSavingId === def.id}
-                            >
-                              <option value="">Unassigned</option>
-                              {wkUsers.map((u) => (
-                                <option key={u.id} value={u.id}>{u.name || u.email}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-600 whitespace-nowrap">Hours</span>
-                            <input
-                              type="number"
-                              className="w-24 rounded-md border px-2 py-1 text-sm"
-                              value={est ?? ""}
-                              onChange={(e) => {
-                                const val = e.target.value === "" ? null : Number(e.target.value);
-                                saveProjectAssignment(def, { required, assignedUserId: userIdSel || null, estimatedHours: val });
-                              }}
-                              disabled={wkSavingId === def.id}
-                            />
-                          </div>
-                          <div className="text-right">
-                            {asn ? (
-                              <span className="inline-block text-[11px] text-slate-500">Saved</span>
-                            ) : (
-                              <span className="inline-block text-[11px] text-slate-500">Not yet assigned</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-            )}
-
 
             {(emailSubject || emailSnippet || fromEmail) && (
               <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
@@ -3419,6 +3387,248 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             </div>
           </div>
         )}
+
+          {/* Workshop Tab */}
+          {currentStage === 'workshop' && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/60 min-h-[60vh]">
+              <div className="max-w-6xl mx-auto space-y-6">
+                
+                {/* Project Details */}
+                <section className="rounded-2xl border border-purple-200 bg-purple-50/60 p-5 shadow-sm backdrop-blur">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-purple-900">
+                    <span aria-hidden>📅</span>
+                    Project Details
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <label className="block">
+                      <span className="text-xs text-slate-600 font-medium mb-1 block">Start Date</span>
+                      <input
+                        type="date"
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        value={projectStartDate}
+                        onChange={(e) => setProjectStartDate(e.target.value)}
+                        onBlur={() => {
+                          // Save to opportunity
+                          if (lead?.id) {
+                            savePatch({ startDate: projectStartDate || null });
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-slate-600 font-medium mb-1 block">Delivery Date</span>
+                      <input
+                        type="date"
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        value={projectDeliveryDate}
+                        onChange={(e) => setProjectDeliveryDate(e.target.value)}
+                        onBlur={() => {
+                          // Save to opportunity
+                          if (lead?.id) {
+                            savePatch({ deliveryDate: projectDeliveryDate || null });
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-slate-600 font-medium mb-1 block">Value (GBP)</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        value={projectValueGBP}
+                        onChange={(e) => setProjectValueGBP(e.target.value)}
+                        onBlur={() => {
+                          // Save to opportunity
+                          if (lead?.id) {
+                            savePatch({ valueGBP: projectValueGBP ? Number(projectValueGBP) : null });
+                          }
+                        }}
+                        placeholder="0.00"
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                {/* Workshop Processes */}
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm backdrop-blur">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                      <span aria-hidden>🛠️</span>
+                      Workshop processes for this project
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs text-emerald-700 hover:text-emerald-900"
+                      onClick={() => {
+                        // trigger refetch
+                        (async () => {
+                          setWkLoading(true);
+                          try {
+                            const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []);
+                            const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
+                            const norm: ProcAssignment[] = arr.map((it: any) => ({
+                              id: String(it.id || it.assignmentId || crypto.randomUUID()),
+                              processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
+                              processCode: it.processCode || it.processDefinition?.code,
+                              processName: it.processName || it.processDefinition?.name,
+                              required: Boolean(it.required ?? true),
+                              estimatedHours: it.estimatedHours ?? it.processDefinition?.estimatedHours ?? null,
+                              assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
+                            }));
+                            setWkAssignments(norm);
+                          } finally {
+                            setWkLoading(false);
+                          }
+                        })();
+                      }}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {wkLoading ? (
+                    <div className="text-sm text-emerald-800">Loading processes…</div>
+                  ) : wkDefs.length === 0 ? (
+                    <div className="text-sm text-emerald-800">No tenant processes defined. Configure them in Settings → Workshop Processes.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {wkDefs.map((def) => {
+                        const asn = getAssignmentFor(def.id);
+                        const required = asn?.required ?? !!def.requiredByDefault;
+                        const est = (asn?.estimatedHours ?? def.estimatedHours) ?? null;
+                        const userIdSel = asn?.assignedUser?.id || "";
+                        return (
+                          <div key={def.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-xl border bg-white/80 px-3 py-2">
+                            <div>
+                              <div className="text-sm font-medium text-slate-900">{def.name}</div>
+                              <div className="text-[11px] text-slate-500">{def.code}</div>
+                            </div>
+                            <label className="inline-flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={required}
+                                onChange={(e) => saveProjectAssignment(def, { required: e.target.checked, assignedUserId: userIdSel || null, estimatedHours: est })}
+                                disabled={wkSavingId === def.id}
+                              />
+                              Required
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-600 whitespace-nowrap">Assign</span>
+                              <select
+                                className="rounded-md border px-2 py-1 text-sm"
+                                value={userIdSel}
+                                onChange={(e) => saveProjectAssignment(def, { required, assignedUserId: e.target.value || null, estimatedHours: est })}
+                                disabled={wkSavingId === def.id}
+                              >
+                                <option value="">Unassigned</option>
+                                {wkUsers.map((u) => (
+                                  <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-600 whitespace-nowrap">Hours</span>
+                              <input
+                                type="number"
+                                className="w-24 rounded-md border px-2 py-1 text-sm"
+                                value={est ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value === "" ? null : Number(e.target.value);
+                                  saveProjectAssignment(def, { required, assignedUserId: userIdSel || null, estimatedHours: val });
+                                }}
+                                disabled={wkSavingId === def.id}
+                              />
+                            </div>
+                            <div className="text-right">
+                              {asn ? (
+                                <span className="inline-block text-[11px] text-slate-500">Saved</span>
+                              ) : (
+                                <span className="inline-block text-[11px] text-slate-500">Not yet assigned</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* Material Tracking */}
+                <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm backdrop-blur">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
+                      <span aria-hidden>📦</span>
+                      Material Tracking
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
+                      onClick={saveMaterialDates}
+                      disabled={materialSaving}
+                    >
+                      {materialSaving ? "Saving..." : "Save Materials"}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      { key: 'timber', label: 'Timber', icon: '🪵' },
+                      { key: 'glass', label: 'Glass', icon: '🪟' },
+                      { key: 'ironmongery', label: 'Ironmongery', icon: '🔩' },
+                      { key: 'paint', label: 'Paint', icon: '🎨' },
+                    ].map((material) => (
+                      <div key={material.key} className="rounded-xl border bg-white/80 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span>{material.icon}</span>
+                          <span className="text-sm font-medium text-slate-900">{material.label}</span>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block">
+                            <span className="text-xs text-slate-600">Ordered</span>
+                            <input
+                              type="date"
+                              className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                              value={materialDates[`${material.key}OrderedAt` as keyof MaterialDates] || ""}
+                              onChange={(e) => setMaterialDates(prev => ({
+                                ...prev,
+                                [`${material.key}OrderedAt`]: e.target.value || null
+                              }))}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs text-slate-600">Expected</span>
+                            <input
+                              type="date"
+                              className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                              value={materialDates[`${material.key}ExpectedAt` as keyof MaterialDates] || ""}
+                              onChange={(e) => setMaterialDates(prev => ({
+                                ...prev,
+                                [`${material.key}ExpectedAt`]: e.target.value || null
+                              }))}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs text-slate-600">Received</span>
+                            <input
+                              type="date"
+                              className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                              value={materialDates[`${material.key}ReceivedAt` as keyof MaterialDates] || ""}
+                              onChange={(e) => setMaterialDates(prev => ({
+                                ...prev,
+                                [`${material.key}ReceivedAt`]: e.target.value || null
+                              }))}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+              </div>
+            </div>
+          )}
 
           {/* Follow-up Tab */}
           {currentStage === 'follow-up' && (
