@@ -515,9 +515,9 @@ router.post('/invite', async (req, res) => {
     }
 
     // Setup token (30m expiry) for password creation
-    const setupToken = jwt.sign({ userId: existing.id, tenantId: auth.tenantId, kind: 'setup' }, JWT_SECRET, { expiresIn: '30m' });
-    const appUrl = (process.env.APP_URL || 'https://joineryai.app').replace(/\/$/, '');
-    const setupLink = `${appUrl}/signup?token=${encodeURIComponent(setupToken)}`;
+  const setupToken = jwt.sign({ userId: existing.id, tenantId: auth.tenantId, kind: 'setup' }, JWT_SECRET, { expiresIn: '30m' });
+  const appUrl = (process.env.APP_URL || 'https://joineryai.app').replace(/\/$/, '');
+  const setupLink = `${appUrl}/accept-invite?setup_jwt=${encodeURIComponent(setupToken)}`;
 
     // TODO: Replace console.log with email sending provider
     console.log(`[invite] Send setup link to ${normalizedEmail}: ${setupLink}`);

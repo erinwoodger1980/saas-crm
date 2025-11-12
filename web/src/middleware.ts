@@ -8,6 +8,7 @@ const PUBLIC_EXACT = new Set([
   "/login",
   "/signin",
   "/signup",
+  "/accept-invite",
   "/forgot-password",
   "/reset-password",
   "/thank-you",

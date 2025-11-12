@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { apiFetch } from "@/lib/api"; // ← uses sanitized API_BASE under the hood
+import { apiFetch } from "@/lib/api";
 
 const FOUNDERS = process.env.NEXT_PUBLIC_FOUNDERS_PROMO_CODE || "";
 
@@ -10,11 +10,11 @@ export default function SignupPage() {
   const [plan, setPlan] = useState<"monthly" | "annual">("monthly");
   const [promo, setPromo] = useState(FOUNDERS);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit() {
     setLoading(true);
-    setErr(null);
+    setError(null);
     try {
       const { url } = await apiFetch<{ url: string }>("/public/signup", {
         method: "POST",
@@ -27,7 +27,7 @@ export default function SignupPage() {
       });
       window.location.href = url;
     } catch (e: any) {
-      setErr(e?.message || "internal_error");
+      setError(e?.message || "internal_error");
       setLoading(false);
     }
   }
@@ -75,7 +75,7 @@ export default function SignupPage() {
             placeholder="Optional"
           />
         </div>
-        {err && <div className="border border-red-300 bg-red-50 text-red-700 p-3 rounded">{err}</div>}
+        {error && <div className="border border-red-300 bg-red-50 text-red-700 p-3 rounded">{error}</div>}
         <button
           type="button"
           onClick={submit}
