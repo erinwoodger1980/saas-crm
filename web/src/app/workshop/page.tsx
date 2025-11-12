@@ -443,6 +443,8 @@ export default function WorkshopPage() {
         (elem as any).msRequestFullscreen();
       }
       setIsFullscreen(true);
+      // Hide app shell by adding class to body
+      document.body.classList.add('workshop-display-mode');
     } else {
       // Exit fullscreen
       if (document.exitFullscreen) {
@@ -453,6 +455,8 @@ export default function WorkshopPage() {
         (document as any).msExitFullscreen();
       }
       setIsFullscreen(false);
+      // Show app shell again
+      document.body.classList.remove('workshop-display-mode');
     }
   }
 
@@ -461,6 +465,13 @@ export default function WorkshopPage() {
     function handleFullscreenChange() {
       const isCurrentlyFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement || (document as any).msFullscreenElement);
       setIsFullscreen(isCurrentlyFullscreen);
+      
+      // Sync body class with fullscreen state
+      if (isCurrentlyFullscreen) {
+        document.body.classList.add('workshop-display-mode');
+      } else {
+        document.body.classList.remove('workshop-display-mode');
+      }
     }
     
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -471,6 +482,8 @@ export default function WorkshopPage() {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+      // Clean up class when component unmounts
+      document.body.classList.remove('workshop-display-mode');
     };
   }, []);
 
@@ -573,10 +586,14 @@ export default function WorkshopPage() {
   };
 
   const getWeekCapacity = (weekNumber: number) => {
-    // Same week start logic as value calc
-    const today = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay() + ((weekNumber - 1) * 7));
+    // Week 1 = first week of current month
+    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    const firstDayOfWeek = monthStart.getDay();
+    const firstSunday = new Date(monthStart);
+    firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
+    
+    const weekStart = new Date(firstSunday);
+    weekStart.setDate(firstSunday.getDate() + ((weekNumber - 1) * 7));
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
 
@@ -599,9 +616,14 @@ export default function WorkshopPage() {
   };
 
   const getWeekDemand = (weekNumber: number) => {
-    const today = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay() + ((weekNumber - 1) * 7));
+    // Week 1 = first week of current month
+    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    const firstDayOfWeek = monthStart.getDay();
+    const firstSunday = new Date(monthStart);
+    firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
+    
+    const weekStart = new Date(firstSunday);
+    weekStart.setDate(firstSunday.getDate() + ((weekNumber - 1) * 7));
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
 
@@ -628,33 +650,53 @@ export default function WorkshopPage() {
     if (!proj.startDate || !proj.deliveryDate || !proj.valueGBP) return 0;
     
     const projectStart = new Date(proj.startDate);
+    projectStart.setHours(0, 0, 0, 0);
     const projectEnd = new Date(proj.deliveryDate);
+    projectEnd.setHours(23, 59, 59, 999);
     const value = Number(proj.valueGBP) || 0;
+    
+    if (value === 0) return 0;
     
     // Calculate overlap between project dates and range
     const overlapStart = new Date(Math.max(projectStart.getTime(), rangeStart.getTime()));
     const overlapEnd = new Date(Math.min(projectEnd.getTime(), rangeEnd.getTime()));
     
+    // No overlap if range doesn't intersect with project
     if (overlapStart > overlapEnd) return 0;
     
-    // Calculate days
+    // Calculate days (use full 24h periods)
     const overlapDays = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const totalProjectDays = Math.ceil((projectEnd.getTime() - projectStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     
-    return (value * overlapDays) / totalProjectDays;
+    const proportionalValue = (value * overlapDays) / totalProjectDays;
+    return proportionalValue;
   };
 
   const getWeekTotal = (weekNumber: number) => {
-    // Get first day of the week (assuming week 1 starts at beginning of schedule)
-    const today = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay() + ((weekNumber - 1) * 7));
+    // Week 1 = first week of current month, Week 2 = second week, etc.
+    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    
+    // Find the Sunday of the week containing the 1st of the month
+    const firstDayOfWeek = monthStart.getDay(); // 0 = Sunday
+    const firstSunday = new Date(monthStart);
+    firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
+    
+    // Calculate week start based on weekNumber (1-based)
+    const weekStart = new Date(firstSunday);
+    weekStart.setDate(firstSunday.getDate() + ((weekNumber - 1) * 7));
+    weekStart.setHours(0, 0, 0, 0);
+    
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
     
-    return projects.reduce((sum, proj) => {
-      return sum + getProportionalValue(proj, weekStart, weekEnd);
-    }, 0);
+    let total = 0;
+    for (const proj of projects) {
+      const projValue = getProportionalValue(proj, weekStart, weekEnd);
+      total += projValue;
+    }
+    
+    return total;
   };
 
   const getMonthTotal = () => {
@@ -1003,10 +1045,13 @@ export default function WorkshopPage() {
                       const dem = getWeekDemand(weekNum);
                       const free = Math.round(cap - dem);
                       const freeColor = free < 0 ? 'text-red-600' : 'text-emerald-700';
-                      // Holiday day counts in this week
-                      const today = new Date();
-                      const weekStart = new Date(today);
-                      weekStart.setDate(today.getDate() - today.getDay() + ((weekNum - 1) * 7));
+                      // Holiday day counts in this week (use same logic as capacity/demand)
+                      const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+                      const firstDayOfWeek = monthStart.getDay();
+                      const firstSunday = new Date(monthStart);
+                      firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
+                      const weekStart = new Date(firstSunday);
+                      weekStart.setDate(firstSunday.getDate() + ((weekNum - 1) * 7));
                       const weekEnd = new Date(weekStart);
                       weekEnd.setDate(weekStart.getDate() + 6);
                       const weekdayList = eachDay(weekStart, weekEnd).filter(isWeekday);
