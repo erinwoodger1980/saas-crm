@@ -62,6 +62,7 @@ import mlInsightsRouter from "./routes/ml-insights";
 import mlStatusRouter from "./routes/ml-status";
 import featureFlagsRouter from "./routes/feature-flags";
 import workshopRouter from "./routes/workshop";
+import workshopProcessesRouter from "./routes/workshop-processes";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -531,6 +532,7 @@ app.use("/keywords", requireAuth, keywordsRouter);
 app.use("/ads", requireAuth, adsRouter);
 app.use("/feature-requests", featureRequestsRouter);
 app.use("/workshop", requireAuth, workshopRouter);
+app.use("/workshop-processes", requireAuth, workshopProcessesRouter);
 app.use("/auth", makeMeAdminRouter);
 // Developer Console: AI Codex runner
 app.use("/ai/codex", codexRunRouter);
