@@ -73,6 +73,7 @@ model Tenant {
   processPlans          ProcessPlan[]
   timeEntries           TimeEntry[]
   targets               Target[]
+  holidays              Holiday[]
   keywordPerformance    KeywordPerformance[]
   keywordSuggestions    KeywordSuggestion[]
   landingTenant         LandingTenant?
@@ -146,6 +147,7 @@ model User {
   // Workshop relations
   processPlansAssigned   ProcessPlan[]
   timeEntries            TimeEntry[]
+  holidays               Holiday[]
 }
 
 model SignupToken {
