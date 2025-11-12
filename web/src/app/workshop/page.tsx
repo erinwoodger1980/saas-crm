@@ -1,3 +1,51 @@
+// Quick log modal for staff to log hours for today
+function QuickLogModal({ users, processes, onSave, onClose }) {
+  const [form, setForm] = useState({ userId: '', process: '', hours: '', notes: '' });
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <Card className="p-6 max-w-md w-full m-4" onClick={e => e.stopPropagation()}>
+        <h2 className="text-xl font-semibold mb-4">Log Hours for Today</h2>
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium mb-1 block">User</label>
+            <Select value={form.userId} onValueChange={v => setForm(f => ({ ...f, userId: v }))}>
+              <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
+              <SelectContent>
+                {users.map(u => (
+                  <SelectItem key={u.id} value={u.id}>{u.name || u.email}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">Process/Category</label>
+            <Select value={form.process} onValueChange={v => setForm(f => ({ ...f, process: v }))}>
+              <SelectTrigger><SelectValue placeholder="Select process or category" /></SelectTrigger>
+              <SelectContent>
+                {processes.map(p => (
+                  <SelectItem key={p} value={p}>{formatProcess(p)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">Hours</label>
+            <Input type="number" min="0" step="0.25" value={form.hours} onChange={e => setForm(f => ({ ...f, hours: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">Notes</label>
+            <Input type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button onClick={() => onSave({ ...form, date: today })} disabled={!form.userId || !form.process || !form.hours}>Log Hours</Button>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
 "use client";
 
 import { useEffect, useState } from "react";
@@ -19,6 +67,9 @@ const PROCESSES = [
   "GLAZING",
   "IRONMONGERY",
   "INSTALLATION",
+  "CLEANING",
+  "ADMIN",
+  "HOLIDAY",
 ] as const;
 
 type WorkshopProcess = typeof PROCESSES[number];
@@ -44,6 +95,8 @@ type Project = {
   processPlans: Plan[];
   totalHoursByProcess: Record<string, number>;
   totalProjectHours: number;
+  expectedHours?: number | string | null;
+  actualHours?: number | string | null;
 };
 
 type ScheduleResponse = { ok: boolean; weeks: number; projects: Project[] };
@@ -73,7 +126,16 @@ export default function WorkshopPage() {
   const [loggingFor, setLoggingFor] = useState<Record<string, LogForm | null>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [backfillBusy, setBackfillBusy] = useState(false);
-  const [editingDates, setEditingDates] = useState<Record<string, { startDate: string; deliveryDate: string; value: string }>>({});
+  const [editingDates, setEditingDates] = useState<Record<string, { startDate: string; deliveryDate: string; value: string; expectedHours?: string; actualHours?: string }>>({});
+  const [draggingProject, setDraggingProject] = useState<string | null>(null);
+  const [showHoursModal, setShowHoursModal] = useState<{ projectId: string; projectName: string } | null>(null);
+  const [showQuickLog, setShowQuickLog] = useState(false);
+  const [hoursForm, setHoursForm] = useState<{ process: WorkshopProcess | ""; userId: string; hours: string; date: string }>({
+    process: "",
+    userId: "",
+    hours: "",
+    date: new Date().toISOString().split('T')[0]
+  });
 
   async function loadAll() {
     setLoading(true);
@@ -216,6 +278,82 @@ export default function WorkshopPage() {
     });
   }
 
+  // Drag and drop handlers
+  function handleDragStart(projectId: string) {
+    setDraggingProject(projectId);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+  }
+
+  async function handleDrop(date: Date) {
+    if (!draggingProject) return;
+    
+    const proj = projects.find(p => p.id === draggingProject);
+    if (!proj || !proj.startDate || !proj.deliveryDate) return;
+    
+    // Calculate duration
+    const oldStart = new Date(proj.startDate);
+    const oldEnd = new Date(proj.deliveryDate);
+    const duration = oldEnd.getTime() - oldStart.getTime();
+    
+    // Set new dates
+    const newStart = date;
+    const newEnd = new Date(newStart.getTime() + duration);
+    
+    try {
+      await apiFetch(`/workshop/project/${draggingProject}`, {
+        method: "PATCH",
+        json: {
+          startDate: newStart.toISOString().split('T')[0],
+          deliveryDate: newEnd.toISOString().split('T')[0],
+        },
+      });
+      await loadAll();
+    } catch (e) {
+      console.error("Failed to update project dates", e);
+    } finally {
+      setDraggingProject(null);
+    }
+  }
+
+  // Hours tracking
+  function openHoursModal(projectId: string, projectName: string) {
+    setShowHoursModal({ projectId, projectName });
+    setHoursForm({
+      process: "",
+      userId: "",
+      hours: "",
+      date: new Date().toISOString().split('T')[0]
+    });
+  }
+
+  function closeHoursModal() {
+    setShowHoursModal(null);
+  }
+
+  async function saveHours() {
+    if (!showHoursModal || !hoursForm.process || !hoursForm.userId || !hoursForm.hours) return;
+    
+    try {
+      await apiFetch("/workshop/time", {
+        method: "POST",
+        json: {
+          projectId: showHoursModal.projectId,
+          process: hoursForm.process,
+          userId: hoursForm.userId,
+          date: hoursForm.date,
+          hours: Number(hoursForm.hours),
+        },
+      });
+      closeHoursModal();
+      await loadAll();
+    } catch (e) {
+      console.error("Failed to log hours", e);
+    }
+  }
+
   const weeksArray = Array.from({ length: weeks }, (_, i) => i + 1);
 
   // Calendar helper functions
@@ -349,6 +487,9 @@ export default function WorkshopPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Workshop</h1>
+        <Button variant="outline" size="sm" onClick={() => setShowQuickLog(true)}>
+          Quick Log Hours
+        </Button>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{projects.length} projects</span>
           <Button 
@@ -442,63 +583,45 @@ export default function WorkshopPage() {
           </div>
 
           {/* Calendar Grid */}
-          <div className="bg-white rounded-lg border overflow-hidden">
-            {/* Day Headers */}
-            <div className="grid grid-cols-7 bg-slate-50 border-b">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                <div key={day} className="p-3 text-center text-sm font-semibold text-slate-600">
-                  {day}
-                </div>
-              ))}
-            </div>
-            
-            {/* Calendar Days */}
-            <div className="grid grid-cols-7">
-              {getDaysInMonth(currentMonth).map((date, idx) => {
-                const isToday = date && 
-                  date.toDateString() === new Date().toDateString();
-                const projectsOnDate = date ? getProjectsForDate(date) : [];
-                
-                return (
+          <div className="bg-white rounded-lg border overflow-hidden p-4">
+            {/* Render each project as a solid bar spanning its date range */}
+            {projects.map(proj => {
+              if (!proj.startDate || !proj.deliveryDate) return null;
+              const start = new Date(proj.startDate);
+              const end = new Date(proj.deliveryDate);
+              const daysInMonth = getDaysInMonth(currentMonth);
+              const monthStart = daysInMonth[0] || new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+              const monthEnd = daysInMonth[daysInMonth.length - 1] || new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+              // Clamp project bar to visible month
+              const barStart = start < monthStart ? monthStart : start;
+              const barEnd = end > monthEnd ? monthEnd : end;
+              if (!barStart || !barEnd || !monthStart || !monthEnd) return null;
+              const totalDays = Math.max(1, Math.ceil((barEnd.getTime() - barStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+              const monthDays = Math.max(1, daysInMonth.length);
+              const leftPercent = ((barStart.getTime() - monthStart.getTime()) / (monthEnd.getTime() - monthStart.getTime())) * 100;
+              const widthPercent = (totalDays / monthDays) * 100;
+              const progress = getProjectProgress(proj);
+              return (
+                <div
+                  key={proj.id}
+                  className="relative h-8 w-full mb-4 flex items-center"
+                  style={{ left: `${leftPercent}%`, width: `${widthPercent}%`, position: 'absolute' }}
+                  draggable
+                  onDragStart={() => handleDragStart(proj.id)}
+                  onClick={() => openHoursModal(proj.id, proj.name)}
+                  title={`${proj.name} (${progress}% complete)`}
+                >
+                  <div className="absolute left-0 top-0 h-full w-full bg-blue-400 rounded-full" />
                   <div
-                    key={idx}
-                    className={`min-h-[120px] p-2 border-r border-b ${
-                      !date ? 'bg-slate-50' : ''
-                    } ${isToday ? 'bg-blue-50' : ''}`}
-                  >
-                    {date && (
-                      <>
-                        <div className={`text-sm mb-2 ${isToday ? 'font-bold text-blue-600' : 'text-slate-600'}`}>
-                          {date.getDate()}
-                        </div>
-                        <div className="space-y-1">
-                          {projectsOnDate.map(proj => {
-                            const isStartDate = proj.startDate && 
-                              new Date(proj.startDate).toDateString() === date.toDateString();
-                            const isDeliveryDate = proj.deliveryDate && 
-                              new Date(proj.deliveryDate).toDateString() === date.toDateString();
-                            const progress = getProjectProgress(proj);
-                            const colorClass = getProgressColor(progress);
-                            
-                            return (
-                              <div 
-                                key={proj.id} 
-                                className={`text-xs p-1 rounded truncate ${colorClass}`}
-                                title={`${proj.name} - ${formatCurrency(Number(proj.valueGBP) || 0)} - ${progress}% complete`}
-                              >
-                                {isStartDate && <span className="font-bold">▶ </span>}
-                                {proj.name.length > 15 ? proj.name.substring(0, 15) + '...' : proj.name}
-                                {isDeliveryDate && <span className="font-bold"> ✓</span>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                    className="absolute left-0 top-0 h-full bg-green-500 rounded-full"
+                    style={{ width: `${progress}%`, transition: 'width 0.3s' }}
+                  />
+                  <span className="relative z-10 px-2 text-xs text-white font-semibold truncate">
+                    {proj.name} ({progress}%)
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           {/* Week Summary below calendar */}
@@ -615,9 +738,37 @@ export default function WorkshopPage() {
                       placeholder="Project value"
                     />
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Expected Hours</label>
+                      <Input
+                        type="number"
+                        value={editingDates[proj.id].expectedHours || ""}
+                        onChange={(e) => setEditingDates(prev => ({
+                          ...prev,
+                          [proj.id]: { ...prev[proj.id], expectedHours: e.target.value }
+                        }))}
+                        className="h-8 text-sm"
+                        placeholder="Expected hours"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Actual Hours</label>
+                      <Input
+                        type="number"
+                        value={editingDates[proj.id].actualHours || ""}
+                        onChange={(e) => setEditingDates(prev => ({
+                          ...prev,
+                          [proj.id]: { ...prev[proj.id], actualHours: e.target.value }
+                        }))}
+                        className="h-8 text-sm"
+                        placeholder="Actual hours"
+                      />
+                    </div>
+                  </div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => updateProjectDates(proj.id)}>
-                      Save Dates
+                      Save
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => cancelEditingDates(proj.id)}>
                       Cancel
@@ -637,6 +788,8 @@ export default function WorkshopPage() {
                   ) : (
                     <>📅 Set start & delivery dates</>
                   )}
+                  <span className="ml-2 text-xs text-green-700">Exp: {proj.expectedHours || 0}h</span>
+                  <span className="ml-2 text-xs text-blue-700">Act: {proj.actualHours || 0}h</span>
                 </button>
               )}
             </div>
@@ -747,6 +900,119 @@ export default function WorkshopPage() {
           </Card>
         ))}
       </div>
+      )}
+
+      {/* Hours Tracking Modal */}
+      {showQuickLog && (
+        <QuickLogModal
+          users={users}
+          processes={PROCESSES}
+          onSave={async (form) => {
+            try {
+              await apiFetch('/workshop/time', {
+                method: 'POST',
+                json: {
+                  userId: form.userId,
+                  process: form.process,
+                  date: form.date,
+                  hours: Number(form.hours),
+                  notes: form.notes,
+                },
+              });
+              setShowQuickLog(false);
+              await loadAll();
+            } catch (e) {
+              alert('Failed to log hours');
+            }
+          }}
+          onClose={() => setShowQuickLog(false)}
+        />
+      )}
+      {showHoursModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={closeHoursModal}
+        >
+          <Card 
+            className="p-6 max-w-md w-full m-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-xl font-semibold mb-4">
+              Log Hours - {showHoursModal.projectName}
+            </h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Process</label>
+                <Select 
+                  value={hoursForm.process} 
+                  onValueChange={(v) => setHoursForm(prev => ({ ...prev, process: v as WorkshopProcess }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select process" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROCESSES.map((p) => (
+                      <SelectItem key={p} value={p}>{formatProcess(p)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">User</label>
+                <Select 
+                  value={hoursForm.userId} 
+                  onValueChange={(v) => setHoursForm(prev => ({ ...prev, userId: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select user" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name || u.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">Date</label>
+                <Input
+                  type="date"
+                  value={hoursForm.date}
+                  onChange={(e) => setHoursForm(prev => ({ ...prev, date: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">Hours</label>
+                <Input
+                  type="number"
+                  step="0.25"
+                  min="0"
+                  placeholder="e.g. 8 or 7.5"
+                  value={hoursForm.hours}
+                  onChange={(e) => setHoursForm(prev => ({ ...prev, hours: e.target.value }))}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button 
+                  onClick={saveHours}
+                  disabled={!hoursForm.process || !hoursForm.userId || !hoursForm.hours}
+                >
+                  Log Hours
+                </Button>
+                <Button variant="ghost" onClick={closeHoursModal}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );
