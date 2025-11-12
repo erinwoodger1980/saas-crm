@@ -141,6 +141,19 @@ type Plan = {
   notes?: string | null;
 };
 
+type ProcessAssignment = {
+  id: string;
+  processCode: string;
+  processName: string;
+  required: boolean;
+  estimatedHours?: number | null;
+  assignedUser?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
+};
+
 type Project = {
   id: string;
   name: string;
@@ -150,6 +163,7 @@ type Project = {
   deliveryDate?: string | null;
   weeks: number;
   processPlans: Plan[];
+  processAssignments?: ProcessAssignment[]; // New process assignments
   totalHoursByProcess: Record<string, number>;
   totalProjectHours: number;
   expectedHours?: number | string | null;
@@ -999,24 +1013,42 @@ export default function WorkshopPage() {
                         
                         const progress = getProjectProgress(proj);
                         
-                        return segments.map((segment, segIdx) => (
-                          <div
-                            key={`${proj.id}-${segIdx}`}
-                            className="absolute rounded px-2 py-1 text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto truncate"
-                            style={{
-                              top: `${segment.row * 128}px`,
-                              left: `${(segment.col / 7) * 100}%`,
-                              width: `${(segment.span / 7) * 100}%`,
-                              background: `linear-gradient(90deg, #22c55e ${progress}%, #60a5fa ${progress}%)`,
-                            }}
-                            draggable
-                            onDragStart={() => handleDragStart(proj.id)}
-                            onClick={() => openHoursModal(proj.id, proj.name)}
-                            title={`${proj.name} (${progress}% complete)`}
-                          >
-                            {proj.name}
-                          </div>
-                        ));
+                        return segments.map((segment, segIdx) => {
+                          // Get assigned users from process assignments
+                          const assignedUsers = (proj.processAssignments || [])
+                            .filter(pa => pa.assignedUser)
+                            .map(pa => pa.assignedUser!.name || pa.assignedUser!.email.split('@')[0])
+                            .filter((name, idx, arr) => arr.indexOf(name) === idx); // Unique names
+                          
+                          const usersSummary = assignedUsers.length > 0 
+                            ? ` | Assigned: ${assignedUsers.join(', ')}`
+                            : '';
+                          
+                          return (
+                            <div
+                              key={`${proj.id}-${segIdx}`}
+                              className="absolute rounded px-2 py-1 text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto"
+                              style={{
+                                top: `${segment.row * 128}px`,
+                                left: `${(segment.col / 7) * 100}%`,
+                                width: `${(segment.span / 7) * 100}%`,
+                                background: `linear-gradient(90deg, #22c55e ${progress}%, #60a5fa ${progress}%)`,
+                              }}
+                              draggable
+                              onDragStart={() => handleDragStart(proj.id)}
+                              onClick={() => openHoursModal(proj.id, proj.name)}
+                              title={`${proj.name} (${progress}% complete)${usersSummary}`}
+                            >
+                              <div className="truncate">{proj.name}</div>
+                              {assignedUsers.length > 0 && (
+                                <div className="text-[10px] opacity-90 truncate">
+                                  👤 {assignedUsers.slice(0, 2).join(', ')}
+                                  {assignedUsers.length > 2 && ` +${assignedUsers.length - 2}`}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
                       })}
                     </div>
                   ));
@@ -1125,9 +1157,28 @@ export default function WorkshopPage() {
             <div className="flex items-baseline justify-between">
               <div className="flex-1">
                 <div className="font-medium">{proj.name}</div>
-                {proj.valueGBP != null && (
-                  <div className="text-xs text-muted-foreground">£{Number(proj.valueGBP).toLocaleString()}</div>
-                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {proj.valueGBP != null && (
+                    <div className="text-xs text-muted-foreground">£{Number(proj.valueGBP).toLocaleString()}</div>
+                  )}
+                  {(() => {
+                    const assignedUsers = (proj.processAssignments || [])
+                      .filter(pa => pa.assignedUser)
+                      .map(pa => pa.assignedUser!.name || pa.assignedUser!.email.split('@')[0])
+                      .filter((name, idx, arr) => arr.indexOf(name) === idx);
+                    
+                    if (assignedUsers.length === 0) return null;
+                    
+                    const usersSummary = assignedUsers.join(', ');
+                    
+                    return (
+                      <div className="text-xs text-blue-600" title={`Assigned: ${usersSummary}`}>
+                        👤 {assignedUsers.slice(0, 2).join(', ')}
+                        {assignedUsers.length > 2 && ` +${assignedUsers.length - 2} more`}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
               <div className="text-xs text-muted-foreground">Total hours: {proj.totalProjectHours || 0}</div>
             </div>
