@@ -701,6 +701,44 @@ router.get("/by-lead/:leadId", async (req: any, res: any) => {
 });
 
 /**
+ * POST /opportunities/ensure-for-lead/:leadId
+ * Idempotently returns the opportunity for a given lead, creating one if missing.
+ */
+router.post("/ensure-for-lead/:leadId", async (req: any, res: any) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const leadId = String(req.params.leadId);
+
+  // Ensure the lead exists and belongs to tenant
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead || lead.tenantId !== tenantId) {
+    return res.status(404).json({ error: "lead_not_found" });
+  }
+
+  // If an Opportunity already exists for this lead, return it
+  let opportunity = await prisma.opportunity.findFirst({
+    where: { tenantId, leadId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!opportunity) {
+    // Create a minimal opportunity for this lead
+    const title = lead.contactName?.trim() ? `${lead.contactName} – Project` : `Project for ${lead.id.slice(0, 6)}`;
+    opportunity = await prisma.opportunity.create({
+      data: {
+        tenantId,
+        leadId,
+        title,
+        // Leave start/delivery/value null by default
+      },
+    });
+  }
+
+  res.json({ ok: true, opportunity });
+});
+
+/**
  * PATCH /opportunities/:id
  * Update opportunity fields (startDate, deliveryDate, valueGBP, etc.)
  */
