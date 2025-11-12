@@ -1016,13 +1016,16 @@ router.patch("/:id", async (req, res) => {
         const startDate = (updated.custom as any)?.startDate || null;
         const deliveryDate = (updated.custom as any)?.deliveryDate || null;
         
+        // Use quote totalGBP if available, otherwise fall back to lead's quotedValue
+        const valueGBP = (latestQuote as any)?.totalGBP ?? updated.quotedValue ?? undefined;
+        
         await tx.opportunity.upsert({
           where: { leadId: id },
           update: {
             stage: "WON" as any,
             wonAt: new Date(),
             title,
-            valueGBP: (latestQuote as any)?.totalGBP ?? undefined,
+            valueGBP,
             startDate: startDate ? new Date(startDate) : undefined,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
           },
@@ -1032,7 +1035,7 @@ router.patch("/:id", async (req, res) => {
             title,
             stage: "WON" as any,
             wonAt: new Date(),
-            valueGBP: (latestQuote as any)?.totalGBP ?? undefined,
+            valueGBP,
             startDate: startDate ? new Date(startDate) : null,
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
           },
