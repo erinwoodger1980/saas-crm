@@ -1019,7 +1019,7 @@ router.patch("/:id", async (req, res) => {
         // Use quote totalGBP if available, otherwise fall back to lead's quotedValue
         const valueGBP = (latestQuote as any)?.totalGBP ?? updated.quotedValue ?? undefined;
         
-        await tx.opportunity.upsert({
+        const opportunity = await tx.opportunity.upsert({
           where: { leadId: id },
           update: {
             stage: "WON" as any,
@@ -1040,6 +1040,31 @@ router.patch("/:id", async (req, res) => {
             deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
           },
         });
+        
+        // Auto-seed process assignments for this opportunity
+        const processDefinitions = await tx.workshopProcessDefinition.findMany({
+          where: { tenantId, requiredByDefault: true },
+          orderBy: { sortOrder: "asc" },
+        });
+        
+        for (const processDef of processDefinitions) {
+          await tx.projectProcessAssignment.upsert({
+            where: {
+              opportunityId_processDefinitionId: {
+                opportunityId: opportunity.id,
+                processDefinitionId: processDef.id,
+              },
+            },
+            create: {
+              tenantId,
+              opportunityId: opportunity.id,
+              processDefinitionId: processDef.id,
+              required: true,
+              estimatedHours: processDef.estimatedHours,
+            },
+            update: {}, // Don't update if already exists
+          });
+        }
       });
     }
   } catch (e) {
