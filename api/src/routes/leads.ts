@@ -831,8 +831,13 @@ router.patch("/:id", async (req, res) => {
   applyQuestionnairePatch(body.questionnaire);
   applyQuestionnairePatch(body.custom);
 
+  // Only apply canonical updates to Lead if they exist as direct fields
+  // startDate and deliveryDate should only go to custom and opportunity
+  const leadOnlyFields = ['estimatedValue', 'quotedValue', 'dateQuoteSent'];
   for (const [key, value] of Object.entries(canonicalUpdates)) {
-    data[key] = value;
+    if (leadOnlyFields.includes(key)) {
+      data[key] = value;
+    }
   }
   data.custom = nextCustom;
 
