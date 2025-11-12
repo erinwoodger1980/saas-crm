@@ -189,6 +189,8 @@ model Opportunity {
   // Workshop relations
   processPlans  ProcessPlan[]
   timeEntries   TimeEntry[]
+    expectedHours      Decimal?                @default(0)
+    actualHours        Decimal?                @default(0)
 
   @@index([tenantId, stage])
 }
@@ -1031,7 +1033,8 @@ model TimeEntry {
   process   WorkshopProcess
   userId    String
   date      DateTime
-  hours     Decimal          @default(0)
+    hours     Decimal          @default(0)
+    expectedHours     Decimal? @default(0)
   notes     String?
   createdAt DateTime         @default(now())
 
