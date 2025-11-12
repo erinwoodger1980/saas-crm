@@ -11,8 +11,8 @@ router.get("/", async (req: any, res) => {
     where: { tenantId },
     orderBy: { sortOrder: "asc" },
   });
-  
-  res.json({ ok: true, processes });
+  // Return array directly to match web client expectations
+  res.json(processes);
 });
 
 // POST /workshop-processes - Create a new process definition
@@ -136,9 +136,13 @@ router.post("/project/:opportunityId", async (req: any, res) => {
   }
   
   // Verify opportunity and process definition belong to tenant
-  const [opp, processDef] = await Promise.all([
+  const [opp, processDef, prevAssignment] = await Promise.all([
     prisma.opportunity.findFirst({ where: { id: opportunityId, tenantId } }),
     prisma.workshopProcessDefinition.findFirst({ where: { id: processDefinitionId, tenantId } }),
+    prisma.projectProcessAssignment.findFirst({
+      where: { tenantId, opportunityId, processDefinitionId },
+      select: { id: true, assignedUserId: true, required: true },
+    }),
   ]);
   
   if (!opp) {
@@ -176,6 +180,86 @@ router.post("/project/:opportunityId", async (req: any, res) => {
     },
   });
   
+  // Auto-task generation and syncing
+  try {
+    const isRequired = assignment.required === true;
+    const newAssigneeId: string | null = assignment.assignedUser?.id || assignedUserId || null;
+    const oldAssigneeId: string | null = prevAssignment?.assignedUserId || null;
+
+    // Build deterministic task title per (project, process)
+    const processName = assignment.processDefinition?.name || processDef?.name || "Process";
+    const projectTitle = opp?.title || opp?.id || opportunityId;
+    const taskTitle = `${processName} – ${projectTitle}`;
+
+    // Look for existing task for this (tenant, WORKSHOP, project, title)
+    const existingTask = await prisma.task.findFirst({
+      where: {
+        tenantId,
+        relatedType: "WORKSHOP" as any,
+        relatedId: opportunityId,
+        status: { not: "CANCELLED" as any },
+        title: { equals: taskTitle, mode: "insensitive" },
+      },
+      include: { assignees: true },
+    });
+
+    // Helper to set single assignee (replace all)
+    async function setAssignee(taskId: string, userId: string | null) {
+      // Remove all current assignees then add the new one (if provided)
+      await prisma.taskAssignee.deleteMany({ where: { taskId } });
+      if (userId) {
+        await prisma.taskAssignee.create({ data: { taskId, userId, role: "OWNER" as any } });
+      }
+    }
+
+    if (isRequired && newAssigneeId) {
+      if (!existingTask) {
+        const dueAt = opp?.deliveryDate ? new Date(opp.deliveryDate) : null;
+        const created = await prisma.task.create({
+          data: {
+            tenantId,
+            title: taskTitle,
+            description: `Workshop process: ${processName}`,
+            relatedType: "WORKSHOP" as any,
+            relatedId: opportunityId,
+            priority: "MEDIUM" as any,
+            status: "OPEN" as any,
+            dueAt: dueAt ?? undefined,
+            meta: { processDefinitionId, processCode: processDef?.code || assignment.processDefinition?.code || null } as any,
+            assignees: { create: [{ userId: newAssigneeId, role: "OWNER" as any }] },
+          },
+        });
+        await prisma.activityLog.create({
+          data: {
+            tenantId,
+            entity: "TASK" as any,
+            entityId: created.id,
+            verb: "CREATED" as any,
+            actorId: req.auth?.userId ?? undefined,
+            data: { source: "workshop_process_assignment", opportunityId, processDefinitionId } as any,
+          },
+        });
+      } else {
+        // Ensure correct assignee if changed
+        if (newAssigneeId !== oldAssigneeId) {
+          await setAssignee(existingTask.id, newAssigneeId);
+        }
+        // Re-open if it was cancelled previously
+        if (existingTask.status === ("CANCELLED" as any)) {
+          await prisma.task.update({ where: { id: existingTask.id }, data: { status: "OPEN" as any } });
+        }
+      }
+    } else if (existingTask) {
+      // If no longer required or no assignee, keep the task but clear assignees; optionally cancel
+      await setAssignee(existingTask.id, null);
+      // Optional: cancel to avoid clutter
+      await prisma.task.update({ where: { id: existingTask.id }, data: { status: "CANCELLED" as any } });
+    }
+  } catch (err) {
+    // Don't fail the main request if task automation fails
+    console.warn("[workshop-processes] task automation failed:", (err as any)?.message || err);
+  }
+
   res.json({ ok: true, assignment });
 });
 
