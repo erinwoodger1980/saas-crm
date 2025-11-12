@@ -1104,20 +1104,19 @@ export default function WorkshopPage() {
                           return (
                             <div
                               key={`${proj.id}-${segIdx}`}
-                              className="absolute rounded px-2 py-1 text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto flex items-center gap-1"
+                              className="absolute rounded text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto flex items-stretch gap-1"
                               style={{
                                 top: `${segment.row * 128}px`,
                                 left: `${(segment.col / 7) * 100}%`,
                                 width: `${(segment.span / 7) * 100}%`,
-                                background,
                               }}
                               draggable
                               onDragStart={() => handleDragStart(proj.id)}
                               onClick={() => setShowProjectDetails(proj.id)}
                               title={`${proj.name} (${progress}% complete)${usersSummary}`}
                             >
-                              {/* Traffic lights for materials with labels */}
-                              <div className="flex gap-0.5 shrink-0">
+                              {/* Traffic lights for materials with labels (no background behind these) */}
+                              <div className="flex gap-0.5 shrink-0 items-center pl-1 pr-0.5 py-1">
                                 <div className="flex flex-col items-center">
                                   <div className="text-[8px] font-bold leading-none mb-0.5">T</div>
                                   <div 
@@ -1151,14 +1150,19 @@ export default function WorkshopPage() {
                                   />
                                 </div>
                               </div>
-                              
-                              <div className="truncate flex-1">{proj.name}</div>
-                              {assignedUsers.length > 0 && (
-                                <div className="text-[10px] opacity-90 truncate shrink-0">
-                                  👤 {assignedUsers.slice(0, 2).join(', ')}
-                                  {assignedUsers.length > 2 && ` +${assignedUsers.length - 2}`}
-                                </div>
-                              )}
+                              {/* Content area with gradient background (kept separate from lights) */}
+                              <div
+                                className="flex items-center gap-1 rounded px-2 py-1 flex-1"
+                                style={{ background }}
+                              >
+                                <div className="truncate flex-1">{proj.name}</div>
+                                {assignedUsers.length > 0 && (
+                                  <div className="text-[10px] opacity-90 truncate shrink-0">
+                                    👤 {assignedUsers.slice(0, 2).join(', ')}
+                                    {assignedUsers.length > 2 && ` +${assignedUsers.length - 2}`}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         });
