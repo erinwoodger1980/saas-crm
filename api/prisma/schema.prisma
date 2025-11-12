@@ -1022,6 +1022,8 @@ model WorkshopProcessDefinition {
   sortOrder         Int      @default(0)
   requiredByDefault Boolean  @default(true) // Whether this process is required by default for new projects
   estimatedHours    Decimal? // Optional estimated hours for this process
+  isColorKey        Boolean  @default(false) // If true, this process determines the project's schedule color
+  assignmentGroup   String?  // Group code for batch user assignment (e.g., "PRODUCTION")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

@@ -180,6 +180,52 @@ router.post("/project/:opportunityId", async (req: any, res) => {
     },
   });
   
+  // If this process has an assignment group and a user was assigned, assign to all processes in the group
+  if (processDef.assignmentGroup && assignedUserId) {
+    // Find all other processes in the same group
+    const groupProcesses = await prisma.workshopProcessDefinition.findMany({
+      where: {
+        tenantId,
+        assignmentGroup: processDef.assignmentGroup,
+        id: { not: processDefinitionId }, // Exclude the current process
+      },
+    });
+    
+    // Find all existing assignments for this opportunity
+    const existingAssignments = await prisma.projectProcessAssignment.findMany({
+      where: {
+        tenantId,
+        opportunityId,
+        processDefinitionId: { in: groupProcesses.map(p => p.id) },
+      },
+    });
+    
+    // Update assignments for all processes in the group
+    for (const groupProcess of groupProcesses) {
+      const existingAssignment = existingAssignments.find(a => a.processDefinitionId === groupProcess.id);
+      
+      if (existingAssignment) {
+        // Update existing assignment
+        await prisma.projectProcessAssignment.update({
+          where: { id: existingAssignment.id },
+          data: { assignedUserId },
+        });
+      } else {
+        // Create new assignment
+        await prisma.projectProcessAssignment.create({
+          data: {
+            tenantId,
+            opportunityId,
+            processDefinitionId: groupProcess.id,
+            required: groupProcess.requiredByDefault,
+            assignedUserId,
+            estimatedHours: groupProcess.estimatedHours,
+          },
+        });
+      }
+    }
+  }
+  
   // Auto-task generation and syncing
   try {
     const isRequired = assignment.required === true;

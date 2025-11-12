@@ -318,6 +318,8 @@ router.get("/schedule", async (req: any, res) => {
       processName: pa.processDefinition.name,
       required: pa.required,
       estimatedHours: pa.estimatedHours || pa.processDefinition.estimatedHours,
+      isColorKey: pa.processDefinition.isColorKey || false,
+      assignmentGroup: pa.processDefinition.assignmentGroup || null,
       assignedUser: pa.assignedUser ? {
         id: pa.assignedUser.id,
         name: pa.assignedUser.name,

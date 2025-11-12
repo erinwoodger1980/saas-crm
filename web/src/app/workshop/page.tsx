@@ -147,6 +147,8 @@ type ProcessAssignment = {
   processName: string;
   required: boolean;
   estimatedHours?: number | null;
+  isColorKey?: boolean; // True if this process determines project color
+  assignmentGroup?: string | null; // Group for batch assignment
   assignedUser?: {
     id: string;
     name: string | null;
@@ -203,16 +205,22 @@ function getUserColor(userId: string, users: UserLite[]): string {
 }
 
 function getProjectColor(proj: Project, users: UserLite[]): string {
-  const assignedUserIds = (proj.processAssignments || [])
-    .filter(pa => pa.assignedUser)
-    .map(pa => pa.assignedUser!.id)
-    .filter((id, idx, arr) => arr.indexOf(id) === idx);
+  // Find the color key process (e.g., Assembly)
+  const colorKeyAssignment = (proj.processAssignments || []).find(pa => pa.isColorKey);
   
-  if (assignedUserIds.length === 0) return '#60a5fa';
-  if (assignedUserIds.length === 1) return getUserColor(assignedUserIds[0], users);
+  // If there's a color key process with an assigned user, use that user's color
+  if (colorKeyAssignment?.assignedUser) {
+    return getUserColor(colorKeyAssignment.assignedUser.id, users);
+  }
   
-  const colors = assignedUserIds.slice(0, 3).map(id => getUserColor(id, users));
-  return `linear-gradient(90deg, ${colors.join(', ')})`;
+  // Fallback: use first assigned user's color
+  const firstAssignment = (proj.processAssignments || []).find(pa => pa.assignedUser);
+  if (firstAssignment?.assignedUser) {
+    return getUserColor(firstAssignment.assignedUser.id, users);
+  }
+  
+  // No assignments: default blue
+  return '#60a5fa';
 }
 
 export default function WorkshopPage() {
@@ -1567,7 +1575,7 @@ export default function WorkshopPage() {
         const progress = getProjectProgress(project);
         const totalEstimated = (project.processAssignments || [])
           .reduce((sum: number, pa) => sum + (pa.estimatedHours || 0), 0);
-        const totalLogged = project.totalProjectHours || 0;
+        const totalLogged = Number(project.totalProjectHours || 0);
         
         return (
           <div 
@@ -1631,7 +1639,7 @@ export default function WorkshopPage() {
                   {project.processAssignments && project.processAssignments.length > 0 ? (
                     <div className="space-y-2">
                       {project.processAssignments.map((pa) => {
-                        const processTime = project.totalHoursByProcess?.[pa.processCode] || 0;
+                        const processTime = Number(project.totalHoursByProcess?.[pa.processCode] || 0);
                         
                         return (
                           <div key={pa.id} className="p-3 border rounded flex justify-between items-center">
