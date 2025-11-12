@@ -671,9 +671,14 @@ export default function LeadModal({
         setWkAssignments(norm);
         
         // Load material dates and project details
+        console.log('[LeadModal] oppByLead response:', oppByLead);
         const opp = (oppByLead && (oppByLead.opportunity || oppByLead)) || (oppDetails && (oppDetails.lead || oppDetails)) || null;
+        console.log('[LeadModal] resolved opp:', opp);
         if (opp) {
-          if (opp.id) setOpportunityId(String(opp.id));
+          if (opp.id) {
+            console.log('[LeadModal] setting opportunityId:', opp.id);
+            setOpportunityId(String(opp.id));
+          }
           setMaterialDates({
             timberOrderedAt: opp.timberOrderedAt || null,
             timberExpectedAt: opp.timberExpectedAt || null,
@@ -781,16 +786,18 @@ export default function LeadModal({
 
   async function saveOpportunityField(field: string, value: any) {
     const id = opportunityId || lead?.id;
+    console.log('[saveOpportunityField]', { field, value, opportunityId, leadId: lead?.id, usingId: id });
     if (!id) return;
     try {
       const payload: any = {};
       payload[field] = value;
       
-      await apiFetch(`/opportunities/${encodeURIComponent(id)}` , {
+      const response = await apiFetch(`/opportunities/${encodeURIComponent(id)}` , {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      console.log('[saveOpportunityField] response:', response);
     } catch (e: any) {
       console.error(`Failed to save ${field}:`, e);
       alert(`Could not save ${field}. Please try again.`);
