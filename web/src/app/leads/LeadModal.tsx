@@ -832,20 +832,27 @@ export default function LeadModal({
     if (!id) {
       id = await ensureOpportunity();
     }
-    console.log('[saveOpportunityField]', { field, value, opportunityId, leadId: lead?.id, usingId: id });
-    if (!id) return;
+    console.log('[saveOpportunityField] called with:', { field, value, opportunityId, leadId: lead?.id, resolvedId: id, idType: typeof id });
+    if (!id) {
+      console.warn('[saveOpportunityField] no id resolved, aborting');
+      return;
+    }
+    
+    const url = `/opportunities/${encodeURIComponent(id)}`;
+    console.log('[saveOpportunityField] will PATCH to:', url);
+    
     try {
       const payload: any = {};
       payload[field] = value;
       
-      const response = await apiFetch(`/opportunities/${encodeURIComponent(id)}` , {
+      const response = await apiFetch(url, {
         method: "PATCH",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       console.log('[saveOpportunityField] response:', response);
     } catch (e: any) {
-      console.error(`Failed to save ${field}:`, e);
+      console.error(`[saveOpportunityField] Failed to save ${field}:`, e);
       alert(`Could not save ${field}. Please try again.`);
     }
   }
