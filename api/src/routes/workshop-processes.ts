@@ -18,7 +18,7 @@ router.get("/", async (req: any, res) => {
 // POST /workshop-processes - Create a new process definition
 router.post("/", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
-  const { code, name, sortOrder, requiredByDefault, estimatedHours } = req.body;
+  const { code, name, sortOrder, requiredByDefault, estimatedHours, isColorKey, assignmentGroup } = req.body;
   
   if (!code || !name) {
     return res.status(400).json({ error: "code and name are required" });
@@ -33,6 +33,8 @@ router.post("/", async (req: any, res) => {
         sortOrder: sortOrder ?? 0,
         requiredByDefault: requiredByDefault ?? true,
         estimatedHours: estimatedHours ? Number(estimatedHours) : null,
+        isColorKey: isColorKey ?? false,
+        assignmentGroup: assignmentGroup || null,
       },
     });
     
@@ -49,7 +51,7 @@ router.post("/", async (req: any, res) => {
 router.patch("/:id", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const id = req.params.id;
-  const { name, sortOrder, requiredByDefault, estimatedHours } = req.body;
+  const { name, sortOrder, requiredByDefault, estimatedHours, isColorKey, assignmentGroup } = req.body;
   
   const existing = await prisma.workshopProcessDefinition.findFirst({
     where: { id, tenantId },
@@ -66,6 +68,8 @@ router.patch("/:id", async (req: any, res) => {
   if (estimatedHours !== undefined) {
     updates.estimatedHours = estimatedHours ? Number(estimatedHours) : null;
   }
+  if (isColorKey !== undefined) updates.isColorKey = isColorKey;
+  if (assignmentGroup !== undefined) updates.assignmentGroup = assignmentGroup || null;
   
   const process = await prisma.workshopProcessDefinition.update({
     where: { id },
