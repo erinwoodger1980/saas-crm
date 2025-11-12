@@ -652,8 +652,8 @@ export default function LeadModal({
           apiFetch<ProcDef[]>(`/workshop-processes`).catch(() => [] as ProcDef[]),
           apiFetch<{ ok: boolean; items: ProcUser[] }>(`/workshop/users`).then((r) => (r as any)?.items || []).catch(() => [] as ProcUser[]),
           apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []),
-          apiFetch<any>(`/leads/${lead.id}`, { headers: authHeaders }).catch(() => null),
-          apiFetch<any>(`/opportunities/by-lead/${encodeURIComponent(lead.id)}`, { headers: authHeaders }).catch(() => null),
+          apiFetch<any>(`/leads/${lead.id}`, { headers: authHeaders }).catch((err) => { console.error('[LeadModal] /leads fetch error:', err); return null; }),
+          apiFetch<any>(`/opportunities/by-lead/${encodeURIComponent(lead.id)}`, { headers: authHeaders }).catch((err) => { console.error('[LeadModal] /opportunities/by-lead fetch error:', err); return null; }),
         ]);
         if (cancelled) return;
         setWkDefs((Array.isArray(defs) ? defs : []).sort((a, b) => (Number(a.sortOrder||0) - Number(b.sortOrder||0)) || a.name.localeCompare(b.name)));
