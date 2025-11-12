@@ -22,27 +22,75 @@ router.get("/users", async (req: any, res) => {
   res.json({ ok: true, items: users });
 });
 
+// GET /workshop/holidays?from=YYYY-MM-DD&to=YYYY-MM-DD – list tenant holidays
+router.get("/holidays", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const from = req.query.from ? new Date(String(req.query.from)) : null;
+  const to = req.query.to ? new Date(String(req.query.to)) : null;
+
+  const where: any = { tenantId };
+  if (from && to) {
+    // Overlap filter: holiday where (endDate >= from && startDate <= to)
+    where.AND = [
+      { endDate: { gte: from } },
+      { startDate: { lte: to } },
+    ];
+  }
+
+  const items = await (prisma as any).holiday.findMany({
+    where,
+    orderBy: { startDate: "asc" },
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+
+  res.json({ ok: true, items });
+});
+
+// POST /workshop/holidays { userId, startDate, endDate, notes? }
+router.post("/holidays", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const { userId, startDate, endDate, notes } = req.body || {};
+  if (!userId || !startDate || !endDate) return res.status(400).json({ error: "invalid_payload" });
+
+  const start = new Date(String(startDate));
+  const end = new Date(String(endDate));
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+    return res.status(400).json({ error: "invalid_dates" });
+  }
+
+  const saved = await (prisma as any).holiday.create({
+    data: {
+      tenantId,
+      userId: String(userId),
+      startDate: start,
+      endDate: end,
+      notes: notes || null,
+    },
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+
+  res.json({ ok: true, holiday: saved });
+});
+
+// DELETE /workshop/holidays/:id
+router.delete("/holidays/:id", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const id = String(req.params.id);
+  const existing = await (prisma as any).holiday.findUnique({ where: { id }, select: { id: true, tenantId: true } });
+  if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: "not_found" });
+  await (prisma as any).holiday.delete({ where: { id } });
+  res.json({ ok: true });
+});
+
 // GET /workshop/calendar - Calendar view showing projects spread across months
 router.get("/calendar", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   
   // Get all WON opportunities with start and delivery dates
-  const projects = await prisma.opportunity.findMany({
-    where: { 
-      tenantId, 
-      stage: "WON",
-      startDate: { not: null },
-      deliveryDate: { not: null }
-    },
-    select: { 
-      id: true, 
-      title: true, 
-      valueGBP: true, 
-      wonAt: true,
-      startDate: true,
-      deliveryDate: true
-    },
-    orderBy: [{ startDate: "asc" }, { title: "asc" }],
+  const projects = await (prisma as any).opportunity.findMany({
+    where: ({ tenantId, stage: "WON", startDate: { not: null }, deliveryDate: { not: null } } as any),
+    select: ({ id: true, title: true, valueGBP: true, wonAt: true, startDate: true, deliveryDate: true } as any),
+    orderBy: ([{ startDate: "asc" }, { title: "asc" }] as any),
   });
 
   // Calculate months to show (6 months from earliest start to latest delivery)
@@ -53,7 +101,7 @@ router.get("/calendar", async (req: any, res) => {
   let earliestStart = sixMonthsAgo;
   let latestDelivery = sixMonthsAhead;
 
-  projects.forEach(p => {
+  (projects as any[]).forEach((p: any) => {
     if (p.startDate && p.startDate < earliestStart) earliestStart = p.startDate;
     if (p.deliveryDate && p.deliveryDate > latestDelivery) latestDelivery = p.deliveryDate;
   });
@@ -73,7 +121,7 @@ router.get("/calendar", async (req: any, res) => {
   }
 
   // Calculate value distribution per month for each project
-  const projectsWithMonthlyValues = projects.map(proj => {
+  const projectsWithMonthlyValues = (projects as any[]).map((proj: any) => {
     const value = Number(proj.valueGBP || 0);
     const start = proj.startDate!;
     const delivery = proj.deliveryDate!;
@@ -138,13 +186,13 @@ router.get("/schedule", async (req: any, res) => {
   const weeks = Math.max(1, Math.min(Number(req.query.weeks ?? 4), 8));
 
   // Projects = WON opportunities
-  const projects = await prisma.opportunity.findMany({
+  const projects = await (prisma as any).opportunity.findMany({
     where: { tenantId, stage: "WON" },
-    select: { id: true, title: true, valueGBP: true, wonAt: true, startDate: true, deliveryDate: true },
+    select: ({ id: true, title: true, valueGBP: true, wonAt: true, startDate: true, deliveryDate: true } as any),
     orderBy: [{ wonAt: "desc" }, { title: "asc" }],
   });
 
-  const projectIds = projects.map((p) => p.id);
+  const projectIds = (projects as any[]).map((p: any) => p.id);
 
   // Nothing to aggregate – return early to avoid empty `in: []` filters which cause errors on some drivers
   if (projectIds.length === 0) {
@@ -184,7 +232,7 @@ router.get("/schedule", async (req: any, res) => {
     });
   }
 
-  const out = projects.map((proj) => ({
+  const out = (projects as any[]).map((proj: any) => ({
     id: proj.id,
     name: proj.title,
     valueGBP: proj.valueGBP,

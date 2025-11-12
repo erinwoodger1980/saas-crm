@@ -1,6 +1,27 @@
+
+"use client";
+// Type definitions for QuickLogModal
+interface QuickLogUser {
+  id: string;
+  name: string | null;
+  email: string;
+}
+interface QuickLogSaveInput {
+  userId: string;
+  process: string; // Will be constrained via UI from PROCESSES
+  hours: string; // kept as string until converted on save
+  notes?: string;
+  date: string; // ISO date yyyy-mm-dd
+}
+interface QuickLogModalProps {
+  users: QuickLogUser[];
+  processes: readonly string[]; // PROCESSES constant
+  onSave: (data: QuickLogSaveInput) => void | Promise<void>;
+  onClose: () => void;
+}
 // Quick log modal for staff to log hours for today
-function QuickLogModal({ users, processes, onSave, onClose }) {
-  const [form, setForm] = useState({ userId: '', process: '', hours: '', notes: '' });
+function QuickLogModal({ users, processes, onSave, onClose }: QuickLogModalProps) {
+  const [form, setForm] = useState<Pick<QuickLogSaveInput, 'userId' | 'process' | 'hours' | 'notes'>>({ userId: '', process: '', hours: '', notes: '' });
   const today = new Date().toISOString().slice(0, 10);
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
@@ -12,7 +33,7 @@ function QuickLogModal({ users, processes, onSave, onClose }) {
             <Select value={form.userId} onValueChange={v => setForm(f => ({ ...f, userId: v }))}>
               <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
               <SelectContent>
-                {users.map(u => (
+                {users.map((u: QuickLogUser) => (
                   <SelectItem key={u.id} value={u.id}>{u.name || u.email}</SelectItem>
                 ))}
               </SelectContent>
@@ -23,7 +44,7 @@ function QuickLogModal({ users, processes, onSave, onClose }) {
             <Select value={form.process} onValueChange={v => setForm(f => ({ ...f, process: v }))}>
               <SelectTrigger><SelectValue placeholder="Select process or category" /></SelectTrigger>
               <SelectContent>
-                {processes.map(p => (
+                {processes.map((p: string) => (
                   <SelectItem key={p} value={p}>{formatProcess(p)}</SelectItem>
                 ))}
               </SelectContent>
@@ -46,7 +67,6 @@ function QuickLogModal({ users, processes, onSave, onClose }) {
     </div>
   );
 }
-"use client";
 
 import { useEffect, useState } from "react";
 import { apiFetch, ensureDemoAuth, API_BASE } from "@/lib/api";
@@ -107,6 +127,17 @@ type NewPlan = { projectId: string; process: WorkshopProcess | ""; plannedWeek: 
 
 type LogForm = { projectId: string; process: WorkshopProcess | ""; userId: string | ""; date: string; hours: string; notes?: string };
 
+type Holiday = {
+  id: string;
+  userId: string;
+  startDate: string; // ISO
+  endDate: string;   // ISO
+  notes?: string | null;
+  user?: { id: string; name: string | null; email: string };
+};
+
+type HolidaysResponse = { ok: boolean; items: Holiday[] };
+
 function formatProcess(p: string) {
   return p.replace(/_/g, " ");
 }
@@ -130,6 +161,8 @@ export default function WorkshopPage() {
   const [draggingProject, setDraggingProject] = useState<string | null>(null);
   const [showHoursModal, setShowHoursModal] = useState<{ projectId: string; projectName: string } | null>(null);
   const [showQuickLog, setShowQuickLog] = useState(false);
+  const [showHolidayModal, setShowHolidayModal] = useState(false);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [hoursForm, setHoursForm] = useState<{ process: WorkshopProcess | ""; userId: string; hours: string; date: string }>({
     process: "",
     userId: "",
@@ -149,15 +182,23 @@ export default function WorkshopPage() {
         }
       }
 
-      const [sched, usersResp] = await Promise.all([
+      // Build holidays query range (~5 months around current month)
+      const rangeStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 2, 1);
+      const rangeEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 3, 0);
+      const from = rangeStart.toISOString().split('T')[0];
+      const to = rangeEnd.toISOString().split('T')[0];
+
+      const [sched, usersResp, holidaysResp] = await Promise.all([
         apiFetch<ScheduleResponse>("/workshop/schedule?weeks=4"),
         apiFetch<UsersResponse>("/workshop/users"),
+        apiFetch<HolidaysResponse>(`/workshop/holidays?from=${from}&to=${to}`),
       ]);
       if (sched?.ok) {
         setWeeks(sched.weeks);
         setProjects(sched.projects);
       }
       if (usersResp?.ok) setUsers(usersResp.items);
+      if (holidaysResp?.ok) setHolidays(holidaysResp.items);
     } catch (e) {
       console.error("Failed to load workshop:", e);
       const msg = (e as any)?.message || (e as any)?.toString?.() || "load_failed";
@@ -384,6 +425,89 @@ export default function WorkshopPage() {
     );
   };
 
+  // Capacity planning helpers
+  const isWeekday = (d: Date) => {
+    const day = d.getDay();
+    return day !== 0 && day !== 6; // Mon-Fri
+  };
+
+  const eachDay = (start: Date, end: Date) => {
+    const days: Date[] = [];
+    const cur = new Date(start);
+    cur.setHours(0,0,0,0);
+    const last = new Date(end);
+    last.setHours(0,0,0,0);
+    while (cur <= last) {
+      days.push(new Date(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    return days;
+  };
+
+  const countWeekdaysInRange = (start: Date, end: Date) => eachDay(start, end).filter(isWeekday).length;
+
+  const dayInHoliday = (d: Date, h: Holiday) => {
+    const sd = new Date(h.startDate.split('T')[0]);
+    const ed = new Date(h.endDate.split('T')[0]);
+    sd.setHours(0,0,0,0);
+    ed.setHours(0,0,0,0);
+    const dc = new Date(d);
+    dc.setHours(0,0,0,0);
+    return dc >= sd && dc <= ed;
+  };
+
+  const workingHoursPerDay = 8;
+
+  const getWeekCapacity = (weekNumber: number) => {
+    // Same week start logic as value calc
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay() + ((weekNumber - 1) * 7));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+
+    const days = eachDay(weekStart, weekEnd).filter(isWeekday);
+    // For each user, count working weekdays not covered by a holiday
+    let totalHrs = 0;
+    for (const u of users) {
+      const userHols = holidays.filter(h => h.userId === u.id);
+      const workingDays = days.filter(d => !userHols.some(h => dayInHoliday(d, h))).length;
+      totalHrs += workingDays * workingHoursPerDay;
+    }
+    return totalHrs;
+  };
+
+  const getProjectExpectedHours = (proj: Project) => {
+    if (proj.expectedHours != null && proj.expectedHours !== "") return Number(proj.expectedHours) || 0;
+    if (proj.totalProjectHours != null) return Number(proj.totalProjectHours) || 0;
+    return 0;
+  };
+
+  const getWeekDemand = (weekNumber: number) => {
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay() + ((weekNumber - 1) * 7));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+
+    let total = 0;
+    for (const proj of projects) {
+      if (!proj.startDate || !proj.deliveryDate) continue;
+      const ps = new Date(proj.startDate);
+      const pe = new Date(proj.deliveryDate);
+      const overlapStart = new Date(Math.max(ps.getTime(), weekStart.getTime()));
+      const overlapEnd = new Date(Math.min(pe.getTime(), weekEnd.getTime()));
+      if (overlapStart > overlapEnd) continue;
+      const projDays = Math.max(1, countWeekdaysInRange(ps, pe));
+      const overlapDays = countWeekdaysInRange(overlapStart, overlapEnd);
+      const expected = getProjectExpectedHours(proj);
+      if (projDays > 0 && expected > 0) {
+        total += expected * (overlapDays / projDays);
+      }
+    }
+    return Math.round(total);
+  };
+
   // Calculate proportional value for a date range
   const getProportionalValue = (proj: Project, rangeStart: Date, rangeEnd: Date) => {
     if (!proj.startDate || !proj.deliveryDate || !proj.valueGBP) return 0;
@@ -507,6 +631,7 @@ export default function WorkshopPage() {
           >
             List
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowHolidayModal(true)}>Holidays</Button>
           <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
         </div>
       </div>
@@ -636,6 +761,22 @@ export default function WorkshopPage() {
                     <div className="text-sm font-bold text-green-600">
                       {formatCurrency(weekTotal)}
                     </div>
+                  </div>
+                  {/* Capacity vs Demand */}
+                  <div className="text-xs mb-3">
+                    {(() => {
+                      const cap = getWeekCapacity(weekNum);
+                      const dem = getWeekDemand(weekNum);
+                      const free = Math.round(cap - dem);
+                      const freeColor = free < 0 ? 'text-red-600' : 'text-emerald-700';
+                      return (
+                        <div className="flex flex-wrap gap-3">
+                          <span>Capacity: <strong>{cap}h</strong></span>
+                          <span>Demand: <strong>{dem}h</strong></span>
+                          <span className={freeColor}>Free: <strong>{free}h</strong></span>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="text-sm text-muted-foreground mb-3">
                     {projectsInWeek.length} project{projectsInWeek.length !== 1 ? 's' : ''}
@@ -907,7 +1048,7 @@ export default function WorkshopPage() {
         <QuickLogModal
           users={users}
           processes={PROCESSES}
-          onSave={async (form) => {
+          onSave={async (form: QuickLogSaveInput) => {
             try {
               await apiFetch('/workshop/time', {
                 method: 'POST',
@@ -926,6 +1067,22 @@ export default function WorkshopPage() {
             }
           }}
           onClose={() => setShowQuickLog(false)}
+        />
+      )}
+      {/* Holiday Management Modal */}
+      {showHolidayModal && (
+        <HolidayModal
+          users={users}
+          holidays={holidays}
+          onAdd={async (payload) => {
+            await apiFetch('/workshop/holidays', { method: 'POST', json: payload });
+            await loadAll();
+          }}
+          onDelete={async (id) => {
+            await apiFetch(`/workshop/holidays/${id}`, { method: 'DELETE' });
+            await loadAll();
+          }}
+          onClose={() => setShowHolidayModal(false)}
         />
       )}
       {showHoursModal && (
@@ -1014,6 +1171,97 @@ export default function WorkshopPage() {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+// Holiday management modal
+interface HolidayModalProps {
+  users: UserLite[];
+  holidays: Holiday[];
+  onAdd: (payload: { userId: string; startDate: string; endDate: string; notes?: string }) => Promise<void> | void;
+  onDelete: (id: string) => Promise<void> | void;
+  onClose: () => void;
+}
+
+function HolidayModal({ users, holidays, onAdd, onDelete, onClose }: HolidayModalProps) {
+  const [form, setForm] = useState<{ userId: string; startDate: string; endDate: string; notes?: string }>({ userId: '', startDate: '', endDate: '', notes: '' });
+  // Group holidays by user for quick view
+  const byUser = users.map(u => ({
+    user: u,
+    items: holidays.filter(h => h.userId === u.id)
+  }));
+
+  const submit = async () => {
+    if (!form.userId || !form.startDate || !form.endDate) return;
+    await onAdd({ userId: form.userId, startDate: form.startDate, endDate: form.endDate, notes: form.notes });
+    setForm({ userId: '', startDate: '', endDate: '', notes: '' });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <Card className="p-6 max-w-3xl w-full m-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">Manage Holidays</h2>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+        </div>
+
+        {/* Add form */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-4">
+          <div className="md:col-span-2">
+            <label className="text-xs text-muted-foreground">User</label>
+            <Select value={form.userId} onValueChange={(v) => setForm(f => ({ ...f, userId: v }))}>
+              <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
+              <SelectContent>
+                {users.map(u => (
+                  <SelectItem key={u.id} value={u.id}>{u.name || u.email}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Start</label>
+            <Input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">End</label>
+            <Input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Notes</label>
+            <Input type="text" value={form.notes || ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </div>
+        </div>
+        <div className="mb-6">
+          <Button onClick={submit} disabled={!form.userId || !form.startDate || !form.endDate}>Add Holiday</Button>
+        </div>
+
+        {/* List */}
+        <div className="space-y-3 max-h-[50vh] overflow-auto pr-2">
+          {byUser.map(group => (
+            <div key={group.user.id} className="border rounded p-3">
+              <div className="font-medium mb-2">{group.user.name || group.user.email}</div>
+              {group.items.length === 0 ? (
+                <div className="text-xs text-muted-foreground">No holidays</div>
+              ) : (
+                <div className="space-y-2">
+                  {group.items.map(h => (
+                    <div key={h.id} className="flex items-center justify-between text-sm">
+                      <div>
+                        {new Date(h.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        {' – '}
+                        {new Date(h.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {h.notes ? <span className="text-xs text-muted-foreground ml-2">{h.notes}</span> : null}
+                      </div>
+                      <Button size="sm" variant="ghost" onClick={() => onDelete(h.id)}>Delete</Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
     </div>
   );
 }
