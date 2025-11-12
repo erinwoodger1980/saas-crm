@@ -51,6 +51,7 @@ router.patch("/users/:userId/hours", async (req: any, res) => {
 });
 
 // GET /workshop/holidays?from=YYYY-MM-DD&to=YYYY-MM-DD – list tenant holidays
+// GET /workshop/holidays - fetch holidays for calendar
 router.get("/holidays", async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
