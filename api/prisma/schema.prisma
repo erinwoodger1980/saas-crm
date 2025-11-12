@@ -55,16 +55,18 @@ model Tenant {
   followUpEvents        FollowUpEvent[]
   sourceSpends          SourceSpend[]
   // Workshop relations
-  processPlans          ProcessPlan[]
-  timeEntries           TimeEntry[]
-  holidays              Holiday[]
-  targets               Target[]
-  keywordPerformance    KeywordPerformance[]
-  keywordSuggestions    KeywordSuggestion[]
-  landingTenant         LandingTenant?
-  slug                  String                 @unique // Required for landing pages and URLs
+  processPlans                ProcessPlan[]
+  timeEntries                 TimeEntry[]
+  holidays                    Holiday[]
+  targets                     Target[]
+  workshopProcessDefinitions  WorkshopProcessDefinition[]
+  projectProcessAssignments   ProjectProcessAssignment[]
+  keywordPerformance          KeywordPerformance[]
+  keywordSuggestions          KeywordSuggestion[]
+  landingTenant               LandingTenant?
+  slug                        String                 @unique // Required for landing pages and URLs
   // Feature Requests (inverse relation)
-  featureRequests       FeatureRequest[]
+  featureRequests             FeatureRequest[]
 }
 
 /// ==============================
@@ -131,9 +133,10 @@ model User {
   feedbacks             Feedback[]              @relation("FeedbackAuthor")
   resolvedFeedbacks     Feedback[]              @relation("FeedbackResolver")
   // Workshop relations
-  processPlansAssigned   ProcessPlan[]
-  timeEntries            TimeEntry[]
-  holidays               Holiday[]
+  processPlansAssigned       ProcessPlan[]
+  projectProcessAssignments  ProjectProcessAssignment[]
+  timeEntries                TimeEntry[]
+  holidays                   Holiday[]
 }
 
 model SignupToken {
@@ -190,8 +193,9 @@ model Opportunity {
   lead          Lead           @relation(fields: [leadId], references: [id])
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   // Workshop relations
-  processPlans  ProcessPlan[]
-  timeEntries   TimeEntry[]
+  processPlans          ProcessPlan[]
+  projectProcesses      ProjectProcessAssignment[]
+  timeEntries           TimeEntry[]
 
   @@index([tenantId, stage])
 }
@@ -1006,6 +1010,47 @@ enum WorkshopProcess {
   GLAZING
   IRONMONGERY
   INSTALLATION
+}
+
+// Tenant-level workshop process definitions
+model WorkshopProcessDefinition {
+  id                String   @id @default(cuid())
+  tenantId          String
+  code              String   // e.g., "MACHINING", "ASSEMBLY", etc.
+  name              String   // Display name
+  sortOrder         Int      @default(0)
+  requiredByDefault Boolean  @default(true) // Whether this process is required by default for new projects
+  estimatedHours    Decimal? // Optional estimated hours for this process
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectProcesses ProjectProcessAssignment[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, sortOrder])
+}
+
+// Per-project process enablement and assignment
+model ProjectProcessAssignment {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  opportunityId        String   // The project (WON opportunity)
+  processDefinitionId  String
+  required             Boolean  @default(true) // Whether this process is required for this specific project
+  assignedUserId       String?  // User assigned to this process for this project
+  estimatedHours       Decimal? // Override estimated hours for this specific project
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  opportunity       Opportunity                @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  processDefinition WorkshopProcessDefinition  @relation(fields: [processDefinitionId], references: [id], onDelete: Cascade)
+  assignedUser      User?                      @relation(fields: [assignedUserId], references: [id])
+
+  @@unique([opportunityId, processDefinitionId])
+  @@index([tenantId, opportunityId])
+  @@index([tenantId, assignedUserId])
 }
 
 model ProcessPlan {
