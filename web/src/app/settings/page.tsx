@@ -172,7 +172,7 @@ export default function SettingsPage() {
   const { user, mutate: mutateCurrentUser } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
-  const [currentStage, setCurrentStage] = useState<"company" | "questionnaire" | "email-templates" | "automation" | "integrations">("company");
+  const [currentStage, setCurrentStage] = useState<"company" | "questionnaire" | "email-templates" | "automation" | "integrations" | "workshop-processes">("company");
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -190,6 +190,19 @@ export default function SettingsPage() {
   const [enrichingWebsite, setEnrichingWebsite] = useState(false);
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  // Workshop processes state
+  type ProcessDef = {
+    id: string;
+    code: string;
+    name: string;
+    sortOrder: number;
+    requiredByDefault: boolean;
+    estimatedHours?: number | null;
+  };
+  const [processes, setProcesses] = useState<ProcessDef[]>([]);
+  const [procLoading, setProcLoading] = useState(false);
+  const [procSavingId, setProcSavingId] = useState<string | "new" | null>(null);
+  const [newProcess, setNewProcess] = useState<Omit<ProcessDef, "id">>({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1 });
 
   useEffect(() => {
     (async () => {
@@ -215,6 +228,105 @@ export default function SettingsPage() {
       }
     })();
   }, [mutateCurrentUser, toast, user?.firstName, user?.lastName]);
+
+  // Load workshop processes when entering that stage
+  useEffect(() => {
+    (async () => {
+      if (currentStage !== "workshop-processes") return;
+      setProcLoading(true);
+      try {
+        await ensureDemoAuth();
+        const list = await apiFetch<ProcessDef[]>("/workshop-processes");
+        const normalized = Array.isArray(list) ? list : [];
+        setProcesses(normalized.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)));
+      } catch (e: any) {
+        toast({ title: "Failed to load processes", description: e?.message || "", variant: "destructive" });
+      } finally {
+        setProcLoading(false);
+      }
+    })();
+  }, [currentStage, toast]);
+
+  async function refreshProcesses() {
+    try {
+      const list = await apiFetch<ProcessDef[]>("/workshop-processes");
+      setProcesses((Array.isArray(list) ? list : []).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)));
+    } catch {}
+  }
+
+  async function createProcess() {
+    if (!newProcess.code.trim() || !newProcess.name.trim()) {
+      toast({ title: "Missing fields", description: "Code and name are required", variant: "destructive" });
+      return;
+    }
+    setProcSavingId("new");
+    try {
+      const payload = {
+        code: newProcess.code.trim().toUpperCase().replace(/\s+/g, "_"),
+        name: newProcess.name.trim(),
+        sortOrder: Number(newProcess.sortOrder || 0),
+        requiredByDefault: !!newProcess.requiredByDefault,
+        estimatedHours: newProcess.estimatedHours == null || newProcess.estimatedHours === undefined ? null : Number(newProcess.estimatedHours),
+      };
+      await apiFetch<ProcessDef>("/workshop-processes", { method: "POST", json: payload });
+      setNewProcess({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1 });
+      await refreshProcesses();
+      toast({ title: "Process created" });
+    } catch (e: any) {
+      toast({ title: "Create failed", description: e?.message || "", variant: "destructive" });
+    } finally {
+      setProcSavingId(null);
+    }
+  }
+
+  async function updateProcess(p: ProcessDef) {
+    if (!p?.id) return;
+    setProcSavingId(p.id);
+    try {
+      const payload = {
+        code: p.code.trim().toUpperCase().replace(/\s+/g, "_"),
+        name: p.name.trim(),
+        sortOrder: Number(p.sortOrder || 0),
+        requiredByDefault: !!p.requiredByDefault,
+        estimatedHours: p.estimatedHours == null || p.estimatedHours === undefined ? null : Number(p.estimatedHours),
+      };
+      await apiFetch(`/workshop-processes/${p.id}`, { method: "PATCH", json: payload });
+      await refreshProcesses();
+      toast({ title: "Process saved" });
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e?.message || "", variant: "destructive" });
+    } finally {
+      setProcSavingId(null);
+    }
+  }
+
+  async function deleteProcess(id: string) {
+    if (!id) return;
+    if (!confirm("Delete this process? This cannot be undone.")) return;
+    setProcSavingId(id);
+    try {
+      await apiFetch(`/workshop-processes/${id}`, { method: "DELETE" });
+      await refreshProcesses();
+      toast({ title: "Process deleted" });
+    } catch (e: any) {
+      toast({ title: "Delete failed", description: e?.message || "", variant: "destructive" });
+    } finally {
+      setProcSavingId(null);
+    }
+  }
+
+  async function seedDefaultProcesses() {
+    setProcSavingId("seed");
+    try {
+      await apiFetch(`/workshop-processes/seed-default`, { method: "POST" });
+      await refreshProcesses();
+      toast({ title: "Default processes seeded" });
+    } catch (e: any) {
+      toast({ title: "Seeding failed", description: e?.message || "", variant: "destructive" });
+    } finally {
+      setProcSavingId(null);
+    }
+  }
 
   async function saveProfile() {
     if (!user) return;
@@ -621,6 +733,7 @@ export default function SettingsPage() {
           { key: "questionnaire", label: "Questionnaire", icon: "📋", description: "Lead capture form fields" },
           { key: "email-templates", label: "Email Templates", icon: "📧", description: "Customize email templates" },
           { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
+          { key: "workshop-processes", label: "Workshop Processes", icon: "🛠️", description: "Define workshop processes per tenant" },
           { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
         ].map((stage) => (
           <Button
@@ -1200,6 +1313,127 @@ export default function SettingsPage() {
           </div>
         </div>
       </Section>
+      )}
+
+      {currentStage === "workshop-processes" && (
+        <Section
+          title="Workshop Processes"
+          description="Create and manage your tenant's workshop processes. These can be auto-assigned to projects and used in scheduling."
+          right={
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={seedDefaultProcesses} disabled={procSavingId === "seed"}>
+                {procSavingId === "seed" ? "Seeding…" : "Seed defaults"}
+              </Button>
+              <Button onClick={refreshProcesses} variant="outline" disabled={procLoading}>
+                Refresh
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            {/* New row */}
+            <div className="rounded-xl border bg-white/80 p-3">
+              <div className="mb-2 text-sm font-semibold text-slate-800">Add process</div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-[140px_1fr_110px_160px_120px_auto] items-center">
+                <input
+                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm uppercase tracking-wide"
+                  placeholder="CODE"
+                  value={newProcess.code}
+                  onChange={(e) => setNewProcess((p) => ({ ...p, code: e.target.value }))}
+                />
+                <input
+                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                  placeholder="Name"
+                  value={newProcess.name}
+                  onChange={(e) => setNewProcess((p) => ({ ...p, name: e.target.value }))}
+                />
+                <input
+                  type="number"
+                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm w-28"
+                  placeholder="Sort"
+                  value={newProcess.sortOrder}
+                  onChange={(e) => setNewProcess((p) => ({ ...p, sortOrder: Number(e.target.value || 0) }))}
+                />
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={!!newProcess.requiredByDefault}
+                    onChange={(e) => setNewProcess((p) => ({ ...p, requiredByDefault: e.target.checked }))}
+                  />
+                  Required by default
+                </label>
+                <input
+                  type="number"
+                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm w-28"
+                  placeholder="Hours"
+                  value={newProcess.estimatedHours ?? ""}
+                  onChange={(e) => setNewProcess((p) => ({ ...p, estimatedHours: e.target.value === "" ? null : Number(e.target.value) }))}
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button onClick={createProcess} disabled={procSavingId === "new"}>Create</Button>
+                </div>
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="rounded-xl border bg-white/80">
+              <div className="grid grid-cols-[140px_1fr_110px_160px_120px_auto] items-center gap-2 px-3 py-2 border-b text-[12px] text-slate-600 font-medium">
+                <div>Code</div>
+                <div>Name</div>
+                <div>Sort</div>
+                <div>Required by default</div>
+                <div>Est. hours</div>
+                <div className="text-right">Actions</div>
+              </div>
+              {procLoading ? (
+                <div className="px-3 py-4 text-sm text-slate-600">Loading…</div>
+              ) : processes.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-slate-600">No processes yet.</div>
+              ) : (
+                <div className="divide-y">
+                  {processes.map((p, idx) => (
+                    <div key={p.id} className="grid grid-cols-[140px_1fr_110px_160px_120px_auto] items-center gap-2 px-3 py-2">
+                      <input
+                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm uppercase"
+                        value={p.code}
+                        onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, code: e.target.value } : it)))}
+                      />
+                      <input
+                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm"
+                        value={p.name}
+                        onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, name: e.target.value } : it)))}
+                      />
+                      <input
+                        type="number"
+                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm w-24"
+                        value={p.sortOrder ?? 0}
+                        onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, sortOrder: Number(e.target.value || 0) } : it)))}
+                      />
+                      <label className="inline-flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={!!p.requiredByDefault}
+                          onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, requiredByDefault: e.target.checked } : it)))}
+                        />
+                        Required by default
+                      </label>
+                      <input
+                        type="number"
+                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm w-24"
+                        value={p.estimatedHours ?? ""}
+                        onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, estimatedHours: e.target.value === "" ? null : Number(e.target.value) } : it)))}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" onClick={() => updateProcess(p)} disabled={procSavingId === p.id}>Save</Button>
+                        <Button size="sm" variant="destructive" onClick={() => deleteProcess(p.id)} disabled={procSavingId === p.id}>Delete</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </Section>
       )}
 
       {currentStage === "integrations" && (
