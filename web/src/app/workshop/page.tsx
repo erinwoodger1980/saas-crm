@@ -731,7 +731,7 @@ export default function WorkshopPage() {
           </div>
 
           {/* Calendar Grid */}
-          <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="bg-white rounded-lg border overflow-hidden relative">
             {/* Calendar header - days of week */}
             <div className="grid grid-cols-7 border-b bg-slate-50">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
@@ -741,20 +741,18 @@ export default function WorkshopPage() {
               ))}
             </div>
             
-            {/* Calendar body - days */}
-            <div className="grid grid-cols-7">
+            {/* Calendar body - days with date numbers only */}
+            <div className="grid grid-cols-7 relative">
               {getDaysInMonth(currentMonth).map((date, idx) => {
                 const isToday = date && 
                   date.getDate() === new Date().getDate() &&
                   date.getMonth() === new Date().getMonth() &&
                   date.getFullYear() === new Date().getFullYear();
                 
-                const projectsForDay = date ? getProjectsForDate(date) : [];
-                
                 return (
                   <div
                     key={idx}
-                    className={`min-h-24 border-r border-b last:border-r-0 p-2 ${
+                    className={`min-h-32 border-r border-b last:border-r-0 p-2 ${
                       !date ? 'bg-slate-50' : isToday ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'
                     }`}
                     onDragOver={handleDragOver}
@@ -764,43 +762,112 @@ export default function WorkshopPage() {
                     }}
                   >
                     {date && (
-                      <>
-                        <div className={`text-sm font-medium mb-1 ${isToday ? 'text-blue-600' : 'text-slate-700'}`}>
-                          {date.getDate()}
-                        </div>
-                        <div className="space-y-1">
-                          {projectsForDay.slice(0, 3).map(proj => {
-                            const progress = getProjectProgress(proj);
-                            return (
-                              <div
-                                key={proj.id}
-                                className="text-xs p-1 rounded cursor-pointer hover:opacity-80 relative overflow-hidden"
-                                style={{
-                                  background: `linear-gradient(90deg, #22c55e ${progress}%, #60a5fa ${progress}%)`,
-                                  color: 'white'
-                                }}
-                                draggable
-                                onDragStart={() => handleDragStart(proj.id)}
-                                onClick={() => openHoursModal(proj.id, proj.name)}
-                                title={`${proj.name} (${progress}% complete)`}
-                              >
-                                <div className="truncate font-medium">
-                                  {proj.name}
-                                </div>
-                              </div>
-                            );
-                          })}
-                          {projectsForDay.length > 3 && (
-                            <div className="text-[10px] text-slate-500 text-center">
-                              +{projectsForDay.length - 3} more
-                            </div>
-                          )}
-                        </div>
-                      </>
+                      <div className={`text-sm font-medium ${isToday ? 'text-blue-600' : 'text-slate-700'}`}>
+                        {date.getDate()}
+                      </div>
                     )}
                   </div>
                 );
               })}
+              
+              {/* Project bars overlay - absolute positioned to span across days */}
+              <div className="absolute inset-0 pointer-events-none" style={{ paddingTop: '2.5rem' }}>
+                {(() => {
+                  const daysArray = getDaysInMonth(currentMonth);
+                  const validDays = daysArray.filter(d => d !== null) as Date[];
+                  if (validDays.length === 0) return null;
+                  
+                  const monthStart = validDays[0];
+                  const firstDayOffset = daysArray.findIndex(d => d !== null);
+                  
+                  // Group projects by row to avoid overlaps
+                  const projectRows: Project[][] = [];
+                  projects.forEach(proj => {
+                    if (!proj.startDate || !proj.deliveryDate) return;
+                    
+                    const projStart = new Date(proj.startDate);
+                    const projEnd = new Date(proj.deliveryDate);
+                    
+                    // Only show projects that overlap with current month
+                    const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+                    if (projEnd < monthStart || projStart > monthEnd) return;
+                    
+                    // Find first row where this project doesn't overlap with existing projects
+                    let rowIndex = 0;
+                    while (rowIndex < projectRows.length) {
+                      const hasOverlap = projectRows[rowIndex].some(existingProj => {
+                        if (!existingProj.startDate || !existingProj.deliveryDate) return false;
+                        const existingStart = new Date(existingProj.startDate);
+                        const existingEnd = new Date(existingProj.deliveryDate);
+                        return !(projEnd < existingStart || projStart > existingEnd);
+                      });
+                      if (!hasOverlap) break;
+                      rowIndex++;
+                    }
+                    
+                    if (!projectRows[rowIndex]) projectRows[rowIndex] = [];
+                    projectRows[rowIndex].push(proj);
+                  });
+                  
+                  return projectRows.map((row, rowIdx) => (
+                    <div key={rowIdx} style={{ position: 'absolute', top: `${rowIdx * 28}px`, left: 0, right: 0, height: '24px' }}>
+                      {row.map(proj => {
+                        const projStart = new Date(proj.startDate!);
+                        const projEnd = new Date(proj.deliveryDate!);
+                        const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+                        
+                        // Calculate visible start and end within the month
+                        const visibleStart = projStart < monthStart ? monthStart : projStart;
+                        const visibleEnd = projEnd > monthEnd ? monthEnd : projEnd;
+                        
+                        // Calculate position
+                        const daysSinceMonthStart = Math.floor((visibleStart.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
+                        const duration = Math.floor((visibleEnd.getTime() - visibleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                        
+                        const startCol = firstDayOffset + daysSinceMonthStart;
+                        const startRow = Math.floor(startCol / 7);
+                        const startDayOfWeek = startCol % 7;
+                        
+                        // Handle multi-week projects by splitting into segments
+                        const segments: Array<{row: number, col: number, span: number}> = [];
+                        let remainingDays = duration;
+                        let currentRow = startRow;
+                        let currentCol = startDayOfWeek;
+                        
+                        while (remainingDays > 0) {
+                          const daysToEndOfWeek = 7 - currentCol;
+                          const segmentDays = Math.min(remainingDays, daysToEndOfWeek);
+                          segments.push({ row: currentRow, col: currentCol, span: segmentDays });
+                          remainingDays -= segmentDays;
+                          currentRow++;
+                          currentCol = 0;
+                        }
+                        
+                        const progress = getProjectProgress(proj);
+                        
+                        return segments.map((segment, segIdx) => (
+                          <div
+                            key={`${proj.id}-${segIdx}`}
+                            className="absolute rounded px-2 py-1 text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto truncate"
+                            style={{
+                              top: `${segment.row * 128}px`,
+                              left: `${(segment.col / 7) * 100}%`,
+                              width: `${(segment.span / 7) * 100}%`,
+                              background: `linear-gradient(90deg, #22c55e ${progress}%, #60a5fa ${progress}%)`,
+                            }}
+                            draggable
+                            onDragStart={() => handleDragStart(proj.id)}
+                            onClick={() => openHoursModal(proj.id, proj.name)}
+                            title={`${proj.name} (${progress}% complete)`}
+                          >
+                            {proj.name}
+                          </div>
+                        ));
+                      })}
+                    </div>
+                  ));
+                })()}
+              </div>
             </div>
           </div>
 
