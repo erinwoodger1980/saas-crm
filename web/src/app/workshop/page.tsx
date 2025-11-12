@@ -1718,7 +1718,7 @@ export default function WorkshopPage() {
                     {/* Timber */}
                     <div className="p-3 border rounded">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="flex flex-col items-center"></div>
+                        <div className="flex flex-col items-center">
                           <div className="text-[10px] font-bold leading-none mb-0.5">T</div>
                           <div 
                             className="w-3 h-3 rounded-full" 
