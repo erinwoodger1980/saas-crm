@@ -104,3 +104,22 @@ curl -X POST -H "Authorization: Bearer $JWT" -H "Content-Type: application/json"
   -d '{"variant":"B"}' \
   "$API_ORIGIN/opportunities/<lead-id>/next-followup"
 ```
+
+## Inbox auto-filing (Enquiries)
+
+When an inbound email is classified as an accepted lead, the API performs a small post-classification side effect to keep inboxes tidy:
+
+- Gmail: removes the INBOX label and applies a label named "Enquiries" (created on demand)
+- Microsoft 365: moves the message into a folder named "Enquiries" (created on demand)
+
+Controls (TenantSettings.inbox):
+
+- `autoFileAcceptedLeads` (boolean, default true) — enable/disable auto-filing
+- `enquiriesName` (string, default "Enquiries") — label/folder display name
+
+Requirements:
+
+- Gmail scopes must include `https://www.googleapis.com/auth/gmail.modify`
+- Microsoft 365 must be connected with delegated scopes that include `offline_access` and `Mail.ReadWrite`
+
+If MS365 was connected previously with only `Mail.Read`, moving messages will be skipped and an activity log entry will suggest reconnecting with the proper scope.
