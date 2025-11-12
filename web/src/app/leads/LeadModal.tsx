@@ -645,6 +645,7 @@ export default function LeadModal({
     if (!lead?.id) return;
     setWkSavingId(def.id);
     try {
+      console.log('Assigning process to opportunity:', lead.id);
       const response = await apiFetch(`/workshop-processes/project/${encodeURIComponent(lead.id)}`, {
         method: "POST",
         json: {
@@ -654,6 +655,8 @@ export default function LeadModal({
           estimatedHours: patch.estimatedHours == null ? null : Number(patch.estimatedHours),
         },
       });
+      
+      console.log('Assignment response:', response);
       
       if (!response || !(response as any).ok) {
         throw new Error((response as any)?.error || "Assignment failed");
@@ -675,7 +678,7 @@ export default function LeadModal({
     } catch (e: any) {
       console.error("Workshop assignment error:", e);
       const message = e?.message || e?.detail || "Failed to save assignment";
-      alert(`Could not assign user to process: ${message}\n\nPlease check your connection and try again.`);
+      alert(`Could not assign user to process: ${message}\n\nOpportunity ID: ${lead.id}\nPlease check your connection and try again.`);
     } finally {
       setWkSavingId(null);
     }
