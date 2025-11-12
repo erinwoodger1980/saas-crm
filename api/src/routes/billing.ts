@@ -179,6 +179,9 @@ export const webhook = async (req: express.Request, res: express.Response) => {
               stripeCustomerId: customerId || undefined,
             },
           });
+          // Seed questionnaire for new tenant
+          const { initializeTenantWithSeedData } = await import("../services/seed-template");
+          await initializeTenantWithSeedData(tenant.id);
         } else if (customerId && tenant.stripeCustomerId !== customerId) {
           tenant = await prisma.tenant.update({
             where: { id: tenant.id },

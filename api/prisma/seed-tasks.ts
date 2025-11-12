@@ -273,6 +273,13 @@ async function main() {
   const { tenant, users } = await ensureDemoTenantAndUsers();
   await seedAutomationRules(tenant.id);
   await seedTasksNotificationsStreaks(tenant.id, users as any);
+  // Add questionnaire for Spittlywood tenant
+  const spittlywoodTenant = await prisma.tenant.findFirst({ where: { name: { contains: "Spittlywood", mode: "insensitive" } } });
+  if (spittlywoodTenant) {
+    const { initializeTenantWithSeedData } = await import("../src/services/seed-template");
+    await initializeTenantWithSeedData(spittlywoodTenant.id);
+    console.log("✓ Questionnaire seeded for Spittlywood tenant");
+  }
   console.log("✅ Seed complete:");
   console.log(`  Tenant: ${tenant.name} (${tenant.id})`);
   console.log(`  Users: ${users.map(u => `${u.email}`).join(", ")}`);

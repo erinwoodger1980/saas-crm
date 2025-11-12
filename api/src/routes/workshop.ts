@@ -313,16 +313,17 @@ router.get("/time", async (req: any, res) => {
   res.json({ ok: true, items, total });
 });
 
-// POST /workshop/time { projectId, process, userId, date, hours, notes? }
+// POST /workshop/time { projectId?, process, userId, date, hours, notes? }
+// projectId is optional for generic hours (CLEANING, ADMIN, HOLIDAY)
 router.post("/time", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const { projectId, process, userId, date, hours, notes } = req.body || {};
-  if (!projectId || !process || !userId || !date || hours == null) return res.status(400).json({ error: "invalid_payload" });
+  if (!process || !userId || !date || hours == null) return res.status(400).json({ error: "invalid_payload" });
 
   const entry = await (prisma as any).timeEntry.create({
     data: {
       tenantId,
-      projectId: String(projectId),
+      projectId: projectId ? String(projectId) : null,
       process: String(process) as any,
       userId: String(userId),
       date: new Date(date),
