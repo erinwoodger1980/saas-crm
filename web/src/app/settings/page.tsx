@@ -895,7 +895,30 @@ export default function SettingsPage() {
       )}
 
       {currentStage === "questionnaire" && (
-      <Section title="Questionnaire" description="Manage the public questionnaire fields">
+      <Section 
+        title="Questionnaire" 
+        description="Manage the public questionnaire fields"
+        right={
+          <Button
+            variant="outline"
+            onClick={async () => {
+              if (!confirm("Replace your questionnaire with the Demo Client's questionnaire? This will overwrite your current fields.")) return;
+              try {
+                await ensureDemoAuth();
+                const resp = await apiFetch<{ ok: boolean; settings: { questionnaire?: QField[] } }>("/tenant/settings/apply-demo-questionnaire", { method: "POST" });
+                const q = normalizeQuestionnaire((resp?.settings as any)?.questionnaire ?? []);
+                setQFields(q);
+                setS((prev) => (prev ? { ...prev, questionnaire: q } : prev));
+                toast({ title: "Demo questionnaire applied" });
+              } catch (e: any) {
+                toast({ title: "Failed to apply demo questionnaire", description: e?.message || "", variant: "destructive" });
+              }
+            }}
+          >
+            Use Demo Questionnaire
+          </Button>
+        }
+      >
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <input
             className="w-64 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
