@@ -119,6 +119,8 @@ export const CANONICAL_FIELD_CONFIG: Record<string, CanonicalFieldConfig> = {
   estimatedValue: { type: "number" },
   quotedValue: { type: "number" },
   dateQuoteSent: { type: "date" },
+  startDate: { type: "date" },
+  deliveryDate: { type: "date" },
 };
 
 export function normaliseHeader(header: string): string {

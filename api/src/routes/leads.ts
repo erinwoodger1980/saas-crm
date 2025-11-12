@@ -780,6 +780,8 @@ router.patch("/:id", async (req, res) => {
     estimatedValue?: number | string | null;
     quotedValue?: number | string | null;
     dateQuoteSent?: string | Date | null;
+    startDate?: string | Date | null;
+    deliveryDate?: string | Date | null;
   };
 
   const prevCustom = ((existing.custom as any) || {}) as Record<string, any>;
@@ -823,6 +825,8 @@ router.patch("/:id", async (req, res) => {
   if (body.estimatedValue !== undefined) applyCanonical("estimatedValue", body.estimatedValue);
   if (body.quotedValue !== undefined) applyCanonical("quotedValue", body.quotedValue);
   if (body.dateQuoteSent !== undefined) applyCanonical("dateQuoteSent", body.dateQuoteSent);
+  if (body.startDate !== undefined) applyCanonical("startDate", body.startDate);
+  if (body.deliveryDate !== undefined) applyCanonical("deliveryDate", body.deliveryDate);
 
   applyQuestionnairePatch(body.questionnaire);
   applyQuestionnairePatch(body.custom);
@@ -1002,6 +1006,11 @@ router.patch("/:id", async (req, res) => {
           select: { title: true, totalGBP: true },
         });
         const title = latestQuote?.title || updated.contactName || "Project";
+        
+        // Get startDate and deliveryDate from the updated lead's custom data
+        const startDate = (updated.custom as any)?.startDate || null;
+        const deliveryDate = (updated.custom as any)?.deliveryDate || null;
+        
         await tx.opportunity.upsert({
           where: { leadId: id },
           update: {
@@ -1009,6 +1018,8 @@ router.patch("/:id", async (req, res) => {
             wonAt: new Date(),
             title,
             valueGBP: (latestQuote as any)?.totalGBP ?? undefined,
+            startDate: startDate ? new Date(startDate) : undefined,
+            deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
           },
           create: {
             tenantId,
@@ -1017,12 +1028,40 @@ router.patch("/:id", async (req, res) => {
             stage: "WON" as any,
             wonAt: new Date(),
             valueGBP: (latestQuote as any)?.totalGBP ?? undefined,
+            startDate: startDate ? new Date(startDate) : null,
+            deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
           },
         });
       });
     }
   } catch (e) {
     console.warn("[leads] ensure opportunity on WON failed:", (e as any)?.message || e);
+  }
+
+  // If startDate or deliveryDate were updated and an opportunity exists, sync them
+  try {
+    if ((body.startDate !== undefined || body.deliveryDate !== undefined) && nextUi === "WON") {
+      const existingOpp = await prisma.opportunity.findFirst({
+        where: { leadId: id },
+      });
+      if (existingOpp) {
+        const oppUpdate: any = {};
+        if (body.startDate !== undefined) {
+          const startDate = (updated.custom as any)?.startDate || null;
+          oppUpdate.startDate = startDate ? new Date(startDate) : null;
+        }
+        if (body.deliveryDate !== undefined) {
+          const deliveryDate = (updated.custom as any)?.deliveryDate || null;
+          oppUpdate.deliveryDate = deliveryDate ? new Date(deliveryDate) : null;
+        }
+        await prisma.opportunity.update({
+          where: { id: existingOpp.id },
+          data: oppUpdate,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("[leads] sync opportunity dates failed:", (e as any)?.message || e);
   }
 
   try {
