@@ -890,7 +890,7 @@ export default function LeadModal({
     const payload: any = {
       questionnaire: { [field.key]: value },
     };
-    if (["estimatedValue", "quotedValue", "dateQuoteSent"].includes(field.key)) {
+    if (["estimatedValue", "quotedValue", "dateQuoteSent", "startDate", "deliveryDate"].includes(field.key)) {
       payload[field.key] = value;
     }
 
@@ -1772,6 +1772,34 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         askInQuestionnaire: false,
         showOnLead: true,
         sortOrder: Number.MAX_SAFE_INTEGER,
+      });
+    }
+    if (!existingKeys.has("startDate")) {
+      extras.push({
+        id: "__startDate",
+        key: "startDate",
+        label: "Workshop Start Date",
+        required: false,
+        type: "date",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        visibleAfterOrder: true,
+        sortOrder: Number.MAX_SAFE_INTEGER + 1,
+      });
+    }
+    if (!existingKeys.has("deliveryDate")) {
+      extras.push({
+        id: "__deliveryDate",
+        key: "deliveryDate",
+        label: "Delivery Date",
+        required: false,
+        type: "date",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        visibleAfterOrder: true,
+        sortOrder: Number.MAX_SAFE_INTEGER + 2,
       });
     }
     return [...baseWorkspaceFields, ...extras];
