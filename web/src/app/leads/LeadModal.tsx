@@ -718,11 +718,12 @@ export default function LeadModal({
   }
 
   async function saveProjectAssignment(def: ProcDef, patch: { required?: boolean; assignedUserId?: string|null; estimatedHours?: number|null }) {
-    if (!lead?.id) return;
+    const projectId = opportunityId || lead?.id;
+    if (!projectId) return;
     setWkSavingId(def.id);
     try {
-      console.log('Assigning process to opportunity:', lead.id);
-      const response = await apiFetch(`/workshop-processes/project/${encodeURIComponent(lead.id)}`, {
+      console.log('Assigning process to opportunity:', projectId);
+      const response = await apiFetch(`/workshop-processes/project/${encodeURIComponent(projectId)}`, {
         method: "POST",
         json: {
           processDefinitionId: def.id,
@@ -739,7 +740,7 @@ export default function LeadModal({
       }
       
       // reload assignments only
-      const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => ({ assignments: [] }));
+  const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(projectId)}`).catch(() => ({ assignments: [] }));
       const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
       const norm: ProcAssignment[] = arr.map((it: any) => ({
         id: String(it.id || it.assignmentId || crypto.randomUUID()),
@@ -3447,8 +3448,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         className="w-full rounded-md border px-3 py-2 text-sm"
                         value={projectStartDate}
                         onChange={(e) => setProjectStartDate(e.target.value)}
+                        disabled={!opportunityId}
                         onBlur={() => {
-                          if (lead?.id && projectStartDate) {
+                          if (opportunityId && projectStartDate) {
                             saveOpportunityField('startDate', projectStartDate);
                           }
                         }}
@@ -3461,8 +3463,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         className="w-full rounded-md border px-3 py-2 text-sm"
                         value={projectDeliveryDate}
                         onChange={(e) => setProjectDeliveryDate(e.target.value)}
+                        disabled={!opportunityId}
                         onBlur={() => {
-                          if (lead?.id && projectDeliveryDate) {
+                          if (opportunityId && projectDeliveryDate) {
                             saveOpportunityField('deliveryDate', projectDeliveryDate);
                           }
                         }}
@@ -3476,8 +3479,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         className="w-full rounded-md border px-3 py-2 text-sm"
                         value={projectValueGBP}
                         onChange={(e) => setProjectValueGBP(e.target.value)}
+                        disabled={!opportunityId}
                         onBlur={() => {
-                          if (lead?.id && projectValueGBP) {
+                          if (opportunityId && projectValueGBP) {
                             saveOpportunityField('valueGBP', Number(projectValueGBP));
                           }
                         }}
@@ -3502,7 +3506,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         (async () => {
                           setWkLoading(true);
                           try {
-                            const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []);
+                            const pid = opportunityId || lead.id;
+                            const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(pid)}`).catch(() => []);
                             const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
                             const norm: ProcAssignment[] = arr.map((it: any) => ({
                               id: String(it.id || it.assignmentId || crypto.randomUUID()),
