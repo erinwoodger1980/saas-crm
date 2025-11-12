@@ -143,13 +143,10 @@ router.post("/signup", async (req, res) => {
       stack: error.stack?.split('\n').slice(0, 3).join('\n')
     });
     
-    // Return more specific error in development/staging
-    const isDev = process.env.NODE_ENV !== "production";
-    const errorMessage = isDev && error.message ? error.message : "Failed to create account";
-    
+    // Return the actual error message to help debug
     res.status(500).json({ 
-      error: errorMessage,
-      ...(isDev && { details: error.message, code: error.code })
+      error: error.message || "Failed to create account",
+      details: error.code || undefined
     });
   }
 });
