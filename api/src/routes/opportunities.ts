@@ -649,4 +649,45 @@ router.get("/:id/replies", async (req: any, res: any) => {
   });
 });
 
+/**
+ * PATCH /opportunities/:id
+ * Update opportunity fields (startDate, deliveryDate, valueGBP, etc.)
+ */
+router.patch("/:id", async (req: any, res: any) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const id = String(req.params.id);
+  const updates = req.body || {};
+
+  // Verify opportunity belongs to tenant
+  const opp = await prisma.opportunity.findFirst({
+    where: { id, tenantId },
+  });
+
+  if (!opp) {
+    return res.status(404).json({ error: "opportunity_not_found" });
+  }
+
+  // Build update object with proper type conversions
+  const data: any = {};
+  
+  if ('startDate' in updates) {
+    data.startDate = updates.startDate ? new Date(updates.startDate) : null;
+  }
+  if ('deliveryDate' in updates) {
+    data.deliveryDate = updates.deliveryDate ? new Date(updates.deliveryDate) : null;
+  }
+  if ('valueGBP' in updates) {
+    data.valueGBP = updates.valueGBP != null ? Number(updates.valueGBP) : null;
+  }
+
+  const updated = await prisma.opportunity.update({
+    where: { id },
+    data,
+  });
+
+  res.json({ ok: true, opportunity: updated });
+});
+
 export default router;

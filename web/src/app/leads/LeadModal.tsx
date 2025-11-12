@@ -689,8 +689,18 @@ export default function LeadModal({
             paintReceivedAt: opp.paintReceivedAt || null,
             paintNotApplicable: opp.paintNotApplicable || false,
           });
-          setProjectStartDate(opp.startDate || "");
-          setProjectDeliveryDate(opp.deliveryDate || "");
+          // Format dates for date input (YYYY-MM-DD)
+          const formatDateForInput = (dateStr: any) => {
+            if (!dateStr) return "";
+            try {
+              const date = new Date(dateStr);
+              return date.toISOString().split('T')[0];
+            } catch {
+              return "";
+            }
+          };
+          setProjectStartDate(formatDateForInput(opp.startDate));
+          setProjectDeliveryDate(formatDateForInput(opp.deliveryDate));
           setProjectValueGBP(opp.valueGBP ? String(opp.valueGBP) : "");
         }
       } finally {
@@ -761,6 +771,23 @@ export default function LeadModal({
       alert("Could not save material dates. Please try again.");
     } finally {
       setMaterialSaving(false);
+    }
+  }
+
+  async function saveOpportunityField(field: string, value: any) {
+    if (!lead?.id) return;
+    try {
+      const payload: any = {};
+      payload[field] = value;
+      
+      await apiFetch(`/opportunities/${encodeURIComponent(lead.id)}`, {
+        method: "PATCH",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e: any) {
+      console.error(`Failed to save ${field}:`, e);
+      alert(`Could not save ${field}. Please try again.`);
     }
   }
 
@@ -3398,7 +3425,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
           {/* Workshop Tab */}
           {currentStage === 'workshop' && (
-            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/60 min-h-[60vh]">
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/60 min-h-[60vh] max-h-[60vh] overflow-y-auto">
               <div className="max-w-6xl mx-auto space-y-6">
                 
                 {/* Project Details */}
@@ -3416,9 +3443,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         value={projectStartDate}
                         onChange={(e) => setProjectStartDate(e.target.value)}
                         onBlur={() => {
-                          // Save to opportunity
-                          if (lead?.id) {
-                            savePatch({ startDate: projectStartDate || null });
+                          if (lead?.id && projectStartDate) {
+                            saveOpportunityField('startDate', projectStartDate);
                           }
                         }}
                       />
@@ -3431,9 +3457,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         value={projectDeliveryDate}
                         onChange={(e) => setProjectDeliveryDate(e.target.value)}
                         onBlur={() => {
-                          // Save to opportunity
-                          if (lead?.id) {
-                            savePatch({ deliveryDate: projectDeliveryDate || null });
+                          if (lead?.id && projectDeliveryDate) {
+                            saveOpportunityField('deliveryDate', projectDeliveryDate);
                           }
                         }}
                       />
@@ -3447,9 +3472,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         value={projectValueGBP}
                         onChange={(e) => setProjectValueGBP(e.target.value)}
                         onBlur={() => {
-                          // Save to opportunity
-                          if (lead?.id) {
-                            savePatch({ valueGBP: projectValueGBP ? Number(projectValueGBP) : null });
+                          if (lead?.id && projectValueGBP) {
+                            saveOpportunityField('valueGBP', Number(projectValueGBP));
                           }
                         }}
                         placeholder="0.00"
@@ -3622,7 +3646,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 <input
                                   type="date"
                                   className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                                  value={materialDates[`${material.key}OrderedAt` as keyof MaterialDates] || ""}
+                                  value={String(materialDates[`${material.key}OrderedAt` as keyof MaterialDates] || "")}
                                   onChange={(e) => setMaterialDates(prev => ({
                                     ...prev,
                                     [`${material.key}OrderedAt`]: e.target.value || null
@@ -3634,7 +3658,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 <input
                                   type="date"
                                   className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                                  value={materialDates[`${material.key}ExpectedAt` as keyof MaterialDates] || ""}
+                                  value={String(materialDates[`${material.key}ExpectedAt` as keyof MaterialDates] || "")}
                                   onChange={(e) => setMaterialDates(prev => ({
                                     ...prev,
                                     [`${material.key}ExpectedAt`]: e.target.value || null
@@ -3646,7 +3670,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 <input
                                   type="date"
                                   className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                                  value={materialDates[`${material.key}ReceivedAt` as keyof MaterialDates] || ""}
+                                  value={String(materialDates[`${material.key}ReceivedAt` as keyof MaterialDates] || "")}
                                   onChange={(e) => setMaterialDates(prev => ({
                                     ...prev,
                                     [`${material.key}ReceivedAt`]: e.target.value || null
