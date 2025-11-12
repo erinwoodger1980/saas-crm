@@ -198,11 +198,13 @@ export default function SettingsPage() {
     sortOrder: number;
     requiredByDefault: boolean;
     estimatedHours?: number | null;
+    isColorKey?: boolean;
+    assignmentGroup?: string | null;
   };
   const [processes, setProcesses] = useState<ProcessDef[]>([]);
   const [procLoading, setProcLoading] = useState(false);
   const [procSavingId, setProcSavingId] = useState<string | "new" | null>(null);
-  const [newProcess, setNewProcess] = useState<Omit<ProcessDef, "id">>({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1 });
+  const [newProcess, setNewProcess] = useState<Omit<ProcessDef, "id">>({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1, isColorKey: false, assignmentGroup: null });
 
   useEffect(() => {
     (async () => {
@@ -267,9 +269,11 @@ export default function SettingsPage() {
         sortOrder: Number(newProcess.sortOrder || 0),
         requiredByDefault: !!newProcess.requiredByDefault,
         estimatedHours: newProcess.estimatedHours == null || newProcess.estimatedHours === undefined ? null : Number(newProcess.estimatedHours),
+        isColorKey: !!newProcess.isColorKey,
+        assignmentGroup: newProcess.assignmentGroup?.trim() || null,
       };
       await apiFetch<ProcessDef>("/workshop-processes", { method: "POST", json: payload });
-      setNewProcess({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1 });
+      setNewProcess({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1, isColorKey: false, assignmentGroup: null });
       await refreshProcesses();
       toast({ title: "Process created" });
     } catch (e: any) {
@@ -289,6 +293,8 @@ export default function SettingsPage() {
         sortOrder: Number(p.sortOrder || 0),
         requiredByDefault: !!p.requiredByDefault,
         estimatedHours: p.estimatedHours == null || p.estimatedHours === undefined ? null : Number(p.estimatedHours),
+        isColorKey: !!p.isColorKey,
+        assignmentGroup: p.assignmentGroup?.trim() || null,
       };
       await apiFetch(`/workshop-processes/${p.id}`, { method: "PATCH", json: payload });
       await refreshProcesses();
@@ -1357,7 +1363,7 @@ export default function SettingsPage() {
             {/* New row */}
             <div className="rounded-xl border bg-white/80 p-3">
               <div className="mb-2 text-sm font-semibold text-slate-800">Add process</div>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-[140px_1fr_110px_160px_120px_auto] items-center">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-[140px_1fr_80px_140px_100px_120px_120px_auto] items-center">
                 <input
                   className="rounded-xl border bg-white/95 px-3 py-2 text-sm uppercase tracking-wide"
                   placeholder="CODE"
@@ -1372,8 +1378,8 @@ export default function SettingsPage() {
                 />
                 <input
                   type="number"
-                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm w-28"
-                  placeholder="Sort"
+                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                  placeholder="0"
                   value={newProcess.sortOrder}
                   onChange={(e) => setNewProcess((p) => ({ ...p, sortOrder: Number(e.target.value || 0) }))}
                 />
@@ -1387,10 +1393,25 @@ export default function SettingsPage() {
                 </label>
                 <input
                   type="number"
-                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm w-28"
+                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
                   placeholder="Hours"
                   value={newProcess.estimatedHours ?? ""}
                   onChange={(e) => setNewProcess((p) => ({ ...p, estimatedHours: e.target.value === "" ? null : Number(e.target.value) }))}
+                />
+                <label className="inline-flex items-center gap-2 text-sm" title="This process determines the project's schedule color">
+                  <input
+                    type="checkbox"
+                    checked={!!newProcess.isColorKey}
+                    onChange={(e) => setNewProcess((p) => ({ ...p, isColorKey: e.target.checked }))}
+                  />
+                  Color key
+                </label>
+                <input
+                  className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
+                  placeholder="Group"
+                  title="Assignment group (e.g., PRODUCTION). Assigning a user to one process assigns to all in group."
+                  value={newProcess.assignmentGroup ?? ""}
+                  onChange={(e) => setNewProcess((p) => ({ ...p, assignmentGroup: e.target.value || null }))}
                 />
                 <div className="flex gap-2 justify-end">
                   <Button onClick={createProcess} disabled={procSavingId === "new"}>Create</Button>
@@ -1400,12 +1421,14 @@ export default function SettingsPage() {
 
             {/* List */}
             <div className="rounded-xl border bg-white/80">
-              <div className="grid grid-cols-[140px_1fr_110px_160px_120px_auto] items-center gap-2 px-3 py-2 border-b text-[12px] text-slate-600 font-medium">
+              <div className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_auto] items-center gap-2 px-3 py-2 border-b text-[12px] text-slate-600 font-medium">
                 <div>Code</div>
                 <div>Name</div>
                 <div>Sort</div>
                 <div>Required by default</div>
                 <div>Est. hours</div>
+                <div>Color key</div>
+                <div>Group</div>
                 <div className="text-right">Actions</div>
               </div>
               {procLoading ? (
@@ -1415,7 +1438,7 @@ export default function SettingsPage() {
               ) : (
                 <div className="divide-y">
                   {processes.map((p, idx) => (
-                    <div key={p.id} className="grid grid-cols-[140px_1fr_110px_160px_120px_auto] items-center gap-2 px-3 py-2">
+                    <div key={p.id} className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_auto] items-center gap-2 px-3 py-2">
                       <input
                         className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm uppercase"
                         value={p.code}
@@ -1428,7 +1451,7 @@ export default function SettingsPage() {
                       />
                       <input
                         type="number"
-                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm w-24"
+                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm"
                         value={p.sortOrder ?? 0}
                         onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, sortOrder: Number(e.target.value || 0) } : it)))}
                       />
@@ -1442,9 +1465,24 @@ export default function SettingsPage() {
                       </label>
                       <input
                         type="number"
-                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm w-24"
+                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm"
                         value={p.estimatedHours ?? ""}
                         onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, estimatedHours: e.target.value === "" ? null : Number(e.target.value) } : it)))}
+                      />
+                      <label className="inline-flex items-center gap-2 text-sm" title="This process determines the project's schedule color">
+                        <input
+                          type="checkbox"
+                          checked={!!p.isColorKey}
+                          onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, isColorKey: e.target.checked } : it)))}
+                        />
+                        Color key
+                      </label>
+                      <input
+                        className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm"
+                        placeholder="Group"
+                        title="Assignment group (e.g., PRODUCTION). Assigning a user to one process assigns to all in group."
+                        value={p.assignmentGroup ?? ""}
+                        onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, assignmentGroup: e.target.value || null } : it)))}
                       />
                       <div className="flex justify-end gap-2">
                         <Button size="sm" onClick={() => updateProcess(p)} disabled={procSavingId === p.id}>Save</Button>
