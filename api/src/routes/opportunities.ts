@@ -690,4 +690,54 @@ router.patch("/:id", async (req: any, res: any) => {
   res.json({ ok: true, opportunity: updated });
 });
 
+/**
+ * GET /opportunities/by-lead/:leadId
+ * Returns the most recent opportunity for a given lead (if any)
+ */
+router.get("/by-lead/:leadId", async (req: any, res: any) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const leadId = String(req.params.leadId);
+
+  // Ensure the lead belongs to tenant
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead || lead.tenantId !== tenantId) {
+    return res.status(404).json({ error: "lead_not_found" });
+  }
+
+  const opportunity = await prisma.opportunity.findFirst({
+    where: { tenantId, leadId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      title: true,
+      stage: true,
+      valueGBP: true,
+      startDate: true,
+      deliveryDate: true,
+      // Material tracking
+      timberOrderedAt: true,
+      timberExpectedAt: true,
+      timberReceivedAt: true,
+      timberNotApplicable: true,
+      glassOrderedAt: true,
+      glassExpectedAt: true,
+      glassReceivedAt: true,
+      glassNotApplicable: true,
+      ironmongeryOrderedAt: true,
+      ironmongeryExpectedAt: true,
+      ironmongeryReceivedAt: true,
+      ironmongeryNotApplicable: true,
+      paintOrderedAt: true,
+      paintExpectedAt: true,
+      paintReceivedAt: true,
+      paintNotApplicable: true,
+  createdAt: true,
+    },
+  });
+
+  res.json({ ok: true, opportunity });
+});
+
 export default router;

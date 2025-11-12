@@ -647,11 +647,12 @@ export default function LeadModal({
     (async () => {
       setWkLoading(true);
       try {
-        const [defs, users, project, oppDetails] = await Promise.all([
+        const [defs, users, project, oppDetails, oppByLead] = await Promise.all([
           apiFetch<ProcDef[]>(`/workshop-processes`).catch(() => [] as ProcDef[]),
           apiFetch<{ ok: boolean; items: ProcUser[] }>(`/workshop/users`).then((r) => (r as any)?.items || []).catch(() => [] as ProcUser[]),
           apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(lead.id)}`).catch(() => []),
           apiFetch<any>(`/leads/${lead.id}`, { headers: authHeaders }).catch(() => null),
+          apiFetch<any>(`/opportunities/by-lead/${encodeURIComponent(lead.id)}`, { headers: authHeaders }).catch(() => null),
         ]);
         if (cancelled) return;
         setWkDefs((Array.isArray(defs) ? defs : []).sort((a, b) => (Number(a.sortOrder||0) - Number(b.sortOrder||0)) || a.name.localeCompare(b.name)));
@@ -669,8 +670,8 @@ export default function LeadModal({
         setWkAssignments(norm);
         
         // Load material dates and project details
-        if (oppDetails) {
-          const opp = oppDetails.lead || oppDetails;
+        const opp = (oppByLead && (oppByLead.opportunity || oppByLead)) || (oppDetails && (oppDetails.lead || oppDetails)) || null;
+        if (opp) {
           setMaterialDates({
             timberOrderedAt: opp.timberOrderedAt || null,
             timberExpectedAt: opp.timberExpectedAt || null,
