@@ -768,6 +768,14 @@ router.post("/import", async (req, res) => {
           } catch (e) {
             console.warn("[ms365] logInsight accepted failed:", (e as any)?.message || e);
           }
+
+          // Post-classification side-effects: move to Enquiries folder
+          try {
+            const { postClassifySideEffects } = await import("../services/inboxFiling");
+            await postClassifySideEffects({ tenantId, provider: "ms365", messageId: m.id, decision: "accepted", score: aiConfidence ?? null });
+          } catch (e) {
+            console.warn("[ms365] postClassifySideEffects failed:", (e as any)?.message || e);
+          }
         } else {
           // Persist training example (rejected)
           try {

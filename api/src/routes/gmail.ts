@@ -1186,6 +1186,14 @@ router.post("/import", async (req, res) => {
           } catch (e) {
             console.warn("[gmail] logInsight accepted failed:", (e as any)?.message || e);
           }
+
+          // Post-classification side-effects: move out of INBOX and label as Enquiries
+          try {
+            const { postClassifySideEffects } = await import("../services/inboxFiling");
+            await postClassifySideEffects({ tenantId, provider: "gmail", messageId: m.id, decision: "accepted", score: aiConfidence ?? null });
+          } catch (e) {
+            console.warn("[gmail] postClassifySideEffects failed:", (e as any)?.message || e);
+          }
         } else {
           await recordTrainingExample({
             tenantId,
