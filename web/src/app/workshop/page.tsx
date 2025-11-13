@@ -618,6 +618,26 @@ export default function WorkshopPage() {
 
   const weeksArray = Array.from({ length: weeks }, (_, i) => i + 1);
 
+  // Get ISO week number (1-53) for a given date
+  function getISOWeek(date: Date): number {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  }
+
+  // Get the start date for a given weekNum (1-4 representing weeks within the current month view)
+  function getWeekStartDate(weekNum: number): Date {
+    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    const firstDayOfWeek = monthStart.getDay();
+    const firstSunday = new Date(monthStart);
+    firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
+    const weekStart = new Date(firstSunday);
+    weekStart.setDate(firstSunday.getDate() + ((weekNum - 1) * 7));
+    return weekStart;
+  }
+
   // Calendar helper functions
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -1193,10 +1213,20 @@ export default function WorkshopPage() {
             {weeksArray.map((weekNum: number) => {
               const projectsInWeek = getProjectsForWeek(weekNum);
               const weekTotal = getWeekTotal(weekNum);
+              const weekStart = getWeekStartDate(weekNum);
+              const weekEnd = new Date(weekStart);
+              weekEnd.setDate(weekStart.getDate() + 6);
+              const isoWeekNum = getISOWeek(weekStart);
+              const weekLabel = `Week ${isoWeekNum}`;
+              const dateRange = `${weekStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+              
               return (
                 <Card key={weekNum} className="p-4">
                   <div className="flex items-start justify-between mb-2">
-                    <div className="font-semibold">Week {weekNum}</div>
+                    <div>
+                      <div className="font-semibold">{weekLabel}</div>
+                      <div className="text-xs text-muted-foreground">{dateRange}</div>
+                    </div>
                     <div className="text-sm font-bold text-green-600">
                       {formatCurrency(weekTotal)}
                     </div>
