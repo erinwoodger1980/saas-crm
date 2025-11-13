@@ -253,8 +253,8 @@ router.get("/schedule", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const weeks = Math.max(1, Math.min(Number(req.query.weeks ?? 4), 8));
 
-  // Projects = WON opportunities
-  const projects = await (prisma as any).opportunity.findMany({
+  // Projects = WON opportunities (may include historical duplicates for same lead)
+  const rawProjects = await (prisma as any).opportunity.findMany({
     where: { tenantId, stage: "WON" },
     select: ({ 
       id: true, 
@@ -263,6 +263,8 @@ router.get("/schedule", async (req: any, res) => {
       wonAt: true, 
       startDate: true, 
       deliveryDate: true,
+      leadId: true,
+      createdAt: true,
       // Material tracking
       timberOrderedAt: true,
       timberExpectedAt: true,
@@ -284,7 +286,27 @@ router.get("/schedule", async (req: any, res) => {
     orderBy: [{ wonAt: "desc" }, { title: "asc" }],
   });
 
-  const projectIds = (projects as any[]).map((p: any) => p.id);
+  // Deduplicate by leadId, keeping the best candidate:
+  // - Prefer the record that has startDate/deliveryDate set
+  // - Otherwise prefer the most recent by createdAt
+  const byLead: Record<string, any[]> = {};
+  for (const p of rawProjects as any[]) {
+    const key = String(p.leadId || p.id);
+    (byLead[key] ||= []).push(p);
+  }
+  const projects: any[] = Object.values(byLead).map((group: any[]) => {
+    return group.reduce((best: any, cur: any) => {
+      const bestScore = (best.startDate ? 1 : 0) + (best.deliveryDate ? 1 : 0);
+      const curScore = (cur.startDate ? 1 : 0) + (cur.deliveryDate ? 1 : 0);
+      if (curScore !== bestScore) return curScore > bestScore ? cur : best;
+      // Tie-breaker: newer createdAt wins
+      const bestAt = new Date(best.createdAt || 0).getTime();
+      const curAt = new Date(cur.createdAt || 0).getTime();
+      return curAt > bestAt ? cur : best;
+    }, group[0]);
+  });
+
+  const projectIds = projects.map((p: any) => p.id);
 
   // Nothing to aggregate – return early to avoid empty `in: []` filters which cause errors on some drivers
   if (projectIds.length === 0) {
