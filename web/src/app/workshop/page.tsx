@@ -261,6 +261,7 @@ function getMaterialColor(status: MaterialStatus): string {
 
 export default function WorkshopPage() {
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [showValues, setShowValues] = useState(false); // Toggle between workshop view (false) and management view (true)
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [weeks, setWeeks] = useState(4);
@@ -949,6 +950,15 @@ export default function WorkshopPage() {
           >
             List
           </Button>
+          <div className="h-6 w-px bg-border" />
+          <Button 
+            variant={showValues ? 'default' : 'outline'} 
+            size="sm" 
+            onClick={() => setShowValues(!showValues)}
+            title={showValues ? "Hide values (Workshop View)" : "Show values (Management View)"}
+          >
+            {showValues ? '£ Values' : '🔧 Workshop'}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowHolidayModal(true)}>Holidays</Button>
           <Button variant="outline" size="sm" onClick={() => setShowUserColors(true)}>User Colors</Button>
           <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
@@ -1029,6 +1039,14 @@ export default function WorkshopPage() {
                 </Button>
               </div>
             </div>
+            {showValues && (
+              <div className="text-center">
+                <div className="text-sm text-muted-foreground">Month Total Value</div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {formatCurrency(getMonthTotal())}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Calendar Grid */}
@@ -1262,6 +1280,11 @@ export default function WorkshopPage() {
                       <div className="font-semibold">{weekLabel}</div>
                       <div className="text-xs text-muted-foreground">{dateRange}</div>
                     </div>
+                    {showValues && (
+                      <div className="text-sm font-bold text-green-600">
+                        {formatCurrency(weekTotal)}
+                      </div>
+                    )}
                   </div>
                   {/* Capacity vs Demand */}
                   <div className="text-xs mb-3">
@@ -1308,6 +1331,9 @@ export default function WorkshopPage() {
                           )}
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                          {showValues && proj.valueGBP && (
+                            <span>{formatCurrency(Number(proj.valueGBP))}</span>
+                          )}
                           {proj.startDate && proj.deliveryDate && (
                             <span className="text-xs">
                               {new Date(proj.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - 
@@ -1340,6 +1366,9 @@ export default function WorkshopPage() {
               <div className="flex-1">
                 <div className="font-medium">{proj.name}</div>
                 <div className="flex items-center gap-2 flex-wrap">
+                  {showValues && proj.valueGBP != null && (
+                    <div className="text-xs text-muted-foreground">£{Number(proj.valueGBP).toLocaleString()}</div>
+                  )}
                   {(() => {
                     const assignedUsers = (proj.processAssignments || [])
                       .filter(pa => pa.assignedUser)
@@ -1735,6 +1764,17 @@ export default function WorkshopPage() {
               <div className="space-y-4">
                 {/* Project Overview */}
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded">
+                  {showValues && (
+                    <div>
+                      <span className="text-sm text-gray-600">Value:</span>
+                      <span className="ml-2 font-semibold">
+                        {formatCurrency(typeof project.valueGBP === 'string' 
+                          ? parseFloat(project.valueGBP) 
+                          : (project.valueGBP || 0)
+                        )}
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <span className="text-sm text-gray-600">Progress:</span>
                     <span className="ml-2 font-semibold">{progress}%</span>
