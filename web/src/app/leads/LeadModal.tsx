@@ -3731,16 +3731,20 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                               <input
                                 type="checkbox"
                                 checked={!!isNA}
-                                onChange={(e) => setMaterialDates(prev => ({
-                                  ...prev,
-                                  [notApplicableKey]: e.target.checked,
-                                  // Clear dates when marking as N/A
-                                  ...(e.target.checked ? {
-                                    [`${material.key}OrderedAt`]: null,
-                                    [`${material.key}ExpectedAt`]: null,
-                                    [`${material.key}ReceivedAt`]: null,
-                                  } : {})
-                                }))}
+                                onChange={(e) => {
+                                  setMaterialDates(prev => ({
+                                    ...prev,
+                                    [notApplicableKey]: e.target.checked,
+                                    // Clear dates when marking as N/A
+                                    ...(e.target.checked ? {
+                                      [`${material.key}OrderedAt`]: null,
+                                      [`${material.key}ExpectedAt`]: null,
+                                      [`${material.key}ReceivedAt`]: null,
+                                    } : {})
+                                  }));
+                                  // Save immediately after state update
+                                  setTimeout(() => saveMaterialDates(), 0);
+                                }}
                                 className="rounded"
                               />
                               N/A
@@ -3758,6 +3762,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     ...prev,
                                     [`${material.key}OrderedAt`]: e.target.value || null
                                   }))}
+                                  onBlur={() => saveMaterialDates()}
                                 />
                               </label>
                               <label className="block">
@@ -3770,6 +3775,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     ...prev,
                                     [`${material.key}ExpectedAt`]: e.target.value || null
                                   }))}
+                                  onBlur={() => saveMaterialDates()}
                                 />
                               </label>
                               <label className="block">
@@ -3782,6 +3788,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     ...prev,
                                     [`${material.key}ReceivedAt`]: e.target.value || null
                                   }))}
+                                  onBlur={() => saveMaterialDates()}
                                 />
                               </label>
                             </div>
