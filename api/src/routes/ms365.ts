@@ -35,9 +35,10 @@ router.get("/ms365/login", (_req, res) => {
   const tenantSegment = process.env.MS365_TENANT || "common";
 
   // URLSearchParams expects a space-separated string for scope
+  // Mail.ReadWrite includes both Read and Write (Send + Move)
   const scopes =
     process.env.MS365_SCOPES ||
-    "offline_access Mail.Read User.Read";
+    "offline_access Mail.ReadWrite User.Read";
 
   const params = new URLSearchParams({
     client_id: env.MS365_CLIENT_ID,
