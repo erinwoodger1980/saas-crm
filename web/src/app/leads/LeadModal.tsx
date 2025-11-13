@@ -851,16 +851,20 @@ export default function LeadModal({
     if (!projectId) {
       projectId = await ensureOpportunity();
     }
-    if (!projectId) return;
+    if (!projectId) {
+      console.warn('[saveMaterialDates] No projectId, aborting');
+      return;
+    }
     setMaterialSaving(true);
+    console.log('[saveMaterialDates] Saving to project:', projectId, 'data:', materialDates);
     try {
-      await apiFetch(`/workshop/project/${encodeURIComponent(projectId)}/materials`, {
+      const response = await apiFetch(`/workshop/project/${encodeURIComponent(projectId)}/materials`, {
         method: "PATCH",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify(materialDates),
+        json: materialDates,
       });
+      console.log('[saveMaterialDates] Save successful:', response);
     } catch (e: any) {
-      console.error("Material dates save error:", e);
+      console.error("[saveMaterialDates] Error:", e);
       alert("Could not save material dates. Please try again.");
     } finally {
       setMaterialSaving(false);
@@ -3762,7 +3766,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     ...prev,
                                     [`${material.key}OrderedAt`]: e.target.value || null
                                   }))}
-                                  onBlur={() => saveMaterialDates()}
+                                  onBlur={() => setTimeout(() => saveMaterialDates(), 50)}
                                 />
                               </label>
                               <label className="block">
@@ -3775,7 +3779,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     ...prev,
                                     [`${material.key}ExpectedAt`]: e.target.value || null
                                   }))}
-                                  onBlur={() => saveMaterialDates()}
+                                  onBlur={() => setTimeout(() => saveMaterialDates(), 50)}
                                 />
                               </label>
                               <label className="block">
@@ -3788,7 +3792,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     ...prev,
                                     [`${material.key}ReceivedAt`]: e.target.value || null
                                   }))}
-                                  onBlur={() => saveMaterialDates()}
+                                  onBlur={() => setTimeout(() => saveMaterialDates(), 50)}
                                 />
                               </label>
                             </div>
