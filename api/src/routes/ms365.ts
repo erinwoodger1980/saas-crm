@@ -31,7 +31,7 @@ const router = Router();
 /**
  * Build the Microsoft authorization URL
  */
-router.get("/ms365/login", (_req, res) => {
+router.get("/login", (_req, res) => {
   const tenantSegment = process.env.MS365_TENANT || "common";
 
   // URLSearchParams expects a space-separated string for scope
@@ -57,7 +57,7 @@ router.get("/ms365/login", (_req, res) => {
 /**
  * OAuth callback: exchange code for tokens, upsert tenant+user, return JWT
  */
-router.get("/ms365/callback", async (req, res) => {
+router.get("/callback", async (req, res) => {
   try {
     const code = String(req.query.code || "");
     if (!code) {
@@ -161,7 +161,171 @@ router.get("/ms365/ping", (_req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * Per-user OAuth connect for MS365
+ */
+router.get("/user/connect", (req: any, res) => {
+  // Optional dev helper via ?jwt=
+  const qJwt = (req.query?.jwt as string | undefined) || undefined;
+  if (qJwt && !req.auth) {
+    try {
+      const decoded = jwt.verify(qJwt, env.APP_JWT_SECRET) as any;
+      (req as any).auth = { userId: decoded.userId, tenantId: decoded.tenantId, email: decoded.email };
+    } catch {
+      return res.status(401).send("invalid jwt");
+    }
+  }
+
+  const tenantId = req.auth?.tenantId as string | undefined;
+  const userId = req.auth?.userId as string | undefined;
+  if (!tenantId || !userId) return res.status(401).send("unauthorized");
+
+  const tenantSegment = process.env.MS365_TENANT || "common";
+  const scopes = process.env.MS365_SCOPES || "offline_access Mail.ReadWrite User.Read";
+  const params = new URLSearchParams({
+    client_id: env.MS365_CLIENT_ID,
+    response_type: "code",
+    redirect_uri: env.MS365_REDIRECT_URI,
+    response_mode: "query",
+    scope: scopes,
+    state: JSON.stringify({ tenantId, userId }),
+    prompt: "select_account",
+  });
+  const url = `https://login.microsoftonline.com/${tenantSegment}/oauth2/v2.0/authorize?${params.toString()}`;
+  res.redirect(url);
+});
+
+router.get("/user/callback", async (req: any, res) => {
+  try {
+    const code = String(req.query.code || "");
+    const rawState = String(req.query.state || "");
+    let state: { tenantId?: string; userId?: string } = {};
+    if (rawState) {
+      try { state = JSON.parse(rawState); } catch { try { state = JSON.parse(decodeURIComponent(rawState)); } catch {} }
+    }
+    // Fallback to JWT if needed
+    if (!state.tenantId || !state.userId) {
+      try {
+        const authHeader = req.headers.authorization || "";
+        const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        const cookieToken = (req.headers.cookie || "").match(/(?:^|;\s*)jwt=([^;]+)/)?.[1];
+        const token = bearer || (cookieToken ? decodeURIComponent(cookieToken) : null);
+        if (token) {
+          const decoded = jwt.verify(token, env.APP_JWT_SECRET) as any;
+          state.tenantId = state.tenantId || decoded?.tenantId;
+          state.userId = state.userId || decoded?.userId;
+        }
+      } catch {}
+    }
+
+    if (!code || !state.tenantId || !state.userId) {
+      return res.status(400).json({ error: "missing code or state" });
+    }
+
+    const tenantSegment = process.env.MS365_TENANT || "common";
+    const tokenUrl = `https://login.microsoftonline.com/${tenantSegment}/oauth2/v2.0/token`;
+
+    const form = new URLSearchParams({
+      client_id: env.MS365_CLIENT_ID,
+      client_secret: env.MS365_CLIENT_SECRET,
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: env.MS365_REDIRECT_URI,
+      scope: process.env.MS365_SCOPES || "offline_access Mail.ReadWrite User.Read",
+    });
+
+    const rsp = await fetch(tokenUrl, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString() });
+    const data: any = await rsp.json();
+    if (!rsp.ok) {
+      console.error("[ms365/user/callback] token exchange failed:", data);
+      return res.status(500).json({ error: "token_exchange_failed", detail: data });
+    }
+
+    const { id_token, refresh_token } = data || {};
+    if (!refresh_token) {
+      return res.status(400).json({ error: "missing refresh_token" });
+    }
+
+    // Extract email from id_token
+    let msEmail: string | null = null;
+    if (id_token) {
+      try {
+        const payloadB64 = String(id_token).split(".")[1];
+        const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8"));
+        msEmail = normalizeEmail(payload?.email || payload?.preferred_username || payload?.upn || "");
+      } catch {}
+    }
+
+    await (prisma as any).ms365UserConnection.upsert({
+      where: { userId: state.userId! },
+      update: { refreshToken: refresh_token, ms365Address: msEmail || undefined, tenantId: state.tenantId! },
+      create: { userId: state.userId!, tenantId: state.tenantId!, ms365Address: msEmail || "", refreshToken: refresh_token },
+    });
+
+    // Auto-enable inbox flag if needed
+    try {
+      const settings = await prisma.tenantSettings.findUnique({ where: { tenantId: state.tenantId! }, select: { inbox: true, slug: true, brandName: true } });
+      const inbox = ((settings?.inbox as any) || {}) as Record<string, any>;
+      if (typeof inbox.ms365 === "undefined" || inbox.ms365 === false) {
+        inbox.ms365 = true;
+        await prisma.tenantSettings.upsert({
+          where: { tenantId: state.tenantId! },
+          update: { inbox },
+          create: { tenantId: state.tenantId!, slug: settings?.slug || `tenant-${state.tenantId!.slice(0, 6)}`, brandName: settings?.brandName || "Your Company", inbox },
+        });
+      }
+    } catch (e) {
+      console.warn("[ms365] user/callback inbox flag set failed:", (e as any)?.message || e);
+    }
+
+    const appUrl = (process.env.APP_URL || "").trim();
+    if (appUrl && /^https?:\/\//i.test(appUrl)) {
+      const next = `${appUrl.replace(/\/+$/, "")}/settings?ms365_user=connected`;
+      return res.redirect(302, next);
+    }
+    return res.send(`<h2>✅ Microsoft 365 Connected (User)!</h2><p>Account: ${msEmail || "unknown"}</p>`);
+  } catch (e: any) {
+    console.error("[ms365/user/callback] failed:", e?.message || e);
+    return res.status(500).json({ error: "ms365_user_callback_failed" });
+  }
+});
+
 export default router;
+
+/**
+ * QoL: Per-user connection status and disconnect
+ */
+router.get("/user/connection", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    const userId = req.auth?.userId as string | undefined;
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+    const conn = await (prisma as any).ms365UserConnection.findUnique({
+      where: { userId },
+      select: { id: true, ms365Address: true, createdAt: true, updatedAt: true },
+    });
+
+    return res.json({ ok: true, connection: conn || null });
+  } catch (e: any) {
+    console.error("[ms365/user/connection] failed:", e?.message || e);
+    return res.status(500).json({ error: e?.message || "failed" });
+  }
+});
+
+router.post("/user/disconnect", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    const userId = req.auth?.userId as string | undefined;
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+    await (prisma as any).ms365UserConnection.deleteMany({ where: { userId, tenantId } });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[ms365/user/disconnect] failed:", e?.message || e);
+    return res.status(500).json({ error: e?.message || "failed" });
+  }
+});
 
 /**
  * Connection status for UI
@@ -177,6 +341,20 @@ router.get("/connection", async (req: any, res) => {
     return res.json({ ok: true, connection: conn });
   } catch (e: any) {
     return res.status(500).json({ error: e?.message || "failed" });
+  }
+});
+
+/**
+ * QoL: Tenant-level disconnect (parity with Gmail)
+ */
+router.post("/disconnect", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+    await prisma.ms365TenantConnection.deleteMany({ where: { tenantId } });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message || "failed to disconnect" });
   }
 });
 
@@ -215,6 +393,72 @@ router.get(["/message/:id/attachments/:attachmentId", "/message/:id/attachments/
     return res.send(buf);
   } catch (e: any) {
     console.error("[ms365] attachment stream failed:", e);
+    return res.status(500).send(e?.message || "attachment stream failed");
+  }
+});
+
+/**
+ * Stream attachment for a specific USER connection (signed URL path)
+ */
+router.get([
+  "/u/:connId/message/:id/attachments/:attachmentId",
+  "/u/:connId/message/:id/attachments/:attachmentId/download",
+], async (req: any, res) => {
+  // Optional JWT via query for signed URLs
+  try {
+    const qJwt = (req.query.jwt as string | undefined) || undefined;
+    if (qJwt && !req.auth) {
+      const decoded = jwt.verify(qJwt, env.APP_JWT_SECRET) as any;
+      (req as any).auth = { tenantId: decoded.tenantId || decoded.t, userId: decoded.userId || decoded.u, email: decoded.email };
+    }
+  } catch {}
+
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).send("unauthorized");
+    const isDownload = String(req.path).endsWith("/download");
+
+    const connId = String(req.params.connId);
+    const messageId = String(req.params.id);
+    const attachmentId = String(req.params.attachmentId);
+
+    // Validate connection belongs to tenant and get refresh token
+    const conn = await (prisma as any).ms365UserConnection.findUnique({
+      where: { id: connId },
+      select: { tenantId: true, refreshToken: true },
+    });
+    if (!conn || conn.tenantId !== tenantId) return res.status(404).send("not_found");
+
+    // Refresh access token (inline, mirroring service logic)
+    const tenantSegment = process.env.MS365_TENANT || "common";
+    const tokenUrl = `https://login.microsoftonline.com/${tenantSegment}/oauth2/v2.0/token`;
+    const form = new URLSearchParams({
+      client_id: env.MS365_CLIENT_ID,
+      client_secret: env.MS365_CLIENT_SECRET,
+      grant_type: "refresh_token",
+      refresh_token: conn.refreshToken,
+      redirect_uri: env.MS365_REDIRECT_URI,
+      scope: process.env.MS365_SCOPES || "offline_access Mail.ReadWrite User.Read",
+    });
+    const rsp = await fetch(tokenUrl, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString() });
+    const jj: any = await rsp.json();
+    if (!rsp.ok) return res.status(502).send(jj?.error || "token_refresh_failed");
+    const accessToken = String(jj.access_token || "");
+
+    const att = await getAttachment(accessToken, messageId, attachmentId);
+    const name = att?.name || "attachment.pdf";
+    const contentType = att?.contentType || "application/octet-stream";
+    const b64 = att?.contentBytes as string | undefined;
+    if (!b64) return res.status(404).send("attachment_content_missing");
+    const buf = Buffer.from(b64, "base64");
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", String(buf.length));
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("Content-Disposition", `${isDownload ? "attachment" : "inline"}; filename="${name}"`);
+    return res.send(buf);
+  } catch (e: any) {
+    console.error("[ms365] user attachment stream failed:", e);
     return res.status(500).send(e?.message || "attachment stream failed");
   }
 });
@@ -911,36 +1155,203 @@ router.post("/import-all-users", async (req, res) => {
 
     const allResults: any[] = [];
 
-    // Import from each connected user
+    // Import from each connected user - FULL processing
     for (const conn of connections) {
       try {
         console.log(`[ms365/import-all-users] Importing for user ${conn.userName} (${conn.email})`);
         
-        // List recent Inbox messages
+        // List recent inbox messages
         const listUrl = `https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$top=${encodeURIComponent(String(max))}&$orderby=receivedDateTime desc&$select=id,subject,receivedDateTime,from,hasAttachments,bodyPreview`;
         const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${conn.accessToken}` } });
         const listJson: any = await listRes.json();
         
-        if (listRes.ok && Array.isArray(listJson.value)) {
-          allResults.push({
-            userId: conn.userId,
-            email: conn.email,
-            imported: listJson.value.length,
-          });
-        } else {
-          allResults.push({
-            userId: conn.userId,
-            email: conn.email,
-            error: listJson?.error?.message || "list failed",
-          });
+        if (!listRes.ok) {
+          throw new Error(listJson?.error?.message || "ms365 list failed");
         }
+
+        const messages: Array<{ id: string }> = (listJson.value || []).map((m: any) => ({ id: m.id }));
+        const imported: any[] = [];
+
+        // Process each message fully
+        for (const m of messages) {
+          try {
+            // Idempotent ingest
+            let createdIngest = false;
+            try {
+              const createRes = await prisma.emailIngest.createMany({
+                data: [{ tenantId, provider: "ms365", messageId: m.id }],
+                skipDuplicates: true,
+              });
+              createdIngest = createRes.count === 1;
+            } catch {}
+
+            // Fetch full message
+            const msgUrl = `https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(m.id)}?$select=id,subject,receivedDateTime,from,toRecipients,ccRecipients,conversationId,body,bodyPreview`;
+            const msgRes = await fetch(msgUrl, { headers: { Authorization: `Bearer ${conn.accessToken}` } });
+            const msg: any = await msgRes.json();
+            if (!msgRes.ok) throw new Error(msg?.error?.message || "ms365 message fetch failed");
+
+            const subject: string = msg.subject || "";
+            const fromAddr: string | null = (msg.from?.emailAddress?.address as string | undefined)?.toLowerCase() || null;
+            const toAddrs: string[] = Array.isArray(msg.toRecipients) ? msg.toRecipients.map((r: any) => (r?.emailAddress?.address || "").toLowerCase()).filter(Boolean) : [];
+            const ccAddrs: string[] = Array.isArray(msg.ccRecipients) ? msg.ccRecipients.map((r: any) => (r?.emailAddress?.address || "").toLowerCase()).filter(Boolean) : [];
+            const allRcpts = [...toAddrs, ...ccAddrs];
+            const received = msg.receivedDateTime ? new Date(msg.receivedDateTime) : new Date();
+            const conversationId: string | null = msg.conversationId || null;
+            const bodyContent: string = msg.body?.content || msg.bodyPreview || "";
+            const bodyIsHtml = String(msg.body?.contentType || "").toLowerCase() === "html";
+            const bodyText = normalizePlainText(bodyIsHtml ? htmlToPlainText(bodyContent) : bodyContent);
+            const snippet = (msg.bodyPreview || "").slice(0, 160);
+
+            // Upsert thread
+            const thread = await prisma.emailThread.upsert({
+              where: { tenantId_provider_threadId: { tenantId, provider: "ms365", threadId: conversationId || `single:${m.id}` } },
+              update: { subject: subject || undefined, updatedAt: new Date() },
+              create: { tenantId, provider: "ms365", threadId: conversationId || `single:${m.id}`, subject: subject || null },
+            });
+
+            // Find lead
+            let leadId: string | null = null;
+            if (conversationId) {
+              const t = await prisma.emailThread.findUnique({
+                where: { tenantId_provider_threadId: { tenantId, provider: "ms365", threadId: conversationId } },
+                select: { leadId: true },
+              });
+              if (t?.leadId) leadId = t.leadId;
+            }
+            if (!leadId && fromAddr) {
+              const lead = await prisma.lead.findFirst({ where: { tenantId, email: fromAddr }, select: { id: true } });
+              if (lead) leadId = lead.id;
+            }
+
+            let createdLead = false;
+
+            // Classify if no lead
+            if (!leadId) {
+              const bodyForAnalysis = bodyText || snippet || "";
+              const heur = basicHeuristics(bodyForAnalysis);
+              let ai: any = null;
+              try {
+                ai = await extractLeadWithOpenAI(subject, bodyForAnalysis, { snippet, from: String(msg.from?.emailAddress?.name || fromAddr || "") });
+              } catch {}
+
+              const settings = await prisma.tenantSettings.findUnique({ where: { tenantId }, select: { inbox: true } });
+              const inbox = ((settings?.inbox as any) || {}) as Record<string, any>;
+              const recallFirst = !!(inbox.recallFirst || inbox.neverMiss);
+
+              const aiIsLead = typeof ai?.isLead === "string" ? ai.isLead.toLowerCase() === "true" : typeof ai?.isLead === "boolean" ? ai.isLead : null;
+              const aiConfidence = typeof ai?.confidence === "number" ? Math.max(0, Math.min(1, Number(ai.confidence))) : null;
+              const aiReason = typeof ai?.reason === "string" ? ai.reason : "";
+              const noise = looksLikeNoise(subject || "", bodyForAnalysis);
+              const subjectLeadSignal = /\b(quote|estimate|enquiry|inquiry|request)\b/i.test(subject || "");
+
+              let decidedBy: "openai" | "heuristics" = ai ? "openai" : "heuristics";
+              let isLeadCandidate = false;
+              let reason = aiReason;
+
+              if (aiIsLead === true && !noise) {
+                if ((aiConfidence ?? 0) >= 0.45 || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || subjectLeadSignal) {
+                  isLeadCandidate = true;
+                  reason = aiReason || "OpenAI classified this as a lead";
+                }
+              } else if (aiIsLead === false) {
+                isLeadCandidate = false;
+                reason = aiReason || "OpenAI classified this as not a lead";
+              }
+
+              if (aiIsLead === null || (aiConfidence ?? 0) < 0.45) {
+                if ((heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || subjectLeadSignal) && !noise) {
+                  isLeadCandidate = true;
+                  decidedBy = ai ? "openai" : "heuristics";
+                }
+              }
+
+              if (!isLeadCandidate && recallFirst && !noise) {
+                if (!(aiIsLead === false && (aiConfidence ?? 0) >= 0.7)) {
+                  if (subjectLeadSignal || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || (fromAddr && (subject || bodyForAnalysis))) {
+                    isLeadCandidate = true;
+                  }
+                }
+              }
+
+              if (noise) isLeadCandidate = false;
+
+              if (isLeadCandidate) {
+                const contactName = (typeof ai?.contactName === "string" && ai.contactName) || heur.contactName || (String(msg.from?.emailAddress?.name || "").trim() || (fromAddr ? fromAddr.split("@")[0] : null));
+                const emailCandidate = (typeof ai?.email === "string" && ai.email) || heur.email || fromAddr || null;
+                const email = emailCandidate ? String(emailCandidate).toLowerCase() : null;
+
+                const created = await prisma.lead.create({
+                  data: {
+                    tenantId,
+                    createdById: conn.userId,
+                    contactName: (contactName as string) || (email ? email.split("@")?.[0] : "New Lead"),
+                    email,
+                    status: "NEW",
+                    nextAction: (typeof ai?.nextAction === "string" && ai.nextAction) || "Review enquiry",
+                    custom: {
+                      provider: "ms365",
+                      messageId: m.id,
+                      threadId: thread.threadId,
+                      subject: subject || null,
+                      from: fromAddr || null,
+                      summary: (typeof ai?.summary === "string" && ai.summary) || snippet || null,
+                      uiStatus: "NEW_ENQUIRY",
+                      aiDecision: { decidedBy, reason, confidence: aiConfidence ?? null, model: ai ? "openai" : "heuristics" },
+                    },
+                  },
+                });
+                leadId = created.id;
+                createdLead = true;
+
+                try {
+                  await prisma.leadTrainingExample.upsert({
+                    where: { tenantId_provider_messageId: { tenantId, provider: "ms365", messageId: m.id } as any },
+                    update: { label: "accepted", extracted: { subject: subject || undefined, snippet, from: fromAddr || undefined, body: (bodyForAnalysis || "").slice(0, 4000), decidedBy, reason, confidence: aiConfidence ?? null } },
+                    create: { tenantId, provider: "ms365", messageId: m.id, label: "accepted", extracted: { subject: subject || undefined, snippet, from: fromAddr || undefined, body: (bodyForAnalysis || "").slice(0, 4000), decidedBy, reason, confidence: aiConfidence ?? null } },
+                  } as any);
+                } catch {}
+
+                try {
+                  const { postClassifySideEffects } = await import("../services/inboxFiling");
+                  await postClassifySideEffects({ tenantId, provider: "ms365", messageId: m.id, decision: "accepted", score: aiConfidence ?? null });
+                } catch {}
+              } else {
+                try {
+                  await prisma.leadTrainingExample.upsert({
+                    where: { tenantId_provider_messageId: { tenantId, provider: "ms365", messageId: m.id } as any },
+                    update: { label: "rejected", extracted: { subject: subject || undefined, snippet, from: fromAddr || undefined, body: (bodyForAnalysis || "").slice(0, 4000), reason: aiReason || undefined, confidence: aiConfidence ?? null } },
+                    create: { tenantId, provider: "ms365", messageId: m.id, label: "rejected", extracted: { subject: subject || undefined, snippet, from: fromAddr || undefined, body: (bodyForAnalysis || "").slice(0, 4000), reason: aiReason || undefined, confidence: aiConfidence ?? null } },
+                  } as any);
+                } catch {}
+              }
+            }
+
+            if (leadId && !thread.leadId) {
+              await prisma.emailThread.update({ where: { id: thread.id }, data: { leadId } });
+            }
+
+            // Upsert message
+            try {
+              await prisma.emailMessage.upsert({
+                where: { tenantId_provider_messageId: { tenantId, provider: "ms365", messageId: m.id } },
+                update: { threadId: thread.id, fromEmail: fromAddr, toEmail: allRcpts.length ? allRcpts.join(", ") : null, subject: subject || null, snippet: snippet || null, bodyText: bodyText || null, sentAt: received, leadId: leadId || null },
+                create: { tenantId, provider: "ms365", messageId: m.id, threadId: thread.id, direction: "inbound", fromEmail: fromAddr, toEmail: allRcpts.length ? allRcpts.join(", ") : null, subject: subject || null, snippet: snippet || null, bodyText: bodyText || null, sentAt: received, leadId: leadId || null },
+              });
+            } catch {}
+
+            await prisma.emailThread.update({ where: { id: thread.id }, data: { lastInboundAt: new Date(), updatedAt: new Date() } });
+
+            imported.push({ id: m.id, threadId: thread.threadId, linkedLeadId: leadId || null, createdLead, indexed: createdIngest });
+          } catch (msgErr: any) {
+            console.error(`[ms365/import-all-users] message ${m.id} failed:`, msgErr?.message);
+          }
+        }
+
+        allResults.push({ userId: conn.userId, email: conn.email, imported: imported.length, leads: imported.filter((x) => x.createdLead).length });
       } catch (e: any) {
         console.error(`[ms365/import-all-users] Failed for user ${conn.userId}:`, e?.message);
-        allResults.push({
-          userId: conn.userId,
-          email: conn.email,
-          error: e?.message || "import failed",
-        });
+        allResults.push({ userId: conn.userId, email: conn.email, error: e?.message || "import failed" });
       }
     }
 

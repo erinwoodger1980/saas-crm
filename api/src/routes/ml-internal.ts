@@ -193,14 +193,14 @@ router.post("/ingest-gmail", async (req: any, res) => {
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 100), 500));
-    const accessToken = await getAccessTokenForTenant(tenantId);
+  const accessToken = await getAccessTokenForTenant(tenantId);
 
     const requestedPageToken =
       typeof req.body?.pageToken === "string" ? req.body.pageToken.trim() : "";
     const explicitPageToken = requestedPageToken || undefined;
     const startPageToken = explicitPageToken ?? (await getCollectorCheckpoint(tenantId, CHECKPOINT_SOURCES.gmail));
 
-    const q = "in:sent filename:pdf has:attachment";
+  const q = "in:sent filename:pdf has:attachment";
     const maxPage = 100;
     let pageToken: string | null = startPageToken || null;
     let nextPageToken: string | null = null;
@@ -214,6 +214,7 @@ router.post("/ingest-gmail", async (req: any, res) => {
       url: string;
     };
     const out: Item[] = [];
+    const seen = new Set<string>();
 
     while (out.length < limit) {
       const searchUrl =
@@ -282,6 +283,9 @@ router.post("/ingest-gmail", async (req: any, res) => {
 
         for (const a of pdfs) {
           if (out.length >= limit) break;
+          const key = `tenant::${m.id}::${a.attachmentId}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
           out.push({
             messageId: m.id,
             threadId,
@@ -302,6 +306,68 @@ router.post("/ingest-gmail", async (req: any, res) => {
       await setCollectorCheckpoint(tenantId, CHECKPOINT_SOURCES.gmail, nextPageToken);
     } catch (err) {
       console.error("[internal/ml/ingest-gmail] checkpoint save failed:", (err as any)?.message || err);
+    }
+
+    // Also collect from ALL admin user Gmail connections (user-level)
+    try {
+      const { getAdminGmailConnections } = await import("../services/user-email");
+      const conns = await getAdminGmailConnections(tenantId);
+      // Iterate each connection and pull a single page of results each (no checkpoint yet)
+      for (const c of conns) {
+        if (out.length >= limit) break;
+        const userSearchUrl =
+          "https://gmail.googleapis.com/gmail/v1/users/me/messages?" +
+          new URLSearchParams({ q, maxResults: String(Math.min(limit - out.length, maxPage)) }).toString();
+        const listRes = await fetchWithBackoff(
+          userSearchUrl,
+          { headers: { Authorization: `Bearer ${c.accessToken}` } },
+          "gmail:list:user"
+        );
+        const listJson = (await listRes.json()) as GmailListResponse;
+        if (!listRes.ok) continue;
+        const msgs = listJson.messages || [];
+        const signedUser = (messageId: string, attachmentId: string) => {
+          const token = jwt.sign({ t: tenantId, u: "system" }, env.APP_JWT_SECRET, { expiresIn: "15m" });
+          return (
+            `${API_BASE}/gmail/u/${encodeURIComponent(c.connectionId)}/message/` +
+            `${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}?jwt=${encodeURIComponent(token)}`
+          );
+        };
+        for (const m of msgs) {
+          if (out.length >= limit) break;
+          const msg = await withBackoff(() => fetchMessage(c.accessToken, m.id, "full"), "gmail:message:user");
+          const headers = msg.payload?.headers || [];
+          const subject = headers.find((h: any) => h.name?.toLowerCase?.() === "subject")?.value || null;
+          const date = headers.find((h: any) => h.name?.toLowerCase?.() === "date")?.value || null;
+          const threadId = msg.threadId || m.threadId || m.id;
+          const pdfs: { attachmentId: string }[] = [];
+          const walk = (part: any) => {
+            if (!part) return;
+            const isPdf = part?.mimeType === "application/pdf" || /\.pdf$/i.test(part?.filename || "");
+            if (isPdf && part?.body?.attachmentId) pdfs.push({ attachmentId: part.body.attachmentId });
+            if (Array.isArray(part?.parts)) part.parts.forEach(walk);
+          };
+          walk(msg.payload);
+          const looksLikeQuote = /quote|estimate|proposal|quotation/i.test(subject || "") || pdfs.length > 0;
+          if (!looksLikeQuote) continue;
+          for (const a of pdfs) {
+            if (out.length >= limit) break;
+            const key = `user:${c.connectionId}::${m.id}::${a.attachmentId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({
+              messageId: m.id,
+              threadId,
+              subject,
+              sentAt: date,
+              attachmentId: a.attachmentId,
+              url: signedUser(m.id, a.attachmentId),
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[internal/ml/ingest-gmail] user-level aggregation failed:", (e as any)?.message || e);
     }
 
     return res.json({
@@ -874,7 +940,7 @@ router.post("/ingest-ms365", async (req: any, res) => {
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const limit = Math.max(1, Math.min(Number(req.body?.limit ?? 100), 500));
-    const accessToken = await getMsAccessToken(tenantId);
+  const accessToken = await getMsAccessToken(tenantId);
 
     const requestedPageToken =
       typeof req.body?.pageToken === "string" ? req.body.pageToken.trim() : "";
@@ -888,7 +954,8 @@ router.post("/ingest-ms365", async (req: any, res) => {
       subject: string | null;
       quotedAt: string | null;
     };
-    const out: Item[] = [];
+  const out: Item[] = [];
+  const seen = new Set<string>();
 
     let pageToken: string | null = startPageToken || null;
     let nextLink: string | null = null;
@@ -922,7 +989,11 @@ router.post("/ingest-ms365", async (req: any, res) => {
             { expiresIn: "15m" }
           );
           const url = `${API_BASE}/ms365/message/${encodeURIComponent(m.id)}/attachments/${encodeURIComponent(a.id)}?jwt=${encodeURIComponent(token)}`;
-          out.push({ messageId: m.id, attachmentId: a.id, url, subject, quotedAt: sentDate });
+          const key = `tenant::${m.id}::${a.id}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            out.push({ messageId: m.id, attachmentId: a.id, url, subject, quotedAt: sentDate });
+          }
         }
       }
 
@@ -935,6 +1006,46 @@ router.post("/ingest-ms365", async (req: any, res) => {
       await setCollectorCheckpoint(tenantId, CHECKPOINT_SOURCES.ms365, nextLink);
     } catch (err) {
       console.error("[internal/ml/ingest-ms365] checkpoint save failed:", (err as any)?.message || err);
+    }
+
+    // Also collect from ALL admin user MS365 connections (user-level)
+    try {
+      const { getAdminMs365Connections } = await import("../services/user-email");
+      const conns = await getAdminMs365Connections(tenantId);
+      for (const c of conns) {
+        if (out.length >= limit) break;
+        let next: string | undefined = undefined;
+        const page = await withBackoff(
+          () => msListSentWithAttachments(c.accessToken, Math.min(limit - out.length, 50), next),
+          "ms365:list:user"
+        );
+        const messages = Array.isArray(page.value) ? page.value : [];
+        const signedUser = (messageId: string, attachmentId: string) => {
+          const token = jwt.sign({ t: tenantId, u: "system" }, env.APP_JWT_SECRET, { expiresIn: "15m" });
+          return `${API_BASE}/ms365/u/${encodeURIComponent(c.connectionId)}/message/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}?jwt=${encodeURIComponent(token)}`;
+        };
+        for (const m of messages) {
+          if (out.length >= limit) break;
+          if (!m?.id || !m?.hasAttachments) continue;
+          const subject = (m?.subject as string | undefined) || null;
+          const sentDate = (m?.sentDateTime as string | undefined) || null;
+          const atts = await withBackoff(() => msListAttachments(c.accessToken, m.id), "ms365:attachments:user");
+          const arr = Array.isArray(atts.value) ? atts.value : [];
+          for (const a of arr) {
+            if (out.length >= limit) break;
+            const name = (a?.name as string | undefined) || "";
+            const ct = (a?.contentType as string | undefined) || "";
+            const isPdf = /pdf$/i.test(name) || /application\/pdf/i.test(ct);
+            if (!isPdf || !a?.id) continue;
+            const key = `user:${c.connectionId}::${m.id}::${a.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({ messageId: m.id, attachmentId: a.id, url: signedUser(m.id, a.id), subject, quotedAt: sentDate });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[internal/ml/ingest-ms365] user-level aggregation failed:", (e as any)?.message || e);
     }
 
     return res.json({

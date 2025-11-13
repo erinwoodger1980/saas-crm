@@ -32,6 +32,23 @@ After deployment, go to your web service in Render Dashboard and set these envir
 Make sure these are set:
 - `ML_URL` = `https://new-ml-zo9l.onrender.com`
 
+Email OAuth (redirect URIs must match your deployed API base):
+- `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`
+- `GMAIL_REDIRECT_URI` should include both tenant and user flows in your Google Cloud Console:
+  - https://YOUR-API-BASE/gmail/oauth/callback
+  - https://YOUR-API-BASE/gmail/user/callback
+- `MS365_CLIENT_ID` / `MS365_CLIENT_SECRET` / `MS365_TENANT` ("common" is fine)
+- `MS365_REDIRECT_URI` should be registered in Azure App registration and point to:
+  - https://YOUR-API-BASE/ms365/callback (SSO login flow, optional)
+  - https://YOUR-API-BASE/ms365/user/callback (per-user email connection)
+- `MS365_SCOPES` should include at least: `offline_access Mail.ReadWrite User.Read`
+
+Optional (controls automated Sent-folder ingestion/training schedule on the API server):
+- `ML_AUTO_COLLECT_SENT` = `1` to enable, `0` to disable
+	- Default: enabled in production, disabled in local dev
+- `ML_SENT_COLLECT_EVERY_MIN` = interval in minutes (minimum 30)
+	- Default: `60` (runs roughly hourly per tenant)
+
 ## Creating a Demo Account for Testing
 
 Since the app no longer auto-creates demo accounts in production, you'll need to create a user account manually:

@@ -599,11 +599,53 @@ function signSystemToken(tenantId: string) {
 function startInboxWatcher() {
   const API_ORIGIN = `http://localhost:${env.PORT}`;
   let busy = false;
+  let lastInboxFlagSyncMin = -1;
 
   setInterval(async () => {
     if (busy) return;
     busy = true;
     try {
+      const now = Date.now();
+
+      // QoL: every 15 minutes, if a tenant has user-level connections and inbox flags are unset, enable them
+      const nowMin = Math.floor(now / 60000);
+      if (nowMin % 15 === 0 && nowMin !== lastInboxFlagSyncMin) {
+        lastInboxFlagSyncMin = nowMin;
+        try {
+          const tenantIds = await prisma.tenant.findMany({ select: { id: true } });
+          for (const t of tenantIds) {
+            try {
+              const [gCount, mCount, settings] = await Promise.all([
+                (prisma as any).gmailUserConnection.count({ where: { tenantId: t.id } }),
+                (prisma as any).ms365UserConnection.count({ where: { tenantId: t.id } }),
+                prisma.tenantSettings.findUnique({ where: { tenantId: t.id }, select: { inbox: true, slug: true, brandName: true } }),
+              ]);
+              const inbox = ((settings?.inbox as any) || {}) as Record<string, any>;
+              let changed = false;
+              if (gCount > 0 && typeof inbox.gmail === "undefined") { inbox.gmail = true; changed = true; }
+              if (mCount > 0 && typeof inbox.ms365 === "undefined") { inbox.ms365 = true; changed = true; }
+              if (changed) {
+                await prisma.tenantSettings.upsert({
+                  where: { tenantId: t.id },
+                  update: { inbox },
+                  create: {
+                    tenantId: t.id,
+                    slug: settings?.slug || `tenant-${t.id.slice(0, 6)}`,
+                    brandName: settings?.brandName || "Your Company",
+                    inbox,
+                  },
+                });
+                console.log(`[inbox watcher] enabled inbox flags for tenant ${t.id} (gmail=${inbox.gmail ? "true" : String(inbox.gmail)} ms365=${inbox.ms365 ? "true" : String(inbox.ms365)})`);
+              }
+            } catch (e) {
+              console.warn("[inbox watcher] inbox flag sync failed for tenant", t.id, (e as any)?.message || e);
+            }
+          }
+        } catch (e) {
+          console.warn("[inbox watcher] inbox flag sync loop failed:", (e as any)?.message || e);
+        }
+      }
+
       const all = await prisma.tenantSettings.findMany({
         where: {
           OR: [
@@ -614,7 +656,6 @@ function startInboxWatcher() {
         select: { tenantId: true, inbox: true },
       });
 
-      const now = Date.now();
       for (const s of all) {
         const inbox = (s.inbox as any) || {};
         const intervalMin = Math.max(2, Number(inbox.intervalMinutes) || 10);
@@ -657,6 +698,32 @@ function startInboxWatcher() {
               ...common,
               method: "POST",
             } as any);
+          } catch {}
+        }
+
+        // Optional: periodically collect Sent-folder quotes for ML training across all connections
+        // Controlled by env ML_AUTO_COLLECT_SENT (default: enabled in prod), runs roughly hourly per tenant
+        const autoCollect = String(process.env.ML_AUTO_COLLECT_SENT || (process.env.NODE_ENV === 'production' ? '1' : '0')) === '1';
+        const sentEveryMin = Math.max(30, Number(process.env.ML_SENT_COLLECT_EVERY_MIN || 60));
+        const shouldCollectSent = autoCollect && (Math.floor(now / 60000) % sentEveryMin === 0);
+        if (shouldCollectSent) {
+          try {
+            // Gmail Sent ingestion/training (aggregates tenant + all user connections)
+            if (inbox.gmail) {
+              await fetch(`${API_ORIGIN}/internal/ml/collect-train-save`, {
+                ...common,
+                body: JSON.stringify({ limit: 100 }),
+              } as any);
+            }
+          } catch {}
+          try {
+            // MS365 Sent ingestion/training (aggregates tenant + all user connections)
+            if (inbox.ms365) {
+              await fetch(`${API_ORIGIN}/internal/ml/collect-train-save-ms365`, {
+                ...common,
+                body: JSON.stringify({ limit: 100 }),
+              } as any);
+            }
           } catch {}
         }
       }
