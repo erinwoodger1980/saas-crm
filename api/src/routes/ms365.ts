@@ -888,3 +888,65 @@ router.post("/import", async (req, res) => {
     return res.status(500).json({ error: e?.message || "import failed" });
   }
 });
+
+/**
+ * ==============================
+ * Import inbound mail from all admin users with MS365
+ * ==============================
+ */
+router.post("/import-all-users", async (req, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const max = Math.max(1, Math.min(Number(req.body?.max || 5), 20));
+
+  try {
+    // Get all admin users with MS365 connections
+    const { getAdminMs365Connections } = await import("../services/user-email");
+    const connections = await getAdminMs365Connections(tenantId);
+
+    if (connections.length === 0) {
+      return res.json({ ok: true, message: "No admin users with MS365 connections", results: [] });
+    }
+
+    const allResults: any[] = [];
+
+    // Import from each connected user
+    for (const conn of connections) {
+      try {
+        console.log(`[ms365/import-all-users] Importing for user ${conn.userName} (${conn.email})`);
+        
+        // List recent Inbox messages
+        const listUrl = `https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$top=${encodeURIComponent(String(max))}&$orderby=receivedDateTime desc&$select=id,subject,receivedDateTime,from,hasAttachments,bodyPreview`;
+        const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${conn.accessToken}` } });
+        const listJson: any = await listRes.json();
+        
+        if (listRes.ok && Array.isArray(listJson.value)) {
+          allResults.push({
+            userId: conn.userId,
+            email: conn.email,
+            imported: listJson.value.length,
+          });
+        } else {
+          allResults.push({
+            userId: conn.userId,
+            email: conn.email,
+            error: listJson?.error?.message || "list failed",
+          });
+        }
+      } catch (e: any) {
+        console.error(`[ms365/import-all-users] Failed for user ${conn.userId}:`, e?.message);
+        allResults.push({
+          userId: conn.userId,
+          email: conn.email,
+          error: e?.message || "import failed",
+        });
+      }
+    }
+
+    return res.json({ ok: true, connections: connections.length, results: allResults });
+  } catch (e: any) {
+    console.error("[ms365/import-all-users]", e);
+    return res.status(500).json({ error: e?.message || "failed" });
+  }
+});

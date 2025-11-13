@@ -34,9 +34,11 @@ model Tenant {
   emailMessages         EmailMessage[]
   emailThreads          EmailThread[]
   GmailTenantConnection GmailTenantConnection?
+  gmailUserConnections  GmailUserConnection[]  @relation("GmailUserConnections")
   leads                 Lead[]
   leadFieldDefs         LeadFieldDef[]
   Ms365TenantConnection Ms365TenantConnection?
+  ms365UserConnections  Ms365UserConnection[]  @relation("Ms365UserConnections")
   opportunities         Opportunity[]
   quotes                Quote[]
   UploadedFile          UploadedFile[]
@@ -128,6 +130,8 @@ model User {
   workshopColor         String?                 // Hex color for schedule display (e.g. "#3b82f6")
   GmailTenantConnection GmailTenantConnection[]
   Ms365TenantConnection Ms365TenantConnection[]
+  gmailUserConnection   GmailUserConnection?    @relation("GmailUserConnection")
+  ms365UserConnection   Ms365UserConnection?    @relation("Ms365UserConnection")
   passwordResetToken    PasswordResetToken?
   signupTokens          SignupToken[]
   tenant                Tenant                  @relation(fields: [tenantId], references: [id])
@@ -280,6 +284,38 @@ model Ms365TenantConnection {
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
+}
+
+model GmailUserConnection {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  tenantId     String
+  gmailAddress String
+  refreshToken String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation("GmailUserConnection", fields: [userId], references: [id], onDelete: Cascade)
+  tenant       Tenant   @relation("GmailUserConnections", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([tenantId, userId])
+}
+
+model Ms365UserConnection {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  tenantId     String
+  ms365Address String
+  refreshToken String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation("Ms365UserConnection", fields: [userId], references: [id], onDelete: Cascade)
+  tenant       Tenant   @relation("Ms365UserConnections", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([tenantId, userId])
 }
 
 model LeadExample {
