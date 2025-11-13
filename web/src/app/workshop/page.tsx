@@ -316,7 +316,21 @@ export default function WorkshopPage() {
       // Schedule load is critical; if it fails we set loadError
       if (schedR.status === 'fulfilled' && (schedR.value as any)?.ok) {
         setWeeks((schedR.value as any).weeks);
-        setProjects((schedR.value as any).projects);
+        // Defensive: deduplicate projects that may be returned twice by upstream queries
+        const raw = ((schedR.value as any).projects || []) as Project[];
+        // 1) Dedupe by id (primary key)
+        const byId = new Map<string, Project>();
+        for (const p of raw) byId.set(p.id, p);
+        let deduped = Array.from(byId.values());
+        // 2) Secondary safety: if two different ids share same name + identical dates, keep first
+        const seenKey = new Set<string>();
+        deduped = deduped.filter(p => {
+          const key = `${(p.name || '').trim().toLowerCase()}|${p.startDate || ''}|${p.deliveryDate || ''}`;
+          if (seenKey.has(key)) return false;
+          seenKey.add(key);
+          return true;
+        });
+        setProjects(deduped);
       } else if (schedR.status === 'rejected') {
         const msg = (schedR.reason?.message || 'Failed to load schedule').toString();
         setLoadError(msg);
