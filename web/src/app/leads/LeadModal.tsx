@@ -723,36 +723,36 @@ export default function LeadModal({
             console.log('[LeadModal] setting opportunityId from opp data:', opp.id);
             setOpportunityId(String(opp.id));
           }
-          setMaterialDates({
-            timberOrderedAt: opp.timberOrderedAt || null,
-            timberExpectedAt: opp.timberExpectedAt || null,
-            timberReceivedAt: opp.timberReceivedAt || null,
-            timberNotApplicable: opp.timberNotApplicable || false,
-            glassOrderedAt: opp.glassOrderedAt || null,
-            glassExpectedAt: opp.glassExpectedAt || null,
-            glassReceivedAt: opp.glassReceivedAt || null,
-            glassNotApplicable: opp.glassNotApplicable || false,
-            ironmongeryOrderedAt: opp.ironmongeryOrderedAt || null,
-            ironmongeryExpectedAt: opp.ironmongeryExpectedAt || null,
-            ironmongeryReceivedAt: opp.ironmongeryReceivedAt || null,
-            ironmongeryNotApplicable: opp.ironmongeryNotApplicable || false,
-            paintOrderedAt: opp.paintOrderedAt || null,
-            paintExpectedAt: opp.paintExpectedAt || null,
-            paintReceivedAt: opp.paintReceivedAt || null,
-            paintNotApplicable: opp.paintNotApplicable || false,
-          });
           // Format dates for date input (YYYY-MM-DD)
           const formatDateForInput = (dateStr: any) => {
-            if (!dateStr) return "";
+            if (!dateStr) return null;
             try {
               const date = new Date(dateStr);
               return date.toISOString().split('T')[0];
             } catch {
-              return "";
+              return null;
             }
           };
-          setProjectStartDate(formatDateForInput(opp.startDate));
-          setProjectDeliveryDate(formatDateForInput(opp.deliveryDate));
+          setMaterialDates({
+            timberOrderedAt: formatDateForInput(opp.timberOrderedAt),
+            timberExpectedAt: formatDateForInput(opp.timberExpectedAt),
+            timberReceivedAt: formatDateForInput(opp.timberReceivedAt),
+            timberNotApplicable: opp.timberNotApplicable || false,
+            glassOrderedAt: formatDateForInput(opp.glassOrderedAt),
+            glassExpectedAt: formatDateForInput(opp.glassExpectedAt),
+            glassReceivedAt: formatDateForInput(opp.glassReceivedAt),
+            glassNotApplicable: opp.glassNotApplicable || false,
+            ironmongeryOrderedAt: formatDateForInput(opp.ironmongeryOrderedAt),
+            ironmongeryExpectedAt: formatDateForInput(opp.ironmongeryExpectedAt),
+            ironmongeryReceivedAt: formatDateForInput(opp.ironmongeryReceivedAt),
+            ironmongeryNotApplicable: opp.ironmongeryNotApplicable || false,
+            paintOrderedAt: formatDateForInput(opp.paintOrderedAt),
+            paintExpectedAt: formatDateForInput(opp.paintExpectedAt),
+            paintReceivedAt: formatDateForInput(opp.paintReceivedAt),
+            paintNotApplicable: opp.paintNotApplicable || false,
+          });
+          setProjectStartDate(formatDateForInput(opp.startDate) || "");
+          setProjectDeliveryDate(formatDateForInput(opp.deliveryDate) || "");
           setProjectValueGBP(opp.valueGBP ? String(opp.valueGBP) : "");
         }
       } catch (err) {
