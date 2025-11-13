@@ -107,6 +107,7 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
 
 import { useEffect, useState } from "react";
 import { apiFetch, ensureDemoAuth, API_BASE } from "@/lib/api";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -260,6 +261,9 @@ function getMaterialColor(status: MaterialStatus): string {
 }
 
 export default function WorkshopPage() {
+  const { user } = useCurrentUser();
+  const isWorkshopOnly = user?.role === 'workshop';
+  
   const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
   const [showValues, setShowValues] = useState(false); // Toggle between workshop view (false) and management view (true)
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
@@ -626,10 +630,13 @@ export default function WorkshopPage() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayOfWeek = new Date(year, month, 1).getDay();
     
+    // Convert to Monday-start (0=Monday, 6=Sunday)
+    const mondayBasedOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+    
     const days = [];
     
     // Add empty cells for days before month starts
-    for (let i = 0; i < firstDayOfWeek; i++) {
+    for (let i = 0; i < mondayBasedOffset; i++) {
       days.push(null);
     }
     
@@ -654,10 +661,12 @@ export default function WorkshopPage() {
   function getWeekStartDate(weekNum: number): Date {
     const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
     const firstDayOfWeek = monthStart.getDay();
-    const firstSunday = new Date(monthStart);
-    firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
-    const weekStart = new Date(firstSunday);
-    weekStart.setDate(firstSunday.getDate() + ((weekNum - 1) * 7));
+    // Convert to Monday-based: if Sunday (0), go back 6 days; otherwise go back (day - 1) days
+    const mondayBasedOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+    const firstMonday = new Date(monthStart);
+    firstMonday.setDate(monthStart.getDate() - mondayBasedOffset);
+    const weekStart = new Date(firstMonday);
+    weekStart.setDate(firstMonday.getDate() + ((weekNum - 1) * 7));
     return weekStart;
   }
 
@@ -675,10 +684,12 @@ export default function WorkshopPage() {
     const weeks: { weekNum: number; isoWeek: number; startDate: Date; endDate: Date }[] = [];
     const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
     const firstDayOfWeek = monthStart.getDay();
-    const firstSunday = new Date(monthStart);
-    firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
+    // Convert to Monday-based offset
+    const mondayBasedOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+    const firstMonday = new Date(monthStart);
+    firstMonday.setDate(monthStart.getDate() - mondayBasedOffset);
     
-    let currentWeekStart = new Date(firstSunday);
+    let currentWeekStart = new Date(firstMonday);
     let weekNum = 1;
     
     // Generate weeks until we're past the last day
@@ -919,7 +930,7 @@ export default function WorkshopPage() {
   );
 
   return (
-    <div className={`space-y-6 ${isFullscreen ? 'p-8 bg-slate-50 min-h-screen' : ''}`}>
+    <div className={`space-y-6 ${isWorkshopOnly ? 'p-4' : ''} ${isFullscreen ? 'p-8 bg-slate-50 min-h-screen' : ''}`}>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Workshop</h1>
@@ -932,44 +943,50 @@ export default function WorkshopPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{projects.length} projects</span>
-          <Button variant="outline" size="sm" onClick={() => setShowQuickLog(true)}>
-            Quick Log Hours
-          </Button>
-          <Button 
-            variant={viewMode === 'calendar' ? 'default' : 'outline'} 
-            size="sm" 
-            onClick={() => setViewMode('calendar')}
-          >
-            <CalendarIcon className="w-4 h-4 mr-2" />
-            Calendar
-          </Button>
-          <Button 
-            variant={viewMode === 'list' ? 'default' : 'outline'} 
-            size="sm" 
-            onClick={() => setViewMode('list')}
-          >
-            List
-          </Button>
-          <div className="h-6 w-px bg-border" />
-          <Button 
-            variant={showValues ? 'default' : 'outline'} 
-            size="sm" 
-            onClick={() => setShowValues(!showValues)}
-            title={showValues ? "Hide values (Workshop View)" : "Show values (Management View)"}
-          >
-            {showValues ? '£ Values' : '🔧 Workshop'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowHolidayModal(true)}>Holidays</Button>
-          <Button variant="outline" size="sm" onClick={() => setShowUserColors(true)}>User Colors</Button>
+          {!isWorkshopOnly && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setShowQuickLog(true)}>
+                Quick Log Hours
+              </Button>
+              <Button 
+                variant={viewMode === 'calendar' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => setViewMode('calendar')}
+              >
+                <CalendarIcon className="w-4 h-4 mr-2" />
+                Calendar
+              </Button>
+              <Button 
+                variant={viewMode === 'list' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => setViewMode('list')}
+              >
+                List
+              </Button>
+              <div className="h-6 w-px bg-border" />
+              <Button 
+                variant={showValues ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => setShowValues(!showValues)}
+                title={showValues ? "Hide values (Workshop View)" : "Show values (Management View)"}
+              >
+                {showValues ? '£ Values' : '🔧 Workshop'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowHolidayModal(true)}>Holidays</Button>
+              <Button variant="outline" size="sm" onClick={() => setShowUserColors(true)}>User Colors</Button>
+            </>
+          )}
           <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
-          <Button 
-            variant={isFullscreen ? "default" : "outline"} 
-            size="sm" 
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit fullscreen display mode" : "Enter fullscreen display mode (auto-refreshes every 5 min)"}
-          >
-            {isFullscreen ? "Exit Display" : "📺 Display Mode"}
-          </Button>
+          {!isWorkshopOnly && (
+            <Button 
+              variant={isFullscreen ? "default" : "outline"} 
+              size="sm" 
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen display mode" : "Enter fullscreen display mode (auto-refreshes every 5 min)"}
+            >
+              {isFullscreen ? "Exit Display" : "📺 Display Mode"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1039,7 +1056,7 @@ export default function WorkshopPage() {
                 </Button>
               </div>
             </div>
-            {showValues && (
+            {showValues && !isWorkshopOnly && (
               <div className="text-center">
                 <div className="text-sm text-muted-foreground">Month Total Value</div>
                 <div className="text-2xl font-bold text-blue-600">
@@ -1053,7 +1070,7 @@ export default function WorkshopPage() {
           <div className="bg-white rounded-lg border overflow-hidden relative">
             {/* Calendar header - days of week */}
             <div className="grid grid-cols-7 border-b bg-slate-50">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
                 <div key={day} className="p-2 text-center text-xs font-semibold text-slate-600 border-r last:border-r-0">
                   {day}
                 </div>
@@ -1280,7 +1297,7 @@ export default function WorkshopPage() {
                       <div className="font-semibold">{weekLabel}</div>
                       <div className="text-xs text-muted-foreground">{dateRange}</div>
                     </div>
-                    {showValues && (
+                    {showValues && !isWorkshopOnly && (
                       <div className="text-sm font-bold text-green-600">
                         {formatCurrency(weekTotal)}
                       </div>
@@ -1331,7 +1348,7 @@ export default function WorkshopPage() {
                           )}
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                          {showValues && proj.valueGBP && (
+                          {showValues && !isWorkshopOnly && proj.valueGBP && (
                             <span>{formatCurrency(Number(proj.valueGBP))}</span>
                           )}
                           {proj.startDate && proj.deliveryDate && (
@@ -1358,7 +1375,7 @@ export default function WorkshopPage() {
       )}
 
       {/* List View */}
-      {viewMode === 'list' && (
+      {viewMode === 'list' && !isWorkshopOnly && (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {projects.map((proj) => (
           <Card key={proj.id} className="p-4 space-y-3">
@@ -1366,7 +1383,7 @@ export default function WorkshopPage() {
               <div className="flex-1">
                 <div className="font-medium">{proj.name}</div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {showValues && proj.valueGBP != null && (
+                  {showValues && !isWorkshopOnly && proj.valueGBP != null && (
                     <div className="text-xs text-muted-foreground">£{Number(proj.valueGBP).toLocaleString()}</div>
                   )}
                   {(() => {
@@ -1764,7 +1781,7 @@ export default function WorkshopPage() {
               <div className="space-y-4">
                 {/* Project Overview */}
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded">
-                  {showValues && (
+                  {showValues && !isWorkshopOnly && (
                     <div>
                       <span className="text-sm text-gray-600">Value:</span>
                       <span className="ml-2 font-semibold">
