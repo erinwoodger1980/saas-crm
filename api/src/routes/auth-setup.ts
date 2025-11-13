@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { env } from "../env";
 import { normalizeEmail } from "../lib/email";
 import { sendEmail, hasSmtp } from "../lib/mailer";
+import { sendEmailViaTenant } from "../services/email-sender";
 
 const router = Router();
 
@@ -88,41 +89,54 @@ router.post("/request-reset", async (req, res) => {
     const appUrl = (process.env.APP_URL || "https://joineryai.app").replace(/\/+$/,'');
     const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}`;
 
-    // Send password reset email
+    // Send password reset email via tenant's email provider
     try {
       const tenant = await prisma.tenant.findUnique({ where: { id: user.tenantId } });
       const companyName = tenant?.name || 'your organization';
       
-      await sendEmail({
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Reset Your Password</h2>
+          <p>Hi${user.name ? ` ${user.name}` : ''},</p>
+          <p>We received a request to reset your password for your JoineryAI account at ${companyName}.</p>
+          <p>Click the button below to set a new password:</p>
+          <p style="margin: 30px 0;">
+            <a href="${resetUrl}" 
+               style="background-color: #0070f3; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
+              Reset Password
+            </a>
+          </p>
+          <p style="color: #666; font-size: 14px;">
+            This link will expire in 30 minutes.
+          </p>
+          <p style="color: #666; font-size: 14px;">
+            If the button doesn't work, copy and paste this link into your browser:<br>
+            <span style="word-break: break-all;">${resetUrl}</span>
+          </p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+          <p style="color: #999; font-size: 12px;">
+            If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
+          </p>
+        </div>
+      `;
+
+      const plainTextBody = 
+        `Reset Your Password\n\n` +
+        `Hi${user.name ? ` ${user.name}` : ''},\n\n` +
+        `We received a request to reset your password for your JoineryAI account at ${companyName}.\n\n` +
+        `To set a new password, visit this link:\n${resetUrl}\n\n` +
+        `This link will expire in 30 minutes.\n\n` +
+        `If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.`;
+
+      await sendEmailViaTenant(user.tenantId, {
         to: normalizedEmail,
         subject: 'Reset your JoineryAI password',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #333;">Reset Your Password</h2>
-            <p>Hi${user.name ? ` ${user.name}` : ''},</p>
-            <p>We received a request to reset your password for your JoineryAI account at ${companyName}.</p>
-            <p>Click the button below to set a new password:</p>
-            <p style="margin: 30px 0;">
-              <a href="${resetUrl}" 
-                 style="background-color: #0070f3; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                Reset Password
-              </a>
-            </p>
-            <p style="color: #666; font-size: 14px;">
-              This link will expire in 30 minutes.
-            </p>
-            <p style="color: #666; font-size: 14px;">
-              If the button doesn't work, copy and paste this link into your browser:<br>
-              <span style="word-break: break-all;">${resetUrl}</span>
-            </p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-            <p style="color: #999; font-size: 12px;">
-              If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
-            </p>
-          </div>
-        `,
+        body: plainTextBody,
+        html: htmlBody,
+        fromName: companyName,
       });
-      console.log(`[password-reset] Email sent to ${normalizedEmail}`);
+      
+      console.log(`[password-reset] Email sent to ${normalizedEmail} via tenant's email provider`);
     } catch (emailError: any) {
       console.error('[password-reset] Failed to send email:', emailError?.message);
       // Still return success to avoid leaking user existence

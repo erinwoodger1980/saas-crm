@@ -1,5 +1,5 @@
 // api/src/services/ms365.ts
-import { prisma } from "../db";
+import { prisma } from "../prisma";
 import { env } from "../env";
 
 export async function getAccessTokenForTenant(tenantId: string): Promise<string> {
