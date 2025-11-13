@@ -632,7 +632,8 @@ function startInboxWatcher() {
 
         if (inbox.gmail) {
           try {
-            await fetch(`${API_ORIGIN}/gmail/import`, {
+            // Import from all admin users with Gmail connections
+            await fetch(`${API_ORIGIN}/gmail/import-all-users`, {
               ...common,
               body: JSON.stringify({ max: 25, q: "newer_than:30d" }),
             } as any);
@@ -646,7 +647,8 @@ function startInboxWatcher() {
 
         if (inbox.ms365) {
           try {
-            await fetch(`${API_ORIGIN}/ms365/import`, {
+            // Import from all admin users with MS365 connections
+            await fetch(`${API_ORIGIN}/ms365/import-all-users`, {
               ...common,
               body: JSON.stringify({ max: 25 }),
             } as any);

@@ -1,7 +1,6 @@
 // api/src/services/email-sender.ts
 import { prisma } from "../prisma";
-import { getAccessTokenForTenant as getGmailToken, gmailSend } from "./gmail";
-import { getAccessTokenForTenant as getMs365Token } from "./ms365";
+import { getGmailTokenForUser, getMs365TokenForUser, sendViaUserGmail, sendViaUserMs365 } from "./user-email";
 
 interface EmailOptions {
   to: string;
@@ -12,51 +11,82 @@ interface EmailOptions {
 }
 
 /**
- * Determines which email provider is configured for a tenant
+ * Determines which email provider is configured for a user
  */
-async function getTenantEmailProvider(tenantId: string): Promise<'gmail' | 'ms365' | null> {
-  const [gmailConn, ms365Conn] = await Promise.all([
-    prisma.gmailTenantConnection.findUnique({ where: { tenantId } }),
-    prisma.ms365TenantConnection.findUnique({ where: { tenantId } }),
-  ]);
+async function getUserEmailProvider(userId: string): Promise<'gmail' | 'ms365' | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      gmailUserConnection: true,
+      ms365UserConnection: true,
+    },
+  });
 
-  if (gmailConn) return 'gmail';
-  if (ms365Conn) return 'ms365';
+  if (!user) return null;
+  if (user.gmailUserConnection) return 'gmail';
+  if (user.ms365UserConnection) return 'ms365';
   return null;
 }
 
 /**
- * Sends an email using the tenant's connected email provider (Gmail or MS365)
+ * Sends an email using the user's connected email provider (Gmail or MS365)
  */
-export async function sendEmailViaTenant(tenantId: string, options: EmailOptions): Promise<void> {
-  const provider = await getTenantEmailProvider(tenantId);
+export async function sendEmailViaUser(userId: string, options: EmailOptions): Promise<void> {
+  const provider = await getUserEmailProvider(userId);
 
   if (!provider) {
-    console.warn(`[email-sender] No email provider configured for tenant ${tenantId}`);
-    throw new Error("No email provider configured for this tenant");
+    console.warn(`[email-sender] No email provider configured for user ${userId}`);
+    throw new Error("No email provider configured for this user");
   }
 
   if (provider === 'gmail') {
-    await sendViaGmail(tenantId, options);
+    await sendViaGmail(userId, options);
   } else if (provider === 'ms365') {
-    await sendViaMs365(tenantId, options);
+    await sendViaMs365(userId, options);
   }
+}
+
+/**
+ * Legacy: Send email via tenant's email (for backward compatibility)
+ * Now tries to use the first available admin user's email
+ */
+export async function sendEmailViaTenant(tenantId: string, options: EmailOptions): Promise<void> {
+  // Find first admin user with email connection
+  const adminUser = await prisma.user.findFirst({
+    where: {
+      tenantId,
+      role: { in: ['admin', 'owner'] },
+      OR: [
+        { gmailUserConnection: { isNot: null } },
+        { ms365UserConnection: { isNot: null } },
+      ],
+    },
+    include: {
+      gmailUserConnection: true,
+      ms365UserConnection: true,
+    },
+  });
+
+  if (!adminUser) {
+    throw new Error("No admin users with email configured for this tenant");
+  }
+
+  await sendEmailViaUser(adminUser.id, options);
 }
 
 /**
  * Send email via Gmail
  */
-async function sendViaGmail(tenantId: string, options: EmailOptions): Promise<void> {
-  const accessToken = await getGmailToken(tenantId);
+async function sendViaGmail(userId: string, options: EmailOptions): Promise<void> {
+  const { email: fromEmail } = await getGmailTokenForUser(userId);
   
-  // Get tenant's email address for From header
-  const tenant = await prisma.tenant.findUnique({ 
-    where: { id: tenantId },
-    include: { GmailTenantConnection: true }
+  // Get user details for from name
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { tenant: true },
   });
   
-  const fromEmail = tenant?.GmailTenantConnection?.gmailAddress || 'noreply@joineryai.app';
-  const fromName = options.fromName || tenant?.name || 'JoineryAI';
+  const fromName = options.fromName || user?.name || user?.tenant?.name || 'JoineryAI';
   const fromHeader = `${fromName} <${fromEmail}>`;
 
   // Build RFC822 email
@@ -68,23 +98,21 @@ async function sendViaGmail(tenantId: string, options: EmailOptions): Promise<vo
     html: options.html,
   });
 
-  await gmailSend(accessToken, rfc822);
-  console.log(`[email-sender] Gmail email sent to ${options.to} from tenant ${tenantId}`);
+  await sendViaUserGmail(userId, rfc822);
+  console.log(`[email-sender] Gmail email sent to ${options.to} from user ${userId}`);
 }
 
 /**
  * Send email via Microsoft 365 / Outlook
  */
-async function sendViaMs365(tenantId: string, options: EmailOptions): Promise<void> {
-  const accessToken = await getMs365Token(tenantId);
+async function sendViaMs365(userId: string, options: EmailOptions): Promise<void> {
+  const { email: fromEmail } = await getMs365TokenForUser(userId);
   
-  // Get tenant's email address
-  const tenant = await prisma.tenant.findUnique({ 
-    where: { id: tenantId },
-    include: { Ms365TenantConnection: true }
+  // Get user details
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { tenant: true },
   });
-  
-  const fromEmail = tenant?.Ms365TenantConnection?.ms365Address || 'noreply@joineryai.app';
 
   // Build email message using Microsoft Graph API format
   const message = {
@@ -104,27 +132,14 @@ async function sendViaMs365(tenantId: string, options: EmailOptions): Promise<vo
       from: {
         emailAddress: {
           address: fromEmail,
-          name: options.fromName || tenant?.name || 'JoineryAI',
+          name: options.fromName || user?.name || user?.tenant?.name || 'JoineryAI',
         },
       },
     },
   };
 
-  const response = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(message),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`MS365 send failed: ${error}`);
-  }
-
-  console.log(`[email-sender] MS365 email sent to ${options.to} from tenant ${tenantId}`);
+  await sendViaUserMs365(userId, message);
+  console.log(`[email-sender] MS365 email sent to ${options.to} from user ${userId}`);
 }
 
 /**
