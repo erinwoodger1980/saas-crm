@@ -701,6 +701,53 @@ router.get("/by-lead/:leadId", async (req: any, res: any) => {
 });
 
 /**
+ * GET /opportunities/:id
+ * Returns a single opportunity by ID
+ */
+router.get("/:id", async (req: any, res: any) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const id = String(req.params.id);
+
+  const opportunity = await prisma.opportunity.findFirst({
+    where: { id, tenantId },
+    select: {
+      id: true,
+      title: true,
+      stage: true,
+      valueGBP: true,
+      startDate: true,
+      deliveryDate: true,
+      // Material tracking
+      timberOrderedAt: true,
+      timberExpectedAt: true,
+      timberReceivedAt: true,
+      timberNotApplicable: true,
+      glassOrderedAt: true,
+      glassExpectedAt: true,
+      glassReceivedAt: true,
+      glassNotApplicable: true,
+      ironmongeryOrderedAt: true,
+      ironmongeryExpectedAt: true,
+      ironmongeryReceivedAt: true,
+      ironmongeryNotApplicable: true,
+      paintOrderedAt: true,
+      paintExpectedAt: true,
+      paintReceivedAt: true,
+      paintNotApplicable: true,
+      createdAt: true,
+    },
+  });
+
+  if (!opportunity) {
+    return res.status(404).json({ error: "opportunity_not_found" });
+  }
+
+  res.json({ ok: true, opportunity });
+});
+
+/**
  * POST /opportunities/ensure-for-lead/:leadId
  * Idempotently returns the opportunity for a given lead, creating one if missing.
  */
