@@ -1029,12 +1029,6 @@ export default function WorkshopPage() {
                 </Button>
               </div>
             </div>
-            <div className="text-center">
-              <div className="text-sm text-muted-foreground">Month Total Value</div>
-              <div className="text-2xl font-bold text-blue-600">
-                {formatCurrency(getMonthTotal())}
-              </div>
-            </div>
           </div>
 
           {/* Calendar Grid */}
@@ -1056,11 +1050,15 @@ export default function WorkshopPage() {
                   date.getMonth() === new Date().getMonth() &&
                   date.getFullYear() === new Date().getFullYear();
                 
+                const isWeekend = date && (date.getDay() === 0 || date.getDay() === 6);
+                
                 return (
                   <div
                     key={idx}
                     className={`min-h-32 border-r border-b last:border-r-0 p-2 relative ${
-                      !date ? 'bg-slate-50' : isToday ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'
+                      !date ? 'bg-slate-50' : 
+                      isWeekend ? 'bg-slate-100' :
+                      isToday ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'
                     }`}
                     style={{ zIndex: 1 }}
                     onDragOver={handleDragOver}
@@ -1264,9 +1262,6 @@ export default function WorkshopPage() {
                       <div className="font-semibold">{weekLabel}</div>
                       <div className="text-xs text-muted-foreground">{dateRange}</div>
                     </div>
-                    <div className="text-sm font-bold text-green-600">
-                      {formatCurrency(weekTotal)}
-                    </div>
                   </div>
                   {/* Capacity vs Demand */}
                   <div className="text-xs mb-3">
@@ -1313,9 +1308,6 @@ export default function WorkshopPage() {
                           )}
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                          {proj.valueGBP && (
-                            <span>{formatCurrency(Number(proj.valueGBP))}</span>
-                          )}
                           {proj.startDate && proj.deliveryDate && (
                             <span className="text-xs">
                               {new Date(proj.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - 
@@ -1348,9 +1340,6 @@ export default function WorkshopPage() {
               <div className="flex-1">
                 <div className="font-medium">{proj.name}</div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {proj.valueGBP != null && (
-                    <div className="text-xs text-muted-foreground">£{Number(proj.valueGBP).toLocaleString()}</div>
-                  )}
                   {(() => {
                     const assignedUsers = (proj.processAssignments || [])
                       .filter(pa => pa.assignedUser)
@@ -1747,17 +1736,12 @@ export default function WorkshopPage() {
                 {/* Project Overview */}
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded">
                   <div>
-                    <span className="text-sm text-gray-600">Value:</span>
-                    <span className="ml-2 font-semibold">
-                      {formatCurrency(typeof project.valueGBP === 'string' 
-                        ? parseFloat(project.valueGBP) 
-                        : (project.valueGBP || 0)
-                      )}
-                    </span>
-                  </div>
-                  <div>
                     <span className="text-sm text-gray-600">Progress:</span>
                     <span className="ml-2 font-semibold">{progress}%</span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-600">Total Hours:</span>
+                    <span className="ml-2 font-semibold">{project.totalProjectHours || 0}h</span>
                   </div>
                   <div>
                     <span className="text-sm text-gray-600">Start:</span>
