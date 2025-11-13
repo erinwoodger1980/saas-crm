@@ -618,26 +618,6 @@ export default function WorkshopPage() {
 
   const weeksArray = Array.from({ length: weeks }, (_, i) => i + 1);
 
-  // Get ISO week number (1-53) for a given date
-  function getISOWeek(date: Date): number {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
-    const yearStart = new Date(d.getFullYear(), 0, 1);
-    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  }
-
-  // Get the start date for a given weekNum (1-4 representing weeks within the current month view)
-  function getWeekStartDate(weekNum: number): Date {
-    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-    const firstDayOfWeek = monthStart.getDay();
-    const firstSunday = new Date(monthStart);
-    firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
-    const weekStart = new Date(firstSunday);
-    weekStart.setDate(firstSunday.getDate() + ((weekNum - 1) * 7));
-    return weekStart;
-  }
-
   // Calendar helper functions
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -659,6 +639,67 @@ export default function WorkshopPage() {
     
     return days;
   };
+
+  // Get ISO week number (1-53) for a given date
+  function getISOWeek(date: Date): number {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  }
+
+  // Get the start date for a given weekNum (1-4 representing weeks within the current month view)
+  function getWeekStartDate(weekNum: number): Date {
+    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    const firstDayOfWeek = monthStart.getDay();
+    const firstSunday = new Date(monthStart);
+    firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
+    const weekStart = new Date(firstSunday);
+    weekStart.setDate(firstSunday.getDate() + ((weekNum - 1) * 7));
+    return weekStart;
+  }
+
+  // Calculate all weeks shown in the current calendar view
+  const getVisibleWeeks = () => {
+    const daysArray = getDaysInMonth(currentMonth);
+    const validDays = daysArray.filter(d => d !== null) as Date[];
+    if (validDays.length === 0) return [];
+    
+    // Get first and last days of the calendar view
+    const firstDay = validDays[0];
+    const lastDay = validDays[validDays.length - 1];
+    
+    // Calculate week starts for entire range
+    const weeks: { weekNum: number; isoWeek: number; startDate: Date; endDate: Date }[] = [];
+    const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    const firstDayOfWeek = monthStart.getDay();
+    const firstSunday = new Date(monthStart);
+    firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
+    
+    let currentWeekStart = new Date(firstSunday);
+    let weekNum = 1;
+    
+    // Generate weeks until we're past the last day
+    while (currentWeekStart <= lastDay) {
+      const weekEnd = new Date(currentWeekStart);
+      weekEnd.setDate(currentWeekStart.getDate() + 6);
+      
+      weeks.push({
+        weekNum,
+        isoWeek: getISOWeek(currentWeekStart),
+        startDate: new Date(currentWeekStart),
+        endDate: weekEnd,
+      });
+      
+      currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+      weekNum++;
+    }
+    
+    return weeks;
+  };
+
+  const visibleWeeks = getVisibleWeeks();
 
   const getProjectsForWeek = (weekNumber: number) => {
     return projects.filter(proj => 
@@ -1209,19 +1250,15 @@ export default function WorkshopPage() {
           </div>
 
           {/* Week Summary below calendar */}
-          <div className="grid gap-4 md:grid-cols-4">
-            {weeksArray.map((weekNum: number) => {
-              const projectsInWeek = getProjectsForWeek(weekNum);
-              const weekTotal = getWeekTotal(weekNum);
-              const weekStart = getWeekStartDate(weekNum);
-              const weekEnd = new Date(weekStart);
-              weekEnd.setDate(weekStart.getDate() + 6);
-              const isoWeekNum = getISOWeek(weekStart);
-              const weekLabel = `Week ${isoWeekNum}`;
-              const dateRange = `${weekStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleWeeks.length}, minmax(0, 1fr))` }}>
+            {visibleWeeks.map((week) => {
+              const projectsInWeek = getProjectsForWeek(week.weekNum);
+              const weekTotal = getWeekTotal(week.weekNum);
+              const weekLabel = `Week ${week.isoWeek}`;
+              const dateRange = `${week.startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${week.endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
               
               return (
-                <Card key={weekNum} className="p-4">
+                <Card key={week.weekNum} className="p-4">
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <div className="font-semibold">{weekLabel}</div>
@@ -1234,20 +1271,12 @@ export default function WorkshopPage() {
                   {/* Capacity vs Demand */}
                   <div className="text-xs mb-3">
                     {(() => {
-                      const cap = getWeekCapacity(weekNum);
-                      const dem = getWeekDemand(weekNum);
+                      const cap = getWeekCapacity(week.weekNum);
+                      const dem = getWeekDemand(week.weekNum);
                       const free = Math.round(cap - dem);
                       const freeColor = free < 0 ? 'text-red-600' : 'text-emerald-700';
-                      // Holiday day counts in this week (use same logic as capacity/demand)
-                      const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-                      const firstDayOfWeek = monthStart.getDay();
-                      const firstSunday = new Date(monthStart);
-                      firstSunday.setDate(monthStart.getDate() - firstDayOfWeek);
-                      const weekStart = new Date(firstSunday);
-                      weekStart.setDate(firstSunday.getDate() + ((weekNum - 1) * 7));
-                      const weekEnd = new Date(weekStart);
-                      weekEnd.setDate(weekStart.getDate() + 6);
-                      const weekdayList = eachDay(weekStart, weekEnd).filter(isWeekday);
+                      // Holiday day counts in this week
+                      const weekdayList = eachDay(week.startDate, week.endDate).filter(isWeekday);
                       let holidayDays = 0;
                       for (const u of users) {
                         const userHols = holidays.filter(h => h.userId === u.id);
