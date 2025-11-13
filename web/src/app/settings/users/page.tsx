@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-type UserRow = { id: string; name: string | null; email: string; role?: string; workshopHoursPerDay?: number | null };
+type UserRow = { id: string; name: string | null; email: string; role?: string; workshopHoursPerDay?: number | null; passwordHash?: string | null };
 
 type UsersResponse = { ok: boolean; items: UserRow[] };
 
@@ -53,6 +53,7 @@ export default function UsersSettingsPage() {
 
   async function onInvite() {
     setInviteLink(null);
+    setError(null);
     if (!form.email || !form.role) return;
     try {
       const resp = await apiFetch<InviteResponse>("/auth/invite", {
@@ -66,6 +67,27 @@ export default function UsersSettingsPage() {
       }
     } catch (e: any) {
       setError(e?.message || "Invite failed");
+    }
+  }
+
+  async function resendInvite(email: string) {
+    setInviteLink(null);
+    setError(null);
+    try {
+      // Find user's current role
+      const user = users.find(u => u.email === email);
+      if (!user) return;
+      
+      const resp = await apiFetch<InviteResponse>("/auth/invite", {
+        method: "POST",
+        json: { email, role: user.role || "admin" },
+      });
+      if ((resp as any)?.setupLink) {
+        setInviteLink((resp as any).setupLink);
+        await loadUsers();
+      }
+    } catch (e: any) {
+      setError(e?.message || "Resend invite failed");
     }
   }
 
@@ -149,8 +171,20 @@ export default function UsersSettingsPage() {
                 <div className="flex-1">
                   <div className="font-medium">{u.name || u.email}</div>
                   <div className="text-xs text-muted-foreground">{u.email}</div>
+                  {!u.passwordHash && (
+                    <div className="text-xs text-amber-600 mt-1">⚠️ Password not set - needs to complete setup</div>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
+                  {!u.passwordHash && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => resendInvite(u.email)}
+                    >
+                      Resend Invite
+                    </Button>
+                  )}
                   <div className="text-xs uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{(u.role || 'user').toString()}</div>
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-muted-foreground whitespace-nowrap">Workshop hrs/day:</label>
