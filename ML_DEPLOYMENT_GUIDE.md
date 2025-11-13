@@ -62,6 +62,17 @@ MODELS_DIR=/mnt/models        # Model storage directory
 APP_ENV=production           # Environment indicator
 ```
 
+### API-side Scheduler (Sent Ingestion) Environment Variables
+These live on the API service (not the ML service) and control automatic Sent-folder collection and training across all Gmail/MS365 connections.
+
+```bash
+# Enable/disable automatic Sent-folder collection + training via API scheduler
+ML_AUTO_COLLECT_SENT=1     # default: 1 in production, 0 in local dev
+
+# How often to run collection/training in minutes (minimum 30, default 60)
+ML_SENT_COLLECT_EVERY_MIN=60
+```
+
 ## 🎯 **Production Database Setup**
 
 ### **1. PostgreSQL Database**

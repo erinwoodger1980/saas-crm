@@ -178,6 +178,8 @@ export default function SettingsPage() {
   const [savingInbox, setSavingInbox] = useState(false);
   const [gmailConn, setGmailConn] = useState<{ gmailAddress?: string | null } | null>(null);
   const [ms365Conn, setMs365Conn] = useState<{ ms365Address?: string | null } | null>(null);
+  const [userGmailConn, setUserGmailConn] = useState<{ gmailAddress?: string | null } | null>(null);
+  const [userMs365Conn, setUserMs365Conn] = useState<{ ms365Address?: string | null } | null>(null);
   const [updatingEarlyAccess, setUpdatingEarlyAccess] = useState(false);
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
@@ -486,9 +488,47 @@ export default function SettingsPage() {
     }
   }
 
+  async function connectGmailUser() {
+    const base = API_BASE.replace(/\/$/, "");
+    // Try JSON start first
+    try {
+      const resp = await apiFetch<{ authUrl?: string }>("/gmail/user/connect/start");
+      if (resp?.authUrl) {
+        window.location.href = resp.authUrl;
+        return;
+      }
+    } catch {}
+    window.location.href = `${base}/gmail/user/connect`;
+  }
+
+  async function disconnectGmailUser() {
+    try {
+      await apiFetch("/gmail/user/disconnect", { method: "POST" });
+      await refreshConnections();
+      toast({ title: "Gmail disconnected for your user" });
+    } catch (e: any) {
+      toast({ title: "Disconnect failed", description: e?.message || "", variant: "destructive" });
+    }
+  }
+
   async function connectMs365() {
     const base = API_BASE.replace(/\/$/, "");
     window.location.href = `${base}/ms365/login`;
+  }
+
+  async function connectMs365User() {
+    const base = API_BASE.replace(/\/$/, "");
+    window.location.href = `${base}/ms365/user/connect`;
+  }
+
+  async function disconnectMs365User() {
+    try {
+      await apiFetch("/ms365/user/disconnect", { method: "POST" });
+      await refreshConnections();
+      toast({ title: "Microsoft 365 disconnected for your user" });
+    } catch (e: any) {
+      toast({ title: "Disconnect failed", description: e?.message || "", variant: "destructive" });
+    }
   }
 
   async function refreshConnections() {
@@ -499,6 +539,14 @@ export default function SettingsPage() {
     try {
       const m = await apiFetch<{ ok: boolean; connection: { ms365Address?: string | null } | null }>("/ms365/connection");
       setMs365Conn(m?.connection || null);
+    } catch {}
+    try {
+      const ug = await apiFetch<{ ok: boolean; connection: { gmailAddress?: string | null } | null }>("/gmail/user/connection");
+      setUserGmailConn(ug?.connection || null);
+    } catch {}
+    try {
+      const um = await apiFetch<{ ok: boolean; connection: { ms365Address?: string | null } | null }>("/ms365/user/connection");
+      setUserMs365Conn(um?.connection || null);
     } catch {}
   }
 
@@ -1502,15 +1550,78 @@ export default function SettingsPage() {
       <Section title="Tenant Images" description="Import high-quality images from your website to use in landing pages">
         <TenantImageImport tenantSlug={s.slug} website={s.website || ""} />
       </Section>
-      <Section title="Inbox & Integrations" description="Enable Gmail or Microsoft 365 ingestion">
+      
+      <Section title="Your Email Connections" description="Connect your own email account for sending and receiving">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Connect your personal Gmail or Microsoft 365 account. When you send emails from the CRM, they'll come from your connected account. 
+            All admin users' connected accounts will automatically import leads.
+          </p>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded-xl border bg-white/70 p-4">
+              <div className="mb-3">
+                <div className="text-sm font-semibold text-slate-800">Your Gmail</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {userGmailConn?.gmailAddress ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                      Connected as {userGmailConn.gmailAddress}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-slate-300"></span>
+                      Not connected
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {userGmailConn?.gmailAddress ? (
+                  <Button variant="destructive" size="sm" onClick={disconnectGmailUser}>Disconnect</Button>
+                ) : (
+                  <Button variant="default" size="sm" onClick={connectGmailUser}>Connect Gmail</Button>
+                )}
+              </div>
+            </div>
+            
+            <div className="rounded-xl border bg-white/70 p-4">
+              <div className="mb-3">
+                <div className="text-sm font-semibold text-slate-800">Your Microsoft 365</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {userMs365Conn?.ms365Address ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                      Connected as {userMs365Conn.ms365Address}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-slate-300"></span>
+                      Not connected
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {userMs365Conn?.ms365Address ? (
+                  <Button variant="destructive" size="sm" onClick={disconnectMs365User}>Disconnect</Button>
+                ) : (
+                  <Button variant="default" size="sm" onClick={connectMs365User}>Connect Microsoft 365</Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Inbox Settings" description="Configure email import and polling">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={inbox.gmail} onChange={(e) => setInbox((p) => ({ ...p, gmail: e.target.checked }))} />
-            <span>Gmail</span>
+            <span>Enable Gmail import</span>
           </label>
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={inbox.ms365} onChange={(e) => setInbox((p) => ({ ...p, ms365: e.target.checked }))} />
-            <span>Microsoft 365</span>
+            <span>Enable Microsoft 365 import</span>
           </label>
           <label className="inline-flex items-center gap-2">
             <span className="text-xs text-slate-500">Poll interval (minutes)</span>
@@ -1521,34 +1632,34 @@ export default function SettingsPage() {
             <span>Prefer recall (never miss leads)</span>
           </label>
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="mt-4">
+          <Button onClick={saveInbox} disabled={savingInbox}>{savingInbox ? "Saving…" : "Save inbox settings"}</Button>
+        </div>
+      </Section>
+
+      <Section title="Tenant-Level Connections (Legacy)" description="Legacy tenant-wide email connections">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="rounded-xl border bg-white/70 p-3">
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm font-semibold">Gmail</div>
+              <div className="text-sm font-semibold">Tenant Gmail</div>
               <div className="text-xs text-slate-600">{gmailConn?.gmailAddress ? `Connected as ${gmailConn.gmailAddress}` : "Not connected"}</div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={connectGmail}>Connect</Button>
-              <Button variant="outline" onClick={runImportGmail}>Run import now</Button>
+              <Button variant="outline" size="sm" onClick={connectGmail}>Connect</Button>
+              <Button variant="outline" size="sm" onClick={runImportGmail}>Run import</Button>
             </div>
           </div>
           <div className="rounded-xl border bg-white/70 p-3">
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm font-semibold">Microsoft 365</div>
+              <div className="text-sm font-semibold">Tenant Microsoft 365</div>
               <div className="text-xs text-slate-600">{ms365Conn?.ms365Address ? `Connected as ${ms365Conn.ms365Address}` : "Not connected"}</div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={connectMs365}>Connect</Button>
-              <Button variant="outline" onClick={runImportMs365}>Run import now</Button>
+              <Button variant="outline" size="sm" onClick={connectMs365}>Connect</Button>
+              <Button variant="outline" size="sm" onClick={runImportMs365}>Run import</Button>
             </div>
           </div>
         </div>
-        <div className="mt-4">
-          <Button onClick={saveInbox} disabled={savingInbox}>{savingInbox ? "Saving…" : "Save inbox"}</Button>
-        </div>
-      </Section>
-      <Section title="Gmail Integration">
-        <Button onClick={connectGmail}>Connect Gmail</Button>
       </Section>
       </>
       )}

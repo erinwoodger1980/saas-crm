@@ -7,6 +7,7 @@ import OpenAI from "openai";
 import { logInsight } from "../services/training";
 import { load } from "cheerio";
 import { redactEmailBody } from "../lib/ml/redact";
+import { gmailFetchAttachment } from "../services/gmail";
 
 const router = Router();
 
@@ -748,31 +749,10 @@ try {
       const messageId = String(req.params.id);
       const attachmentId = String(req.params.attachmentId);
 
-      const attRsp = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      const attJson = await attRsp.json();
-      if (!attRsp.ok) {
-        return res
-          .status(attRsp.status)
-          .send(attJson?.error?.message || "attachment fetch failed");
-      }
-      const buf = Buffer.from(String(attJson.data).replace(/-/g, "+").replace(/_/g, "/"), "base64");
-
-      const msg = await fetchMessage(accessToken, messageId, "full");
-      let filename = "attachment";
-      let mimeType = "application/octet-stream";
-
-      const walk = (p: any) => {
-        if (!p) return;
-        if (p.body?.attachmentId === attachmentId) {
-          if (p.filename) filename = p.filename;
-          if (p.mimeType) mimeType = p.mimeType;
-        }
-        if (p.parts) p.parts.forEach(walk);
-      };
-      walk(msg.payload);
+      const { buffer, filename: origName, mimeType: origMime } = await gmailFetchAttachment(accessToken, messageId, attachmentId);
+      const buf = buffer;
+      let filename = origName || "attachment";
+      let mimeType = origMime || "application/octet-stream";
 
       if (!mimeType || mimeType === "application/octet-stream") {
         mimeType = sniffMime(buf, mimeType);
@@ -794,6 +774,77 @@ try {
       return res.send(buf);
     } catch (e: any) {
       console.error("[gmail] attachment stream failed:", e);
+      return res.status(500).send(e?.message || "attachment stream failed");
+    }
+  }
+);
+
+/* ============================================================
+   Attachments via USER connection (signed URL path)
+   ============================================================ */
+router.get(
+  [
+    "/u/:connId/message/:id/attachments/:attachmentId",
+    "/u/:connId/message/:id/attachments/:attachmentId/download",
+  ],
+  async (req, res) => {
+    // Allow ?jwt= to auth this request (so server->server fetch can work)
+    try {
+      const qJwt = (req.query.jwt as string | undefined) || undefined;
+      if (qJwt && !req.auth) {
+        const decoded = jwt.verify(qJwt, env.APP_JWT_SECRET) as any;
+        (req as any).auth = {
+          tenantId: decoded.tenantId || decoded.t || decoded.TenantId,
+          userId: decoded.userId || decoded.u,
+          email: decoded.email,
+        };
+      }
+    } catch {}
+
+    try {
+      const { tenantId } = getAuth(req);
+      if (!tenantId) return res.status(401).send("unauthorized");
+      const isDownload = req.path.endsWith("/download");
+
+      const connId = String(req.params.connId);
+      const messageId = String(req.params.id);
+      const attachmentId = String(req.params.attachmentId);
+
+      // Validate connection belongs to the same tenant
+      const conn = await (prisma as any).gmailUserConnection.findUnique({
+        where: { id: connId },
+        select: { tenantId: true, refreshToken: true },
+      });
+      if (!conn || conn.tenantId !== tenantId) return res.status(404).send("not_found");
+
+      // Reuse local refresh function from this module
+      const accessToken = await refreshAccessToken(conn.refreshToken);
+
+      const { buffer, filename: origName, mimeType: origMime } = await gmailFetchAttachment(
+        accessToken,
+        messageId,
+        attachmentId
+      );
+
+      const buf = buffer;
+      let filename = origName || "attachment";
+      let mimeType = origMime || "application/octet-stream";
+      if (!mimeType || mimeType === "application/octet-stream") {
+        mimeType = sniffMime(buf, mimeType);
+      }
+      const hasExt = /\.[a-z0-9]{2,}$/i.test(filename);
+      if (!hasExt && EXT_FROM_MIME[mimeType]) filename = `${filename}${EXT_FROM_MIME[mimeType]}`;
+
+      res.setHeader("Content-Type", mimeType || "application/octet-stream");
+      res.setHeader(
+        "Content-Disposition",
+        `${isDownload ? "attachment" : "inline"}; filename="${filename}"`
+      );
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.setHeader("Content-Length", String(buf.length));
+      return res.send(buf);
+    } catch (e: any) {
+      console.error("[gmail] user attachment stream failed:", e);
       return res.status(500).send(e?.message || "attachment stream failed");
     }
   }
@@ -1402,36 +1453,177 @@ router.post("/import-all-users", async (req, res) => {
 
     const allResults: any[] = [];
 
-    // Import from each connected user
+    // Import from each connected user - FULL processing with classification
     for (const conn of connections) {
       try {
         console.log(`[gmail/import-all-users] Importing for user ${conn.userName} (${conn.email})`);
         
-        // Call the existing import logic but with user's token
-        const importReq = {
-          auth: { tenantId, userId: conn.userId },
-          body: { max, q },
-        };
+        // List messages using user's token
+        const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${max}&q=${encodeURIComponent(q)}`;
+        const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${conn.accessToken}` } });
+        const listJson: any = await listRes.json();
         
-        // Reuse import logic (simplified for now - in production you'd refactor the import function)
-        const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${max}&q=${encodeURIComponent(q)}`;
-        const r = await fetch(url, { headers: { Authorization: `Bearer ${conn.accessToken}` } });
-        const j: any = await r.json();
-        
-        if (r.ok && Array.isArray(j.messages)) {
-          allResults.push({
-            userId: conn.userId,
-            email: conn.email,
-            imported: j.messages.length,
-          });
+        if (!listRes.ok) {
+          throw new Error(listJson?.error?.message || "gmail list failed");
         }
+
+        const messages: Array<{ id: string }> = listJson.messages || [];
+        const imported: any[] = [];
+
+        // Process each message fully (same as main /import endpoint)
+        for (const m of messages) {
+          try {
+            // Idempotent ingest marker
+            let createdIngest = false;
+            try {
+              const createRes = await prisma.emailIngest.createMany({
+                data: [{ tenantId, provider: "gmail", messageId: m.id }],
+                skipDuplicates: true,
+              });
+              createdIngest = createRes.count === 1;
+            } catch {}
+
+            // Fetch full message
+            const msg = await fetchMessage(conn.accessToken, m.id, "full");
+            const headers = msg.payload?.headers || [];
+            const subject = pickHeader(headers, "Subject") || "";
+            const fromHdr = pickHeader(headers, "From") || "";
+            const toHdr = pickHeader(headers, "To") || "";
+            const ccHdr = pickHeader(headers, "Cc") || "";
+            const fromAddr = addressOnly(fromHdr);
+            const toAddrs = splitAddresses(toHdr);
+            const ccAddrs = splitAddresses(ccHdr);
+            const allRcpts = [...toAddrs, ...ccAddrs];
+            const { bodyText } = extractBodyAndAttachments(msg);
+            const snippet = msg.snippet || "";
+            const threadId = msg.threadId || null;
+
+            // Upsert thread
+            const thread = await prisma.emailThread.upsert({
+              where: { tenantId_provider_threadId: { tenantId, provider: "gmail", threadId: threadId || `single:${m.id}` } },
+              update: { subject: subject || undefined, updatedAt: new Date() },
+              create: { tenantId, provider: "gmail", threadId: threadId || `single:${m.id}`, subject: subject || null },
+            });
+
+            // Find existing lead
+            let leadId = await findLeadForInbound(tenantId, fromAddr, threadId);
+            let createdLead = false;
+
+            // Classify if no lead yet
+            if (!leadId) {
+              const bodyForAnalysis = bodyText || snippet || "";
+              const heur = basicHeuristics(bodyForAnalysis);
+              let ai: any = null;
+              try {
+                ai = await extractLeadWithOpenAI(subject, bodyForAnalysis, { snippet, from: fromHdr });
+              } catch {}
+
+              const settings = await prisma.tenantSettings.findUnique({ where: { tenantId }, select: { inbox: true } });
+              const inbox = ((settings?.inbox as any) || {}) as Record<string, any>;
+              const recallFirst = !!(inbox.recallFirst || inbox.neverMiss);
+
+              const aiIsLead = typeof ai?.isLead === "string" ? ai.isLead.toLowerCase() === "true" : typeof ai?.isLead === "boolean" ? ai.isLead : null;
+              const aiConfidence = typeof ai?.confidence === "number" ? Math.max(0, Math.min(1, Number(ai.confidence))) : null;
+              const aiReason = typeof ai?.reason === "string" ? ai.reason : "";
+              const noise = looksLikeNoise(subject || "", bodyForAnalysis);
+              const subjectLeadSignal = /\b(quote|estimate|enquiry|inquiry|request)\b/i.test(subject || "");
+
+              let decidedBy: "openai" | "heuristics" = ai ? "openai" : "heuristics";
+              let isLeadCandidate = false;
+              let reason = aiReason;
+
+              if (aiIsLead === true && !noise) {
+                if ((aiConfidence ?? 0) >= 0.45 || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || subjectLeadSignal) {
+                  isLeadCandidate = true;
+                  reason = aiReason || "OpenAI classified this as a lead";
+                }
+              } else if (aiIsLead === false) {
+                isLeadCandidate = false;
+                reason = aiReason || "OpenAI classified this as not a lead";
+              }
+
+              if (aiIsLead === null || (aiConfidence ?? 0) < 0.45) {
+                if ((heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || subjectLeadSignal) && !noise) {
+                  isLeadCandidate = true;
+                  decidedBy = ai ? "openai" : "heuristics";
+                }
+              }
+
+              if (!isLeadCandidate && recallFirst && !noise) {
+                if (!(aiIsLead === false && (aiConfidence ?? 0) >= 0.7)) {
+                  if (subjectLeadSignal || heuristicsSuggestLead(subject || "", bodyForAnalysis, heur) || (fromAddr && (subject || bodyForAnalysis))) {
+                    isLeadCandidate = true;
+                  }
+                }
+              }
+
+              if (noise) isLeadCandidate = false;
+
+              if (isLeadCandidate) {
+                const contactName = (typeof ai?.contactName === "string" && ai.contactName) || heur.contactName || (fromHdr?.match(/"?([^"<@]+)"?\s*<.*>/)?.[1] || null);
+                const emailCandidate = (typeof ai?.email === "string" && ai.email) || heur.email || fromAddr || null;
+                const email = emailCandidate ? String(emailCandidate).toLowerCase() : null;
+
+                const created = await prisma.lead.create({
+                  data: {
+                    tenantId,
+                    createdById: conn.userId,
+                    contactName: contactName || (email ? email.split("@")?.[0] : "New Lead"),
+                    email,
+                    status: "NEW",
+                    nextAction: (typeof ai?.nextAction === "string" && ai.nextAction) || "Review enquiry",
+                    custom: {
+                      provider: "gmail",
+                      messageId: m.id,
+                      threadId: thread.threadId,
+                      subject: subject || null,
+                      from: fromHdr || null,
+                      summary: (typeof ai?.summary === "string" && ai.summary) || snippet || null,
+                      uiStatus: "NEW_ENQUIRY",
+                      aiDecision: { decidedBy, reason, confidence: aiConfidence ?? null, model: ai ? "openai" : "heuristics" },
+                    },
+                  },
+                });
+                leadId = created.id;
+                createdLead = true;
+
+                await ensureLeadReviewTask(tenantId, leadId);
+                await recordTrainingExample({ tenantId, provider: "gmail", messageId: m.id, label: "accepted", subject, snippet, from: fromHdr, body: bodyForAnalysis, ai, heuristics: heur, decidedBy, reason, confidence: aiConfidence, leadId });
+                
+                try {
+                  const { postClassifySideEffects } = await import("../services/inboxFiling");
+                  await postClassifySideEffects({ tenantId, provider: "gmail", messageId: m.id, decision: "accepted", score: aiConfidence ?? null });
+                } catch {}
+              } else {
+                await recordTrainingExample({ tenantId, provider: "gmail", messageId: m.id, label: "rejected", subject, snippet, from: fromHdr, body: bodyForAnalysis, ai, heuristics: heur, decidedBy, reason, confidence: aiConfidence, leadId: null });
+              }
+            }
+
+            if (leadId && !thread.leadId) {
+              await prisma.emailThread.update({ where: { id: thread.id }, data: { leadId } });
+            }
+
+            // Upsert message
+            try {
+              await prisma.emailMessage.upsert({
+                where: { tenantId_provider_messageId: { tenantId, provider: "gmail", messageId: m.id } },
+                update: { threadId: thread.id, fromEmail: fromAddr, toEmail: allRcpts.length ? allRcpts.join(", ") : null, subject: subject || null, snippet: snippet || null, bodyText: bodyText || null, sentAt: msg.internalDate ? new Date(Number(msg.internalDate)) : new Date(), leadId: leadId || null },
+                create: { tenantId, provider: "gmail", messageId: m.id, threadId: thread.id, direction: "inbound", fromEmail: fromAddr, toEmail: allRcpts.length ? allRcpts.join(", ") : null, subject: subject || null, snippet: snippet || null, bodyText: bodyText || null, sentAt: msg.internalDate ? new Date(Number(msg.internalDate)) : new Date(), leadId: leadId || null },
+              });
+            } catch {}
+
+            await prisma.emailThread.update({ where: { id: thread.id }, data: { lastInboundAt: new Date(), updatedAt: new Date() } });
+
+            imported.push({ id: m.id, threadId: thread.threadId, linkedLeadId: leadId || null, createdLead, indexed: createdIngest });
+          } catch (msgErr: any) {
+            console.error(`[gmail/import-all-users] message ${m.id} failed:`, msgErr?.message);
+          }
+        }
+
+        allResults.push({ userId: conn.userId, email: conn.email, imported: imported.length, leads: imported.filter((x) => x.createdLead).length });
       } catch (e: any) {
         console.error(`[gmail/import-all-users] Failed for user ${conn.userId}:`, e?.message);
-        allResults.push({
-          userId: conn.userId,
-          email: conn.email,
-          error: e?.message || "import failed",
-        });
+        allResults.push({ userId: conn.userId, email: conn.email, error: e?.message || "import failed" });
       }
     }
 
@@ -1448,4 +1640,175 @@ router.post("/import-all-users", async (req, res) => {
 router.get("/oauth/start", (_req, res) => res.redirect(302, "/gmail/connect"));
 router.get("/oauth2/start", (_req, res) => res.redirect(302, "/gmail/connect"));
 
+/* ============================================================
+   Per-user OAuth connect + callback (Gmail)
+   ============================================================ */
+router.get("/user/connect/start", (req, res) => {
+  const { tenantId, userId } = getAuth(req as any);
+  if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+  try {
+    const authUrl = buildAuthUrl(tenantId, userId);
+    return res.json({ authUrl });
+  } catch (e: any) {
+    console.error("[gmail] /user/connect/start failed:", e?.message || e);
+    return res.status(500).json({ error: "oauth_start_failed" });
+  }
+});
+
+router.get("/user/connect", (req, res) => {
+  // Optional dev helper: accept ?jwt=
+  const qJwt = (req.query.jwt as string | undefined) || undefined;
+  if (qJwt && !(req as any).auth) {
+    try {
+      const decoded = jwt.verify(qJwt, env.APP_JWT_SECRET) as any;
+      (req as any).auth = { userId: decoded.userId, tenantId: decoded.tenantId, email: decoded.email };
+    } catch {
+      return res.status(401).send("invalid jwt");
+    }
+  }
+  const { tenantId, userId } = getAuth(req as any);
+  if (!tenantId || !userId) return res.status(401).send("unauthorized");
+  try {
+    const authUrl = buildAuthUrl(tenantId, userId);
+    res.redirect(302, authUrl);
+  } catch (e: any) {
+    console.error("[gmail] /user/connect failed:", e?.message || e);
+    return res.status(500).send("oauth_start_failed");
+  }
+});
+
+router.get("/user/callback", async (req, res) => {
+  const q = req.query as Record<string, string | undefined>;
+  if (q.error) return res.status(400).send(`OAuth error: ${q.error}`);
+  if (!q.code) return res.status(400).send("Missing ?code");
+
+  // Parse state to retrieve tenantId and userId
+  let parsed: { tenantId?: string; userId?: string } = {};
+  const raw = q.state ?? "";
+  const candidates: string[] = [];
+  if (raw) candidates.push(raw);
+  try { if (raw) candidates.push(decodeURIComponent(raw)); } catch {}
+  for (const s of candidates) {
+    try {
+      const j = JSON.parse(s);
+      if (j && typeof j === "object") { parsed = j; break; }
+    } catch {}
+  }
+
+  // Fallback to JWT
+  if (!parsed.tenantId || !parsed.userId) {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+      const cookieToken = (req.headers.cookie || "").match(/(?:^|;\s*)jwt=([^;]+)/)?.[1];
+      const token = bearer || (cookieToken ? decodeURIComponent(cookieToken) : null);
+      if (token) {
+        const decoded = jwt.verify(token, env.APP_JWT_SECRET) as any;
+        parsed.tenantId = parsed.tenantId || decoded?.tenantId;
+        parsed.userId = parsed.userId || decoded?.userId;
+      }
+    } catch {}
+  }
+
+  if (!parsed.tenantId || !parsed.userId) return res.status(400).send("Missing tenantId/userId in state");
+
+  // Exchange code for tokens
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code: q.code!,
+      client_id: env.GMAIL_CLIENT_ID,
+      client_secret: env.GMAIL_CLIENT_SECRET,
+      redirect_uri: env.GMAIL_REDIRECT_URI || "http://localhost:4000/gmail/user/callback",
+      grant_type: "authorization_code",
+    }),
+  });
+  const tokens = await tokenRes.json();
+  if (!tokenRes.ok) {
+    console.error("[gmail] user token exchange failed:", tokens);
+    return res.status(500).json(tokens);
+  }
+
+  const { id_token, refresh_token } = tokens as { id_token?: string; refresh_token?: string };
+  let gmailAddress: string | null = null;
+  if (id_token) {
+    try {
+      const payloadB64 = String(id_token).split(".")[1];
+      const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8"));
+      gmailAddress = payload?.email || null;
+    } catch {}
+  }
+  if (!refresh_token) {
+    return res.status(400).send("No refresh_token. Revoke old access in Google Account and reconnect.");
+  }
+
+  await (prisma as any).gmailUserConnection.upsert({
+    where: { userId: parsed.userId! },
+    update: { refreshToken: refresh_token, gmailAddress: gmailAddress || undefined, tenantId: parsed.tenantId! },
+    create: { userId: parsed.userId!, tenantId: parsed.tenantId!, gmailAddress: gmailAddress || "", refreshToken: refresh_token },
+  });
+
+  // QoL: auto-enable inbox flag if unset
+  try {
+    const settings = await prisma.tenantSettings.findUnique({ where: { tenantId: parsed.tenantId! }, select: { inbox: true, slug: true, brandName: true } });
+    const inbox = ((settings?.inbox as any) || {}) as Record<string, any>;
+    if (typeof inbox.gmail === "undefined" || inbox.gmail === false) {
+      inbox.gmail = true;
+      await prisma.tenantSettings.upsert({
+        where: { tenantId: parsed.tenantId! },
+        update: { inbox },
+        create: { tenantId: parsed.tenantId!, slug: settings?.slug || `tenant-${parsed.tenantId!.slice(0, 6)}`, brandName: settings?.brandName || "Your Company", inbox },
+      });
+    }
+  } catch (e) {
+    console.warn("[gmail] user/callback inbox flag set failed:", (e as any)?.message || e);
+  }
+
+  const appUrl = (process.env.APP_URL || "").trim();
+  if (appUrl && /^https?:\/\//i.test(appUrl)) {
+    const next = `${appUrl.replace(/\/+$/, "")}/settings?gmail_user=connected`;
+    return res.redirect(302, next);
+  }
+  return res.send(`<h2>✅ Gmail Connected (User)!</h2><p>Account: ${gmailAddress || "unknown"}</p>`);
+});
+
 export default router;
+
+/* ============================================================
+   QoL: Per-user connection status and disconnect
+   ============================================================ */
+router.get("/user/connection", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    const userId = req.auth?.userId as string | undefined;
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+    const conn = await (prisma as any).gmailUserConnection.findUnique({
+      where: { userId },
+      select: { id: true, gmailAddress: true, createdAt: true, updatedAt: true },
+    });
+
+    return res.json({ ok: true, connection: conn || null });
+  } catch (e: any) {
+    console.error("[gmail/user/connection] failed:", e?.message || e);
+    return res.status(500).json({ error: e?.message || "failed" });
+  }
+});
+
+router.post("/user/disconnect", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    const userId = req.auth?.userId as string | undefined;
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+    await (prisma as any).gmailUserConnection.deleteMany({ where: { userId, tenantId } });
+
+    // If no remaining user connections and no tenant-level connection, do not force-flip inbox flag
+    // QoL: leave flag management to admin settings or periodic sync
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[gmail/user/disconnect] failed:", e?.message || e);
+    return res.status(500).json({ error: e?.message || "failed" });
+  }
+});

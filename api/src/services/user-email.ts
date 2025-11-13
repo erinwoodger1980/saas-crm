@@ -6,7 +6,7 @@ import { env } from "../env";
  * Get Gmail access token for a specific user
  */
 export async function getGmailTokenForUser(userId: string): Promise<{ accessToken: string; email: string }> {
-  const conn = await prisma.gmailUserConnection.findUnique({
+  const conn = await (prisma as any).gmailUserConnection.findUnique({
     where: { userId },
     select: { refreshToken: true, gmailAddress: true },
   });
@@ -21,7 +21,7 @@ export async function getGmailTokenForUser(userId: string): Promise<{ accessToke
  * Get MS365 access token for a specific user
  */
 export async function getMs365TokenForUser(userId: string): Promise<{ accessToken: string; email: string }> {
-  const conn = await prisma.ms365UserConnection.findUnique({
+  const conn = await (prisma as any).ms365UserConnection.findUnique({
     where: { userId },
     select: { refreshToken: true, ms365Address: true },
   });
@@ -35,73 +35,75 @@ export async function getMs365TokenForUser(userId: string): Promise<{ accessToke
 /**
  * Get all admin users with Gmail connections for a tenant
  */
-export async function getAdminGmailConnections(tenantId: string): Promise<Array<{ userId: string; email: string; accessToken: string; userName: string }>> {
+export async function getAdminGmailConnections(tenantId: string): Promise<Array<{ userId: string; connectionId: string; email: string; accessToken: string; userName: string }>> {
+  // Fetch admin/owner users for tenant (id, name, email)
   const users = await prisma.user.findMany({
-    where: {
-      tenantId,
-      role: { in: ['admin', 'owner'] },
-      gmailUserConnection: { isNot: null },
-    },
-    include: {
-      gmailUserConnection: true,
-    },
+    where: { tenantId, role: { in: ['admin', 'owner'] } },
+    select: { id: true, name: true, email: true },
+  });
+  const userIds = users.map(u => u.id);
+  if (userIds.length === 0) return [];
+
+  // Fetch user Gmail connections for those users
+  const conns: Array<{ id: string; userId: string; gmailAddress: string; refreshToken: string }> = await (prisma as any).gmailUserConnection.findMany({
+    where: { tenantId, userId: { in: userIds } },
+    select: { id: true, userId: true, gmailAddress: true, refreshToken: true },
   });
 
-  const connections = await Promise.all(
-    users.map(async (user) => {
-      if (!user.gmailUserConnection) return null;
-      try {
-        const accessToken = await refreshGmailToken(user.gmailUserConnection.refreshToken);
-        return {
-          userId: user.id,
-          userName: user.name || user.email,
-          email: user.gmailUserConnection.gmailAddress,
-          accessToken,
-        };
-      } catch (e) {
-        console.error(`[user-email] Failed to refresh Gmail token for user ${user.id}:`, e);
-        return null;
-      }
-    })
-  );
-
-  return connections.filter((c): c is NonNullable<typeof c> => c !== null);
+  const userMap = new Map(users.map(u => [u.id, u]));
+  const results: Array<{ userId: string; connectionId: string; email: string; accessToken: string; userName: string }> = [];
+  for (const c of conns) {
+    try {
+      const token = await refreshGmailToken(c.refreshToken);
+      const u = userMap.get(c.userId)!;
+      results.push({
+        userId: c.userId,
+        connectionId: c.id,
+        email: c.gmailAddress,
+        accessToken: token,
+        userName: u?.name || u?.email || c.gmailAddress,
+      });
+    } catch (e) {
+      console.error(`[user-email] Failed to refresh Gmail token for user ${c.userId}:`, e);
+    }
+  }
+  return results;
 }
 
 /**
  * Get all admin users with MS365 connections for a tenant
  */
-export async function getAdminMs365Connections(tenantId: string): Promise<Array<{ userId: string; email: string; accessToken: string; userName: string }>> {
+export async function getAdminMs365Connections(tenantId: string): Promise<Array<{ userId: string; connectionId: string; email: string; accessToken: string; userName: string }>> {
   const users = await prisma.user.findMany({
-    where: {
-      tenantId,
-      role: { in: ['admin', 'owner'] },
-      ms365UserConnection: { isNot: null },
-    },
-    include: {
-      ms365UserConnection: true,
-    },
+    where: { tenantId, role: { in: ['admin', 'owner'] } },
+    select: { id: true, name: true, email: true },
+  });
+  const userIds = users.map(u => u.id);
+  if (userIds.length === 0) return [];
+
+  const conns: Array<{ id: string; userId: string; ms365Address: string; refreshToken: string }> = await (prisma as any).ms365UserConnection.findMany({
+    where: { tenantId, userId: { in: userIds } },
+    select: { id: true, userId: true, ms365Address: true, refreshToken: true },
   });
 
-  const connections = await Promise.all(
-    users.map(async (user) => {
-      if (!user.ms365UserConnection) return null;
-      try {
-        const accessToken = await refreshMs365Token(user.ms365UserConnection.refreshToken);
-        return {
-          userId: user.id,
-          userName: user.name || user.email,
-          email: user.ms365UserConnection.ms365Address,
-          accessToken,
-        };
-      } catch (e) {
-        console.error(`[user-email] Failed to refresh MS365 token for user ${user.id}:`, e);
-        return null;
-      }
-    })
-  );
-
-  return connections.filter((c): c is NonNullable<typeof c> => c !== null);
+  const userMap = new Map(users.map(u => [u.id, u]));
+  const results: Array<{ userId: string; connectionId: string; email: string; accessToken: string; userName: string }> = [];
+  for (const c of conns) {
+    try {
+      const token = await refreshMs365Token(c.refreshToken);
+      const u = userMap.get(c.userId)!;
+      results.push({
+        userId: c.userId,
+        connectionId: c.id,
+        email: c.ms365Address,
+        accessToken: token,
+        userName: u?.name || u?.email || c.ms365Address,
+      });
+    } catch (e) {
+      console.error(`[user-email] Failed to refresh MS365 token for user ${c.userId}:`, e);
+    }
+  }
+  return results;
 }
 
 /**
