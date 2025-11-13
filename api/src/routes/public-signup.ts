@@ -100,6 +100,14 @@ router.post("/signup", async (req, res) => {
     let user = await prisma.user.findFirst({
       where: { email: { equals: normalizedEmail, mode: "insensitive" } },
     });
+    
+    // If user exists and was invited to a different tenant, block signup
+    if (user && user.tenantId !== tenant.id) {
+      return say(res, 400, "email_already_in_use", {
+        message: "This email is already associated with another organization. Please contact support or use a different email."
+      });
+    }
+    
     if (!user) {
       user = await prisma.user.create({
         data: {

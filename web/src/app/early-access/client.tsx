@@ -43,6 +43,11 @@ export default function EarlyAccessPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (data.code === "INVITED_USER") {
+          setError(data.error + " Need a new invite link? Contact your admin or use 'Forgot Password' on the login page.");
+        } else {
+          setError(data.error || "Failed to create account");
+        }
         throw new Error(data.error || "Failed to create account");
       }
 

@@ -55,7 +55,16 @@ router.post("/signup", async (req, res) => {
     });
 
     if (existingUser) {
-      // Allow signup if user was invited but never set a password
+      // Check if user was invited to an existing tenant (has tenant but no password)
+      if (existingUser.tenantId && !existingUser.passwordHash) {
+        // This is an invited user - they should use the invite link, not early-access signup
+        return res.status(400).json({ 
+          error: "This email has been invited to an existing organization. Please check your email for the invitation link, or contact your administrator to resend it.",
+          code: "INVITED_USER"
+        });
+      }
+      
+      // Allow signup if user exists but never completed setup (edge case)
       if (!existingUser.passwordHash || !existingUser.signupCompleted) {
         console.log(`User ${normalizedEmail} exists but incomplete - allowing to set password`);
         const passwordHash = await bcrypt.hash(password, 10);
