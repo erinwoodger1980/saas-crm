@@ -6,6 +6,7 @@ import Stripe from "stripe";
 import { env } from "../env";
 import { normalizeEmail } from "../lib/email";
 import { sendEmail, hasSmtp } from "../lib/mailer";
+import { sendEmailViaTenant } from "../services/email-sender";
 
 const router = Router();
 const billingEnabled = env.BILLING_ENABLED;
@@ -520,42 +521,54 @@ router.post('/invite', async (req, res) => {
   const appUrl = (process.env.APP_URL || 'https://joineryai.app').replace(/\/$/, '');
   const setupLink = `${appUrl}/accept-invite?setup_jwt=${encodeURIComponent(setupToken)}`;
 
-    // Send invitation email
+    // Send invitation email via tenant's email provider
     try {
       const tenant = await prisma.tenant.findUnique({ where: { id: auth.tenantId } });
       const inviterName = inviter.name || inviter.email;
       const companyName = tenant?.name || 'the organization';
       
-      await sendEmail({
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">You've been invited to join ${companyName}</h2>
+          <p>Hi,</p>
+          <p>${inviterName} has invited you to join ${companyName} on JoineryAI as a <strong>${requestedRole}</strong>.</p>
+          <p>To activate your account and set your password, click the link below:</p>
+          <p style="margin: 30px 0;">
+            <a href="${setupLink}" 
+               style="background-color: #0070f3; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
+              Activate Your Account
+            </a>
+          </p>
+          <p style="color: #666; font-size: 14px;">
+            This link will expire in 30 minutes. If you need a new link, contact ${inviterName} or your administrator.
+          </p>
+          <p style="color: #666; font-size: 14px;">
+            If the button doesn't work, copy and paste this link into your browser:<br>
+            <span style="word-break: break-all;">${setupLink}</span>
+          </p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+          <p style="color: #999; font-size: 12px;">
+            If you weren't expecting this invitation, you can safely ignore this email.
+          </p>
+        </div>
+      `;
+
+      const plainTextBody = 
+        `You've been invited to join ${companyName}\n\n` +
+        `${inviterName} has invited you to join ${companyName} on JoineryAI as a ${requestedRole}.\n\n` +
+        `To activate your account and set your password, visit this link:\n${setupLink}\n\n` +
+        `This link will expire in 30 minutes. If you need a new link, contact ${inviterName} or your administrator.\n\n` +
+        `If you weren't expecting this invitation, you can safely ignore this email.`;
+
+      await sendEmailViaTenant(auth.tenantId, {
         to: normalizedEmail,
         subject: `You've been invited to ${companyName} on JoineryAI`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #333;">You've been invited to join ${companyName}</h2>
-            <p>Hi,</p>
-            <p>${inviterName} has invited you to join ${companyName} on JoineryAI as a <strong>${requestedRole}</strong>.</p>
-            <p>To activate your account and set your password, click the link below:</p>
-            <p style="margin: 30px 0;">
-              <a href="${setupLink}" 
-                 style="background-color: #0070f3; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                Activate Your Account
-              </a>
-            </p>
-            <p style="color: #666; font-size: 14px;">
-              This link will expire in 30 minutes. If you need a new link, contact ${inviterName} or your administrator.
-            </p>
-            <p style="color: #666; font-size: 14px;">
-              If the button doesn't work, copy and paste this link into your browser:<br>
-              <span style="word-break: break-all;">${setupLink}</span>
-            </p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-            <p style="color: #999; font-size: 12px;">
-              If you weren't expecting this invitation, you can safely ignore this email.
-            </p>
-          </div>
-        `,
+        body: plainTextBody,
+        html: htmlBody,
+        fromName: companyName,
       });
-      console.log(`[invite] Email sent to ${normalizedEmail}`);
+      
+      console.log(`[invite] Email sent to ${normalizedEmail} via tenant's email provider`);
     } catch (emailError: any) {
       console.error('[invite] Failed to send email:', emailError?.message);
       // Don't fail the invite if email fails - still return the link for manual sharing
