@@ -714,6 +714,7 @@ router.get("/:id", async (req: any, res: any) => {
     where: { id, tenantId },
     select: {
       id: true,
+      leadId: true,
       title: true,
       stage: true,
       valueGBP: true,

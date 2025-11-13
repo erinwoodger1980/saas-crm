@@ -558,10 +558,23 @@ export default function LeadModal({
     (async () => {
       setLoading(true);
       try {
+        // First detect if leadPreview.id is an opportunityId by probing
+        let actualLeadId = leadPreview.id;
+        try {
+          const probeOpp = await apiFetch<any>(`/opportunities/${encodeURIComponent(leadPreview.id)}`, { headers: authHeaders });
+          if (probeOpp?.opportunity?.leadId) {
+            console.log('[LeadModal] Detected opportunityId in leadPreview, using leadId:', probeOpp.opportunity.leadId);
+            actualLeadId = probeOpp.opportunity.leadId;
+          }
+        } catch (probeErr) {
+          // Not an opportunityId, use leadPreview.id as-is
+          console.log('[LeadModal] leadPreview.id is a leadId');
+        }
+
         const [one, tlist, s] = await Promise.all([
-          apiFetch<{ lead?: any } | any>(`/leads/${leadPreview.id}`, { headers: authHeaders }),
+          apiFetch<{ lead?: any } | any>(`/leads/${actualLeadId}`, { headers: authHeaders }),
           apiFetch<{ items: Task[]; total: number }>(
-            `/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(leadPreview.id)}&mine=false`,
+            `/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(actualLeadId)}&mine=false`,
             { headers: authHeaders }
           ),
           apiFetch<TenantSettings>("/tenant/settings", { headers: authHeaders }).catch(() => null as any),
