@@ -8,6 +8,7 @@ import AppShell from "./components/AppShell";
 import { TasksButton } from "@/components/tasks/TasksButton";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import { setJwt, apiFetch } from "@/lib/api";
+import { useCurrentUser } from "@/lib/use-current-user";
 import Script from "next/script";
 
 function DevAuth() {
@@ -35,6 +36,8 @@ function DevAuth() {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { user } = useCurrentUser();
+  const isWorkshopOnly = user?.role === 'workshop';
 
   const isAuthRoute = pathname?.startsWith("/login");
   const isPublicQuestionnaire = pathname?.startsWith("/q/");
@@ -45,6 +48,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const isTenantLandingPage = pathname?.match(/^\/tenant\/[^/]+\/landing(\/|$)/);
   const isVanityTenantLandingPage = pathname?.match(/^\/[A-Za-z0-9-]+\/landing(\/|$)/);
   const isEarlyAccessRoute = pathname?.startsWith("/early-access");
+  const isWorkshopRoute = pathname === "/workshop";
 
   const shouldUseShell = !(
     isAuthRoute ||
@@ -53,7 +57,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isMarketingRoute ||
     isTenantLandingPage ||
     isVanityTenantLandingPage ||
-    isEarlyAccessRoute
+    isEarlyAccessRoute ||
+    (isWorkshopRoute && isWorkshopOnly)
   );
   const shouldRunDevAuth = !(
     isPublicQuestionnaire ||
