@@ -703,7 +703,7 @@ export default function LeadModal({
         
         // Load material dates and project details from the opportunity data
         console.log('[LeadModal] oppDetails response:', oppDetails);
-        const opp = oppDetails || null;
+        const opp = (oppDetails?.opportunity || oppDetails) || null;
         console.log('[LeadModal] resolved opp:', opp);
         if (opp) {
           if (opp.id && !actualOpportunityId) {
