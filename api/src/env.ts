@@ -103,7 +103,7 @@ export const env = {
     process.env.MS365_REDIRECT_URI ?? "http://localhost:4000/ms365/callback",
   MS365_TENANT: process.env.MS365_TENANT ?? "common",
   MS365_SCOPES:
-    (process.env.MS365_SCOPES ?? "offline_access Mail.Read User.Read").split(
+    (process.env.MS365_SCOPES ?? "offline_access Mail.ReadWrite User.Read").split(
       /\s+/
     ),
 

@@ -18,7 +18,7 @@ export async function getAccessTokenForTenant(tenantId: string): Promise<string>
     grant_type: "refresh_token",
     refresh_token: row.refreshToken,
     redirect_uri: env.MS365_REDIRECT_URI,
-    scope: (process.env.MS365_SCOPES || "offline_access Mail.Read User.Read"),
+    scope: (process.env.MS365_SCOPES || "offline_access Mail.ReadWrite User.Read"),
   });
 
   const rsp = await fetch(tokenUrl, {
