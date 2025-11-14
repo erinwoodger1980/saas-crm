@@ -100,7 +100,7 @@ jobs:
               core.setOutput('skip_deploy', 'false');
             }
 
-      - name: Trigger Render deployment
+      - name: Trigger Render API deployment (migrations)
         if: |
           steps.check_workflows.outputs.should_deploy == 'true' &&
           steps.check_duplicate.outputs.skip_deploy == 'false'
@@ -118,6 +118,25 @@ jobs:
           
           echo "✅ Deployment triggered successfully!"
 
+      - name: Trigger Render WEB deployment (optional)
+        if: |
+          steps.check_workflows.outputs.should_deploy == 'true' &&
+          steps.check_duplicate.outputs.skip_deploy == 'false' &&
+          secrets.RENDER_WEB_SERVICE_ID != ''
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_WEB_SERVICE_ID: ${{ secrets.RENDER_WEB_SERVICE_ID }}
+        run: |
+          echo "🌐 Triggering Render WEB deployment (optional) ..."
+
+          # Trigger deployment of the Web service if service id is provided
+          curl -X POST "https://api.render.com/v1/services/${RENDER_WEB_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"clearCache\": \"clear\"}"
+
+          echo "✅ WEB deployment triggered (if service id was set)."
+
       - name: Deployment summary
         if: always()
         run: |
@@ -128,7 +147,12 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ "${{ steps.check_workflows.outputs.should_deploy }}" == "true" ] && [ "${{ steps.check_duplicate.outputs.skip_deploy }}" == "false" ]; then
-            echo "✅ **Result:** Deployment triggered to Render" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Result:** API deployment triggered to Render" >> $GITHUB_STEP_SUMMARY
+            if [ -n "${{ secrets.RENDER_WEB_SERVICE_ID }}" ]; then
+              echo "🌐 **Web:** Web deployment also triggered" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "ℹ️ **Web:** Skipped (set RENDER_WEB_SERVICE_ID secret to auto-deploy web)" >> $GITHUB_STEP_SUMMARY
+            fi
           elif [ "${{ steps.check_duplicate.outputs.skip_deploy }}" == "true" ]; then
             echo "🔄 **Result:** Skipped (already deployed for this commit)" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ steps.check_workflows.outputs.reason }}" == "waiting" ]; then
