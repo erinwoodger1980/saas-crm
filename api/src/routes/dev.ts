@@ -92,6 +92,66 @@ router.get("/tenants/:id", requireDeveloper, async (req: any, res) => {
   }
 });
 
+// Impersonate tenant (login as tenant owner for troubleshooting)
+router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) => {
+  try {
+    const jwt = require("jsonwebtoken");
+    const jwtSecret = process.env.APP_JWT_SECRET || process.env.JWT_SECRET || "fallback-secret";
+    
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: req.params.id },
+      include: {
+        users: {
+          where: { role: "owner" },
+          take: 1
+        }
+      }
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    if (!tenant.users || tenant.users.length === 0) {
+      return res.status(404).json({ error: "No owner found for this tenant" });
+    }
+
+    const owner = tenant.users[0];
+    
+    // Create JWT token for impersonation
+    const token = jwt.sign(
+      {
+        userId: owner.id,
+        tenantId: tenant.id,
+        role: owner.role,
+        impersonating: true,
+        impersonatedBy: req.auth.userId
+      },
+      jwtSecret,
+      { expiresIn: "8h" }
+    );
+
+    res.json({ 
+      ok: true, 
+      token,
+      user: {
+        id: owner.id,
+        email: owner.email,
+        name: owner.name,
+        role: owner.role
+      },
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug
+      }
+    });
+  } catch (error: any) {
+    console.error("Failed to impersonate tenant:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==============================
 // Feedback Management (Developer Only)
 // ==============================
