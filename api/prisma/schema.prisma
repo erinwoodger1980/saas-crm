@@ -264,6 +264,8 @@ model GmailTenantConnection {
   connectedById String?
   gmailAddress  String?
   refreshToken  String
+  sentCursor    String?  // Checkpoint for Sent folder crawling (historyId or message ID)
+  sentLastSync  DateTime? // Last time Sent folder was synced
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   connectedBy   User?    @relation(fields: [connectedById], references: [id])
@@ -278,6 +280,8 @@ model Ms365TenantConnection {
   connectedById String?
   ms365Address  String?
   refreshToken  String
+  sentCursor    String?  // Checkpoint for Sent folder crawling (delta link or message ID)
+  sentLastSync  DateTime? // Last time Sent folder was synced
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   connectedBy   User?    @relation(fields: [connectedById], references: [id])
@@ -292,6 +296,8 @@ model GmailUserConnection {
   tenantId     String
   gmailAddress String
   refreshToken String
+  sentCursor   String?  // Checkpoint for Sent folder crawling per user
+  sentLastSync DateTime? // Last time Sent folder was synced for this user
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   user         User     @relation("GmailUserConnection", fields: [userId], references: [id], onDelete: Cascade)
@@ -308,6 +314,8 @@ model Ms365UserConnection {
   tenantId     String
   ms365Address String
   refreshToken String
+  sentCursor   String?  // Checkpoint for Sent folder crawling per user
+  sentLastSync DateTime? // Last time Sent folder was synced for this user
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   user         User     @relation("Ms365UserConnection", fields: [userId], references: [id], onDelete: Cascade)

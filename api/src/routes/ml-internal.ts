@@ -304,6 +304,21 @@ router.post("/ingest-gmail", async (req: any, res) => {
 
     try {
       await setCollectorCheckpoint(tenantId, CHECKPOINT_SOURCES.gmail, nextPageToken);
+      // Update tenant-level Gmail connection checkpoint
+      try {
+        const conn = await prisma.gmailTenantConnection.findUnique({ where: { tenantId } });
+        if (conn) {
+          await prisma.gmailTenantConnection.update({
+            where: { id: conn.id },
+            data: {
+              sentCursor: nextPageToken,
+              sentLastSync: new Date(),
+            },
+          });
+        }
+      } catch (err) {
+        console.error(`[internal/ml/ingest-gmail] tenant connection checkpoint save failed:`, (err as any)?.message || err);
+      }
     } catch (err) {
       console.error("[internal/ml/ingest-gmail] checkpoint save failed:", (err as any)?.message || err);
     }
@@ -312,12 +327,17 @@ router.post("/ingest-gmail", async (req: any, res) => {
     try {
       const { getAdminGmailConnections } = await import("../services/user-email");
       const conns = await getAdminGmailConnections(tenantId);
-      // Iterate each connection and pull a single page of results each (no checkpoint yet)
+      // Iterate each connection and use per-connection checkpoints
       for (const c of conns) {
         if (out.length >= limit) break;
+        const userPageToken = c.sentCursor || null;
         const userSearchUrl =
           "https://gmail.googleapis.com/gmail/v1/users/me/messages?" +
-          new URLSearchParams({ q, maxResults: String(Math.min(limit - out.length, maxPage)) }).toString();
+          new URLSearchParams({ 
+            q, 
+            maxResults: String(Math.min(limit - out.length, maxPage)),
+            ...(userPageToken ? { pageToken: userPageToken } : {}) 
+          }).toString();
         const listRes = await fetchWithBackoff(
           userSearchUrl,
           { headers: { Authorization: `Bearer ${c.accessToken}` } },
@@ -326,6 +346,7 @@ router.post("/ingest-gmail", async (req: any, res) => {
         const listJson = (await listRes.json()) as GmailListResponse;
         if (!listRes.ok) continue;
         const msgs = listJson.messages || [];
+        const userNextPageToken = listJson.nextPageToken ?? null;
         const signedUser = (messageId: string, attachmentId: string) => {
           const token = jwt.sign({ t: tenantId, u: "system" }, env.APP_JWT_SECRET, { expiresIn: "15m" });
           return (
@@ -364,6 +385,18 @@ router.post("/ingest-gmail", async (req: any, res) => {
               url: signedUser(m.id, a.attachmentId),
             });
           }
+        }
+        // Update checkpoint for this user connection
+        try {
+          await prisma.gmailUserConnection.update({
+            where: { id: c.connectionId },
+            data: {
+              sentCursor: userNextPageToken,
+              sentLastSync: new Date(),
+            },
+          });
+        } catch (err) {
+          console.error(`[internal/ml/ingest-gmail] checkpoint save failed for user connection ${c.connectionId}:`, (err as any)?.message || err);
         }
       }
     } catch (e) {
@@ -1004,6 +1037,21 @@ router.post("/ingest-ms365", async (req: any, res) => {
 
     try {
       await setCollectorCheckpoint(tenantId, CHECKPOINT_SOURCES.ms365, nextLink);
+      // Update tenant-level MS365 connection checkpoint
+      try {
+        const conn = await prisma.ms365TenantConnection.findUnique({ where: { tenantId } });
+        if (conn) {
+          await prisma.ms365TenantConnection.update({
+            where: { id: conn.id },
+            data: {
+              sentCursor: nextLink,
+              sentLastSync: new Date(),
+            },
+          });
+        }
+      } catch (err) {
+        console.error(`[internal/ml/ingest-ms365] tenant connection checkpoint save failed:`, (err as any)?.message || err);
+      }
     } catch (err) {
       console.error("[internal/ml/ingest-ms365] checkpoint save failed:", (err as any)?.message || err);
     }
@@ -1014,12 +1062,13 @@ router.post("/ingest-ms365", async (req: any, res) => {
       const conns = await getAdminMs365Connections(tenantId);
       for (const c of conns) {
         if (out.length >= limit) break;
-        let next: string | undefined = undefined;
+        let next: string | undefined = c.sentCursor || undefined;
         const page = await withBackoff(
           () => msListSentWithAttachments(c.accessToken, Math.min(limit - out.length, 50), next),
           "ms365:list:user"
         );
         const messages = Array.isArray(page.value) ? page.value : [];
+        const userNextLink = (page["@odata.nextLink"] as string | undefined) ?? null;
         const signedUser = (messageId: string, attachmentId: string) => {
           const token = jwt.sign({ t: tenantId, u: "system" }, env.APP_JWT_SECRET, { expiresIn: "15m" });
           return `${API_BASE}/ms365/u/${encodeURIComponent(c.connectionId)}/message/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}?jwt=${encodeURIComponent(token)}`;
@@ -1042,6 +1091,18 @@ router.post("/ingest-ms365", async (req: any, res) => {
             seen.add(key);
             out.push({ messageId: m.id, attachmentId: a.id, url: signedUser(m.id, a.id), subject, quotedAt: sentDate });
           }
+        }
+        // Update checkpoint for this user connection
+        try {
+          await prisma.ms365UserConnection.update({
+            where: { id: c.connectionId },
+            data: {
+              sentCursor: userNextLink,
+              sentLastSync: new Date(),
+            },
+          });
+        } catch (err) {
+          console.error(`[internal/ml/ingest-ms365] checkpoint save failed for user connection ${c.connectionId}:`, (err as any)?.message || err);
         }
       }
     } catch (e) {
