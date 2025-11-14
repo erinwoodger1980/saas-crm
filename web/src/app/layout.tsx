@@ -49,6 +49,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const isVanityTenantLandingPage = pathname?.match(/^\/[A-Za-z0-9-]+\/landing(\/|$)/);
   const isEarlyAccessRoute = pathname?.startsWith("/early-access");
   const isWorkshopRoute = pathname === "/workshop";
+  const isDevConsole = pathname?.startsWith("/dev");
 
   const shouldUseShell = !(
     isAuthRoute ||
@@ -58,7 +59,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     isTenantLandingPage ||
     isVanityTenantLandingPage ||
     isEarlyAccessRoute ||
-    (isWorkshopRoute && isWorkshopOnly)
+    (isWorkshopRoute && isWorkshopOnly) ||
+    isDevConsole
   );
   const shouldRunDevAuth = !(
     isPublicQuestionnaire ||
