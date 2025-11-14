@@ -42,32 +42,31 @@ router.get("/", async (req: any, res) => {
         lead: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
-            companyName: true,
+            contactName: true,
+            email: true,
           },
         },
         opportunity: {
           select: {
             id: true,
-            title: true,
+            leadId: true,
           },
         },
         requestedBy: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            name: true,
             email: true,
           },
         },
         uploadedFile: {
           select: {
             id: true,
-            fileName: true,
-            fileUrl: true,
-            fileSize: true,
-            createdAt: true,
+            name: true,
+            path: true,
+            mimeType: true,
+            sizeBytes: true,
+            uploadedAt: true,
           },
         },
       },
@@ -100,25 +99,20 @@ router.get("/:id", async (req: any, res) => {
         lead: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
-            companyName: true,
+            contactName: true,
             email: true,
-            phone: true,
           },
         },
         opportunity: {
           select: {
             id: true,
-            title: true,
-            stage: true,
+            leadId: true,
           },
         },
         requestedBy: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            name: true,
             email: true,
           },
         },
@@ -185,10 +179,10 @@ router.post("/", async (req: any, res) => {
       data: {
         tenantId,
         supplierId,
-        leadId: leadId || null,
-        opportunityId: opportunityId || null,
-        requestedById: userId,
-        notes: notes || null,
+        leadId: leadId || undefined,
+        opportunityId: opportunityId || undefined,
+        requestedById: userId || undefined,
+        notes: notes || undefined,
         status: "pending",
         sentAt: new Date(),
       },
@@ -197,22 +191,20 @@ router.post("/", async (req: any, res) => {
         lead: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
-            companyName: true,
+            contactName: true,
+            email: true,
           },
         },
         opportunity: {
           select: {
             id: true,
-            title: true,
+            leadId: true,
           },
         },
         requestedBy: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            name: true,
             email: true,
           },
         },
@@ -238,7 +230,7 @@ router.patch("/:id", async (req: any, res) => {
 
     // Verify request belongs to tenant
     const existing = await prisma.supplierQuoteRequest.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId: tenantId || undefined },
     });
 
     if (!existing) {
@@ -255,15 +247,15 @@ router.patch("/:id", async (req: any, res) => {
     }
 
     if (quotedAmount !== undefined) {
-      updateData.quotedAmount = quotedAmount ? parseFloat(quotedAmount) : null;
+      updateData.quotedAmount = quotedAmount ? parseFloat(quotedAmount) : undefined;
     }
 
     if (notes !== undefined) {
-      updateData.notes = notes;
+      updateData.notes = notes || undefined;
     }
 
     if (uploadedFileId !== undefined) {
-      updateData.uploadedFileId = uploadedFileId || null;
+      updateData.uploadedFileId = uploadedFileId || undefined;
     }
 
     const request = await prisma.supplierQuoteRequest.update({
@@ -274,32 +266,31 @@ router.patch("/:id", async (req: any, res) => {
         lead: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
-            companyName: true,
+            contactName: true,
+            email: true,
           },
         },
         opportunity: {
           select: {
             id: true,
-            title: true,
+            leadId: true,
           },
         },
         requestedBy: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            name: true,
             email: true,
           },
         },
         uploadedFile: {
           select: {
             id: true,
-            fileName: true,
-            fileUrl: true,
-            fileSize: true,
-            createdAt: true,
+            name: true,
+            path: true,
+            mimeType: true,
+            sizeBytes: true,
+            uploadedAt: true,
           },
         },
       },
@@ -323,7 +314,7 @@ router.delete("/:id", async (req: any, res) => {
 
     // Verify request belongs to tenant
     const existing = await prisma.supplierQuoteRequest.findFirst({
-      where: { id, tenantId },
+      where: { id, tenantId: tenantId || undefined },
     });
 
     if (!existing) {
@@ -394,32 +385,31 @@ router.get("/by-supplier-email/:email", async (req: any, res) => {
         lead: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
-            companyName: true,
+            contactName: true,
+            email: true,
           },
         },
         opportunity: {
           select: {
             id: true,
-            title: true,
+            leadId: true,
           },
         },
         requestedBy: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            name: true,
             email: true,
           },
         },
         uploadedFile: {
           select: {
             id: true,
-            fileName: true,
-            fileUrl: true,
-            fileSize: true,
-            createdAt: true,
+            name: true,
+            path: true,
+            mimeType: true,
+            sizeBytes: true,
+            uploadedAt: true,
           },
         },
       },
