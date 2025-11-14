@@ -121,8 +121,16 @@ export default function TenantDetailPage() {
       }>(`/dev/tenants/${tenantId}/impersonate`, { method: "POST" });
       
       if (data.ok && data.token) {
-        // The server has already set the impersonation cookie via Set-Cookie header
-        // Just redirect to dashboard - the new session is active
+        // Clear legacy tokens
+        localStorage.removeItem("jwt");
+        
+        // Set the impersonation token as a cookie on the web domain
+        // (The API's Set-Cookie won't work cross-domain)
+        const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+        const maxAge = 8 * 60 * 60; // 8 hours in seconds
+        document.cookie = `jauth=${data.token}; path=/; max-age=${maxAge}; SameSite=Lax${secure}`;
+        
+        // Force reload to use new session
         window.location.href = "/dashboard";
       }
     } catch (e: any) {
