@@ -179,22 +179,69 @@ router.delete("/tenants/:id", requireDeveloper, async (req: any, res) => {
     // Delete all related records in transaction
     await prisma.$transaction(async (tx) => {
       // Delete in order of foreign key dependencies
-      await tx.followUpAction.deleteMany({ where: { tenantId } });
-      await tx.aiFollowupInsight.deleteMany({ where: { tenantId } });
-      await tx.trainingEvent.deleteMany({ where: { tenantId } });
-      await tx.trainingInsights.deleteMany({ where: { tenantId } });
-      await tx.tenantImage.deleteMany({ where: { tenantId } });
-      await tx.workshopProcess.deleteMany({ where: { tenantId } });
+      
+      // Email and messaging
+      await tx.emailIngest.deleteMany({ where: { tenantId } });
+      await tx.emailMessage.deleteMany({ where: { tenantId } });
+      await tx.emailThread.deleteMany({ where: { tenantId } });
+      
+      // Connections
+      await tx.gmailTenantConnection.deleteMany({ where: { tenantId } });
+      await tx.gmailUserConnection.deleteMany({ where: { tenantId } });
+      await tx.ms365TenantConnection.deleteMany({ where: { tenantId } });
+      await tx.ms365UserConnection.deleteMany({ where: { tenantId } });
+      
+      // Quotes and suppliers
+      await tx.supplierQuoteRequest.deleteMany({ where: { tenantId } });
+      await tx.supplier.deleteMany({ where: { tenantId } });
+      await tx.uploadedFile.deleteMany({ where: { tenantId } });
+      await tx.quote.deleteMany({ where: { tenantId } });
+      
+      // Opportunities and leads
+      await tx.opportunity.deleteMany({ where: { tenantId } });
+      await tx.leadFieldDef.deleteMany({ where: { tenantId } });
+      await tx.lead.deleteMany({ where: { tenantId } });
+      
+      // Tasks and feedback
       await tx.task.deleteMany({ where: { tenantId } });
       await tx.feedback.deleteMany({ where: { tenantId } });
-      await tx.emailMessage.deleteMany({ where: { tenantId } });
-      await tx.quote.deleteMany({ where: { tenantId } });
-      await tx.supplier.deleteMany({ where: { tenantId } });
-      await tx.opportunity.deleteMany({ where: { tenantId } });
-      await tx.lead.deleteMany({ where: { tenantId } });
-      await tx.costBySource.deleteMany({ where: { tenantId } });
-      await tx.gmailConnection.deleteMany({ where: { tenantId } });
-      await tx.ms365Connection.deleteMany({ where: { tenantId } });
+      
+      // Automation and notifications
+      await tx.automationRule.deleteMany({ where: { tenantId } });
+      await tx.notification.deleteMany({ where: { tenantId } });
+      await tx.streak.deleteMany({ where: { tenantId } });
+      await tx.activityLog.deleteMany({ where: { tenantId } });
+      await tx.userPreference.deleteMany({ where: { tenantId } });
+      
+      // Training and ML
+      await tx.trainingEvent.deleteMany({ where: { tenantId } });
+      await tx.trainingInsights.deleteMany({ where: { tenantId } });
+      await tx.modelOverride.deleteMany({ where: { tenantId } });
+      
+      // Follow-ups
+      await tx.followUpTemplate.deleteMany({ where: { tenantId } });
+      await tx.followUpEvent.deleteMany({ where: { tenantId } });
+      
+      // Workshop
+      await tx.projectProcessAssignment.deleteMany({ where: { tenantId } });
+      await tx.workshopProcessDefinition.deleteMany({ where: { tenantId } });
+      await tx.processPlan.deleteMany({ where: { tenantId } });
+      await tx.timeEntry.deleteMany({ where: { tenantId } });
+      await tx.holiday.deleteMany({ where: { tenantId } });
+      await tx.target.deleteMany({ where: { tenantId } });
+      
+      // SEO and Ads
+      await tx.sourceSpend.deleteMany({ where: { tenantId } });
+      await tx.keywordPerformance.deleteMany({ where: { tenantId } });
+      await tx.keywordSuggestion.deleteMany({ where: { tenantId } });
+      
+      // Landing page
+      await tx.landingTenant.deleteMany({ where: { tenantId } });
+      
+      // Feature requests
+      await tx.featureRequest.deleteMany({ where: { tenantId } });
+      
+      // Finally delete users and tenant
       await tx.user.deleteMany({ where: { tenantId } });
       await tx.tenant.delete({ where: { id: tenantId } });
     });
