@@ -18,7 +18,7 @@ router.get("/", async (req: any, res) => {
     const tenantId = authTenantId(req);
     const { status, supplierId } = req.query;
 
-    const where: any = { tenantId };
+    const where: any = { tenantId: tenantId || undefined };
 
     if (status) {
       where.status = status;
@@ -92,7 +92,7 @@ router.get("/:id", async (req: any, res) => {
     const request = await prisma.supplierQuoteRequest.findFirst({
       where: {
         id,
-        tenantId,
+        tenantId: tenantId || undefined,
       },
       include: {
         supplier: true,
@@ -139,6 +139,10 @@ router.post("/", async (req: any, res) => {
   try {
     const tenantId = authTenantId(req);
     const userId = req.user?.userId;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
     const { supplierId, leadId, opportunityId, notes } = req.body;
 
