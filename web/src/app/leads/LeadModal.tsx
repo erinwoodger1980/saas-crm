@@ -352,6 +352,13 @@ export default function LeadModal({
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
+  // Supplier quote request state
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [selectedSupplierId, setSelectedSupplierId] = useState("");
+  const [quoteDeadlineDays, setQuoteDeadlineDays] = useState("7");
+  const [quoteNotes, setQuoteNotes] = useState("");
+
   // ---- Workshop Processes (WON flow) ----
   type ProcDef = { id: string; code: string; name: string; sortOrder?: number|null; requiredByDefault?: boolean; estimatedHours?: number|null };
   type ProcUser = { id: string; name?: string|null; email: string };
@@ -469,6 +476,20 @@ export default function LeadModal({
     setTaskError(null);
     setTaskSaving(false);
   }, [open, leadPreview?.status]);
+
+  // Load suppliers when modal opens
+  useEffect(() => {
+    if (!open) return;
+    async function loadSuppliers() {
+      try {
+        const data = await apiFetch<any[]>("/suppliers", { headers: authHeaders });
+        setSuppliers(data || []);
+      } catch (err) {
+        console.error("Failed to load suppliers:", err);
+      }
+    }
+    loadSuppliers();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -1627,37 +1648,32 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
   async function requestSupplierPrice() {
     if (!lead?.id) return;
+    // Show the supplier selection modal
+    setSelectedSupplierId("");
+    setQuoteDeadlineDays("7");
+    setQuoteNotes("");
+    setShowSupplierModal(true);
+  }
+
+  async function submitSupplierQuoteRequest() {
+    if (!lead?.id) return;
+    
+    const supplier = suppliers.find(s => s.id === selectedSupplierId);
+    if (!supplier) {
+      toast("Please select a supplier");
+      return;
+    }
+
     setBusyTask(true);
+    setShowSupplierModal(false);
+    
     try {
       await ensureManualTask("supplier_followup");
 
-      const to = prompt("Supplier email (optional):")?.trim();
-      
-      // Ask for quote deadline
-      const deadlineStr = prompt("When do you need the quote back? (e.g., 2025-11-10, or number of days like '7'):")?.trim();
-      let quoteDeadline: Date | null = null;
-      
-      if (deadlineStr) {
-        // Try to parse as a date or number of days
-        if (/^\d+$/.test(deadlineStr)) {
-          // It's a number of days
-          const days = parseInt(deadlineStr);
-          quoteDeadline = new Date();
-          quoteDeadline.setDate(quoteDeadline.getDate() + days);
-        } else {
-          // Try to parse as a date
-          const parsed = new Date(deadlineStr);
-          if (!isNaN(parsed.getTime())) {
-            quoteDeadline = parsed;
-          }
-        }
-      }
-      
-      // Default to 7 days if no valid date provided
-      if (!quoteDeadline) {
-        quoteDeadline = new Date();
-        quoteDeadline.setDate(quoteDeadline.getDate() + 7);
-      }
+      const to = supplier.email || "";
+      const days = parseInt(quoteDeadlineDays) || 7;
+      const quoteDeadline = new Date();
+      quoteDeadline.setDate(quoteDeadline.getDate() + days);
 
       // Build a concise fields summary from questionnaire answers
       const fields: Record<string, any> = {};
@@ -1720,6 +1736,22 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           }
         },
       });
+
+      // Create SupplierQuoteRequest record
+      try {
+        await apiFetch("/supplier-quote-requests", {
+          method: "POST",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          json: {
+            supplierId: selectedSupplierId,
+            leadId: lead.id,
+            opportunityId: null, // Can be linked later if needed
+            notes: quoteNotes || `Requested via lead ${lead.contactName || lead.id}. Deadline: ${quoteDeadline.toLocaleDateString()}`,
+          },
+        });
+      } catch (err) {
+        console.error("Failed to create supplier quote request record:", err);
+      }
 
       // Attempt server-side send (via Gmail API). Fallback to mailto if it fails or no 'to'
       if (to) {
@@ -3986,6 +4018,86 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           )}
 
       </div>
+
+      {/* Supplier Quote Request Modal */}
+      {showSupplierModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="p-4 border-b">
+              <h3 className="text-lg font-semibold">Request Supplier Quote</h3>
+              <p className="text-sm text-slate-600 mt-1">Select a supplier and set a deadline for the quote</p>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Supplier <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={selectedSupplierId}
+                  onChange={(e) => setSelectedSupplierId(e.target.value)}
+                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a supplier...</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {s.email ? `(${s.email})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {suppliers.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    No suppliers found. Add suppliers in Settings → Suppliers first.
+                  </p>
+                )}
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Quote deadline (days from now)
+                </label>
+                <input
+                  type="number"
+                  value={quoteDeadlineDays}
+                  onChange={(e) => setQuoteDeadlineDays(e.target.value)}
+                  min="1"
+                  max="90"
+                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Notes (optional)
+                </label>
+                <textarea
+                  value={quoteNotes}
+                  onChange={(e) => setQuoteNotes(e.target.value)}
+                  rows={3}
+                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Add any special instructions or notes..."
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t flex gap-2 justify-end">
+              <button 
+                className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50"
+                onClick={() => setShowSupplierModal(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                onClick={submitSupplierQuoteRequest}
+                disabled={!selectedSupplierId || busyTask}
+              >
+                {busyTask ? "Sending..." : "Send Quote Request"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Email Composer Modal */}
       {showEmailComposer && (
