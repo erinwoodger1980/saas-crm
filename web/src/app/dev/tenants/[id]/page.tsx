@@ -43,6 +43,22 @@ export default function TenantDetailPage() {
   const [impersonating, setImpersonating] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  async function markUserComplete(userId: string) {
+    try {
+      const data = await apiFetch<{ ok: boolean }>(
+        `/dev/users/${userId}/complete`,
+        { method: "POST" }
+      );
+      
+      if (data.ok) {
+        // Reload tenant data to reflect the change
+        loadTenant();
+      }
+    } catch (e: any) {
+      alert("Failed to mark user complete: " + (e?.message || "Unknown error"));
+    }
+  }
+
   async function deleteTenant() {
     if (!tenantId || !tenant) return;
     
@@ -286,6 +302,16 @@ export default function TenantDetailPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
+                    {!user.signupCompleted && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => markUserComplete(user.id)}
+                        className="text-xs"
+                      >
+                        ✓ Mark Complete
+                      </Button>
+                    )}
                     <div className="text-xs uppercase bg-slate-100 text-slate-700 px-2 py-1 rounded">
                       {user.role}
                     </div>

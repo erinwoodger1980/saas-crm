@@ -152,6 +152,34 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
   }
 });
 
+// Mark user as setup complete
+router.post("/users/:userId/complete", requireDeveloper, async (req: any, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { signupCompleted: true }
+    });
+
+    res.json({ 
+      ok: true,
+      message: "User marked as setup complete"
+    });
+  } catch (error: any) {
+    console.error("Failed to mark user complete:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Delete tenant (for test/demo tenants only)
 router.delete("/tenants/:id", requireDeveloper, async (req: any, res) => {
   try {
