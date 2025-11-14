@@ -26,13 +26,48 @@ const nav = [
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [isDeveloper, setIsDeveloper] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [impersonatedTenant, setImpersonatedTenant] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if user has developer access
     apiFetch<{ ok: boolean }>("/dev/stats")
       .then(() => setIsDeveloper(true))
       .catch(() => setIsDeveloper(false));
+
+    // Check if we're impersonating by reading the JWT token
+    const token = document.cookie
+      .split('; ')
+      .find(row => row.startsWith('jauth='))
+      ?.split('=')[1];
+    
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.impersonating) {
+          setIsImpersonating(true);
+          // Optionally fetch tenant name
+          if (payload.tenantId) {
+            apiFetch<any>(`/dev/tenants/${payload.tenantId}`)
+              .then(data => {
+                if (data.ok && data.tenant) {
+                  setImpersonatedTenant(data.tenant.name);
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      } catch (e) {
+        // Invalid token format, ignore
+      }
+    }
   }, []);
+
+  function exitImpersonation() {
+    // Clear the impersonation session
+    document.cookie = 'jauth=; path=/; max-age=0';
+    window.location.href = '/dev';
+  }
 
   return (
     <div className="min-h-screen grid grid-cols-[240px_1fr]">
@@ -97,6 +132,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main */}
       <div className="flex flex-col">
+        {/* Impersonation Banner */}
+        {isImpersonating && (
+          <div className="bg-purple-600 text-white px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-semibold">🔐 Developer Mode</span>
+              <span>•</span>
+              <span>
+                Logged in as: <strong>{impersonatedTenant || "Tenant User"}</strong>
+              </span>
+            </div>
+            <button
+              onClick={exitImpersonation}
+              className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded"
+            >
+              Exit & Return to Dev Dashboard
+            </button>
+          </div>
+        )}
+        
         <header className="h-14 bg-white border-b flex items-center justify-between px-4">
           <div className="text-sm text-slate-600">
             <span className="font-medium text-[rgb(var(--brand))]">Joinery AI</span> · Ask about sales, pipeline, timecards…

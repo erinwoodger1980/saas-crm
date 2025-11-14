@@ -40,6 +40,39 @@ export default function TenantDetailPage() {
   const [tenant, setTenant] = useState<TenantDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [impersonating, setImpersonating] = useState(false);
+
+  async function impersonate() {
+    if (!tenantId) return;
+    
+    const confirmed = confirm(
+      `Login as ${tenant?.name}?\n\nYou will be logged in as the tenant owner. This session will last 8 hours.`
+    );
+    
+    if (!confirmed) return;
+    
+    setImpersonating(true);
+    try {
+      const data = await apiFetch<{ 
+        ok: boolean; 
+        token: string;
+        user: any;
+        tenant: any;
+      }>(`/dev/tenants/${tenantId}/impersonate`, { method: "POST" });
+      
+      if (data.ok && data.token) {
+        // Store the token in a cookie
+        document.cookie = `jauth=${data.token}; path=/; max-age=${8 * 60 * 60}; SameSite=Lax`;
+        
+        // Redirect to their dashboard
+        window.location.href = "/dashboard";
+      }
+    } catch (e: any) {
+      alert("Failed to impersonate: " + (e?.message || "Unknown error"));
+    } finally {
+      setImpersonating(false);
+    }
+  }
 
   async function loadTenant() {
     if (!tenantId) return;
@@ -86,16 +119,25 @@ export default function TenantDetailPage() {
 
   return (
     <div className="p-8 space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" onClick={() => router.back()}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold">{tenant.name}</h1>
-          <div className="text-sm text-muted-foreground">
-            /{tenant.slug} • Created {new Date(tenant.createdAt).toLocaleDateString()}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={() => router.back()}>
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">{tenant.name}</h1>
+            <div className="text-sm text-muted-foreground">
+              /{tenant.slug} • Created {new Date(tenant.createdAt).toLocaleDateString()}
+            </div>
           </div>
         </div>
+        <Button 
+          onClick={impersonate} 
+          disabled={impersonating}
+          className="bg-purple-600 hover:bg-purple-700"
+        >
+          {impersonating ? "Logging in..." : "🔐 Login as Tenant"}
+        </Button>
       </div>
 
       {/* Stats Overview */}
