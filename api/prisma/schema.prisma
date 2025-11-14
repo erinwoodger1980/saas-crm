@@ -125,13 +125,14 @@ model User {
   tenantId              String
   email                 String                  @unique
   name                  String?
-  role                  String                  @default("user")
+  role                  String                  @default("user") // user, admin, workshop, supplier, developer
   supplierId            String?                 // Link to Supplier if role is "supplier"
   isEarlyAdopter        Boolean                 @default(false)
   passwordHash          String?
   signupCompleted       Boolean                 @default(false)
   workshopHoursPerDay   Decimal?                @default(8)
   workshopColor         String?                 // Hex color for schedule display (e.g. "#3b82f6")
+  isDeveloper           Boolean                 @default(false) // Global developer access across all tenants
   GmailTenantConnection GmailTenantConnection[]
   Ms365TenantConnection Ms365TenantConnection[]
   gmailUserConnection   GmailUserConnection?    @relation("GmailUserConnection")
@@ -862,6 +863,10 @@ model Feedback {
   comment       String?
   sourceUrl     String?
   status        FeedbackStatus  @default(OPEN)
+  priority      FeedbackPriority @default(MEDIUM)
+  category      String?         // UI, Feature, Bug, Performance, etc.
+  devNotes      String?         // Internal developer notes
+  linkedTaskId  String?         // Link to development task/sprint item
   resolvedAt    DateTime?
   resolvedById  String?
   createdAt     DateTime        @default(now())
@@ -873,11 +878,60 @@ model Feedback {
 
   @@index([tenantId, feature, createdAt])
   @@index([tenantId, status, createdAt])
+  @@index([status, priority])
 }
 
 enum FeedbackStatus {
   OPEN
-  RESOLVED
+  IN_REVIEW
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  WONT_FIX
+  DUPLICATE
+}
+
+enum FeedbackPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ==============================
+// Developer Task Management
+// ==============================
+
+model DevTask {
+  id            String        @id @default(cuid())
+  title         String
+  description   String?       @db.Text
+  status        DevTaskStatus @default(BACKLOG)
+  priority      FeedbackPriority @default(MEDIUM)
+  category      String?       // Feature, Bug, Refactor, Infrastructure
+  sprint        String?       // Sprint identifier (e.g., "2025-W46")
+  estimatedHours Decimal?
+  actualHours   Decimal?
+  assignee      String?       // Developer name/email
+  feedbackIds   String[]      @default([]) // Related feedback IDs
+  tenantIds     String[]      @default([]) // Related tenant IDs
+  notes         String?       @db.Text
+  completedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([status, priority])
+  @@index([sprint])
+}
+
+enum DevTaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  TESTING
+  DONE
+  BLOCKED
 }
 
 // ==============================

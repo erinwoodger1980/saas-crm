@@ -85,6 +85,7 @@ import featureRequestsRouter from "./routes/featureRequests";
 import makeMeAdminRouter from "./routes/make-me-admin";
 import codexRunRouter from "./routes/codexRun";
 import aiLoopRouter from "./routes/ai/loop";
+import devRouter from "./routes/dev";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -538,23 +539,24 @@ app.use("/feature-requests", featureRequestsRouter);
 app.use("/workshop", requireAuth, workshopRouter);
 app.use("/workshop-processes", requireAuth, workshopProcessesRouter);
 app.use("/auth", makeMeAdminRouter);
-// Developer Console: AI Codex runner
+// Developer Console routes
+app.use("/dev", requireAuth, devRouter);
 app.use("/ai/codex", codexRunRouter);
 app.use("/ai/loop", aiLoopRouter);
 
 /**
  * Minimal migration trigger endpoint.
- * Protected: requires auth and admin/owner role.
+ * Protected: requires developer role.
  * Runs `prisma migrate deploy` and returns status JSON.
- * Useful for one-click healing when new tables (e.g., Holiday) are added.
+ * Useful for one-click healing when new tables are added.
+ * MOVED to /dev/db/migrate but kept for backwards compatibility
  */
 import { execSync } from "child_process";
 app.post("/admin/run-migrations", requireAuth, async (req: any, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.auth.userId } });
-    const role = (user?.role || "").toLowerCase();
-    if (!user || !["admin", "owner"].includes(role)) {
-      return res.status(403).json({ error: "forbidden" });
+    if (!user?.isDeveloper) {
+      return res.status(403).json({ error: "Developer access required" });
     }
     const outGenerate = execSync("npx prisma generate", { stdio: "pipe" }).toString();
     const outDeploy = execSync("npx prisma migrate deploy", { stdio: "pipe" }).toString();

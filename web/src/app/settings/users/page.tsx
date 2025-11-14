@@ -19,8 +19,6 @@ export default function UsersSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<{ email: string; role: "admin" | "workshop" | "" }>({ email: "", role: "" });
   const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [migrating, setMigrating] = useState(false);
-  const [migrateMsg, setMigrateMsg] = useState<string | null>(null);
   const [editingHours, setEditingHours] = useState<Record<string, string>>({});
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -41,20 +39,6 @@ export default function UsersSettingsPage() {
   }
 
   useEffect(() => { loadUsers(); }, []);
-
-  async function runMigrations() {
-    setMigrating(true);
-    setMigrateMsg(null);
-    try {
-      const resp = await apiFetch<{ ok: boolean; error?: string }>("/admin/run-migrations", { method: "POST" });
-      if ((resp as any)?.ok) setMigrateMsg("Migrations applied successfully.");
-      else setMigrateMsg((resp as any)?.error || "Migration failed");
-    } catch (e: any) {
-      setMigrateMsg(e?.message || "Migration failed");
-    } finally {
-      setMigrating(false);
-    }
-  }
 
   async function onInvite() {
     setInviteLink(null);
@@ -161,18 +145,6 @@ export default function UsersSettingsPage() {
         <h1 className="text-2xl font-semibold">Users</h1>
         <Button variant="outline" onClick={loadUsers}>Refresh</Button>
       </div>
-
-      <Card className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-medium">Database maintenance</h2>
-          <Button variant="outline" onClick={runMigrations} disabled={migrating}>
-            {migrating ? "Running…" : "Run DB migrations"}
-          </Button>
-        </div>
-        {migrateMsg && (
-          <div className="text-xs text-muted-foreground">{migrateMsg}</div>
-        )}
-      </Card>
 
       <Card className="p-4">
         <h2 className="font-medium mb-3">Invite a user</h2>
