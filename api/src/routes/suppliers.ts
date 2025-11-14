@@ -11,15 +11,20 @@ function authUserId(req: any): string | null {
   return req.auth?.userId || null;
 }
 
-// GET /suppliers - List all suppliers for tenant
+// GET /suppliers - List all suppliers (global, shared across tenants)
 router.get("/", async (req: any, res) => {
   try {
     const tenantId = authTenantId(req);
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
+    // Show ALL suppliers, not just tenant-specific ones
     const suppliers = await prisma.supplier.findMany({
-      where: { tenantId },
       orderBy: { name: "asc" },
+      include: {
+        tenant: {
+          select: { name: true, slug: true }
+        }
+      }
     });
 
     return res.json({ ok: true, items: suppliers });
@@ -60,7 +65,7 @@ router.post("/", async (req: any, res) => {
   }
 });
 
-// PATCH /suppliers/:id - Update a supplier
+// PATCH /suppliers/:id - Update a supplier (only creator tenant can edit)
 router.patch("/:id", async (req: any, res) => {
   try {
     const tenantId = authTenantId(req);
@@ -69,13 +74,13 @@ router.patch("/:id", async (req: any, res) => {
     const { id } = req.params;
     const { name, contactPerson, email, phone, address, notes } = req.body;
 
-    // Verify supplier belongs to tenant
+    // Verify supplier belongs to the tenant that created it
     const existing = await prisma.supplier.findFirst({
       where: { id, tenantId },
     });
 
     if (!existing) {
-      return res.status(404).json({ error: "supplier_not_found" });
+      return res.status(403).json({ error: "can_only_edit_own_suppliers" });
     }
 
     const supplier = await prisma.supplier.update({
@@ -97,7 +102,7 @@ router.patch("/:id", async (req: any, res) => {
   }
 });
 
-// DELETE /suppliers/:id - Delete a supplier
+// DELETE /suppliers/:id - Delete a supplier (only creator tenant can delete)
 router.delete("/:id", async (req: any, res) => {
   try {
     const tenantId = authTenantId(req);
@@ -105,13 +110,13 @@ router.delete("/:id", async (req: any, res) => {
 
     const { id } = req.params;
 
-    // Verify supplier belongs to tenant
+    // Verify supplier belongs to the tenant that created it
     const existing = await prisma.supplier.findFirst({
       where: { id, tenantId },
     });
 
     if (!existing) {
-      return res.status(404).json({ error: "supplier_not_found" });
+      return res.status(403).json({ error: "can_only_delete_own_suppliers" });
     }
 
     await prisma.supplier.delete({
