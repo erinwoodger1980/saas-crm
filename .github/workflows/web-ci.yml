@@ -1,10 +1,16 @@
-name: Web CI
+name: web-ci
 
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-ci.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-ci.yml'
   workflow_dispatch:
 
 concurrency:

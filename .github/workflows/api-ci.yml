@@ -1,10 +1,16 @@
-name: API CI
+name: api-ci
 
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'api/**'
+      - '.github/workflows/api-ci.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'api/**'
+      - '.github/workflows/api-ci.yml'
   workflow_dispatch:
 
 defaults:
