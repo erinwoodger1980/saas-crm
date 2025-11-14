@@ -37,8 +37,8 @@ function FeedbackManagementContent() {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
-    status: searchParams?.get("status") || "",
-    priority: searchParams?.get("priority") || "",
+    status: searchParams?.get("status") || "all",
+    priority: searchParams?.get("priority") || "all",
     category: searchParams?.get("category") || "",
     tenantId: searchParams?.get("tenantId") || ""
   });
@@ -49,8 +49,8 @@ function FeedbackManagementContent() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filters.status) params.append("status", filters.status);
-      if (filters.priority) params.append("priority", filters.priority);
+      if (filters.status && filters.status !== "all") params.append("status", filters.status);
+      if (filters.priority && filters.priority !== "all") params.append("priority", filters.priority);
       if (filters.category) params.append("category", filters.category);
       if (filters.tenantId) params.append("tenantId", filters.tenantId);
 
@@ -129,7 +129,7 @@ function FeedbackManagementContent() {
             <Select value={filters.status} onValueChange={(v) => setFilters({...filters, status: v})}>
               <SelectTrigger><SelectValue placeholder="All Statuses" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Statuses</SelectItem>
+                <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="OPEN">Open</SelectItem>
                 <SelectItem value="IN_REVIEW">In Review</SelectItem>
                 <SelectItem value="PLANNED">Planned</SelectItem>
@@ -146,7 +146,7 @@ function FeedbackManagementContent() {
             <Select value={filters.priority} onValueChange={(v) => setFilters({...filters, priority: v})}>
               <SelectTrigger><SelectValue placeholder="All Priorities" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Priorities</SelectItem>
+                <SelectItem value="all">All Priorities</SelectItem>
                 <SelectItem value="CRITICAL">Critical</SelectItem>
                 <SelectItem value="HIGH">High</SelectItem>
                 <SelectItem value="MEDIUM">Medium</SelectItem>
@@ -165,7 +165,7 @@ function FeedbackManagementContent() {
           </div>
 
           <div>
-            <Button variant="outline" onClick={() => setFilters({ status: "", priority: "", category: "", tenantId: "" })} className="mt-5">
+            <Button variant="outline" onClick={() => setFilters({ status: "all", priority: "all", category: "", tenantId: "" })} className="mt-5">
               Clear Filters
             </Button>
           </div>
