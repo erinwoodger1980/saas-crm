@@ -14,7 +14,9 @@ jobs:
     env:
       # Make web service id available for if: expressions (masked). Using env here avoids
       # referencing the `secrets` context directly in an `if`, which GitHub disallows in some scopes.
-      RENDER_WEB_SERVICE_ID: ${{ secrets.RENDER_WEB_SERVICE_ID }}
+      RENDER_WEB_SERVICE_ID: ${{ secrets.RENDER_WEB_SERVICE_ID || vars.RENDER_WEB_SERVICE_ID }}
+      # Allow API service id to come from repo Variables as a fallback (ID is not sensitive)
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID || vars.RENDER_SERVICE_ID }}
     
     steps:
       - name: Checkout code
@@ -110,7 +112,7 @@ jobs:
           steps.check_duplicate.outputs.skip_deploy == 'false'
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_SERVICE_ID: ${{ env.RENDER_SERVICE_ID }}
         run: |
           echo "🚀 Triggering Render deployment..."
           
