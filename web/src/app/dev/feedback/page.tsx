@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -32,7 +32,7 @@ type Feedback = {
   } | null;
 };
 
-export default function FeedbackManagementPage() {
+function FeedbackManagementContent() {
   const searchParams = useSearchParams();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
@@ -316,5 +316,13 @@ export default function FeedbackManagementPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function FeedbackManagementPage() {
+  return (
+    <Suspense fallback={<div className="p-8">Loading feedback...</div>}>
+      <FeedbackManagementContent />
+    </Suspense>
   );
 }

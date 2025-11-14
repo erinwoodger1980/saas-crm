@@ -65,7 +65,6 @@ router.get("/tenants/:id", requireDeveloper, async (req: any, res) => {
             email: true,
             name: true,
             role: true,
-            createdAt: true,
             signupCompleted: true
           }
         },
@@ -311,12 +310,12 @@ router.get("/ml/status", requireDeveloper, async (req: any, res) => {
         const [insights, events, leadCount, emailCount] = await Promise.all([
           prisma.trainingInsights.findMany({
             where: { tenantId: tenant.id },
-            orderBy: { trainedAt: 'desc' },
+            orderBy: { createdAt: 'desc' },
             take: 1
           }),
           prisma.trainingEvent.findMany({
             where: { tenantId: tenant.id },
-            orderBy: { startedAt: 'desc' },
+            orderBy: { createdAt: 'desc' },
             take: 5
           }),
           prisma.lead.count({
@@ -358,12 +357,12 @@ router.get("/ml/status/:tenantId", requireDeveloper, async (req: any, res) => {
       }),
       prisma.trainingInsights.findMany({
         where: { tenantId },
-        orderBy: { trainedAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
         take: 10
       }),
       prisma.trainingEvent.findMany({
         where: { tenantId },
-        orderBy: { startedAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
         take: 20
       }),
       prisma.modelOverride.findMany({
