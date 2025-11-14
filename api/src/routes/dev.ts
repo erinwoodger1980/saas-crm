@@ -131,6 +131,8 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
       { expiresIn: "8h" }
     );
 
+    console.log(`[IMPERSONATE] Developer ${req.auth.userId} impersonating ${owner.email} (${owner.id}) for tenant ${tenant.name} (${tenant.id})`);
+
     res.json({ 
       ok: true, 
       token,

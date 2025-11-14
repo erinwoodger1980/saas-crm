@@ -380,6 +380,7 @@ router.post("/dev-seed", async (req, res) => {
 
 router.get("/me", async (req, res) => {
   const auth = (req as any).auth;
+  console.log("[auth/me] auth payload:", JSON.stringify(auth));
   if (!auth?.userId) return res.status(401).json({ error: "unauthorized" });
 
   try {
@@ -396,6 +397,7 @@ router.get("/me", async (req, res) => {
     });
     if (!user) return res.status(404).json({ error: "not_found" });
 
+    console.log("[auth/me] returning user:", user.email, "tenant:", user.tenantId, "impersonating:", auth.impersonating || false);
     const { firstName, lastName } = splitName(user.name);
     return res.json({ ...user, firstName, lastName });
   } catch (e: any) {
