@@ -69,7 +69,8 @@ curl -H "Authorization: Bearer YOUR_RENDER_API_KEY" \
 | Secret Name | Value | Description |
 |-------------|-------|-------------|
 | `RENDER_API_KEY` | Your Render API key | Used to authenticate with Render API |
-| `RENDER_SERVICE_ID` | `srv-xxxxx` | The ID of your API service on Render |
+| `RENDER_SERVICE_ID` | `srv-xxxxx` | The ID of your API service on Render (runs Prisma migrations) |
+| `RENDER_WEB_SERVICE_ID` | `srv-xxxxx` | Optional: ID of your Web service to auto-deploy UI after API migrations |
 
 ### 4. Verify Setup
 
@@ -108,7 +109,7 @@ curl -H "Authorization: Bearer YOUR_RENDER_API_KEY" \
   1. Checks if triggering workflow succeeded (exits early if failed)
   2. Queries GitHub API for status of BOTH workflows for the same commit
   3. Checks for duplicate deployments to prevent re-deploying same commit
-  4. Triggers Render deployment via API if all checks pass
+  4. Triggers Render deployment via API if all checks pass (API required, Web optional)
 
 ## Troubleshooting
 
