@@ -105,7 +105,12 @@ export default function TenantDetailPage() {
       }>(`/dev/tenants/${tenantId}/impersonate`, { method: "POST" });
       
       if (data.ok && data.token) {
-        // Store the token in a cookie
+        // Clear any existing legacy tokens first
+        localStorage.removeItem("jwt");
+        document.cookie = "jid=; path=/; max-age=0; SameSite=Lax";
+        document.cookie = "jwt=; path=/; max-age=0; SameSite=Lax";
+        
+        // Store the impersonation token in jauth cookie
         document.cookie = `jauth=${data.token}; path=/; max-age=${8 * 60 * 60}; SameSite=Lax`;
         
         // Redirect to their dashboard
