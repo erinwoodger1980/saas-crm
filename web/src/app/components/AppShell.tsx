@@ -13,6 +13,8 @@ import {
   Wrench,
   Sparkles,
   ArrowRight,
+  Building2,
+  Package,
 } from "lucide-react";
 
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -27,6 +29,8 @@ const BASE_NAV: Array<{ href: string; label: string; description: string; icon: 
   { href: "/opportunities", label: "Opportunities", description: "Quotes to win", icon: Target },
   // Quotes moved under AI Training; keep out of main nav
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
+  { href: "/settings/suppliers", label: "Suppliers", description: "Manage suppliers", icon: Building2 },
+  { href: "/supplier-requests", label: "Quote Requests", description: "Supplier quotes", icon: Package },
 ] as Array<{ href: string; label: string; description: string; icon: any }>;
 
 const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "developer"]);
@@ -194,18 +198,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   );
                 })}
               </nav>
-
-              <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-5 text-sm text-slate-600">
-                <p className="font-semibold text-slate-900">Need a quick win?</p>
-                <p className="mt-1 text-xs text-slate-500">Drop into My Tasks to see what’s next for the team.</p>
-                <Link
-                  href="/tasks/owner"
-                  className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-blue-600 transition-colors hover:text-blue-800"
-                >
-                  Open tasks
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </div>
             </div>
           </div>
         </aside>

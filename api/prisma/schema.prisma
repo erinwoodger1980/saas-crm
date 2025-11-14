@@ -69,6 +69,9 @@ model Tenant {
   slug                        String                 @unique // Required for landing pages and URLs
   // Feature Requests (inverse relation)
   featureRequests             FeatureRequest[]
+  // Supplier relations
+  suppliers                   Supplier[]
+  supplierQuoteRequests       SupplierQuoteRequest[]
 }
 
 /// ==============================
@@ -123,6 +126,7 @@ model User {
   email                 String                  @unique
   name                  String?
   role                  String                  @default("user")
+  supplierId            String?                 // Link to Supplier if role is "supplier"
   isEarlyAdopter        Boolean                 @default(false)
   passwordHash          String?
   signupCompleted       Boolean                 @default(false)
@@ -135,6 +139,7 @@ model User {
   passwordResetToken    PasswordResetToken?
   signupTokens          SignupToken[]
   tenant                Tenant                  @relation(fields: [tenantId], references: [id])
+  supplier              Supplier?               @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   feedbacks             Feedback[]              @relation("FeedbackAuthor")
   resolvedFeedbacks     Feedback[]              @relation("FeedbackResolver")
   // Workshop relations
@@ -142,6 +147,7 @@ model User {
   projectProcessAssignments  ProjectProcessAssignment[]
   timeEntries                TimeEntry[]
   holidays                   Holiday[]
+  supplierQuoteRequests      SupplierQuoteRequest[]
 }
 
 model SignupToken {
@@ -179,6 +185,7 @@ model Lead {
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   opportunity   Opportunity?
   Quote         Quote[]
+  supplierQuoteRequests SupplierQuoteRequest[]
 }
 
 model Opportunity {
@@ -218,6 +225,7 @@ model Opportunity {
   processPlans          ProcessPlan[]
   projectProcesses      ProjectProcessAssignment[]
   timeEntries           TimeEntry[]
+  supplierQuoteRequests SupplierQuoteRequest[]
 
   @@index([tenantId, stage])
 }
@@ -616,6 +624,7 @@ model UploadedFile {
   uploadedAt DateTime @default(now())
   quote      Quote?   @relation(fields: [quoteId], references: [id])
   tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  supplierQuoteRequest SupplierQuoteRequest?
 
   @@index([tenantId, quoteId])
 }
@@ -1378,4 +1387,55 @@ model TenantAdsConfig {
   updatedAt           DateTime @updatedAt
   
   @@index([googleAdsCustomerId])
+}
+
+// Suppliers - External companies that provide quotes
+model Supplier {
+  id                    String                @id @default(cuid())
+  tenantId              String
+  name                  String
+  contactPerson         String?
+  email                 String?
+  phone                 String?
+  address               String?
+  notes                 String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  tenant                Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplierQuoteRequests SupplierQuoteRequest[]
+  users                 User[]                // Supplier users linked to this supplier
+  
+  @@index([tenantId])
+  @@index([email])
+}
+
+// Supplier Quote Requests - Track quotes requested from suppliers
+model SupplierQuoteRequest {
+  id             String    @id @default(cuid())
+  tenantId       String
+  supplierId     String
+  leadId         String?
+  opportunityId  String?
+  requestedById  String    // User who requested the quote
+  status         String    @default("pending") // pending, quote_received, accepted, declined
+  notes          String?
+  sentAt         DateTime  @default(now())
+  receivedAt     DateTime?
+  quotedAmount   Decimal?
+  uploadedFileId String?   @unique // If supplier uploads a quote document
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  requestedBy    User         @relation(fields: [requestedById], references: [id])
+  uploadedFile   UploadedFile? @relation(fields: [uploadedFileId], references: [id], onDelete: SetNull)
+  
+  @@index([tenantId])
+  @@index([supplierId])
+  @@index([leadId])
+  @@index([opportunityId])
+  @@index([status])
 }

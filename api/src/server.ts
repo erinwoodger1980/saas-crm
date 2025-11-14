@@ -49,6 +49,8 @@ import sourceCostsRouter from "./routes/source-costs";
 import analyticsRouter from "./routes/analytics";
 import quotesRouter from "./routes/quotes";
 import authSetupRouter from "./routes/auth-setup";
+import suppliersRouter from "./routes/suppliers";
+import supplierQuoteRequestsRouter from "./routes/supplier-quote-requests";
 import analyticsDashboardRouter from "./routes/analytics-dashboard";
 import analyticsBusinessRouter from "./routes/analytics-business";
 import quoteDefaultsRouter from "./routes/quote-defaults";
@@ -509,6 +511,8 @@ if (billingRouter) {
 }
 app.use("/quotes", quotesRouter);
 app.use("/auth/setup", authSetupRouter);
+app.use("/suppliers", requireAuth, suppliersRouter);
+app.use("/supplier-quote-requests", requireAuth, supplierQuoteRequestsRouter);
 app.use("/analytics/dashboard", requireAuth, analyticsDashboardRouter);
 app.use("/quote-defaults", requireAuth, quoteDefaultsRouter);
 app.use("/questionnaire/fill", requireAuth, questionnaireFillRouter);
