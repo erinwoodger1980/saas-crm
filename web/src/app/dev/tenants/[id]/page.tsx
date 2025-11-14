@@ -41,6 +41,50 @@ export default function TenantDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [impersonating, setImpersonating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function deleteTenant() {
+    if (!tenantId || !tenant) return;
+    
+    const confirmed = confirm(
+      `⚠️ DELETE TENANT: ${tenant.name}?\n\n` +
+      `This will permanently delete:\n` +
+      `• ${tenant.users.length} users\n` +
+      `• ${tenant._count.leads} leads\n` +
+      `• ${tenant._count.opportunities} opportunities\n` +
+      `• ${tenant._count.quotes} quotes\n` +
+      `• ${tenant._count.feedbacks} feedback items\n` +
+      `• ${tenant._count.tasks} tasks\n` +
+      `• ${tenant._count.emailMessages} emails\n\n` +
+      `This action CANNOT be undone!\n\n` +
+      `Type the tenant slug "${tenant.slug}" to confirm:`
+    );
+    
+    if (!confirmed) return;
+    
+    const slugConfirm = prompt(`Type "${tenant.slug}" to confirm deletion:`);
+    if (slugConfirm !== tenant.slug) {
+      alert("Slug does not match. Deletion cancelled.");
+      return;
+    }
+    
+    setDeleting(true);
+    try {
+      const data = await apiFetch<{ ok: boolean; message: string }>(
+        `/dev/tenants/${tenantId}`,
+        { method: "DELETE" }
+      );
+      
+      if (data.ok) {
+        alert("Tenant deleted successfully");
+        router.push("/dev/tenants");
+      }
+    } catch (e: any) {
+      alert("Failed to delete tenant: " + (e?.message || "Unknown error"));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function impersonate() {
     if (!tenantId) return;
@@ -131,13 +175,22 @@ export default function TenantDetailPage() {
             </div>
           </div>
         </div>
-        <Button 
-          onClick={impersonate} 
-          disabled={impersonating}
-          className="bg-purple-600 hover:bg-purple-700"
-        >
-          {impersonating ? "Logging in..." : "🔐 Login as Tenant"}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={impersonate} 
+            disabled={impersonating || deleting}
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            {impersonating ? "Logging in..." : "🔐 Login as Tenant"}
+          </Button>
+          <Button 
+            onClick={deleteTenant}
+            disabled={deleting || impersonating}
+            variant="destructive"
+          >
+            {deleting ? "Deleting..." : "🗑️ Delete Tenant"}
+          </Button>
+        </div>
       </div>
 
       {/* Stats Overview */}

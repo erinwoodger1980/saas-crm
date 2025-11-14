@@ -152,6 +152,64 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
   }
 });
 
+// Delete tenant (for test/demo tenants only)
+router.delete("/tenants/:id", requireDeveloper, async (req: any, res) => {
+  try {
+    const tenantId = req.params.id;
+    
+    // First check if tenant exists
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: {
+        _count: {
+          select: {
+            users: true,
+            leads: true,
+            opportunities: true,
+            quotes: true
+          }
+        }
+      }
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    // Delete all related records in transaction
+    await prisma.$transaction(async (tx) => {
+      // Delete in order of foreign key dependencies
+      await tx.followUpAction.deleteMany({ where: { tenantId } });
+      await tx.aiFollowupInsight.deleteMany({ where: { tenantId } });
+      await tx.trainingEvent.deleteMany({ where: { tenantId } });
+      await tx.trainingInsights.deleteMany({ where: { tenantId } });
+      await tx.tenantImage.deleteMany({ where: { tenantId } });
+      await tx.workshopProcess.deleteMany({ where: { tenantId } });
+      await tx.task.deleteMany({ where: { tenantId } });
+      await tx.feedback.deleteMany({ where: { tenantId } });
+      await tx.emailMessage.deleteMany({ where: { tenantId } });
+      await tx.quote.deleteMany({ where: { tenantId } });
+      await tx.supplier.deleteMany({ where: { tenantId } });
+      await tx.opportunity.deleteMany({ where: { tenantId } });
+      await tx.lead.deleteMany({ where: { tenantId } });
+      await tx.costBySource.deleteMany({ where: { tenantId } });
+      await tx.gmailConnection.deleteMany({ where: { tenantId } });
+      await tx.ms365Connection.deleteMany({ where: { tenantId } });
+      await tx.user.deleteMany({ where: { tenantId } });
+      await tx.tenant.delete({ where: { id: tenantId } });
+    });
+
+    res.json({ 
+      ok: true, 
+      message: `Tenant ${tenant.name} and all related data deleted successfully`,
+      deletedCounts: tenant._count
+    });
+  } catch (error: any) {
+    console.error("Failed to delete tenant:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==============================
 // Feedback Management (Developer Only)
 // ==============================
