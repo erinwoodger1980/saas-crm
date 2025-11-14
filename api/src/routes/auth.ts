@@ -581,4 +581,98 @@ router.post('/invite', async (req, res) => {
   }
 });
 
+// ---- POST /auth/admin/reset-user-password ----
+/**
+ * Admin endpoint to reset a user's password
+ */
+router.post('/admin/reset-user-password', async (req: any, res) => {
+  try {
+    const requesterTenantId = req.auth?.tenantId;
+    const requesterRole = req.auth?.role;
+    
+    if (!requesterTenantId || !['admin', 'owner'].includes(requesterRole)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    const { userId, newPassword } = req.body;
+    
+    if (!userId || !newPassword) {
+      return res.status(400).json({ error: 'missing_fields' });
+    }
+
+    // Verify user belongs to same tenant
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, tenantId: true, email: true, name: true }
+    });
+
+    if (!user || user.tenantId !== requesterTenantId) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    // Hash new password and update
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash }
+    });
+
+    console.log(`[admin/reset-user-password] Password reset for user ${user.email} by admin`);
+
+    return res.json({ ok: true, userId: user.id, email: user.email });
+  } catch (e: any) {
+    console.error('[auth/admin/reset-user-password] failed:', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// ---- DELETE /auth/admin/delete-user/:userId ----
+/**
+ * Admin endpoint to delete a user
+ */
+router.delete('/admin/delete-user/:userId', async (req: any, res) => {
+  try {
+    const requesterTenantId = req.auth?.tenantId;
+    const requesterRole = req.auth?.role;
+    const requesterUserId = req.auth?.userId;
+    
+    if (!requesterTenantId || !['admin', 'owner'].includes(requesterRole)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'missing_user_id' });
+    }
+
+    // Prevent self-deletion
+    if (userId === requesterUserId) {
+      return res.status(400).json({ error: 'cannot_delete_self' });
+    }
+
+    // Verify user belongs to same tenant
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, tenantId: true, email: true, name: true, role: true }
+    });
+
+    if (!user || user.tenantId !== requesterTenantId) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+
+    // Delete the user (cascade will handle related records)
+    await prisma.user.delete({
+      where: { id: userId }
+    });
+
+    console.log(`[admin/delete-user] User ${user.email} deleted by admin`);
+
+    return res.json({ ok: true, userId: user.id, email: user.email });
+  } catch (e: any) {
+    console.error('[auth/admin/delete-user] failed:', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
 export default router;
