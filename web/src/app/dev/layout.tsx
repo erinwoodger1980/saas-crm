@@ -33,8 +33,11 @@ export default function DevLayout({ children }: { children: ReactNode }) {
   }, []);
 
   function exitImpersonation() {
-    // Clear the impersonation session
-    document.cookie = 'jauth=; path=/; max-age=0';
+    // Clear ALL auth tokens
+    localStorage.removeItem("jwt");
+    document.cookie = 'jauth=; path=/; max-age=0; SameSite=Lax';
+    document.cookie = 'jid=; path=/; max-age=0; SameSite=Lax';
+    document.cookie = 'jwt=; path=/; max-age=0; SameSite=Lax';
     window.location.href = '/dev';
   }
 
