@@ -24,7 +24,8 @@ export default function UsersSettingsPage() {
   const [editingHours, setEditingHours] = useState<Record<string, string>>({});
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string>("");
 
   async function loadUsers() {
     setLoading(true);
@@ -144,7 +145,8 @@ export default function UsersSettingsPage() {
       await apiFetch(`/auth/admin/delete-user/${userId}`, {
         method: "DELETE",
       });
-      setDeleteConfirm(null);
+      setDeletingUserId(null);
+      setDeleteConfirm("");
       setError(null);
       await loadUsers();
       alert(`User ${user.email} deleted successfully`);
@@ -298,6 +300,7 @@ export default function UsersSettingsPage() {
                       size="sm"
                       variant="destructive"
                       onClick={() => {
+                        setDeletingUserId(u.id);
                         setDeleteConfirm("");
                         setError(null);
                       }}
@@ -345,7 +348,7 @@ export default function UsersSettingsPage() {
                 )}
 
                 {/* Delete Confirmation Form */}
-                {deleteConfirm !== null && (
+                {deletingUserId === u.id && (
                   <div className="mt-2 p-3 bg-red-50 rounded border border-red-200">
                     <div className="font-medium text-sm mb-2 text-red-700">⚠️ Delete user {u.email}?</div>
                     <div className="text-xs text-red-600 mb-2">This action cannot be undone. Type the email address to confirm:</div>
@@ -370,7 +373,10 @@ export default function UsersSettingsPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => setDeleteConfirm(null)}
+                        onClick={() => {
+                          setDeletingUserId(null);
+                          setDeleteConfirm("");
+                        }}
                       >
                         Cancel
                       </Button>
