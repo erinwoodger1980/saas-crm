@@ -121,15 +121,20 @@ export default function TenantDetailPage() {
       }>(`/dev/tenants/${tenantId}/impersonate`, { method: "POST" });
       
       if (data.ok && data.token) {
-        // Clear any existing legacy tokens first
+        // Clear ALL existing auth tokens including the current jauth cookie
         localStorage.removeItem("jwt");
+        document.cookie = "jauth=; path=/; max-age=0; SameSite=Lax";
         document.cookie = "jid=; path=/; max-age=0; SameSite=Lax";
         document.cookie = "jwt=; path=/; max-age=0; SameSite=Lax";
         
-        // Store the impersonation token in jauth cookie
-        document.cookie = `jauth=${data.token}; path=/; max-age=${8 * 60 * 60}; SameSite=Lax`;
+        // Small delay to ensure cookies are cleared
+        await new Promise(resolve => setTimeout(resolve, 100));
         
-        // Redirect to their dashboard
+        // Store the impersonation token in jauth cookie
+        const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = `jauth=${data.token}; path=/; max-age=${8 * 60 * 60}; SameSite=Lax${secure}`;
+        
+        // Force a full page reload to ensure clean session
         window.location.href = "/dashboard";
       }
     } catch (e: any) {
