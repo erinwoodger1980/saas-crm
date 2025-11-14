@@ -133,6 +133,15 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
 
     console.log(`[IMPERSONATE] Developer ${req.auth.userId} impersonating ${owner.email} (${owner.id}) for tenant ${tenant.name} (${tenant.id})`);
 
+    // Set the impersonation token as an HttpOnly cookie
+    res.cookie('jauth', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 8 * 60 * 60 * 1000, // 8 hours
+      path: '/'
+    });
+
     res.json({ 
       ok: true, 
       token,
