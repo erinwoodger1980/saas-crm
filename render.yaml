@@ -8,6 +8,7 @@ services:
     preDeployCommand: npx prisma migrate deploy && pnpm tsx scripts/update-wealden-landing-prod.ts || true
     healthCheckPath: /health
     plan: starter
+    autoDeploy: false  # Disable auto-deploy - only deploy via GitHub Actions when both CI pass
     envVars:
       - key: ML_URL
         value: https://new-ml-zo9l.onrender.com
@@ -21,6 +22,7 @@ services:
     startCommand: pnpm run start
     healthCheckPath: /health
     plan: starter
+    autoDeploy: false  # Disable auto-deploy - only deploy via GitHub Actions when both CI pass
     envVars:
       - key: NODE_ENV
         value: production

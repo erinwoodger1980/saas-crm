@@ -73,6 +73,9 @@ jobs:
               console.log('❌ One or both workflows failed. Skipping deployment.');
               core.setOutput('should_deploy', 'false');
               core.setOutput('reason', 'failed');
+              
+              // Exit with error to make the failure visible
+              core.setFailed(`Deployment blocked: api-ci=${apiCiRun?.conclusion || 'not found'}, web-ci=${webCiRun?.conclusion || 'not found'}`);
             }
 
       - name: Check for duplicate deployment
