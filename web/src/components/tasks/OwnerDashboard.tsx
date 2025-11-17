@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import { NewTaskModal } from "@/components/tasks/NewTaskModal";
@@ -161,9 +162,14 @@ export default function OwnerDashboard() {
             <h1 className="text-3xl font-semibold text-slate-800">Guide every task like it’s the main event</h1>
             <p className={`${subtle} max-w-xl text-slate-600`}>Track overdue adventures, rally today’s priorities, and sprinkle assignments where they belong.</p>
           </div>
-          <button className={primary} onClick={()=>setShowNew(true)}>
-            <span aria-hidden="true">➕</span> New task
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href="/tasks/print" target="_blank" className={rowBtn}>
+              Print A4
+            </Link>
+            <button className={primary} onClick={()=>setShowNew(true)}>
+              <span aria-hidden="true">➕</span> New task
+            </button>
+          </div>
         </div>
       </header>
 
