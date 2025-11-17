@@ -43,6 +43,7 @@ export type Lead = {
   estimatedValue?: number | null;
   quotedValue?: number | null;
   dateQuoteSent?: string | null;
+  capturedAt?: string | null;
   computed?: Record<string, any> | null;
   communicationLog?: Array<{
     id: string;
@@ -312,7 +313,7 @@ export default function LeadModal({
   const [taskAssignToMe, setTaskAssignToMe] = useState(true);
 
   // Stage navigation
-  const [currentStage, setCurrentStage] = useState<'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up' | 'workshop'>(initialStage);
+  const [currentStage, setCurrentStage] = useState<'client' | 'quote' | 'communication' | 'tasks' | 'order'>('client');
 
   // Form inputs
   const [nameInput, setNameInput] = useState("");
@@ -1156,6 +1157,13 @@ export default function LeadModal({
       console.error("patch failed", e?.message || e);
       alert("Failed to save changes");
     }
+  }
+
+  function handleCustomFieldChange(key: string, value: any) {
+    if (!lead) return;
+    const updatedCustom = { ...lead.custom, [key]: value };
+    setLead(prev => prev ? { ...prev, custom: updatedCustom } : prev);
+    savePatch({ custom: updatedCustom });
   }
 
   async function addCommunicationNote() {
@@ -2423,11 +2431,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         {/* Stage Navigation */}
         <div className="flex gap-1 rounded-xl bg-slate-100/80 p-1 mx-6 mt-4">
           {[
-            { key: "overview", label: "Overview", icon: "📊", description: "Lead summary and actions" },
-            { key: "details", label: "Details", icon: "📝", description: "Contact info and notes" },
-            { key: "questionnaire", label: "Questionnaire", icon: "📋", description: "Client responses" },
+            { key: "client", label: "Client Details", icon: "�", description: "Contact information" },
+            { key: "quote", label: "Quote Details", icon: "�", description: "Quotation and requirements" },
+            { key: "communication", label: "Communication", icon: "�", description: "Calls, emails, notes" },
             { key: "tasks", label: "Tasks", icon: "✅", description: "Action items" },
-            ...(uiStatus === 'WON' ? [{ key: "workshop" as const, label: "Workshop", icon: "🛠️", description: "Production management" }] : []),
+            ...(uiStatus === 'WON' ? [{ key: "order" as const, label: "Order", icon: "🛠️", description: "Production details" }] : []),
           ].map((stage) => (
             <button
               key={stage.key}
@@ -2503,53 +2511,52 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
           {/* Stage-based Content */}
-          {currentStage === 'overview' && (
+          {currentStage === 'client' && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
-              <div className="max-w-4xl mx-auto space-y-6">
-                {/* Overview Summary */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                      <span aria-hidden="true">👤</span>
-                      Lead Details
-                    </div>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <label className="text-sm">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Name</span>
-                          <input
-                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
-                            value={nameInput}
-                            onChange={(e) => setNameInput(e.target.value)}
-                            onBlur={() => {
-                              setLead((l) => (l ? { ...l, contactName: nameInput || null } : l));
-                              savePatch({ contactName: nameInput || null });
-                            }}
-                            placeholder="Client name"
-                          />
-                        </label>
-
-                        <label className="text-sm">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Email</span>
-                          <input
-                            type="email"
-                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
-                            value={emailInput}
-                            onChange={(e) => setEmailInput(e.target.value)}
-                            onBlur={() => {
-                              setLead((l) => (l ? { ...l, email: emailInput || null } : l));
-                              savePatch({ email: emailInput || null });
-                            }}
-                            placeholder="client@email.com"
-                          />
-                        </label>
-                      </div>
+              <div className="max-w-4xl mx-auto">
+                <section className="rounded-2xl border border-sky-100 bg-white/90 p-6 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-6">
+                    <span aria-hidden="true">👤</span>
+                    Client Details
+                  </div>
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Name *</span>
+                        <input
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={nameInput}
+                          onChange={(e) => setNameInput(e.target.value)}
+                          onBlur={() => {
+                            setLead((l) => (l ? { ...l, contactName: nameInput || null } : l));
+                            savePatch({ contactName: nameInput || null });
+                          }}
+                          placeholder="Client name"
+                        />
+                      </label>
 
                       <label className="text-sm">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Phone</span>
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Email</span>
+                        <input
+                          type="email"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={emailInput}
+                          onChange={(e) => setEmailInput(e.target.value)}
+                          onBlur={() => {
+                            setLead((l) => (l ? { ...l, email: emailInput || null } : l));
+                            savePatch({ email: emailInput || null });
+                          }}
+                          placeholder="client@email.com"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Phone</span>
                         <input
                           type="tel"
-                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
                           value={phoneInput}
                           onChange={(e) => setPhoneInput(e.target.value)}
                           onBlur={() => {
@@ -2561,32 +2568,235 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       </label>
 
                       <label className="text-sm">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Project Description</span>
-                        <textarea
-                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-24 shadow-inner"
-                          value={descInput}
-                          onChange={(e) => setDescInput(e.target.value)}
-                          onBlur={() => {
-                            setLead((l) => (l ? { ...l, description: descInput || null } : l));
-                            savePatch({ description: descInput || null });
-                          }}
-                          placeholder="Project background, requirements, constraints…"
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Source</span>
+                        <LeadSourcePicker
+                          leadId={lead?.id || ''}
+                          value={(lead?.custom as any)?.source || ''}
+                          onSaved={(val) => handleCustomFieldChange('source', val)}
                         />
                       </label>
                     </div>
-                  </section>
 
-                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                      <span aria-hidden="true">�</span>
-                      Communication Log
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Address</span>
+                        <input
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={(lead?.custom as any)?.address || ''}
+                          onChange={(e) => handleCustomFieldChange('address', e.target.value)}
+                          placeholder="Client address"
+                        />
+                      </label>
+
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Type</span>
+                        <select
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={(lead?.custom as any)?.type || ''}
+                          onChange={(e) => handleCustomFieldChange('type', e.target.value)}
+                        >
+                          <option value="">Select type...</option>
+                          <option value="residential">Residential</option>
+                          <option value="commercial">Commercial</option>
+                          <option value="industrial">Industrial</option>
+                        </select>
+                      </label>
                     </div>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 gap-3">
+
+                    <label className="text-sm">
+                      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Date Received</span>
+                      <input
+                        type="date"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                        value={lead?.capturedAt ? new Date(lead.capturedAt).toISOString().split('T')[0] : ''}
+                        readOnly
+                      />
+                    </label>
+
+                    <label className="text-sm">
+                      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Project Description</span>
+                      <textarea
+                        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 min-h-32 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                        value={descInput}
+                        onChange={(e) => setDescInput(e.target.value)}
+                        onBlur={() => {
+                          setLead((l) => (l ? { ...l, description: descInput || null } : l));
+                          savePatch({ description: descInput || null });
+                        }}
+                        placeholder="Project background, requirements, constraints…"
+                      />
+                    </label>
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+
+          {currentStage === 'quote' && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh] overflow-y-auto">
+              <div className="max-w-4xl mx-auto space-y-6">
+                {/* Quote Information Section */}
+                <section className="rounded-2xl border border-sky-100 bg-white/90 p-6 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-6">
+                    <span aria-hidden="true">💰</span>
+                    Quote Information
+                  </div>
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">JMS No</span>
+                        <input
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={(lead?.custom as any)?.jmsNo || ''}
+                          onChange={(e) => handleCustomFieldChange('jmsNo', e.target.value)}
+                          placeholder="JMS reference number"
+                        />
+                      </label>
+
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Quoted By</span>
+                        <input
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={(lead?.custom as any)?.quotedBy || ''}
+                          onChange={(e) => handleCustomFieldChange('quotedBy', e.target.value)}
+                          placeholder="Person who quoted"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Estimated Value (£)</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={lead?.estimatedValue || ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? parseFloat(e.target.value) : null;
+                            setLead((l) => (l ? { ...l, estimatedValue: val } : l));
+                            savePatch({ estimatedValue: val });
+                          }}
+                          placeholder="0.00"
+                        />
+                      </label>
+
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Quoted Value (£)</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={lead?.quotedValue || ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? parseFloat(e.target.value) : null;
+                            setLead((l) => (l ? { ...l, quotedValue: val } : l));
+                            savePatch({ quotedValue: val });
+                          }}
+                          placeholder="0.00"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Where Manufactured</span>
+                        <input
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={(lead?.custom as any)?.manufactureLocation || ''}
+                          onChange={(e) => handleCustomFieldChange('manufactureLocation', e.target.value)}
+                          placeholder="Manufacturing location"
+                        />
+                      </label>
+
+                      <label className="text-sm">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Date Quote Sent</span>
+                        <input
+                          type="date"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          value={lead?.dateQuoteSent ? new Date(lead.dateQuoteSent).toISOString().split('T')[0] : ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? new Date(e.target.value).toISOString() : null;
+                            setLead((l) => (l ? { ...l, dateQuoteSent: val } : l));
+                            savePatch({ dateQuoteSent: val });
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Questionnaire Responses Section */}
+                <section className="rounded-2xl border border-sky-100 bg-white/90 p-6 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-6">
+                    <span aria-hidden="true">📋</span>
+                    Questionnaire Responses
+                  </div>
+                  {questionnaireFields.length === 0 ? (
+                    <p className="text-sm text-slate-600">No questionnaire configured.</p>
+                  ) : (
+                    <div className="space-y-5">
+                      {questionnaireFields.filter(f => f.showOnLead && !f.internalOnly).map((field) => {
+                        const value = (lead?.custom as any)?.[field.key] || '';
+                        return (
+                          <label key={field.id} className="text-sm block">
+                            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">
+                              {field.label}
+                              {field.required && <span className="text-rose-500"> *</span>}
+                            </span>
+                            {field.type === 'textarea' ? (
+                              <textarea
+                                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 min-h-24 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                                value={value}
+                                onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
+                                placeholder={field.label}
+                              />
+                            ) : field.type === 'select' ? (
+                              <select
+                                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                                value={value}
+                                onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
+                              >
+                                <option value="">Select...</option>
+                                {field.options.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                                value={value}
+                                onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
+                                placeholder={field.label}
+                              />
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          )}
+
+          {currentStage === 'communication' && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
+              <div className="max-w-4xl mx-auto">
+                <section className="rounded-2xl border border-sky-100 bg-white/90 p-6 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-6">
+                    <span aria-hidden="true">💬</span>
+                    Communication Log
+                  </div>
+                  <div className="space-y-5">
+                    {/* Add Communication Form */}
+                    <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                      <div className="space-y-4">
                         <label className="text-sm">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Type</span>
+                          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Type</span>
                           <select
-                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
                             value={communicationType}
                             onChange={(e) => setCommunicationType(e.target.value as 'call' | 'email' | 'note')}
                           >
@@ -2597,12 +2807,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </label>
 
                         <label className="text-sm">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">
                             {communicationType === 'call' ? 'Call Summary' : 
                              communicationType === 'email' ? 'Email Summary' : 'Note'}
                           </span>
                           <textarea
-                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-20 shadow-inner"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 min-h-24 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
                             value={newNote}
                             onChange={(e) => setNewNote(e.target.value)}
                             placeholder={
@@ -2622,40 +2832,37 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                            communicationType === 'email' ? '📧 Log Email' : '📝 Add Note'}
                         </Button>
                       </div>
+                    </div>
 
-                      {/* Communication Log Display */}
-                      {lead?.communicationLog && lead.communicationLog.length > 0 && (
-                        <div className="space-y-3 pt-4 border-t border-slate-200">
-                          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Recent Communications</h4>
-                          <div className="space-y-2 max-h-40 overflow-y-auto">
-                            {lead.communicationLog.map((entry) => (
-                              <div key={entry.id} className="p-2 bg-slate-50 rounded-lg border border-slate-200">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-xs">
-                                    {entry.type === 'call' ? '📞' : entry.type === 'email' ? '📧' : '📝'}
-                                  </span>
-                                  <span className="text-xs font-medium capitalize">{entry.type}</span>
-                                  <span className="text-xs text-slate-500 ml-auto">
-                                    {new Date(entry.timestamp).toLocaleDateString()} {new Date(entry.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-slate-700">{entry.content}</p>
+                    {/* Communication History */}
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">Communication History</h4>
+                      {lead?.communicationLog && lead.communicationLog.length > 0 ? (
+                        <div className="space-y-3">
+                          {lead.communicationLog.map((entry) => (
+                            <div key={entry.id} className="p-4 bg-white rounded-lg border border-slate-200 shadow-sm">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-lg">
+                                  {entry.type === 'call' ? '📞' : entry.type === 'email' ? '📧' : '📝'}
+                                </span>
+                                <span className="text-sm font-medium capitalize">{entry.type}</span>
+                                <span className="text-sm text-slate-500 ml-auto">
+                                  {new Date(entry.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} at {new Date(entry.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </span>
                               </div>
-                            ))}
-                          </div>
+                              <p className="text-sm text-slate-700 whitespace-pre-wrap">{entry.content}</p>
+                            </div>
+                          ))}
                         </div>
+                      ) : (
+                        <p className="text-sm text-slate-500 italic">No communications logged yet.</p>
                       )}
                     </div>
-                  </section>
-                </div>
+                  </div>
+                </section>
               </div>
             </div>
           )}
-
-          {currentStage === 'details' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
-              {/* Left – Details */}
-              <div className="md:col-span-2 border-r border-sky-100/60 min-h-[60vh] bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 p-4 sm:p-6 space-y-4">
             <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <span aria-hidden="true">✨</span>
@@ -3566,7 +3773,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         )}
 
           {/* Workshop Tab */}
-          {currentStage === 'workshop' && (
+          {currentStage === 'order' && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/60 min-h-[60vh] max-h-[60vh] overflow-y-auto">
               <div className="max-w-6xl mx-auto space-y-6">
                 
