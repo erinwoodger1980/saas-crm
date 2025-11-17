@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Printer, ArrowLeft } from "lucide-react";
@@ -20,7 +20,7 @@ type Task = {
   assignees?: Array<{ userId: string; role: "OWNER" | "FOLLOWER" }>;
 };
 
-export default function TasksPrintPage() {
+function TasksPrintPageInner() {
   const router = useRouter();
   const search = useSearchParams();
   const ids = getAuthIdsFromJwt();
@@ -116,6 +116,15 @@ export default function TasksPrintPage() {
         </footer>
       </div>
     </>
+  );
+}
+
+export default function TasksPrintPage() {
+  // Next.js 15 requires useSearchParams to be within a Suspense boundary
+  return (
+    <Suspense fallback={null}>
+      <TasksPrintPageInner />
+    </Suspense>
   );
 }
 
