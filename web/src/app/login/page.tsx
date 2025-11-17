@@ -15,31 +15,15 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Auto-fill dev credentials if coming from impersonation
-  useEffect(() => {
-    const devEmail = sessionStorage.getItem('devLoginEmail');
-    const devPassword = sessionStorage.getItem('devLoginPassword');
-    if (devEmail && devPassword) {
-      setEmail(devEmail);
-      setPassword(devPassword);
-      // Clear them so they don't persist
-      sessionStorage.removeItem('devLoginEmail');
-      sessionStorage.removeItem('devLoginPassword');
-    }
-  }, []);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function doLogin(loginEmail: string, loginPassword: string) {
     setError("");
     setLoading(true);
     try {
-      const loginEmail = email.trim();
-      const loginPassword = password;
       const res = await apiFetch<{ jwt: string }>("/auth/login", {
         method: "POST",
-        json: { email: loginEmail, password: loginPassword },
+        json: { email: loginEmail.trim(), password: loginPassword },
       });
-  const authToken = res?.jwt;
+      const authToken = res?.jwt;
       if (authToken) {
         setJwt(authToken);
         router.push("/dashboard");
@@ -54,46 +38,69 @@ export default function LoginPage() {
     }
   }
 
+  // If dev credentials were prefilled via sessionStorage, auto-submit once
+  useEffect(() => {
+    const devEmail = sessionStorage.getItem("devLoginEmail");
+    const devPassword = sessionStorage.getItem("devLoginPassword");
+    if (devEmail && devPassword) {
+      setEmail(devEmail);
+      setPassword(devPassword);
+      // Clear immediately to avoid loops
+      sessionStorage.removeItem("devLoginEmail");
+      sessionStorage.removeItem("devLoginPassword");
+      // Kick off login after a short tick so state updates don't interfere
+      setTimeout(() => {
+        void doLogin(devEmail, devPassword);
+      }, 0);
+    }
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await doLogin(email, password);
+  }
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md rounded-xl bg-white p-8 shadow">
         <h1 className="text-2xl font-semibold text-center mb-2">Welcome back 👋</h1>
         <p className="text-gray-500 text-center mb-6">
           Log in to your Joinery AI account
-            // Auto sign-in after prefill
-            setTimeout(() => {
-              void doLogin(devEmail, devPassword);
-            }, 50);
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-        async function doLogin(loginEmail: string, loginPassword: string) {
-          setError("");
-          setLoading(true);
-          try {
-            const res = await apiFetch<{ jwt: string }>("/auth/login", {
-              method: "POST",
-              json: { email: loginEmail.trim(), password: loginPassword },
-            });
-            const authToken = res?.jwt;
-            if (authToken) {
-              setJwt(authToken);
-              router.push("/dashboard");
-            } else {
-              throw new Error("Invalid login response");
-            }
-          } catch (err: any) {
-            console.error(err);
-            setError("Invalid email or password");
-          } finally {
-            setLoading(false);
-          }
-        }
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
+
+          <Button type="submit" disabled={loading} className="w-full">
             {loading ? "Signing in…" : "Sign in"}
-        async function handleSubmit(e: React.FormEvent) {
-          e.preventDefault();
-          await doLogin(email, password);
-        }
           </Button>
         </form>
 
