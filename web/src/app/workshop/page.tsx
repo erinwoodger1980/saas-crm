@@ -1468,12 +1468,51 @@ export default function WorkshopPage() {
 
       {/* Timeline (Swimlane) View */}
       {viewMode === 'timeline' && (
-        <WorkshopSwimlaneTimeline
-          projects={projects as any}
-          users={users as any}
-          visibleWeeks={visibleWeeks}
-          onProjectClick={(id: string) => setShowProjectDetails(id)}
-        />
+        <div className="space-y-4">
+          {/* Navigation Controls */}
+          <div className="flex items-center justify-between bg-white rounded-lg border p-4 shadow-sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={previousMonth}
+              className="flex items-center gap-2"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Previous Month
+            </Button>
+            
+            <div className="flex items-center gap-3">
+              <h3 className="text-lg font-semibold text-slate-900">
+                {currentMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={goToToday}
+                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+              >
+                Today
+              </Button>
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={nextMonth}
+              className="flex items-center gap-2"
+            >
+              Next Month
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+
+          <WorkshopSwimlaneTimeline
+            projects={projects as any}
+            users={users as any}
+            visibleWeeks={visibleWeeks}
+            onProjectClick={(id: string) => setShowProjectDetails(id)}
+          />
+        </div>
       )}
 
       {/* Hours Tracking Modal */}
