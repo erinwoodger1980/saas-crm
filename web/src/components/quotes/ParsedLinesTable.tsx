@@ -145,9 +145,9 @@ export function ParsedLinesTable({
         <div className="overflow-hidden rounded-2xl border">
           <div className="max-h-[520px] overflow-auto">
             <table className="min-w-full text-sm">
-              <thead className="sticky top-0 z-10 bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground backdrop-blur">
+              <thead className="sticky top-0 z-20 bg-muted/80 text-xs uppercase tracking-wide text-muted-foreground backdrop-blur shadow">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Description</th>
+                  <th className="px-4 py-3 text-left font-medium sticky left-0 bg-muted/80 z-30">Description</th>
                   <th className="px-4 py-3 text-right font-medium">Qty</th>
                   <th className="px-4 py-3 text-right font-medium">Cost / unit</th>
                   <th className="px-4 py-3 text-left font-medium">Map to question</th>
@@ -167,8 +167,11 @@ export function ParsedLinesTable({
                   const hasError = qty != null && qty < 0 || unitPrice != null && unitPrice < 0;
 
                   return (
-                    <tr key={line.id} className={hasError ? "bg-rose-50/60" : undefined}>
-                      <td className="max-w-md px-4 py-3 align-top">
+                    <tr
+                      key={line.id}
+                      className={`transition-colors ${hasError ? "bg-rose-50/80" : "hover:bg-slate-50/80"}`}
+                    >
+                      <td className="max-w-md px-4 py-3 align-top sticky left-0 bg-white z-10 shadow-md">
                         <div className="line-clamp-2 font-medium" title={line.description ?? undefined}>
                           {line.description ?? "—"}
                         </div>
@@ -177,53 +180,64 @@ export function ParsedLinesTable({
                         )}
                       </td>
                       <td className="w-32 px-4 py-3 text-right align-top">
-                        <Input
-                          inputMode="decimal"
-                          type="number"
-                          value={qty ?? ""}
-                          onChange={(event) => {
-                            const nextValue = event.target.value === "" ? null : Number(event.target.value);
-                            updateDraft(line, { qty: nextValue }, { schedule: true });
-                          }}
-                          onBlur={() => flushSave(line.id)}
-                          onFocus={() => updateDraft(line, { qty })}
-                          className="h-9 text-right"
-                          min={0}
-                        />
-                        {saving[line.id] && <SavingHint />}
+                        <div className="relative group">
+                          <Input
+                            inputMode="decimal"
+                            type="number"
+                            value={qty ?? ""}
+                            onChange={(event) => {
+                              const nextValue = event.target.value === "" ? null : Number(event.target.value);
+                              updateDraft(line, { qty: nextValue }, { schedule: true });
+                            }}
+                            onBlur={() => flushSave(line.id)}
+                            onFocus={() => updateDraft(line, { qty })}
+                            className="h-9 text-right"
+                            min={0}
+                            aria-label="Quantity"
+                          />
+                          <span className="absolute left-1 top-1 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Qty</span>
+                          {saving[line.id] && <SavingHint />}
+                        </div>
                       </td>
                       <td className="w-40 px-4 py-3 text-right align-top">
-                        <Input
-                          inputMode="decimal"
-                          type="number"
-                          value={unitPrice ?? ""}
-                          onChange={(event) => {
-                            const nextValue = event.target.value === "" ? null : Number(event.target.value);
-                            updateDraft(line, { unitPrice: nextValue }, { schedule: true });
-                          }}
-                          onBlur={() => flushSave(line.id)}
-                          onFocus={() => updateDraft(line, { unitPrice })}
-                          className="h-9 text-right"
-                        />
+                        <div className="relative group">
+                          <Input
+                            inputMode="decimal"
+                            type="number"
+                            value={unitPrice ?? ""}
+                            onChange={(event) => {
+                              const nextValue = event.target.value === "" ? null : Number(event.target.value);
+                              updateDraft(line, { unitPrice: nextValue }, { schedule: true });
+                            }}
+                            onBlur={() => flushSave(line.id)}
+                            onFocus={() => updateDraft(line, { unitPrice })}
+                            className="h-9 text-right"
+                            aria-label="Unit price"
+                          />
+                          <span className="absolute left-1 top-1 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Unit price</span>
+                        </div>
                       </td>
                       <td className="min-w-[14rem] px-4 py-3 align-top">
-                        <Select
-                          value={String(valueForSelect)}
-                          onValueChange={(value) => onMappingChange(line.id, value === "__none__" ? null : value)}
-                        >
-                          <SelectTrigger className="h-9 w-full text-left">
-                            <SelectValue placeholder="Select question" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-80">
-                            <SelectItem value="__none__">— Not mapped —</SelectItem>
-                            {questionnaireFields.map((field) => (
-                              <SelectItem key={field.key} value={field.key}>
-                                <span className="font-medium">{field.label}</span>
-                                <span className="ml-1 text-muted-foreground">({field.key})</span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="relative group">
+                          <Select
+                            value={String(valueForSelect)}
+                            onValueChange={(value) => onMappingChange(line.id, value === "__none__" ? null : value)}
+                          >
+                            <SelectTrigger className="h-9 w-full text-left">
+                              <SelectValue placeholder="Select question" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-80">
+                              <SelectItem value="__none__">— Not mapped —</SelectItem>
+                              {questionnaireFields.map((field) => (
+                                <SelectItem key={field.key} value={field.key}>
+                                  <span className="font-medium">{field.label}</span>
+                                  <span className="ml-1 text-muted-foreground">({field.key})</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <span className="absolute left-1 top-1 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Map to questionnaire</span>
+                        </div>
                       </td>
                       <td className="w-40 px-4 py-3 text-right align-top">
                         {sellUnit != null ? formatCurrency(sellUnit, currency) : "—"}
