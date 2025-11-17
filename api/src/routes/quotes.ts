@@ -293,6 +293,8 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
       sellUnit: (ln.meta as any)?.sellUnitGBP ?? null,
       sellTotal: (ln.meta as any)?.sellTotalGBP ?? null,
       lineTotalGBP: Number(ln.lineTotalGBP),
+      deliveryShareGBP: Number(ln.deliveryShareGBP),
+      surchargeGBP: (ln.meta as any)?.surchargeGBP ?? null,
     }));
 
     return res.json(out);
@@ -304,11 +306,13 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
 
 /**
  * PATCH /quotes/:id/lines/:lineId
- * Body: { qty?: number | null; unitPrice?: number | null; meta?: Record<string, any> }
+ * Body: { qty?: number | null; unitPrice?: number | null; sellUnitGBP?: number; margin?: number; meta?: Record<string, any> }
  * Updates a single quote line allowing inline editing from the quote builder.
  * - Validates ownership (tenant + quote)
+ * - Supports manual override of sellUnitGBP and margin
  * - Recalculates sellUnitGBP & sellTotalGBP if margin/pricing info present
  * - Applies markupDefault from quote when pricingMethod === 'margin' and margin not provided
+ * - When user explicitly sets sellUnitGBP or margin, marks line as overridden
  */
 router.patch("/:id/lines/:lineId", requireAuth, async (req: any, res) => {
   try {
@@ -340,21 +344,54 @@ router.patch("/:id/lines/:lineId", requireAuth, async (req: any, res) => {
     const existingMeta: any = (line.meta as any) || {};
     const mergedMeta: any = { ...existingMeta, ...incomingMeta };
 
+    // Check if user is explicitly setting sellUnitGBP or margin (manual override)
+    const explicitSellUnitGBP = req.body?.sellUnitGBP !== undefined ? safeNumber(req.body.sellUnitGBP) : null;
+    const explicitMargin = req.body?.margin !== undefined ? safeNumber(req.body.margin) : null;
+    const explicitSurchargeGBP = req.body?.surchargeGBP !== undefined ? safeNumber(req.body.surchargeGBP) : null;
+    const isManualOverride = explicitSellUnitGBP !== null || explicitMargin !== null;
+
+    // Handle surcharge updates
+    if (explicitSurchargeGBP !== null && Number.isFinite(explicitSurchargeGBP)) {
+      mergedMeta.surchargeGBP = explicitSurchargeGBP;
+    }
+
     // Determine pricing/sell values. Priority:
-    // 1. Explicit sellUnitGBP/sellTotalGBP in incoming meta
-    // 2. Margin-based calculation if pricingMethod === 'margin'
-    // 3. Preserve existing sell values
-    let sellUnitGBP: number | null = safeNumber(incomingMeta?.sellUnitGBP ?? incomingMeta?.sell_unit);
+    // 1. Explicit sellUnitGBP/margin from request body (manual override)
+    // 2. Explicit sellUnitGBP/sellTotalGBP in incoming meta
+    // 3. Margin-based calculation if pricingMethod === 'margin'
+    // 4. Preserve existing sell values
+    let sellUnitGBP: number | null = explicitSellUnitGBP ?? safeNumber(incomingMeta?.sellUnitGBP ?? incomingMeta?.sell_unit);
     let sellTotalGBP: number | null = safeNumber(incomingMeta?.sellTotalGBP ?? incomingMeta?.sell_total);
     const pricingMethod = String(mergedMeta?.pricingMethod || existingMeta?.pricingMethod || "") || null;
 
-    if (sellUnitGBP == null && pricingMethod === "margin") {
+    // If explicit margin provided, calculate sellUnit from it
+    if (explicitMargin !== null && Number.isFinite(explicitMargin) && explicitMargin >= 0) {
+      sellUnitGBP = Number(unitPrice) * (1 + explicitMargin);
+      sellTotalGBP = sellUnitGBP * Number(qty);
+      mergedMeta.margin = explicitMargin;
+      mergedMeta.pricingMethod = "margin";
+      mergedMeta.overrideMargin = explicitMargin; // Store original override
+      mergedMeta.isOverridden = true;
+    } else if (sellUnitGBP == null && pricingMethod === "margin") {
+      // Auto-calculate from margin if no explicit override
       const margin = safeNumber(incomingMeta?.margin ?? existingMeta?.margin) ?? Number(quote.markupDefault ?? 0.25);
       if (Number.isFinite(margin) && margin >= 0) {
         sellUnitGBP = Number(unitPrice) * (1 + margin);
         sellTotalGBP = sellUnitGBP * Number(qty);
         mergedMeta.margin = margin;
         mergedMeta.pricingMethod = "margin";
+      }
+    }
+
+    // If explicit sellUnitGBP provided, mark as overridden
+    if (explicitSellUnitGBP !== null && Number.isFinite(explicitSellUnitGBP)) {
+      sellUnitGBP = explicitSellUnitGBP;
+      sellTotalGBP = sellUnitGBP * Number(qty);
+      mergedMeta.overrideSellUnitGBP = explicitSellUnitGBP; // Store original override
+      mergedMeta.isOverridden = true;
+      // Calculate implied margin for reference
+      if (Number(unitPrice) > 0) {
+        mergedMeta.impliedMargin = (sellUnitGBP / Number(unitPrice)) - 1;
       }
     }
 
@@ -392,6 +429,9 @@ router.patch("/:id/lines/:lineId", requireAuth, async (req: any, res) => {
       sellUnit: (saved.meta as any)?.sellUnitGBP ?? null,
       sellTotal: (saved.meta as any)?.sellTotalGBP ?? null,
       lineTotalGBP: Number(saved.lineTotalGBP),
+      deliveryShareGBP: Number(saved.deliveryShareGBP),
+      surchargeGBP: (saved.meta as any)?.surchargeGBP ?? null,
+      isOverridden: (saved.meta as any)?.isOverridden ?? false,
     };
     return res.json(out);
   } catch (e: any) {
@@ -2265,17 +2305,30 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
     const margin = Number(req.body?.margin ?? quote.markupDefault ?? 0.25);
 
     if (method === "margin") {
-      // apply simple margin over supplier unitPrice
+      // apply simple margin over supplier unitPrice, but skip lines with manual overrides
       let totalGBP = 0;
+      let skippedCount = 0;
       for (const ln of quote.lines) {
+        const lineMeta: any = (ln.meta as any) || {};
+        const isOverridden = lineMeta?.isOverridden === true;
+        
+        // Skip lines with manual overrides
+        if (isOverridden) {
+          skippedCount += 1;
+          // Keep existing sell values for overridden lines
+          const existingSellTotal = Number(lineMeta?.sellTotalGBP ?? ln.lineTotalGBP ?? 0);
+          totalGBP += existingSellTotal;
+          continue;
+        }
+        
         const cost = Number(ln.unitPrice) * Number(ln.qty);
         const sellUnit = Number(ln.unitPrice) * (1 + margin);
         const sellTotal = sellUnit * Number(ln.qty);
         totalGBP += sellTotal;
-        await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(ln.meta as any || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "margin", margin } } } as any });
+        await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(lineMeta || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "margin", margin } } } as any });
       }
   await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) } });
-      return res.json({ ok: true, method, margin, totalGBP });
+      return res.json({ ok: true, method, margin, totalGBP, skippedOverrides: skippedCount });
     }
 
     if (method === "ml") {
@@ -2636,6 +2689,98 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
     return res.status(400).json({ error: "invalid_method" });
   } catch (e: any) {
     console.error("[/quotes/:id/price] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * POST /quotes/:id/delivery
+ * Body: { amountGBP: number, method: "spread" | "single", lineId?: string }
+ * Distributes delivery costs across quote lines.
+ * - "spread": distributes proportionally across all lines by their sell total
+ * - "single": applies entire delivery cost to a specific line (requires lineId)
+ */
+router.post("/:id/delivery", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true } });
+    if (!quote) return res.status(404).json({ error: "not_found" });
+
+    const amountGBP = safeNumber(req.body?.amountGBP);
+    if (amountGBP === null || amountGBP < 0) {
+      return res.status(400).json({ error: "invalid_amount" });
+    }
+
+    const method = String(req.body?.method || "spread").toLowerCase();
+    if (method !== "spread" && method !== "single") {
+      return res.status(400).json({ error: "invalid_method" });
+    }
+
+    if (method === "single") {
+      const lineId = String(req.body?.lineId || "");
+      if (!lineId) return res.status(400).json({ error: "line_id_required" });
+      
+      const line = quote.lines.find((ln) => ln.id === lineId);
+      if (!line) return res.status(404).json({ error: "line_not_found" });
+
+      // Clear delivery from all other lines and apply full amount to target line
+      for (const ln of quote.lines) {
+        if (ln.id === lineId) {
+          await prisma.quoteLine.update({
+            where: { id: ln.id },
+            data: { deliveryShareGBP: new Prisma.Decimal(amountGBP) },
+          });
+        } else {
+          await prisma.quoteLine.update({
+            where: { id: ln.id },
+            data: { deliveryShareGBP: new Prisma.Decimal(0) },
+          });
+        }
+      }
+
+      return res.json({ ok: true, method: "single", amountGBP, lineId });
+    }
+
+    // Spread method: distribute proportionally by sellTotalGBP
+    const totalSell = quote.lines.reduce((sum, ln) => {
+      const lineMeta: any = (ln.meta as any) || {};
+      const sellTotal = Number(lineMeta?.sellTotalGBP ?? ln.lineTotalGBP ?? 0);
+      return sum + Math.max(0, sellTotal);
+    }, 0);
+
+    if (totalSell <= 0) {
+      return res.status(400).json({ error: "no_sell_totals" });
+    }
+
+    let allocated = 0;
+    const updates: Array<{ lineId: string; share: number }> = [];
+
+    for (const ln of quote.lines) {
+      const lineMeta: any = (ln.meta as any) || {};
+      const sellTotal = Number(lineMeta?.sellTotalGBP ?? ln.lineTotalGBP ?? 0);
+      const share = (sellTotal / totalSell) * amountGBP;
+      allocated += share;
+      updates.push({ lineId: ln.id, share });
+    }
+
+    // Apply updates
+    for (const upd of updates) {
+      await prisma.quoteLine.update({
+        where: { id: upd.lineId },
+        data: { deliveryShareGBP: new Prisma.Decimal(upd.share) },
+      });
+    }
+
+    // Update quote deliveryCost
+    await prisma.quote.update({
+      where: { id: quote.id },
+      data: { deliveryCost: new Prisma.Decimal(amountGBP) },
+    });
+
+    return res.json({ ok: true, method: "spread", amountGBP, allocated, lineCount: updates.length });
+  } catch (e: any) {
+    console.error("[/quotes/:id/delivery] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
