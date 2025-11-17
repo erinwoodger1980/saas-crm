@@ -2970,44 +2970,37 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             </div>
                           </div>
                           <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                            value={value}
-                            onChange={(e) => {
-                              const nextVal = e.target.value;
-                              setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
-                              saveCustomField(field, nextVal);
-                            }}
-                          />
-                        </label>
+                            <span className="inline-flex items-center gap-1">
+                              <span aria-hidden="true">⏰</span>
+                              {t.dueAt ? new Date(t.dueAt).toLocaleString() : "No due date"}
+                            </span>
+                            {t.relatedType && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-600">
+                                <span aria-hidden="true">🔗</span>
+                                {t.relatedType.toLowerCase()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       );
-                    }
-
-                    const inputType = field.type === "number" ? "number" : "text";
-                    return (
-                      <label key={key} className="text-sm">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                          {label}
-                          {field.required ? <span className="text-rose-500"> *</span> : null}
-                        </span>
-                        <input
-                          type={inputType}
-                          className={baseClasses}
-                          value={value}
-                          onChange={(e) => setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))}
-                          onBlur={(e) => saveCustomField(field, e.target.value)}
-                        />
-                      </label>
-                    );
-                  })}
+                    })}
+                  </div>
                 </div>
-              </section>
-            )}
+              </div>
+            </div>
+          )}
 
-            {(emailSubject || emailSnippet || fromEmail) && (
-              <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <span aria-hidden="true">💌</span>
-                  Latest email
-                </div>
+          {/* Order Tab */}
+          {currentStage === 'order' && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/60 min-h-[60vh] max-h-[60vh] overflow-y-auto">
+              <div className="max-w-6xl mx-auto space-y-6">
+                
+                {/* Project Details */}
+                <section className="rounded-2xl border border-purple-200 bg-purple-50/60 p-5 shadow-sm backdrop-blur">
+                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-purple-900">
+                    <span aria-hidden>�</span>
+                    Project Details
+                  </div>
                 <div className="mt-3 text-sm text-slate-700 space-y-1">
                   {fromEmail && (
                     <div>
