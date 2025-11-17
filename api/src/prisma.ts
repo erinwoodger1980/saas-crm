@@ -91,4 +91,10 @@ const tenantCreateMiddleware = async (params: any, next: any): Promise<any> => {
   }
   return result;
 };
-(prisma as any).$use(tenantCreateMiddleware);
+
+// Only register middleware if $use is available (not available in all environments)
+if (typeof (prisma as any).$use === 'function') {
+  (prisma as any).$use(tenantCreateMiddleware);
+} else {
+  console.warn('[prisma] $use middleware not available - dev user and process seeding will not run automatically on tenant creation');
+}
