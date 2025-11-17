@@ -484,11 +484,12 @@ router.get("/time", async (req: any, res) => {
   res.json({ ok: true, items, total });
 });
 
-// POST /workshop/time { projectId?, process, userId, date, hours, notes? }
+// POST /workshop/time { projectId?, process, userId, date, hours, notes?, markComplete? }
 // projectId is optional for generic hours (CLEANING, ADMIN, HOLIDAY)
+// markComplete: if true and projectId + process are specified, marks that process as complete
 router.post("/time", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
-  const { projectId, process, userId, date, hours, notes } = req.body || {};
+  const { projectId, process, userId, date, hours, notes, markComplete } = req.body || {};
   if (!process || !userId || !date || hours == null) return res.status(400).json({ error: "invalid_payload" });
 
   const entry = await (prisma as any).timeEntry.create({
@@ -502,6 +503,36 @@ router.post("/time", async (req: any, res) => {
       notes: notes || null,
     },
   });
+
+  // If markComplete is true and we have a projectId, mark the process as complete
+  if (markComplete && projectId) {
+    // Find the process definition for this process type (code matches the process enum value)
+    const processDef = await prisma.workshopProcessDefinition.findFirst({
+      where: { tenantId, code: String(process) },
+    });
+
+    if (processDef) {
+      // Find or create the assignment and mark it complete
+      await prisma.projectProcessAssignment.upsert({
+        where: {
+          opportunityId_processDefinitionId: {
+            opportunityId: String(projectId),
+            processDefinitionId: processDef.id,
+          },
+        },
+        create: {
+          tenantId,
+          opportunityId: String(projectId),
+          processDefinitionId: processDef.id,
+          completedAt: new Date() as any,
+        },
+        update: {
+          completedAt: new Date() as any,
+        },
+      });
+    }
+  }
+
   res.json({ ok: true, entry });
 });
 
@@ -512,6 +543,46 @@ router.delete("/time/:id", async (req: any, res) => {
   if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: "not_found" });
   await (prisma as any).timeEntry.delete({ where: { id } });
   res.json({ ok: true });
+});
+
+// PATCH /workshop/process-complete - Mark a process as complete/incomplete
+// Body: { projectId, processDefinitionId, completed: boolean }
+router.patch("/process-complete", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const { projectId, processDefinitionId, completed } = req.body || {};
+  
+  if (!projectId || !processDefinitionId || completed === undefined) {
+    return res.status(400).json({ error: "invalid_payload" });
+  }
+
+  // Verify the project exists and belongs to this tenant
+  const project = await prisma.opportunity.findUnique({
+    where: { id: String(projectId) },
+  });
+  if (!project || project.tenantId !== tenantId) {
+    return res.status(404).json({ error: "project_not_found" });
+  }
+
+  // Update or create the assignment
+  const assignment = await prisma.projectProcessAssignment.upsert({
+    where: {
+      opportunityId_processDefinitionId: {
+        opportunityId: String(projectId),
+        processDefinitionId: String(processDefinitionId),
+      },
+    },
+    create: {
+      tenantId,
+      opportunityId: String(projectId),
+      processDefinitionId: String(processDefinitionId),
+      completedAt: (completed ? new Date() : null) as any,
+    },
+    update: {
+      completedAt: (completed ? new Date() : null) as any,
+    },
+  });
+
+  res.json({ ok: true, assignment });
 });
 
 // PATCH /workshop/project/:id - Update project start and delivery dates
