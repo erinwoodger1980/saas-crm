@@ -114,6 +114,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
+import WorkshopSwimlaneTimeline from "./WorkshopSwimlaneTimeline";
 
 // Mirror of schema enum
 const PROCESSES = [
@@ -264,7 +265,7 @@ export default function WorkshopPage() {
   const { user } = useCurrentUser();
   const isWorkshopOnly = user?.role === 'workshop';
   
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [viewMode, setViewMode] = useState<'calendar' | 'timeline'>('calendar');
   const [showValues, setShowValues] = useState(false); // Toggle between workshop view (false) and management view (true)
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
@@ -960,11 +961,11 @@ export default function WorkshopPage() {
                 Calendar
               </Button>
               <Button 
-                variant={viewMode === 'list' ? 'default' : 'outline'} 
+                variant={viewMode === 'timeline' ? 'default' : 'outline'} 
                 size="sm" 
-                onClick={() => setViewMode('list')}
+                onClick={() => setViewMode('timeline')}
               >
-                List
+                Timeline (Swimlane)
               </Button>
               <div className="h-6 w-px bg-border" />
               <Button 
@@ -1379,245 +1380,14 @@ export default function WorkshopPage() {
         </div>
       )}
 
-      {/* List View */}
-      {viewMode === 'list' && !isWorkshopOnly && (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {projects.map((proj) => (
-          <Card key={proj.id} className="p-4 space-y-3">
-            <div className="flex items-baseline justify-between">
-              <div className="flex-1">
-                <div className="font-medium">{proj.name}</div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {showValues && !isWorkshopOnly && proj.valueGBP != null && (
-                    <div className="text-xs text-muted-foreground">£{Number(proj.valueGBP).toLocaleString()}</div>
-                  )}
-                  {(() => {
-                    const assignedUsers = (proj.processAssignments || [])
-                      .filter(pa => pa.assignedUser)
-                      .map(pa => pa.assignedUser!.name || pa.assignedUser!.email.split('@')[0])
-                      .filter((name, idx, arr) => arr.indexOf(name) === idx);
-                    
-                    if (assignedUsers.length === 0) return null;
-                    
-                    const usersSummary = assignedUsers.join(', ');
-                    
-                    return (
-                      <div className="text-xs text-blue-600" title={`Assigned: ${usersSummary}`}>
-                        👤 {assignedUsers.slice(0, 2).join(', ')}
-                        {assignedUsers.length > 2 && ` +${assignedUsers.length - 2} more`}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-              <div className="text-xs text-muted-foreground">Total hours: {proj.totalProjectHours || 0}</div>
-            </div>
-
-            {/* Date and Value Editing */}
-            <div className="pt-2 border-t">
-              {editingDates[proj.id] ? (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-muted-foreground">Start Date</label>
-                      <Input
-                        type="date"
-                        value={editingDates[proj.id].startDate}
-                        onChange={(e) => setEditingDates(prev => ({
-                          ...prev,
-                          [proj.id]: { ...prev[proj.id], startDate: e.target.value }
-                        }))}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">Delivery Date</label>
-                      <Input
-                        type="date"
-                        value={editingDates[proj.id].deliveryDate}
-                        onChange={(e) => setEditingDates(prev => ({
-                          ...prev,
-                          [proj.id]: { ...prev[proj.id], deliveryDate: e.target.value }
-                        }))}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Value (£)</label>
-                    <Input
-                      type="number"
-                      value={editingDates[proj.id].value}
-                      onChange={(e) => setEditingDates(prev => ({
-                        ...prev,
-                        [proj.id]: { ...prev[proj.id], value: e.target.value }
-                      }))}
-                      className="h-8 text-sm"
-                      placeholder="Project value"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-muted-foreground">Expected Hours</label>
-                      <Input
-                        type="number"
-                        value={editingDates[proj.id].expectedHours || ""}
-                        onChange={(e) => setEditingDates(prev => ({
-                          ...prev,
-                          [proj.id]: { ...prev[proj.id], expectedHours: e.target.value }
-                        }))}
-                        className="h-8 text-sm"
-                        placeholder="Expected hours"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">Actual Hours</label>
-                      <Input
-                        type="number"
-                        value={editingDates[proj.id].actualHours || ""}
-                        onChange={(e) => setEditingDates(prev => ({
-                          ...prev,
-                          [proj.id]: { ...prev[proj.id], actualHours: e.target.value }
-                        }))}
-                        className="h-8 text-sm"
-                        placeholder="Actual hours"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => updateProjectDates(proj.id)}>
-                      Save
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => cancelEditingDates(proj.id)}>
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => startEditingDates(proj)}
-                  className="text-xs text-muted-foreground hover:text-primary w-full text-left"
-                >
-                  {proj.startDate && proj.deliveryDate ? (
-                    <>
-                      📅 {new Date(proj.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {' '}
-                      {new Date(proj.deliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </>
-                  ) : (
-                    <>📅 Set start & delivery dates</>
-                  )}
-                  <span className="ml-2 text-xs text-green-700">Exp: {proj.expectedHours || 0}h</span>
-                  <span className="ml-2 text-xs text-blue-700">Act: {proj.actualHours || 0}h</span>
-                </button>
-              )}
-            </div>
-
-            <div className="overflow-auto">
-              <div className="min-w-[520px] grid grid-cols-[100px_repeat(4,1fr)] gap-x-2 items-start">
-                <div className="text-xs font-semibold uppercase text-muted-foreground">Week</div>
-                {weeksArray.map((w) => (
-                  <div key={w} className="text-xs font-semibold uppercase text-muted-foreground text-center">W{w}</div>
-                ))}
-
-                {PROCESSES.map((proc) => (
-                  <div key={`row-${proc}`} className="contents">
-                    <div className="text-xs py-1">{formatProcess(proc)}</div>
-                    {weeksArray.map((w) => {
-                      const plans = (proj.processPlans || []).filter((p) => p.process === proc && p.plannedWeek === w);
-                      return (
-                        <div key={`${proc}-${w}`} className="py-1">
-                          <div className="flex flex-wrap gap-1 justify-center">
-                            {plans.map((p) => (
-                              <Badge key={p.id} variant="secondary">
-                                {formatProcess(p.process)}{p.assignedUser?.name ? ` · ${p.assignedUser.name}` : ""}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Add plan */}
-            {adding[proj.id] ? (
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
-                <Select value={(adding[proj.id].process as string) || ""} onValueChange={(v) => setAdding((prev) => ({ ...prev, [proj.id]: { ...prev[proj.id], process: v as WorkshopProcess } }))}>
-                  <SelectTrigger className="w-[180px]"><SelectValue placeholder="Process" /></SelectTrigger>
-                  <SelectContent>
-                    {PROCESSES.map((p) => (
-                      <SelectItem key={p} value={p}>{formatProcess(p)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={String(adding[proj.id].plannedWeek || "")} onValueChange={(v) => setAdding((prev) => ({ ...prev, [proj.id]: { ...prev[proj.id], plannedWeek: Number(v) } }))}>
-                  <SelectTrigger className="w-[120px]"><SelectValue placeholder="Week" /></SelectTrigger>
-                  <SelectContent>
-                    {weeksArray.map((w) => (
-                      <SelectItem key={w} value={String(w)}>Week {w}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={String(adding[proj.id].assignedUserId || "")} onValueChange={(v) => setAdding((prev) => ({ ...prev, [proj.id]: { ...prev[proj.id], assignedUserId: v } }))}>
-                  <SelectTrigger className="w-[200px]"><SelectValue placeholder="Assign (optional)" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Unassigned</SelectItem>
-                    {users.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>{u.name || u.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Button size="sm" onClick={() => saveAdd(proj.id)}>Save</Button>
-                <Button variant="ghost" size="sm" onClick={() => cancelAdd(proj.id)}>Cancel</Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 pt-2 border-t">
-                <Button size="sm" variant="secondary" onClick={() => initAdd(proj.id)}>Add plan</Button>
-                {loggingFor[proj.id] ? (
-                  <></>
-                ) : (
-                  <Button size="sm" variant="outline" onClick={() => startLog(proj.id)}>Log time</Button>
-                )}
-              </div>
-            )}
-
-            {/* Log time */}
-            {loggingFor[proj.id] ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Select value={String(loggingFor[proj.id]?.process || "")} onValueChange={(v) => setLoggingFor((prev) => ({ ...prev, [proj.id]: { ...(prev[proj.id] as LogForm), process: v as WorkshopProcess } }))}>
-                  <SelectTrigger className="w-[180px]"><SelectValue placeholder="Process" /></SelectTrigger>
-                  <SelectContent>
-                    {PROCESSES.map((p) => (
-                      <SelectItem key={p} value={p}>{formatProcess(p)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={String(loggingFor[proj.id]?.userId || "")} onValueChange={(v) => setLoggingFor((prev) => ({ ...prev, [proj.id]: { ...(prev[proj.id] as LogForm), userId: v } }))}>
-                  <SelectTrigger className="w-[200px]"><SelectValue placeholder="User" /></SelectTrigger>
-                  <SelectContent>
-                    {users.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>{u.name || u.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Input type="date" className="w-[160px]" value={String(loggingFor[proj.id]?.date || "")} onChange={(e) => setLoggingFor((prev) => ({ ...prev, [proj.id]: { ...(prev[proj.id] as LogForm), date: e.target.value } }))} />
-                <Input type="number" className="w-[120px]" min="0" step="0.25" value={String(loggingFor[proj.id]?.hours || "")} onChange={(e) => setLoggingFor((prev) => ({ ...prev, [proj.id]: { ...(prev[proj.id] as LogForm), hours: e.target.value } }))} />
-                <Input type="text" className="w-[200px]" placeholder="Notes (optional)" value={String(loggingFor[proj.id]?.notes || "")} onChange={(e) => setLoggingFor((prev) => ({ ...prev, [proj.id]: { ...(prev[proj.id] as LogForm), notes: e.target.value } }))} />
-
-                <Button size="sm" onClick={() => saveLog(proj.id)}>Save</Button>
-                <Button size="sm" variant="ghost" onClick={() => cancelLog(proj.id)}>Cancel</Button>
-              </div>
-            ) : null}
-          </Card>
-        ))}
-      </div>
+      {/* Timeline (Swimlane) View */}
+      {viewMode === 'timeline' && (
+        <WorkshopSwimlaneTimeline
+          projects={projects as any}
+          users={users as any}
+          visibleWeeks={visibleWeeks}
+          onProjectClick={(id: string) => setShowProjectDetails(id)}
+        />
       )}
 
       {/* Hours Tracking Modal */}

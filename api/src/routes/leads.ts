@@ -576,6 +576,7 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
             ...(leadData.estimatedValue !== undefined ? { estimatedValue: leadData.estimatedValue } : {}),
             ...(leadData.quotedValue !== undefined ? { quotedValue: leadData.quotedValue } : {}),
             ...(leadData.dateQuoteSent !== undefined ? { dateQuoteSent: leadData.dateQuoteSent } : {}),
+            ...(leadData.capturedAt !== undefined ? { capturedAt: leadData.capturedAt } : {}),
             custom,
           },
         });
@@ -748,6 +749,27 @@ router.post("/", async (req, res) => {
 
   const playbook = await loadTaskPlaybook(tenantId);
 
+  const now = new Date();
+  const customData = { 
+    ...(custom ?? {}), 
+    uiStatus, 
+    enquiryDate: now.toISOString().split('T')[0],
+    // alias to support tenant questionnaires that use 'dateReceived'
+    dateReceived: now.toISOString().split('T')[0],
+  };
+
+  // Auto-set dateQuoteSent if creating with QUOTE_SENT status
+  let dateQuoteSent: Date | undefined = undefined;
+  if (uiStatus === "QUOTE_SENT") {
+    dateQuoteSent = now;
+    customData.dateQuoteSent = now.toISOString().split('T')[0];
+  }
+
+  // Auto-set dateOrderPlaced if creating with WON status
+  if (uiStatus === "WON") {
+    customData.dateOrderPlaced = now.toISOString().split('T')[0];
+  }
+
   const lead = await prisma.lead.create({
     data: {
       tenantId,
@@ -756,18 +778,32 @@ router.post("/", async (req, res) => {
       email: email ?? "",
       status: uiToDb(uiStatus),
       description: description ?? null,
-      custom: { 
-        ...(custom ?? {}), 
-        uiStatus, 
-        enquiryDate: new Date().toISOString().split('T')[0],
-        // alias to support tenant questionnaires that use 'dateReceived'
-        dateReceived: new Date().toISOString().split('T')[0],
-      },
+      capturedAt: now,
+      dateQuoteSent: dateQuoteSent,
+      custom: customData,
     },
   });
 
   // Proactive first task
   await handleStatusTransition({ tenantId, leadId: lead.id, prevUi: null, nextUi: uiStatus, actorId: userId, playbook });
+
+  // If created with WON status, ensure opportunity exists
+  if (uiStatus === "WON") {
+    try {
+      await prisma.opportunity.create({
+        data: {
+          tenantId,
+          leadId: lead.id,
+          title: lead.contactName || "Project",
+          stage: "WON" as any,
+          wonAt: now,
+        },
+      });
+    } catch (e) {
+      // May already exist if handleStatusTransition created it
+      console.warn("[leads] ensure opportunity on new WON lead failed:", (e as any)?.message || e);
+    }
+  }
 
   res.json(lead);
 });

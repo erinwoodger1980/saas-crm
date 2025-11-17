@@ -113,12 +113,20 @@ export const CSV_FIELD_MAP: Record<string, CsvFieldTarget> = {
   "estimated value": { leadKey: "estimatedValue", qKey: "estimatedValue", transform: toNumberGBP },
   "quoted value": { leadKey: "quotedValue", qKey: "quotedValue", transform: toNumberGBP },
   "date quote sent": { leadKey: "dateQuoteSent", qKey: "dateQuoteSent", transform: toISODate },
+  "enquiry date": { leadKey: "capturedAt", qKey: "enquiryDate", transform: toISODate },
+  "date received": { leadKey: "capturedAt", qKey: "dateReceived", transform: toISODate },
+  "captured at": { leadKey: "capturedAt", qKey: "enquiryDate", transform: toISODate },
+  "date order placed": { qKey: "dateOrderPlaced", transform: toISODate },
+  "start date": { qKey: "startDate", transform: toISODate },
+  "delivery date": { qKey: "deliveryDate", transform: toISODate },
+  "workshop start date": { qKey: "startDate", transform: toISODate },
 };
 
 export const CANONICAL_FIELD_CONFIG: Record<string, CanonicalFieldConfig> = {
   estimatedValue: { type: "number" },
   quotedValue: { type: "number" },
   dateQuoteSent: { type: "date" },
+  capturedAt: { type: "date" },
   startDate: { type: "date" },
   deliveryDate: { type: "date" },
 };
