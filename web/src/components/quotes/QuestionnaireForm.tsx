@@ -36,9 +36,15 @@ export function QuestionnaireForm({
   estimateSupported,
   estimateDisabledReason,
 }: QuestionnaireFormProps) {
-  // Filter to only public questionnaire fields
+  // Filter to only public questionnaire fields and sort by sortOrder
   const publicFields = useMemo(
-    () => fields.filter((f) => f.askInQuestionnaire !== false && !f.internalOnly),
+    () => fields
+      .filter((f) => f.askInQuestionnaire !== false && !f.internalOnly)
+      .sort((a, b) => {
+        const orderA = typeof a.sortOrder === 'number' ? a.sortOrder : 999;
+        const orderB = typeof b.sortOrder === 'number' ? b.sortOrder : 999;
+        return orderA - orderB;
+      }),
     [fields]
   );
 
@@ -158,7 +164,7 @@ export function QuestionnaireForm({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {publicFields.map((field) => {
                     const value = item[field.key] ?? "";
                     return (
