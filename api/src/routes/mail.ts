@@ -224,6 +224,7 @@ Return ONLY JSON.
             phone: extracted.phone,
             projectType: extracted.projectType,
             summary: extracted.summary ?? snippet,
+            enquiryDate: new Date().toISOString().split('T')[0],
           },
         },
       });
