@@ -1226,44 +1226,46 @@ export default function WorkshopPage() {
                               onClick={() => setShowProjectDetails(proj.id)}
                               title={`${proj.name} (${progress}% complete)${usersSummary}`}
                             >
-                              {/* Traffic lights for materials with labels on white background */}
-                              <div className="flex gap-0.5 shrink-0 items-center pl-1 pr-0.5 py-1 bg-white rounded-l">
-                                <div className="flex flex-col items-center">
-                                  <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">T</div>
-                                  <div 
-                                    className="w-2 h-2 rounded-full" 
-                                    style={{ backgroundColor: getMaterialColor(timberStatus) }}
-                                    title="Timber"
-                                  />
+                              {/* Traffic lights for materials - only show on first segment */}
+                              {segIdx === 0 && (
+                                <div className="flex gap-0.5 shrink-0 items-center pl-1 pr-0.5 py-1 bg-white rounded-l">
+                                  <div className="flex flex-col items-center">
+                                    <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">T</div>
+                                    <div 
+                                      className="w-2 h-2 rounded-full" 
+                                      style={{ backgroundColor: getMaterialColor(timberStatus) }}
+                                      title="Timber"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col items-center">
+                                    <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">G</div>
+                                    <div 
+                                      className="w-2 h-2 rounded-full" 
+                                      style={{ backgroundColor: getMaterialColor(glassStatus) }}
+                                      title="Glass"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col items-center">
+                                    <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">I</div>
+                                    <div 
+                                      className="w-2 h-2 rounded-full" 
+                                      style={{ backgroundColor: getMaterialColor(ironmongeryStatus) }}
+                                      title="Ironmongery"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col items-center">
+                                    <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">P</div>
+                                    <div 
+                                      className="w-2 h-2 rounded-full" 
+                                      style={{ backgroundColor: getMaterialColor(paintStatus) }}
+                                      title="Paint"
+                                    />
+                                  </div>
                                 </div>
-                                <div className="flex flex-col items-center">
-                                  <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">G</div>
-                                  <div 
-                                    className="w-2 h-2 rounded-full" 
-                                    style={{ backgroundColor: getMaterialColor(glassStatus) }}
-                                    title="Glass"
-                                  />
-                                </div>
-                                <div className="flex flex-col items-center">
-                                  <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">I</div>
-                                  <div 
-                                    className="w-2 h-2 rounded-full" 
-                                    style={{ backgroundColor: getMaterialColor(ironmongeryStatus) }}
-                                    title="Ironmongery"
-                                  />
-                                </div>
-                                <div className="flex flex-col items-center">
-                                  <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">P</div>
-                                  <div 
-                                    className="w-2 h-2 rounded-full" 
-                                    style={{ backgroundColor: getMaterialColor(paintStatus) }}
-                                    title="Paint"
-                                  />
-                                </div>
-                              </div>
+                              )}
                               {/* Content area with gradient background */}
                               <div
-                                className="flex items-center gap-1 rounded px-2 py-1 flex-1"
+                                className={`flex items-center gap-1 px-2 py-1 flex-1 ${segIdx === 0 ? 'rounded-r' : 'rounded'}`}
                                 style={{ background }}
                               >
                                 <div className="truncate flex-1">{proj.name}</div>
