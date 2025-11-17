@@ -113,8 +113,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 import WorkshopSwimlaneTimeline from "./WorkshopSwimlaneTimeline";
+import CalendarWeekView from "./CalendarWeekView";
+import CalendarYearView from "./CalendarYearView";
 
 // Mirror of schema enum
 const PROCESSES = [
@@ -266,8 +269,11 @@ export default function WorkshopPage() {
   const isWorkshopOnly = user?.role === 'workshop';
   
   const [viewMode, setViewMode] = useState<'calendar' | 'timeline'>('calendar');
+  const [calendarViewMode, setCalendarViewMode] = useState<'week' | 'month' | 'year'>('month'); // New state for calendar sub-views
   const [showValues, setShowValues] = useState(false); // Toggle between workshop view (false) and management view (true)
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  const [currentWeek, setCurrentWeek] = useState(() => new Date());
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [weeks, setWeeks] = useState(4);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -911,6 +917,7 @@ export default function WorkshopPage() {
     return 'bg-green-500 text-white';
   };
 
+  // Month navigation
   const previousMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
   };
@@ -921,6 +928,36 @@ export default function WorkshopPage() {
 
   const goToToday = () => {
     setCurrentMonth(new Date());
+    setCurrentWeek(new Date());
+    setCurrentYear(new Date().getFullYear());
+  };
+
+  // Week navigation
+  const previousWeek = () => {
+    const newWeek = new Date(currentWeek);
+    newWeek.setDate(currentWeek.getDate() - 7);
+    setCurrentWeek(newWeek);
+  };
+
+  const nextWeek = () => {
+    const newWeek = new Date(currentWeek);
+    newWeek.setDate(currentWeek.getDate() + 7);
+    setCurrentWeek(newWeek);
+  };
+
+  // Year navigation
+  const previousYear = () => {
+    setCurrentYear(currentYear - 1);
+  };
+
+  const nextYear = () => {
+    setCurrentYear(currentYear + 1);
+  };
+
+  // Month click from year view - switch to month view for that month
+  const handleMonthClick = (year: number, month: number) => {
+    setCurrentMonth(new Date(year, month - 1, 1));
+    setCalendarViewMode('month');
   };
 
   if (loading) return (
@@ -1039,27 +1076,58 @@ export default function WorkshopPage() {
         </div>
       )}
 
-      {/* Calendar View */}
+      {/* Calendar View with Week/Month/Year Tabs */}
       {viewMode === 'calendar' && projects.length > 0 && (
         <div className="space-y-4">
-          {/* Month Navigation with Total */}
-          <div className="bg-white p-4 rounded-lg border">
-            <div className="flex items-center justify-between mb-3">
-              <Button variant="outline" size="sm" onClick={previousMonth}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <h2 className="text-xl font-semibold">
-                {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-              </h2>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={goToToday}>
-                  Today
-                </Button>
-                <Button variant="outline" size="sm" onClick={nextMonth}>
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
+          {/* Calendar View Mode Tabs */}
+          <Tabs value={calendarViewMode} onValueChange={(v) => setCalendarViewMode(v as 'week' | 'month' | 'year')}>
+            <TabsList className="grid w-full max-w-md grid-cols-3">
+              <TabsTrigger value="week">Week</TabsTrigger>
+              <TabsTrigger value="month">Month</TabsTrigger>
+              <TabsTrigger value="year">Year</TabsTrigger>
+            </TabsList>
+
+            {/* Week View */}
+            <TabsContent value="week" className="mt-4">
+              <CalendarWeekView
+                currentWeek={currentWeek}
+                projects={projects}
+                users={users}
+                holidays={holidays}
+                showValues={showValues}
+                onPreviousWeek={previousWeek}
+                onNextWeek={nextWeek}
+                onToday={goToToday}
+                onProjectClick={setShowProjectDetails}
+                onDragStart={handleDragStart}
+                onProjectDrop={(projectId, date) => {
+                  // Reuse existing drop logic
+                  if (draggingProject) handleDrop(date);
+                }}
+              />
+            </TabsContent>
+
+            {/* Month View */}
+            <TabsContent value="month" className="mt-4">
+              <div className="space-y-4">
+                {/* Month Navigation with Total */}
+                <div className="bg-white p-4 rounded-lg border">
+                  <div className="flex items-center justify-between mb-3">
+                    <Button variant="outline" size="sm" onClick={previousMonth}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <h2 className="text-xl font-semibold">
+                      {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </h2>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={goToToday}>
+                        Today
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={nextMonth}>
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
             {showValues && !isWorkshopOnly && (
               <div className="text-center">
                 <div className="text-sm text-muted-foreground">Month Total Value</div>
@@ -1377,6 +1445,24 @@ export default function WorkshopPage() {
               );
             })}
           </div>
+              </div>
+            </TabsContent>
+
+            {/* Year View */}
+            <TabsContent value="year" className="mt-4">
+              <CalendarYearView
+                currentYear={currentYear}
+                projects={projects}
+                users={users}
+                holidays={holidays}
+                showValues={showValues}
+                onPreviousYear={previousYear}
+                onNextYear={nextYear}
+                onToday={goToToday}
+                onMonthClick={handleMonthClick}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       )}
 
