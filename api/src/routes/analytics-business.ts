@@ -102,13 +102,25 @@ router.get("/business-metrics", async (req, res) => {
       const month = targetDate.getMonth() + 1;
       const { start, end } = getMonthBoundaries(year, month);
 
-      // Enquiries (new leads)
-      const enquiries = await prisma.lead.count({
+      // Enquiries (new leads) - use enquiryDate from custom if available, fallback to capturedAt
+      const allLeads = await prisma.lead.findMany({
         where: { 
           tenantId, 
           capturedAt: { gte: start, lte: end }
-        }
+        },
+        select: { custom: true, capturedAt: true }
       });
+      
+      // Filter by enquiryDate if it exists in custom, otherwise use capturedAt
+      const enquiries = allLeads.filter(lead => {
+        const custom = lead.custom as any;
+        if (custom?.enquiryDate) {
+          const enquiryDate = new Date(custom.enquiryDate);
+          return enquiryDate >= start && enquiryDate <= end;
+        }
+        // Fallback to capturedAt for older leads without enquiryDate
+        return lead.capturedAt >= start && lead.capturedAt <= end;
+      }).length;
 
       // Quotes sent (count and value)
       const quotes = await prisma.quote.findMany({
@@ -136,43 +148,45 @@ router.get("/business-metrics", async (req, res) => {
       const salesValue = sales.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
 
       // Conversion rates by source for this month
-      const leadsBySource = await prisma.lead.groupBy({
-        by: ['custom'],
+      const leadsForSource = await prisma.lead.findMany({
         where: { 
           tenantId, 
           capturedAt: { gte: start, lte: end }
         },
-        _count: true
+        select: { custom: true, capturedAt: true, status: true }
       });
-
-      const wonBySource = await prisma.lead.groupBy({
-        by: ['custom'],
-        where: { 
-          tenantId, 
-          capturedAt: { gte: start, lte: end },
-          status: 'WON' as any
-        },
-        _count: true
+      
+      // Filter by enquiryDate and group by source
+      const filteredLeads = leadsForSource.filter(lead => {
+        const custom = lead.custom as any;
+        if (custom?.enquiryDate) {
+          const enquiryDate = new Date(custom.enquiryDate);
+          return enquiryDate >= start && enquiryDate <= end;
+        }
+        return lead.capturedAt >= start && lead.capturedAt <= end;
       });
 
       // Calculate conversion rates
       const sourceConversions: Record<string, { leads: number; wins: number; rate: number }> = {};
       
-      leadsBySource.forEach(item => {
-        const source = (item.custom as any)?.source || 'Unknown';
-        sourceConversions[source] = {
-          leads: item._count,
-          wins: 0,
-          rate: 0
-        };
-      });
-
-      wonBySource.forEach(item => {
-        const source = (item.custom as any)?.source || 'Unknown';
-        if (sourceConversions[source]) {
-          sourceConversions[source].wins = item._count;
-          sourceConversions[source].rate = sourceConversions[source].wins / sourceConversions[source].leads;
+      filteredLeads.forEach(lead => {
+        const custom = lead.custom as any;
+        const source = custom?.source || 'Unknown';
+        
+        if (!sourceConversions[source]) {
+          sourceConversions[source] = { leads: 0, wins: 0, rate: 0 };
         }
+        
+        sourceConversions[source].leads++;
+        if (lead.status === 'WON') {
+          sourceConversions[source].wins++;
+        }
+      });
+      
+      // Calculate conversion rates
+      Object.keys(sourceConversions).forEach(source => {
+        const data = sourceConversions[source];
+        data.rate = data.leads > 0 ? data.wins / data.leads : 0;
       });
 
       monthlyData.push({
@@ -192,12 +206,22 @@ router.get("/business-metrics", async (req, res) => {
     // Financial year-to-date totals
     const { start: fyStart, end: fyEnd } = getFinancialYearBoundaries(financialYearEnd, currentFinancialYear);
 
-    const ytdEnquiries = await prisma.lead.count({
+    const ytdLeads = await prisma.lead.findMany({
       where: { 
         tenantId, 
         capturedAt: { gte: fyStart, lte: fyEnd }
-      }
+      },
+      select: { custom: true, capturedAt: true }
     });
+    
+    const ytdEnquiries = ytdLeads.filter(lead => {
+      const custom = lead.custom as any;
+      if (custom?.enquiryDate) {
+        const enquiryDate = new Date(custom.enquiryDate);
+        return enquiryDate >= fyStart && enquiryDate <= fyEnd;
+      }
+      return lead.capturedAt >= fyStart && lead.capturedAt <= fyEnd;
+    }).length;
 
     const ytdQuotes = await prisma.quote.findMany({
       where: { 
@@ -280,12 +304,22 @@ router.get("/business-metrics", async (req, res) => {
     });
 
     // Previous year comparison data
-    const previousYearEnquiries = await prisma.lead.count({
+    const previousYearLeads = await prisma.lead.findMany({
       where: { 
         tenantId, 
         capturedAt: { gte: previousFY.start, lte: previousFY.end }
-      }
+      },
+      select: { custom: true, capturedAt: true }
     });
+    
+    const previousYearEnquiries = previousYearLeads.filter(lead => {
+      const custom = lead.custom as any;
+      if (custom?.enquiryDate) {
+        const enquiryDate = new Date(custom.enquiryDate);
+        return enquiryDate >= previousFY.start && enquiryDate <= previousFY.end;
+      }
+      return lead.capturedAt >= previousFY.start && lead.capturedAt <= previousFY.end;
+    }).length;
 
     const previousYearQuotes = await prisma.quote.findMany({
       where: { 
