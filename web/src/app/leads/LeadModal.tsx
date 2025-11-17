@@ -3458,7 +3458,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             </div>
           </aside>
         </div>
-          )}
 
           {currentStage === 'questionnaire' && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
@@ -4235,11 +4234,10 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
               </div>
             </div>
           )}
+        </div>
 
-      </div>
-
-      {/* Supplier Quote Request Modal */}
-      {showSupplierModal && (
+        {/* Supplier Quote Request Modal */}
+        {showSupplierModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="p-4 border-b">
@@ -4318,8 +4316,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         </div>
       )}
 
-      {/* Email Composer Modal */}
-      {showEmailComposer && (
+        {/* Email Composer Modal */}
+        {showEmailComposer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
             <div className="p-4 border-b">
