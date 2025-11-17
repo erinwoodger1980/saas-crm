@@ -50,8 +50,11 @@ prisma.$use(async (params, next) => {
           }
 
           // Seed workshop processes from template tenant (default: wealden-joinery)
-          const templateSlug = process.env.TEMPLATE_TENANT_SLUG || 'wealden-joinery';
-          const template = await prisma.tenant.findFirst({ where: { slug: templateSlug }, select: { id: true } });
+          const templateSlug = process.env.TEMPLATE_TENANT_SLUG || undefined;
+          const templateName = process.env.TEMPLATE_TENANT_NAME || 'Demo Tenant';
+          const template = templateSlug
+            ? await prisma.tenant.findFirst({ where: { slug: templateSlug }, select: { id: true } })
+            : await prisma.tenant.findFirst({ where: { name: templateName }, select: { id: true } });
           if (template?.id) {
             const templateProcesses = await prisma.workshopProcessDefinition.findMany({
               where: { tenantId: template.id },
@@ -76,7 +79,7 @@ prisma.$use(async (params, next) => {
                   if (e?.code !== 'P2002') throw e; // skip duplicates
                 }
               }
-              console.log(`[prisma] Seeded ${templateProcesses.length} workshop processes for new tenant ${slug} from template ${templateSlug}`);
+              console.log(`[prisma] Seeded ${templateProcesses.length} workshop processes for new tenant ${slug} from template ${templateSlug || templateName}`);
             }
           }
         }

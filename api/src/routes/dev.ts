@@ -44,6 +44,63 @@ router.post("/workshop-processes/sync-from-template", requireDeveloper, async (r
   }
 });
 
+// Copy processes from a specific tenant to another (idempotent)
+router.post("/workshop-processes/copy", requireDeveloper, async (req: any, res) => {
+  try {
+    const { fromSlug, toSlug, fromName, toName, replace } = req.body || {};
+    const fromTenant = fromSlug
+      ? await prisma.tenant.findFirst({ where: { slug: fromSlug } })
+      : await prisma.tenant.findFirst({ where: { name: fromName } });
+    const toTenant = toSlug
+      ? await prisma.tenant.findFirst({ where: { slug: toSlug } })
+      : await prisma.tenant.findFirst({ where: { name: toName } });
+
+    if (!fromTenant) return res.status(404).json({ error: "from_tenant_not_found" });
+    if (!toTenant) return res.status(404).json({ error: "to_tenant_not_found" });
+    if (fromTenant.id === toTenant.id) return res.status(400).json({ error: "same_tenant" });
+
+    const defs = await prisma.workshopProcessDefinition.findMany({ where: { tenantId: fromTenant.id } });
+    let created = 0, updated = 0, skipped = 0;
+    for (const d of defs) {
+      const existing = await prisma.workshopProcessDefinition.findFirst({ where: { tenantId: toTenant.id, code: d.code } });
+      if (!existing) {
+        await prisma.workshopProcessDefinition.create({
+          data: {
+            tenantId: toTenant.id,
+            code: d.code,
+            name: d.name,
+            sortOrder: d.sortOrder ?? 0,
+            requiredByDefault: d.requiredByDefault ?? true,
+            estimatedHours: d.estimatedHours,
+            isColorKey: d.isColorKey ?? false,
+            assignmentGroup: d.assignmentGroup || null,
+          }
+        });
+        created++;
+      } else if (replace) {
+        await prisma.workshopProcessDefinition.update({
+          where: { id: existing.id },
+          data: {
+            name: d.name,
+            sortOrder: d.sortOrder ?? 0,
+            requiredByDefault: d.requiredByDefault ?? true,
+            estimatedHours: d.estimatedHours,
+            isColorKey: d.isColorKey ?? false,
+            assignmentGroup: d.assignmentGroup || null,
+          }
+        });
+        updated++;
+      } else {
+        skipped++;
+      }
+    }
+    res.json({ ok: true, from: fromSlug || fromName, to: toSlug || toName, created, updated, skipped });
+  } catch (e: any) {
+    console.error("[dev copy processes] failed:", e);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 // Middleware to require developer role
 function requireDeveloper(req: any, res: any, next: any) {
   if (!req.auth?.userId) {
