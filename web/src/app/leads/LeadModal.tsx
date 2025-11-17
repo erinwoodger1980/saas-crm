@@ -3016,27 +3016,22 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         }}
                       />
                     </label>
-                              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                {field.label || field.key || field.id}
-                                {field.required ? <span className="text-rose-500"> *</span> : null}
-                              </dt>
-                              <button
-                                type="button"
-                                className="text-xs font-semibold text-sky-600 hover:underline"
-                                onClick={() => {
-                                  if (isEditing) {
-                                    toggleQEdit(k, false);
-                                  } else {
-                                    if (value !== undefined) {
-                                      setCustomDraft((prev) => ({ ...prev, [k]: value ?? "" }));
-                                    }
-                                    toggleQEdit(k, true);
-                                  }
-                                }}
-                              >
-                                {isEditing ? "Cancel" : "Edit"}
-                              </button>
-                            </div>
+                    <label className="block">
+                      <span className="text-xs text-slate-600 font-medium mb-1 block">Delivery Date</span>
+                      <input
+                        type="date"
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        value={projectDeliveryDate}
+                        onChange={(e) => setProjectDeliveryDate(e.target.value)}
+                        onBlur={() => {
+                          if (projectDeliveryDate) {
+                            saveOpportunityField('deliveryDate', projectDeliveryDate);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </section>
                             <dd className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
                               {isEditing ? (
                                 field.type === "textarea" ? (
