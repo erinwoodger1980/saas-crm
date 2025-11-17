@@ -24,7 +24,51 @@ router.get("/", async (req: any, res) => {
     const tenantId = req.auth?.tenantId;
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-    const { userId, status, weekStart } = req.query;
+    const { userId, status, weekStart, generate } = req.query as {
+      userId?: string; status?: string; weekStart?: string; generate?: string;
+    };
+
+    // Optional backfill: generate missing timesheets for the last 12 weeks
+    if (generate === "1") {
+      const since = new Date();
+      since.setDate(since.getDate() - 7 * 12);
+      const entries = await prisma.timeEntry.findMany({
+        where: { tenantId, date: { gte: since } },
+        select: { id: true, userId: true, date: true, hours: true },
+        orderBy: { date: "asc" }
+      });
+
+      const groups = new Map<string, { tenantId: string; userId: string; weekStart: Date; weekEnd: Date; totalHours: number }>();
+      for (const e of entries) {
+        const { start, end } = getWeekBounds(new Date(e.date));
+        const key = `${e.userId}:${start.toISOString()}`;
+        const g = groups.get(key) || { tenantId, userId: e.userId, weekStart: start, weekEnd: end, totalHours: 0 };
+        g.totalHours += Number(e.hours);
+        groups.set(key, g);
+      }
+
+      // Upsert pending timesheets with totals (and refresh totals for pending ones)
+      for (const g of groups.values()) {
+        const existing = await prisma.timesheet.findUnique({
+          where: { tenantId_userId_weekStartDate: { tenantId, userId: g.userId, weekStartDate: g.weekStart } },
+          select: { id: true, status: true }
+        });
+        if (!existing) {
+          await prisma.timesheet.create({
+            data: {
+              tenantId,
+              userId: g.userId,
+              weekStartDate: g.weekStart,
+              weekEndDate: g.weekEnd,
+              totalHours: g.totalHours,
+              status: "pending",
+            }
+          });
+        } else if (existing.status === "pending") {
+          await prisma.timesheet.update({ where: { id: existing.id }, data: { totalHours: g.totalHours } });
+        }
+      }
+    }
 
     const where: any = { tenantId };
     if (userId) where.userId = userId;

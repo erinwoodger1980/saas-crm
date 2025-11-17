@@ -52,9 +52,11 @@ export default function TimesheetsPage() {
   async function loadTimesheets() {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
+  const params = new URLSearchParams();
       if (filterUser !== "all") params.append("userId", filterUser);
       if (filterStatus !== "all") params.append("status", filterStatus);
+  // Ask API to backfill missing timesheets from recent time entries
+  params.append("generate", "1");
 
       const data = await apiFetch<{ ok: boolean; items: Timesheet[] }>(
         `/timesheets?${params.toString()}`
