@@ -122,18 +122,39 @@ router.get("/business-metrics", async (req, res) => {
         return lead.capturedAt >= start && lead.capturedAt <= end;
       }).length;
 
-      // Quotes sent (count and value)
-      const quotes = await prisma.quote.findMany({
+      // Quotes sent (count and value) - use dateQuoteSent from leads
+      const leadsWithQuotes = await prisma.lead.findMany({
         where: { 
-          tenantId, 
-          createdAt: { gte: start, lte: end },
-          status: { not: "DRAFT" }
+          tenantId,
+          dateQuoteSent: { gte: start, lte: end }
         },
-        select: { totalGBP: true }
+        select: { 
+          dateQuoteSent: true,
+          quotedValue: true,
+          custom: true
+        }
       });
 
-      const quotesCount = quotes.length;
-      const quotesValue = quotes.reduce((sum, q) => sum + Number(q.totalGBP || 0), 0);
+      // Filter and aggregate quotes
+      const validQuotes = leadsWithQuotes.filter(lead => {
+        const custom = lead.custom as any;
+        const dateQuoteSent = lead.dateQuoteSent;
+        if (dateQuoteSent) {
+          return dateQuoteSent >= start && dateQuoteSent <= end;
+        }
+        // Fallback: check custom.dateQuoteSent if database field is null
+        if (custom?.dateQuoteSent) {
+          const customDate = new Date(custom.dateQuoteSent);
+          return customDate >= start && customDate <= end;
+        }
+        return false;
+      });
+
+      const quotesCount = validQuotes.length;
+      const quotesValue = validQuotes.reduce((sum, lead) => {
+        const value = Number(lead.quotedValue || 0);
+        return sum + value;
+      }, 0);
 
       // Sales (won opportunities)
       const sales = await prisma.opportunity.findMany({
@@ -223,17 +244,32 @@ router.get("/business-metrics", async (req, res) => {
       return lead.capturedAt >= fyStart && lead.capturedAt <= fyEnd;
     }).length;
 
-    const ytdQuotes = await prisma.quote.findMany({
+    const ytdLeadsWithQuotes = await prisma.lead.findMany({
       where: { 
-        tenantId, 
-        createdAt: { gte: fyStart, lte: fyEnd },
-        status: { not: "DRAFT" }
+        tenantId,
+        dateQuoteSent: { gte: fyStart, lte: fyEnd }
       },
-      select: { totalGBP: true }
+      select: { 
+        dateQuoteSent: true,
+        quotedValue: true,
+        custom: true
+      }
     });
 
-    const ytdQuotesCount = ytdQuotes.length;
-    const ytdQuotesValue = ytdQuotes.reduce((sum, q) => sum + Number(q.totalGBP || 0), 0);
+    const ytdValidQuotes = ytdLeadsWithQuotes.filter(lead => {
+      const custom = lead.custom as any;
+      if (lead.dateQuoteSent) {
+        return lead.dateQuoteSent >= fyStart && lead.dateQuoteSent <= fyEnd;
+      }
+      if (custom?.dateQuoteSent) {
+        const customDate = new Date(custom.dateQuoteSent);
+        return customDate >= fyStart && customDate <= fyEnd;
+      }
+      return false;
+    });
+
+    const ytdQuotesCount = ytdValidQuotes.length;
+    const ytdQuotesValue = ytdValidQuotes.reduce((sum, lead) => sum + Number(lead.quotedValue || 0), 0);
 
     const ytdSales = await prisma.opportunity.findMany({
       where: { 
@@ -321,13 +357,28 @@ router.get("/business-metrics", async (req, res) => {
       return lead.capturedAt >= previousFY.start && lead.capturedAt <= previousFY.end;
     }).length;
 
-    const previousYearQuotes = await prisma.quote.findMany({
+    const previousYearLeadsWithQuotes = await prisma.lead.findMany({
       where: { 
-        tenantId, 
-        createdAt: { gte: previousFY.start, lte: previousFY.end },
-        status: { not: "DRAFT" }
+        tenantId,
+        dateQuoteSent: { gte: previousFY.start, lte: previousFY.end }
       },
-      select: { totalGBP: true }
+      select: { 
+        dateQuoteSent: true,
+        quotedValue: true,
+        custom: true
+      }
+    });
+
+    const previousYearValidQuotes = previousYearLeadsWithQuotes.filter(lead => {
+      const custom = lead.custom as any;
+      if (lead.dateQuoteSent) {
+        return lead.dateQuoteSent >= previousFY.start && lead.dateQuoteSent <= previousFY.end;
+      }
+      if (custom?.dateQuoteSent) {
+        const customDate = new Date(custom.dateQuoteSent);
+        return customDate >= previousFY.start && customDate <= previousFY.end;
+      }
+      return false;
     });
 
     const previousYearSales = await prisma.opportunity.findMany({
@@ -340,8 +391,8 @@ router.get("/business-metrics", async (req, res) => {
 
     const previousYear = {
       enquiries: previousYearEnquiries,
-      quotesCount: previousYearQuotes.length,
-      quotesValue: previousYearQuotes.reduce((sum, q) => sum + Number(q.totalGBP || 0), 0),
+      quotesCount: previousYearValidQuotes.length,
+      quotesValue: previousYearValidQuotes.reduce((sum, lead) => sum + Number(lead.quotedValue || 0), 0),
       salesCount: previousYearSales.length,
       salesValue: previousYearSales.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0),
       conversionRate: previousYearEnquiries > 0 ? previousYearSales.length / previousYearEnquiries : 0

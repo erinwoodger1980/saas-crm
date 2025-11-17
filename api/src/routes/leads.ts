@@ -828,6 +828,13 @@ router.patch("/:id", async (req, res) => {
     nextUi = body.status;
     data.status = uiToDb(nextUi);
     nextCustom.uiStatus = nextUi;
+    
+    // Auto-set dateQuoteSent when status changes to QUOTE_SENT
+    if (nextUi === "QUOTE_SENT" && prevUi !== "QUOTE_SENT" && !existing.dateQuoteSent) {
+      const now = new Date();
+      data.dateQuoteSent = now;
+      nextCustom.dateQuoteSent = now.toISOString().split('T')[0];
+    }
   }
 
   if (body.estimatedValue !== undefined) applyCanonical("estimatedValue", body.estimatedValue);
