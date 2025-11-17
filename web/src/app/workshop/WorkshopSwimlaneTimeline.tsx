@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -56,6 +56,10 @@ export type Project = {
   valueGBP?: number | string | null;
   processPlans: Plan[];
   processAssignments?: ProcessAssignment[];
+  // Optional analytics/progress fields (if provided by parent)
+  expectedHours?: number | string | null;
+  actualHours?: number | string | null;
+  totalHoursByProcess?: Record<string, number>;
 };
 
 export type VisibleWeek = { weekNum: number; isoWeek: number; startDate: Date; endDate: Date };
@@ -89,6 +93,10 @@ export type WorkshopSwimlaneTimelineProps = {
  */
 export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks, onProjectClick }: WorkshopSwimlaneTimelineProps) {
   const weekNums = useMemo(() => visibleWeeks.map((w) => w.weekNum), [visibleWeeks]);
+
+  // UI state: expanded legends per project and open week details popover
+  const [legendExpanded, setLegendExpanded] = useState<Record<string, boolean>>({});
+  const [openCell, setOpenCell] = useState<{ projectId: string; weekNum: number } | null>(null);
 
   // Pre-compute schedules for all projects
   const projectSchedules = useMemo(() => {
@@ -177,6 +185,47 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                             : "?"}
                         </div>
                       )}
+
+                      {/* Progress indicator (hours + processes) */}
+                      {(() => {
+                        const expected = Number((proj as any).expectedHours ?? (proj as any).totalProjectHours ?? 0) || 0;
+                        const actual = Number((proj as any).actualHours ?? 0) || 0;
+                        const pct = expected > 0 ? Math.max(0, Math.min(1, actual / expected)) : 0;
+
+                        // Process completion (based on hours logged vs estimate if available)
+                        const totalPA = (proj.processAssignments || []).filter((pa) => (pa.estimatedHours || 0) > 0).length;
+                        let donePA = 0;
+                        if ((proj as any).totalHoursByProcess) {
+                          const totals = (proj as any).totalHoursByProcess as Record<string, number>;
+                          for (const pa of (proj.processAssignments || [])) {
+                            const est = Number(pa.estimatedHours || 0);
+                            if (est <= 0) continue;
+                            const logged = Number(totals[pa.processCode] || 0);
+                            if (logged >= est * 0.99) donePA++;
+                          }
+                        }
+
+                        const showProgress = expected > 0 || totalPA > 0;
+                        if (!showProgress) return null;
+                        return (
+                          <div className="mt-2">
+                            <div className="h-2 w-full rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-emerald-500 to-sky-500"
+                                style={{ width: `${pct * 100}%` }}
+                              />
+                            </div>
+                            <div className="mt-1 flex items-center justify-between text-[10px] text-slate-600">
+                              <span>
+                                {expected > 0 ? `${Math.round(pct * 100)}% · ${Math.round(actual)}h / ${Math.round(expected)}h` : null}
+                              </span>
+                              {totalPA > 0 ? (
+                                <span>{donePA}/{totalPA} processes</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <button
                       className="text-xs text-blue-600 hover:text-blue-700 hover:underline shrink-0 font-medium"
@@ -188,8 +237,8 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
 
                   {/* Process legend for this project */}
                   {legend.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {legend.map((item) => (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {(legendExpanded[proj.id] ? legend : legend.slice(0, 5)).map((item) => (
                         <div
                           key={item.processCode}
                           className="flex items-center gap-1 text-[10px] bg-slate-50 rounded px-1.5 py-0.5 border border-slate-200"
@@ -204,6 +253,14 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                           </span>
                         </div>
                       ))}
+                      {legend.length > 5 && (
+                        <button
+                          className="text-[10px] px-2 py-0.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
+                          onClick={() => setLegendExpanded((prev) => ({ ...prev, [proj.id]: !prev[proj.id] }))}
+                        >
+                          {legendExpanded[proj.id] ? "Show less" : `+${legend.length - 5} more`}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -236,14 +293,16 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                                     minWidth: '2px',
                                   }}
                                   title={`${chunk.processName}: ${chunk.hours}h`}
+                                  onClick={() => setOpenCell((c) => (c && c.projectId === proj.id && c.weekNum === w.weekNum ? null : { projectId: proj.id, weekNum: w.weekNum }))}
                                 />
                               ))}
                             </div>
                           </div>
 
-                          {/* Hover tooltip showing details */}
-                          <div className="absolute z-50 hidden group-hover:block left-1/2 -translate-x-1/2 top-full mt-2 pointer-events-none">
-                            <div className="bg-white border-2 border-slate-200 rounded-lg shadow-xl p-3 min-w-[220px]">
+                          {/* Details popover (hover or click) */}
+                          <div className={`absolute z-[60] ${openCell && openCell.projectId === proj.id && openCell.weekNum === w.weekNum ? 'block' : 'hidden group-hover:block'} left-1/2 -translate-x-1/2 top-full mt-2`}
+                               onMouseLeave={() => setOpenCell((c) => (c && c.projectId === proj.id && c.weekNum === w.weekNum ? null : c))}>
+                            <div className="bg-white border-2 border-slate-200 rounded-lg shadow-xl p-3 min-w-[240px] pointer-events-auto">
                               <div className="text-xs font-semibold mb-2 text-slate-700 border-b pb-1">
                                 {weekLabel(w).range}
                               </div>
