@@ -1165,15 +1165,16 @@ model WorkshopProcessDefinition {
 
 // Per-project process enablement and assignment
 model ProjectProcessAssignment {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   tenantId             String
-  opportunityId        String   // The project (WON opportunity)
+  opportunityId        String    // The project (WON opportunity)
   processDefinitionId  String
-  required             Boolean  @default(true) // Whether this process is required for this specific project
-  assignedUserId       String?  // User assigned to this process for this project
-  estimatedHours       Decimal? // Override estimated hours for this specific project
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  required             Boolean   @default(true) // Whether this process is required for this specific project
+  assignedUserId       String?   // User assigned to this process for this project
+  estimatedHours       Decimal?  // Override estimated hours for this specific project
+  completedAt          DateTime? // When this process was marked complete
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   opportunity       Opportunity                @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
