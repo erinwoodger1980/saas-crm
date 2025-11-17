@@ -48,6 +48,37 @@ prisma.$use(async (params, next) => {
             });
             console.log(`[prisma] Created dev user ${email} for new tenant ${slug}`);
           }
+
+          // Seed workshop processes from template tenant (default: wealden-joinery)
+          const templateSlug = process.env.TEMPLATE_TENANT_SLUG || 'wealden-joinery';
+          const template = await prisma.tenant.findFirst({ where: { slug: templateSlug }, select: { id: true } });
+          if (template?.id) {
+            const templateProcesses = await prisma.workshopProcessDefinition.findMany({
+              where: { tenantId: template.id },
+              orderBy: { sortOrder: 'asc' }
+            });
+            if (templateProcesses.length) {
+              for (const p of templateProcesses) {
+                try {
+                  await prisma.workshopProcessDefinition.create({
+                    data: {
+                      tenantId: tenant.id,
+                      code: p.code,
+                      name: p.name,
+                      sortOrder: p.sortOrder ?? 0,
+                      requiredByDefault: p.requiredByDefault ?? true,
+                      estimatedHours: p.estimatedHours,
+                      isColorKey: p.isColorKey ?? false,
+                      assignmentGroup: p.assignmentGroup || null,
+                    }
+                  });
+                } catch (e: any) {
+                  if (e?.code !== 'P2002') throw e; // skip duplicates
+                }
+              }
+              console.log(`[prisma] Seeded ${templateProcesses.length} workshop processes for new tenant ${slug} from template ${templateSlug}`);
+            }
+          }
         }
       }
     }

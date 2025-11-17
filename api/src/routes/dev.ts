@@ -3,6 +3,46 @@ import { prisma } from "../prisma";
 import dayjs from "dayjs";
 
 const router = Router();
+// Copy workshop processes from a template tenant to all tenants (idempotent)
+router.post("/workshop-processes/sync-from-template", requireDeveloper, async (req: any, res) => {
+  try {
+    const templateSlug = (req.body?.templateSlug as string) || process.env.TEMPLATE_TENANT_SLUG || 'wealden-joinery';
+    const template = await prisma.tenant.findFirst({ where: { slug: templateSlug } });
+    if (!template) return res.status(404).json({ error: "template_tenant_not_found" });
+
+    const defs = await prisma.workshopProcessDefinition.findMany({ where: { tenantId: template.id } });
+    if (!defs.length) return res.json({ ok: true, message: "no_template_processes" });
+
+    const tenants = await prisma.tenant.findMany({ select: { id: true, slug: true } });
+    let created = 0, skipped = 0;
+    for (const t of tenants) {
+      if (t.id === template.id) continue; // skip template itself
+      for (const d of defs) {
+        try {
+          await prisma.workshopProcessDefinition.create({
+            data: {
+              tenantId: t.id,
+              code: d.code,
+              name: d.name,
+              sortOrder: d.sortOrder ?? 0,
+              requiredByDefault: d.requiredByDefault ?? true,
+              estimatedHours: d.estimatedHours,
+              isColorKey: d.isColorKey ?? false,
+              assignmentGroup: d.assignmentGroup || null,
+            }
+          });
+          created++;
+        } catch (e: any) {
+          if (e?.code === 'P2002') { skipped++; } else throw e;
+        }
+      }
+    }
+    res.json({ ok: true, created, skipped, template: templateSlug });
+  } catch (e: any) {
+    console.error("[dev sync processes] failed:", e);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
 
 // Middleware to require developer role
 function requireDeveloper(req: any, res: any, next: any) {
