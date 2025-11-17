@@ -106,7 +106,7 @@ export default function TenantDetailPage() {
     if (!tenantId) return;
     
     const confirmed = confirm(
-      `Login as ${tenant?.name}?\n\nYou will be logged in as the tenant owner. This session will last 8 hours.`
+      `Login as ${tenant?.name}?\n\nYou will be logged in as dev+${tenant.slug}@joineryai.app (tenant owner). This session will last 8 hours.`
     );
     
     if (!confirmed) return;
@@ -120,25 +120,41 @@ export default function TenantDetailPage() {
         tenant: any;
       }>(`/dev/tenants/${tenantId}/impersonate`, { method: "POST" });
       
+      console.log("[IMPERSONATE] Got response:", { 
+        ok: data.ok, 
+        user: data.user?.email, 
+        tenant: data.tenant?.name,
+        tokenLength: data.token?.length 
+      });
+      
       if (data.ok && data.token) {
-        // Clear ALL storage
+        // Clear ALL storage first
         localStorage.clear();
         sessionStorage.clear();
+        
+        // Delete the old jauth cookie explicitly (all domains)
+        document.cookie = 'jauth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        document.cookie = 'jauth=; path=/; domain=.joineryai.app; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        document.cookie = 'jauth=; path=/; domain=joineryai.app; expires=Thu, 01 Jan 1970 00:00:00 GMT';
         
         // Set cookie options
         const secure = window.location.protocol === 'https:' ? '; Secure' : '';
         const domain = window.location.hostname.includes('joineryai.app') ? '; domain=.joineryai.app' : '';
         const maxAge = 8 * 60 * 60; // 8 hours in seconds
         
-        // Set the impersonation token (this will replace any existing jauth cookie)
-        document.cookie = `jauth=${data.token}; path=/; max-age=${maxAge}; SameSite=Lax${secure}${domain}`;
+        // Set the impersonation token
+        const cookieString = `jauth=${data.token}; path=/; max-age=${maxAge}; SameSite=Lax${secure}${domain}`;
+        document.cookie = cookieString;
         
-        // Redirect immediately - browser will send new cookie
-        window.location.replace("/dashboard");
+        console.log("[IMPERSONATE] Cookie set, redirecting to dashboard...");
+        console.log("[IMPERSONATE] Will be logged in as:", data.user.email, "for tenant:", data.tenant.name);
+        
+        // Force a full page reload to ensure fresh context
+        window.location.href = "/dashboard";
       }
     } catch (e: any) {
+      console.error("[IMPERSONATE] Error:", e);
       alert("Failed to impersonate: " + (e?.message || "Unknown error"));
-    } finally {
       setImpersonating(false);
     }
   }

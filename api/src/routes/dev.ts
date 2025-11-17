@@ -159,6 +159,12 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
     );
 
     console.log(`[IMPERSONATE] Developer ${req.auth.userId} logging in as ${devUser.email} (${devUser.id}) for tenant ${tenant.name} (${tenant.id})`);
+    console.log(`[IMPERSONATE] JWT payload:`, {
+      userId: devUser.id,
+      tenantId: tenant.id,
+      role: devUser.role,
+      impersonating: true
+    });
 
     res.json({ 
       ok: true, 
