@@ -945,6 +945,9 @@ export default function WorkshopPage() {
           <span className="text-sm text-muted-foreground">{projects.length} projects</span>
           {!isWorkshopOnly && (
             <>
+              <Button variant="outline" size="sm" onClick={() => window.location.href = '/timesheets'}>
+                📋 View Timesheets
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setShowQuickLog(true)}>
                 Quick Log Hours
               </Button>
