@@ -60,35 +60,40 @@ export default function LoginPage() {
         <h1 className="text-2xl font-semibold text-center mb-2">Welcome back 👋</h1>
         <p className="text-gray-500 text-center mb-6">
           Log in to your Joinery AI account
+            // Auto sign-in after prefill
+            setTimeout(() => {
+              void doLogin(devEmail, devPassword);
+            }, 50);
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="email"
-            required
-            placeholder="Work email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          />
-          <input
-            type="password"
-            required
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2"
-          />
-          {error && (
-            <p className="text-sm text-red-600 text-center">{error}</p>
-          )}
-          <Button
-            type="submit"
-            disabled={loading}
-            className="w-full"
-            variant="default"
-          >
+        async function doLogin(loginEmail: string, loginPassword: string) {
+          setError("");
+          setLoading(true);
+          try {
+            const res = await apiFetch<{ jwt: string }>("/auth/login", {
+              method: "POST",
+              json: { email: loginEmail.trim(), password: loginPassword },
+            });
+            const authToken = res?.jwt;
+            if (authToken) {
+              setJwt(authToken);
+              router.push("/dashboard");
+            } else {
+              throw new Error("Invalid login response");
+            }
+          } catch (err: any) {
+            console.error(err);
+            setError("Invalid email or password");
+          } finally {
+            setLoading(false);
+          }
+        }
             {loading ? "Signing in…" : "Sign in"}
+        async function handleSubmit(e: React.FormEvent) {
+          e.preventDefault();
+          await doLogin(email, password);
+        }
           </Button>
         </form>
 

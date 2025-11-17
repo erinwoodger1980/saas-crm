@@ -198,7 +198,17 @@ export default function TenantDetailPage() {
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Dev user status badge */}
+          {(() => {
+            const devEmail = `dev+${tenant.slug}@joineryai.app`;
+            const hasDev = tenant.users.some(u => u.email === devEmail);
+            return (
+              <div className={`text-xs px-2 py-1 rounded ${hasDev ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                {hasDev ? 'Dev user ready' : 'Dev user will be created'}
+              </div>
+            );
+          })()}
           <Button 
             onClick={impersonate} 
             disabled={impersonating || deleting}
