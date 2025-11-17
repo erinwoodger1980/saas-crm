@@ -200,11 +200,51 @@ function formatAgoDays(days?: number | null) {
   return `${Math.round(days)} days ago`;
 }
 
-function formatDateTime(value?: string | null) {
+function formatDaysLabel(value?: number | null) {
+  if (value == null || Number.isNaN(value)) return "–";
+  const days = Number(value);
+  if (!Number.isFinite(days)) return "–";
+  if (days <= 0) return "Same day";
+  if (days < 1) {
+    const hrs = Math.max(1, Math.round(days * 24));
+    return `${hrs} hr${hrs === 1 ? "" : "s"}`;
+  }
+  const rounded = Math.round(days * 10) / 10;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.05) {
+    const whole = Math.max(1, Math.round(rounded));
+    return `${whole} day${whole === 1 ? "" : "s"}`;
+  }
+  return `${rounded} days`;
+}
+
+function formatRelativeFuture(date?: Date | null) {
+  if (!date) return "–";
+  const diffDays = (date.getTime() - Date.now()) / DAY_MS;
+  if (!Number.isFinite(diffDays)) return "–";
+  if (diffDays <= -0.5) return "Overdue";
+  if (diffDays < 0.5) return "Ready now";
+  if (diffDays < 1) return "Later today";
+  if (diffDays < 2) return "Tomorrow";
+  return `In ${Math.round(diffDays)} days`;
+}
+
+function formatAgoDays(days?: number | null) {
+  if (days == null || Number.isNaN(days)) return "–";
+  if (days < 0.5) return "Today";
+  if (days < 1.5) return "1 day ago";
+  return `${Math.round(days)} days ago`;
+}
+
+function safeParseDate(value?: string | null) {
   if (!value) return null;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString();
+  return d;
+}
+
+function formatDateTime(value?: string | null) {
+  const parsed = safeParseDate(value);
+  return parsed ? parsed.toLocaleString() : null;
 }
 
 /* ---------------- Confetti (renders above modal) ---------------- */
@@ -565,9 +605,9 @@ export default function OpportunityModal({
     return history.find((log) => {
       const channel = (log.channel || "email").toLowerCase();
       if (channel !== "phone") return false;
-      if (!log.scheduledFor) return false;
-      const ts = new Date(log.scheduledFor).getTime();
-      return !Number.isNaN(ts) && ts >= now;
+      const scheduled = safeParseDate(log.scheduledFor);
+      if (!scheduled) return false;
+      return scheduled.getTime() >= now;
     });
   }, [history]);
 
@@ -701,9 +741,9 @@ export default function OpportunityModal({
 
       const upcoming = logs.find((log) => {
         if ((log.channel || "email").toLowerCase() !== "phone") return false;
-        if (!log.scheduledFor) return false;
-        const ts = new Date(log.scheduledFor).getTime();
-        return !Number.isNaN(ts) && ts > Date.now();
+        const scheduled = safeParseDate(log.scheduledFor);
+        if (!scheduled) return false;
+        return scheduled.getTime() > Date.now();
       });
       if (!autoScheduleInitialised.current) {
         setAutoScheduleCall(!upcoming);
