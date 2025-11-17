@@ -43,6 +43,7 @@ export type Lead = {
   estimatedValue?: number | null;
   quotedValue?: number | null;
   dateQuoteSent?: string | null;
+  capturedAt?: string | null;
   computed?: Record<string, any> | null;
   communicationLog?: Array<{
     id: string;
@@ -557,6 +558,7 @@ export default function LeadModal({
         estimatedValue: leadPreview.estimatedValue != null ? Number(leadPreview.estimatedValue) : null,
         quotedValue: leadPreview.quotedValue != null ? Number(leadPreview.quotedValue) : null,
         dateQuoteSent: leadPreview.dateQuoteSent ?? null,
+        capturedAt: (leadPreview as any).capturedAt ?? null,
         computed: leadPreview.computed ?? null,
         communicationLog: (leadPreview.custom?.communicationLog || []) as Lead['communicationLog'],
       };
@@ -640,6 +642,7 @@ export default function LeadModal({
           estimatedValue: toMaybeNumber(row.estimatedValue),
           quotedValue: toMaybeNumber(row.quotedValue),
           dateQuoteSent: row.dateQuoteSent ?? null,
+          capturedAt: row.capturedAt ?? null,
           computed: row.computed ?? null,
           communicationLog: (row.custom?.communicationLog || []) as Lead['communicationLog'],
         };
@@ -989,6 +992,7 @@ export default function LeadModal({
             estimatedValue: row.estimatedValue ?? null,
             quotedValue: row.quotedValue ?? null,
             dateQuoteSent: row.dateQuoteSent ?? null,
+            capturedAt: row.capturedAt ?? null,
             computed: row.computed ?? null,
             communicationLog: (row.custom?.communicationLog || []) as Lead["communicationLog"],
           };
@@ -1019,6 +1023,15 @@ export default function LeadModal({
             return String(val);
           };
           return coerce(row.dateQuoteSent) ?? coerce(row.computed?.dateQuoteSent) ?? base.dateQuoteSent ?? null;
+        })(),
+        capturedAt: (() => {
+          const coerce = (val: any): string | null => {
+            if (val === undefined || val === null || val === "") return null;
+            if (val instanceof Date) return val.toISOString();
+            if (typeof val === "string") return val;
+            return String(val);
+          };
+          return coerce(row.capturedAt) ?? base.capturedAt ?? null;
         })(),
         computed:
           row.computed && typeof row.computed === "object"
@@ -2081,6 +2094,20 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   const workspaceFields = useMemo(() => {
     const existingKeys = new Set(baseWorkspaceFields.map((field) => field.key));
     const extras: NormalizedQuestionnaireField[] = [];
+    if (!existingKeys.has("enquiryDate")) {
+      extras.push({
+        id: "__enquiryDate",
+        key: "enquiryDate",
+        label: "Enquiry Date",
+        required: false,
+        type: "date",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        internalOnly: true,
+        sortOrder: Number.MAX_SAFE_INTEGER - 5,
+      });
+    }
     if (!existingKeys.has("estimatedValue")) {
       extras.push({
         id: "__estimatedValue",
@@ -2116,7 +2143,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         type: "date",
         options: [],
         askInQuestionnaire: false,
-        showOnLead: false,
+        showOnLead: true,
         internalOnly: true,
         sortOrder: Number.MAX_SAFE_INTEGER,
       });
@@ -2153,11 +2180,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   }, [baseWorkspaceFields]);
   const customData = useMemo(() => {
     const computed = lead?.computed && typeof lead.computed === "object" ? (lead.computed as Record<string, any>) : {};
-    if (lead?.custom && typeof lead.custom === "object") {
-      return { ...(lead.custom as Record<string, any>), ...computed };
+    const result = lead?.custom && typeof lead.custom === "object" ? { ...(lead.custom as Record<string, any>), ...computed } : { ...computed };
+    
+    // Include capturedAt (enquiry date) from the lead if available
+    if (lead?.capturedAt && !result.enquiryDate) {
+      result.enquiryDate = lead.capturedAt;
     }
-    return { ...computed };
-  }, [lead?.custom, lead?.computed]);
+    
+    return result;
+  }, [lead?.custom, lead?.computed, lead?.capturedAt]);
   useEffect(() => {
     if (!lead?.id) {
       setCustomDraft({});
@@ -2686,21 +2717,28 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           }
 
                           if (field.type === "date") {
+                            // Make enquiryDate and dateQuoteSent read-only as they are auto-set
+                            const isReadOnly = key === "enquiryDate" || key === "dateQuoteSent";
                             return (
                               <label key={key} className="text-sm">
                                 <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                                   {label}
                                   {field.required && <span className="text-rose-500"> *</span>}
+                                  {isReadOnly && <span className="text-xs text-slate-400 ml-1">(auto-set)</span>}
                                 </span>
                                 <input
                                   type="date"
                                   className={baseClasses}
                                   value={value}
                                   onChange={(e) => {
+                                    if (isReadOnly) return;
                                     const nextVal = e.target.value;
                                     setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
                                     saveCustomField(field, nextVal);
                                   }}
+                                  readOnly={isReadOnly}
+                                  disabled={isReadOnly}
+                                  title={isReadOnly ? "This date is automatically set by the system" : undefined}
                                 />
                               </label>
                             );

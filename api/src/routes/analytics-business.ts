@@ -102,25 +102,13 @@ router.get("/business-metrics", async (req, res) => {
       const month = targetDate.getMonth() + 1;
       const { start, end } = getMonthBoundaries(year, month);
 
-      // Enquiries (new leads) - use enquiryDate from custom if available, fallback to capturedAt
-      const allLeads = await prisma.lead.findMany({
+      // Enquiries (new leads) - use capturedAt from schema
+      const enquiries = await prisma.lead.count({
         where: { 
           tenantId, 
           capturedAt: { gte: start, lte: end }
-        },
-        select: { custom: true, capturedAt: true }
-      });
-      
-      // Filter by enquiryDate if it exists in custom, otherwise use capturedAt
-      const enquiries = allLeads.filter(lead => {
-        const custom = lead.custom as any;
-        if (custom?.enquiryDate) {
-          const enquiryDate = new Date(custom.enquiryDate);
-          return enquiryDate >= start && enquiryDate <= end;
         }
-        // Fallback to capturedAt for older leads without enquiryDate
-        return lead.capturedAt >= start && lead.capturedAt <= end;
-      }).length;
+      });
 
       // Quotes sent (count and value) - use dateQuoteSent from leads
       const leadsWithQuotes = await prisma.lead.findMany({
@@ -156,40 +144,24 @@ router.get("/business-metrics", async (req, res) => {
         return sum + value;
       }, 0);
 
-      // Sales (won opportunities) - prefer lead.custom.dateOrderPlaced else fallback to wonAt
+      // Sales (won opportunities) - use wonAt from schema
       const salesOpps = await prisma.opportunity.findMany({
-        where: { tenantId },
-        select: { valueGBP: true, wonAt: true, lead: { select: { custom: true } } }
+        where: { 
+          tenantId,
+          wonAt: { gte: start, lte: end }
+        },
+        select: { valueGBP: true }
       });
-      const salesFiltered = salesOpps.filter((opp) => {
-        const orderDateStr = (opp.lead?.custom as any)?.dateOrderPlaced as string | undefined;
-        if (orderDateStr) {
-          const dt = new Date(orderDateStr);
-          return dt >= start && dt <= end;
-        }
-        // fallback to wonAt
-        return !!opp.wonAt && opp.wonAt >= start && opp.wonAt <= end;
-      });
-      const salesCount = salesFiltered.length;
-      const salesValue = salesFiltered.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
+      const salesCount = salesOpps.length;
+      const salesValue = salesOpps.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
 
       // Conversion rates by source for this month
-      const leadsForSource = await prisma.lead.findMany({
+      const filteredLeads = await prisma.lead.findMany({
         where: { 
           tenantId, 
           capturedAt: { gte: start, lte: end }
         },
-        select: { custom: true, capturedAt: true, status: true }
-      });
-      
-      // Filter by enquiryDate and group by source
-      const filteredLeads = leadsForSource.filter(lead => {
-        const custom = lead.custom as any;
-        if (custom?.enquiryDate) {
-          const enquiryDate = new Date(custom.enquiryDate);
-          return enquiryDate >= start && enquiryDate <= end;
-        }
-        return lead.capturedAt >= start && lead.capturedAt <= end;
+        select: { custom: true, status: true }
       });
 
       // Calculate conversion rates
@@ -232,22 +204,12 @@ router.get("/business-metrics", async (req, res) => {
     // Financial year-to-date totals
     const { start: fyStart, end: fyEnd } = getFinancialYearBoundaries(financialYearEnd, currentFinancialYear);
 
-    const ytdLeads = await prisma.lead.findMany({
+    const ytdEnquiries = await prisma.lead.count({
       where: { 
         tenantId, 
         capturedAt: { gte: fyStart, lte: fyEnd }
-      },
-      select: { custom: true, capturedAt: true }
-    });
-    
-    const ytdEnquiries = ytdLeads.filter(lead => {
-      const custom = lead.custom as any;
-      if (custom?.enquiryDate) {
-        const enquiryDate = new Date(custom.enquiryDate);
-        return enquiryDate >= fyStart && enquiryDate <= fyEnd;
       }
-      return lead.capturedAt >= fyStart && lead.capturedAt <= fyEnd;
-    }).length;
+    });
 
     const ytdLeadsWithQuotes = await prisma.lead.findMany({
       where: { 
@@ -277,19 +239,14 @@ router.get("/business-metrics", async (req, res) => {
     const ytdQuotesValue = ytdValidQuotes.reduce((sum, lead) => sum + Number(lead.quotedValue || 0), 0);
 
     const ytdSalesOpps = await prisma.opportunity.findMany({
-      where: { tenantId },
-      select: { valueGBP: true, wonAt: true, lead: { select: { custom: true } } }
+      where: { 
+        tenantId,
+        wonAt: { gte: fyStart, lte: fyEnd }
+      },
+      select: { valueGBP: true }
     });
-    const ytdSalesFiltered = ytdSalesOpps.filter((opp) => {
-      const orderDateStr = (opp.lead?.custom as any)?.dateOrderPlaced as string | undefined;
-      if (orderDateStr) {
-        const dt = new Date(orderDateStr);
-        return dt >= fyStart && dt <= fyEnd;
-      }
-      return !!opp.wonAt && opp.wonAt >= fyStart && opp.wonAt <= fyEnd;
-    });
-    const ytdSalesCount = ytdSalesFiltered.length;
-    const ytdSalesValue = ytdSalesFiltered.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
+    const ytdSalesCount = ytdSalesOpps.length;
+    const ytdSalesValue = ytdSalesOpps.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
 
     // Get or create targets for current financial year
     let targets = await prisma.target.findUnique({
@@ -349,22 +306,12 @@ router.get("/business-metrics", async (req, res) => {
     });
 
     // Previous year comparison data
-    const previousYearLeads = await prisma.lead.findMany({
+    const previousYearEnquiries = await prisma.lead.count({
       where: { 
         tenantId, 
         capturedAt: { gte: previousFY.start, lte: previousFY.end }
-      },
-      select: { custom: true, capturedAt: true }
-    });
-    
-    const previousYearEnquiries = previousYearLeads.filter(lead => {
-      const custom = lead.custom as any;
-      if (custom?.enquiryDate) {
-        const enquiryDate = new Date(custom.enquiryDate);
-        return enquiryDate >= previousFY.start && enquiryDate <= previousFY.end;
       }
-      return lead.capturedAt >= previousFY.start && lead.capturedAt <= previousFY.end;
-    }).length;
+    });
 
     const previousYearLeadsWithQuotes = await prisma.lead.findMany({
       where: { 
@@ -390,17 +337,12 @@ router.get("/business-metrics", async (req, res) => {
       return false;
     });
 
-    const previousYearSalesOpps = await prisma.opportunity.findMany({
-      where: { tenantId },
-      select: { valueGBP: true, wonAt: true, lead: { select: { custom: true } } }
-    });
-    const previousYearSales = previousYearSalesOpps.filter((opp) => {
-      const orderDateStr = (opp.lead?.custom as any)?.dateOrderPlaced as string | undefined;
-      if (orderDateStr) {
-        const dt = new Date(orderDateStr);
-        return dt >= previousFY.start && dt <= previousFY.end;
-      }
-      return !!opp.wonAt && opp.wonAt >= previousFY.start && opp.wonAt <= previousFY.end;
+    const previousYearSales = await prisma.opportunity.findMany({
+      where: { 
+        tenantId,
+        wonAt: { gte: previousFY.start, lte: previousFY.end }
+      },
+      select: { valueGBP: true }
     });
 
     const previousYear = {
