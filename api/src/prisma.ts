@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 
 // Prevent multiple instances in dev (important for ts-node-dev / Next.js)
@@ -18,7 +18,8 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Prisma middleware: on Tenant.create, ensure a dev user exists for that tenant
-const tenantCreateMiddleware: Prisma.Middleware = async (params, next) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const tenantCreateMiddleware = async (params: any, next: any): Promise<any> => {
   const result = await next(params);
   try {
     if (params.model === 'Tenant' && params.action === 'create') {
