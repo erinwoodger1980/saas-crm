@@ -72,6 +72,8 @@ model Tenant {
   // Supplier relations
   suppliers                   Supplier[]
   supplierQuoteRequests       SupplierQuoteRequest[]
+  // Timesheet relations
+  timesheets                  Timesheet[]
 }
 
 /// ==============================
@@ -149,6 +151,8 @@ model User {
   timeEntries                TimeEntry[]
   holidays                   Holiday[]
   supplierQuoteRequests      SupplierQuoteRequest[]
+  timesheets                 Timesheet[]             @relation("TimesheetUser")
+  signedOffTimesheets        Timesheet[]             @relation("TimesheetSignedOffBy")
 }
 
 model SignupToken {
@@ -1491,5 +1495,31 @@ model SupplierQuoteRequest {
   @@index([supplierId])
   @@index([leadId])
   @@index([opportunityId])
+  @@index([status])
+}
+
+// Timesheet sign-offs for workshop hours
+model Timesheet {
+  id             String    @id @default(cuid())
+  tenantId       String
+  userId         String
+  weekStartDate  DateTime
+  weekEndDate    DateTime
+  totalHours     Decimal   @default(0)
+  status         String    @default("pending") // pending, signed_off, rejected
+  signedOffById  String?
+  signedOffAt    DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User   @relation("TimesheetUser", fields: [userId], references: [id], onDelete: Cascade)
+  signedOffBy  User?  @relation("TimesheetSignedOffBy", fields: [signedOffById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, userId, weekStartDate])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([weekStartDate])
   @@index([status])
 }
