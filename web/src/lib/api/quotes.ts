@@ -110,6 +110,7 @@ export type QuestionnaireField = {
   askInQuestionnaire?: boolean;
   internalOnly?: boolean;
   required?: boolean;
+  sortOrder?: number;
 };
 
 export async function fetchQuote(quoteId: string): Promise<QuoteDto> {
