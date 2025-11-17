@@ -2116,7 +2116,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         type: "date",
         options: [],
         askInQuestionnaire: false,
-        showOnLead: true,
+        showOnLead: false,
+        internalOnly: true,
         sortOrder: Number.MAX_SAFE_INTEGER,
       });
     }
