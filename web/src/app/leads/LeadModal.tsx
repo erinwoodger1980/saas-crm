@@ -2863,150 +2863,113 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
               </div>
             </div>
           )}
-            <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <span aria-hidden="true">✨</span>
-                Lead details
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="text-sm">
-                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Name</span>
-                  <input
-                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
-                    value={nameInput}
-                    onChange={(e) => setNameInput(e.target.value)}
-                    onBlur={() => {
-                      setLead((l) => (l ? { ...l, contactName: nameInput || null } : l));
-                      savePatch({ contactName: nameInput || null });
-                    }}
-                    placeholder="Client name"
-                  />
-                </label>
 
-                <label className="text-sm">
-                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Email</span>
-                  <input
-                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    onBlur={() => {
-                      setLead((l) => (l ? { ...l, email: emailInput || null } : l));
-                      savePatch({ email: emailInput || null });
-                    }}
-                    placeholder="client@email.com"
-                  />
-                </label>
-              </div>
+          {/* Tasks Tab */}
+          {currentStage === 'tasks' && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
+              <div className="max-w-6xl mx-auto">
+                {/* Tasks Section - Full Width */}
+                <div className="rounded-2xl border border-indigo-100 bg-white/80 p-6 shadow-sm backdrop-blur">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2 font-semibold text-slate-900">
+                      <span aria-hidden="true">⭐</span>
+                      Task journey
+                    </div>
+                    <div className="text-xs text-slate-500">{openCount} open</div>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-2">
+                      <span>{completedCount} completed</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 transition-all"
+                        style={{ width: `${progress}%` }}
+                        aria-hidden="true"
+                      />
+                    </div>
+                  </div>
 
-              <label className="text-sm block">
-                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Client notes</span>
-                <textarea
-                  className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-28 shadow-inner"
-                  value={descInput}
-                  onChange={(e) => setDescInput(e.target.value)}
-                  onBlur={() => {
-                    setLead((l) => (l ? { ...l, description: descInput || null } : l));
-                    savePatch({ description: descInput || null });
-                  }}
-                  placeholder="Project background, requirements, constraints…"
-                />
-              </label>
-            </section>
+                  {/* Task List */}
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {tasks.map((t) => {
+                      let bgColor = "bg-slate-50";
+                      if (t.status === "DONE") bgColor = "bg-emerald-50";
+                      else if (t.status === "IN_PROGRESS") bgColor = "bg-blue-50";
+                      else if (t.status === "BLOCKED") bgColor = "bg-rose-50";
+                      else if (t.priority === "URGENT") bgColor = "bg-orange-50";
 
-            {workspaceFields.length > 0 && (
-              <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <span aria-hidden="true">🗂️</span>
-                  Lead workspace fields
-                </div>
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {workspaceFields.map((field) => {
-                    const key = field.key;
-                    if (!key) return null;
-                    const value = customDraft[key] ?? "";
-                    const label = field.label || key;
-                    const baseClasses =
-                      "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200";
-
-                    if (field.type === "source") {
                       return (
-                        <div key={key} className="space-y-1">
-                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
-                          <LeadSourcePicker
-                            leadId={lead.id}
-                            value={typeof customData?.[key] === "string" ? customData[key] : null}
-                            onSaved={(next) => {
-                              const nextStr = next ?? "";
-                              setCustomDraft((prev) => ({ ...prev, [key]: nextStr }));
-                              setLead((current) => {
-                                if (!current) return current;
-                                const prevCustom =
-                                  current.custom && typeof current.custom === "object"
-                                    ? { ...(current.custom as Record<string, any>) }
-                                    : {};
-                                prevCustom[key] = next ?? null;
-                                return { ...current, custom: prevCustom };
-                              });
-                            }}
-                          />
-                        </div>
-                      );
-                    }
-
-                    if (field.type === "textarea") {
-                      return (
-                        <label key={key} className="text-sm">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                            {label}
-                            {field.required ? <span className="text-rose-500"> *</span> : null}
-                          </span>
-                          <textarea
-                            className={`${baseClasses} min-h-28`}
-                            value={value}
-                            onChange={(e) => setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))}
-                            onBlur={(e) => saveCustomField(field, e.target.value)}
-                          />
-                        </label>
-                      );
-                    }
-
-                    if (field.type === "select") {
-                      return (
-                        <label key={key} className="text-sm">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                            {label}
-                            {field.required ? <span className="text-rose-500"> *</span> : null}
-                          </span>
-                          <select
-                            className={baseClasses}
-                            value={value}
-                            onChange={(e) => {
-                              const nextVal = e.target.value;
-                              setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
-                              saveCustomField(field, nextVal);
-                            }}
-                          >
-                            <option value="">Select…</option>
-                            {field.options.map((opt) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      );
-                    }
-
-                    if (field.type === "date") {
-                      return (
-                        <label key={key} className="text-sm">
-                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
-                            {label}
-                            {field.required ? <span className="text-rose-500"> *</span> : null}
-                          </span>
-                          <input
-                            type="date"
-                            className={baseClasses}
+                        <div
+                          key={t.id}
+                          className={`rounded-xl border border-slate-200 ${bgColor} p-4 transition-colors hover:shadow-sm cursor-pointer`}
+                          onClick={() => {
+                            // Optional: Add task detail modal functionality here
+                          }}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <label className="inline-flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={t.status === "DONE"}
+                                    onChange={() => toggleTaskComplete(t)}
+                                    className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
+                                    aria-label={`Complete ${t.title}`}
+                                  />
+                                </label>
+                                <div className="text-sm font-semibold text-slate-900 leading-snug">
+                                  {t.title}
+                                </div>
+                              </div>
+                              {t.description && (
+                                <div className="text-xs text-slate-600 mb-2 line-clamp-2">
+                                  {t.description}
+                                </div>
+                              )}
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    t.status === "DONE"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : t.status === "IN_PROGRESS"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : t.status === "BLOCKED"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : "bg-slate-100 text-slate-700"
+                                  }`}
+                                >
+                                  {(() => {
+                                    if (t.status === "DONE") return "✓";
+                                    if (t.status === "IN_PROGRESS") return "⏳";
+                                    if (t.status === "BLOCKED") return "⚠";
+                                    return "○";
+                                  })()}
+                                  <span className="ml-1">
+                                    {t.status === "IN_PROGRESS" ? "In progress" : t.status.toLowerCase()}
+                                  </span>
+                                </span>
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    t.priority === "URGENT"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : t.priority === "HIGH"
+                                      ? "bg-orange-100 text-orange-700"
+                                      : t.priority === "MEDIUM"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-slate-100 text-slate-700"
+                                  }`}
+                                >
+                                  {t.priority.toLowerCase()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                             value={value}
                             onChange={(e) => {
                               const nextVal = e.target.value;
