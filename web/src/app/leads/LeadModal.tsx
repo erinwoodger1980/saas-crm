@@ -3032,9 +3032,18 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </label>
                   </div>
                 </section>
-                            <dd className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
-                              {isEditing ? (
-                                field.type === "textarea" ? (
+
+                {/* Workshop Processes */}
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm backdrop-blur">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                      <span aria-hidden>🛠️</span>
+                      Workshop processes for this project
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs text-emerald-700 hover:text-emerald-900"
+                      onClick={() => {
                                   <textarea
                                     className={`${inputClasses} min-h-[100px]`}
                                     value={draftVal}
