@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
-import { ActionsBar } from "@/components/quotes/ActionsBar";
 import { ParsedLinesTable } from "@/components/quotes/ParsedLinesTable";
 import { QuestionnaireForm } from "@/components/quotes/QuestionnaireForm";
 import { SupplierFilesCard } from "@/components/quotes/SupplierFilesCard";
-import { EstimatePanel } from "@/components/quotes/EstimatePanel";
+import { QuoteStepper } from "@/components/quotes/QuoteStepper";
+import { QuoteEstimateSidebar } from "@/components/quotes/QuoteEstimateSidebar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Loader2, Sparkles } from "lucide-react";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -405,104 +408,37 @@ export default function QuoteBuilderPage() {
     [quoteId, toast],
   );
 
+  // Determine current step based on state
+  const [currentTab, setCurrentTab] = useState("questionnaire");
+  const currentStep = currentTab === "questionnaire" ? 0 : currentTab === "supplier" ? 1 : 2;
+
+  const steps = [
+    { id: "questionnaire", title: "Questionnaire", description: "Gather project details" },
+    { id: "supplier", title: "Supplier quote", description: "Upload & parse PDFs" },
+    { id: "pricing", title: "Pricing & proposal", description: "Review & finalize" },
+  ];
+
   const breadcrumbs = (
     <>
-      <Link href="/quotes" className="text-muted-foreground hover:text-foreground">
+      <Link href="/quotes" className="text-muted-foreground hover:text-foreground transition-colors">
         Quotes
       </Link>
-      <span className="text-muted-foreground/80">/</span>
-      <span className="text-foreground">Quote builder</span>
+      <span className="text-muted-foreground/60">/</span>
+      <span className="font-medium text-foreground">{quote?.title ?? "Quote builder"}</span>
     </>
   );
 
   const errorBanner = error ? (
-    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
+    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">{error}</div>
   ) : null;
   const noticeBanner = notice ? (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{notice}</div>
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">{notice}</div>
   ) : null;
 
   const rawSummaries = parseMeta?.summaries ?? [];
 
-  const actionsBar = (
-    <ActionsBar
-      onUploadClick={openUploadDialog}
-      onProcessSupplier={() => setProcessDialogOpen(true)}
-      onRenderProposal={handleRenderProposal}
-      onGenerateEstimate={handleQuestionnaireEstimate}
-      onDownloadCsv={handleDownloadCsv}
-      disabled={quoteLoading || linesLoading}
-      isUploading={isUploading}
-      isProcessingSupplier={isProcessingSupplier}
-      isRendering={isRendering}
-      isEstimating={isEstimating}
-      lastEstimateAt={lastEstimateAt}
-      reestimate={Boolean(reestimateNeeded)}
-      estimateCached={Boolean(estimate?.meta?.cacheHit)}
-    />
-  );
-
-  const questionnaireSection = (
-    <QuestionnaireForm
-      fields={questionnaireFields}
-      answers={questionnaireAnswers}
-      isSaving={questionnaireSaving}
-      disabled={quoteLoading || !leadId}
-      onAutoSave={handleQuestionnaireSave}
-      onEstimateFromAnswers={handleQuestionnaireEstimate}
-      estimateSupported={Boolean(leadId)}
-      estimateDisabledReason={leadId ? undefined : "Quote is not linked to a lead."}
-    />
-  );
-
-  const estimateSection = (
-    <EstimatePanel
-      quote={quote}
-      estimate={estimate}
-      linesCount={lines?.length ?? 0}
-      currency={currency}
-      isEstimating={isEstimating}
-      onEstimate={handleQuestionnaireEstimate}
-      onSaveEstimate={handleSaveEstimateToQuote}
-      onApprove={handleRenderProposal}
-      reestimate={Boolean(reestimateNeeded)}
-      lastEstimateAt={lastEstimateAt}
-      cacheHit={estimate?.meta?.cacheHit}
-      latencyMs={estimate?.meta?.latencyMs ?? null}
-    />
-  );
-
-  const linesSection = (
-    <ParsedLinesTable
-      lines={lines}
-      questionnaireFields={questionnaireFields}
-      mapping={mapping}
-      onMappingChange={(lineId, questionKey) => setMapping((prev) => ({ ...prev, [lineId]: questionKey }))}
-      onLineChange={handleLineChange}
-      currency={currency}
-      isParsing={isParsing}
-      parseMeta={parseMeta}
-      onAutoMap={() => {
-        setMapping((prev) => autoMap(lines, questionnaireFields, prev));
-        toast({ title: "Mapping suggested", description: "Mapped similar fields based on keywords." });
-      }}
-      onShowRawParse={() => setRawParseOpen(true)}
-      onDownloadCsv={handleDownloadCsv}
-    />
-  );
-
-  const filesSection = (
-    <SupplierFilesCard
-      files={quote?.supplierFiles}
-      onOpen={handleOpenFile}
-      onUpload={handleUploadFiles}
-      onUploadClick={openUploadDialog}
-      isUploading={isUploading}
-    />
-  );
-
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 lg:px-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-6 lg:py-8">
       <input
         ref={fileInputRef}
         type="file"
@@ -513,27 +449,33 @@ export default function QuoteBuilderPage() {
       />
         <div className="space-y-6">
           {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">{breadcrumbs}</div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Quote builder</h1>
-                {quoteStatus && (
-                  <span className="rounded-full border px-3 py-1 text-xs font-medium capitalize">
-                    {quoteStatus.toLowerCase().replace(/_/g, " ")}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                {tenantName && <span className="font-medium text-foreground/80">{tenantName}</span>}
-                {quoteMeta(quote)}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">{breadcrumbs}</div>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="space-y-2">
+                <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                  {quote?.title ?? "Quote Builder"}
+                </h1>
+                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                  {tenantName && <span className="font-medium text-foreground">{tenantName}</span>}
+                  {quote?.updatedAt && (
+                    <span>Updated {new Date(quote.updatedAt).toLocaleString()}</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Actions bar */}
-          <div className="sticky top-0 z-30 -mx-4 border-b bg-background/95 py-3 backdrop-blur lg:-mx-6">
-            <div className="mx-auto w-full max-w-6xl px-4 lg:px-6">{actionsBar}</div>
+          {/* Stepper */}
+          <div className="rounded-2xl border bg-card p-6 shadow-sm">
+            <QuoteStepper
+              steps={steps}
+              currentStep={currentStep}
+              onStepClick={(idx) => {
+                const stepMap = ["questionnaire", "supplier", "lines"];
+                setCurrentTab(stepMap[idx] ?? "questionnaire");
+              }}
+            />
           </div>
 
           {/* Notices */}
@@ -541,24 +483,120 @@ export default function QuoteBuilderPage() {
           {noticeBanner}
 
           {quoteLoading || linesLoading ? (
-            <div className="space-y-4">
-              <div className="h-64 rounded-2xl bg-muted/40"></div>
-              <div className="h-96 rounded-2xl bg-muted/40"></div>
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+              <div className="space-y-4">
+                <div className="h-24 rounded-2xl bg-muted/40 animate-pulse"></div>
+                <div className="h-96 rounded-2xl bg-muted/40 animate-pulse"></div>
+              </div>
+              <div className="h-[600px] rounded-2xl bg-muted/40 animate-pulse"></div>
             </div>
           ) : (
-            <>
-              {/* Full-width questionnaire */}
-              <div className="w-full">{questionnaireSection}</div>
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+              {/* Left: Main working area with tabs */}
+              <div className="space-y-4">
+                <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="questionnaire">Questionnaire</TabsTrigger>
+                    <TabsTrigger value="supplier">Supplier quote</TabsTrigger>
+                    <TabsTrigger value="lines">Line items</TabsTrigger>
+                  </TabsList>
 
-              {/* Two-column layout for lines + estimate + files */}
-              <div className="grid gap-4 lg:grid-cols-3 lg:gap-6">
-                <div className="space-y-4 lg:col-span-2">{linesSection}</div>
-                <div className="space-y-4 lg:col-span-1">
-                  {estimateSection}
-                  {filesSection}
-                </div>
+                  <TabsContent value="questionnaire" className="mt-6 space-y-4">
+                    <QuestionnaireForm
+                      fields={questionnaireFields}
+                      answers={questionnaireAnswers}
+                      isSaving={questionnaireSaving}
+                      disabled={quoteLoading || !leadId}
+                      onAutoSave={handleQuestionnaireSave}
+                      onEstimateFromAnswers={handleQuestionnaireEstimate}
+                      estimateSupported={Boolean(leadId)}
+                      estimateDisabledReason={leadId ? undefined : "Quote is not linked to a lead."}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="supplier" className="mt-6 space-y-4">
+                    <SupplierFilesCard
+                      files={quote?.supplierFiles}
+                      onOpen={handleOpenFile}
+                      onUpload={handleUploadFiles}
+                      onUploadClick={openUploadDialog}
+                      isUploading={isUploading}
+                    />
+                    
+                    {(quote?.supplierFiles ?? []).length > 0 && (
+                      <div className="rounded-2xl border bg-card p-6 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-lg font-semibold">Ready to parse?</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              Extract line items from your supplier PDFs using ML
+                            </p>
+                          </div>
+                          <Button
+                            onClick={handleParse}
+                            disabled={isParsing}
+                            size="lg"
+                            className="gap-2"
+                          >
+                            {isParsing ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Parsing...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="h-4 w-4" />
+                                Parse supplier PDFs
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="lines" className="mt-6 space-y-4">
+                    <ParsedLinesTable
+                      lines={lines}
+                      questionnaireFields={questionnaireFields}
+                      mapping={mapping}
+                      onMappingChange={(lineId, questionKey) => setMapping((prev) => ({ ...prev, [lineId]: questionKey }))}
+                      onLineChange={handleLineChange}
+                      currency={currency}
+                      isParsing={isParsing}
+                      parseMeta={parseMeta}
+                      onAutoMap={() => {
+                        setMapping((prev) => autoMap(lines, questionnaireFields, prev));
+                        toast({ title: "Mapping suggested", description: "Mapped similar fields based on keywords." });
+                      }}
+                      onShowRawParse={() => setRawParseOpen(true)}
+                      onDownloadCsv={handleDownloadCsv}
+                    />
+                  </TabsContent>
+                </Tabs>
               </div>
-            </>
+
+              {/* Right: Sticky estimate sidebar */}
+              <div>
+                <QuoteEstimateSidebar
+                  quote={quote}
+                  estimate={estimate}
+                  linesCount={lines?.length ?? 0}
+                  filesCount={quote?.supplierFiles?.length ?? 0}
+                  currency={currency}
+                  isEstimating={isEstimating}
+                  isRendering={isRendering}
+                  isUploading={isUploading}
+                  onEstimate={handleQuestionnaireEstimate}
+                  onRenderProposal={handleRenderProposal}
+                  onUploadClick={openUploadDialog}
+                  reestimate={Boolean(reestimateNeeded)}
+                  lastEstimateAt={lastEstimateAt}
+                  cacheHit={estimate?.meta?.cacheHit}
+                  latencyMs={estimate?.meta?.latencyMs ?? null}
+                />
+              </div>
+            </div>
           )}
         </div>
 
