@@ -118,10 +118,13 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
     }
 
     // Create or find a developer user for this tenant
+    // Use a unique email per tenant to avoid unique constraint errors
+    const devEmail = `dev+${tenant.slug}@joineryai.app`;
+    
     let devUser = await prisma.user.findFirst({
       where: { 
         tenantId: tenant.id,
-        email: developer.email
+        email: devEmail
       }
     });
 
@@ -131,7 +134,7 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
       devUser = await prisma.user.create({
         data: {
           tenantId: tenant.id,
-          email: developer.email,
+          email: devEmail,
           name: `${developer.name || 'Developer'} (Dev Access)`,
           role: 'owner', // Give them owner access for full visibility
           isDeveloper: true,
@@ -139,7 +142,7 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
           passwordHash: await bcrypt.hash(tempPassword, 10)
         }
       });
-      console.log(`[IMPERSONATE] Created developer user ${developer.email} for tenant ${tenant.name}`);
+      console.log(`[IMPERSONATE] Created developer user ${devEmail} for tenant ${tenant.name}`);
     }
     
     // Create JWT token for the developer user in this tenant
