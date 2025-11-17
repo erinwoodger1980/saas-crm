@@ -13,7 +13,7 @@ import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
 import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, Printer } from "lucide-react";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -503,6 +503,12 @@ export default function QuoteBuilderPage() {
                   )}
                 </div>
               </div>
+              <Link href={`/quotes/${quoteId}/print`} target="_blank">
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Printer className="h-4 w-4" />
+                  Print Quote Sheet
+                </Button>
+              </Link>
             </div>
           </div>
 

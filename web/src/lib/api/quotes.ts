@@ -33,6 +33,7 @@ export type QuoteDto = {
   questionnaireAnswers?: Record<string, any> | null;
   supplierFiles?: SupplierFileDto[];
   clientQuoteFiles?: SupplierFileDto[];
+    notes?: string | null;
   updatedAt?: string | null;
   createdAt?: string | null;
 };
