@@ -303,6 +303,104 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
 });
 
 /**
+ * PATCH /quotes/:id/lines/:lineId
+ * Body: { qty?: number | null; unitPrice?: number | null; meta?: Record<string, any> }
+ * Updates a single quote line allowing inline editing from the quote builder.
+ * - Validates ownership (tenant + quote)
+ * - Recalculates sellUnitGBP & sellTotalGBP if margin/pricing info present
+ * - Applies markupDefault from quote when pricingMethod === 'margin' and margin not provided
+ */
+router.patch("/:id/lines/:lineId", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const quoteId = String(req.params.id);
+    const lineId = String(req.params.lineId);
+    const quote = await prisma.quote.findFirst({ where: { id: quoteId, tenantId } });
+    if (!quote) return res.status(404).json({ error: "quote_not_found" });
+    const line = await prisma.quoteLine.findFirst({ where: { id: lineId, quoteId: quote.id } });
+    if (!line) return res.status(404).json({ error: "line_not_found" });
+
+    const qtyRaw = req.body?.qty;
+    const unitPriceRaw = req.body?.unitPrice;
+    let qty: number | null = qtyRaw === null ? null : qtyRaw === undefined ? null : Number(qtyRaw);
+    let unitPrice: number | null = unitPriceRaw === null ? null : unitPriceRaw === undefined ? null : Number(unitPriceRaw);
+    if (qty != null) {
+      if (!Number.isFinite(qty) || qty < 0) return res.status(400).json({ error: "invalid_qty" });
+    }
+    if (unitPrice != null) {
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) return res.status(400).json({ error: "invalid_unit_price" });
+    }
+
+    // Fallback to existing values when not provided
+    qty = qty != null ? qty : Number(line.qty);
+    unitPrice = unitPrice != null ? unitPrice : Number(line.unitPrice);
+
+    // Merge meta updates
+    const incomingMeta: any = (req.body?.meta && typeof req.body.meta === "object") ? req.body.meta : {};
+    const existingMeta: any = (line.meta as any) || {};
+    const mergedMeta: any = { ...existingMeta, ...incomingMeta };
+
+    // Determine pricing/sell values. Priority:
+    // 1. Explicit sellUnitGBP/sellTotalGBP in incoming meta
+    // 2. Margin-based calculation if pricingMethod === 'margin'
+    // 3. Preserve existing sell values
+    let sellUnitGBP: number | null = safeNumber(incomingMeta?.sellUnitGBP ?? incomingMeta?.sell_unit);
+    let sellTotalGBP: number | null = safeNumber(incomingMeta?.sellTotalGBP ?? incomingMeta?.sell_total);
+    const pricingMethod = String(mergedMeta?.pricingMethod || existingMeta?.pricingMethod || "") || null;
+
+    if (sellUnitGBP == null && pricingMethod === "margin") {
+      const margin = safeNumber(incomingMeta?.margin ?? existingMeta?.margin) ?? Number(quote.markupDefault ?? 0.25);
+      if (Number.isFinite(margin) && margin >= 0) {
+        sellUnitGBP = Number(unitPrice) * (1 + margin);
+        sellTotalGBP = sellUnitGBP * Number(qty);
+        mergedMeta.margin = margin;
+        mergedMeta.pricingMethod = "margin";
+      }
+    }
+
+    if (sellUnitGBP != null && sellTotalGBP == null) {
+      sellTotalGBP = sellUnitGBP * Number(qty);
+    } else if (sellUnitGBP == null && sellTotalGBP != null && Number(qty) > 0) {
+      sellUnitGBP = sellTotalGBP / Number(qty);
+    }
+
+    if (sellUnitGBP != null) mergedMeta.sellUnitGBP = sellUnitGBP;
+    if (sellTotalGBP != null) mergedMeta.sellTotalGBP = sellTotalGBP;
+
+    // Always keep lineTotalGBP aligned with sellTotalGBP when present
+    const lineTotalGBP = sellTotalGBP != null ? sellTotalGBP : Number(line.lineTotalGBP);
+
+    const saved = await prisma.quoteLine.update({
+      where: { id: line.id },
+      data: {
+        qty,
+        unitPrice: new Prisma.Decimal(unitPrice),
+        lineTotalGBP: new Prisma.Decimal(Number.isFinite(lineTotalGBP) ? lineTotalGBP : 0),
+        meta: mergedMeta as any,
+      },
+    });
+
+    const out = {
+      id: saved.id,
+      description: saved.description,
+      qty: Number(saved.qty),
+      unitPrice: Number(saved.unitPrice),
+      currency: saved.currency,
+      supplier: saved.supplier,
+      sku: saved.sku,
+      meta: saved.meta as any,
+      sellUnit: (saved.meta as any)?.sellUnitGBP ?? null,
+      sellTotal: (saved.meta as any)?.sellTotalGBP ?? null,
+      lineTotalGBP: Number(saved.lineTotalGBP),
+    };
+    return res.json(out);
+  } catch (e: any) {
+    console.error("[/quotes/:id/lines/:lineId] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
  * POST /quotes/:id/lines/save-processed
  * Persist a processed client quote (from ML /process-quote) as quote lines.
  * Body: {
