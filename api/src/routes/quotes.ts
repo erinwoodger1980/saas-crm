@@ -599,7 +599,17 @@ router.get("/:id", requireAuth, async (req: any, res) => {
     include: { lines: true, supplierFiles: true },
   });
   if (!q) return res.status(404).json({ error: "not_found" });
-  res.json(q);
+  
+  // Separate client quote files from supplier files
+  const allFiles = q.supplierFiles || [];
+  const supplierFiles = allFiles.filter((f) => f.kind === "SUPPLIER_QUOTE");
+  const clientQuoteFiles = allFiles.filter((f) => f.kind === "CLIENT_QUOTE");
+  
+  res.json({
+    ...q,
+    supplierFiles,
+    clientQuoteFiles,
+  });
 });
 
 /** POST /quotes/:id/files  (multipart form-data: files[]) */
@@ -627,6 +637,32 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
 
   // TODO: parse PDFs, extract tables → quote lines
   // For now, return files and leave lines empty.
+  res.json({ ok: true, files: saved });
+});
+
+/** POST /quotes/:id/client-quote-files  (multipart form-data: files[]) */
+router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const id = String(req.params.id);
+  const q = await prisma.quote.findFirst({ where: { id, tenantId } });
+  if (!q) return res.status(404).json({ error: "not_found" });
+
+  const saved = [];
+  for (const f of (req.files as Express.Multer.File[])) {
+    const row = await prisma.uploadedFile.create({
+      data: {
+        tenantId,
+        quoteId: id,
+        kind: "CLIENT_QUOTE",
+        name: f.originalname,
+        path: path.relative(process.cwd(), f.path),
+        mimeType: f.mimetype,
+        sizeBytes: f.size,
+      },
+    });
+    saved.push(row);
+  }
+
   res.json({ ok: true, files: saved });
 });
 

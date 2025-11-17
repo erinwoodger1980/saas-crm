@@ -32,6 +32,7 @@ export type QuoteDto = {
   lines?: ParsedLineDto[];
   questionnaireAnswers?: Record<string, any> | null;
   supplierFiles?: SupplierFileDto[];
+  clientQuoteFiles?: SupplierFileDto[];
   updatedAt?: string | null;
   createdAt?: string | null;
 };
@@ -134,11 +135,21 @@ export async function fetchParsedLines(quoteId: string): Promise<ParsedLineDto[]
   }
 }
 
-export async function uploadSupplierPdf(quoteId: string, file: File | Blob): Promise<void> {
-  if (!quoteId) throw new Error("quoteId required");
+export async function uploadSupplierPdf(quoteId: string, file: File): Promise<void> {
+  if (!quoteId || !file) throw new Error("quoteId and file required");
   const fd = new FormData();
   fd.append("files", file);
   await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/files`, {
+    method: "POST",
+    body: fd as any,
+  } as any);
+}
+
+export async function uploadClientQuotePdf(quoteId: string, file: File): Promise<void> {
+  if (!quoteId || !file) throw new Error("quoteId and file required");
+  const fd = new FormData();
+  fd.append("files", file);
+  await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/client-quote-files`, {
     method: "POST",
     body: fd as any,
   } as any);
