@@ -2531,16 +2531,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             <span aria-hidden="true">📎</span>
             Upload Supplier Quote
           </Button>
-
-          <Button
-            variant="outline"
-            onClick={_testSupplierParse}
-            disabled={_parseTesterBusy || saving}
-            title="Test supplier PDF parsing on the latest uploaded file"
-          >
-            <span aria-hidden="true">🧪</span>
-            Test Supplier Parse
-          </Button>
         </div>
 
         {/* Body */}
@@ -2609,6 +2599,66 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         />
                       </label>
 
+                      {/* Address fields from questionnaire */}
+                      {workspaceFields
+                        .filter((field) => {
+                          const key = field.key.toLowerCase();
+                          return (
+                            key.includes("address") ||
+                            key.includes("street") ||
+                            key.includes("city") ||
+                            key.includes("town") ||
+                            key.includes("postcode") ||
+                            key.includes("zipcode") ||
+                            key.includes("location")
+                          );
+                        })
+                        .map((field) => {
+                          const key = field.key;
+                          if (!key) return null;
+                          const value = customDraft[key] ?? "";
+                          const label = field.label || key;
+                          const baseClasses =
+                            "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200";
+
+                          if (field.type === "textarea") {
+                            return (
+                              <label key={key} className="text-sm">
+                                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                  {label}
+                                  {field.required && <span className="text-rose-500"> *</span>}
+                                </span>
+                                <textarea
+                                  className={`${baseClasses} min-h-20`}
+                                  value={value}
+                                  onChange={(e) =>
+                                    setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))
+                                  }
+                                  onBlur={(e) => saveCustomField(field, e.target.value)}
+                                />
+                              </label>
+                            );
+                          }
+
+                          return (
+                            <label key={key} className="text-sm">
+                              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                {label}
+                                {field.required && <span className="text-rose-500"> *</span>}
+                              </span>
+                              <input
+                                type="text"
+                                className={baseClasses}
+                                value={value}
+                                onChange={(e) =>
+                                  setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))
+                                }
+                                onBlur={(e) => saveCustomField(field, e.target.value)}
+                              />
+                            </label>
+                          );
+                        })}
+
                       <label className="text-sm">
                         <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                           Project Description
@@ -2635,7 +2685,21 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         Project Details
                       </div>
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        {workspaceFields.map((field) => {
+                        {workspaceFields
+                          .filter((field) => {
+                            // Filter out address fields as they're now in Lead Details
+                            const key = field.key.toLowerCase();
+                            return !(
+                              key.includes("address") ||
+                              key.includes("street") ||
+                              key.includes("city") ||
+                              key.includes("town") ||
+                              key.includes("postcode") ||
+                              key.includes("zipcode") ||
+                              key.includes("location")
+                            );
+                          })
+                          .map((field) => {
                           const key = field.key;
                           if (!key) return null;
                           const value = customDraft[key] ?? "";
@@ -2717,28 +2781,25 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           }
 
                           if (field.type === "date") {
-                            // Make enquiryDate and dateQuoteSent read-only as they are auto-set
-                            const isReadOnly = key === "enquiryDate" || key === "dateQuoteSent";
+                            // Hide enquiryDate and dateQuoteSent as they are auto-set
+                            const isAutoSet = key === "enquiryDate" || key === "dateQuoteSent";
+                            if (isAutoSet) return null;
+                            
                             return (
                               <label key={key} className="text-sm">
                                 <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                                   {label}
                                   {field.required && <span className="text-rose-500"> *</span>}
-                                  {isReadOnly && <span className="text-xs text-slate-400 ml-1">(auto-set)</span>}
                                 </span>
                                 <input
                                   type="date"
                                   className={baseClasses}
                                   value={value}
                                   onChange={(e) => {
-                                    if (isReadOnly) return;
                                     const nextVal = e.target.value;
                                     setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
                                     saveCustomField(field, nextVal);
                                   }}
-                                  readOnly={isReadOnly}
-                                  disabled={isReadOnly}
-                                  title={isReadOnly ? "This date is automatically set by the system" : undefined}
                                 />
                               </label>
                             );
