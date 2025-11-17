@@ -3077,27 +3077,51 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       {wkDefs.map((def) => {
                         const asn = getAssignmentFor(def.id);
                         const required = asn?.required ?? !!def.requiredByDefault;
-                                <span aria-hidden="true">📎</span>
-                                {file.filename}
-                              </a>
-                              {typeof file.sizeKB === "number" && (
-                                <span className="text-xs text-slate-500">{file.sizeKB.toLocaleString()} KB</span>
-                              )}
-                              {file.addedAt && (
-                                <span className="text-xs text-slate-400">
-                                  added {new Date(file.addedAt).toLocaleDateString()}
-                                </span>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {questionnaireItems.length ? (
-                    <div className="mt-4">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Items</div>
-                      <div className="mt-2 space-y-3">
+                        const est = (asn?.estimatedHours ?? def.estimatedHours) ?? null;
+                        const userIdSel = asn?.assignedUser?.id || "";
+                        return (
+                          <div key={def.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-xl border bg-white/80 px-3 py-2">
+                            <div>
+                              <div className="text-sm font-medium text-slate-900">{def.name}</div>
+                              <div className="text-[11px] text-slate-500">{def.code}</div>
+                            </div>
+                            <label className="inline-flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={required}
+                                onChange={(e) => saveProjectAssignment(def, { required: e.target.checked, assignedUserId: userIdSel || null, estimatedHours: est })}
+                                disabled={wkSavingId === def.id}
+                              />
+                              Required
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-600 whitespace-nowrap">Assign</span>
+                              <select
+                                className="rounded-md border px-2 py-1 text-sm"
+                                value={userIdSel}
+                                onChange={(e) => saveProjectAssignment(def, { required, assignedUserId: e.target.value || null, estimatedHours: est })}
+                                disabled={wkSavingId === def.id}
+                              >
+                                <option value="">Unassigned</option>
+                                {wkUsers.map((u) => (
+                                  <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-600 whitespace-nowrap">Hours</span>
+                              <input
+                                type="number"
+                                className="w-24 rounded-md border px-2 py-1 text-sm"
+                                value={est ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value === "" ? null : Number(e.target.value);
+                                  saveProjectAssignment(def, { required, assignedUserId: userIdSel || null, estimatedHours: val });
+                                }}
+                                disabled={wkSavingId === def.id}
+                              />
+                            </div>
+                            <div className="text-right">
                         {questionnaireItems.map((it: any, idx: number) => (
                           <div key={idx} className="rounded-xl border border-slate-200/70 bg-white/70 p-3">
                             <div className="text-sm font-semibold">Item {idx + 1}</div>
