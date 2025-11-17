@@ -3246,10 +3246,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       );
                     })}
                   </div>
-                </section>
-              </div>
-            </div>
-          )}
+              </section>
+            )}
+          </div>
 
           {/* Right – Tasks */}
           <aside className="md:col-span-1 min-h-[60vh] overflow-auto bg-gradient-to-br from-indigo-900/10 via-white to-rose-50 p-4 sm:p-6 space-y-4">
