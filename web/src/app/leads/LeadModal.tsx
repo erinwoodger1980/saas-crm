@@ -3044,56 +3044,39 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       type="button"
                       className="text-xs text-emerald-700 hover:text-emerald-900"
                       onClick={() => {
-                                  <textarea
-                                    className={`${inputClasses} min-h-[100px]`}
-                                    value={draftVal}
-                                    onChange={(e) => setCustomDraft((prev) => ({ ...prev, [k]: e.target.value }))}
-                                    onBlur={async (e) => {
-                                      await saveCustomField(field as any, e.target.value);
-                                      toggleQEdit(k, false);
-                                    }}
-                                  />
-                                ) : (
-                                  <input
-                                    className={inputClasses}
-                                    type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
-                                    value={draftVal}
-                                    onChange={(e) => setCustomDraft((prev) => ({ ...prev, [k]: e.target.value }))}
-                                    onBlur={async (e) => {
-                                      await saveCustomField(field as any, e.target.value);
-                                      toggleQEdit(k, false);
-                                    }}
-                                  />
-                                )
-                              ) : (
-                                value ?? <span className="text-slate-400">Not provided</span>
-                              )}
-                            </dd>
-                          </div>
-                        );
-                      })}
-                    </dl>
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-white/60 p-3 text-sm text-slate-500">
-                      Waiting for the client to complete the form.
-                    </div>
-                  )}
+                        (async () => {
+                          setWkLoading(true);
+                          try {
+                            const res = await apiFetch<{ defs?: WorkshopProcessDef[], assignments?: WorkshopProcessAssignment[] }>(
+                              `/opportunities/${lead?.id}/workshop-processes`,
+                              { method: 'GET' }
+                            );
+                            setWkDefs(res.defs || []);
+                            const norm = (res.assignments || []).map((a) => ({
+                              processDefId: a.processDefId,
+                              required: a.required ?? false,
+                              assignedUserId: a.assignedUserId || null
+                            }));
+                            setWkAssignments(norm);
+                          } finally {
+                            setWkLoading(false);
+                          }
+                        })();
+                      }}
+                    >
+                      Refresh
+                    </button>
+                  </div>
 
-                  {questionnaireUploads.length ? (
+                  {wkLoading ? (
+                    <div className="text-sm text-emerald-800">Loading processes…</div>
+                  ) : wkDefs.length === 0 ? (
+                    <div className="text-sm text-emerald-800">No tenant processes defined. Configure them in Settings → Workshop Processes.</div>
+                  ) : (
                     <div className="space-y-2">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Attachments
-                      </div>
-                      <ul className="space-y-2 text-sm">
-                        {questionnaireUploads.map((file, idx) => {
-                          const dataUrl = `data:${file.mimeType};base64,${file.base64}`;
-                          return (
-                            <li key={`${file.filename}-${idx}`} className="flex flex-wrap items-center gap-2">
-                              <a
-                                href={dataUrl}
-                                download={file.filename}
-                                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white"
-                              >
+                      {wkDefs.map((def) => {
+                        const asn = getAssignmentFor(def.id);
+                        const required = asn?.required ?? !!def.requiredByDefault;
                                 <span aria-hidden="true">📎</span>
                                 {file.filename}
                               </a>
