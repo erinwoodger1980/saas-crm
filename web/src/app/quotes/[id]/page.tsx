@@ -9,6 +9,8 @@ import { QuestionnaireForm } from "@/components/quotes/QuestionnaireForm";
 import { SupplierFilesCard } from "@/components/quotes/SupplierFilesCard";
 import { QuoteStepper } from "@/components/quotes/QuoteStepper";
 import { QuoteEstimateSidebar } from "@/components/quotes/QuoteEstimateSidebar";
+import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
+import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles } from "lucide-react";
@@ -18,6 +20,7 @@ import {
   parseSupplierPdfs,
   generateMlEstimate,
   uploadSupplierPdf,
+  uploadClientQuotePdf,
   saveQuoteMappings,
   updateQuoteLine,
   normalizeQuestionnaireFields,
@@ -79,6 +82,7 @@ export default function QuoteBuilderPage() {
   const [isParsing, setIsParsing] = useState(false);
   const [_isSavingMappings, setIsSavingMappings] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingClientQuote, setIsUploadingClientQuote] = useState(false);
   const [isProcessingSupplier, setIsProcessingSupplier] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [isEstimating, setIsEstimating] = useState(false);
@@ -204,6 +208,27 @@ export default function QuoteBuilderPage() {
       }
     },
     [quoteId, mutateQuote, mutateLines, toast],
+  );
+
+  const handleUploadClientQuoteFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!quoteId || !files || files.length === 0) return;
+      setIsUploadingClientQuote(true);
+      setError(null);
+      try {
+        for (const file of Array.from(files)) {
+          await uploadClientQuotePdf(quoteId, file);
+        }
+        toast({ title: "Client quote uploaded", description: `${files.length} file(s) uploaded successfully.` });
+        await mutateQuote();
+      } catch (err: any) {
+        setError(err?.message || "Upload failed");
+        toast({ title: "Upload failed", description: err?.message || "Unable to upload client quote", variant: "destructive" });
+      } finally {
+        setIsUploadingClientQuote(false);
+      }
+    },
+    [quoteId, mutateQuote, toast],
   );
 
   const _handleSaveMappings = useCallback(async () => {
@@ -402,7 +427,22 @@ export default function QuoteBuilderPage() {
         );
         if (signed?.url) window.open(signed.url, "_blank");
       } catch (err: any) {
-        toast({ title: "Unable to open file", description: err?.message || "Missing supplier file", variant: "destructive" });
+        toast({ title: "Unable to open file", description: err?.message || "Missing file", variant: "destructive" });
+      }
+    },
+    [quoteId, toast],
+  );
+
+  const handleOpenClientQuoteFile = useCallback(
+    async (file: SupplierFileDto) => {
+      if (!quoteId || !file?.id) return;
+      try {
+        const signed = await apiFetch<{ url: string }>(
+          `/quotes/${encodeURIComponent(quoteId)}/files/${encodeURIComponent(file.id)}/signed`,
+        );
+        if (signed?.url) window.open(signed.url, "_blank");
+      } catch (err: any) {
+        toast({ title: "Unable to open file", description: err?.message || "Missing client quote file", variant: "destructive" });
       }
     },
     [quoteId, toast],
@@ -502,6 +542,11 @@ export default function QuoteBuilderPage() {
                   </TabsList>
 
                   <TabsContent value="questionnaire" className="mt-6 space-y-4">
+                    <LeadDetailsCard 
+                      lead={lead}
+                      questionnaireAnswers={questionnaireAnswers}
+                    />
+                    
                     <QuestionnaireForm
                       fields={questionnaireFields}
                       answers={questionnaireAnswers}
@@ -511,6 +556,13 @@ export default function QuoteBuilderPage() {
                       onEstimateFromAnswers={handleQuestionnaireEstimate}
                       estimateSupported={Boolean(leadId)}
                       estimateDisabledReason={leadId ? undefined : "Quote is not linked to a lead."}
+                    />
+
+                    <ClientQuoteUploadCard
+                      files={quote?.clientQuoteFiles}
+                      onUpload={handleUploadClientQuoteFiles}
+                      onOpen={handleOpenClientQuoteFile}
+                      isUploading={isUploadingClientQuote}
                     />
                   </TabsContent>
 
