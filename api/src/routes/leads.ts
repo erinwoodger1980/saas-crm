@@ -835,6 +835,16 @@ router.patch("/:id", async (req, res) => {
       data.dateQuoteSent = now;
       nextCustom.dateQuoteSent = now.toISOString().split('T')[0];
     }
+
+    // Auto-set dateOrderPlaced when status changes to WON
+    if (nextUi === "WON" && prevUi !== "WON") {
+      const now = new Date();
+      // Store an ISO date string (YYYY-MM-DD) in custom for analytics/UI purposes
+      if (!nextCustom.dateOrderPlaced) {
+        nextCustom.dateOrderPlaced = now.toISOString().split('T')[0];
+      }
+      // Opportunity.wonAt is handled below in the opportunity upsert; keep both in sync conceptually
+    }
   }
 
   if (body.estimatedValue !== undefined) applyCanonical("estimatedValue", body.estimatedValue);
