@@ -156,17 +156,22 @@ router.get("/business-metrics", async (req, res) => {
         return sum + value;
       }, 0);
 
-      // Sales (won opportunities)
-      const sales = await prisma.opportunity.findMany({
-        where: { 
-          tenantId, 
-          wonAt: { gte: start, lte: end }
-        },
-        select: { valueGBP: true }
+      // Sales (won opportunities) - prefer lead.custom.dateOrderPlaced else fallback to wonAt
+      const salesOpps = await prisma.opportunity.findMany({
+        where: { tenantId },
+        select: { valueGBP: true, wonAt: true, lead: { select: { custom: true } } }
       });
-
-      const salesCount = sales.length;
-      const salesValue = sales.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
+      const salesFiltered = salesOpps.filter((opp) => {
+        const orderDateStr = (opp.lead?.custom as any)?.dateOrderPlaced as string | undefined;
+        if (orderDateStr) {
+          const dt = new Date(orderDateStr);
+          return dt >= start && dt <= end;
+        }
+        // fallback to wonAt
+        return !!opp.wonAt && opp.wonAt >= start && opp.wonAt <= end;
+      });
+      const salesCount = salesFiltered.length;
+      const salesValue = salesFiltered.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
 
       // Conversion rates by source for this month
       const leadsForSource = await prisma.lead.findMany({
@@ -271,16 +276,20 @@ router.get("/business-metrics", async (req, res) => {
     const ytdQuotesCount = ytdValidQuotes.length;
     const ytdQuotesValue = ytdValidQuotes.reduce((sum, lead) => sum + Number(lead.quotedValue || 0), 0);
 
-    const ytdSales = await prisma.opportunity.findMany({
-      where: { 
-        tenantId, 
-        wonAt: { gte: fyStart, lte: fyEnd }
-      },
-      select: { valueGBP: true }
+    const ytdSalesOpps = await prisma.opportunity.findMany({
+      where: { tenantId },
+      select: { valueGBP: true, wonAt: true, lead: { select: { custom: true } } }
     });
-
-    const ytdSalesCount = ytdSales.length;
-    const ytdSalesValue = ytdSales.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
+    const ytdSalesFiltered = ytdSalesOpps.filter((opp) => {
+      const orderDateStr = (opp.lead?.custom as any)?.dateOrderPlaced as string | undefined;
+      if (orderDateStr) {
+        const dt = new Date(orderDateStr);
+        return dt >= fyStart && dt <= fyEnd;
+      }
+      return !!opp.wonAt && opp.wonAt >= fyStart && opp.wonAt <= fyEnd;
+    });
+    const ytdSalesCount = ytdSalesFiltered.length;
+    const ytdSalesValue = ytdSalesFiltered.reduce((sum, s) => sum + Number(s.valueGBP || 0), 0);
 
     // Get or create targets for current financial year
     let targets = await prisma.target.findUnique({
@@ -381,12 +390,17 @@ router.get("/business-metrics", async (req, res) => {
       return false;
     });
 
-    const previousYearSales = await prisma.opportunity.findMany({
-      where: { 
-        tenantId, 
-        wonAt: { gte: previousFY.start, lte: previousFY.end }
-      },
-      select: { valueGBP: true }
+    const previousYearSalesOpps = await prisma.opportunity.findMany({
+      where: { tenantId },
+      select: { valueGBP: true, wonAt: true, lead: { select: { custom: true } } }
+    });
+    const previousYearSales = previousYearSalesOpps.filter((opp) => {
+      const orderDateStr = (opp.lead?.custom as any)?.dateOrderPlaced as string | undefined;
+      if (orderDateStr) {
+        const dt = new Date(orderDateStr);
+        return dt >= previousFY.start && dt <= previousFY.end;
+      }
+      return !!opp.wonAt && opp.wonAt >= previousFY.start && opp.wonAt <= previousFY.end;
     });
 
     const previousYear = {
