@@ -121,28 +121,20 @@ export default function TenantDetailPage() {
       }>(`/dev/tenants/${tenantId}/impersonate`, { method: "POST" });
       
       if (data.ok && data.token) {
-        // Clear ALL auth-related storage
-        localStorage.removeItem("jwt");
-        localStorage.removeItem("jauth");
+        // Clear ALL storage
+        localStorage.clear();
+        sessionStorage.clear();
         
-        // Clear existing cookies by setting them to expire immediately
+        // Set cookie options
         const secure = window.location.protocol === 'https:' ? '; Secure' : '';
         const domain = window.location.hostname.includes('joineryai.app') ? '; domain=.joineryai.app' : '';
+        const maxAge = 8 * 60 * 60; // 8 hours in seconds
         
-        // Delete old cookies
-        document.cookie = `jauth=; path=/; max-age=0; SameSite=Lax${secure}${domain}`;
-        document.cookie = `jid=; path=/; max-age=0; SameSite=Lax${secure}${domain}`;
-        document.cookie = `jwt=; path=/; max-age=0; SameSite=Lax${secure}${domain}`;
+        // Set the impersonation token (this will replace any existing jauth cookie)
+        document.cookie = `jauth=${data.token}; path=/; max-age=${maxAge}; SameSite=Lax${secure}${domain}`;
         
-        // Wait a moment for cookies to clear
-        setTimeout(() => {
-          // Set the NEW impersonation token
-          const maxAge = 8 * 60 * 60; // 8 hours in seconds
-          document.cookie = `jauth=${data.token}; path=/; max-age=${maxAge}; SameSite=Lax${secure}${domain}`;
-          
-          // Force full page reload to clear all state and use new session
-          window.location.href = "/dashboard";
-        }, 100);
+        // Redirect immediately - browser will send new cookie
+        window.location.replace("/dashboard");
       }
     } catch (e: any) {
       alert("Failed to impersonate: " + (e?.message || "Unknown error"));
