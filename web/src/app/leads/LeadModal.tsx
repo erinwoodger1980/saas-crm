@@ -3138,41 +3138,17 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   )}
                 </section>
 
-                {/* PDF Parser Tester */}
-                {showParseTester && (
-                  <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm backdrop-blur">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
-                        <span aria-hidden>🔬</span>
-                        PDF Parser Tester
-                      </div>
-                      <button
-                        type="button"
-                        className="text-xs text-amber-700 hover:text-amber-900"
-                        onClick={() => {
-                              )}
-
-                              {Array.isArray(it.photos) && it.photos.length ? (
-                                <div className="mt-2">
-                                  <div className="text-xs text-slate-500">Photos</div>
-                                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                                    {it.photos.map((p: any, pidx: number) => {
-                                      const dataUrl = p && p.base64 ? `data:${p.mimeType || "image/jpeg"};base64,${p.base64}` : null;
-                                      return (
-                                        <a key={pidx} href={dataUrl || "#"} download={p?.filename || `photo-${pidx + 1}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
-                                          <span aria-hidden>📷</span>
-                                          {p?.filename || `photo-${pidx + 1}`}
-                                        </a>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                {/* Material Tracking */}
+                <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm backdrop-blur">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
+                      <span aria-hidden>�</span>
+                      Material Tracking
                     </div>
+                    <button
+                      type="button"
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
+                      onClick={saveMaterialDates}
                   ) : null}
                 </div>
 
