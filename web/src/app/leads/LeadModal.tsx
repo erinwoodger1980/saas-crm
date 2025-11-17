@@ -43,7 +43,6 @@ export type Lead = {
   estimatedValue?: number | null;
   quotedValue?: number | null;
   dateQuoteSent?: string | null;
-  capturedAt?: string | null;
   computed?: Record<string, any> | null;
   communicationLog?: Array<{
     id: string;
@@ -275,19 +274,21 @@ function toIsoOrUndefined(localValue: string): string | undefined {
 
 /* ----------------------------- Component ----------------------------- */
 
+type Stage = 'client' | 'quote' | 'communication' | 'order' | 'tasks';
+
 export default function LeadModal({
   open,
   onOpenChange,
   leadPreview,
   onUpdated,
-  initialStage = 'overview',
+  initialStage = 'client',
   showFollowUp = false,
 }: {
   open: boolean;
   onOpenChange: (_v: boolean) => void;
   leadPreview: Lead | null;
   onUpdated?: () => void | Promise<void>;
-  initialStage?: 'overview' | 'details' | 'questionnaire' | 'tasks' | 'follow-up' | 'workshop';
+  initialStage?: Stage;
   showFollowUp?: boolean;
 }) {
   const ids = getAuthIdsFromJwt();
@@ -313,7 +314,7 @@ export default function LeadModal({
   const [taskAssignToMe, setTaskAssignToMe] = useState(true);
 
   // Stage navigation
-  const [currentStage, setCurrentStage] = useState<'client' | 'quote' | 'communication' | 'tasks' | 'order'>('client');
+  const [currentStage, setCurrentStage] = useState<Stage>(initialStage);
 
   // Form inputs
   const [nameInput, setNameInput] = useState("");
@@ -414,39 +415,36 @@ export default function LeadModal({
   );
 
   // Navigation stages configuration
-  // Always show follow-up tab for consistent UX across all leads
-  const _shouldShowFollowUp = true;
-  
-  const _stages = [
+  const stages = [
     {
-      id: 'overview' as const,
-      title: 'Overview',
-      icon: '👀',
-      description: 'Lead summary and actions'
+      id: 'client' as const,
+      title: 'Client details',
+      icon: '�',
+      description: 'Contact info and project details'
     },
     {
-      id: 'details' as const,
-      title: 'Details',
-      icon: '📝',
-      description: 'Contact info and notes'
+      id: 'quote' as const,
+      title: 'Quote Details',
+      icon: '�',
+      description: 'Questionnaire and quote information'
     },
     {
-      id: 'questionnaire' as const,
-      title: 'Questionnaire',
-      icon: '📋',
-      description: 'Client responses and data'
+      id: 'communication' as const,
+      title: 'Communication',
+      icon: '�',
+      description: 'Communication log and follow-ups'
+    },
+    {
+      id: 'order' as const,
+      title: 'Order',
+      icon: '🛠️',
+      description: 'Workshop processes and materials'
     },
     {
       id: 'tasks' as const,
       title: 'Tasks',
       icon: '✅',
-      description: 'Next steps and progress'
-    },
-    {
-      id: 'follow-up' as const,
-      title: 'Follow-up',
-      icon: '📧',
-      description: 'Email follow-ups and quotes'
+      description: 'Task list and progress'
     }
   ];
 
@@ -828,7 +826,7 @@ export default function LeadModal({
     } catch (e: any) {
       console.error("Workshop assignment error:", e);
       const message = e?.message || e?.detail || "Failed to save assignment";
-      alert(`Could not assign user to process: ${message}\n\nOpportunity ID: ${lead.id}\nPlease check your connection and try again.`);
+  alert(`Could not assign user to process: ${message}\n\nOpportunity ID: ${lead?.id ?? 'unknown'}\nPlease check your connection and try again.`);
     } finally {
       setWkSavingId(null);
     }
@@ -930,11 +928,11 @@ export default function LeadModal({
     }
   }, [open, leadPreview?.id, initialStage]);
 
-  // Load follow-up tasks when follow-up tab is opened
+  // Load follow-up tasks when communication tab is opened
   // Note: Inline the logic to avoid referencing a not-yet-initialized callback
   // which can trigger a Temporal Dead Zone error during render.
   useEffect(() => {
-    if (!(open && currentStage === 'follow-up' && lead?.id)) return;
+    if (!(open && currentStage === 'communication' && lead?.id)) return;
     let cancelled = false;
     (async () => {
       setLoadingFollowUpTasks(true);
@@ -1157,13 +1155,6 @@ export default function LeadModal({
       console.error("patch failed", e?.message || e);
       alert("Failed to save changes");
     }
-  }
-
-  function handleCustomFieldChange(key: string, value: any) {
-    if (!lead) return;
-    const updatedCustom = { ...lead.custom, [key]: value };
-    setLead(prev => prev ? { ...prev, custom: updatedCustom } : prev);
-    savePatch({ custom: updatedCustom });
   }
 
   async function addCommunicationNote() {
@@ -2328,31 +2319,37 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   const openTasks = tasks.filter(t => t.status !== "DONE");
 /* ----------------------------- Render ----------------------------- */
 
+   /* ----------------------------- Render ----------------------------- */
+
   if (!open || !lead) return null;
 
   const openCount = openTasks.length;
   const completedCount = tasks.length - openCount;
   const progress = tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0;
 
-  // (Removed unused StageNavigation component; navigation implemented inline below)
-
-  // Utility components
   const _StatusBadge = ({ status }: { status: Lead["status"] }) => (
-    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-      status === 'NEW_ENQUIRY' ? 'bg-blue-100 text-blue-800' :
-      status === 'INFO_REQUESTED' ? 'bg-yellow-100 text-yellow-800' :
-      status === 'READY_TO_QUOTE' ? 'bg-green-100 text-green-800' :
-      status === 'QUOTE_SENT' ? 'bg-purple-100 text-purple-800' :
-      status === 'WON' ? 'bg-emerald-100 text-emerald-800' :
-      status === 'LOST' ? 'bg-red-100 text-red-800' :
-      status === 'REJECTED' ? 'bg-gray-100 text-gray-800' :
-      'bg-gray-100 text-gray-800'
-    }`}>
+    <span
+      className={`px-2 py-1 text-xs font-medium rounded-full ${
+        status === "NEW_ENQUIRY"
+          ? "bg-blue-100 text-blue-800"
+          : status === "INFO_REQUESTED"
+          ? "bg-yellow-100 text-yellow-800"
+          : status === "READY_TO_QUOTE"
+          ? "bg-green-100 text-green-800"
+          : status === "QUOTE_SENT"
+          ? "bg-purple-100 text-purple-800"
+          : status === "WON"
+          ? "bg-emerald-100 text-emerald-800"
+          : status === "LOST"
+          ? "bg-red-100 text-red-800"
+          : status === "REJECTED"
+          ? "bg-gray-100 text-gray-800"
+          : "bg-gray-100 text-gray-800"
+      }`}
+    >
       {STATUS_LABELS[status]}
     </span>
   );
-
-  // (Removed unused StatusPipeline component)
 
   const _formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return "Unknown";
@@ -2363,8 +2360,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   };
 
-  // (Removed unused OverviewStage, DetailsStage, QuestionnaireStage, and TasksStage components)
-
   return (
     <div
       className="fixed inset-0 z-[60] bg-gradient-to-br from-sky-500/30 via-indigo-700/20 to-rose-500/30 backdrop-blur flex items-center justify-center px-3 py-6"
@@ -2372,9 +2367,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       aria-modal="true"
       onClick={(e) => e.target === e.currentTarget && onOpenChange(false)}
     >
-        <div className="relative flex h-[min(88vh,calc(100vh-3rem))] w-[min(1000px,92vw)] max-h-[88vh] flex-col overflow-hidden rounded-3xl border border-white/30 bg-white/85 shadow-[0_32px_70px_-35px_rgba(30,64,175,0.45)] backdrop-blur-xl">
-        <div aria-hidden="true" className="pointer-events-none absolute -top-16 -left-10 h-52 w-52 rounded-full bg-sky-200/60 blur-3xl" />
-        <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-rose-200/60 blur-3xl" />
+      <div className="relative flex h-[min(88vh,calc(100vh-3rem))] w-[min(1000px,92vw)] max-h-[88vh] flex-col overflow-hidden rounded-3xl border border-white/30 bg-white/85 shadow-[0_32px_70px_-35px_rgba(30,64,175,0.45)] backdrop-blur-xl">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-16 -left-10 h-52 w-52 rounded-full bg-sky-200/60 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-rose-200/60 blur-3xl"
+        />
+
         {/* Header */}
         <div className="relative flex flex-wrap items-center gap-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-100 via-white to-rose-100 px-4 sm:px-6 py-4">
           <div className="inline-grid place-items-center h-11 w-11 rounded-2xl bg-white/80 text-[12px] font-semibold text-slate-700 border border-sky-200 shadow-sm">
@@ -2387,19 +2389,21 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             <div className="text-xs text-slate-500 truncate">{lead.email || ""}</div>
           </div>
 
-          <label className="text-xs font-medium text-slate-600 mr-2">Status</label>
-          <select
-            value={uiStatus}
-            className="rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            onChange={handleStatusChange}
-            disabled={saving}
-          >
-            {(Object.keys(STATUS_LABELS) as Lead["status"][]).map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-slate-600">Status</label>
+            <select
+              value={uiStatus}
+              className="rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onChange={handleStatusChange}
+              disabled={saving}
+            >
+              {(Object.keys(STATUS_LABELS) as Lead["status"][]).map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <Button
             variant="default"
@@ -2419,44 +2423,33 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             🗑️ Delete
           </Button>
 
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            disabled={saving || loading}
-          >
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving || loading}>
             Close
           </Button>
         </div>
 
         {/* Stage Navigation */}
         <div className="flex gap-1 rounded-xl bg-slate-100/80 p-1 mx-6 mt-4">
-          {[
-            { key: "client", label: "Client Details", icon: "�", description: "Contact information" },
-            { key: "quote", label: "Quote Details", icon: "�", description: "Quotation and requirements" },
-            { key: "communication", label: "Communication", icon: "�", description: "Calls, emails, notes" },
-            { key: "tasks", label: "Tasks", icon: "✅", description: "Action items" },
-            ...(uiStatus === 'WON' ? [{ key: "order" as const, label: "Order", icon: "🛠️", description: "Production details" }] : []),
-          ].map((stage) => (
+          {stages.map((stage) => (
             <button
-              key={stage.key}
-              onClick={() => setCurrentStage(stage.key as typeof currentStage)}
-              className={`
-                flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200
-                ${currentStage === stage.key
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                }
-              `}
+              key={stage.id}
+              onClick={() => setCurrentStage(stage.id)}
+              className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                currentStage === stage.id
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+              }`}
+              title={stage.description}
             >
               <div className="flex items-center justify-center gap-2">
                 <span>{stage.icon}</span>
-                <span className="hidden sm:inline">{stage.label}</span>
+                <span className="hidden sm:inline">{stage.title}</span>
               </div>
             </button>
           ))}
         </div>
 
-        {/* Actions */}
+        {/* Global Actions */}
         <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-50 via-indigo-50 to-amber-50 text-slate-700">
           {uiStatus === "NEW_ENQUIRY" && (
             <DeclineEnquiryButton
@@ -2506,57 +2499,74 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             <span aria-hidden="true">📎</span>
             Upload Supplier Quote
           </Button>
+
+          <Button
+            variant="outline"
+            onClick={_testSupplierParse}
+            disabled={_parseTesterBusy || saving}
+            title="Test supplier PDF parsing on the latest uploaded file"
+          >
+            <span aria-hidden="true">🧪</span>
+            Test Supplier Parse
+          </Button>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
-          {/* Stage-based Content */}
-          {currentStage === 'client' && (
+          {/* CLIENT STAGE */}
+          {currentStage === "client" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
-              <div className="max-w-4xl mx-auto">
-                <section className="rounded-2xl border border-sky-100 bg-white/90 p-6 shadow-sm backdrop-blur">
-                  <div className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-6">
-                    <span aria-hidden="true">👤</span>
-                    Client Details
-                  </div>
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Name *</span>
-                        <input
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={nameInput}
-                          onChange={(e) => setNameInput(e.target.value)}
-                          onBlur={() => {
-                            setLead((l) => (l ? { ...l, contactName: nameInput || null } : l));
-                            savePatch({ contactName: nameInput || null });
-                          }}
-                          placeholder="Client name"
-                        />
-                      </label>
-
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Email</span>
-                        <input
-                          type="email"
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={emailInput}
-                          onChange={(e) => setEmailInput(e.target.value)}
-                          onBlur={() => {
-                            setLead((l) => (l ? { ...l, email: emailInput || null } : l));
-                            savePatch({ email: emailInput || null });
-                          }}
-                          placeholder="client@email.com"
-                        />
-                      </label>
+              <div className="max-w-4xl mx-auto space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Lead details */}
+                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                      <span aria-hidden="true">👤</span>
+                      Lead Details
                     </div>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            Name
+                          </span>
+                          <input
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                            value={nameInput}
+                            onChange={(e) => setNameInput(e.target.value)}
+                            onBlur={() => {
+                              setLead((l) => (l ? { ...l, contactName: nameInput || null } : l));
+                              savePatch({ contactName: nameInput || null });
+                            }}
+                            placeholder="Client name"
+                          />
+                        </label>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <label className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            Email
+                          </span>
+                          <input
+                            type="email"
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                            value={emailInput}
+                            onChange={(e) => setEmailInput(e.target.value)}
+                            onBlur={() => {
+                              setLead((l) => (l ? { ...l, email: emailInput || null } : l));
+                              savePatch({ email: emailInput || null });
+                            }}
+                            placeholder="client@email.com"
+                          />
+                        </label>
+                      </div>
+
                       <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Phone</span>
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          Phone
+                        </span>
                         <input
                           type="tel"
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
                           value={phoneInput}
                           onChange={(e) => setPhoneInput(e.target.value)}
                           onBlur={() => {
@@ -2568,936 +2578,1113 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       </label>
 
                       <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Source</span>
-                        <LeadSourcePicker
-                          leadId={lead?.id || ''}
-                          value={(lead?.custom as any)?.source || ''}
-                          onSaved={(val) => handleCustomFieldChange('source', val)}
-                        />
-                      </label>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Address</span>
-                        <input
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={(lead?.custom as any)?.address || ''}
-                          onChange={(e) => handleCustomFieldChange('address', e.target.value)}
-                          placeholder="Client address"
-                        />
-                      </label>
-
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Type</span>
-                        <select
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={(lead?.custom as any)?.type || ''}
-                          onChange={(e) => handleCustomFieldChange('type', e.target.value)}
-                        >
-                          <option value="">Select type...</option>
-                          <option value="residential">Residential</option>
-                          <option value="commercial">Commercial</option>
-                          <option value="industrial">Industrial</option>
-                        </select>
-                      </label>
-                    </div>
-
-                    <label className="text-sm">
-                      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Date Received</span>
-                      <input
-                        type="date"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                        value={lead?.capturedAt ? new Date(lead.capturedAt).toISOString().split('T')[0] : ''}
-                        readOnly
-                      />
-                    </label>
-
-                    <label className="text-sm">
-                      <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Project Description</span>
-                      <textarea
-                        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 min-h-32 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                        value={descInput}
-                        onChange={(e) => setDescInput(e.target.value)}
-                        onBlur={() => {
-                          setLead((l) => (l ? { ...l, description: descInput || null } : l));
-                          savePatch({ description: descInput || null });
-                        }}
-                        placeholder="Project background, requirements, constraints…"
-                      />
-                    </label>
-                  </div>
-                </section>
-              </div>
-            </div>
-          )}
-
-          {currentStage === 'quote' && (
-            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh] overflow-y-auto">
-              <div className="max-w-4xl mx-auto space-y-6">
-                {/* Quote Information Section */}
-                <section className="rounded-2xl border border-sky-100 bg-white/90 p-6 shadow-sm backdrop-blur">
-                  <div className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-6">
-                    <span aria-hidden="true">💰</span>
-                    Quote Information
-                  </div>
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">JMS No</span>
-                        <input
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={(lead?.custom as any)?.jmsNo || ''}
-                          onChange={(e) => handleCustomFieldChange('jmsNo', e.target.value)}
-                          placeholder="JMS reference number"
-                        />
-                      </label>
-
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Quoted By</span>
-                        <input
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={(lead?.custom as any)?.quotedBy || ''}
-                          onChange={(e) => handleCustomFieldChange('quotedBy', e.target.value)}
-                          placeholder="Person who quoted"
-                        />
-                      </label>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Estimated Value (£)</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={lead?.estimatedValue || ''}
-                          onChange={(e) => {
-                            const val = e.target.value ? parseFloat(e.target.value) : null;
-                            setLead((l) => (l ? { ...l, estimatedValue: val } : l));
-                            savePatch({ estimatedValue: val });
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          Project Description
+                        </span>
+                        <textarea
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-24 shadow-inner"
+                          value={descInput}
+                          onChange={(e) => setDescInput(e.target.value)}
+                          onBlur={() => {
+                            setLead((l) => (l ? { ...l, description: descInput || null } : l));
+                            savePatch({ description: descInput || null });
                           }}
-                          placeholder="0.00"
-                        />
-                      </label>
-
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Quoted Value (£)</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={lead?.quotedValue || ''}
-                          onChange={(e) => {
-                            const val = e.target.value ? parseFloat(e.target.value) : null;
-                            setLead((l) => (l ? { ...l, quotedValue: val } : l));
-                            savePatch({ quotedValue: val });
-                          }}
-                          placeholder="0.00"
+                          placeholder="Project background, requirements, constraints…"
                         />
                       </label>
                     </div>
+                  </section>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Where Manufactured</span>
-                        <input
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={(lead?.custom as any)?.manufactureLocation || ''}
-                          onChange={(e) => handleCustomFieldChange('manufactureLocation', e.target.value)}
-                          placeholder="Manufacturing location"
-                        />
-                      </label>
+                  {/* Workspace fields */}
+                  {workspaceFields.length > 0 && (
+                    <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                        <span aria-hidden="true">🗂️</span>
+                        Project Details
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {workspaceFields.map((field) => {
+                          const key = field.key;
+                          if (!key) return null;
+                          const value = customDraft[key] ?? "";
+                          const label = field.label || key;
+                          const baseClasses =
+                            "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner focus:outline-none focus:ring-2 focus:ring-sky-200";
 
-                      <label className="text-sm">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Date Quote Sent</span>
-                        <input
-                          type="date"
-                          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                          value={lead?.dateQuoteSent ? new Date(lead.dateQuoteSent).toISOString().split('T')[0] : ''}
-                          onChange={(e) => {
-                            const val = e.target.value ? new Date(e.target.value).toISOString() : null;
-                            setLead((l) => (l ? { ...l, dateQuoteSent: val } : l));
-                            savePatch({ dateQuoteSent: val });
-                          }}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                </section>
+                          if (field.type === "source") {
+                            return (
+                              <div key={key} className="space-y-1">
+                                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                  {label}
+                                </div>
+                                <LeadSourcePicker
+                                  leadId={lead.id}
+                                  value={typeof customData?.[key] === "string" ? customData[key] : null}
+                                  onSaved={(next) => {
+                                    const nextStr = next ?? "";
+                                    setCustomDraft((prev) => ({ ...prev, [key]: nextStr }));
+                                    setLead((current) => {
+                                      if (!current) return current;
+                                      const prevCustom =
+                                        current.custom && typeof current.custom === "object"
+                                          ? { ...(current.custom as Record<string, any>) }
+                                          : {};
+                                      prevCustom[key] = next ?? null;
+                                      return { ...current, custom: prevCustom };
+                                    });
+                                  }}
+                                />
+                              </div>
+                            );
+                          }
 
-                {/* Questionnaire Responses Section */}
-                <section className="rounded-2xl border border-sky-100 bg-white/90 p-6 shadow-sm backdrop-blur">
-                  <div className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-6">
-                    <span aria-hidden="true">📋</span>
-                    Questionnaire Responses
-                  </div>
-                  {questionnaireFields.length === 0 ? (
-                    <p className="text-sm text-slate-600">No questionnaire configured.</p>
-                  ) : (
-                    <div className="space-y-5">
-                      {questionnaireFields.filter(f => f.showOnLead && !f.internalOnly).map((field) => {
-                        const value = (lead?.custom as any)?.[field.key] || '';
-                        return (
-                          <label key={field.id} className="text-sm block">
-                            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">
-                              {field.label}
-                              {field.required && <span className="text-rose-500"> *</span>}
-                            </span>
-                            {field.type === 'textarea' ? (
-                              <textarea
-                                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 min-h-24 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                                value={value}
-                                onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
-                                placeholder={field.label}
-                              />
-                            ) : field.type === 'select' ? (
-                              <select
-                                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                                value={value}
-                                onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
-                              >
-                                <option value="">Select...</option>
-                                {field.options.map(opt => (
-                                  <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                              </select>
-                            ) : (
+                          if (field.type === "textarea") {
+                            return (
+                              <label key={key} className="text-sm col-span-2">
+                                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                  {label}
+                                  {field.required && <span className="text-rose-500"> *</span>}
+                                </span>
+                                <textarea
+                                  className={`${baseClasses} min-h-28`}
+                                  value={value}
+                                  onChange={(e) =>
+                                    setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))
+                                  }
+                                  onBlur={(e) => saveCustomField(field, e.target.value)}
+                                />
+                              </label>
+                            );
+                          }
+
+                          if (field.type === "select") {
+                            return (
+                              <label key={key} className="text-sm">
+                                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                  {label}
+                                  {field.required && <span className="text-rose-500"> *</span>}
+                                </span>
+                                <select
+                                  className={baseClasses}
+                                  value={value}
+                                  onChange={(e) => {
+                                    const nextVal = e.target.value;
+                                    setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
+                                    saveCustomField(field, nextVal);
+                                  }}
+                                >
+                                  <option value="">Select…</option>
+                                  {field.options.map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            );
+                          }
+
+                          if (field.type === "date") {
+                            return (
+                              <label key={key} className="text-sm">
+                                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                  {label}
+                                  {field.required && <span className="text-rose-500"> *</span>}
+                                </span>
+                                <input
+                                  type="date"
+                                  className={baseClasses}
+                                  value={value}
+                                  onChange={(e) => {
+                                    const nextVal = e.target.value;
+                                    setCustomDraft((prev) => ({ ...prev, [key]: nextVal }));
+                                    saveCustomField(field, nextVal);
+                                  }}
+                                />
+                              </label>
+                            );
+                          }
+
+                          const inputType = field.type === "number" ? "number" : "text";
+                          return (
+                            <label key={key} className="text-sm">
+                              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                                {label}
+                                {field.required && <span className="text-rose-500"> *</span>}
+                              </span>
                               <input
-                                type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                                type={inputType}
+                                className={baseClasses}
                                 value={value}
-                                onChange={(e) => handleCustomFieldChange(field.key, e.target.value)}
-                                placeholder={field.label}
+                                onChange={(e) =>
+                                  setCustomDraft((prev) => ({ ...prev, [key]: e.target.value }))
+                                }
+                                onBlur={(e) => saveCustomField(field, e.target.value)}
                               />
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </section>
                   )}
-                </section>
+                </div>
               </div>
             </div>
           )}
 
-          {currentStage === 'communication' && (
+          {/* QUOTE / QUESTIONNAIRE STAGE */}
+          {currentStage === "quote" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
-              <div className="max-w-4xl mx-auto">
-                <section className="rounded-2xl border border-sky-100 bg-white/90 p-6 shadow-sm backdrop-blur">
-                  <div className="flex items-center gap-2 text-lg font-semibold text-slate-900 mb-6">
+              <div className="max-w-4xl mx-auto space-y-6">
+                {(emailSubject || emailSnippet || fromEmail) && (
+                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <span aria-hidden="true">💌</span>
+                      Latest email
+                    </div>
+                    <div className="mt-3 text-sm text-slate-700 space-y-1">
+                      {fromEmail && (
+                        <div>
+                          <span className="text-slate-400">From:</span> {String(fromEmail)}
+                        </div>
+                      )}
+                      {emailSubject && (
+                        <div>
+                          <span className="text-slate-400">Subject:</span> {emailSubject}
+                        </div>
+                      )}
+                      {emailSnippet && <div className="text-slate-600">{emailSnippet}</div>}
+                    </div>
+                  </section>
+                )}
+
+                {(settings?.slug || questionnaireFields.length > 0) && (
+                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <span aria-hidden="true">🧾</span>
+                      {(Array.isArray(settings?.questionnaire)
+                        ? null
+                        : settings?.questionnaire?.title) || "Questionnaire"}
+                    </div>
+
+                    {questionnaireSubmittedAt && (
+                      <div className="mt-2 text-xs text-slate-500">
+                        Submitted {new Date(questionnaireSubmittedAt).toLocaleString()}
+                      </div>
+                    )}
+
+                    <div className="mt-4 space-y-3">
+                      {questionnaireResponses.length ? (
+                        <dl className="space-y-3">
+                          {questionnaireResponses.map(({ field, value }, idx) => {
+                            const k = field.key || field.id || String(idx);
+                            const isEditing = !!qEdit[k];
+                            const draftVal = customDraft[k] ?? (value ?? "");
+                            const inputClasses =
+                              "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200";
+                            return (
+                              <div
+                                key={k}
+                                className="rounded-xl border border-slate-200/70 bg-white/70 p-3"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    {field.label || field.key || field.id}
+                                    {field.required && <span className="text-rose-500"> *</span>}
+                                  </dt>
+                                  <button
+                                    type="button"
+                                    className="text-xs font-semibold text-sky-600 hover:underline"
+                                    onClick={() => {
+                                      if (isEditing) {
+                                        toggleQEdit(k, false);
+                                      } else {
+                                        if (value !== undefined) {
+                                          setCustomDraft((prev) => ({
+                                            ...prev,
+                                            [k]: value ?? "",
+                                          }));
+                                        }
+                                        toggleQEdit(k, true);
+                                      }
+                                    }}
+                                  >
+                                    {isEditing ? "Cancel" : "Edit"}
+                                  </button>
+                                </div>
+                                <dd className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
+                                  {isEditing ? (
+                                    field.type === "textarea" ? (
+                                      <textarea
+                                        className={`${inputClasses} min-h-[100px]`}
+                                        value={draftVal}
+                                        onChange={(e) =>
+                                          setCustomDraft((prev) => ({
+                                            ...prev,
+                                            [k]: e.target.value,
+                                          }))
+                                        }
+                                        onBlur={async (e) => {
+                                          await saveCustomField(field as any, e.target.value);
+                                          toggleQEdit(k, false);
+                                        }}
+                                      />
+                                    ) : (
+                                      <input
+                                        className={inputClasses}
+                                        type={
+                                          field.type === "number"
+                                            ? "number"
+                                            : field.type === "date"
+                                            ? "date"
+                                            : "text"
+                                        }
+                                        value={draftVal}
+                                        onChange={(e) =>
+                                          setCustomDraft((prev) => ({
+                                            ...prev,
+                                            [k]: e.target.value,
+                                          }))
+                                        }
+                                        onBlur={async (e) => {
+                                          await saveCustomField(field as any, e.target.value);
+                                          toggleQEdit(k, false);
+                                        }}
+                                      />
+                                    )
+                                  ) : (
+                                    value ?? (
+                                      <span className="text-slate-400">Not provided</span>
+                                    )
+                                  )}
+                                </dd>
+                              </div>
+                            );
+                          })}
+                        </dl>
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-white/60 p-3 text-sm text-slate-500">
+                          Waiting for the client to complete the form.
+                        </div>
+                      )}
+
+                      {questionnaireUploads.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Attachments
+                          </div>
+                          <ul className="space-y-2 text-sm">
+                            {questionnaireUploads.map((file, idx) => {
+                              const dataUrl = `data:${file.mimeType};base64,${file.base64}`;
+                              return (
+                                <li
+                                  key={`${file.filename}-${idx}`}
+                                  className="flex flex-wrap items-center gap-2"
+                                >
+                                  <a
+                                    href={dataUrl}
+                                    download={file.filename}
+                                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white"
+                                  >
+                                    <span aria-hidden="true">📎</span>
+                                    {file.filename}
+                                  </a>
+                                  {typeof file.sizeKB === "number" && (
+                                    <span className="text-xs text-slate-500">
+                                      {file.sizeKB.toLocaleString()} KB
+                                    </span>
+                                  )}
+                                  {file.addedAt && (
+                                    <span className="text-xs text-slate-400">
+                                      added {new Date(file.addedAt).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+
+                      {questionnaireItems.length > 0 && (
+                        <div className="mt-4">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Items
+                          </div>
+                          <div className="mt-2 space-y-3">
+                            {questionnaireItems.map((it: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="rounded-xl border border-slate-200/70 bg-white/70 p-3"
+                              >
+                                <div className="text-sm font-semibold">Item {idx + 1}</div>
+                                <div className="mt-2 text-sm text-slate-700 space-y-1">
+                                  {Object.keys(it || {}).length === 0 ? (
+                                    <div className="text-xs text-slate-400">No details</div>
+                                  ) : (
+                                    Object.entries(it).map(([k, v]) => {
+                                      if (k === "photos") return null;
+                                      return (
+                                        <div key={k} className="flex items-start gap-2">
+                                          <div className="text-xs text-slate-500 w-28">
+                                            {String(k)}
+                                          </div>
+                                          <div className="text-sm text-slate-700 break-words">
+                                            {formatAnswer(v) ?? ""}
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  )}
+
+                                  {Array.isArray(it.photos) && it.photos.length > 0 && (
+                                    <div className="mt-2">
+                                      <div className="text-xs text-slate-500">Photos</div>
+                                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        {it.photos.map((p: any, pidx: number) => {
+                                          const dataUrl =
+                                            p && p.base64
+                                              ? `data:${p.mimeType || "image/jpeg"};base64,${
+                                                  p.base64
+                                                }`
+                                              : null;
+                                          return (
+                                            <a
+                                              key={pidx}
+                                              href={dataUrl || "#"}
+                                              download={p?.filename || `photo-${pidx + 1}`}
+                                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white"
+                                            >
+                                              <span aria-hidden>📷</span>
+                                              {p?.filename || `photo-${pidx + 1}`}
+                                            </a>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {settings?.slug && (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <a
+                          href={`/q/${settings.slug}/${encodeURIComponent(lead.id)}`}
+                          className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white/80 px-3 py-1.5 text-sm font-semibold text-sky-600 shadow-sm hover:bg-white"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <span aria-hidden="true">🔗</span>
+                          Open public questionnaire
+                        </a>
+                      </div>
+                    )}
+                  </section>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* COMMUNICATION / FOLLOW-UP STAGE */}
+          {currentStage === "communication" && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-blue-50/70 to-indigo-50/60 min-h-[60vh]">
+              <div className="max-w-6xl mx-auto space-y-6">
+                {/* Communication Log */}
+                <section className="rounded-xl border p-4 bg-white/90 shadow-sm">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
                     <span aria-hidden="true">💬</span>
                     Communication Log
                   </div>
-                  <div className="space-y-5">
-                    {/* Add Communication Form */}
-                    <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                      <div className="space-y-4">
-                        <label className="text-sm">
-                          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Type</span>
-                          <select
-                            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                            value={communicationType}
-                            onChange={(e) => setCommunicationType(e.target.value as 'call' | 'email' | 'note')}
-                          >
-                            <option value="note">📝 Note</option>
-                            <option value="call">📞 Phone Call</option>
-                            <option value="email">📧 Email</option>
-                          </select>
-                        </label>
-
-                        <label className="text-sm">
-                          <span className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">
-                            {communicationType === 'call' ? 'Call Summary' : 
-                             communicationType === 'email' ? 'Email Summary' : 'Note'}
-                          </span>
-                          <textarea
-                            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 min-h-24 text-sm focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                            value={newNote}
-                            onChange={(e) => setNewNote(e.target.value)}
-                            placeholder={
-                              communicationType === 'call' ? 'What was discussed during the call?' :
-                              communicationType === 'email' ? 'Email sent/received summary' :
-                              'Add a note about this lead...'
-                            }
-                          />
-                        </label>
-
-                        <Button
-                          className="w-full"
-                          onClick={addCommunicationNote}
-                          disabled={!newNote.trim()}
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-3">
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          Type
+                        </span>
+                        <select
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                          value={communicationType}
+                          onChange={(e) =>
+                            setCommunicationType(
+                              e.target.value as "call" | "email" | "note"
+                            )
+                          }
                         >
-                          {communicationType === 'call' ? '📞 Log Call' : 
-                           communicationType === 'email' ? '📧 Log Email' : '📝 Add Note'}
-                        </Button>
-                      </div>
+                          <option value="note">📝 Note</option>
+                          <option value="call">📞 Phone Call</option>
+                          <option value="email">📧 Email</option>
+                        </select>
+                      </label>
+
+                      <label className="text-sm">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                          {communicationType === "call"
+                            ? "Call Summary"
+                            : communicationType === "email"
+                            ? "Email Summary"
+                            : "Note"}
+                        </span>
+                        <textarea
+                          className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-3 min-h-20 shadow-inner"
+                          value={newNote}
+                          onChange={(e) => setNewNote(e.target.value)}
+                          placeholder={
+                            communicationType === "call"
+                              ? "What was discussed during the call?"
+                              : communicationType === "email"
+                              ? "Email sent/received summary"
+                              : "Add a note about this lead..."
+                          }
+                        />
+                      </label>
+
+                      <Button
+                        className="w-full"
+                        onClick={addCommunicationNote}
+                        disabled={!newNote.trim()}
+                      >
+                        {communicationType === "call"
+                          ? "📞 Log Call"
+                          : communicationType === "email"
+                          ? "📧 Log Email"
+                          : "📝 Add Note"}
+                      </Button>
                     </div>
 
-                    {/* Communication History */}
-                    <div>
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">Communication History</h4>
-                      {lead?.communicationLog && lead.communicationLog.length > 0 ? (
-                        <div className="space-y-3">
+                    {lead?.communicationLog && lead.communicationLog.length > 0 && (
+                      <div className="space-y-3 pt-4 border-t border-slate-200">
+                        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Recent Communications
+                        </h4>
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
                           {lead.communicationLog.map((entry) => (
-                            <div key={entry.id} className="p-4 bg-white rounded-lg border border-slate-200 shadow-sm">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-lg">
-                                  {entry.type === 'call' ? '📞' : entry.type === 'email' ? '📧' : '📝'}
+                            <div
+                              key={entry.id}
+                              className="p-3 bg-slate-50 rounded-lg border border-slate-200"
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs">
+                                  {entry.type === "call"
+                                    ? "📞"
+                                    : entry.type === "email"
+                                    ? "📧"
+                                    : "📝"}
                                 </span>
-                                <span className="text-sm font-medium capitalize">{entry.type}</span>
-                                <span className="text-sm text-slate-500 ml-auto">
-                                  {new Date(entry.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} at {new Date(entry.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                <span className="text-xs font-medium capitalize">
+                                  {entry.type}
+                                </span>
+                                <span className="text-xs text-slate-500 ml-auto">
+                                  {new Date(entry.timestamp).toLocaleDateString()}{" "}
+                                  {new Date(entry.timestamp).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
                                 </span>
                               </div>
-                              <p className="text-sm text-slate-700 whitespace-pre-wrap">{entry.content}</p>
+                              <p className="text-sm text-slate-700">{entry.content}</p>
                             </div>
                           ))}
                         </div>
-                      ) : (
-                        <p className="text-sm text-slate-500 italic">No communications logged yet.</p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {/* Follow-up scheduling + tasks */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Schedule Follow-up */}
+                  <section className="rounded-xl border p-4 bg-white/90 shadow-sm">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                      Schedule Follow-up Tasks
+                    </h3>
+
+                    {/* Email Follow-up */}
+                    <div className="p-3 border rounded-lg bg-slate-50 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span>📧</span>
+                        <span className="font-medium text-sm">Email Follow-up</span>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block">
+                          <div className="text-xs text-slate-600 mb-1">When to send</div>
+                          <select
+                            className="w-full rounded border bg-white p-2 text-sm"
+                            value={emailTaskDays}
+                            onChange={(e) => setEmailTaskDays(e.target.value)}
+                          >
+                            <option value="1">Tomorrow</option>
+                            <option value="3">In 3 days</option>
+                            <option value="7">In 1 week</option>
+                            <option value="14">In 2 weeks</option>
+                          </select>
+                        </label>
+                        <button
+                          className="w-full rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          disabled={creatingEmailTask}
+                          onClick={createEmailTask}
+                        >
+                          {creatingEmailTask ? "Creating..." : "Create Email Task"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Phone Follow-up */}
+                    <div className="p-3 border rounded-lg bg-slate-50 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span>📞</span>
+                        <span className="font-medium text-sm">Phone Follow-up</span>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block">
+                          <div className="text-xs text-slate-600 mb-1">When to call</div>
+                          <select
+                            className="w-full rounded border bg-white p-2 text-sm"
+                            value={phoneTaskDays}
+                            onChange={(e) => setPhoneTaskDays(e.target.value)}
+                          >
+                            <option value="1">Tomorrow</option>
+                            <option value="2">In 2 days</option>
+                            <option value="5">In 5 days</option>
+                            <option value="7">In 1 week</option>
+                          </select>
+                        </label>
+                        <button
+                          className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          disabled={creatingPhoneTask}
+                          onClick={createPhoneTask}
+                        >
+                          {creatingPhoneTask ? "Creating..." : "Create Phone Task"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Auto sequence */}
+                    <div className="pt-3 border-t">
+                      <button
+                        className="w-full rounded bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                        disabled={creatingSequence}
+                        onClick={createFollowupSequence}
+                      >
+                        {creatingSequence
+                          ? "Creating..."
+                          : "Auto-schedule Follow-up Sequence"}
+                      </button>
+                      <div className="text-xs text-slate-500 mt-1 text-center">
+                        Creates email task (3 days) + phone task (1 week)
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Scheduled follow-up tasks */}
+                  <section className="rounded-xl border p-4 bg-white">
+                    <div className="mb-2 text-sm font-semibold text-slate-900 flex items-center justify-between">
+                      <span>Scheduled Tasks</span>
+                      {loadingFollowUpTasks && (
+                        <span className="text-xs text-slate-500">Loading...</span>
                       )}
                     </div>
-                  </div>
-                </section>
-              </div>
-            </div>
-          )}
 
-          {/* Tasks Tab */}
-          {currentStage === 'tasks' && (
-            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
-              <div className="max-w-6xl mx-auto">
-                {/* Tasks Section - Full Width */}
-                <div className="rounded-2xl border border-indigo-100 bg-white/80 p-6 shadow-sm backdrop-blur">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-2 font-semibold text-slate-900">
-                      <span aria-hidden="true">⭐</span>
-                      Task journey
-                    </div>
-                    <div className="text-xs text-slate-500">{openCount} open</div>
-                  </div>
-                  
-                  {/* Progress Bar */}
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-2">
-                      <span>{completedCount} completed</span>
-                      <span>{progress}%</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-slate-100">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 transition-all"
-                        style={{ width: `${progress}%` }}
-                        aria-hidden="true"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Task List */}
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {tasks.map((t) => {
-                      let bgColor = "bg-slate-50";
-                      if (t.status === "DONE") bgColor = "bg-emerald-50";
-                      else if (t.status === "IN_PROGRESS") bgColor = "bg-blue-50";
-                      else if (t.status === "BLOCKED") bgColor = "bg-rose-50";
-                      else if (t.priority === "URGENT") bgColor = "bg-orange-50";
-
-                      return (
-                        <div
-                          key={t.id}
-                          className={`rounded-xl border border-slate-200 ${bgColor} p-4 transition-colors hover:shadow-sm cursor-pointer`}
-                          onClick={() => {
-                            // Optional: Add task detail modal functionality here
-                          }}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <label className="inline-flex items-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={t.status === "DONE"}
-                                    onChange={() => toggleTaskComplete(t)}
-                                    className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
-                                    aria-label={`Complete ${t.title}`}
-                                  />
-                                </label>
-                                <div className="text-sm font-semibold text-slate-900 leading-snug">
-                                  {t.title}
-                                </div>
-                              </div>
-                              {t.description && (
-                                <div className="text-xs text-slate-600 mb-2 line-clamp-2">
-                                  {t.description}
-                                </div>
-                              )}
-                              <div className="flex flex-wrap items-center gap-1">
-                                <span
-                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                                    t.status === "DONE"
-                                      ? "bg-emerald-100 text-emerald-700"
-                                      : t.status === "IN_PROGRESS"
-                                      ? "bg-blue-100 text-blue-700"
-                                      : t.status === "BLOCKED"
-                                      ? "bg-rose-100 text-rose-700"
-                                      : "bg-slate-100 text-slate-700"
-                                  }`}
-                                >
-                                  {(() => {
-                                    if (t.status === "DONE") return "✓";
-                                    if (t.status === "IN_PROGRESS") return "⏳";
-                                    if (t.status === "BLOCKED") return "⚠";
-                                    return "○";
-                                  })()}
-                                  <span className="ml-1">
-                                    {t.status === "IN_PROGRESS" ? "In progress" : t.status.toLowerCase()}
-                                  </span>
-                                </span>
-                                <span
-                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                                    t.priority === "URGENT"
-                                      ? "bg-rose-100 text-rose-700"
-                                      : t.priority === "HIGH"
-                                      ? "bg-orange-100 text-orange-700"
-                                      : t.priority === "MEDIUM"
-                                      ? "bg-amber-100 text-amber-700"
-                                      : "bg-slate-100 text-slate-700"
-                                  }`}
-                                >
-                                  {t.priority.toLowerCase()}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                            <span className="inline-flex items-center gap-1">
-                              <span aria-hidden="true">⏰</span>
-                              {t.dueAt ? new Date(t.dueAt).toLocaleString() : "No due date"}
-                            </span>
-                            {t.relatedType && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-600">
-                                <span aria-hidden="true">🔗</span>
-                                {t.relatedType.toLowerCase()}
-                              </span>
-                            )}
-                          </div>
+                    <div className="space-y-3">
+                      {pendingFollowUpTasks.length === 0 ? (
+                        <div className="text-sm text-slate-500 text-center py-4">
+                          No scheduled follow-up tasks. Create one above.
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Order Tab */}
-          {currentStage === 'order' && (
-            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/60 min-h-[60vh] max-h-[60vh] overflow-y-auto">
-              <div className="max-w-6xl mx-auto space-y-6">
-                
-                {/* Project Details */}
-                <section className="rounded-2xl border border-purple-200 bg-purple-50/60 p-5 shadow-sm backdrop-blur">
-                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-purple-900">
-                    <span aria-hidden>�</span>
-                    Project Details
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <label className="block">
-                      <span className="text-xs text-slate-600 font-medium mb-1 block">Start Date</span>
-                      <input
-                        type="date"
-                        className="w-full rounded-md border px-3 py-2 text-sm"
-                        value={projectStartDate}
-                        onChange={(e) => setProjectStartDate(e.target.value)}
-                        onBlur={() => {
-                          if (projectStartDate) {
-                            saveOpportunityField('startDate', projectStartDate);
-                          }
-                        }}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs text-slate-600 font-medium mb-1 block">Delivery Date</span>
-                      <input
-                        type="date"
-                        className="w-full rounded-md border px-3 py-2 text-sm"
-                        value={projectDeliveryDate}
-                        onChange={(e) => setProjectDeliveryDate(e.target.value)}
-                        onBlur={() => {
-                          if (projectDeliveryDate) {
-                            saveOpportunityField('deliveryDate', projectDeliveryDate);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                </section>
-
-                {/* Workshop Processes */}
-                <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm backdrop-blur">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
-                      <span aria-hidden>🛠️</span>
-                      Workshop processes for this project
-                    </div>
-                    <button
-                      type="button"
-                      className="text-xs text-emerald-700 hover:text-emerald-900"
-                      onClick={() => {
-                        (async () => {
-                          setWkLoading(true);
-                          try {
-                            const res = await apiFetch<{ defs?: WorkshopProcessDef[], assignments?: WorkshopProcessAssignment[] }>(
-                              `/opportunities/${lead?.id}/workshop-processes`,
-                              { method: 'GET' }
-                            );
-                            setWkDefs(res.defs || []);
-                            const norm = (res.assignments || []).map((a) => ({
-                              processDefId: a.processDefId,
-                              required: a.required ?? false,
-                              assignedUserId: a.assignedUserId || null
-                            }));
-                            setWkAssignments(norm);
-                          } finally {
-                            setWkLoading(false);
-                          }
-                        })();
-                      }}
-                    >
-                      Refresh
-                    </button>
-                  </div>
-
-                  {wkLoading ? (
-                    <div className="text-sm text-emerald-800">Loading processes…</div>
-                  ) : wkDefs.length === 0 ? (
-                    <div className="text-sm text-emerald-800">No tenant processes defined. Configure them in Settings → Workshop Processes.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {wkDefs.map((def) => {
-                        const asn = getAssignmentFor(def.id);
-                        const required = asn?.required ?? !!def.requiredByDefault;
-                        const est = (asn?.estimatedHours ?? def.estimatedHours) ?? null;
-                        const userIdSel = asn?.assignedUser?.id || "";
-                        return (
-                          <div key={def.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-xl border bg-white/80 px-3 py-2">
-                            <div>
-                              <div className="text-sm font-medium text-slate-900">{def.name}</div>
-                              <div className="text-[11px] text-slate-500">{def.code}</div>
+                      ) : (
+                        pendingFollowUpTasks.map((task) => (
+                          <div
+                            key={task.id}
+                            className="rounded-md border p-3 bg-blue-50"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <span>
+                                  {task.meta?.type === "email_followup" ? "📧" : "📞"}
+                                </span>
+                                <span className="text-sm font-medium">{task.title}</span>
+                              </div>
+                              <span className="text-xs text-slate-500">
+                                {task.dueAt
+                                  ? `Due ${new Date(task.dueAt).toLocaleDateString()}`
+                                  : "Due soon"}
+                              </span>
                             </div>
-                            <label className="inline-flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={required}
-                                onChange={(e) => saveProjectAssignment(def, { required: e.target.checked, assignedUserId: userIdSel || null, estimatedHours: est })}
-                                disabled={wkSavingId === def.id}
-                              />
-                              Required
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-600 whitespace-nowrap">Assign</span>
-                              <select
-                                className="rounded-md border px-2 py-1 text-sm"
-                                value={userIdSel}
-                                onChange={(e) => saveProjectAssignment(def, { required, assignedUserId: e.target.value || null, estimatedHours: est })}
-                                disabled={wkSavingId === def.id}
-                              >
-                                <option value="">Unassigned</option>
-                                {wkUsers.map((u) => (
-                                  <option key={u.id} value={u.id}>{u.name || u.email}</option>
-                                ))}
-                              </select>
+                            <div className="text-xs text-slate-600 mb-2">
+                              {task.description}
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-600 whitespace-nowrap">Hours</span>
-                              <input
-                                type="number"
-                                className="w-24 rounded-md border px-2 py-1 text-sm"
-                                value={est ?? ""}
-                                onChange={(e) => {
-                                  const val = e.target.value === "" ? null : Number(e.target.value);
-                                  saveProjectAssignment(def, { required, assignedUserId: userIdSel || null, estimatedHours: val });
-                                }}
-                                disabled={wkSavingId === def.id}
-                              />
-                            </div>
-                            <div className="text-right">
-                              {asn ? (
-                                <span className="inline-block text-[11px] text-slate-500">Saved</span>
+                            <div className="flex gap-2">
+                              {task.meta?.type === "email_followup" ? (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => openEmailComposer(task.id)}
+                                >
+                                  Compose &amp; Send
+                                </Button>
                               ) : (
-                                <span className="inline-block text-[11px] text-slate-400">Not assigned</span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    toast("Call logging would open here");
+                                  }}
+                                >
+                                  Log Call
+                                </Button>
                               )}
-                              {wkSavingId === def.id && (
-                                <span className="inline-block text-[11px] text-sky-600">Saving…</span>
-                              )}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => completeFollowUpTask(task.id)}
+                              >
+                                Mark Done
+                              </Button>
                             </div>
                           </div>
-                        );
-                      })}
+                        ))
+                      )}
                     </div>
-                  )}
-                </section>
 
-                {/* Material Tracking */}
-                <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm backdrop-blur">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
-                      <span aria-hidden>�</span>
-                      Material Tracking
-                    </div>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
-                      onClick={saveMaterialDates}
-                      disabled={materialSaving}
-                    >
-                      {materialSaving ? "Saving..." : "Save Materials"}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[
-                      { key: 'timber', label: 'Timber', icon: '🪵' },
-                      { key: 'glass', label: 'Glass', icon: '🪟' },
-                      { key: 'ironmongery', label: 'Ironmongery', icon: '🔩' },
-                      { key: 'paint', label: 'Paint', icon: '🎨' },
-                    ].map((material) => {
-                      const notApplicableKey = `${material.key}NotApplicable` as keyof MaterialDates;
-                      const isNA = materialDates[notApplicableKey] || false;
-                      
-                      return (
-                        <div key={material.key} className="rounded-xl border bg-white/80 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <span>{material.icon}</span>
-                              <span className="text-sm font-medium text-slate-900">{material.label}</span>
-                            </div>
-                            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!isNA}
-                                onChange={(e) => {
-                                  setMaterialDates(prev => ({
-                                    ...prev,
-                                    [notApplicableKey]: e.target.checked,
-                                    // Clear dates when marking as N/A
-                                    ...(e.target.checked ? {
-                                      [`${material.key}OrderedAt`]: null,
-                                      [`${material.key}ExpectedAt`]: null,
-                                      [`${material.key}ReceivedAt`]: null,
-                                    } : {})
-                                  }));
-                                  // Save immediately after state update
-                                  setTimeout(() => saveMaterialDates(), 0);
-                                }}
-                                className="rounded"
-                              />
-                              N/A
-                            </label>
-                          </div>
-
-                          {!isNA && (
-                            <div className="grid grid-cols-3 gap-3">
-                              <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1">Ordered</label>
-                                <input
-                                  type="date"
-                                  value={materialDates[`${material.key}OrderedAt` as keyof MaterialDates]?.split('T')[0] || ''}
-                                  onChange={(e) => {
-                                    setMaterialDates(prev => ({
-                                      ...prev,
-                                      [`${material.key}OrderedAt`]: e.target.value ? new Date(e.target.value).toISOString() : null
-                                    }));
-                                  }}
-                                  className="w-full rounded border px-2 py-1.5 text-xs"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1">Expected</label>
-                                <input
-                                  type="date"
-                                  value={materialDates[`${material.key}ExpectedAt` as keyof MaterialDates]?.split('T')[0] || ''}
-                                  onChange={(e) => {
-                                    setMaterialDates(prev => ({
-                                      ...prev,
-                                      [`${material.key}ExpectedAt`]: e.target.value ? new Date(e.target.value).toISOString() : null
-                                    }));
-                                  }}
-                                  className="w-full rounded border px-2 py-1.5 text-xs"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-slate-700 mb-1">Received</label>
-                                <input
-                                  type="date"
-                                  value={materialDates[`${material.key}ReceivedAt` as keyof MaterialDates]?.split('T')[0] || ''}
-                                  onChange={(e) => {
-                                    setMaterialDates(prev => ({
-                                      ...prev,
-                                      [`${material.key}ReceivedAt`]: e.target.value ? new Date(e.target.value).toISOString() : null
-                                    }));
-                                  }}
-                                  className="w-full rounded border px-2 py-1.5 text-xs"
-                                />
-                              </div>
-                            </div>
-                          )}
+                    {completedFollowUpTasks.length > 0 && (
+                      <div className="mt-4 pt-3 border-t">
+                        <div className="text-xs font-medium text-slate-600 mb-2">
+                          Completed
                         </div>
-                      );
-                    })}
-                  </div>
-                </section>
+                        <div className="space-y-2">
+                          {completedFollowUpTasks.map((task) => (
+                            <div
+                              key={task.id}
+                              className="rounded-md border p-2 bg-slate-50 opacity-75"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-green-600">✓</span>
+                                  <span className="text-xs">{task.title}</span>
+                                </div>
+                                <span className="text-xs text-slate-400">
+                                  {task.completedAt
+                                    ? new Date(task.completedAt).toLocaleDateString()
+                                    : "Done"}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Right – Tasks */}
-          <aside className="md:col-span-1 min-h-[60vh] overflow-auto bg-gradient-to-br from-indigo-900/10 via-white to-rose-50 p-4 sm:p-6 space-y-4">
-            <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm backdrop-blur">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 font-semibold text-slate-900">
-                  <span aria-hidden="true">⭐</span>
-                  Task journey
-                </div>
-                <div className="text-xs text-slate-500">{openCount} open</div>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-                  <span>{completedCount} completed</span>
-                  <span>{progress}%</span>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 transition-all"
-                    style={{ width: `${progress}%` }}
-                    aria-hidden="true"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4 shadow-sm backdrop-blur">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 font-semibold text-slate-900">
-                  <span aria-hidden="true">➕</span>
-                  New task
-                </div>
-                <button
-                  type="button"
-                  className="rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm hover:bg-white"
-                  onClick={() => {
-                    if (showTaskComposer) {
-                      resetTaskComposer();
-                    }
-                    setShowTaskComposer((v) => !v);
-                  }}
-                >
-                  {showTaskComposer ? "Close" : "Add"}
-                </button>
-              </div>
-
-              {showTaskComposer && (
-                <form
-                  className="mt-4 space-y-3"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    createManualTask();
-                  }}
-                >
-                  {taskError && (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2 text-xs text-rose-600">
-                      {taskError}
-                    </div>
-                  )}
-
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Title
-                    <input
-                      type="text"
-                      value={taskComposer.title}
-                      onChange={(e) => setTaskComposer((prev) => ({ ...prev, title: e.target.value }))}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
-                      placeholder="e.g. Call the client"
-                      required
-                    />
-                  </label>
-
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Description
-                    <textarea
-                      value={taskComposer.description}
-                      onChange={(e) => setTaskComposer((prev) => ({ ...prev, description: e.target.value }))}
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200 min-h-[72px]"
-                      placeholder="Add context for the team"
-                    />
-                  </label>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Priority
-                      <select
-                        value={taskComposer.priority}
-                        onChange={(e) =>
-                          setTaskComposer((prev) => ({ ...prev, priority: e.target.value as Task["priority"] }))
-                        }
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
-                      >
-                        {["LOW", "MEDIUM", "HIGH", "URGENT"].map((p) => (
-                          <option key={p} value={p}>
-                            {p}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Due date & time
-                      <input
-                        type="datetime-local"
-                        value={taskComposer.dueAt}
-                        onChange={(e) => setTaskComposer((prev) => ({ ...prev, dueAt: e.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
-                      />
-                    </label>
+          {/* ORDER / WORKSHOP STAGE */}
+          {currentStage === "order" && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/60 min-h-[60vh]">
+              <div className="max-w-6xl mx-auto space-y-6">
+                {uiStatus !== "WON" && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    Mark this lead as <strong>Won</strong> to unlock workshop scheduling and
+                    material tracking.
                   </div>
+                )}
 
-                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-600 shadow-inner">
-                    <input
-                      type="checkbox"
-                      checked={taskAssignToMe}
-                      onChange={(e) => setTaskAssignToMe(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
-                    />
-                    Assign to me (leave unchecked to keep unassigned)
-                  </label>
-
-                  <div className="flex justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-white"
-                      onClick={() => {
-                        resetTaskComposer();
-                        setShowTaskComposer(false);
-                      }}
-                      disabled={taskSaving}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 px-4 py-2 text-xs font-semibold text-white shadow-lg disabled:opacity-50"
-                      disabled={taskSaving}
-                    >
-                      {taskSaving ? "Saving…" : "Create"}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-
-            <div className="space-y-3">
-              {loading && <div className="text-sm text-slate-500">Loading…</div>}
-              {!loading && tasks.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-sky-200 bg-white/80 p-4 text-sm text-slate-500">
-                  No tasks yet—tap an action above to conjure the first step.
-                </div>
-              )}
-              {tasks.map((t) => {
-                const done = t.status === "DONE";
-                const doneToday =
-                  done && t.completedAt && new Date(t.completedAt).toDateString() === new Date().toDateString();
-                return (
-                  <div
-                    key={t.id}
-                    className={`rounded-2xl border border-slate-200/70 bg-white/85 p-4 shadow-sm backdrop-blur flex items-start gap-3 transition hover:border-sky-200 ${done ? "opacity-80" : ""} ${doneToday ? "ring-1 ring-emerald-200" : ""}`}
-                  >
-                    <label className="mt-1 inline-flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={done}
-                        onChange={() => toggleTaskComplete(t)}
-                        className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
-                        aria-label={`Complete ${t.title}`}
-                      />
-                    </label>
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className={`font-semibold text-sm text-slate-800 ${done ? "line-through" : ""}`}>
-                          {t.title}
+                {uiStatus === "WON" && (
+                  <>
+                    {/* Project dates / value */}
+                    <section className="rounded-2xl border border-emerald-200 bg-white/80 p-5 shadow-sm backdrop-blur space-y-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          <span aria-hidden>📅</span>
+                          Project Overview
                         </div>
-                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-sky-600">
-                          {t.status.replace(/_/g, " ")}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span className="inline-flex items-center gap-1">
-                          <span aria-hidden="true">⏰</span>
-                          {t.dueAt ? new Date(t.dueAt).toLocaleString() : "No due date"}
-                        </span>
-                        {t.priority && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-600">
-                            <span aria-hidden="true">🎯</span>
-                            {t.priority.toLowerCase()}
-                          </span>
-                        )}
-                        {t.relatedType && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-600">
-                            <span aria-hidden="true">🔗</span>
-                            {t.relatedType.toLowerCase()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="text-xs text-slate-500">
-              Tip: Completing a lead action will sprinkle pixie dust on the matching task automatically.
-            </div>
-          </aside>
-        </div>
-
-          {currentStage === 'questionnaire' && (
-            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
-              <div className="max-w-4xl mx-auto space-y-6">
-                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                    <span aria-hidden="true">📋</span>
-                    Client Questionnaire
-                  </div>
-                  {questionnaireFields.length > 0 ? (
-                    <div className="space-y-4">
-                      {questionnaireFields.map((field: NormalizedQuestionnaireField) => {
-                        const key = field.key;
-                        const value = customData?.[key] ?? "";
-                        const label = field.label || key;
-                        
-                        return (
-                          <div key={key} className="p-4 rounded-lg border border-slate-200 bg-slate-50/50">
-                            <div className="font-medium text-sm text-slate-700 mb-2">{label}</div>
-                            <div className="text-sm text-slate-600">
-                              {value || <span className="italic text-slate-400">No response provided</span>}
-                            </div>
+                        {projectValueGBP && (
+                          <div className="text-sm text-slate-700">
+                            Value:{" "}
+                            <span className="font-semibold">
+                              £{Number(projectValueGBP).toLocaleString()}
+                            </span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-500 py-8 text-center">
-                      No questionnaire configured for this workspace
-                    </div>
-                  )}
-                </section>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">
+                            Start Date
+                          </span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectStartDate}
+                            onChange={(e) => setProjectStartDate(e.target.value)}
+                            onBlur={() => {
+                              if (projectStartDate) {
+                                saveOpportunityField("startDate", projectStartDate);
+                              }
+                            }}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">
+                            Delivery Date
+                          </span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectDeliveryDate}
+                            onChange={(e) => setProjectDeliveryDate(e.target.value)}
+                            onBlur={() => {
+                              if (projectDeliveryDate) {
+                                saveOpportunityField("deliveryDate", projectDeliveryDate);
+                              }
+                            }}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">
+                            Value (GBP)
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectValueGBP}
+                            onChange={(e) => setProjectValueGBP(e.target.value)}
+                            onBlur={() => {
+                              if (projectValueGBP) {
+                                saveOpportunityField("valueGBP", Number(projectValueGBP));
+                              }
+                            }}
+                            placeholder="0.00"
+                          />
+                        </label>
+                      </div>
+                    </section>
+
+                    {/* Workshop processes */}
+                    <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm backdrop-blur space-y-3">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                          <span aria-hidden>🛠️</span>
+                          Workshop processes for this project
+                        </div>
+                        <button
+                          type="button"
+                          className="text-xs text-emerald-700 hover:text-emerald-900"
+                          onClick={async () => {
+                            setWkLoading(true);
+                            try {
+                              const pid = opportunityId || lead.id;
+                              const project = await apiFetch<any>(
+                                `/workshop-processes/project/${encodeURIComponent(pid)}`
+                              ).catch(() => []);
+                              const arr = Array.isArray(
+                                project?.assignments || project
+                              )
+                                ? project.assignments || project
+                                : [];
+                              const norm: ProcAssignment[] = arr.map((it: any) => ({
+                                id: String(
+                                  it.id || it.assignmentId || crypto.randomUUID()
+                                ),
+                                processDefinitionId:
+                                  it.processDefinitionId || it.processDefinition?.id,
+                                processCode:
+                                  it.processCode || it.processDefinition?.code,
+                                processName:
+                                  it.processName || it.processDefinition?.name,
+                                required: Boolean(it.required ?? true),
+                                estimatedHours:
+                                  it.estimatedHours ??
+                                  it.processDefinition?.estimatedHours ??
+                                  null,
+                                assignedUser: it.assignedUser
+                                  ? {
+                                      id: it.assignedUser.id,
+                                      name: it.assignedUser.name ?? null,
+                                      email: it.assignedUser.email,
+                                    }
+                                  : null,
+                              }));
+                              setWkAssignments(norm);
+                            } finally {
+                              setWkLoading(false);
+                            }
+                          }}
+                        >
+                          Refresh
+                        </button>
+                      </div>
+
+                      {wkLoading ? (
+                        <div className="text-sm text-emerald-800">
+                          Loading processes…
+                        </div>
+                      ) : wkDefs.length === 0 ? (
+                        <div className="text-sm text-emerald-800">
+                          No tenant processes defined. Configure them in Settings → Workshop
+                          Processes.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {wkDefs.map((def) => {
+                            const asn = getAssignmentFor(def.id);
+                            const required = asn?.required ?? !!def.requiredByDefault;
+                            const est =
+                              (asn?.estimatedHours ?? def.estimatedHours) ?? null;
+                            const userIdSel = asn?.assignedUser?.id || "";
+                            return (
+                              <div
+                                key={def.id}
+                                className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-xl border bg-white/80 px-3 py-2"
+                              >
+                                <div>
+                                  <div className="text-sm font-medium text-slate-900">
+                                    {def.name}
+                                  </div>
+                                  <div className="text-[11px] text-slate-500">
+                                    {def.code}
+                                  </div>
+                                </div>
+                                <label className="inline-flex items-center gap-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={required}
+                                    onChange={(e) =>
+                                      saveProjectAssignment(def, {
+                                        required: e.target.checked,
+                                        assignedUserId: userIdSel || null,
+                                        estimatedHours: est,
+                                      })
+                                    }
+                                    disabled={wkSavingId === def.id}
+                                  />
+                                  Required
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-slate-600 whitespace-nowrap">
+                                    Assign
+                                  </span>
+                                  <select
+                                    className="rounded-md border px-2 py-1 text-sm"
+                                    value={userIdSel}
+                                    onChange={(e) =>
+                                      saveProjectAssignment(def, {
+                                        required,
+                                        assignedUserId: e.target.value || null,
+                                        estimatedHours: est,
+                                      })
+                                    }
+                                    disabled={wkSavingId === def.id}
+                                  >
+                                    <option value="">Unassigned</option>
+                                    {wkUsers.map((u) => (
+                                      <option key={u.id} value={u.id}>
+                                        {u.name || u.email}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-slate-600 whitespace-nowrap">
+                                    Hours
+                                  </span>
+                                  <input
+                                    type="number"
+                                    className="w-24 rounded-md border px-2 py-1 text-sm"
+                                    value={est ?? ""}
+                                    onChange={(e) => {
+                                      const val =
+                                        e.target.value === ""
+                                          ? null
+                                          : Number(e.target.value);
+                                      saveProjectAssignment(def, {
+                                        required,
+                                        assignedUserId: userIdSel || null,
+                                        estimatedHours: val,
+                                      });
+                                    }}
+                                    disabled={wkSavingId === def.id}
+                                  />
+                                </div>
+                                <div className="text-right">
+                                  {asn ? (
+                                    <span className="inline-block text-[11px] text-slate-500">
+                                      Saved
+                                    </span>
+                                  ) : (
+                                    <span className="inline-block text-[11px] text-slate-500">
+                                      Not yet assigned
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+
+                    {/* Material Tracking */}
+                    <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm backdrop-blur space-y-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
+                          <span aria-hidden>📦</span>
+                          Material Tracking
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-blue-600 px-4 py-2 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
+                          onClick={saveMaterialDates}
+                          disabled={materialSaving}
+                        >
+                          {materialSaving ? "Saving..." : "Save Materials"}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {[
+                          { key: "timber", label: "Timber", icon: "🪵" },
+                          { key: "glass", label: "Glass", icon: "🪟" },
+                          { key: "ironmongery", label: "Ironmongery", icon: "🔩" },
+                          { key: "paint", label: "Paint", icon: "🎨" },
+                        ].map((material) => {
+                          const notApplicableKey =
+                            `${material.key}NotApplicable` as keyof MaterialDates;
+                          const isNA = materialDates[notApplicableKey] || false;
+
+                          return (
+                            <div
+                              key={material.key}
+                              className="rounded-xl border bg-white/80 p-4"
+                            >
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span>{material.icon}</span>
+                                  <span className="text-sm font-medium text-slate-900">
+                                    {material.label}
+                                  </span>
+                                </div>
+                                <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!isNA}
+                                    onChange={(e) => {
+                                      setMaterialDates((prev) => ({
+                                        ...prev,
+                                        [notApplicableKey]: e.target.checked,
+                                        ...(e.target.checked
+                                          ? {
+                                              [`${material.key}OrderedAt`]: null,
+                                              [`${material.key}ExpectedAt`]: null,
+                                              [`${material.key}ReceivedAt`]: null,
+                                            }
+                                          : {}),
+                                      }));
+                                      setTimeout(() => saveMaterialDates(), 0);
+                                    }}
+                                    className="rounded"
+                                  />
+                                  N/A
+                                </label>
+                              </div>
+                              {!isNA ? (
+                                <div className="space-y-2">
+                                  <label className="block">
+                                    <span className="text-xs text-slate-600">Ordered</span>
+                                    <input
+                                      type="date"
+                                      className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                                      value={
+                                        (materialDates[
+                                          `${material.key}OrderedAt` as keyof MaterialDates
+                                        ] as string | undefined) || ""
+                                      }
+                                      onChange={(e) =>
+                                        setMaterialDates((prev) => ({
+                                          ...prev,
+                                          [`${material.key}OrderedAt`]:
+                                            e.target.value || null,
+                                        }))
+                                      }
+                                      onBlur={() =>
+                                        setTimeout(() => saveMaterialDates(), 50)
+                                      }
+                                    />
+                                  </label>
+                                  <label className="block">
+                                    <span className="text-xs text-slate-600">
+                                      Expected
+                                    </span>
+                                    <input
+                                      type="date"
+                                      className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                                      value={
+                                        (materialDates[
+                                          `${material.key}ExpectedAt` as keyof MaterialDates
+                                        ] as string | undefined) || ""
+                                      }
+                                      onChange={(e) =>
+                                        setMaterialDates((prev) => ({
+                                          ...prev,
+                                          [`${material.key}ExpectedAt`]:
+                                            e.target.value || null,
+                                        }))
+                                      }
+                                      onBlur={() =>
+                                        setTimeout(() => saveMaterialDates(), 50)
+                                      }
+                                    />
+                                  </label>
+                                  <label className="block">
+                                    <span className="text-xs text-slate-600">
+                                      Received
+                                    </span>
+                                    <input
+                                      type="date"
+                                      className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                                      value={
+                                        (materialDates[
+                                          `${material.key}ReceivedAt` as keyof MaterialDates
+                                        ] as string | undefined) || ""
+                                      }
+                                      onChange={(e) =>
+                                        setMaterialDates((prev) => ({
+                                          ...prev,
+                                          [`${material.key}ReceivedAt`]:
+                                            e.target.value || null,
+                                        }))
+                                      }
+                                      onBlur={() =>
+                                        setTimeout(() => saveMaterialDates(), 50)
+                                      }
+                                    />
+                                  </label>
+                                </div>
+                              ) : (
+                                <div className="text-sm text-gray-500 italic text-center py-4">
+                                  Not applicable for this project
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  </>
+                )}
               </div>
             </div>
           )}
 
-          {currentStage === 'tasks' && (
+          {/* TASKS STAGE */}
+          {currentStage === "tasks" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
               <div className="max-w-6xl mx-auto">
-                {/* Tasks Section - Full Width */}
                 <div className="rounded-2xl border border-indigo-100 bg-white/80 p-6 shadow-sm backdrop-blur">
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-2 font-semibold text-slate-900">
@@ -3506,8 +3693,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </div>
                     <div className="text-xs text-slate-500">{openCount} open</div>
                   </div>
-                  
-                  {/* Progress Bar */}
+
                   <div className="mb-6">
                     <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-2">
                       <span>{completedCount} completed</span>
@@ -3522,7 +3708,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </div>
                   </div>
 
-                  {/* Task List */}
+                  {/* Task cards */}
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {tasks.map((t) => {
                       let bgColor = "bg-slate-50";
@@ -3534,10 +3720,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       return (
                         <div
                           key={t.id}
-                          className={`rounded-xl border border-slate-200 ${bgColor} p-4 transition-colors hover:shadow-sm cursor-pointer`}
-                          onClick={() => {
-                            // Optional: Add task detail modal functionality here
-                          }}
+                          className={`rounded-xl border border-slate-200 ${bgColor} p-4 transition-colors hover:shadow-sm`}
                         >
                           <div className="flex items-start justify-between">
                             <div className="min-w-0 flex-1">
@@ -3572,14 +3755,17 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                       : "bg-slate-100 text-slate-700"
                                   }`}
                                 >
-                                  {(() => {
-                                    if (t.status === "DONE") return "✓";
-                                    if (t.status === "IN_PROGRESS") return "⏳";
-                                    if (t.status === "BLOCKED") return "⚠";
-                                    return "○";
-                                  })()}
+                                  {t.status === "DONE"
+                                    ? "✓"
+                                    : t.status === "IN_PROGRESS"
+                                    ? "⏳"
+                                    : t.status === "BLOCKED"
+                                    ? "⚠"
+                                    : "○"}
                                   <span className="ml-1">
-                                    {t.status === "IN_PROGRESS" ? "In progress" : t.status.toLowerCase()}
+                                    {t.status === "IN_PROGRESS"
+                                      ? "In progress"
+                                      : t.status.toLowerCase()}
                                   </span>
                                 </span>
                                 <span
@@ -3601,7 +3787,9 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                             <span className="inline-flex items-center gap-1">
                               <span aria-hidden="true">⏰</span>
-                              {t.dueAt ? new Date(t.dueAt).toLocaleString() : "No due date"}
+                              {t.dueAt
+                                ? new Date(t.dueAt).toLocaleString()
+                                : "No due date"}
                             </span>
                             {t.relatedType && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-600">
@@ -3613,15 +3801,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </div>
                       );
                     })}
-                    
+
                     {tasks.length === 0 && (
                       <div className="col-span-full text-sm text-slate-500 py-8 text-center">
-                        No tasks created yet. Use the actions above or create a manual task to get started.
+                        No tasks created yet. Use the actions above or create a manual task
+                        to get started.
                       </div>
                     )}
                   </div>
 
-                  {/* Add Task Section */}
+                  {/* Add Task */}
                   <div className="mt-6 pt-6 border-t border-slate-200">
                     <div className="flex items-center justify-between gap-2 mb-4">
                       <div className="flex items-center gap-2 font-semibold text-slate-900">
@@ -3661,7 +3850,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           <input
                             type="text"
                             value={taskComposer.title}
-                            onChange={(e) => setTaskComposer((prev) => ({ ...prev, title: e.target.value }))}
+                            onChange={(e) =>
+                              setTaskComposer((prev) => ({
+                                ...prev,
+                                title: e.target.value,
+                              }))
+                            }
                             className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
                             placeholder="e.g. Call the client"
                             required
@@ -3672,7 +3866,12 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           Description
                           <textarea
                             value={taskComposer.description}
-                            onChange={(e) => setTaskComposer((prev) => ({ ...prev, description: e.target.value }))}
+                            onChange={(e) =>
+                              setTaskComposer((prev) => ({
+                                ...prev,
+                                description: e.target.value,
+                              }))
+                            }
                             className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200 min-h-[72px]"
                             placeholder="Add context for the team"
                           />
@@ -3684,7 +3883,10 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             <select
                               value={taskComposer.priority}
                               onChange={(e) =>
-                                setTaskComposer((prev) => ({ ...prev, priority: e.target.value as Task["priority"] }))
+                                setTaskComposer((prev) => ({
+                                  ...prev,
+                                  priority: e.target.value as Task["priority"],
+                                }))
                               }
                               className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
                             >
@@ -3697,23 +3899,38 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           </label>
 
                           <label className="block text-sm font-semibold text-slate-600">
-                            Due date & time
+                            Due date &amp; time
                             <input
                               type="datetime-local"
                               value={taskComposer.dueAt}
-                              onChange={(e) => setTaskComposer((prev) => ({ ...prev, dueAt: e.target.value }))}
+                              onChange={(e) =>
+                                setTaskComposer((prev) => ({
+                                  ...prev,
+                                  dueAt: e.target.value,
+                                }))
+                              }
                               className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
                             />
                           </label>
                         </div>
 
+                        <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-600 shadow-inner">
+                          <input
+                            type="checkbox"
+                            checked={taskAssignToMe}
+                            onChange={(e) => setTaskAssignToMe(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
+                          />
+                          Assign to me (leave unchecked to keep unassigned)
+                        </label>
+
                         <div className="flex gap-3">
                           <button
                             type="submit"
                             className="rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 text-white px-6 py-2 text-sm font-semibold shadow hover:from-indigo-600 hover:to-sky-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
-                            disabled={busyTask || !taskComposer.title.trim()}
+                            disabled={taskSaving || !taskComposer.title.trim()}
                           >
-                            {busyTask ? "Creating..." : "Create Task"}
+                            {taskSaving ? "Creating..." : "Create Task"}
                           </button>
                           <button
                             type="button"
@@ -3725,10 +3942,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </div>
                       </form>
                     )}
-                  </div>
 
-                  <div className="mt-4 text-xs text-slate-500 text-center">
-                    Tip: Completing a lead action will sprinkle pixie dust on the matching task automatically.
+                    <div className="mt-4 text-xs text-slate-500 text-center">
+                      Tip: Completing a lead action will sprinkle pixie dust on the matching task
+                      automatically.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3736,12 +3954,14 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           )}
         </div>
 
-        {/* Parse tester output (simple inline panel) */}
+        {/* Parse tester output */}
         {parseTesterOpen && (
           <div className="absolute bottom-4 left-4 right-4 z-[70]">
             <div className="rounded-2xl border border-indigo-200 bg-white/95 shadow-xl p-4">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-indigo-800">PDF Parse Test Output</div>
+                <div className="text-sm font-semibold text-indigo-800">
+                  PDF Parse Test Output
+                </div>
                 <button
                   className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
                   onClick={() => setParseTesterOpen(false)}
@@ -3758,24 +3978,31 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 >
                   {parseApplyBusy ? "Building…" : "Add to Quote + Generate PDF"}
                 </button>
-                {parseApplyResult?.url ? (
+                {parseApplyResult?.url && (
                   <a
                     className="rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-white"
                     href={parseApplyResult.url}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Open PDF{parseApplyResult.name ? ` (${parseApplyResult.name})` : ""}
+                    Open PDF
+                    {parseApplyResult.name ? ` (${parseApplyResult.name})` : ""}
                   </a>
-                ) : null}
-                {parseApplyResult?.error ? (
-                  <span className="text-xs text-rose-600">{parseApplyResult.error}</span>
-                ) : null}
+                )}
+                {parseApplyResult?.error && (
+                  <span className="text-xs text-rose-600">
+                    {parseApplyResult.error}
+                  </span>
+                )}
               </div>
               <div className="mt-2 max-h-64 overflow-auto">
                 <pre className="text-[11px] leading-snug text-slate-700 whitespace-pre-wrap break-words">
                   {(() => {
-                    try { return JSON.stringify(parseTesterOut, null, 2); } catch { return String(parseTesterOut); }
+                    try {
+                      return JSON.stringify(parseTesterOut, null, 2);
+                    } catch {
+                      return String(parseTesterOut);
+                    }
                   })()}
                 </pre>
               </div>
@@ -3783,596 +4010,60 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           </div>
         )}
 
-          {/* Workshop Tab */}
-          {currentStage === 'order' && (
-            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/60 min-h-[60vh] max-h-[60vh] overflow-y-auto">
-              <div className="max-w-6xl mx-auto space-y-6">
-                
-                {/* Project Details */}
-                <section className="rounded-2xl border border-purple-200 bg-purple-50/60 p-5 shadow-sm backdrop-blur">
-                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-purple-900">
-                    <span aria-hidden>📅</span>
-                    Project Details
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <label className="block">
-                      <span className="text-xs text-slate-600 font-medium mb-1 block">Start Date</span>
-                      <input
-                        type="date"
-                        className="w-full rounded-md border px-3 py-2 text-sm"
-                        value={projectStartDate}
-                        onChange={(e) => setProjectStartDate(e.target.value)}
-                        onBlur={() => {
-                          if (projectStartDate) {
-                            saveOpportunityField('startDate', projectStartDate);
-                          }
-                        }}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs text-slate-600 font-medium mb-1 block">Delivery Date</span>
-                      <input
-                        type="date"
-                        className="w-full rounded-md border px-3 py-2 text-sm"
-                        value={projectDeliveryDate}
-                        onChange={(e) => setProjectDeliveryDate(e.target.value)}
-                        onBlur={() => {
-                          if (projectDeliveryDate) {
-                            saveOpportunityField('deliveryDate', projectDeliveryDate);
-                          }
-                        }}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs text-slate-600 font-medium mb-1 block">Value (GBP)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="w-full rounded-md border px-3 py-2 text-sm"
-                        value={projectValueGBP}
-                        onChange={(e) => setProjectValueGBP(e.target.value)}
-                        onBlur={() => {
-                          if (projectValueGBP) {
-                            saveOpportunityField('valueGBP', Number(projectValueGBP));
-                          }
-                        }}
-                        placeholder="0.00"
-                      />
-                    </label>
-                  </div>
-                </section>
-
-                {/* Workshop Processes */}
-                <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm backdrop-blur">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
-                      <span aria-hidden>🛠️</span>
-                      Workshop processes for this project
-                    </div>
-                    <button
-                      type="button"
-                      className="text-xs text-emerald-700 hover:text-emerald-900"
-                      onClick={() => {
-                        // trigger refetch
-                        (async () => {
-                          setWkLoading(true);
-                          try {
-                            const pid = opportunityId || lead.id;
-                            const project = await apiFetch<any>(`/workshop-processes/project/${encodeURIComponent(pid)}`).catch(() => []);
-                            const arr = Array.isArray(project?.assignments || project) ? (project.assignments || project) : [];
-                            const norm: ProcAssignment[] = arr.map((it: any) => ({
-                              id: String(it.id || it.assignmentId || crypto.randomUUID()),
-                              processDefinitionId: it.processDefinitionId || it.processDefinition?.id,
-                              processCode: it.processCode || it.processDefinition?.code,
-                              processName: it.processName || it.processDefinition?.name,
-                              required: Boolean(it.required ?? true),
-                              estimatedHours: it.estimatedHours ?? it.processDefinition?.estimatedHours ?? null,
-                              assignedUser: it.assignedUser ? { id: it.assignedUser.id, name: it.assignedUser.name ?? null, email: it.assignedUser.email } : null,
-                            }));
-                            setWkAssignments(norm);
-                          } finally {
-                            setWkLoading(false);
-                          }
-                        })();
-                      }}
-                    >
-                      Refresh
-                    </button>
-                  </div>
-
-                  {wkLoading ? (
-                    <div className="text-sm text-emerald-800">Loading processes…</div>
-                  ) : wkDefs.length === 0 ? (
-                    <div className="text-sm text-emerald-800">No tenant processes defined. Configure them in Settings → Workshop Processes.</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {wkDefs.map((def) => {
-                        const asn = getAssignmentFor(def.id);
-                        const required = asn?.required ?? !!def.requiredByDefault;
-                        const est = (asn?.estimatedHours ?? def.estimatedHours) ?? null;
-                        const userIdSel = asn?.assignedUser?.id || "";
-                        return (
-                          <div key={def.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 rounded-xl border bg-white/80 px-3 py-2">
-                            <div>
-                              <div className="text-sm font-medium text-slate-900">{def.name}</div>
-                              <div className="text-[11px] text-slate-500">{def.code}</div>
-                            </div>
-                            <label className="inline-flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={required}
-                                onChange={(e) => saveProjectAssignment(def, { required: e.target.checked, assignedUserId: userIdSel || null, estimatedHours: est })}
-                                disabled={wkSavingId === def.id}
-                              />
-                              Required
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-600 whitespace-nowrap">Assign</span>
-                              <select
-                                className="rounded-md border px-2 py-1 text-sm"
-                                value={userIdSel}
-                                onChange={(e) => saveProjectAssignment(def, { required, assignedUserId: e.target.value || null, estimatedHours: est })}
-                                disabled={wkSavingId === def.id}
-                              >
-                                <option value="">Unassigned</option>
-                                {wkUsers.map((u) => (
-                                  <option key={u.id} value={u.id}>{u.name || u.email}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-600 whitespace-nowrap">Hours</span>
-                              <input
-                                type="number"
-                                className="w-24 rounded-md border px-2 py-1 text-sm"
-                                value={est ?? ""}
-                                onChange={(e) => {
-                                  const val = e.target.value === "" ? null : Number(e.target.value);
-                                  saveProjectAssignment(def, { required, assignedUserId: userIdSel || null, estimatedHours: val });
-                                }}
-                                disabled={wkSavingId === def.id}
-                              />
-                            </div>
-                            <div className="text-right">
-                              {asn ? (
-                                <span className="inline-block text-[11px] text-slate-500">Saved</span>
-                              ) : (
-                                <span className="inline-block text-[11px] text-slate-500">Not yet assigned</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
-
-                {/* Material Tracking */}
-                <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm backdrop-blur">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
-                      <span aria-hidden>📦</span>
-                      Material Tracking
-                    </div>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
-                      onClick={saveMaterialDates}
-                      disabled={materialSaving}
-                    >
-                      {materialSaving ? "Saving..." : "Save Materials"}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[
-                      { key: 'timber', label: 'Timber', icon: '🪵' },
-                      { key: 'glass', label: 'Glass', icon: '🪟' },
-                      { key: 'ironmongery', label: 'Ironmongery', icon: '🔩' },
-                      { key: 'paint', label: 'Paint', icon: '🎨' },
-                    ].map((material) => {
-                      const notApplicableKey = `${material.key}NotApplicable` as keyof MaterialDates;
-                      const isNA = materialDates[notApplicableKey] || false;
-                      
-                      return (
-                        <div key={material.key} className="rounded-xl border bg-white/80 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <span>{material.icon}</span>
-                              <span className="text-sm font-medium text-slate-900">{material.label}</span>
-                            </div>
-                            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!isNA}
-                                onChange={(e) => {
-                                  setMaterialDates(prev => ({
-                                    ...prev,
-                                    [notApplicableKey]: e.target.checked,
-                                    // Clear dates when marking as N/A
-                                    ...(e.target.checked ? {
-                                      [`${material.key}OrderedAt`]: null,
-                                      [`${material.key}ExpectedAt`]: null,
-                                      [`${material.key}ReceivedAt`]: null,
-                                    } : {})
-                                  }));
-                                  // Save immediately after state update
-                                  setTimeout(() => saveMaterialDates(), 0);
-                                }}
-                                className="rounded"
-                              />
-                              N/A
-                            </label>
-                          </div>
-                          {!isNA && (
-                            <div className="space-y-2">
-                              <label className="block">
-                                <span className="text-xs text-slate-600">Ordered</span>
-                                <input
-                                  type="date"
-                                  className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                                  value={String(materialDates[`${material.key}OrderedAt` as keyof MaterialDates] || "")}
-                                  onChange={(e) => setMaterialDates(prev => ({
-                                    ...prev,
-                                    [`${material.key}OrderedAt`]: e.target.value || null
-                                  }))}
-                                  onBlur={() => setTimeout(() => saveMaterialDates(), 50)}
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="text-xs text-slate-600">Expected</span>
-                                <input
-                                  type="date"
-                                  className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                                  value={String(materialDates[`${material.key}ExpectedAt` as keyof MaterialDates] || "")}
-                                  onChange={(e) => setMaterialDates(prev => ({
-                                    ...prev,
-                                    [`${material.key}ExpectedAt`]: e.target.value || null
-                                  }))}
-                                  onBlur={() => setTimeout(() => saveMaterialDates(), 50)}
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="text-xs text-slate-600">Received</span>
-                                <input
-                                  type="date"
-                                  className="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                                  value={String(materialDates[`${material.key}ReceivedAt` as keyof MaterialDates] || "")}
-                                  onChange={(e) => setMaterialDates(prev => ({
-                                    ...prev,
-                                    [`${material.key}ReceivedAt`]: e.target.value || null
-                                  }))}
-                                  onBlur={() => setTimeout(() => saveMaterialDates(), 50)}
-                                />
-                              </label>
-                            </div>
-                          )}
-                          {isNA && (
-                            <div className="text-sm text-gray-500 italic text-center py-4">
-                              Not applicable for this project
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-
-              </div>
-            </div>
-          )}
-
-          {/* Follow-up Tab */}
-          {currentStage === 'follow-up' && (
-            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-blue-50/70 to-indigo-50/60 min-h-[60vh]">
-              <div className="max-w-6xl mx-auto">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  
-                  {/* Schedule Follow-up Tasks */}
-                  <section className="rounded-xl border p-4 bg-white/90 shadow-sm">
-                    <h3 className="text-lg font-semibold text-slate-900 mb-4">Schedule Follow-up Tasks</h3>
-                    
-                    {/* Email Follow-up Task */}
-                    <div className="p-3 border rounded-lg bg-slate-50 mb-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span>📧</span>
-                        <span className="font-medium text-sm">Email Follow-up</span>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="block">
-                          <div className="text-xs text-slate-600 mb-1">When to send</div>
-                          <select 
-                            className="w-full rounded border bg-white p-2 text-sm"
-                            value={emailTaskDays}
-                            onChange={(e) => setEmailTaskDays(e.target.value)}
-                          >
-                            <option value="1">Tomorrow</option>
-                            <option value="3">In 3 days</option>
-                            <option value="7">In 1 week</option>
-                            <option value="14">In 2 weeks</option>
-                          </select>
-                        </label>
-                        <button 
-                          className="w-full rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                          disabled={creatingEmailTask}
-                          onClick={createEmailTask}
-                        >
-                          {creatingEmailTask ? "Creating..." : "Create Email Task"}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Phone Follow-up Task */}
-                    <div className="p-3 border rounded-lg bg-slate-50 mb-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span>📞</span>
-                        <span className="font-medium text-sm">Phone Follow-up</span>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="block">
-                          <div className="text-xs text-slate-600 mb-1">When to call</div>
-                          <select 
-                            className="w-full rounded border bg-white p-2 text-sm"
-                            value={phoneTaskDays}
-                            onChange={(e) => setPhoneTaskDays(e.target.value)}
-                          >
-                            <option value="1">Tomorrow</option>
-                            <option value="2">In 2 days</option>
-                            <option value="5">In 5 days</option>
-                            <option value="7">In 1 week</option>
-                          </select>
-                        </label>
-                        <button 
-                          className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                          disabled={creatingPhoneTask}
-                          onClick={createPhoneTask}
-                        >
-                          {creatingPhoneTask ? "Creating..." : "Create Phone Task"}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Auto-schedule All */}
-                    <div className="pt-3 border-t">
-                      <button 
-                        className="w-full rounded bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                        disabled={creatingSequence}
-                        onClick={createFollowupSequence}
-                      >
-                        {creatingSequence ? "Creating..." : "Auto-schedule Follow-up Sequence"}
-                      </button>
-                      <div className="text-xs text-slate-500 mt-1 text-center">
-                        Creates email task (3 days) + phone task (1 week)
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Scheduled Tasks Panel */}
-                  <section className="rounded-xl border p-4 bg-white">
-                    <div className="mb-2 text-sm font-semibold text-slate-900 flex items-center justify-between">
-                      <span>Scheduled Tasks</span>
-                      {loadingFollowUpTasks && <span className="text-xs text-slate-500">Loading...</span>}
-                    </div>
-                    
-                    {/* Real tasks from API */}
-                    <div className="space-y-3">
-                      {pendingFollowUpTasks.length === 0 ? (
-                        <div className="text-sm text-slate-500 text-center py-4">
-                          No scheduled follow-up tasks. Create one above.
-                        </div>
-                      ) : (
-                        pendingFollowUpTasks.map((task) => (
-                          <div key={task.id} className="rounded-md border p-3 bg-blue-50">
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-2">
-                                <span>{task.meta?.type === "email_followup" ? "📧" : "📞"}</span>
-                                <span className="text-sm font-medium">{task.title}</span>
-                              </div>
-                              <span className="text-xs text-slate-500">
-                                {task.dueAt ? `Due ${new Date(task.dueAt).toLocaleDateString()}` : "Due soon"}
-                              </span>
-                            </div>
-                            <div className="text-xs text-slate-600 mb-2">
-                              {task.description}
-                            </div>
-                            <div className="flex gap-2">
-                              {task.meta?.type === "email_followup" ? (
-                                <Button 
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => openEmailComposer(task.id)}
-                                >
-                                  Compose & Send
-                                </Button>
-                              ) : (
-                                <Button 
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    toast("Call logging would open here");
-                                  }}
-                                >
-                                  Log Call
-                                </Button>
-                              )}
-                              <Button 
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => completeFollowUpTask(task.id)}
-                              >
-                                Mark Done
-                              </Button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    {/* Completed Tasks */}
-                    {completedFollowUpTasks.length > 0 && (
-                      <div className="mt-4 pt-3 border-t">
-                        <div className="text-xs font-medium text-slate-600 mb-2">Completed</div>
-                        <div className="space-y-2">
-                          {completedFollowUpTasks.map((task) => (
-                            <div key={task.id} className="rounded-md border p-2 bg-slate-50 opacity-75">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-green-600">✓</span>
-                                  <span className="text-xs">{task.title}</span>
-                                </div>
-                                <span className="text-xs text-slate-400">
-                                  {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : "Done"}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </section>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Supplier Quote Request Modal */}
-        {showSupplierModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="p-4 border-b">
-              <h3 className="text-lg font-semibold">Request Supplier Quote</h3>
-              <p className="text-sm text-slate-600 mt-1">Select a supplier and set a deadline for the quote</p>
-            </div>
-            
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Supplier <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={selectedSupplierId}
-                  onChange={(e) => setSelectedSupplierId(e.target.value)}
-                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select a supplier...</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} {s.email ? `(${s.email})` : ""}
-                    </option>
-                  ))}
-                </select>
-                {suppliers.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    No suppliers found. Add suppliers in Settings → Suppliers first.
-                  </p>
-                )}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Quote deadline (days from now)
-                </label>
-                <input
-                  type="number"
-                  value={quoteDeadlineDays}
-                  onChange={(e) => setQuoteDeadlineDays(e.target.value)}
-                  min="1"
-                  max="90"
-                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Notes (optional)
-                </label>
-                <textarea
-                  value={quoteNotes}
-                  onChange={(e) => setQuoteNotes(e.target.value)}
-                  rows={3}
-                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Add any special instructions or notes..."
-                />
-              </div>
-            </div>
-
-            <div className="p-4 border-t flex gap-2 justify-end">
-              <button 
-                className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50"
-                onClick={() => setShowSupplierModal(false)}
-              >
-                Cancel
-              </button>
-              <button 
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                onClick={submitSupplierQuoteRequest}
-                disabled={!selectedSupplierId || busyTask}
-              >
-                {busyTask ? "Sending..." : "Send Quote Request"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-        {/* Email Composer Modal */}
+        {/* Simple email composer modal for follow-up tasks */}
         {showEmailComposer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
-            <div className="p-4 border-b">
-              <h3 className="text-lg font-semibold">Compose Follow-up Email</h3>
-            </div>
-            
-            <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
-              <div>
-                <label className="block text-sm font-medium mb-1">To:</label>
-                <div className="text-sm text-slate-600">{lead?.email}</div>
+          <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/40">
+            <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl p-5 space-y-3">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Send follow-up email
+                </h3>
+                <button
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                  onClick={() => setShowEmailComposer(false)}
+                >
+                  Close
+                </button>
               </div>
-              
-              <div>
-                <label htmlFor="subject" className="block text-sm font-medium mb-1">Subject:</label>
-                <input
-                  id="subject"
-                  type="text"
-                  value={composerSubject}
-                  onChange={(e) => setComposerSubject(e.target.value)}
-                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Email subject..."
-                />
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-slate-700">
+                  Subject
+                  <input
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                    value={composerSubject}
+                    onChange={(e) => setComposerSubject(e.target.value)}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-slate-700">
+                  Body
+                  <textarea
+                    className="mt-1 w-full rounded-md border px-3 py-2 text-sm min-h-[140px]"
+                    value={composerBody}
+                    onChange={(e) => setComposerBody(e.target.value)}
+                  />
+                </label>
               </div>
-              
-              <div>
-                <label htmlFor="body" className="block text-sm font-medium mb-1">Message:</label>
-                <textarea
-                  id="body"
-                  value={composerBody}
-                  onChange={(e) => setComposerBody(e.target.value)}
-                  rows={8}
-                  className="w-full p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Email message..."
-                />
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  onClick={() => setShowEmailComposer(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                  onClick={sendComposerEmail}
+                  disabled={sending || !composerSubject || !composerBody}
+                >
+                  {sending ? "Sending…" : "Send & Mark Task Done"}
+                </button>
               </div>
-            </div>
-
-            <div className="p-4 border-t flex gap-2 justify-end">
-              <button 
-                className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50"
-                onClick={() => setShowEmailComposer(false)}
-              >
-                Cancel
-              </button>
-              <button 
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                onClick={sendComposerEmail}
-                disabled={sending || !composerSubject || !composerBody}
-              >
-                {sending ? "Sending..." : "Send Email"}
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
