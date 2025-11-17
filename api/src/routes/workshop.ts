@@ -160,6 +160,22 @@ router.get("/calendar", async (req: any, res) => {
     select: ({ id: true, title: true, valueGBP: true, wonAt: true, startDate: true, deliveryDate: true } as any),
     orderBy: ([{ startDate: "asc" }, { title: "asc" }] as any),
   });
+// PATCH /workshop/process-assignment/:id/complete - Mark process assignment as complete
+router.patch("/process-assignment/:id/complete", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const id = String(req.params.id);
+  // Find the process assignment
+  const assignment = await (prisma as any).projectProcessAssignment.findUnique({ where: { id } });
+  if (!assignment || assignment.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  // Mark as complete (set completedAt to now)
+  const updated = await (prisma as any).projectProcessAssignment.update({
+    where: { id },
+    data: { completedAt: new Date() },
+  });
+  res.json({ ok: true, assignment: updated });
+});
 
   // Calculate months to show (6 months from earliest start to latest delivery)
   const now = new Date();
@@ -372,6 +388,7 @@ router.get("/schedule", async (req: any, res) => {
         name: pa.assignedUser.name,
         email: pa.assignedUser.email,
       } : null,
+      completedAt: pa.completedAt || null,
     });
   }
 

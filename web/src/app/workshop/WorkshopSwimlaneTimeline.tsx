@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { useState as useAsyncState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -46,6 +47,7 @@ export type ProcessAssignment = {
   isColorKey?: boolean;
   assignmentGroup?: string | null;
   assignedUser?: { id: string; name: string | null; email: string } | null;
+  completedAt?: string | null;
 };
 
 export type Project = {
@@ -238,21 +240,51 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                   {/* Process legend for this project */}
                   {legend.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {(legendExpanded[proj.id] ? legend : legend.slice(0, 5)).map((item) => (
-                        <div
-                          key={item.processCode}
-                          className="flex items-center gap-1 text-[10px] bg-slate-50 rounded px-1.5 py-0.5 border border-slate-200"
-                          title={`${item.processName}: ${item.totalHours}h`}
-                        >
+                      {(legendExpanded[proj.id] ? legend : legend.slice(0, 5)).map((item) => {
+                        // Find the matching process assignment for completion status
+                        const pa = (proj.processAssignments || []).find((p) => p.processCode === item.processCode);
+                        const isComplete = !!pa?.completedAt;
+                        const [loading, setLoading] = useAsyncState(false);
+                        const handleTick = async () => {
+                          if (!pa || isComplete || loading) return;
+                          setLoading(true);
+                          try {
+                            await fetch(`/api/workshop/process-assignment/${pa.id}/complete`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                            });
+                            // Optionally, trigger a refresh or update state
+                            window.location.reload();
+                          } catch (e) {}
+                          setLoading(false);
+                        };
+                        return (
                           <div
-                            className="w-2.5 h-2.5 rounded-sm border border-white shadow-sm shrink-0"
-                            style={{ backgroundColor: item.color }}
-                          />
-                          <span className="text-slate-700 font-medium truncate max-w-[70px]">
-                            {item.processName.replace(/_/g, ' ').split(' ')[0]}
-                          </span>
-                        </div>
-                      ))}
+                            key={item.processCode}
+                            className="flex items-center gap-1 text-[10px] bg-slate-50 rounded px-1.5 py-0.5 border border-slate-200"
+                            title={`${item.processName}: ${item.totalHours}h`}
+                          >
+                            <button
+                              className={`w-3 h-3 rounded border flex items-center justify-center mr-1 ${isComplete ? 'bg-emerald-400 border-emerald-600' : 'bg-white border-slate-300'} transition-all`}
+                              style={{ minWidth: '18px' }}
+                              disabled={!pa || isComplete || loading}
+                              onClick={handleTick}
+                              title={isComplete ? 'Completed' : (!pa ? 'Unavailable' : 'Mark as complete')}
+                            >
+                              {isComplete ? (
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 6.5l2 2 4-4" stroke="#065f46" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              ) : null}
+                            </button>
+                            <div
+                              className="w-2.5 h-2.5 rounded-sm border border-white shadow-sm shrink-0"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <span className="text-slate-700 font-medium truncate max-w-[70px]">
+                              {item.processName.replace(/_/g, ' ').split(' ')[0]}
+                            </span>
+                          </div>
+                        );
+                      })}
                       {legend.length > 5 && (
                         <button
                           className="text-[10px] px-2 py-0.5 rounded border border-slate-300 text-slate-700 hover:bg-slate-50"
