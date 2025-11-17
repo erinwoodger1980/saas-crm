@@ -96,34 +96,58 @@ router.get("/tenants/:id", requireDeveloper, async (req: any, res) => {
 router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) => {
   try {
     const jwt = require("jsonwebtoken");
+    const bcrypt = require("bcrypt");
     const jwtSecret = process.env.APP_JWT_SECRET || process.env.JWT_SECRET || "fallback-secret";
     
     const tenant = await prisma.tenant.findUnique({
-      where: { id: req.params.id },
-      include: {
-        users: {
-          where: { role: "owner" },
-          take: 1
-        }
-      }
+      where: { id: req.params.id }
     });
 
     if (!tenant) {
       return res.status(404).json({ error: "Tenant not found" });
     }
 
-    if (!tenant.users || tenant.users.length === 0) {
-      return res.status(404).json({ error: "No owner found for this tenant" });
+    // Get the current developer's email
+    const developer = await prisma.user.findUnique({
+      where: { id: req.auth.userId },
+      select: { email: true, name: true }
+    });
+
+    if (!developer) {
+      return res.status(404).json({ error: "Developer user not found" });
     }
 
-    const owner = tenant.users[0];
+    // Create or find a developer user for this tenant
+    let devUser = await prisma.user.findFirst({
+      where: { 
+        tenantId: tenant.id,
+        email: developer.email
+      }
+    });
+
+    if (!devUser) {
+      // Create a developer user for this tenant
+      const tempPassword = `dev-${Date.now()}`;
+      devUser = await prisma.user.create({
+        data: {
+          tenantId: tenant.id,
+          email: developer.email,
+          name: `${developer.name || 'Developer'} (Dev Access)`,
+          role: 'owner', // Give them owner access for full visibility
+          isDeveloper: true,
+          signupCompleted: true,
+          passwordHash: await bcrypt.hash(tempPassword, 10)
+        }
+      });
+      console.log(`[IMPERSONATE] Created developer user ${developer.email} for tenant ${tenant.name}`);
+    }
     
-    // Create JWT token for impersonation
+    // Create JWT token for the developer user in this tenant
     const token = jwt.sign(
       {
-        userId: owner.id,
+        userId: devUser.id,
         tenantId: tenant.id,
-        role: owner.role,
+        role: devUser.role,
         impersonating: true,
         impersonatedBy: req.auth.userId
       },
@@ -131,25 +155,16 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
       { expiresIn: "8h" }
     );
 
-    console.log(`[IMPERSONATE] Developer ${req.auth.userId} impersonating ${owner.email} (${owner.id}) for tenant ${tenant.name} (${tenant.id})`);
-
-    // Set the impersonation token as an HttpOnly cookie
-    res.cookie('jauth', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 8 * 60 * 60 * 1000, // 8 hours
-      path: '/'
-    });
+    console.log(`[IMPERSONATE] Developer ${req.auth.userId} logging in as ${devUser.email} (${devUser.id}) for tenant ${tenant.name} (${tenant.id})`);
 
     res.json({ 
       ok: true, 
       token,
       user: {
-        id: owner.id,
-        email: owner.email,
-        name: owner.name,
-        role: owner.role
+        id: devUser.id,
+        email: devUser.email,
+        name: devUser.name,
+        role: devUser.role
       },
       tenant: {
         id: tenant.id,
