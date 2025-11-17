@@ -121,19 +121,19 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
   }, [projects]);
 
   return (
-    <div className="bg-white rounded-lg border">
+    <div className="bg-white rounded-lg border shadow-sm">
       {/* Header grid with sticky left label column */}
-      <div className="grid" style={{ gridTemplateColumns: `260px repeat(${visibleWeeks.length}, minmax(120px, 1fr))` }}>
+      <div className="grid bg-slate-50 border-b-2 border-slate-200" style={{ gridTemplateColumns: `260px repeat(${visibleWeeks.length}, minmax(120px, 1fr))` }}>
         {/* Left spacer (sticky header label) */}
-        <div className="sticky left-0 z-10 bg-white border-b px-3 py-2 text-xs font-semibold text-slate-600">
+        <div className="sticky left-0 z-10 bg-slate-50 border-r-2 border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-700 uppercase tracking-wide">
           Project
         </div>
         {visibleWeeks.map((w) => {
           const { title, range } = weekLabel(w);
           return (
-            <div key={w.weekNum} className="border-b px-2 py-2 text-center text-xs font-semibold text-slate-600">
-              <div>{title}</div>
-              <div className="text-[10px] text-slate-500">{range}</div>
+            <div key={w.weekNum} className="border-r border-slate-200 last:border-r-0 px-2 py-2 text-center">
+              <div className="text-xs font-bold text-slate-700">{title}</div>
+              <div className="text-[10px] text-slate-500 font-medium mt-0.5">{range}</div>
             </div>
           );
         })}
@@ -154,21 +154,21 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                 style={{ gridTemplateColumns: `260px repeat(${visibleWeeks.length}, minmax(120px, 1fr))` }}
               >
                 {/* Sticky left project info */}
-                <div className="sticky left-0 z-10 bg-white/95 backdrop-blur px-3 py-3 border-r flex flex-col gap-1">
+                <div className="sticky left-0 z-10 bg-white border-r flex flex-col gap-2 px-3 py-3 shadow-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate" title={proj.name}>
+                      <div className="text-sm font-semibold text-slate-900 truncate leading-tight" title={proj.name}>
                         {proj.name}
                       </div>
                       {(proj.startDate || proj.deliveryDate) && (
-                        <div className="text-[11px] text-slate-500 truncate">
+                        <div className="text-[11px] text-slate-600 mt-0.5 font-medium">
                           {proj.startDate
                             ? new Date(proj.startDate).toLocaleDateString("en-GB", {
                                 day: "numeric",
                                 month: "short",
                               })
                             : "?"}
-                          {" → "}
+                          <span className="text-slate-400 mx-1">→</span>
                           {proj.deliveryDate
                             ? new Date(proj.deliveryDate).toLocaleDateString("en-GB", {
                                 day: "numeric",
@@ -179,7 +179,7 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                       )}
                     </div>
                     <button
-                      className="text-xs text-blue-600 hover:underline shrink-0"
+                      className="text-xs text-blue-600 hover:text-blue-700 hover:underline shrink-0 font-medium"
                       onClick={() => onProjectClick?.(proj.id)}
                     >
                       Details
@@ -188,19 +188,19 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
 
                   {/* Process legend for this project */}
                   {legend.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {legend.map((item) => (
                         <div
                           key={item.processCode}
-                          className="flex items-center gap-1 text-[10px]"
+                          className="flex items-center gap-1 text-[10px] bg-slate-50 rounded px-1.5 py-0.5 border border-slate-200"
                           title={`${item.processName}: ${item.totalHours}h`}
                         >
                           <div
-                            className="w-2 h-2 rounded-full"
+                            className="w-2.5 h-2.5 rounded-sm border border-white shadow-sm shrink-0"
                             style={{ backgroundColor: item.color }}
                           />
-                          <span className="text-slate-600 truncate max-w-[60px]">
-                            {item.processName.split("_")[0]}
+                          <span className="text-slate-700 font-medium truncate max-w-[70px]">
+                            {item.processName.replace(/_/g, ' ').split(' ')[0]}
                           </span>
                         </div>
                       ))}
@@ -219,20 +219,21 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                   return (
                     <div
                       key={`${proj.id}-w${w.weekNum}`}
-                      className="relative border-r last:border-r-0 px-2 py-3 flex items-center"
+                      className="relative border-r last:border-r-0 px-2 py-3 flex items-center min-h-[56px]"
                     >
                       {hasWork ? (
                         <div className="w-full group relative">
                           {/* Visual bar showing process distribution */}
-                          <div className="h-4 w-full rounded-full bg-slate-100 overflow-hidden shadow-sm">
+                          <div className="h-6 w-full rounded-md bg-slate-100 overflow-hidden shadow-sm border border-slate-200 hover:border-slate-300 transition-all">
                             <div className="flex h-full">
                               {chunks.map((chunk) => (
                                 <div
                                   key={chunk.processId}
-                                  className="h-full transition-opacity hover:opacity-80"
+                                  className="h-full transition-all hover:brightness-110 cursor-pointer"
                                   style={{
                                     flex: chunk.proportionOfWeek,
                                     backgroundColor: chunk.color,
+                                    minWidth: '2px',
                                   }}
                                   title={`${chunk.processName}: ${chunk.hours}h`}
                                 />
@@ -241,40 +242,42 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                           </div>
 
                           {/* Hover tooltip showing details */}
-                          <div className="absolute z-20 hidden group-hover:block left-0 top-full mt-1 min-w-[200px]">
-                            <Card className="p-2 shadow-lg">
-                              <div className="text-xs font-medium mb-1">
+                          <div className="absolute z-50 hidden group-hover:block left-1/2 -translate-x-1/2 top-full mt-2 pointer-events-none">
+                            <div className="bg-white border-2 border-slate-200 rounded-lg shadow-xl p-3 min-w-[220px]">
+                              <div className="text-xs font-semibold mb-2 text-slate-700 border-b pb-1">
                                 {weekLabel(w).range}
                               </div>
-                              <div className="space-y-1">
+                              <div className="space-y-1.5">
                                 {chunks.map((chunk) => (
                                   <div
                                     key={chunk.processId}
-                                    className="flex items-center gap-2 text-[11px]"
+                                    className="flex items-center gap-2 text-xs"
                                   >
                                     <div
-                                      className="w-2 h-2 rounded-full shrink-0"
+                                      className="w-3 h-3 rounded shrink-0 border border-white shadow-sm"
                                       style={{ backgroundColor: chunk.color }}
                                     />
-                                    <span className="text-slate-700 truncate flex-1">
-                                      {chunk.processName}
+                                    <span className="text-slate-800 flex-1 font-medium">
+                                      {chunk.processName.replace(/_/g, ' ')}
                                     </span>
-                                    <span className="text-slate-500 shrink-0">
-                                      {chunk.hours}h
+                                    <span className="text-slate-600 shrink-0 font-semibold">
+                                      {Math.round(chunk.hours * 10) / 10}h
                                     </span>
                                   </div>
                                 ))}
-                                <div className="pt-1 mt-1 border-t border-slate-200 flex justify-between text-[11px] font-medium">
+                                <div className="pt-1.5 mt-1.5 border-t border-slate-200 flex justify-between text-xs font-bold text-slate-900">
                                   <span>Total:</span>
                                   <span>{Math.round(totalHours * 10) / 10}h</span>
                                 </div>
                               </div>
-                            </Card>
+                              {/* Pointer arrow */}
+                              <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-l-2 border-t-2 border-slate-200 rotate-45" />
+                            </div>
                           </div>
                         </div>
                       ) : (
                         // Empty state for weeks with no work
-                        <div className="w-full h-4 rounded-full border border-dashed border-slate-200 bg-slate-50" />
+                        <div className="w-full h-6 rounded-md border border-dashed border-slate-300 bg-slate-50/50" />
                       )}
                     </div>
                   );

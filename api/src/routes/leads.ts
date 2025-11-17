@@ -386,9 +386,6 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
       { key: 'description', label: 'Description', required: false },
       { key: 'source', label: 'Source', required: false },
       { key: 'status', label: 'Status', required: false },
-      { key: 'estimatedValue', label: 'Estimated Value', required: false },
-      { key: 'quotedValue', label: 'Quoted Value', required: false },
-      { key: 'dateQuoteSent', label: 'Date Quote Sent', required: false },
       // Add questionnaire questions
       ...leadFieldDefs.map(field => ({
         key: `custom.${field.key}`,
