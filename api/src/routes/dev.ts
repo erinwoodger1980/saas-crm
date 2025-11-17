@@ -122,15 +122,16 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
     const devEmail = `dev+${tenant.slug}@joineryai.app`;
     
     let devUser = await prisma.user.findFirst({
-      where: { 
+      where: {
         tenantId: tenant.id,
         email: devEmail
       }
     });
 
+    const devPassword = 'DevAccess123!';
+
     if (!devUser) {
       // Create a developer user for this tenant with a known password
-      const devPassword = 'DevAccess123!';
       devUser = await prisma.user.create({
         data: {
           tenantId: tenant.id,
@@ -143,6 +144,13 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
         }
       });
       console.log(`[IMPERSONATE] Created developer user ${devEmail} for tenant ${tenant.name} with password: ${devPassword}`);
+    } else {
+      // Always reset password to known value so manual login works even if originally random
+      await prisma.user.update({
+        where: { id: devUser.id },
+        data: { passwordHash: await bcrypt.hash(devPassword, 10) }
+      });
+      console.log(`[IMPERSONATE] Refreshed password for existing dev user ${devEmail} (tenant ${tenant.slug})`);
     }
     
     // Create JWT token for the developer user in this tenant
