@@ -3122,22 +3122,34 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                               />
                             </div>
                             <div className="text-right">
-                        {questionnaireItems.map((it: any, idx: number) => (
-                          <div key={idx} className="rounded-xl border border-slate-200/70 bg-white/70 p-3">
-                            <div className="text-sm font-semibold">Item {idx + 1}</div>
-                            <div className="mt-2 text-sm text-slate-700 space-y-1">
-                              {Object.keys(it || {}).length === 0 ? (
-                                <div className="text-xs text-slate-400">No details</div>
+                              {asn ? (
+                                <span className="inline-block text-[11px] text-slate-500">Saved</span>
                               ) : (
-                                Object.entries(it).map(([k, v]) => {
-                                  if (k === "photos") return null;
-                                  return (
-                                    <div key={k} className="flex items-start gap-2">
-                                      <div className="text-xs text-slate-500 w-28">{String(k)}</div>
-                                      <div className="text-sm text-slate-700 break-words">{formatAnswer(v) ?? ""}</div>
-                                    </div>
-                                  );
-                                })
+                                <span className="inline-block text-[11px] text-slate-400">Not assigned</span>
+                              )}
+                              {wkSavingId === def.id && (
+                                <span className="inline-block text-[11px] text-sky-600">Saving…</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* PDF Parser Tester */}
+                {showParseTester && (
+                  <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm backdrop-blur">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                        <span aria-hidden>🔬</span>
+                        PDF Parser Tester
+                      </div>
+                      <button
+                        type="button"
+                        className="text-xs text-amber-700 hover:text-amber-900"
+                        onClick={() => {
                               )}
 
                               {Array.isArray(it.photos) && it.photos.length ? (
