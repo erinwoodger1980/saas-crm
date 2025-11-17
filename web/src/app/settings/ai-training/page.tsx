@@ -126,6 +126,15 @@ function _formatDaysLabel(value?: number | null) {
   return `${rounded} days`;
 }
 
+// CSV helper: escape quotes and wrap if needed
+function toCsvValue(v: unknown): string {
+  if (v == null) return "";
+  let s = String(v);
+  const needsWrap = /[",\n]/.test(s);
+  if (s.includes('"')) s = s.replace(/"/g, '""');
+  return needsWrap ? `"${s}"` : s;
+}
+
 export default function AiTrainingPage() {
   const { user } = useCurrentUser();
   const { toast } = useToast();
@@ -384,7 +393,8 @@ export default function AiTrainingPage() {
       "provider",
       "messageId",
       "decision",
-      "confidence",
+      "confidence", // 0..1
+      "confidence_pct", // 0..100
       "feedbackThumbs",
       "inputSummary",
     ];
@@ -393,13 +403,16 @@ export default function AiTrainingPage() {
       const provider = ref?.provider || "";
       const messageId = ref?.messageId || "";
       const thumbs = typeof i.userFeedback?.thumbs === "boolean" ? i.userFeedback.thumbs : "";
+      const conf01 = typeof i.confidence === "number" && Number.isFinite(i.confidence) ? Math.max(0, Math.min(1, i.confidence)) : "";
+      const confPct = typeof conf01 === "number" ? Math.round(conf01 * 100) : "";
       return [
         i.createdAt,
         i.module,
         provider,
         messageId,
         i.decision || "",
-        typeof i.confidence === "number" ? i.confidence.toFixed(3) : "",
+        typeof conf01 === "number" ? conf01.toFixed(3) : "",
+        confPct,
         thumbs,
         i.inputSummary || "",
       ].map(toCsvValue).join(",");

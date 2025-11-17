@@ -40,7 +40,7 @@ function DiffView({ diff }: { diff: string }) {
 
 export default function FeatureRequestDetail({ params }: { params: { id: string } }) {
   const id = params.id;
-  const { data: fr, mutate, error } = useSWR<FR>(`/feature-requests/${id}`, (url) => apiFetch<FR>(url));
+  const { data: fr, mutate, error } = useSWR<FR>(`/feature-requests/${id}`, (url: string) => apiFetch<FR>(url));
   const { data: keysData } = useSWR<{ keys: string[] }>(`/feature-requests/admin/prompt-keys`, () => adminPromptKeys());
 
   const [taskKey, setTaskKey] = useState<string>('');

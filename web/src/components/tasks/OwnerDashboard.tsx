@@ -166,6 +166,9 @@ export default function OwnerDashboard() {
             <Link href="/tasks/print" target="_blank" className={rowBtn}>
               Print A4
             </Link>
+            <Link href="/tasks/print?auto=1" target="_blank" className={rowBtn}>
+              Quick print
+            </Link>
             <button className={primary} onClick={()=>setShowNew(true)}>
               <span aria-hidden="true">➕</span> New task
             </button>

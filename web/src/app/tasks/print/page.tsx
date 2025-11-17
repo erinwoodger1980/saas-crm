@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Printer, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
@@ -17,10 +17,12 @@ type Task = {
   relatedId?: string | null;
   dueAt?: string | null;
   createdAt?: string;
+  assignees?: Array<{ userId: string; role: "OWNER" | "FOLLOWER" }>;
 };
 
 export default function TasksPrintPage() {
   const router = useRouter();
+  const search = useSearchParams();
   const ids = getAuthIdsFromJwt();
   const tenantId = ids?.tenantId || "";
 
@@ -50,6 +52,14 @@ export default function TasksPrintPage() {
     }
     load();
   }, [tenantId]);
+
+  // Auto-print if requested via query param
+  useEffect(() => {
+    if (!loading && (search?.get("auto") === "1")) {
+      const t = setTimeout(() => window.print(), 200);
+      return () => clearTimeout(t);
+    }
+  }, [loading, search]);
 
   const handlePrint = () => window.print();
 
@@ -129,6 +139,7 @@ function TaskSection({ title, items, tone }: { title: string; items: Task[]; ton
             <th className="px-2 py-2 text-left font-semibold text-slate-700">Priority</th>
             <th className="px-2 py-2 text-left font-semibold text-slate-700">Due</th>
             <th className="px-2 py-2 text-left font-semibold text-slate-700">Related</th>
+            <th className="px-2 py-2 text-left font-semibold text-slate-700">Assignees</th>
           </tr>
         </thead>
         <tbody>
@@ -138,7 +149,8 @@ function TaskSection({ title, items, tone }: { title: string; items: Task[]; ton
               <td className="px-2 py-2 text-slate-700">{formatStatus(t.status)}</td>
               <td className="px-2 py-2">{formatPriority(t.priority)}</td>
               <td className="px-2 py-2 text-slate-800">{formatDate(t.dueAt)}</td>
-              <td className="px-2 py-2 text-slate-700">{t.relatedType || "—"}</td>
+              <td className="px-2 py-2 text-slate-700">{formatRelated(t.relatedType, t.relatedId)}</td>
+              <td className="px-2 py-2 text-slate-700">{formatAssignees(t.assignees)}</td>
             </tr>
           ))}
         </tbody>
@@ -164,4 +176,17 @@ function formatPriority(p: Task["priority"]) {
     URGENT: "text-rose-700",
   };
   return <span className={`font-semibold ${tone[p]}`}>{p}</span> as unknown as string;
+}
+
+function formatRelated(type?: Task["relatedType"], id?: string | null) {
+  if (!type && !id) return "—";
+  const short = id ? `#${String(id).slice(-6)}` : "";
+  return [type || "", short].filter(Boolean).join(" \u00B7 ");
+}
+
+function formatAssignees(a?: Task["assignees"]) {
+  if (!a || a.length === 0) return "—";
+  const owners = a.filter(x => x.role === "OWNER").length;
+  const followers = a.filter(x => x.role === "FOLLOWER").length;
+  return `${owners} owner${owners===1?"":"s"}${followers?`, ${followers} follower${followers===1?"":"s"}`:""}`;
 }
