@@ -756,7 +756,7 @@ router.post("/", async (req, res) => {
       email: email ?? "",
       status: uiToDb(uiStatus),
       description: description ?? null,
-      custom: { ...(custom ?? {}), uiStatus },
+      custom: { ...(custom ?? {}), uiStatus, enquiryDate: new Date().toISOString().split('T')[0] },
     },
   });
 
@@ -1532,6 +1532,7 @@ router.post("/parse-email", async (req, res) => {
           confidence: emailData.confidence,
           source: "manual_upload",
           filename: filename,
+          enquiryDate: new Date().toISOString().split('T')[0],
         },
       },
     });

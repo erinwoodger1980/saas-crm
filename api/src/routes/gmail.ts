@@ -1184,6 +1184,7 @@ router.post("/import", async (req, res) => {
             summary: (typeof ai?.summary === "string" && ai.summary) || snippet || null,
             uiStatus: "NEW_ENQUIRY",
             aiDecision,
+            enquiryDate: new Date().toISOString().split('T')[0],
           };
           const phone = (typeof ai?.phone === "string" && ai.phone) || heur.phone;
           if (phone) custom.phone = phone;
@@ -1581,6 +1582,7 @@ router.post("/import-all-users", async (req, res) => {
                       summary: (typeof ai?.summary === "string" && ai.summary) || snippet || null,
                       uiStatus: "NEW_ENQUIRY",
                       aiDecision: { decidedBy, reason, confidence: aiConfidence ?? null, model: ai ? "openai" : "heuristics" },
+                      enquiryDate: new Date().toISOString().split('T')[0],
                     },
                   },
                 });
