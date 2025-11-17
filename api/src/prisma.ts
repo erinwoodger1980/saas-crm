@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcrypt";
 
 // Prevent multiple instances in dev (important for ts-node-dev / Next.js)
@@ -18,7 +18,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Prisma middleware: on Tenant.create, ensure a dev user exists for that tenant
-prisma.$use(async (params, next) => {
+const tenantCreateMiddleware: Prisma.Middleware = async (params, next) => {
   const result = await next(params);
   try {
     if (params.model === 'Tenant' && params.action === 'create') {
@@ -49,7 +49,7 @@ prisma.$use(async (params, next) => {
             console.log(`[prisma] Created dev user ${email} for new tenant ${slug}`);
           }
 
-          // Seed workshop processes from template tenant (default: wealden-joinery)
+          // Seed workshop processes from template tenant (default: Demo Tenant unless overridden)
           const templateSlug = process.env.TEMPLATE_TENANT_SLUG || undefined;
           const templateName = process.env.TEMPLATE_TENANT_NAME || 'Demo Tenant';
           const template = templateSlug
@@ -89,4 +89,5 @@ prisma.$use(async (params, next) => {
     console.warn('[prisma] ensure dev user failed (non-fatal):', (e as any)?.message || e);
   }
   return result;
-});
+};
+(prisma as any).$use(tenantCreateMiddleware);
