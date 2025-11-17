@@ -3001,46 +3001,21 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     <span aria-hidden>�</span>
                     Project Details
                   </div>
-                <div className="mt-3 text-sm text-slate-700 space-y-1">
-                  {fromEmail && (
-                    <div>
-                      <span className="text-slate-400">From:</span> {String(fromEmail)}
-                    </div>
-                  )}
-                  {emailSubject && (
-                    <div>
-                      <span className="text-slate-400">Subject:</span> {emailSubject}
-                    </div>
-                  )}
-                  {emailSnippet && <div className="text-slate-600">{emailSnippet}</div>}
-                </div>
-              </section>
-            )}
-
-            {(settings?.slug || questionnaireFields.length > 0) && (
-              <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <span aria-hidden="true">🧾</span>
-                  {(Array.isArray(settings?.questionnaire) ? null : settings?.questionnaire?.title) || "Questionnaire"}
-                </div>
-
-                {questionnaireSubmittedAt ? (
-                  <div className="mt-2 text-xs text-slate-500">
-                    Submitted {new Date(questionnaireSubmittedAt).toLocaleString()}
-                  </div>
-                ) : null}
-
-                <div className="mt-4 space-y-3">
-                  {questionnaireResponses.length ? (
-                    <dl className="space-y-3">
-                      {questionnaireResponses.map(({ field, value }, idx) => {
-                        const k = field.key || field.id || String(idx);
-                        const isEditing = !!qEdit[k];
-                        const draftVal = customDraft[k] ?? (value ?? "");
-                        const inputClasses = "w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200";
-                        return (
-                          <div key={k} className="rounded-xl border border-slate-200/70 bg-white/70 p-3">
-                            <div className="flex items-start justify-between gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <label className="block">
+                      <span className="text-xs text-slate-600 font-medium mb-1 block">Start Date</span>
+                      <input
+                        type="date"
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        value={projectStartDate}
+                        onChange={(e) => setProjectStartDate(e.target.value)}
+                        onBlur={() => {
+                          if (projectStartDate) {
+                            saveOpportunityField('startDate', projectStartDate);
+                          }
+                        }}
+                      />
+                    </label>
                               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 {field.label || field.key || field.id}
                                 {field.required ? <span className="text-rose-500"> *</span> : null}
