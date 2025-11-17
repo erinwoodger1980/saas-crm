@@ -1418,9 +1418,9 @@ export default function SettingsPage() {
         >
           <div className="space-y-4">
             {/* New row */}
-            <div className="rounded-xl border bg-white/80 p-3">
+            <div className="rounded-xl border bg-white/80 p-3 overflow-x-auto">
               <div className="mb-2 text-sm font-semibold text-slate-800">Add process</div>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-[140px_1fr_80px_140px_100px_120px_120px_auto] items-center">
+              <div className="min-w-[1200px] grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_180px] items-center gap-2">
                 <input
                   className="rounded-xl border bg-white/95 px-3 py-2 text-sm uppercase tracking-wide"
                   placeholder="CODE"
@@ -1477,25 +1477,26 @@ export default function SettingsPage() {
             </div>
 
             {/* List */}
-            <div className="rounded-xl border bg-white/80">
-              <div className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_auto] items-center gap-2 px-3 py-2 border-b text-[12px] text-slate-600 font-medium">
-                <div>Code</div>
-                <div>Name</div>
-                <div>Sort</div>
-                <div>Required by default</div>
-                <div>Est. hours</div>
-                <div>Color key</div>
-                <div>Group</div>
-                <div className="text-right">Actions</div>
-              </div>
-              {procLoading ? (
-                <div className="px-3 py-4 text-sm text-slate-600">Loading…</div>
-              ) : processes.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-slate-600">No processes yet.</div>
-              ) : (
-                <div className="divide-y">
-                  {processes.map((p, idx) => (
-                    <div key={p.id} className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_auto] items-center gap-2 px-3 py-2">
+            <div className="rounded-xl border bg-white/80 overflow-x-auto">
+              <div className="min-w-[1200px]">
+                <div className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_180px] items-center gap-2 px-3 py-2 border-b text-[12px] text-slate-600 font-medium">
+                  <div>Code</div>
+                  <div>Name</div>
+                  <div>Sort</div>
+                  <div>Required by default</div>
+                  <div>Est. hours</div>
+                  <div>Color key</div>
+                  <div>Group</div>
+                  <div className="text-right">Actions</div>
+                </div>
+                {procLoading ? (
+                  <div className="px-3 py-4 text-sm text-slate-600">Loading…</div>
+                ) : processes.length === 0 ? (
+                  <div className="px-3 py-4 text-sm text-slate-600">No processes yet.</div>
+                ) : (
+                  <div className="divide-y">
+                    {processes.map((p, idx) => (
+                      <div key={p.id} className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_180px] items-center gap-2 px-3 py-2">
                       <input
                         className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm uppercase"
                         value={p.code}
@@ -1549,6 +1550,7 @@ export default function SettingsPage() {
                   ))}
                 </div>
               )}
+              </div>
             </div>
           </div>
         </Section>
