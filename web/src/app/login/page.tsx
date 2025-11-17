@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, setJwt } from "@/lib/api";
@@ -14,6 +14,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Auto-fill dev credentials if coming from impersonation
+  useEffect(() => {
+    const devEmail = sessionStorage.getItem('devLoginEmail');
+    const devPassword = sessionStorage.getItem('devLoginPassword');
+    if (devEmail && devPassword) {
+      setEmail(devEmail);
+      setPassword(devPassword);
+      // Clear them so they don't persist
+      sessionStorage.removeItem('devLoginEmail');
+      sessionStorage.removeItem('devLoginPassword');
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

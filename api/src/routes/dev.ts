@@ -129,8 +129,8 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
     });
 
     if (!devUser) {
-      // Create a developer user for this tenant
-      const tempPassword = `dev-${Date.now()}`;
+      // Create a developer user for this tenant with a known password
+      const devPassword = 'DevAccess123!';
       devUser = await prisma.user.create({
         data: {
           tenantId: tenant.id,
@@ -139,10 +139,10 @@ router.post("/tenants/:id/impersonate", requireDeveloper, async (req: any, res) 
           role: 'owner', // Give them owner access for full visibility
           isDeveloper: true,
           signupCompleted: true,
-          passwordHash: await bcrypt.hash(tempPassword, 10)
+          passwordHash: await bcrypt.hash(devPassword, 10)
         }
       });
-      console.log(`[IMPERSONATE] Created developer user ${devEmail} for tenant ${tenant.name}`);
+      console.log(`[IMPERSONATE] Created developer user ${devEmail} for tenant ${tenant.name} with password: ${devPassword}`);
     }
     
     // Create JWT token for the developer user in this tenant
