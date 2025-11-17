@@ -238,6 +238,16 @@ router.post("/:id/sign-off", async (req: any, res) => {
     const { id } = req.params;
     const { notes } = req.body;
 
+    // Verify the signing user exists and belongs to this tenant
+    const signingUser = await prisma.user.findFirst({
+      where: { id: userId, tenantId }
+    });
+
+    if (!signingUser) {
+      console.error(`[POST /timesheets/:id/sign-off] Signing user ${userId} not found in tenant ${tenantId}`);
+      return res.status(403).json({ error: "user_not_found_in_tenant" });
+    }
+
     const timesheet = await prisma.timesheet.findFirst({
       where: { id, tenantId }
     });
@@ -271,7 +281,7 @@ router.post("/:id/sign-off", async (req: any, res) => {
     return res.json({ ok: true, timesheet: updated });
   } catch (e: any) {
     console.error("[POST /timesheets/:id/sign-off] failed:", e);
-    return res.status(500).json({ error: "internal_error" });
+    return res.status(500).json({ error: "internal_error", message: e.message });
   }
 });
 
