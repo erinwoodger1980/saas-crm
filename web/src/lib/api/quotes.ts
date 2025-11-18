@@ -62,6 +62,22 @@ export type EstimateResponse = {
   meta?: { cacheHit?: boolean; latencyMs?: number | null } | null;
 };
 
+export type QuestionnairePriceResponse = {
+  ok: boolean;
+  method: "questionnaire";
+  total: number;
+  breakdown?: Record<string, any>;
+  confidence?: number;
+};
+
+// Minimal client-side shape for PricingConfig (mirrors backend)
+export type PricingConfigInput = Partial<{
+  defaultLabourCostPerDoor: number;
+  defaultOverheadPercentOnCost: number;
+  targetMarginPercentOnSell: number;
+  defaultMaterialMarkupPercent: number;
+}>;
+
 export type ProcessQuoteResponse =
   | {
       ok: true;
@@ -194,6 +210,56 @@ export async function generateMlEstimate(
     modelVersionId: res?.modelVersionId ?? null,
     meta,
   };
+}
+
+/**
+ * Price a quote using questionnaire-based costing via POST /quotes/:id/price with method "questionnaire".
+ * Returns totals and a breakdown suitable for UI display.
+ */
+export async function priceQuoteFromQuestionnaire(
+  quoteId: string,
+): Promise<QuestionnairePriceResponse> {
+  if (!quoteId) throw new Error("quoteId required");
+  const res = await apiFetch<QuestionnairePriceResponse>(
+    `/quotes/${encodeURIComponent(quoteId)}/price`,
+    {
+      method: "POST",
+      json: { method: "questionnaire" },
+    },
+  );
+  return res;
+}
+
+/**
+ * Price a single door context for a given quote via Door Pricing Engine.
+ * Persists a quote line and returns breakdown and totals.
+ */
+export async function priceDoorForQuote(
+  quoteId: string,
+  context: Record<string, any>,
+  config?: PricingConfigInput,
+): Promise<{
+  ok: boolean;
+  quoteId: string;
+  results: Array<{
+    lineId: string;
+    unitPrice: number;
+    lineTotal: number;
+    currency: string;
+    breakdown: any;
+    unpricedMaterials?: any[];
+  }>;
+  total: number;
+}> {
+  if (!quoteId) throw new Error("quoteId required");
+  const body: any = {
+    lines: [{ context }],
+  };
+  if (config && Object.keys(config).length) body.config = config;
+  return apiFetch(`/quotes/${encodeURIComponent(quoteId)}/price-door`, {
+    method: "POST",
+    json: body,
+  });
 }
 
 export async function saveQuoteMappings(

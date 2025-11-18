@@ -48,6 +48,7 @@ import settingsInboxRouter from "./routes/settings-inbox";
 import sourceCostsRouter from "./routes/source-costs";
 import analyticsRouter from "./routes/analytics";
 import quotesRouter from "./routes/quotes";
+import quotePricingRouter from "./routes/quote-pricing";
 import authSetupRouter from "./routes/auth-setup";
 import suppliersRouter from "./routes/suppliers";
 import supplierQuoteRequestsRouter from "./routes/supplier-quote-requests";
@@ -548,6 +549,8 @@ if (billingRouter) {
   app.use("/billing", billingRouter);
 }
 app.use("/quotes", quotesRouter);
+// Additional quote pricing routes (questionnaire + door engine)
+app.use("/quotes", quotePricingRouter);
 // Deprecation: questionnaire-fields now aliases /fields for backwards compatibility
 app.use("/questionnaire-fields", requireAuth, fieldsRouter);
 app.use("/questionnaire-responses", questionnaireResponsesRouter);

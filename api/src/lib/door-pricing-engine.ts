@@ -400,7 +400,7 @@ export async function priceMaterialRequirementsForTenant(
 
     // Try to find MaterialItem by code first
     if (req.materialCode) {
-      materialItem = await prisma.materialItem.findFirst({
+      materialItem = await (prisma as any).materialItem.findFirst({
         where: {
           tenantId,
           code: req.materialCode,
@@ -425,7 +425,7 @@ export async function priceMaterialRequirementsForTenant(
       
       const prismaCategory = categoryMap[req.category] || "OTHER";
       
-      materialItem = await prisma.materialItem.findFirst({
+      materialItem = await (prisma as any).materialItem.findFirst({
         where: {
           tenantId,
           isActive: true,

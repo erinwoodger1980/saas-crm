@@ -12,6 +12,11 @@ import {
   validateCostingInputs,
   type CostingInput,
 } from "../lib/questionnaire/costing";
+import {
+  priceDoorLine,
+  createDefaultPricingConfig,
+  type PricingConfig,
+} from "../lib/door-pricing-engine";
 
 const router = Router();
 
@@ -200,6 +205,134 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
   } catch (e: any) {
     console.error("[POST /quotes/:id/price] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * POST /quotes/:id/price-door
+ * Prices one or more quote lines using the Door Pricing Engine.
+ * Body: {
+ *   config?: Partial<PricingConfig>,
+ *   lines: Array<{
+ *     lineId?: string, // optional existing QuoteLine.id to update; creates a new line when omitted
+ *     context: any     // DoorCostingContext (input + dimensions + apertures + warnings)
+ *   }>
+ * }
+ */
+router.post("/:id/price-door", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const quoteId = String(req.params.id);
+
+    // Verify quote ownership
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, tenantId },
+      include: { lines: true },
+    });
+    if (!quote) return res.status(404).json({ error: "quote_not_found" });
+
+    // Build pricing config (defaults + overrides)
+    const incomingCfg: Partial<PricingConfig> = (req.body?.config as any) || {};
+    const cfg = { ...createDefaultPricingConfig(), ...incomingCfg } as PricingConfig;
+
+    // Validate lines payload
+    const payloadLines: Array<{ lineId?: string; context: any }> = Array.isArray(req.body?.lines)
+      ? req.body.lines
+      : [];
+    if (payloadLines.length === 0) {
+      return res.status(400).json({ error: "no_lines", message: "Provide at least one line with context" });
+    }
+
+    // Process each line and persist pricing
+    const results: Array<{
+      lineId: string;
+      unitPrice: number;
+      lineTotal: number;
+      currency: string;
+      breakdown: any;
+      unpricedMaterials?: any[];
+    }> = [];
+
+    for (const [idx, item] of payloadLines.entries()) {
+      const context = item?.context;
+      if (!context || typeof context !== "object" || !context.input) {
+        return res.status(400).json({
+          error: "invalid_context",
+          message: `Line ${idx + 1} missing valid DoorCostingContext`,
+        });
+      }
+
+      // Calculate price breakdown using engine
+      const breakdown = await priceDoorLine(tenantId, context, prisma as any, cfg);
+
+      const qty = Number(context?.input?.quantity || 1);
+      const finalSell = Number(breakdown.finalSellPrice || 0);
+      const unitPrice = qty > 0 ? finalSell / qty : finalSell;
+      const currency = quote.currency || "GBP";
+
+      let savedLineId = item.lineId;
+
+      if (savedLineId) {
+        // Ensure the line belongs to this quote
+        const existing = quote.lines.find((l) => l.id === savedLineId);
+        if (!existing) {
+          return res.status(400).json({ error: "line_not_found", message: `Line ${savedLineId} not in quote` });
+        }
+
+        await prisma.quoteLine.update({
+          where: { id: savedLineId },
+          data: {
+            qty,
+            unitPrice: new Prisma.Decimal(unitPrice),
+            lineTotalGBP: new Prisma.Decimal(finalSell),
+            currency,
+            meta: {
+              ...((existing.meta as any) || {}),
+              pricingMethod: "door_engine",
+              doorPricing: breakdown,
+            } as any,
+          },
+        });
+      } else {
+        const created = await prisma.quoteLine.create({
+          data: {
+            quoteId: quote.id,
+            description: "Custom door assembly",
+            qty,
+            unitPrice: new Prisma.Decimal(unitPrice),
+            deliveryShareGBP: new Prisma.Decimal(0),
+            lineTotalGBP: new Prisma.Decimal(finalSell),
+            currency,
+            meta: {
+              pricingMethod: "door_engine",
+              doorPricing: breakdown,
+            } as any,
+          },
+          select: { id: true },
+        });
+        savedLineId = created.id;
+      }
+
+      const unpriced = breakdown.materials.filter((m) => !m.materialItemId);
+      results.push({
+        lineId: savedLineId!,
+        unitPrice,
+        lineTotal: finalSell,
+        currency,
+        breakdown,
+        ...(unpriced.length ? { unpricedMaterials: unpriced } : {}),
+      });
+    }
+
+    // Update quote total based on current lines
+    const refreshed = await prisma.quote.findUnique({ where: { id: quote.id }, include: { lines: true } });
+    const total = (refreshed?.lines || []).reduce((sum, l) => sum + Number(l.lineTotalGBP || 0), 0);
+    await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(total) } });
+
+    return res.json({ ok: true, quoteId, results, total });
+  } catch (e: any) {
+    console.error("[POST /quotes/:id/price-door] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error", detail: e?.message });
   }
 });
 

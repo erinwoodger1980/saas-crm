@@ -26,6 +26,7 @@ import {
   normalizeQuestionnaireFields,
   processQuoteFromFile,
   saveClientQuoteLines,
+  priceQuoteFromQuestionnaire,
   type SupplierFileDto as SupplierFile,
 } from "@/lib/api/quotes";
 import type {
@@ -86,11 +87,14 @@ export default function QuoteBuilderPage() {
   const [isProcessingSupplier, setIsProcessingSupplier] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [isEstimating, setIsEstimating] = useState(false);
+  const [isPricing, setIsPricing] = useState(false);
   const [questionnaireSaving, setQuestionnaireSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [rawParseOpen, setRawParseOpen] = useState(false);
   const [processDialogOpen, setProcessDialogOpen] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [pricingBreakdown, setPricingBreakdown] = useState<Record<string, any> | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [markupPercent, setMarkupPercent] = useState<number>(20);
   const [vatPercent, setVatPercent] = useState<number>(20);
@@ -295,46 +299,51 @@ export default function QuoteBuilderPage() {
   const handleQuestionnaireEstimate = useCallback(async () => {
     if (!quoteId) return;
     setIsEstimating(true);
+    setIsPricing(true);
     try {
-      const response = await generateMlEstimate(quoteId, { source: "questionnaire" });
-      setEstimate(response);
+      // Call questionnaire pricing endpoint (server-calculated)
+      const res = await priceQuoteFromQuestionnaire(quoteId);
+      // Update lightweight estimate state from response
+      const est = {
+        estimatedTotal: res.total,
+        predictedTotal: res.total,
+        totalGBP: res.total,
+        confidence: res.confidence ?? null,
+        currency: quote?.currency ?? currency ?? "GBP",
+        modelVersionId: null,
+        meta: {},
+      } as any;
+      setEstimate(est);
       setLastEstimateAt(new Date().toISOString());
-      toast({
-        title: "Questionnaire estimate ready",
-        description: `Predicted total ${formatCurrency(response.estimatedTotal, currency)}.`,
-      });
       setEstimatedLineRevision(lineRevision);
-      
-      // Wait for data to refresh BEFORE rendering proposal
+      setPricingBreakdown(res.breakdown ?? null);
+      toast({
+        title: "Questionnaire pricing complete",
+        description: `Total ${formatCurrency(res.total, currency)}${res.confidence != null ? ` · conf ${Math.round(res.confidence * 100)}%` : ""}`,
+      });
+
+      // Refresh data before rendering proposal
       await Promise.all([mutateQuote(), mutateLines()]);
 
-      // Auto-render proposal after questionnaire-driven ML pricing
+      // Auto-render proposal (optional convenience)
       setIsRendering(true);
       try {
-        // Small delay to ensure DB writes are committed
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((r) => setTimeout(r, 500));
         await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-proposal`, { method: "POST" });
         const signed = await apiFetch<{ url: string }>(`/quotes/${encodeURIComponent(quoteId)}/proposal/signed`);
         if (signed?.url) window.open(signed.url, "_blank");
       } catch (renderErr: any) {
-        toast({
-          title: "Estimate saved, but proposal render failed",
-          description: renderErr?.message || "Try 'Render proposal'",
-          variant: "destructive",
-        });
+        toast({ title: "Estimate saved, but proposal render failed", description: renderErr?.message || "Try 'Render proposal'", variant: "destructive" });
       } finally {
         setIsRendering(false);
       }
     } catch (err: any) {
-      toast({
-        title: "Estimate failed",
-        description: err?.message || "Unable to estimate from questionnaire",
-        variant: "destructive",
-      });
+      toast({ title: "Pricing failed", description: err?.message || "Unable to price from questionnaire", variant: "destructive" });
     } finally {
       setIsEstimating(false);
+      setIsPricing(false);
     }
-  }, [quoteId, mutateQuote, mutateLines, toast, currency, lineRevision]);
+  }, [quoteId, mutateQuote, mutateLines, toast, currency, lineRevision, quote?.currency]);
 
   const handleQuestionnaireSave = useCallback(
     async (changes: Record<string, any>) => {
@@ -509,6 +518,12 @@ export default function QuoteBuilderPage() {
                   Print Quote Sheet
                 </Button>
               </Link>
+              {pricingBreakdown && (
+                <Button variant="secondary" size="sm" className="gap-2" onClick={() => setBreakdownOpen(true)}>
+                  <Sparkles className="h-4 w-4" />
+                  View pricing breakdown
+                </Button>
+              )}
             </div>
           </div>
 
@@ -818,6 +833,17 @@ export default function QuoteBuilderPage() {
               </button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={breakdownOpen} onOpenChange={setBreakdownOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Pricing breakdown</DialogTitle>
+          </DialogHeader>
+          <pre className="max-h-[60vh] overflow-auto rounded-lg bg-muted/40 p-4 text-xs">
+            {JSON.stringify(pricingBreakdown ?? {}, null, 2)}
+          </pre>
         </DialogContent>
       </Dialog>
     </div>
