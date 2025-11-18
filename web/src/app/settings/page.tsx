@@ -619,38 +619,37 @@ export default function SettingsPage() {
 
     setEnrichingWebsite(true);
     try {
-      const enriched = await apiFetch<{
-        brandName?: string;
-        phone?: string;
-        logoUrl?: string;
-        links?: { label: string; url: string }[];
-        introSuggestion?: string;
+      const result = await apiFetch<{
+        ok: boolean;
+        settings: Settings;
+        enriched: any;
       }>("/tenant/settings/enrich", {
         method: "POST",
         json: { website: s.website },
       });
 
-      // Update settings with enriched data
-      setS((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          brandName: enriched.brandName || prev.brandName,
-          phone: enriched.phone || prev.phone,
-          logoUrl: enriched.logoUrl || prev.logoUrl,
-          introHtml: enriched.introSuggestion 
-            ? `<p>${enriched.introSuggestion}</p>` 
-            : prev.introHtml,
-        };
-      });
+      // Update settings with the saved data from backend
+      if (result.settings) {
+        setS(result.settings);
+      }
 
+      // Show what was found
+      const enriched = result.enriched || {};
+      const enrichedQD = enriched?.quoteDefaults || {};
       toast({ 
         title: "Website data imported successfully", 
         description: `Found: ${[
           enriched.brandName && "company name",
           enriched.phone && "phone number", 
           enriched.logoUrl && "logo",
-          enriched.introSuggestion && "intro text"
+          enriched.introSuggestion && "intro text",
+          enriched.address && "address",
+          enrichedQD.tagline && "tagline",
+          enrichedQD.businessHours && "opening hours",
+          enrichedQD.overview && "company overview",
+          enrichedQD.guarantees?.length && "guarantees",
+          enrichedQD.testimonials?.length && "testimonials",
+          enrichedQD.certifications?.length && "certifications"
         ].filter(Boolean).join(", ") || "some basic info"}` 
       });
     } catch (e: any) {
