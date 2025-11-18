@@ -727,7 +727,7 @@ router.post('/forgot-password', async (req, res) => {
     });
 
     // Build reset URL
-    const appUrl = process.env.APP_URL || 'https://app.joineryai.app';
+    const appUrl = process.env.APP_URL || 'https://www.joineryai.app';
     const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
 
     // Send email
