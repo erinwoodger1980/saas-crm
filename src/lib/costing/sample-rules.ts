@@ -9,35 +9,36 @@ interface FrameConfig {
   frameType: string;
   configuration: LeafConfiguration;
   totalGapWidth: number;
+  totalGapHeight: number;
   soOffsetWidth: number;
   soOffsetHeight: number;
 }
 
 // Sample lookup table for frame sizing rules
 const FRAME_SIZING_TABLE: FrameConfig[] = [
-  // Standard Frame - Single configurations
-  { frameType: "Standard", configuration: "Single", totalGapWidth: 25, soOffsetWidth: 100, soOffsetHeight: 100 },
-  { frameType: "Standard", configuration: "Double", totalGapWidth: 30, soOffsetWidth: 100, soOffsetHeight: 100 },
-  { frameType: "Standard", configuration: "Leaf & a Half", totalGapWidth: 30, soOffsetWidth: 100, soOffsetHeight: 100 },
-  { frameType: "Standard", configuration: "Leaf Only", totalGapWidth: 0, soOffsetWidth: 0, soOffsetHeight: 0 },
+  // Standard Frame configurations
+  { frameType: "Standard", configuration: "Single", totalGapWidth: 25, totalGapHeight: 25, soOffsetWidth: 100, soOffsetHeight: 100 },
+  { frameType: "Standard", configuration: "Double", totalGapWidth: 30, totalGapHeight: 25, soOffsetWidth: 100, soOffsetHeight: 100 },
+  { frameType: "Standard", configuration: "Leaf & a Half", totalGapWidth: 30, totalGapHeight: 25, soOffsetWidth: 100, soOffsetHeight: 100 },
+  { frameType: "Standard", configuration: "Leaf Only", totalGapWidth: 0, totalGapHeight: 0, soOffsetWidth: 0, soOffsetHeight: 0 },
   
   // Rebated Frame configurations
-  { frameType: "Rebated", configuration: "Single", totalGapWidth: 20, soOffsetWidth: 90, soOffsetHeight: 90 },
-  { frameType: "Rebated", configuration: "Double", totalGapWidth: 25, soOffsetWidth: 90, soOffsetHeight: 90 },
-  { frameType: "Rebated", configuration: "Leaf & a Half", totalGapWidth: 25, soOffsetWidth: 90, soOffsetHeight: 90 },
-  { frameType: "Rebated", configuration: "Leaf Only", totalGapWidth: 0, soOffsetWidth: 0, soOffsetHeight: 0 },
+  { frameType: "Rebated", configuration: "Single", totalGapWidth: 20, totalGapHeight: 20, soOffsetWidth: 90, soOffsetHeight: 90 },
+  { frameType: "Rebated", configuration: "Double", totalGapWidth: 25, totalGapHeight: 20, soOffsetWidth: 90, soOffsetHeight: 90 },
+  { frameType: "Rebated", configuration: "Leaf & a Half", totalGapWidth: 25, totalGapHeight: 20, soOffsetWidth: 90, soOffsetHeight: 90 },
+  { frameType: "Rebated", configuration: "Leaf Only", totalGapWidth: 0, totalGapHeight: 0, soOffsetWidth: 0, soOffsetHeight: 0 },
   
   // Face-Fixed Frame configurations
-  { frameType: "Face-Fixed", configuration: "Single", totalGapWidth: 30, soOffsetWidth: 110, soOffsetHeight: 110 },
-  { frameType: "Face-Fixed", configuration: "Double", totalGapWidth: 35, soOffsetWidth: 110, soOffsetHeight: 110 },
-  { frameType: "Face-Fixed", configuration: "Leaf & a Half", totalGapWidth: 35, soOffsetWidth: 110, soOffsetHeight: 110 },
-  { frameType: "Face-Fixed", configuration: "Leaf Only", totalGapWidth: 0, soOffsetWidth: 0, soOffsetHeight: 0 },
+  { frameType: "Face-Fixed", configuration: "Single", totalGapWidth: 30, totalGapHeight: 30, soOffsetWidth: 110, soOffsetHeight: 110 },
+  { frameType: "Face-Fixed", configuration: "Double", totalGapWidth: 35, totalGapHeight: 30, soOffsetWidth: 110, soOffsetHeight: 110 },
+  { frameType: "Face-Fixed", configuration: "Leaf & a Half", totalGapWidth: 35, totalGapHeight: 30, soOffsetWidth: 110, soOffsetHeight: 110 },
+  { frameType: "Face-Fixed", configuration: "Leaf Only", totalGapWidth: 0, totalGapHeight: 0, soOffsetWidth: 0, soOffsetHeight: 0 },
   
   // Flush Frame configurations
-  { frameType: "Flush", configuration: "Single", totalGapWidth: 22, soOffsetWidth: 95, soOffsetHeight: 95 },
-  { frameType: "Flush", configuration: "Double", totalGapWidth: 28, soOffsetWidth: 95, soOffsetHeight: 95 },
-  { frameType: "Flush", configuration: "Leaf & a Half", totalGapWidth: 28, soOffsetWidth: 95, soOffsetHeight: 95 },
-  { frameType: "Flush", configuration: "Leaf Only", totalGapWidth: 0, soOffsetWidth: 0, soOffsetHeight: 0 },
+  { frameType: "Flush", configuration: "Single", totalGapWidth: 22, totalGapHeight: 22, soOffsetWidth: 95, soOffsetHeight: 95 },
+  { frameType: "Flush", configuration: "Double", totalGapWidth: 28, totalGapHeight: 22, soOffsetWidth: 95, soOffsetHeight: 95 },
+  { frameType: "Flush", configuration: "Leaf & a Half", totalGapWidth: 28, totalGapHeight: 22, soOffsetWidth: 95, soOffsetHeight: 95 },
+  { frameType: "Flush", configuration: "Leaf Only", totalGapWidth: 0, totalGapHeight: 0, soOffsetWidth: 0, soOffsetHeight: 0 },
 ];
 
 /**
@@ -45,7 +46,14 @@ const FRAME_SIZING_TABLE: FrameConfig[] = [
  * This provides realistic default values for door frame calculations.
  */
 export class SampleDimensionRules implements DimensionRules {
-  private findConfig(frameType: string, config: LeafConfiguration): FrameConfig | null {
+  // Constants as per Excel Cost Sheet
+  readonly lippingExtraWidthFor54CoreMm = 58;   // 58mm for 54mm core
+  readonly lippingDefaultWidthMm = 48;          // 48mm otherwise
+  readonly maxFrameThicknessStdMm = 150;        // 150mm cap for standard materials
+  readonly maxFrameThicknessEngineeredMm = 235; // 235mm cap for engineered softwood
+
+  private findConfig(frameType: string | null, config: LeafConfiguration): FrameConfig | null {
+    if (!frameType) return null;
     const normalizedType = frameType.trim().toLowerCase();
     return FRAME_SIZING_TABLE.find(
       (row) =>
@@ -54,17 +62,22 @@ export class SampleDimensionRules implements DimensionRules {
     ) || null;
   }
 
-  getTotalGapWidth(frameType: string, config: LeafConfiguration): number | null {
+  getTotalGapWidth(frameType: string | null, config: LeafConfiguration): number | null {
     const found = this.findConfig(frameType, config);
     return found ? found.totalGapWidth : null;
   }
 
-  getSoOffsetWidth(frameType: string, config: LeafConfiguration): number | null {
+  getTotalGapHeight(frameType: string | null, config: LeafConfiguration): number | null {
+    const found = this.findConfig(frameType, config);
+    return found ? found.totalGapHeight : null;
+  }
+
+  getSoOffsetWidth(frameType: string | null, config: LeafConfiguration): number | null {
     const found = this.findConfig(frameType, config);
     return found ? found.soOffsetWidth : null;
   }
 
-  getSoOffsetHeight(frameType: string, config: LeafConfiguration): number | null {
+  getSoOffsetHeight(frameType: string | null, config: LeafConfiguration): number | null {
     const found = this.findConfig(frameType, config);
     return found ? found.soOffsetHeight : null;
   }

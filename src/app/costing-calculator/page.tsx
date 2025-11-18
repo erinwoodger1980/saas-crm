@@ -25,6 +25,7 @@ const LEAF_CONFIGURATIONS: { value: LeafConfiguration; label: string }[] = [
 
 export default function CostingCalculatorPage() {
   const [input, setInput] = useState<DoorCostingInput>({
+    doorsetType: "New Build",
     frameWidthMm: 926,
     frameHeightMm: 2040,
     frameType: "Standard",
@@ -39,23 +40,18 @@ export default function CostingCalculatorPage() {
     wallThicknessMm: 150,
     frameMaterial: "MDF",
     liningThicknessJambsMm: 25,
+    liningThicknessHeadsMm: 25,
+    doorUndercutMm: 10,
     masterLeafWidthMm: 826,
     masterLeafAreaM2: 1.69,
     slaveLeafAreaM2: null,
-    masterLeafHeightMm: 2040,
-    visionPanelQtyLeaf1: 0,
-    visionPanelQtyLeaf2: 0,
-    glassType: null,
-    leafWeightCode: "STD",
     leafWeightPerM2Kg: 18,
     coreType: "Chipboard",
-    coreWidthOverrideMm: null,
     coreThicknessMm: 44,
-    leafHeightMm: 2040,
-    lippingMaterialId: "1",
+    lippingMaterialSelected: true,
     quantity: 1,
-    fireRatingCode: "",
-    acousticRatingRw: null,
+    fireRating: "",
+    acousticRatingDb: null,
   });
 
   const [results, setResults] = useState<DerivedDimensions | null>(null);
@@ -255,8 +251,8 @@ export default function CostingCalculatorPage() {
                       Fire Rating
                     </label>
                     <select
-                      value={input.fireRatingCode || ""}
-                      onChange={(e) => updateInput("fireRatingCode", e.target.value)}
+                      value={input.fireRating || ""}
+                      onChange={(e) => updateInput("fireRating", e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     >
                       {FIRE_RATINGS.map((rating) => (
@@ -368,13 +364,12 @@ export default function CostingCalculatorPage() {
                       Lipping Material
                     </label>
                     <select
-                      value={input.lippingMaterialId || "0"}
-                      onChange={(e) => updateInput("lippingMaterialId", e.target.value)}
+                      value={input.lippingMaterialSelected ? "1" : "0"}
+                      onChange={(e) => updateInput("lippingMaterialSelected", e.target.value === "1")}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     >
                       <option value="0">No Lipping</option>
-                      <option value="1">Standard Lipping</option>
-                      <option value="2">Hardwood Lipping</option>
+                      <option value="1">With Lipping</option>
                     </select>
                   </div>
                   <div>
@@ -454,12 +449,12 @@ export default function CostingCalculatorPage() {
                     />
                     <ResultRow
                       label="Extension Lining (Visible)"
-                      value={results.extensionLiningVisibleMm}
+                      value={results.extensionVisibleWidthMm}
                       unit="mm"
                     />
                     <ResultRow
                       label="Extension Lining (Actual)"
-                      value={results.extensionLiningActualMm}
+                      value={results.extensionActualWidthMm}
                       unit="mm"
                     />
                   </div>
@@ -473,7 +468,7 @@ export default function CostingCalculatorPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <ResultRow
                       label="Slave Leaf Width"
-                      value={results.sLeafWidthMm}
+                      value={results.slaveLeafWidthMm}
                       unit="mm"
                     />
                     <ResultRow
@@ -497,19 +492,23 @@ export default function CostingCalculatorPage() {
                       label="Core Width"
                       value={results.coreWidthMm}
                       unit="mm"
-                      status={results.coreWidthStatus}
+                      status={results.coreSizeStatus}
                     />
                     <ResultRow
                       label="Core Height"
                       value={results.coreHeightMm}
                       unit="mm"
-                      status={results.coreHeightStatus}
+                      status={results.coreSizeStatus}
                     />
                   </div>
-                  {(results.coreWidthStatus === "check-price" ||
-                    results.coreHeightStatus === "check-price") && (
+                  {results.coreSizeStatus === "CHECK_PRICE" && (
                     <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
                       ⚠️ Non-standard core size - check pricing with supplier
+                    </div>
+                  )}
+                  {results.coreSizeStatus === "NOT_APPLICABLE" && (
+                    <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
+                      ℹ️ Core sizing not applicable for this configuration
                     </div>
                   )}
                 </div>
@@ -558,9 +557,9 @@ function ResultRow({
   status?: string | null;
 }) {
   const getStatusColor = () => {
-    if (!status || status === "ok") return "";
-    if (status === "check-price") return "text-yellow-600";
-    if (status === "not-applicable") return "text-gray-400";
+    if (!status || status === "OK") return "";
+    if (status === "CHECK_PRICE") return "text-yellow-600";
+    if (status === "NOT_APPLICABLE") return "text-gray-400";
     return "text-gray-500";
   };
 
