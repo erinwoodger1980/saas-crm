@@ -21,6 +21,21 @@ const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
 const router = Router();
 import multer from "multer";
 import pdfParse from "pdf-parse";
+// Safe JSON parsing helper - prevents JSON.parse errors from causing 500s
+function safeParseJson<T = any>(value: any, fallback: T): T {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'object') return value as T;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch (e) {
+      console.warn('[safeParseJson] Failed to parse JSON:', e);
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 
 // Simple in-memory upload for small files like PDFs
 const upload = multer({
@@ -218,25 +233,31 @@ router.get("/settings", async (req, res) => {
     });
   }
 
-  const normalizedPlaybook = normalizeTaskPlaybook(s?.taskPlaybook as any);
-  const normalizedQuestionnaire = normalizeQuestionnaire((s as any)?.questionnaire ?? []);
-  const beta = toPlainObject((s as any)?.beta);
-  const ownerFirstName = cleanOptionalString(beta.ownerFirstName);
-  const ownerLastName = cleanOptionalString(beta.ownerLastName);
-  const aiLearning = toPlainObject(beta.aiFollowupLearning);
-  res.json({
-    ...s,
-    taskPlaybook: normalizedPlaybook,
-    questionnaire: normalizedQuestionnaire,
-    questionnaireEmailSubject: s?.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
-    questionnaireEmailBody: s?.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
-    ownerFirstName,
-    ownerLastName,
-    aiFollowupLearning: {
-      crossTenantOptIn: aiLearning.crossTenantOptIn !== false,
-      lastUpdatedISO: aiLearning.lastUpdatedISO || null,
-    },
-  });
+    // Safe parsing of all JSON fields with fallbacks to prevent crashes
+    const normalizedPlaybook = normalizeTaskPlaybook(safeParseJson(s?.taskPlaybook, {}));
+    const normalizedQuestionnaire = normalizeQuestionnaire(safeParseJson(s?.questionnaire, []));
+    const beta = toPlainObject(safeParseJson(s?.beta, {}));
+    const ownerFirstName = cleanOptionalString(beta.ownerFirstName);
+    const ownerLastName = cleanOptionalString(beta.ownerLastName);
+    const aiLearning = toPlainObject(beta.aiFollowupLearning || {});
+    
+    // Safe quote defaults parsing - critical for settings page
+    const quoteDefaults = safeParseJson(s?.quoteDefaults, {});
+    
+    res.json({
+      ...s,
+      quoteDefaults,
+      taskPlaybook: normalizedPlaybook,
+      questionnaire: normalizedQuestionnaire,
+      questionnaireEmailSubject: s?.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+      questionnaireEmailBody: s?.questionnaireEmailBody ?? DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+      ownerFirstName,
+      ownerLastName,
+      aiFollowupLearning: {
+        crossTenantOptIn: aiLearning.crossTenantOptIn !== false,
+        lastUpdatedISO: aiLearning.lastUpdatedISO || null,
+      },
+    });
   } catch (error: any) {
     console.error('[GET /tenant/settings] Failed:', {
       tenantId,
@@ -302,13 +323,20 @@ async function updateSettings(req: any, res: any) {
     let sanitizedQuestionnaire: QuestionnaireField[] | null = null;
 
     if (inboxWatchEnabled !== undefined) update.inboxWatchEnabled = !!inboxWatchEnabled;
-    if (inbox !== undefined) update.inbox = inbox;
+    if (inbox !== undefined) {
+      const parsedInbox = safeParseJson(inbox, {});
+      update.inbox = parsedInbox;
+    }
     if (questionnaire !== undefined) {
-      sanitizedQuestionnaire = normalizeQuestionnaire(questionnaire ?? []);
+      const parsedQ = safeParseJson(questionnaire, []);
+      sanitizedQuestionnaire = normalizeQuestionnaire(parsedQ ?? []);
       const prepared = prepareQuestionnaireForSave(sanitizedQuestionnaire);
       update.questionnaire = prepared.length ? prepared : [];
     }
-    if (quoteDefaults !== undefined) update.quoteDefaults = quoteDefaults;
+    if (quoteDefaults !== undefined) {
+      const parsed = safeParseJson(quoteDefaults, {});
+      update.quoteDefaults = parsed;
+    }
     if (brandName !== undefined) update.brandName = brandName || "Your Company";
     if (slug !== undefined) {
       const cleanedSlug = sanitizeSlug(slug);
@@ -319,12 +347,18 @@ async function updateSettings(req: any, res: any) {
       }
       update.slug = cleanedSlug;
     }
-    if (links !== undefined) update.links = Array.isArray(links) ? links : [];
+    if (links !== undefined) {
+      const parsedLinks = safeParseJson(links, []);
+      update.links = Array.isArray(parsedLinks) ? parsedLinks : [];
+    }
     if (introHtml !== undefined) update.introHtml = introHtml ?? null;
     if (website !== undefined) update.website = website ?? null;
     if (phone !== undefined) update.phone = phone ?? null;
     if (logoUrl !== undefined) update.logoUrl = logoUrl ?? null;
-    if (taskPlaybook !== undefined) update.taskPlaybook = normalizeTaskPlaybook(taskPlaybook);
+    if (taskPlaybook !== undefined) {
+      const parsedPlaybook = safeParseJson(taskPlaybook, {});
+      update.taskPlaybook = normalizeTaskPlaybook(parsedPlaybook);
+    }
     if (questionnaireEmailSubject !== undefined) {
       const val = typeof questionnaireEmailSubject === "string" ? questionnaireEmailSubject.trim() : "";
       update.questionnaireEmailSubject = val || null;
@@ -349,7 +383,7 @@ async function updateSettings(req: any, res: any) {
 
     if (aiFollowupLearning !== undefined) {
       betaChanged = true;
-      const requested = toPlainObject(aiFollowupLearning);
+      const requested = toPlainObject(safeParseJson(aiFollowupLearning, {}));
       const previous = toPlainObject(existingBeta.aiFollowupLearning);
       const optIn = requested.crossTenantOptIn === false ? false : true;
       const changed = previous.crossTenantOptIn !== optIn;
@@ -381,8 +415,10 @@ async function updateSettings(req: any, res: any) {
     const savedOwnerFirstName = cleanOptionalString(savedBeta.ownerFirstName);
     const savedOwnerLastName = cleanOptionalString(savedBeta.ownerLastName);
     const savedAiLearning = toPlainObject(savedBeta.aiFollowupLearning);
+    const savedQuoteDefaults = safeParseJson((saved as any)?.quoteDefaults, {});
     return res.json({
       ...saved,
+      quoteDefaults: savedQuoteDefaults,
       taskPlaybook: normalizedPlaybook,
       questionnaire: normalizedQuestionnaire,
       questionnaireEmailSubject: saved.questionnaireEmailSubject ?? DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
