@@ -46,10 +46,35 @@ jobs:
       - name: Install dependencies (frozen)
         run: pnpm install --frozen-lockfile
 
-      - name: Prisma generate
+      - name: Cache Prisma engines
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/prisma
+            api/node_modules/.prisma
+          key: ${{ runner.os }}-prisma-${{ hashFiles('api/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-prisma-
+
+      - name: Prisma generate (with retry)
         env:
           PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
-        run: pnpm run prisma:generate
+        run: |
+          # Retry up to 3 times with exponential backoff
+          for i in 1 2 3; do
+            echo "Attempt $i of 3..."
+            if pnpm run prisma:generate; then
+              echo "✅ Prisma generate succeeded"
+              exit 0
+            fi
+            if [ $i -lt 3 ]; then
+              sleep_time=$((2 ** i))
+              echo "⏳ Retrying in ${sleep_time}s..."
+              sleep $sleep_time
+            fi
+          done
+          echo "❌ Prisma generate failed after 3 attempts"
+          exit 1
 
       - name: TypeScript compile
         run: pnpm run build
