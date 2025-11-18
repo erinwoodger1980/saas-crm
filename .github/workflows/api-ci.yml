@@ -57,35 +57,34 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-prisma-engines-
 
-      - name: Download Prisma engines (if CDN fails)
-        if: steps.cache-prisma.outputs.cache-hit != 'true'
-        run: |
-          echo "📦 Pre-downloading Prisma engines from GitHub mirror..."
-          # Get the engine version from node_modules/@prisma/engines
-          ENGINE_VERSION="272a37d34178c2894197e17273bf937f25acdeac"
-          PLATFORM="debian-openssl-3.0.x"
-          
-          # Create cache directory
-          mkdir -p ~/.cache/prisma/binaries/engines/$PLATFORM
-          
-          # Try downloading from GitHub release mirror first (more reliable)
-          ENGINE_URL="https://github.com/prisma/prisma-engines/releases/download/$ENGINE_VERSION/libquery_engine-$PLATFORM.so.node.gz"
-          
-          echo "Attempting download from: $ENGINE_URL"
-          if curl -L -o /tmp/engine.gz "$ENGINE_URL" 2>/dev/null; then
-            echo "✅ Downloaded from GitHub mirror"
-            gunzip /tmp/engine.gz
-            mv /tmp/engine ~/.cache/prisma/binaries/engines/$PLATFORM/$ENGINE_VERSION-libquery_engine.so.node
-            chmod +x ~/.cache/prisma/binaries/engines/$PLATFORM/$ENGINE_VERSION-libquery_engine.so.node
-          else
-            echo "⚠️ GitHub mirror failed, will try Prisma CDN during generate"
-          fi
-
-      - name: Prisma generate
+      - name: Prisma generate (with extended timeout and retries)
         env:
           PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
-          PRISMA_QUERY_ENGINE_BINARY: ~/.cache/prisma/binaries/engines/debian-openssl-3.0.x/272a37d34178c2894197e17273bf937f25acdeac-libquery_engine.so.node
-        run: pnpm run prisma:generate
+        run: |
+          echo "� Generating Prisma client..."
+          # Increase Node.js max HTTP header size and timeout
+          export NODE_OPTIONS="--max-http-header-size=80000"
+          
+          # Try up to 5 times with increasing delays
+          MAX_ATTEMPTS=5
+          for attempt in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $attempt/$MAX_ATTEMPTS..."
+            
+            if timeout 180 pnpm run prisma:generate; then
+              echo "✅ Prisma generate succeeded"
+              exit 0
+            fi
+            
+            exit_code=$?
+            if [ $attempt -lt $MAX_ATTEMPTS ]; then
+              delay=$((attempt * 5))
+              echo "⏳ Attempt failed, retrying in ${delay}s..."
+              sleep $delay
+            else
+              echo "❌ Prisma generate failed after $MAX_ATTEMPTS attempts"
+              exit $exit_code
+            fi
+          done
 
       - name: TypeScript compile
         run: pnpm run build
