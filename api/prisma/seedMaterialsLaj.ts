@@ -2,10 +2,18 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-interface MaterialCategorySeed {
-  name: string;
-  description: string;
-}
+type MaterialItemCategory = 
+  | 'DOOR_BLANK'
+  | 'LIPPING'
+  | 'TIMBER'
+  | 'GLASS'
+  | 'IRONMONGERY'
+  | 'BOARD'
+  | 'VENEER'
+  | 'FINISH'
+  | 'HARDWARE'
+  | 'CONSUMABLE'
+  | 'OTHER';
 
 interface MaterialItemSeed {
   code: string;
@@ -13,38 +21,11 @@ interface MaterialItemSeed {
   description: string;
   cost: number;
   unit: string;
-  categoryName: string;
+  category: MaterialItemCategory;
   stock?: number;
   leadTimeDays?: number;
   minStockLevel?: number;
 }
-
-const CATEGORIES: MaterialCategorySeed[] = [
-  {
-    name: 'core',
-    description: 'Fire door core materials',
-  },
-  {
-    name: 'lipping',
-    description: 'Door lipping materials',
-  },
-  {
-    name: 'timber',
-    description: 'Structural timber',
-  },
-  {
-    name: 'glass',
-    description: 'Fire-rated glass panels',
-  },
-  {
-    name: 'ironmongery',
-    description: 'Hardware and fittings',
-  },
-  {
-    name: 'finish',
-    description: 'Surface finishes and coatings',
-  },
-];
 
 const MATERIALS: MaterialItemSeed[] = [
   {
@@ -53,7 +34,7 @@ const MATERIALS: MaterialItemSeed[] = [
     description: 'Solid core material for 30-minute fire-rated doors, 44mm thickness',
     cost: 18.0,
     unit: 'm2',
-    categoryName: 'core',
+    category: 'DOOR_BLANK',
     stock: 150,
     leadTimeDays: 5,
     minStockLevel: 50,
@@ -64,7 +45,7 @@ const MATERIALS: MaterialItemSeed[] = [
     description: 'Solid core material for 60-minute fire-rated doors, 54mm thickness',
     cost: 27.0,
     unit: 'm2',
-    categoryName: 'core',
+    category: 'DOOR_BLANK',
     stock: 100,
     leadTimeDays: 7,
     minStockLevel: 30,
@@ -75,7 +56,7 @@ const MATERIALS: MaterialItemSeed[] = [
     description: 'Standard softwood lipping for door edges',
     cost: 3.0,
     unit: 'm',
-    categoryName: 'lipping',
+    category: 'LIPPING',
     stock: 500,
     leadTimeDays: 3,
     minStockLevel: 100,
@@ -86,7 +67,7 @@ const MATERIALS: MaterialItemSeed[] = [
     description: 'Structural softwood for door frames',
     cost: 4.5,
     unit: 'm',
-    categoryName: 'timber',
+    category: 'TIMBER',
     stock: 400,
     leadTimeDays: 3,
     minStockLevel: 100,
@@ -97,7 +78,7 @@ const MATERIALS: MaterialItemSeed[] = [
     description: 'Clear fire-resistant glazing for vision panels',
     cost: 55.0,
     unit: 'm2',
-    categoryName: 'glass',
+    category: 'GLASS',
     stock: 50,
     leadTimeDays: 14,
     minStockLevel: 10,
@@ -108,7 +89,7 @@ const MATERIALS: MaterialItemSeed[] = [
     description: 'Complete hardware pack including hinges, handle, and closer',
     cost: 85.0,
     unit: 'each',
-    categoryName: 'ironmongery',
+    category: 'IRONMONGERY',
     stock: 200,
     leadTimeDays: 7,
     minStockLevel: 50,
@@ -130,56 +111,12 @@ async function main() {
 
   console.log(`   ✅ Found tenant: ${tenant.name} (${tenant.id})\n`);
 
-  // Step 2: Upsert material categories
-  console.log('📂 Step 2: Creating/updating material categories...');
-  const categoryMap = new Map<string, string>();
-  let categoriesCreated = 0;
-  let categoriesUpdated = 0;
-
-  for (const cat of CATEGORIES) {
-    const existing = await (prisma as any).materialCategory.findFirst({
-      where: {
-        tenantId: tenant.id,
-        name: cat.name,
-      },
-    });
-
-    if (existing) {
-      await (prisma as any).materialCategory.update({
-        where: { id: existing.id },
-        data: { description: cat.description },
-      });
-      categoryMap.set(cat.name, existing.id);
-      categoriesUpdated++;
-      console.log(`   🔄 Updated category: ${cat.name}`);
-    } else {
-      const created = await (prisma as any).materialCategory.create({
-        data: {
-          tenantId: tenant.id,
-          name: cat.name,
-          description: cat.description,
-        },
-      });
-      categoryMap.set(cat.name, created.id);
-      categoriesCreated++;
-      console.log(`   ✅ Created category: ${cat.name}`);
-    }
-  }
-
-  console.log(`   📊 Categories: ${categoriesCreated} created, ${categoriesUpdated} updated\n`);
-
-  // Step 3: Upsert material items
-  console.log('📦 Step 3: Creating/updating material items...');
+  // Step 2: Upsert material items
+  console.log('📦 Step 2: Creating/updating material items...');
   let itemsCreated = 0;
   let itemsUpdated = 0;
 
   for (const item of MATERIALS) {
-    const categoryId = categoryMap.get(item.categoryName);
-    if (!categoryId) {
-      console.warn(`   ⚠️  Category "${item.categoryName}" not found, skipping ${item.code}`);
-      continue;
-    }
-
     const existing = await (prisma as any).materialItem.findFirst({
       where: {
         tenantId: tenant.id,
@@ -192,8 +129,8 @@ async function main() {
       description: item.description,
       cost: item.cost,
       unit: item.unit,
-      categoryId,
-      stock: item.stock,
+      category: item.category,
+      stockQuantity: item.stock,
       leadTimeDays: item.leadTimeDays,
       minStockLevel: item.minStockLevel,
     };
@@ -220,7 +157,7 @@ async function main() {
 
   console.log(`   📊 Items: ${itemsCreated} created, ${itemsUpdated} updated\n`);
 
-  // Step 4: Summary with pricing
+  // Step 3: Summary with pricing
   console.log('💰 Material Pricing Summary:');
   console.log('   ════════════════════════════════════════════════');
   for (const item of MATERIALS) {
