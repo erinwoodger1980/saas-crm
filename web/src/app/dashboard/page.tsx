@@ -19,6 +19,7 @@ import {
   Area
 } from "recharts";
 import { Target, Calendar, DollarSign, Users, Award, ArrowUp, ArrowDown } from "lucide-react";
+import { LeadSourceCostsTab } from "@/components/dashboard/LeadSourceCostsTab";
 
 type MonthlyData = {
   year: number;
@@ -90,6 +91,7 @@ type BusinessMetrics = {
 };
 
 export default function DashboardPage() {
+  const [activeTab, setActiveTab] = useState<"overview" | "source-costs">("overview");
   const [data, setData] = useState<BusinessMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -244,7 +246,6 @@ export default function DashboardPage() {
   }, [data]);
 
   if (err) return <div className="p-6 text-red-600">Error: {err}</div>;
-  if (loading || !data) return <div className="p-6">Loading dashboard…</div>;
 
   return (
     <DeskSurface variant="indigo" innerClassName="space-y-8">
@@ -278,7 +279,7 @@ export default function DashboardPage() {
                     placeholder="12-31"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Current: FY{data.financialYear.current} (ends {data.financialYear.yearEnd}) - {data.financialYear.progressPercent}% complete
+                    Current: FY{data?.financialYear.current} (ends {data?.financialYear.yearEnd}) - {data?.financialYear.progressPercent}% complete
                   </p>
                 </div>
                 <Button 
@@ -378,7 +379,7 @@ export default function DashboardPage() {
             </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Set Annual Targets for {data.currentYear}</DialogTitle>
+              <DialogTitle>Set Annual Targets for {data?.currentYear}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
@@ -430,6 +431,28 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {/* Tab Navigation */}
+      <div className="flex gap-1 rounded-xl bg-white/80 p-1 border border-indigo-200/70 shadow-sm">
+        <Button
+          variant={activeTab === "overview" ? "default" : "ghost"}
+          onClick={() => setActiveTab("overview")}
+          className="flex-1"
+        >
+          📊 Overview
+        </Button>
+        <Button
+          variant={activeTab === "source-costs" ? "default" : "ghost"}
+          onClick={() => setActiveTab("source-costs")}
+          className="flex-1"
+        >
+          💰 Lead Source Costs
+        </Button>
+      </div>
+
+      {/* Tab Content - Overview */}
+      {activeTab === "overview" && loading && <div className="p-6">Loading dashboard…</div>}
+      {activeTab === "overview" && !loading && data && (
+        <>
       {/* Year-over-Year Key Metrics */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <YoYMetricCard
@@ -707,6 +730,11 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
+
+      {/* Tab Content - Lead Source Costs */}
+      {activeTab === "source-costs" && <LeadSourceCostsTab />}
     </DeskSurface>
   );
 }
