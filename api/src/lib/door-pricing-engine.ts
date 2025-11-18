@@ -112,6 +112,7 @@ export interface MaterialRequirement {
     coreType?: string | null;
     glassType?: string | null;
     frameMaterial?: string | null;
+    packKey?: string | null; // For ironmongery pack selection
   };
 }
 
