@@ -177,15 +177,16 @@ router.get("/settings", async (req, res) => {
   const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-  let s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
-  if (!s) {
-    // Prefer seeding from Demo Tenant template so new tenants start with the demo client's questionnaire
-    let preparedQuestions: any[] | null = null;
-    try {
-      await initializeTenantWithSeedData(tenantId);
-      const demoQ = await buildQuestionnaireFromLeadFieldDefs(tenantId);
-      preparedQuestions = prepareQuestionnaireForSave(demoQ);
-    } catch (e) {
+  try {
+    let s = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!s) {
+      // Prefer seeding from Demo Tenant template so new tenants start with the demo client's questionnaire
+      let preparedQuestions: any[] | null = null;
+      try {
+        await initializeTenantWithSeedData(tenantId);
+        const demoQ = await buildQuestionnaireFromLeadFieldDefs(tenantId);
+        preparedQuestions = prepareQuestionnaireForSave(demoQ);
+      } catch (e) {
       // Fall back to a sensible default if template not available
       const fallback = normalizeQuestionnaire([
         { id: "contact_name", key: "contact_name", label: "Your name", type: "text", required: true, askInQuestionnaire: true, showOnLead: true, sortOrder: 0 },
@@ -236,6 +237,18 @@ router.get("/settings", async (req, res) => {
       lastUpdatedISO: aiLearning.lastUpdatedISO || null,
     },
   });
+  } catch (error: any) {
+    console.error('[GET /tenant/settings] Failed:', {
+      tenantId,
+      error: error.message,
+      stack: error.stack?.split('\n').slice(0, 3).join('\n'),
+      timestamp: new Date().toISOString(),
+    });
+    res.status(500).json({ 
+      error: 'settings_fetch_failed',
+      message: process.env.NODE_ENV === 'production' ? 'Failed to load settings' : error.message
+    });
+  }
 });
 /** Partial update for tenant settings (e.g. inboxWatchEnabled, inbox, questionnaire, quoteDefaults, brandName, links) */
 async function updateSettings(req: any, res: any) {
