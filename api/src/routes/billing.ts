@@ -42,21 +42,43 @@ router.get("/status", async (req: any, res) => {
   const tenantId = req.auth?.tenantId as string | undefined;
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-  const t = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-    select: {
-      name: true,
-      subscriptionStatus: true,
-      plan: true,
-      trialEndsAt: true,
-      stripeCustomerId: true,
-      stripeSubscriptionId: true,
-      discountCodeUsed: true,
-    },
-  });
+  try {
+    const t = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        name: true,
+        subscriptionStatus: true,
+        plan: true,
+        trialEndsAt: true,
+        stripeCustomerId: true,
+        stripeSubscriptionId: true,
+        discountCodeUsed: true,
+      },
+    });
 
-  if (!t) return res.status(404).json({ error: "tenant_not_found" });
-  res.json(t);
+    if (!t) {
+      console.warn('[billing/status] Tenant not found:', tenantId);
+      return res.status(404).json({ error: "tenant_not_found" });
+    }
+    
+    res.json(t);
+  } catch (error: any) {
+    console.error('[billing/status] Failed:', {
+      tenantId,
+      error: error.message,
+      stack: error.stack?.split('\n').slice(0, 3).join('\n'),
+    });
+    // Return safe default instead of 500
+    res.json({
+      name: "Loading...",
+      subscriptionStatus: null,
+      plan: null,
+      trialEndsAt: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      discountCodeUsed: null,
+    });
+  }
 });
 
 router.post("/checkout", async (req: any, res) => {

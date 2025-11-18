@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import Stripe from "stripe";
 import { env } from "../env";
 import { normalizeEmail } from "../lib/email";
@@ -379,11 +380,13 @@ router.post("/dev-seed", async (req, res) => {
 });
 
 router.get("/me", async (req, res) => {
-  const auth = (req as any).auth;
-  console.log("[auth/me] auth payload:", JSON.stringify(auth));
-  if (!auth?.userId) return res.status(401).json({ error: "unauthorized" });
-
   try {
+    const auth = (req as any).auth;
+    if (!auth?.userId) {
+      console.warn('[auth/me] No auth or userId in request');
+      return res.status(401).json({ error: "unauthenticated" });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: auth.userId },
       select: {
@@ -395,13 +398,16 @@ router.get("/me", async (req, res) => {
         isEarlyAdopter: true,
       },
     });
-    if (!user) return res.status(404).json({ error: "not_found" });
 
-    console.log("[auth/me] returning user:", user.email, "tenant:", user.tenantId, "impersonating:", auth.impersonating || false);
+    if (!user) {
+      console.warn('[auth/me] User not found:', auth.userId);
+      return res.status(404).json({ error: "user_not_found" });
+    }
+
     const { firstName, lastName } = splitName(user.name);
     return res.json({ ...user, firstName, lastName });
   } catch (e: any) {
-    console.error("[auth/me] failed:", e);
+    console.error("[auth/me] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
   }
 });
@@ -673,6 +679,130 @@ router.delete('/admin/delete-user/:userId', async (req: any, res) => {
     return res.json({ ok: true, userId: user.id, email: user.email });
   } catch (e: any) {
     console.error('[auth/admin/delete-user] failed:', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+/**
+ * POST /auth/forgot-password
+ * Body: { email: string }
+ * Generates a password reset token and sends reset email
+ */
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'email_required' });
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true, email: true, name: true, tenantId: true },
+    });
+
+    // Always return success even if user not found (security best practice)
+    if (!user) {
+      console.log(`[forgot-password] User not found: ${normalizedEmail}`);
+      return res.json({ ok: true });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date();
+    resetExpires.setHours(resetExpires.getHours() + 2); // 2 hour expiry
+
+    // Save token (upsert to handle existing tokens)
+    await prisma.passwordResetToken.upsert({
+      where: { userId: user.id },
+      create: {
+        userId: user.id,
+        token: resetToken,
+        expiresAt: resetExpires,
+      },
+      update: {
+        token: resetToken,
+        expiresAt: resetExpires,
+      },
+    });
+
+    // Build reset URL
+    const appUrl = process.env.APP_URL || 'https://app.joineryai.app';
+    const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
+
+    // Send email
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: 'Reset your Joinery AI password',
+        html: `
+          <p>Hi ${user.name || 'there'},</p>
+          <p>You requested to reset your password. Click the link below to set a new password:</p>
+          <p><a href="${resetUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px; margin: 16px 0;">Reset Password</a></p>
+          <p>Or copy this link: ${resetUrl}</p>
+          <p>This link will expire in 2 hours.</p>
+          <p>If you didn't request this, you can safely ignore this email.</p>
+          <p>Thanks,<br/>Joinery AI</p>
+        `,
+      });
+    } catch (emailError: any) {
+      console.error('[forgot-password] Failed to send email:', emailError);
+      // Still return success to avoid leaking user existence
+    }
+
+    console.log(`[forgot-password] Reset token generated for: ${user.email}`);
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error('[forgot-password] failed:', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+/**
+ * POST /auth/reset-password
+ * Body: { token: string, password: string }
+ * Resets password using the token from forgot-password email
+ */
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'token_required' });
+    }
+
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'password_must_be_8_chars' });
+    }
+
+    // Find valid reset token
+    const resetToken = await prisma.passwordResetToken.findUnique({
+      where: { token },
+      include: { user: { select: { id: true, email: true } } },
+    });
+
+    if (!resetToken || resetToken.expiresAt < new Date()) {
+      return res.status(400).json({ error: 'invalid_or_expired_token' });
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Update password and delete reset token
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { passwordHash },
+      }),
+      prisma.passwordResetToken.delete({
+        where: { userId: resetToken.userId },
+      }),
+    ]);
+
+    console.log(`[reset-password] Password reset successful for: ${resetToken.user.email}`);
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error('[reset-password] failed:', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });
