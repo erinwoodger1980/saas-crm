@@ -20,8 +20,50 @@ import {
 
 const router = Router();
 
+/**
+ * Get tenant ID for the current request.
+ * In dev mode, use LAJ Joinery tenant for testing.
+ * In production, use authenticated tenant from JWT.
+ */
+async function getTenantId(req: any): Promise<string> {
+  const isDev = process.env.NODE_ENV !== "production";
+  
+  if (isDev) {
+    // In dev mode, always use LAJ Joinery tenant
+    const lajTenant = await prisma.tenant.findUnique({
+      where: { slug: "laj-joinery" },
+      select: { id: true },
+    });
+    
+    if (!lajTenant) {
+      throw new Error("LAJ Joinery tenant not found. Run: npx ts-node prisma/seedTenantLaj.ts");
+    }
+    
+    return lajTenant.id;
+  }
+  
+  // Production: use authenticated tenant
+  const tenantId = req.auth?.tenantId as string | undefined;
+  if (!tenantId) {
+    throw new Error("unauthorized");
+  }
+  
+  return tenantId;
+}
+
 function requireAuth(req: any, res: any, next: any) {
-  if (!req.auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
+  const isDev = process.env.NODE_ENV !== "production";
+  
+  // In dev mode, allow requests without auth (will use LAJ Joinery)
+  if (isDev) {
+    return next();
+  }
+  
+  // In production, require authentication
+  if (!req.auth?.tenantId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  
   next();
 }
 
@@ -31,7 +73,7 @@ function requireAuth(req: any, res: any, next: any) {
  */
 router.post("/:id/calculate-from-questionnaire", requireAuth, async (req: any, res) => {
   try {
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const quoteId = String(req.params.id);
 
     // Verify quote ownership
@@ -108,7 +150,7 @@ router.post("/:id/calculate-from-questionnaire", requireAuth, async (req: any, r
  */
 router.get("/:id/costing-inputs", requireAuth, async (req: any, res) => {
   try {
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const quoteId = String(req.params.id);
 
     // Verify quote ownership
@@ -138,7 +180,7 @@ router.get("/:id/costing-inputs", requireAuth, async (req: any, res) => {
  */
 router.post("/:id/price", requireAuth, async (req: any, res) => {
   try {
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const quoteId = String(req.params.id);
     const { method = "ml" } = req.body;
 
@@ -221,7 +263,7 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
  */
 router.post("/:id/price-door", requireAuth, async (req: any, res) => {
   try {
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const quoteId = String(req.params.id);
 
     // Verify quote ownership
