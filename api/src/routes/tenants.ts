@@ -19,6 +19,14 @@ const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
   "Thanks,\n{{brandName}}";
 
 const router = Router();
+import multer from "multer";
+import pdfParse from "pdf-parse";
+
+// Simple in-memory upload for small files like PDFs
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
 
 /* ------------------------- helpers ------------------------- */
 function authTenantId(req: any): string | null {
@@ -540,7 +548,7 @@ router.post("/settings/enrich", async (req, res) => {
       introSuggestion: "",
     };
 
-    // Optional AI clean-up (nice links + intro)
+    // Optional AI clean-up (nice links + intro + quote defaults)
     let enriched = { ...seed };
     if (env.OPENAI_API_KEY) {
       const origin = new URL(website).origin;
@@ -557,18 +565,40 @@ router.post("/settings/enrich", async (req, res) => {
         .filter(Boolean)
         .slice(0, 20) as { label: string; url: string }[];
 
+      // Extract testimonials/reviews from page
+      const testimonials: string[] = [];
+      $('blockquote, .testimonial, .review, [class*="testimonial"], [class*="review"]')
+        .slice(0, 10)
+        .each((_i, el) => {
+          const text = $(el).text().trim().replace(/\s+/g, " ").slice(0, 300);
+          if (text.length > 20) testimonials.push(text);
+        });
+
       const prompt = `
 Return JSON with: brandName, phone, address, logoUrl, links (<=6 {label,url}),
-and introSuggestion (short plain text greeting for enquiries). UK English.
+introSuggestion (short plain text greeting for enquiries),
+and quoteDefaults with: tagline, email, businessHours, overview (2-3 sentences about the company),
+defaultTimber, defaultFinish, defaultGlazing, defaultFittings (if joinery/construction),
+delivery (estimated timeframe), installation (if offered),
+terms (brief payment/validity terms),
+guarantees (array of {title, description} max 3),
+testimonials (array of {quote, client, role} max 3 from scraped testimonials),
+certifications (array of {name, description} if mentioned).
+
+UK English. Be concise and professional.
 
 SCRAPED:
 - Title/og: ${seed.brandName}
 - Phone: ${seed.phone || "-"}
 - JSON-LD address: ${JSON.stringify(seed.address)}
 - Candidate logo: ${seed.logoUrl || "-"}
+- Found testimonials: ${testimonials.slice(0, 3).join(" | ")}
 
 NAV LINKS:
 ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
+
+BODY TEXT SAMPLE:
+${text.slice(0, 2000)}
 `;
 
       const ai = await fetch("https://api.openai.com/v1/responses", {
@@ -600,11 +630,26 @@ ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
           links: Array.isArray(p.links) ? p.links.slice(0, 6) : [],
           introSuggestion: p.introSuggestion || "",
           address: p.address ?? seed.address,
+          quoteDefaults: p.quoteDefaults || {},
         } as any;
       } catch {
         // keep seed
       }
     }
+
+    // Merge quoteDefaults with existing
+    const existingSettings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const existingQuoteDefaults = ((existingSettings as any)?.quoteDefaults as any) || {};
+    const incomingQD = (enriched as any).quoteDefaults || {};
+    const mergedQuoteDefaults = {
+      ...existingQuoteDefaults,
+      ...incomingQD,
+      // Prefer explicit enriched fields when available
+      address: enriched.address || existingQuoteDefaults.address || null,
+      guarantees: incomingQD.guarantees || existingQuoteDefaults.guarantees || [],
+      testimonials: incomingQD.testimonials || existingQuoteDefaults.testimonials || [],
+      certifications: incomingQD.certifications || existingQuoteDefaults.certifications || [],
+    };
 
     // Upsert settings
     const saved = await prisma.tenantSettings.upsert({
@@ -615,9 +660,8 @@ ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
         phone: enriched.phone,
         logoUrl: enriched.logoUrl,
         links: enriched.links || [],
-        ...(enriched.introSuggestion
-          ? { introHtml: enriched.introSuggestion }
-          : {}),
+        quoteDefaults: mergedQuoteDefaults,
+        ...(enriched.introSuggestion ? { introHtml: enriched.introSuggestion } : {}),
       },
       create: {
         tenantId,
@@ -628,15 +672,113 @@ ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
         logoUrl: enriched.logoUrl,
         links: enriched.links || [],
         introHtml: enriched.introSuggestion || null,
+        quoteDefaults: mergedQuoteDefaults,
         questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
         questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
       },
     });
 
-    res.json({ ok: true, settings: saved });
+    res.json({ ok: true, settings: saved, enriched });
   } catch (e: any) {
     console.error("[tenant enrich] failed", e);
     res.status(500).json({ error: e?.message || "enrich failed" });
+  }
+});
+
+/**
+ * POST /tenant/settings/import-quote-pdf
+ * Multipart form: field name 'pdfFile'
+ * Extracts company info and quote defaults from an existing proposal PDF.
+ */
+router.post("/settings/import-quote-pdf", upload.single("pdfFile"), async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  if (!req.file || !req.file.buffer) {
+    return res.status(400).json({ error: "pdfFile is required" });
+  }
+
+  try {
+    const parsed = await pdfParse(req.file.buffer);
+    const text = String(parsed?.text || "").replace(/\s+/g, " ").slice(0, 200000);
+
+    if (!env.OPENAI_API_KEY) {
+      return res.status(400).json({ error: "OpenAI not configured on server" });
+    }
+
+    const prompt = `
+Return JSON with keys: brandName, phone, email, address, quoteDefaults.
+quoteDefaults contains: tagline, businessHours, overview, delivery, installation, terms,
+guarantees (<=3 {title, description}), testimonials (<=3 {quote, client, role}), certifications (<=5 {name, description}).
+If not present, omit or leave as null. UK English.
+
+PDF TEXT (truncated):
+${text}
+`;
+
+    const ai = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: prompt,
+        response_format: { type: "json_object" },
+      }),
+    });
+    const data = await ai.json();
+    const textOut =
+      data?.output_text ||
+      data?.choices?.[0]?.message?.content ||
+      data?.choices?.[0]?.output_text ||
+      "{}";
+
+    let extracted: any = {};
+    try {
+      extracted = JSON.parse(String(textOut));
+    } catch {}
+
+    // Merge into existing settings
+    const existing = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const existingQD = ((existing as any)?.quoteDefaults as any) || {};
+    const qd = extracted?.quoteDefaults || {};
+    const mergedQD = {
+      ...existingQD,
+      ...qd,
+      email: extracted?.email || existingQD.email || null,
+      address: extracted?.address || existingQD.address || null,
+      guarantees: qd.guarantees || existingQD.guarantees || [],
+      testimonials: qd.testimonials || existingQD.testimonials || [],
+      certifications: qd.certifications || existingQD.certifications || [],
+    };
+
+    const saved = await prisma.tenantSettings.upsert({
+      where: { tenantId },
+      update: {
+        brandName: extracted?.brandName || existing?.brandName || undefined,
+        phone: extracted?.phone || existing?.phone || undefined,
+        quoteDefaults: mergedQD,
+      },
+      create: {
+        tenantId,
+        slug: `tenant-${tenantId.slice(0, 6)}`,
+        brandName: extracted?.brandName || "Your Company",
+        phone: extracted?.phone || null,
+        website: existing?.website || null,
+        logoUrl: (existing as any)?.logoUrl || null,
+        links: (existing as any)?.links || [],
+        quoteDefaults: mergedQD,
+        questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+        questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+      },
+    });
+
+    res.json({ ok: true, settings: saved, extracted });
+  } catch (e: any) {
+    console.error("[tenant import-quote-pdf] failed", e);
+    res.status(500).json({ error: e?.message || "failed to parse PDF" });
   }
 });
 

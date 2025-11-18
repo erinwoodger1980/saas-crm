@@ -31,6 +31,7 @@
     "studio": "prisma studio"
   },
   "dependencies": {
+    "pdf-parse": "^1.1.1",
     "minimatch": "^9.0.5",
     "@octokit/rest": "^21.0.0",
     "@aws-sdk/client-s3": "^3.926.0",
