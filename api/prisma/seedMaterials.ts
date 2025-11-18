@@ -384,18 +384,18 @@ const MATERIALS: MaterialItemSeed[] = [
 async function main() {
   console.log('🌱 Starting MaterialItem seed script...\n');
 
-  // 1. Find or create the Wealden tenant
-  console.log('📋 Step 1: Finding/creating tenant "wealden"...');
+  // 1. Find or create the LAJ Joinery tenant
+  console.log('📋 Step 1: Finding/creating tenant "laj-joinery"...');
   let tenant = await prisma.tenant.findUnique({
-    where: { slug: 'wealden' },
+    where: { slug: 'laj-joinery' },
   });
 
   if (!tenant) {
-    console.log('   ➕ Creating tenant "wealden"...');
+    console.log('   ➕ Creating tenant "laj-joinery"...');
     tenant = await prisma.tenant.create({
       data: {
-        name: 'Wealden Joinery',
-        slug: 'wealden',
+        name: 'LAJ Joinery',
+        slug: 'laj-joinery',
       },
     });
     console.log(`   ✅ Created tenant: ${tenant.name} (${tenant.id})`);
@@ -403,8 +403,32 @@ async function main() {
     console.log(`   ✅ Found existing tenant: ${tenant.name} (${tenant.id})`);
   }
 
-  // 2. Seed material items
-  console.log('\n📦 Step 2: Creating/updating material items...');
+  // 2. Flag tenant as fire door manufacturer in TenantSettings
+  console.log('\n🔥 Step 2: Setting fire door manufacturer flag...');
+  const existingSettings = await (prisma as any).tenantSettings.findUnique({
+    where: { tenantId: tenant.id },
+  });
+
+  if (existingSettings) {
+    await (prisma as any).tenantSettings.update({
+      where: { tenantId: tenant.id },
+      data: { isFireDoorManufacturer: true },
+    });
+    console.log('   ✅ Updated tenant settings: isFireDoorManufacturer = true');
+  } else {
+    await (prisma as any).tenantSettings.create({
+      data: {
+        tenantId: tenant.id,
+        slug: 'laj-joinery',
+        brandName: 'LAJ Joinery',
+        isFireDoorManufacturer: true,
+      },
+    });
+    console.log('   ✅ Created tenant settings with isFireDoorManufacturer = true');
+  }
+
+  // 3. Seed material items
+  console.log('\n📦 Step 3: Creating/updating material items...');
   let created = 0;
   let updated = 0;
   let skipped = 0;
@@ -466,14 +490,14 @@ async function main() {
     }
   }
 
-  // 3. Summary
+  // 4. Summary
   console.log('\n📊 Summary:');
   console.log(`   ✅ Created: ${created} items`);
   console.log(`   🔄 Updated: ${updated} items`);
   console.log(`   ❌ Skipped: ${skipped} items`);
   console.log(`   📦 Total materials in catalog: ${created + updated}`);
 
-  // 4. Show category breakdown
+  // 5. Show category breakdown
   console.log('\n📂 Category Breakdown:');
   const categories = await (prisma as any).materialItem.groupBy({
     by: ['category'],
@@ -485,7 +509,7 @@ async function main() {
     console.log(`   ${cat.category}: ${cat._count.category} items`);
   }
 
-  // 5. Show some example costs
+  // 6. Show some example costs
   console.log('\n💰 Sample Pricing:');
   const samples = await (prisma as any).materialItem.findMany({
     where: {
