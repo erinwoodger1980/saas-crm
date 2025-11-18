@@ -1,0 +1,309 @@
+// api/src/routes/fields.ts
+import { Router } from "express";
+import { z } from "zod";
+import { prisma } from "../prisma";
+import { Prisma } from "@prisma/client";
+
+const router = Router();
+
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.auth?.tenantId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+}
+
+// Uppercase enum values must match schema QuestionnaireFieldType
+const QuestionnaireFieldTypeEnum = z.enum([
+  "TEXT",
+  "NUMBER",
+  "SELECT",
+  "BOOLEAN",
+  "TEXTAREA",
+  "DATE",
+]);
+
+// Deprecated: `order` kept for backwards compatibility. Primary field is `sortOrder`.
+const createFieldSchema = z.object({
+  questionnaireId: z.string().min(1, "Questionnaire ID is required"),
+  label: z.string().min(1, "Label is required").max(255),
+  type: QuestionnaireFieldTypeEnum,
+  options: z.array(z.string()).optional().nullable(),
+  required: z.boolean().default(false),
+  // Accept either legacy `order` or new `sortOrder`; default to 0.
+  order: z.number().int().default(0).optional(),
+  sortOrder: z.number().int().default(0).optional(),
+  costingInputKey: z.string().max(255).optional().nullable(),
+});
+
+const updateFieldSchema = z.object({
+  label: z.string().min(1).max(255).optional(),
+  type: QuestionnaireFieldTypeEnum.optional(),
+  options: z.array(z.string()).optional().nullable(),
+  required: z.boolean().optional(),
+  order: z.number().int().optional(), // legacy
+  sortOrder: z.number().int().optional(), // new
+  costingInputKey: z.string().max(255).optional().nullable(),
+});
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/-+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/**
+ * GET /fields
+ * List all questionnaire fields for the tenant
+ * Query params: ?questionnaireId=xxx (optional filter)
+ */
+router.get("/", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const questionnaireId = req.query.questionnaireId as string | undefined;
+
+    const fields = await prisma.questionnaireField.findMany({
+      where: {
+        tenantId,
+        ...(questionnaireId && { questionnaireId }),
+      },
+      // Prefer sortOrder; fall back to legacy order for older rows if any.
+      orderBy: [
+        { sortOrder: "asc" },
+        { order: "asc" },
+        { createdAt: "asc" },
+      ],
+      include: {
+        questionnaire: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return res.json(fields);
+  } catch (error) {
+    console.error("[GET /fields] Error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /fields
+ * Create a new questionnaire field with auto-generated key
+ */
+router.post("/", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+
+    // Validate request body
+  const validatedData = createFieldSchema.parse(req.body);
+
+  // Resolve unifiedSort: prefer explicit sortOrder, else legacy order, else 0.
+  const unifiedSort = (validatedData.sortOrder ?? validatedData.order ?? 0) as number;
+
+    // Validate questionnaire belongs to tenant
+    const questionnaire = await prisma.questionnaire.findFirst({
+      where: {
+        id: validatedData.questionnaireId,
+        tenantId,
+      },
+    });
+
+    if (!questionnaire) {
+      return res.status(404).json({ error: "Questionnaire not found" });
+    }
+
+    // Validate SELECT type has options
+    if (validatedData.type === "SELECT" && !validatedData.options?.length) {
+      return res.status(400).json({ error: "SELECT type requires at least one option" });
+    }
+
+    // Auto-generate stable key from label
+    const baseKey = slugify(validatedData.label);
+    let key = baseKey;
+    let suffix = 1;
+
+    // Ensure key uniqueness within questionnaire
+    while (
+      await prisma.questionnaireField.findUnique({
+        where: {
+          questionnaireId_key: {
+            questionnaireId: validatedData.questionnaireId,
+            key,
+          },
+        },
+      })
+    ) {
+      key = `${baseKey}_${suffix}`;
+      suffix++;
+    }
+
+    // Create field
+    const field = await prisma.questionnaireField.create({
+      data: {
+        tenantId,
+        questionnaireId: validatedData.questionnaireId,
+        key,
+        label: validatedData.label,
+        type: validatedData.type,
+        options: validatedData.options ? validatedData.options : undefined,
+        required: validatedData.required,
+        order: unifiedSort, // keep legacy column synced
+        sortOrder: unifiedSort,
+        costingInputKey: validatedData.costingInputKey || null,
+      },
+      include: {
+        questionnaire: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return res.status(201).json(field);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: "Validation error",
+        details: error.issues,
+      });
+    }
+
+    console.error("[POST /fields] Error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * PATCH /fields/:id
+ * Update a questionnaire field
+ */
+router.patch("/:id", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const fieldId = req.params.id as string;
+
+    // Validate request body
+    const validatedData = updateFieldSchema.parse(req.body);
+
+    const hasSortProvided = validatedData.sortOrder !== undefined;
+    const hasOrderProvided = validatedData.order !== undefined;
+    // Determine target unified sort if either field provided
+    const unifiedSort = hasSortProvided
+      ? validatedData.sortOrder
+      : hasOrderProvided
+        ? validatedData.order
+        : undefined;
+
+    // Check field exists and belongs to tenant
+    const existingField = await prisma.questionnaireField.findFirst({
+      where: {
+        id: fieldId,
+        tenantId,
+      },
+    });
+
+    if (!existingField) {
+      return res.status(404).json({ error: "Field not found" });
+    }
+
+    // Validate SELECT type has options if type is being changed or options updated
+  const finalType = validatedData.type ?? existingField.type;
+    const finalOptions =
+      validatedData.options !== undefined ? validatedData.options : existingField.options;
+
+    if (finalType === "SELECT" && !finalOptions) {
+      return res.status(400).json({ error: "SELECT type requires options" });
+    }
+
+    // Update field
+    const field = await prisma.questionnaireField.update({
+      where: { id: fieldId },
+      data: {
+        ...(validatedData.label && { label: validatedData.label }),
+        ...(validatedData.type && { type: validatedData.type }),
+        ...(validatedData.options !== undefined && { options: validatedData.options ?? undefined }),
+        ...(validatedData.required !== undefined && { required: validatedData.required }),
+        ...(unifiedSort !== undefined && { order: unifiedSort, sortOrder: unifiedSort }),
+        ...(validatedData.costingInputKey !== undefined && {
+          costingInputKey: validatedData.costingInputKey,
+        }),
+      },
+      include: {
+        questionnaire: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return res.json(field);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: "Validation error",
+        details: error.issues,
+      });
+    }
+
+    console.error("[PATCH /fields/:id] Error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * DELETE /fields/:id
+ * Delete a questionnaire field (with safeguard for existing answers)
+ */
+router.delete("/:id", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const fieldId = req.params.id as string;
+
+    // Check field exists and belongs to tenant
+    const existingField = await prisma.questionnaireField.findFirst({
+      where: {
+        id: fieldId,
+        tenantId,
+      },
+    });
+
+    if (!existingField) {
+      return res.status(404).json({ error: "Field not found" });
+    }
+
+    // Check if field has any answers (optional safeguard)
+    const answerCount = await prisma.questionnaireAnswer.count({
+      where: { fieldId },
+    });
+
+    if (answerCount > 0) {
+      return res.status(409).json({
+        error: "Cannot delete field with existing answers",
+        answerCount,
+      });
+    }
+
+    // Delete field (cascade will handle related data)
+    await prisma.questionnaireField.delete({
+      where: { id: fieldId },
+    });
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("[DELETE /fields/:id] Error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+export default router;
