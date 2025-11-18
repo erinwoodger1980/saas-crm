@@ -1171,15 +1171,19 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const title =
       quote.title || `Estimate for ${client}`;
 
-    // Compute totals using sellUnitGBP where available, otherwise margin over unitPrice
+    // Compute totals - FIX: Handle pence-to-pounds conversion
     const marginDefault = Number(
       quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25,
     );
     const rowsForTotals = quote.lines.map((ln) => {
       const qty = Number(ln.qty || 1);
       const metaAny: any = (ln.meta as any) || {};
+      
+      // FIX: unitPrice is stored in pence, divide by 100 to get pounds
+      const unitPriceGBP = Number(ln.unitPrice || 0) / 100;
+      
       const sellUnit = Number(
-        metaAny?.sellUnitGBP ?? Number(ln.unitPrice || 0) * (1 + marginDefault),
+        metaAny?.sellUnitGBP ?? unitPriceGBP * (1 + marginDefault),
       );
       const total = qty * sellUnit;
       return { total };
@@ -1200,6 +1204,17 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
 
     const vatAmount = showVat ? subtotal * vatRate : 0;
     const totalGBP = subtotal + vatAmount;
+    
+    // Safety check: Log warning if totals seem unrealistic
+    if (totalGBP > 10000000 || !Number.isFinite(totalGBP)) {
+      console.warn("[/quotes/:id/render-pdf] Suspicious total detected:", {
+        subtotal,
+        vatAmount,
+        totalGBP,
+        quoteId: quote.id,
+        lineCount: quote.lines.length
+      });
+    }
 
     // 🔹 Build Soho-style multi-page proposal HTML via shared helper
     const html = buildQuoteProposalHtml({
@@ -1372,8 +1387,12 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     const rowsForTotals = quote.lines.map((ln) => {
       const qty = Number(ln.qty || 1);
       const metaAny: any = (ln.meta as any) || {};
+      
+      // FIX: unitPrice is stored in pence, divide by 100 to get pounds
+      const unitPriceGBP = Number(ln.unitPrice || 0) / 100;
+      
       const sellUnit = Number(
-        metaAny?.sellUnitGBP ?? Number(ln.unitPrice || 0) * (1 + marginDefault),
+        metaAny?.sellUnitGBP ?? unitPriceGBP * (1 + marginDefault),
       );
       const total = qty * sellUnit;
       return { total };
@@ -1393,6 +1412,17 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
 
     const vatAmount = showVat ? subtotal * vatRate : 0;
     const totalGBP = subtotal + vatAmount;
+    
+    // Safety check: Log warning if totals seem unrealistic
+    if (totalGBP > 10000000 || !Number.isFinite(totalGBP)) {
+      console.warn("[/quotes/:id/render-proposal] Suspicious total detected:", {
+        subtotal,
+        vatAmount,
+        totalGBP,
+        quoteId: quote.id,
+        lineCount: quote.lines.length
+      });
+    }
 
     const html = buildQuoteProposalHtml({
       quote,
@@ -1649,15 +1679,30 @@ function buildQuoteProposalHtml(opts: {
   const scopeDescription = quoteMeta?.scopeDescription || 
     `This project involves supplying bespoke timber joinery products crafted to meet your specifications. All products are manufactured to the highest standards and comply with ${compliance}.`;
   
-  // Build rows for table
+  // Build rows for table - FIX: Handle pence-to-pounds conversion properly
   const marginDefault = Number(quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25);
   const rows = quote.lines.map((ln: any) => {
     const qty = Number(ln.qty || 1);
     const metaAny: any = (ln.meta as any) || {};
-    const sellUnit = Number(metaAny?.sellUnitGBP ?? (Number(ln.unitPrice || 0) * (1 + marginDefault)));
+    
+    // FIX: unitPrice is stored in pence, so divide by 100 to get pounds
+    const unitPriceGBP = Number(ln.unitPrice || 0) / 100;
+    
+    // Use sellUnitGBP if already calculated, otherwise apply margin to unitPrice
+    const sellUnit = Number(metaAny?.sellUnitGBP ?? (unitPriceGBP * (1 + marginDefault)));
     const total = qty * sellUnit;
     const dimensions = metaAny?.dimensions || "";
-    return { description: ln.description, qty, unit: sellUnit, total, dimensions };
+    
+    // FIX: Ensure description is clean string, handle nulls and special chars
+    let description = String(ln.description || "Item");
+    // Remove any control characters or binary data
+    description = description.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
+    // Truncate very long descriptions
+    if (description.length > 200) {
+      description = description.substring(0, 197) + "...";
+    }
+    
+    return { description, qty, unit: sellUnit, total, dimensions };
   });
   
   const showLineItems = quoteDefaults?.showLineItems !== false;
