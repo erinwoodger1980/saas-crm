@@ -57,6 +57,31 @@ type Settings = {
     quoteRejected?: { subject: string; body: string };
   } | null;
   aiFollowupLearning?: { crossTenantOptIn: boolean; lastUpdatedISO?: string | null } | null;
+  quoteDefaults?: {
+    currency?: string;
+    defaultMargin?: number;
+    vatRate?: number;
+    showVat?: boolean;
+    validDays?: number;
+    tagline?: string;
+    email?: string;
+    address?: string;
+    terms?: string;
+    overview?: string;
+    defaultTimber?: string;
+    defaultFinish?: string;
+    defaultGlazing?: string;
+    defaultFittings?: string;
+    compliance?: string;
+    showLineItems?: boolean;
+    delivery?: string;
+    installation?: string;
+    businessHours?: string;
+    guaranteeTitle?: string;
+    guarantees?: Array<{ title: string; description: string }>;
+    testimonials?: Array<{ quote: string; client: string; role?: string }>;
+    certifications?: Array<{ name: string; description: string }>;
+  } | null;
 };
 type InboxCfg = { gmail: boolean; ms365: boolean; intervalMinutes: number; recallFirst?: boolean };
 // (removed unused local types CostRow, AiFollowupInsight)
@@ -172,7 +197,7 @@ export default function SettingsPage() {
   const { user, mutate: mutateCurrentUser } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
-  const [currentStage, setCurrentStage] = useState<"company" | "questionnaire" | "email-templates" | "automation" | "integrations" | "workshop-processes">("company");
+  const [currentStage, setCurrentStage] = useState<"company" | "questionnaire" | "email-templates" | "quote-defaults" | "automation" | "integrations" | "workshop-processes">("company");
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -795,6 +820,7 @@ export default function SettingsPage() {
           { key: "company", label: "Company", icon: "🏢", description: "Basic company info and profile" },
           { key: "questionnaire", label: "Questionnaire", icon: "📋", description: "Lead capture form fields" },
           { key: "email-templates", label: "Email Templates", icon: "📧", description: "Customize email templates" },
+          { key: "quote-defaults", label: "Quote Defaults", icon: "📄", description: "PDF proposal settings and content" },
           { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
           { key: "workshop-processes", label: "Workshop Processes", icon: "🛠️", description: "Define workshop processes per tenant" },
           { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
@@ -1282,6 +1308,395 @@ export default function SettingsPage() {
             <div className="flex justify-end pt-4 border-t">
               <Button onClick={saveEmailTemplates}>
                 Save Email Templates
+              </Button>
+            </div>
+          </div>
+        </Section>
+      )}
+
+      {currentStage === "quote-defaults" && (
+        <Section 
+          title="Quote Defaults" 
+          description="Configure default settings for PDF proposals, including pricing, specifications, guarantees, testimonials, and certifications"
+        >
+          <div className="space-y-6">
+            {/* Basic Settings */}
+            <div className="rounded-xl border bg-white/70 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Basic Settings</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Currency">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.currency ?? "GBP"}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, currency: e.target.value } } : prev)}
+                    placeholder="GBP"
+                  />
+                </Field>
+                <Field label="Default Margin %" hint="e.g., 0.25 for 25%">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.defaultMargin ?? 0.25}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultMargin: Number(e.target.value) } } : prev)}
+                  />
+                </Field>
+                <Field label="VAT Rate %" hint="e.g., 0.20 for 20%">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.vatRate ?? 0.2}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, vatRate: Number(e.target.value) } } : prev)}
+                  />
+                </Field>
+                <Field label="Valid for (days)">
+                  <input
+                    type="number"
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.validDays ?? 30}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, validDays: Number(e.target.value) } } : prev)}
+                  />
+                </Field>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={s.quoteDefaults?.showVat !== false}
+                      onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, showVat: e.target.checked } } : prev)}
+                    />
+                    Show VAT on quotes
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm ml-4">
+                    <input
+                      type="checkbox"
+                      checked={s.quoteDefaults?.showLineItems !== false}
+                      onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, showLineItems: e.target.checked } } : prev)}
+                    />
+                    Show individual line item prices
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Company Info for Quotes */}
+            <div className="rounded-xl border bg-white/70 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Company Information</h3>
+              <div className="space-y-3">
+                <Field label="Tagline" hint="Appears on PDF proposals">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.tagline ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, tagline: e.target.value } } : prev)}
+                    placeholder="Timber Joinery Specialists"
+                  />
+                </Field>
+                <Field label="Quote Email" hint="Contact email shown on proposals">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.email ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, email: e.target.value } } : prev)}
+                    placeholder="quotes@company.com"
+                  />
+                </Field>
+                <Field label="Business Address">
+                  <textarea
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm min-h-[60px]"
+                    value={s.quoteDefaults?.address ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, address: e.target.value } } : prev)}
+                    placeholder="123 Business Street, City, Postcode"
+                  />
+                </Field>
+                <Field label="Business Hours">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.businessHours ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, businessHours: e.target.value } } : prev)}
+                    placeholder="Monday-Friday 9am-5pm"
+                  />
+                </Field>
+                <Field label="Company Overview" hint="About your company section on proposals">
+                  <textarea
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm min-h-[100px]"
+                    value={s.quoteDefaults?.overview ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, overview: e.target.value } } : prev)}
+                    placeholder="We are a specialist in bespoke timber joinery..."
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {/* Default Specifications */}
+            <div className="rounded-xl border bg-white/70 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Default Specifications</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Default Timber">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.defaultTimber ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultTimber: e.target.value } } : prev)}
+                    placeholder="Engineered timber"
+                  />
+                </Field>
+                <Field label="Default Finish">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.defaultFinish ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultFinish: e.target.value } } : prev)}
+                    placeholder="Factory finished"
+                  />
+                </Field>
+                <Field label="Default Glazing">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.defaultGlazing ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultGlazing: e.target.value } } : prev)}
+                    placeholder="Low-energy double glazing"
+                  />
+                </Field>
+                <Field label="Default Fittings">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.defaultFittings ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, defaultFittings: e.target.value } } : prev)}
+                    placeholder="Premium hardware"
+                  />
+                </Field>
+                <Field label="Compliance Standards" hint="e.g., CE marked, Building Regulations">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.compliance ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, compliance: e.target.value } } : prev)}
+                    placeholder="Industry standards"
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {/* Delivery & Installation */}
+            <div className="rounded-xl border bg-white/70 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Delivery & Installation</h3>
+              <div className="space-y-3">
+                <Field label="Delivery Information">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.delivery ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, delivery: e.target.value } } : prev)}
+                    placeholder="Delivery within 6-8 weeks"
+                  />
+                </Field>
+                <Field label="Installation Information">
+                  <input
+                    className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+                    value={s.quoteDefaults?.installation ?? ""}
+                    onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, installation: e.target.value } } : prev)}
+                    placeholder="Professional installation available"
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {/* Terms & Conditions */}
+            <div className="rounded-xl border bg-white/70 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Terms & Conditions</h3>
+              <Field label="Terms" hint="Legal terms that appear on proposals">
+                <textarea
+                  className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm min-h-[120px]"
+                  value={s.quoteDefaults?.terms ?? ""}
+                  onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, terms: e.target.value } } : prev)}
+                  placeholder="Prices are valid for 30 days and subject to site survey. Payment terms: 50% upfront, 50% on delivery..."
+                />
+              </Field>
+            </div>
+
+            {/* Guarantees */}
+            <div className="rounded-xl border bg-white/70 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Guarantees</h3>
+              <Field label="Guarantee Section Title">
+                <input
+                  className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm mb-3"
+                  value={s.quoteDefaults?.guaranteeTitle ?? ""}
+                  onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guaranteeTitle: e.target.value } } : prev)}
+                  placeholder="Our Guarantee"
+                />
+              </Field>
+              <div className="space-y-3">
+                {(s.quoteDefaults?.guarantees || []).map((g, idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <input
+                      className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                      placeholder="Guarantee title"
+                      value={g.title}
+                      onChange={(e) => {
+                        const updated = [...(s.quoteDefaults?.guarantees || [])];
+                        updated[idx] = { ...updated[idx], title: e.target.value };
+                        setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guarantees: updated } } : prev);
+                      }}
+                    />
+                    <input
+                      className="flex-[2] rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                      placeholder="Description"
+                      value={g.description}
+                      onChange={(e) => {
+                        const updated = [...(s.quoteDefaults?.guarantees || [])];
+                        updated[idx] = { ...updated[idx], description: e.target.value };
+                        setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guarantees: updated } } : prev);
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        const updated = (s.quoteDefaults?.guarantees || []).filter((_, i) => i !== idx);
+                        setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guarantees: updated } } : prev);
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const updated = [...(s.quoteDefaults?.guarantees || []), { title: "", description: "" }];
+                    setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, guarantees: updated } } : prev);
+                  }}
+                >
+                  Add Guarantee
+                </Button>
+              </div>
+            </div>
+
+            {/* Testimonials */}
+            <div className="rounded-xl border bg-white/70 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Testimonials</h3>
+              <div className="space-y-3">
+                {(s.quoteDefaults?.testimonials || []).map((t, idx) => (
+                  <div key={idx} className="border rounded-lg p-3 bg-white/50">
+                    <textarea
+                      className="w-full rounded-2xl border bg-white/95 px-3 py-2 text-sm mb-2 min-h-[60px]"
+                      placeholder="Testimonial quote"
+                      value={t.quote}
+                      onChange={(e) => {
+                        const updated = [...(s.quoteDefaults?.testimonials || [])];
+                        updated[idx] = { ...updated[idx], quote: e.target.value };
+                        setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+                      }}
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                        placeholder="Client name"
+                        value={t.client}
+                        onChange={(e) => {
+                          const updated = [...(s.quoteDefaults?.testimonials || [])];
+                          updated[idx] = { ...updated[idx], client: e.target.value };
+                          setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+                        }}
+                      />
+                      <input
+                        className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                        placeholder="Role (optional)"
+                        value={t.role || ""}
+                        onChange={(e) => {
+                          const updated = [...(s.quoteDefaults?.testimonials || [])];
+                          updated[idx] = { ...updated[idx], role: e.target.value };
+                          setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          const updated = (s.quoteDefaults?.testimonials || []).filter((_, i) => i !== idx);
+                          setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const updated = [...(s.quoteDefaults?.testimonials || []), { quote: "", client: "", role: "" }];
+                    setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+                  }}
+                >
+                  Add Testimonial
+                </Button>
+              </div>
+            </div>
+
+            {/* Certifications */}
+            <div className="rounded-xl border bg-white/70 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Certifications & Accreditations</h3>
+              <div className="space-y-3">
+                {(s.quoteDefaults?.certifications || []).map((c, idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <input
+                      className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                      placeholder="Certification name"
+                      value={c.name}
+                      onChange={(e) => {
+                        const updated = [...(s.quoteDefaults?.certifications || [])];
+                        updated[idx] = { ...updated[idx], name: e.target.value };
+                        setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, certifications: updated } } : prev);
+                      }}
+                    />
+                    <input
+                      className="flex-[2] rounded-2xl border bg-white/95 px-3 py-2 text-sm"
+                      placeholder="Description"
+                      value={c.description}
+                      onChange={(e) => {
+                        const updated = [...(s.quoteDefaults?.certifications || [])];
+                        updated[idx] = { ...updated[idx], description: e.target.value };
+                        setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, certifications: updated } } : prev);
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        const updated = (s.quoteDefaults?.certifications || []).filter((_, i) => i !== idx);
+                        setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, certifications: updated } } : prev);
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const updated = [...(s.quoteDefaults?.certifications || []), { name: "", description: "" }];
+                    setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, certifications: updated } } : prev);
+                  }}
+                >
+                  Add Certification
+                </Button>
+              </div>
+            </div>
+
+            {/* Save Button */}
+            <div className="flex justify-end pt-4 border-t">
+              <Button onClick={async () => {
+                if (!s) return;
+                try {
+                  await apiFetch("/tenant/settings", {
+                    method: "PATCH",
+                    json: { quoteDefaults: s.quoteDefaults },
+                  });
+                  toast({ title: "Quote defaults saved successfully" });
+                } catch (e: any) {
+                  toast({ title: "Save failed", description: e?.message || "", variant: "destructive" });
+                }
+              }}>
+                Save Quote Defaults
               </Button>
             </div>
           </div>
