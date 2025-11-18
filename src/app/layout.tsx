@@ -20,7 +20,7 @@ function DevAuth() {
         const ok = await ensureDemoAuth();
         if (ok) location.reload();
       } catch (err) {
-        // eslint-disable-next-line no-console
+         
         console.error("ensureDemoAuth failed:", err);
       }
     })();

@@ -12,7 +12,7 @@ async function createTenantIfMissing(slug: string) {
   const cookieStore = cookies();
   const role = cookieStore.get('role')?.value;
   if (role !== 'admin' && role !== 'owner') throw new Error('Not authorized');
-  const { PrismaClient } = require('@prisma/client');
+  const { PrismaClient } = await import('@prisma/client');
   const prisma = new PrismaClient();
   let tenant = await prisma.tenant.findUnique({ where: { slug } });
   if (!tenant) {
@@ -44,7 +44,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             await createTenantIfMissing(params.slug);
             redirect(`/tenant/${params.slug}/landing`);
           }}>
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Create tenant '{params.slug}' and retry</button>
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Create tenant &apos;{params.slug}&apos; and retry</button>
           </form>
         ) : null}
       </div>

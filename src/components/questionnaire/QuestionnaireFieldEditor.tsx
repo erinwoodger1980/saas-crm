@@ -65,8 +65,8 @@ export default function QuestionnaireFieldEditor() {
       if (!res.ok) throw new Error("Failed to fetch fields");
       const data = await res.json();
       setFields(data);
-    } catch (err) {
-      console.error("Failed to fetch fields:", err);
+    } catch (_err) {
+      console.error("Failed to fetch fields:", _err);
     } finally {
       setLoading(false);
     }
@@ -111,7 +111,7 @@ export default function QuestionnaireFieldEditor() {
       });
       if (!res.ok) throw new Error("Delete failed");
       await fetchFields();
-    } catch (err) {
+    } catch (_err) {
       alert("Failed to delete field");
     }
   }
@@ -146,25 +146,26 @@ export default function QuestionnaireFieldEditor() {
     setShowNewForm(false);
   }
 
-  async function handleReorder(dragIndex: number, dropIndex: number) {
-    const reordered = [...fields];
-    const [moved] = reordered.splice(dragIndex, 1);
-    reordered.splice(dropIndex, 0, moved);
+  // Disabled drag-and-drop reorder for now
+  // async function handleReorder(dragIndex: number, dropIndex: number) {
+  //   const reordered = [...fields];
+  //   const [moved] = reordered.splice(dragIndex, 1);
+  //   reordered.splice(dropIndex, 0, moved);
 
-    const updates = reordered.map((f, idx) => ({ id: f.id, sortOrder: idx }));
-    setFields(reordered);
+  //   const updates = reordered.map((f, idx) => ({ id: f.id, sortOrder: idx }));
+  //   setFields(reordered);
 
-    try {
-      await fetch("/api/questionnaire-fields/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fields: updates }),
-      });
-    } catch (err) {
-      console.error("Failed to reorder:", err);
-      await fetchFields();
-    }
-  }
+  //   try {
+  //     await fetch("/api/questionnaire-fields/reorder", {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify({ fields: updates }),
+  //     });
+  //   } catch (err) {
+  //     console.error("Failed to reorder:", err);
+  //     await fetchFields();
+  //   }
+  // }
 
   if (loading) {
     return (
@@ -345,7 +346,7 @@ export default function QuestionnaireFieldEditor() {
             <p>No fields defined yet. Add your first field to get started.</p>
           </div>
         ) : (
-          fields.map((field, idx) => (
+          fields.map((field) => (
             <div
               key={field.id}
               className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
@@ -376,7 +377,7 @@ export default function QuestionnaireFieldEditor() {
                 </div>
                 <div className="text-sm text-gray-500 mt-1">
                   Key: <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">{field.key}</code>
-                  {field.placeholder && <> • Placeholder: "{field.placeholder}"</>}
+                  {field.placeholder && <> • Placeholder: &quot;{field.placeholder}&quot;</>}
                 </div>
               </div>
 

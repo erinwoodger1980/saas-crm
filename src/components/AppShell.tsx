@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Bot } from "lucide-react";
+import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Bot, Calculator } from "lucide-react";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { clearJwt } from "@/lib/api";
 
@@ -16,6 +16,7 @@ const nav = [
   { href: "/leads", label: "Leads", icon: Mail },
   { href: "/opportunities", label: "Opportunities", icon: RadioTower },
   { href: "/workshop", label: "Workshop", icon: Wrench },
+  { href: "/costing-calculator", label: "Costing Calculator", icon: Calculator },
   { href: "/reports", label: "Reports", icon: LineChart },
   { href: "/dashboard/email-training", label: "AI Training", icon: Bot },
 ];
