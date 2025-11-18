@@ -1,0 +1,306 @@
+"use client";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { DndContext, closestCenter, DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import useSWR from "swr";
+import InlineEditableCell from "./InlineEditableCell";
+import CreateQuestionnaireFieldModal, { NewFieldPayload } from "./CreateQuestionnaireFieldModal";
+
+export interface QuestionnaireFieldRow {
+  id: string;
+  label: string;
+  type: "text" | "number" | "select" | "boolean" | string; // allow unknown gracefully
+  required: boolean;
+  costingInputKey?: string | null;
+  order: number; // local ordering (maps to backend sortOrder or order)
+  options?: string[] | null;
+}
+
+const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
+function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldRow; onChange: (f: Partial<QuestionnaireFieldRow>) => void; onDelete: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    background: isDragging ? "#f8fafc" : undefined,
+  };
+  return (
+    <tr ref={setNodeRef} style={style} className="text-xs border-b last:border-b-0">
+      <td className="w-6 text-slate-400 select-none" {...attributes} {...listeners} title="Drag to reorder">
+        ⠿
+      </td>
+      <td className="min-w-[160px]">
+        <InlineEditableCell
+          value={field.label}
+          onSave={async (next) => onChange({ label: next })}
+        />
+      </td>
+      <td className="w-32">
+        <InlineEditableCell
+          value={field.type}
+          type="select"
+          selectOptions={FIELD_TYPES}
+          onSave={async (next) => onChange({ type: next })}
+        />
+      </td>
+      <td className="w-20 text-center">
+        <input
+          type="checkbox"
+            className="h-4 w-4"
+          checked={field.required}
+          onChange={(e) => onChange({ required: e.target.checked })}
+          title="Toggle required"
+        />
+      </td>
+      <td className="min-w-[140px]">
+        <InlineEditableCell
+          value={field.costingInputKey || ""}
+          onSave={async (next) => onChange({ costingInputKey: next || null })}
+        />
+      </td>
+      <td className="w-40">
+        {field.type === "select" ? (
+          <OptionsEditor field={field} onChange={onChange} />
+        ) : (
+          <span className="text-slate-400">—</span>
+        )}
+      </td>
+      <td className="w-20 text-right pr-2">
+        <button
+          onClick={onDelete}
+          className="px-2 py-1 rounded text-[11px] bg-red-50 text-red-600 hover:bg-red-100"
+          title="Delete field"
+        >
+          Delete
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function OptionsEditor({ field, onChange }: { field: QuestionnaireFieldRow; onChange: (f: Partial<QuestionnaireFieldRow>) => void }) {
+  const [draftText, setDraftText] = useState(() => JSON.stringify(field.options || [], null, 0));
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (!dirty) setDraftText(JSON.stringify(field.options || [], null, 0));
+  }, [field.options, dirty]);
+  function save() {
+    try {
+      const parsed = JSON.parse(draftText || "[]");
+      if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === "string")) throw new Error("Options must be string array");
+      onChange({ options: parsed });
+      setDirty(false);
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <textarea
+        className="rounded border px-2 py-1 text-[11px] font-mono h-16 resize-none"
+        value={draftText}
+        onChange={(e) => {
+          setDraftText(e.target.value);
+          setDirty(true);
+        }}
+        title='JSON array of options e.g. ["Oak", "Pine"]'
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={!dirty}
+          onClick={save}
+          className="px-2 py-1 rounded text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-40"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          disabled={!dirty}
+          onClick={() => {
+            setDraftText(JSON.stringify(field.options || [], null, 0));
+            setDirty(false);
+          }}
+          className="px-2 py-1 rounded text-[10px] bg-slate-50 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+        >
+          Reset
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "" }) => {
+  const listUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields";
+  const { data, mutate, isLoading } = useSWR<QuestionnaireFieldRow[]>(listUrl, fetcher);
+  const [rows, setRows] = useState<QuestionnaireFieldRow[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  // Sync local rows with fetched data
+  useEffect(() => {
+    if (Array.isArray(data)) {
+      // Backend might use sortOrder; normalize to order
+      const normalized = data.map((f: any) => ({
+        id: f.id,
+        label: f.label,
+        type: f.type?.toLowerCase?.() || f.type,
+        required: !!f.required,
+        costingInputKey: f.costingInputKey ?? null,
+        order: f.order ?? f.sortOrder ?? 0,
+        options: f.options || (Array.isArray(f.config?.options) ? f.config.options : null),
+      })) as QuestionnaireFieldRow[];
+      normalized.sort((a, b) => a.order - b.order);
+      setRows(normalized);
+    }
+  }, [data]);
+
+  async function updateField(id: string, patch: Partial<QuestionnaireFieldRow>) {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    try {
+      const body: any = { ...patch };
+      if (body.type) body.type = String(body.type).toLowerCase();
+      // Map local 'order' to expected backend field name
+      if (body.order !== undefined) {
+        body.sortOrder = body.order;
+        delete body.order;
+      }
+      await fetch(listUrl + "/" + id, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      mutate();
+    } catch (e) {
+      console.error("Failed to update field", e);
+    }
+  }
+
+  async function deleteField(id: string) {
+    if (!confirm("Delete this field?")) return;
+    setRows((prev) => prev.filter((r) => r.id !== id));
+    await fetch(listUrl + "/" + id, { method: "DELETE" });
+    mutate();
+  }
+
+  async function createField(payload: NewFieldPayload) {
+    const body = {
+      key: payload.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""),
+      label: payload.label.trim(),
+      type: payload.type,
+      required: payload.required,
+      costingInputKey: payload.costingInputKey,
+      options: payload.options,
+      sortOrder: rows.length ? Math.max(...rows.map((r) => r.order)) + 1 : 0,
+    };
+    try {
+      const resp = await fetch(listUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const txt = await resp.text();
+        alert("Create failed: " + txt);
+      }
+      mutate();
+    } catch (e: any) {
+      alert("Create failed: " + e.message);
+    }
+  }
+
+  function handleDragEnd(evt: DragEndEvent) {
+    const { active, over } = evt;
+    if (!over || active.id === over.id) return;
+    setRows((prev) => {
+      const oldIndex = prev.findIndex((r) => r.id === active.id);
+      const newIndex = prev.findIndex((r) => r.id === over.id);
+      const newArr = arrayMove(prev, oldIndex, newIndex).map((r, i) => ({ ...r, order: i }));
+      void persistOrder(newArr);
+      return newArr;
+    });
+  }
+
+  async function persistOrder(newRows: QuestionnaireFieldRow[]) {
+    setSavingOrder(true);
+    try {
+      await fetch(listUrl + "/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: newRows.map((r) => ({ id: r.id, sortOrder: r.order })) }),
+      });
+      mutate();
+    } catch (e) {
+      console.error("Reorder failed", e);
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
+  const content = useMemo(() => {
+    if (isLoading) return <div className="p-4 text-xs text-slate-500">Loading fields…</div>;
+    if (!rows.length) return <div className="p-4 text-xs text-slate-500">No fields yet. Create one!</div>;
+    return (
+      <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={rows.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+          <table className="w-full border text-xs">
+            <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="w-6"></th>
+                <th className="text-left font-medium">Label</th>
+                <th className="text-left font-medium">Type</th>
+                <th className="text-center font-medium">Required</th>
+                <th className="text-left font-medium">Costing Key</th>
+                <th className="text-left font-medium">Options</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <SortableRow
+                  key={r.id}
+                  field={r}
+                  onChange={(patch) => updateField(r.id, patch)}
+                  onDelete={() => deleteField(r.id)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </SortableContext>
+      </DndContext>
+    );
+  }, [isLoading, rows]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h1 className="text-sm font-semibold">Questionnaire Fields</h1>
+        <div className="flex items-center gap-2">
+          {savingOrder && <span className="text-[10px] text-slate-400">Saving order…</span>}
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="rounded bg-blue-600 text-white text-xs px-3 py-1 hover:bg-blue-500"
+          >
+            New Field
+          </button>
+        </div>
+      </div>
+      <div className="rounded border bg-white shadow-sm overflow-hidden">{content}</div>
+      <CreateQuestionnaireFieldModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreate={async (payload) => {
+          await createField(payload);
+        }}
+      />
+    </div>
+  );
+};
+
+export default AdminQuestionnaireFieldsTable;

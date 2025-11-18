@@ -66,6 +66,8 @@ import featureFlagsRouter from "./routes/feature-flags";
 import workshopRouter from "./routes/workshop";
 import workshopProcessesRouter from "./routes/workshop-processes";
 import timesheetsRouter from "./routes/timesheets";
+import questionnaireResponsesRouter from "./routes/questionnaire-responses";
+import fieldsRouter from "./routes/fields";
 
 /** ML proxy (→ forwards to FastAPI) */
 import mlProxyRouter from "./routes/ml";
@@ -546,6 +548,10 @@ if (billingRouter) {
   app.use("/billing", billingRouter);
 }
 app.use("/quotes", quotesRouter);
+// Deprecation: questionnaire-fields now aliases /fields for backwards compatibility
+app.use("/questionnaire-fields", requireAuth, fieldsRouter);
+app.use("/questionnaire-responses", questionnaireResponsesRouter);
+app.use("/fields", requireAuth, fieldsRouter);
 app.use("/auth/setup", authSetupRouter);
 app.use("/suppliers", requireAuth, suppliersRouter);
 app.use("/supplier-quote-requests", requireAuth, supplierQuoteRequestsRouter);

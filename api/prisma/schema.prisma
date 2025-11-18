@@ -74,6 +74,10 @@ model Tenant {
   supplierQuoteRequests       SupplierQuoteRequest[]
   // Timesheet relations
   timesheets                  Timesheet[]
+  // Questionnaire relations
+  questionnaires              Questionnaire[]
+  questionnaireFields         QuestionnaireField[]
+  questionnaireResponses      QuestionnaireResponse[]
 }
 
 /// ==============================
@@ -596,6 +600,7 @@ model Quote {
   lines               QuoteLine[]
   supplierFiles       UploadedFile[]
   followUpEvents      FollowUpEvent[]
+  questionnaireResponse QuestionnaireResponse?
 
   @@index([tenantId, leadId])
 }
@@ -1527,4 +1532,105 @@ model Timesheet {
   @@index([userId])
   @@index([weekStartDate])
   @@index([status])
+}
+
+/// ===============================
+/// Dynamic Questionnaire System (Custom Quote Fields)
+/// ===============================
+
+enum QuestionnaireFieldType {
+  TEXT
+  NUMBER
+  SELECT
+  BOOLEAN
+  TEXTAREA
+  DATE
+}
+
+// Questionnaire template (form definition)
+model Questionnaire {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fields    QuestionnaireField[]
+  responses QuestionnaireResponse[]
+
+  @@index([tenantId, isActive])
+}
+
+// Questionnaire field definition
+model QuestionnaireField {
+  id              String                  @id @default(cuid())
+  tenantId        String
+  questionnaireId String
+  key             String                  // Stable identifier (e.g., "door_height")
+  label           String                  // Display label (e.g., "Door Height (mm)")
+  type            QuestionnaireFieldType
+  options         Json?                   // For SELECT type: ["Option 1", "Option 2"]
+  required        Boolean                 @default(false)
+  // NOTE: Both sortOrder and order retained temporarily while UI/routes migrate.
+  // Prefer using sortOrder going forward; order will be deprecated.
+  order           Int                     @default(0)
+  sortOrder       Int                     @default(0)
+  // Activity & presentation helpers (referenced by questionnaire-fields route & admin UI)
+  isActive        Boolean                 @default(true)
+  placeholder     String?
+  helpText        String?
+  config          Json?                   // Arbitrary per-field config (e.g. validation rules)
+  // Flag to indicate the field is required for costing calculations (future use)
+  requiredForCosting Boolean              @default(false)
+  costingInputKey String?                 // Maps to costing engine input (e.g., "door_height_mm")
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  questionnaire Questionnaire  @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  answers       QuestionnaireAnswer[]
+
+  @@unique([questionnaireId, key])
+  // Added composite unique used by questionnaire-fields route lookups
+  @@unique([tenantId, key], name: "tenantId_key")
+  @@index([tenantId, questionnaireId])
+  @@index([tenantId, costingInputKey])
+}
+
+// Questionnaire response (filled form instance)
+model QuestionnaireResponse {
+  id              String    @id @default(cuid())
+  tenantId        String
+  questionnaireId String
+  quoteId         String?   @unique
+  createdAt       DateTime  @default(now())
+  // Track completion timestamp & updates for workflow / UI
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  questionnaire Questionnaire  @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  quote         Quote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  answers       QuestionnaireAnswer[]
+
+  @@index([tenantId, questionnaireId])
+  @@index([quoteId])
+}
+
+// Individual answer to a questionnaire field
+model QuestionnaireAnswer {
+  id         String   @id @default(cuid())
+  responseId String
+  fieldId    String
+  value      Json     // Stores any type: string, number, boolean, array, etc.
+
+  response QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  field    QuestionnaireField    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([responseId, fieldId])
+  @@index([responseId])
+  @@index([fieldId])
 }

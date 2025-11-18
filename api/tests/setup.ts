@@ -4,6 +4,24 @@ try {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 } catch {}
 
+// Ensure prisma schema migrated for tests (idempotent)
+import { prisma } from '../src/prisma';
+import { execSync } from 'child_process';
+async function ensureSchema() {
+  try {
+    await prisma.$queryRaw`SELECT 1 FROM "Questionnaire" LIMIT 1`;
+  } catch {
+    try {
+      execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+    } catch (e) {
+      // swallow migration failure; tests may still run if tables exist
+    }
+  }
+}
+beforeAll(async () => {
+  await ensureSchema();
+});
+
 // Provide a basic global.fetch mock for ML calls
 (global as any).fetch = async (url: string, init?: any) => {
   // Return a simple ML predict response for /ml/predict
