@@ -112,6 +112,58 @@ function safeNumber(value: any): number | null {
   return null;
 }
 
+/**
+ * Robustly pick the first numeric field from a set of common variants.
+ * Context:
+ *  - In the sample supplier PDF, ML payloads contained fields like:
+ *      • quantity (a.k.a. quantity)
+ *      • unit_price (a.k.a. unitPrice, unit_cost)
+ *      • total (a.k.a. line_total, price_ex_vat)
+ *  - Some values arrive as currency-formatted strings (e.g. "£4,321.86" or "4.321,86").
+ *  - Previously we ran safeNumber/Number directly, which turned these into NaN → null → 0 downstream.
+ * This helper normalises strings and returns the first finite number found or null.
+ */
+function pickNumber(obj: any, keys: string[]): number | null {
+  if (!obj || typeof obj !== "object") return null;
+  for (const key of keys) {
+    const val = (obj as any)[key];
+    const n = toNumber(val);
+    if (Number.isFinite(n) && n != null) return n;
+  }
+  return null;
+}
+
+/**
+ * Convenience helpers for the three core numeric fields we expect from supplier parsing.
+ * These lists cover variants observed in ML payloads and fallbacks:
+ *  - qty: qty | quantity
+ *  - unit cost: costUnit | unit_price | unitPrice | price | unit_cost | price_ex_vat
+ *  - line total: lineTotal | line_total | total | price_ex_vat | amount | ex_vat_total
+ */
+function pickQty(obj: any): number | null {
+  return pickNumber(obj, ["qty", "quantity"]);
+}
+function pickUnitCost(obj: any): number | null {
+  return pickNumber(obj, [
+    "costUnit",
+    "unit_price",
+    "unitPrice",
+    "price",
+    "unit_cost",
+    "price_ex_vat",
+  ]);
+}
+function pickLineTotal(obj: any): number | null {
+  return pickNumber(obj, [
+    "lineTotal",
+    "line_total",
+    "total",
+    "price_ex_vat",
+    "amount",
+    "ex_vat_total",
+  ]);
+}
+
 function extractModelVersionId(raw: any): string | null {
   if (!raw || typeof raw !== "object") return null;
   const maybeMeta = (raw as any).meta && typeof (raw as any).meta === "object" ? (raw as any).meta : null;
@@ -602,8 +654,9 @@ router.get("/:id", requireAuth, async (req: any, res) => {
   
   // Separate client quote files from supplier files
   const allFiles = q.supplierFiles || [];
-  const supplierFiles = allFiles.filter((f) => f.kind === "SUPPLIER_QUOTE");
-  const clientQuoteFiles = allFiles.filter((f) => f.kind === "CLIENT_QUOTE");
+  // Compare by string value to avoid Prisma enum type narrowing issues at compile time
+  const supplierFiles = allFiles.filter((f) => String(f.kind) === "SUPPLIER_QUOTE");
+  const clientQuoteFiles = allFiles.filter((f) => String(f.kind) === "CLIENT_QUOTE");
   
   res.json({
     ...q,
@@ -653,7 +706,8 @@ router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), a
       data: {
         tenantId,
         quoteId: id,
-        kind: "CLIENT_QUOTE",
+  // Cast because Prisma generates $Enums.FileKind; the string value is correct
+  kind: "CLIENT_QUOTE" as any,
         name: f.originalname,
         path: path.relative(process.cwd(), f.path),
         mimeType: f.mimetype,
@@ -936,10 +990,16 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         for (const ln of parseResult.lines) {
           lineIndex += 1;
           const description = String(ln.description || `${f.name || "Line"} ${lineIndex}`);
-          const qtyRaw = Number(ln.qty ?? 1);
-          const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
-          let unitPrice = Number(ln.costUnit ?? (ln.lineTotal != null ? ln.lineTotal / qty : 0));
-          if (!Number.isFinite(unitPrice) || unitPrice < 0) unitPrice = 0;
+          // Quantities & prices can arrive under different keys and sometimes as formatted strings.
+          // Use robust pickers with sensible fallbacks to avoid zeroing real values.
+          const pickedQty = pickQty(ln);
+          const qty = Number.isFinite(Number(pickedQty)) && Number(pickedQty) > 0 ? Number(pickedQty) : 1;
+          let unitPrice = pickUnitCost(ln);
+          let lineTotalParsed = pickLineTotal(ln);
+          if ((unitPrice == null || !(unitPrice > 0)) && lineTotalParsed != null && qty > 0) {
+            unitPrice = lineTotalParsed / qty;
+          }
+          if (unitPrice == null || !Number.isFinite(unitPrice) || unitPrice < 0) unitPrice = 0;
 
           const meta: any = {
             source: info.usedFallback ? "fallback-parser" : "ml-parse",
@@ -965,15 +1025,29 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           });
           created.push(row);
 
+          // Persist a normalised ParsedSupplierLine row with resilient numeric mapping.
           parsedLinesForDb.push({
             tenantId,
             quoteId: quote.id,
             page: (ln as any)?.page ?? null,
             rawText: String((ln as any)?.rawText ?? description ?? ""),
             description: description ?? null,
-            qty: safeNumber(ln.qty),
-            costUnit: safeNumber(ln.costUnit),
-            lineTotal: safeNumber(ln.lineTotal),
+            // Numeric field fallbacks:
+            //  - qty: qty | quantity
+            //  - costUnit: costUnit | unit_price | unitPrice | price | unit_cost | price_ex_vat
+            //  - lineTotal: lineTotal | line_total | total | price_ex_vat | amount | ex_vat_total
+            qty: ((): number | null => {
+              const q = pickQty(ln);
+              return Number.isFinite(Number(q)) ? Number(q) : null;
+            })(),
+            costUnit: ((): number | null => {
+              const u = pickUnitCost(ln);
+              return Number.isFinite(Number(u)) ? Number(u) : null;
+            })(),
+            lineTotal: ((): number | null => {
+              const t = pickLineTotal(ln);
+              return Number.isFinite(Number(t)) ? Number(t) : null;
+            })(),
             currency,
             supplier: supplier ?? null,
             confidence: safeNumber((ln as any)?.confidence) ?? inferredConfidence,
@@ -986,7 +1060,24 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         info.supplier = supplier;
         summaries.push(info);
 
-        const sanitizedOutput = sanitiseParseResult(parseResult, supplier, currency);
+        // Clean up warnings for UI: if we ended up with usable lines, hide misleading
+        // "no lines" warnings from early stages and, where applicable, replace with
+        // a clearer informational note.
+        const hadLines = Array.isArray(parseResult?.lines) && parseResult.lines.length > 0;
+        const usedStagesArr2 = Array.isArray(parseResult?.usedStages) ? parseResult.usedStages : [];
+        const parserWarns = Array.isArray(parseResult?.warnings) ? [...parseResult.warnings] : [];
+        const hadNoLinesWarnings = parserWarns.some((w) => /no\s+lines?/i.test(w));
+        let finalWarnings = parserWarns;
+        if (hadLines && hadNoLinesWarnings) {
+          finalWarnings = parserWarns.filter((w) => !/no\s+lines?/i.test(w));
+          const fallbackMsg = "Structured parser returned no lines; using fallback parser output.";
+          if (!finalWarnings.includes(fallbackMsg)) finalWarnings.push(fallbackMsg);
+        }
+
+        const sanitizedOutput = {
+          ...sanitiseParseResult(parseResult, supplier, currency),
+          warnings: finalWarnings,
+        };
         await logInferenceEvent({
           tenantId,
           model: "supplier_parser",
@@ -1022,7 +1113,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         });
       }
 
-      const warningsArr = [...warnings];
+  const warningsArr = [...warnings];
       if (created.length === 0) {
         await maybeTriggerFallbackAlert(fallbackUsed);
         return {
@@ -1052,13 +1143,24 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       }
 
       await maybeTriggerFallbackAlert(fallbackUsed);
+      // As a final pass, reduce noisy "no lines" warnings if we created any rows.
+      let finalWarnings = warningsArr;
+      if (created.length > 0) {
+        const hadNoLines = warningsArr.some((w) => /no\s+lines?/i.test(w));
+        if (hadNoLines) {
+          finalWarnings = warningsArr.filter((w) => !/no\s+lines?/i.test(w));
+          if (!finalWarnings.includes("Structured parser returned no lines; using fallback parser output.")) {
+            finalWarnings.push("Structured parser returned no lines; using fallback parser output.");
+          }
+        }
+      }
       return {
         ok: true,
         created: created.length,
         fails,
         fallbackUsed,
         summaries,
-        warnings: warningsArr,
+        warnings: finalWarnings,
         timeoutMs: TIMEOUT_MS,
         message: fallbackUsed ? "ML could not parse some files. Fallback parser applied." : undefined,
       } as const;
@@ -2385,10 +2487,19 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
           totalGBP += existingSellTotal;
           continue;
         }
-        
-        const cost = Number(ln.unitPrice) * Number(ln.qty);
-        const sellUnit = Number(ln.unitPrice) * (1 + margin);
-        const sellTotal = sellUnit * Number(ln.qty);
+        // Be resilient: if unitPrice wasn't set (older parses), derive from stored raw totals when available.
+        const parsedQty = Math.max(1, Number(ln.qty || 1));
+        let unitCostBase = Number(ln.unitPrice || 0);
+        if (!(unitCostBase > 0)) {
+          const raw = (lineMeta?.raw as any) || {};
+          const altUnit = pickUnitCost(raw);
+          const altTotal = pickLineTotal(raw);
+          if (altUnit != null && altUnit > 0) unitCostBase = altUnit;
+          else if (altTotal != null && altTotal > 0) unitCostBase = altTotal / parsedQty;
+        }
+
+        const sellUnit = unitCostBase * (1 + margin);
+        const sellTotal = sellUnit * parsedQty;
         totalGBP += sellTotal;
         await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(lineMeta || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "margin", margin } } } as any });
       }
