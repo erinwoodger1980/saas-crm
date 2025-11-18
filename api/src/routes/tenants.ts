@@ -601,39 +601,63 @@ BODY TEXT SAMPLE:
 ${text.slice(0, 2000)}
 `;
 
-      const ai = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          input: prompt,
-          response_format: { type: "json_object" },
-        }),
-      });
-      const data = await ai.json();
-      const textOut =
-        data?.output_text ||
-        data?.choices?.[0]?.message?.content ||
-        data?.choices?.[0]?.output_text ||
-        "{}";
-
+      // Add timeout to OpenAI API call to prevent hanging
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+      
+      let ai;
       try {
-        const p = JSON.parse(String(textOut));
-        enriched = {
-          brandName: p.brandName || seed.brandName,
-          phone: p.phone ?? seed.phone,
-          website,
-          logoUrl: p.logoUrl || seed.logoUrl || null,
-          links: Array.isArray(p.links) ? p.links.slice(0, 6) : [],
-          introSuggestion: p.introSuggestion || "",
-          address: p.address ?? seed.address,
-          quoteDefaults: p.quoteDefaults || {},
-        } as any;
-      } catch {
-        // keep seed
+        ai = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        
+        if (!ai.ok) {
+          console.warn(`[tenant enrich] OpenAI API failed: ${ai.status}, falling back to scraped data`);
+          // Continue with seed data (enriched already set to seed)
+        } else {
+          const data = await ai.json();
+          const textOut =
+            data?.output_text ||
+            data?.choices?.[0]?.message?.content ||
+            data?.choices?.[0]?.output_text ||
+            "{}";
+
+          try {
+            const p = JSON.parse(String(textOut));
+            enriched = {
+              brandName: p.brandName || seed.brandName,
+              phone: p.phone ?? seed.phone,
+              website,
+              logoUrl: p.logoUrl || seed.logoUrl || null,
+              links: Array.isArray(p.links) ? p.links.slice(0, 6) : [],
+              introSuggestion: p.introSuggestion || "",
+              address: p.address ?? seed.address,
+              quoteDefaults: p.quoteDefaults || {},
+            } as any;
+          } catch (parseError) {
+            console.warn('[tenant enrich] Failed to parse OpenAI response, using seed data');
+            // keep seed
+          }
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeout);
+        if (fetchError.name === 'AbortError') {
+          console.warn('[tenant enrich] OpenAI API timeout, falling back to scraped data');
+        } else {
+          console.warn('[tenant enrich] OpenAI API error:', fetchError.message, '- falling back to scraped data');
+        }
+        // Continue with seed data (enriched already set to seed)
       }
     }
 
