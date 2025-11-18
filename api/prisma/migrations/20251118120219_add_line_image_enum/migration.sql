@@ -1,0 +1,2 @@
+-- Add LINE_IMAGE to FileKind enum
+ALTER TYPE "FileKind" ADD VALUE IF NOT EXISTS 'LINE_IMAGE';

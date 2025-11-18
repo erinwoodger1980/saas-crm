@@ -5,7 +5,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { prisma } from "../prisma";
-import { Prisma } from "@prisma/client";
+import { Prisma, FileKind } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 
@@ -20,6 +20,18 @@ import { sendParserErrorAlert, sendParserFallbackAlert } from "../lib/ops/alerts
 const router = Router();
 
 type ParserStageName = NonNullable<SupplierParseResult["usedStages"]>[number];
+
+/**
+ * TypeScript interface for QuoteLine.meta
+ * Stores additional line-level metadata like pricing overrides and images
+ */
+interface QuoteLineMeta {
+  sellUnitGBP?: number;
+  sellTotalGBP?: number;
+  dimensions?: string;
+  imageFileId?: string;  // NEW: Reference to UploadedFile.id for per-line thumbnail
+  [key: string]: any;    // Allow other fields
+}
 
 const FALLBACK_ALERT_RATIO = (() => {
   const raw = Number(process.env.PARSER_FALLBACK_ALERT_RATIO);
@@ -986,6 +998,26 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           safeNumber(latestMlPayload?.confidence) ??
           null;
 
+        // STEP: Extract images from PDF and prepare for mapping to lines
+        const uploadDir = process.env.UPLOAD_DIR 
+          ? (path.isAbsolute(process.env.UPLOAD_DIR) ? process.env.UPLOAD_DIR : path.join(process.cwd(), process.env.UPLOAD_DIR))
+          : path.join(process.cwd(), "uploads");
+        
+        let extractedImages: Array<{ fileId: string; page: number; indexOnPage: number }> = [];
+        try {
+          const { extractAndSaveImagesFromPdf } = await import("../lib/pdf/extractImages");
+          extractedImages = await extractAndSaveImagesFromPdf(buffer, tenantId, quote.id, uploadDir);
+          if (extractedImages.length > 0) {
+            console.log(`[parse] Extracted ${extractedImages.length} images from PDF ${f.name || f.id}`);
+          }
+        } catch (err: any) {
+          console.warn(`[parse] Image extraction failed for ${f.name || f.id}:`, err.message);
+          warnings.add(`Image extraction failed: ${err.message}`);
+        }
+
+        // STEP: Create quote lines (we'll map images after all lines are created)
+        const tempLineInfo: Array<{ id: string; page: number | null }> = [];
+        
         let lineIndex = 0;
         for (const ln of parseResult.lines) {
           lineIndex += 1;
@@ -1000,6 +1032,8 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             unitPrice = lineTotalParsed / qty;
           }
           if (unitPrice == null || !Number.isFinite(unitPrice) || unitPrice < 0) unitPrice = 0;
+
+          const linePage = typeof (ln as any)?.page === 'number' ? (ln as any).page : null;
 
           const meta: any = {
             source: info.usedFallback ? "fallback-parser" : "ml-parse",
@@ -1024,6 +1058,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             },
           });
           created.push(row);
+          tempLineInfo.push({ id: row.id, page: linePage });
 
           // Persist a normalised ParsedSupplierLine row with resilient numeric mapping.
           parsedLinesForDb.push({
@@ -1053,6 +1088,36 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             confidence: safeNumber((ln as any)?.confidence) ?? inferredConfidence,
             usedStages,
           });
+        }
+
+        // STEP: Map extracted images to quote lines
+        if (extractedImages.length > 0 && tempLineInfo.length > 0) {
+          try {
+            const { mapImagesToLines } = await import("../lib/pdf/extractImages");
+            const imageMapping = mapImagesToLines(tempLineInfo, extractedImages);
+            
+            // Update quote lines with imageFileId in meta
+            for (const [lineId, imageFileId] of Object.entries(imageMapping)) {
+              const line = created.find(l => l.id === lineId);
+              if (line) {
+                const existingMeta = (line.meta as any) || {};
+                await prisma.quoteLine.update({
+                  where: { id: lineId },
+                  data: {
+                    meta: {
+                      ...existingMeta,
+                      imageFileId,
+                    },
+                  },
+                });
+              }
+            }
+            
+            console.log(`[parse] Mapped ${Object.keys(imageMapping).length} images to quote lines`);
+          } catch (err: any) {
+            console.warn(`[parse] Image mapping failed: ${err.message}`);
+            warnings.add(`Image mapping failed: ${err.message}`);
+          }
         }
 
         info.lineCount = parseResult.lines.length;
@@ -1324,6 +1389,9 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       });
     }
 
+    // Fetch image URLs for line items
+    const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
+    
     // 🔹 Build Soho-style multi-page proposal HTML via shared helper
     const html = buildQuoteProposalHtml({
       quote,
@@ -1331,6 +1399,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       currencyCode: cur,
       currencySymbol: sym,
       totals: { subtotal, vatAmount, totalGBP, vatRate, showVat },
+      imageUrlMap,
     });
 
     let browser: any;
@@ -1538,12 +1607,16 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       });
     }
 
+    // Fetch image URLs for line items
+    const imageUrlMap = await fetchLineImageUrls(quote.lines, tenantId);
+    
     const html = buildQuoteProposalHtml({
       quote,
       tenantSettings: ts,
       currencyCode: cur,
       currencySymbol: sym,
       totals: { subtotal, vatAmount, totalGBP, vatRate, showVat },
+      imageUrlMap,
     });
 
     let browser: any;
@@ -1745,6 +1818,49 @@ function renderSections(qd: any) {
 }
 
 /**
+ * Fetch image files for quote lines and generate signed URLs
+ * @param lines - Quote lines with potential imageFileId in meta
+ * @param tenantId - Tenant ID for JWT signing
+ * @returns Map of imageFileId to signed URL
+ */
+async function fetchLineImageUrls(lines: any[], tenantId: string): Promise<Record<string, string>> {
+  const imageFileIds = lines
+    .map(ln => {
+      const meta = (ln.meta as any) || {};
+      return meta.imageFileId;
+    })
+    .filter((id): id is string => typeof id === 'string');
+  
+  if (imageFileIds.length === 0) {
+    return {};
+  }
+  
+  // Fetch image files
+  const imageFiles = await prisma.uploadedFile.findMany({
+    where: {
+      id: { in: imageFileIds },
+      kind: "LINE_IMAGE" as FileKind,
+    },
+  });
+  
+  // Generate signed URLs for each image
+  const API_BASE = (
+    process.env.APP_API_URL ||
+    process.env.API_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    `http://localhost:${process.env.PORT || 4000}`
+  ).replace(/\/$/, "");
+  
+  const urlMap: Record<string, string> = {};
+  for (const file of imageFiles) {
+    const token = jwt.sign({ t: tenantId, f: file.id }, env.APP_JWT_SECRET, { expiresIn: '2h' });
+    urlMap[file.id] = `${API_BASE}/files/${encodeURIComponent(file.id)}?jwt=${encodeURIComponent(token)}`;
+  }
+  
+  return urlMap;
+}
+
+/**
  * Build a beautiful, multi-section Soho-style PDF proposal HTML
  * Shared by both /render-pdf and /render-proposal endpoints
  */
@@ -1754,6 +1870,7 @@ function buildQuoteProposalHtml(opts: {
   currencyCode: string;
   currencySymbol: string;
   totals: { subtotal: number; vatAmount: number; totalGBP: number; vatRate: number; showVat: boolean };
+  imageUrlMap?: Record<string, string>;  // NEW: Map of imageFileId to signed URL
 }): string {
   const { quote, tenantSettings: ts, currencyCode: cur, currencySymbol: sym, totals } = opts;
   const { subtotal, vatAmount, totalGBP, vatRate, showVat } = totals;
@@ -1795,6 +1912,8 @@ function buildQuoteProposalHtml(opts: {
   
   // Build rows for table - CRITICAL: Use meta.sellTotalGBP directly when available
   const marginDefault = Number(quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25);
+  const imageUrlMap = opts.imageUrlMap || {};
+  
   const rows = quote.lines.map((ln: any) => {
     const qty = Number(ln.qty || 1);
     const metaAny: any = (ln.meta as any) || {};
@@ -1821,6 +1940,9 @@ function buildQuoteProposalHtml(opts: {
     
     const dimensions = metaAny?.dimensions || "";
     
+    // NEW: Get image URL if available
+    const imageUrl = metaAny?.imageFileId ? imageUrlMap[metaAny.imageFileId] : undefined;
+    
     // FIX: Ensure description is clean string, handle nulls and special chars
     let description = String(ln.description || "Item");
     // Remove any control characters or binary data
@@ -1830,7 +1952,7 @@ function buildQuoteProposalHtml(opts: {
       description = description.substring(0, 197) + "...";
     }
     
-    return { description, qty, unit: sellUnit, total, dimensions };
+    return { description, qty, unit: sellUnit, total, dimensions, imageUrl };
   });
   
   const showLineItems = quoteDefaults?.showLineItems !== false;
@@ -1986,6 +2108,18 @@ function buildQuoteProposalHtml(opts: {
       tbody tr:last-child td { border-bottom: none; }
       .right { text-align: right; }
       .amount-cell { font-weight: 600; color: #0f172a; }
+      
+      /* Line item thumbnails */
+      .line-thumb {
+        max-width: 55px;
+        max-height: 55px;
+        border-radius: 4px;
+        display: block;
+        object-fit: contain;
+        border: 1px solid #e5e7eb;
+        padding: 2px;
+        background: #ffffff;
+      }
       
       /* Totals */
       .totals-wrapper { 
@@ -2279,20 +2413,22 @@ function buildQuoteProposalHtml(opts: {
         <table>
           <thead>
             <tr>
-              <th style="width:50%">Item Description</th>
-              <th class="right" style="width:12%">Quantity</th>
+              <th style="width:40%">Item Description</th>
+              <th class="right" style="width:10%">Qty</th>
               <th style="width:18%">Dimensions</th>
-              <th class="right" style="width:20%">Amount</th>
+              <th style="width:14%">Image</th>
+              <th class="right" style="width:18%">Amount</th>
             </tr>
           </thead>
           <tbody>
             ${rows
               .map(
-                (r: { description: string; qty: number; unit: number; total: number; dimensions: string }) => `
+                (r: { description: string; qty: number; unit: number; total: number; dimensions: string; imageUrl?: string }) => `
                 <tr>
                   <td>${escapeHtml(r.description || "-")}</td>
                   <td class="right">${r.qty.toLocaleString()}</td>
                   <td>${escapeHtml(r.dimensions)}</td>
+                  <td>${r.imageUrl ? `<img src="${r.imageUrl}" class="line-thumb" alt="Product" />` : ""}</td>
                   <td class="right amount-cell">${showLineItems ? sym + r.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "Included"}</td>
                 </tr>`
               )
