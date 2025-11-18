@@ -1041,6 +1041,9 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             parsed: parseResult,
             fallback: info.usedFallback,
             confidence: parseResult.confidence ?? null,
+            // Image extraction data
+            imageIndex: typeof (ln as any)?.imageIndex === 'number' ? (ln as any).imageIndex : undefined,
+            imageDataUrl: typeof (ln as any)?.imageDataUrl === 'string' ? (ln as any).imageDataUrl : undefined,
           };
 
           const row = await prisma.quoteLine.create({
@@ -1087,6 +1090,9 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             supplier: supplier ?? null,
             confidence: safeNumber((ln as any)?.confidence) ?? inferredConfidence,
             usedStages,
+            // Image extraction fields
+            imageIndex: typeof (ln as any)?.imageIndex === 'number' ? (ln as any).imageIndex : null,
+            imageRef: typeof (ln as any)?.imageRef === 'string' ? (ln as any).imageRef : null,
           });
         }
 
@@ -1983,47 +1989,78 @@ function buildQuoteProposalHtml(opts: {
   ];
   const displayCertifications = certifications.length > 0 ? certifications : defaultCertifications;
   
-  // Styles - enhanced for multi-page brochure feel
+  // Styles - Soho Premium Aesthetic
   const styles = `
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { 
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
         color: #1e293b; 
-        line-height: 1.6;
+        line-height: 1.5;
         padding: 0;
+        font-feature-settings: "kern" 1, "liga" 1;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
       }
-      .page { padding: 32px 40px; max-width: 210mm; }
+      .page { 
+        padding: 28px 36px; 
+        max-width: 210mm;
+      }
       
-      /* Page 1: Header & Cover */
+      /* Page 1: Header & Cover - Soho Style */
       .header { 
-        border-bottom: 3px solid #0ea5e9; 
-        padding-bottom: 20px; 
-        margin-bottom: 28px;
+        border-bottom: 2px solid #0ea5e9; 
+        padding-bottom: 18px; 
+        margin-bottom: 24px;
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
       }
       .header-left { flex: 1; }
-      .header-right { text-align: right; font-size: 11px; color: #64748b; line-height: 1.8; }
-      .brand { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
-      .brand img { max-height: 50px; max-width: 200px; }
-      .brand-name { font-size: 24px; font-weight: 700; color: #0f172a; }
-      .tagline { font-size: 12px; color: #64748b; font-style: italic; margin-bottom: 16px; }
-      h1 { 
-        font-size: 28px; 
+      .header-right { 
+        text-align: right; 
+        font-size: 10px; 
+        color: #64748b; 
+        line-height: 1.7;
+        font-weight: 500;
+      }
+      .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+      .brand img { max-height: 48px; max-width: 180px; }
+      .brand-name { 
+        font-size: 22px; 
         font-weight: 700; 
         color: #0f172a; 
-        margin: 0 0 6px; 
-        letter-spacing: -0.5px;
+        letter-spacing: -0.3px;
       }
-      .project-title { font-size: 16px; color: #0ea5e9; font-weight: 600; margin-bottom: 4px; }
+      .tagline { 
+        font-size: 11px; 
+        color: #64748b; 
+        font-style: italic; 
+        margin-bottom: 14px;
+        font-weight: 500;
+      }
+      h1 { 
+        font-size: 26px; 
+        font-weight: 700; 
+        color: #0f172a; 
+        margin: 0 0 5px; 
+        letter-spacing: -0.6px;
+        line-height: 1.2;
+      }
+      .project-title { 
+        font-size: 15px; 
+        color: #0ea5e9; 
+        font-weight: 600; 
+        margin-bottom: 3px;
+        letter-spacing: -0.2px;
+      }
       .client-strip { 
-        font-size: 14px; 
+        font-size: 13px; 
         color: #475569; 
-        padding: 8px 0;
+        padding: 7px 0;
         border-top: 1px solid #e2e8f0;
-        margin-top: 8px;
+        margin-top: 7px;
+        font-weight: 500;
       }
       
       /* Project Overview Grid */
@@ -2061,100 +2098,164 @@ function buildQuoteProposalHtml(opts: {
         line-height: 1.7;
       }
       
-      /* Page 2: Quotation */
+      /* Page 2: Quotation - Soho Style */
       .section-title {
-        font-size: 20px;
+        font-size: 18px;
         font-weight: 700;
         color: #0f172a;
-        margin: 32px 0 12px;
-        padding-bottom: 8px;
+        margin: 28px 0 10px;
+        padding-bottom: 7px;
         border-bottom: 2px solid #e2e8f0;
+        letter-spacing: -0.3px;
+        text-transform: uppercase;
+        font-size: 14px;
+        letter-spacing: 0.5px;
       }
       .quotation-intro { 
-        font-size: 13px; 
+        font-size: 12px; 
         color: #475569; 
-        margin: 16px 0;
-        line-height: 1.7;
+        margin: 14px 0;
+        line-height: 1.6;
+        font-weight: 500;
       }
       
-      /* Table */
+      /* Table - Soho Premium Style */
       table { 
         width: 100%; 
         border-collapse: collapse; 
-        margin: 20px 0; 
+        margin: 24px 0; 
         font-size: 11px;
         background: white;
         border: 1px solid #e2e8f0;
-        border-radius: 6px;
+        border-radius: 8px;
         overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        table-layout: fixed;
       }
       thead th { 
-        background: #f1f5f9; 
-        color: #475569;
-        font-weight: 600; 
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        color: #64748b;
+        font-weight: 700; 
         text-transform: uppercase;
-        font-size: 10px;
-        letter-spacing: 0.5px;
-        padding: 12px 14px;
+        font-size: 9.5px;
+        letter-spacing: 0.8px;
+        padding: 14px 12px;
         border-bottom: 2px solid #cbd5e1;
         text-align: left;
       }
       tbody td { 
-        padding: 12px 14px; 
-        border-bottom: 1px solid #e2e8f0; 
-        vertical-align: top;
+        padding: 10px 12px; 
+        border-bottom: 1px solid #f1f5f9; 
+        vertical-align: middle;
         color: #334155;
+        line-height: 1.5;
+      }
+      tbody tr { 
+        transition: background-color 0.15s ease;
+      }
+      tbody tr:nth-child(even) { 
+        background-color: #fafbfc;
+      }
+      tbody tr:hover {
+        background-color: #f8fafc;
       }
       tbody tr:last-child td { border-bottom: none; }
       .right { text-align: right; }
-      .amount-cell { font-weight: 600; color: #0f172a; }
+      .amount-cell { 
+        font-weight: 700; 
+        color: #0f172a; 
+        font-size: 12px;
+      }
+      
+      /* Image cell styling */
+      .image-cell {
+        width: 60px;
+        padding: 8px 10px;
+        text-align: center;
+        vertical-align: middle;
+      }
       
       /* Line item thumbnails */
       .line-thumb {
-        max-width: 55px;
-        max-height: 55px;
-        border-radius: 4px;
+        width: 50px;
+        height: 50px;
+        border-radius: 6px;
         display: block;
         object-fit: contain;
-        border: 1px solid #e5e7eb;
-        padding: 2px;
+        border: 1px solid #e2e8f0;
+        padding: 3px;
         background: #ffffff;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        margin: 0 auto;
       }
       
-      /* Totals */
+      /* Placeholder for missing images */
+      .thumb-placeholder {
+        width: 50px;
+        height: 50px;
+        border-radius: 6px;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border: 1px dashed #cbd5e1;
+        display: block;
+        margin: 0 auto;
+      }
+      
+      /* Totals - Soho Premium */
       .totals-wrapper { 
         display: flex; 
         justify-content: flex-end; 
-        margin: 24px 0;
+        margin: 20px 0;
       }
       .totals { 
-        min-width: 320px;
-        border: 2px solid #e2e8f0;
+        min-width: 300px;
+        border: 1px solid #e2e8f0;
         border-radius: 8px;
         overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.04);
       }
       .totals .row { 
         display: flex; 
         justify-content: space-between; 
-        padding: 14px 18px; 
-        border-bottom: 1px solid #e2e8f0;
-        font-size: 12px;
+        padding: 12px 16px; 
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 11.5px;
+        font-weight: 500;
       }
       .totals .row:last-child { border-bottom: none; }
-      .totals .row.subtotal { background: #f8fafc; }
-      .totals .row.vat { background: #fefefe; }
+      .totals .row.subtotal { 
+        background: #fafbfc; 
+      }
+      .totals .row.vat { 
+        background: #ffffff; 
+      }
       .totals .row.total { 
-        background: #0ea5e9; 
+        background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
         color: white; 
         font-weight: 700;
-        font-size: 15px;
-        padding: 16px 18px;
+        font-size: 14px;
+        padding: 14px 16px;
+        letter-spacing: 0.2px;
       }
-      .totals .label { color: #64748b; }
-      .totals .value { font-weight: 600; color: #0f172a; }
+      .totals .label { 
+        color: #64748b; 
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 10px;
+        letter-spacing: 0.5px;
+      }
+      .totals .value { 
+        font-weight: 700; 
+        color: #0f172a; 
+        font-size: 12.5px;
+      }
       .totals .row.total .label,
-      .totals .row.total .value { color: white; }
+      .totals .row.total .value { 
+        color: white;
+        font-size: 11px;
+      }
+      .totals .row.total .value {
+        font-size: 15px;
+      }
       
       /* Guarantee/Benefits Section */
       .guarantee-section {
@@ -2413,11 +2514,11 @@ function buildQuoteProposalHtml(opts: {
         <table>
           <thead>
             <tr>
-              <th style="width:40%">Item Description</th>
-              <th class="right" style="width:10%">Qty</th>
-              <th style="width:18%">Dimensions</th>
-              <th style="width:14%">Image</th>
-              <th class="right" style="width:18%">Amount</th>
+              <th style="width:12%">IMAGE</th>
+              <th style="width:40%">DESCRIPTION</th>
+              <th class="right" style="width:10%">QTY</th>
+              <th style="width:18%">DIMENSIONS</th>
+              <th class="right" style="width:20%">AMOUNT</th>
             </tr>
           </thead>
           <tbody>
@@ -2425,10 +2526,10 @@ function buildQuoteProposalHtml(opts: {
               .map(
                 (r: { description: string; qty: number; unit: number; total: number; dimensions: string; imageUrl?: string }) => `
                 <tr>
+                  <td class="image-cell">${r.imageUrl ? `<img src="${r.imageUrl}" class="line-thumb" alt="Product" />` : '<div class="thumb-placeholder"></div>'}</td>
                   <td>${escapeHtml(r.description || "-")}</td>
                   <td class="right">${r.qty.toLocaleString()}</td>
                   <td>${escapeHtml(r.dimensions)}</td>
-                  <td>${r.imageUrl ? `<img src="${r.imageUrl}" class="line-thumb" alt="Product" />` : ""}</td>
                   <td class="right amount-cell">${showLineItems ? sym + r.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "Included"}</td>
                 </tr>`
               )
