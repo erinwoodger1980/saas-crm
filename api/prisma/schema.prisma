@@ -70,14 +70,31 @@ model Tenant {
   // Feature Requests (inverse relation)
   featureRequests             FeatureRequest[]
   // Supplier relations
-  suppliers                   Supplier[]
+  suppliers                   Supplier[]                @relation("SupplierToTenant")
   supplierQuoteRequests       SupplierQuoteRequest[]
+  materialItems               MaterialItem[]
+  shoppingLists               ShoppingList[]
+  purchaseOrders              PurchaseOrder[]
   // Timesheet relations
   timesheets                  Timesheet[]
   // Questionnaire relations
   questionnaires              Questionnaire[]
   questionnaireFields         QuestionnaireField[]
   questionnaireResponses      QuestionnaireResponse[]
+  // Joinery costing engine relations
+  materials                   Material[]
+  glazingItems                GlazingItem[]
+  doorCores                   DoorCore[]
+  leafStyles                  LeafStyle[]
+  leafFacings                 LeafFacing[]
+  frameFinishes               FrameFinish[]
+  sprayFinishes               SprayFinish[]
+  veneerLayons                VeneerLayon[]
+  ironmongeryItems            IronmongeryItem[]
+  ironmongeryPacks            IronmongeryPack[]
+  fireCertificationRules      FireCertificationRule[]
+  leafSizingRules             LeafSizingRule[]
+  weightLookups               WeightLookup[]
 }
 
 /// ==============================
@@ -601,23 +618,25 @@ model Quote {
   supplierFiles       UploadedFile[]
   followUpEvents      FollowUpEvent[]
   questionnaireResponse QuestionnaireResponse?
+  shoppingLists       ShoppingList[]
 
   @@index([tenantId, leadId])
 }
 
 model QuoteLine {
-  id               String  @id @default(cuid())
-  quoteId          String
-  supplier         String?
-  sku              String?
-  description      String
-  qty              Decimal @default(1)
-  unitPrice        Decimal @default(0)
-  currency         String  @default("GBP")
-  deliveryShareGBP Decimal @default(0)
-  lineTotalGBP     Decimal @default(0)
-  meta             Json?
-  quote            Quote   @relation(fields: [quoteId], references: [id])
+  id                    String             @id @default(cuid())
+  quoteId               String
+  supplier              String?
+  sku                   String?
+  description           String
+  qty                   Decimal            @default(1)
+  unitPrice             Decimal            @default(0)
+  currency              String             @default("GBP")
+  deliveryShareGBP      Decimal            @default(0)
+  lineTotalGBP          Decimal            @default(0)
+  meta                  Json?
+  quote                 Quote              @relation(fields: [quoteId], references: [id])
+  shoppingListItems     ShoppingListItem[]
 
   @@index([quoteId])
 }
@@ -1462,19 +1481,25 @@ model Supplier {
   id                    String                @id @default(cuid())
   tenantId              String
   name                  String
+  code                  String?               // Optional code for material supplier integration
   contactPerson         String?
   email                 String?
   phone                 String?
   address               String?
+  defaultCurrency       String?               @default("GBP")
+  isActive              Boolean               @default(true)
   notes                 String?
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
-  tenant                Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                Tenant                @relation("SupplierToTenant", fields: [tenantId], references: [id], onDelete: Cascade)
   supplierQuoteRequests SupplierQuoteRequest[]
+  materialItems         MaterialItem[]
+  purchaseOrders        PurchaseOrder[]
   users                 User[]                // Supplier users linked to this supplier
   
   @@index([tenantId])
   @@index([email])
+  @@index([tenantId, isActive])
 }
 
 // Supplier Quote Requests - Track quotes requested from suppliers
@@ -1633,4 +1658,552 @@ model QuestionnaireAnswer {
   @@unique([responseId, fieldId])
   @@index([responseId])
   @@index([fieldId])
+}
+
+/// ===============================
+/// Joinery Costing Engine Models
+/// ===============================
+
+// ---- Materials: Timber, Boards, Mouldings ----
+model Material {
+  id          String   @id @default(cuid())
+  tenantId    String
+  category    MaterialCategory
+  code        String
+  name        String
+  description String?
+  supplier    String?
+  // Pricing
+  unitCost    Decimal  @default(0)
+  currency    String   @default("GBP")
+  unit        String   @default("m") // m, m2, m3, each, etc.
+  // Specifications
+  thickness   Decimal? // mm
+  width       Decimal? // mm
+  length      Decimal? // mm
+  species     String?  // For timber: Oak, Ash, Pine, etc.
+  grade       String?  // A, B, C, Prime, etc.
+  finish      String?  // Rough sawn, planed, etc.
+  // Metadata
+  isActive    Boolean  @default(true)
+  isStock     Boolean  @default(false) // In stock vs made-to-order
+  leadTimeDays Int?
+  minOrderQty Decimal?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category, isActive])
+}
+
+enum MaterialCategory {
+  TIMBER_HARDWOOD
+  TIMBER_SOFTWOOD
+  BOARD_MDF
+  BOARD_PLYWOOD
+  MOULDING_BEAD
+  MOULDING_GROOVE
+  RAISED_PANEL
+  VENEER_SHEET
+}
+
+// ---- Glazing: Glass, Beading, Tape ----
+model GlazingItem {
+  id          String   @id @default(cuid())
+  tenantId    String
+  category    GlazingCategory
+  code        String
+  name        String
+  description String?
+  supplier    String?
+  // Pricing
+  unitCost    Decimal  @default(0)
+  currency    String   @default("GBP")
+  unit        String   @default("m2") // m2, m, each
+  // Specifications
+  thickness   Decimal? // mm
+  glassType   String?  // Clear, Obscured, Toughened, Laminated, DGU
+  uValue      Decimal? // Thermal performance
+  fireRating  String?  // FD30, FD60, etc.
+  // Metadata
+  isActive    Boolean  @default(true)
+  leadTimeDays Int?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category, isActive])
+}
+
+enum GlazingCategory {
+  GLASS
+  BEADING
+  GLAZING_TAPE
+  INTUMESCENT_STRIP
+}
+
+// ---- Door Construction ----
+model DoorCore {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  supplier    String?
+  // Pricing
+  unitCost    Decimal  @default(0)
+  currency    String   @default("GBP")
+  // Specifications
+  fireRating  String?  // None, FD30, FD60, FD90, FD120
+  acoustic    Boolean  @default(false)
+  maxHeight   Decimal? // mm
+  maxWidth    Decimal? // mm
+  weight      Decimal? // kg per m2
+  // Metadata
+  isActive    Boolean  @default(true)
+  leadTimeDays Int?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, fireRating, isActive])
+}
+
+model LeafStyle {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  // Pricing adjustments (multipliers or fixed costs)
+  costMultiplier Decimal @default(1.0)
+  additionalCost Decimal @default(0)
+  currency    String   @default("GBP")
+  // Specifications
+  panelCount  Int?     // 2-panel, 4-panel, etc.
+  glassArea   Decimal? // % of door that is glass
+  complexity  String?  // Simple, Medium, Complex
+  // Metadata
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive, sortOrder])
+}
+
+model LeafFacing {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  // Pricing
+  costPerM2   Decimal  @default(0)
+  currency    String   @default("GBP")
+  // Specifications
+  material    String?  // Veneer, Paint-grade MDF, etc.
+  thickness   Decimal? // mm
+  finish      String?  // Prefinished, unfinished
+  // Metadata
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+}
+
+model FrameFinish {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  // Pricing
+  costPerM    Decimal  @default(0) // Cost per linear meter
+  currency    String   @default("GBP")
+  // Specifications
+  material    String?
+  profile     String?  // Rebated, square, chamfered
+  // Metadata
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+}
+
+model SprayFinish {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  // Pricing
+  costPerM2   Decimal  @default(0)
+  currency    String   @default("GBP")
+  // Specifications
+  coats       Int      @default(3)
+  colour      String?
+  sheen       String?  // Matt, Satin, Gloss
+  dryTimeDays Int?
+  // Metadata
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+}
+
+model VeneerLayon {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  // Pricing
+  costPerM2   Decimal  @default(0)
+  currency    String   @default("GBP")
+  // Specifications
+  species     String?
+  grade       String?
+  thickness   Decimal? // mm
+  backing     String?  // Paper, fleece, etc.
+  // Metadata
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+}
+
+// ---- Ironmongery ----
+model IronmongeryItem {
+  id          String   @id @default(cuid())
+  tenantId    String
+  category    IronmongeryCategory
+  code        String
+  name        String
+  description String?
+  supplier    String?
+  // Pricing
+  unitCost    Decimal  @default(0)
+  currency    String   @default("GBP")
+  // Specifications
+  material    String?  // Brass, SS, Chrome, etc.
+  finish      String?  // Polished, satin, etc.
+  fireRated   Boolean  @default(false)
+  grade       String?  // Grade 13, 14, etc. for locks
+  // Metadata
+  isActive    Boolean  @default(true)
+  leadTimeDays Int?
+  notes       String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  packItems     IronmongeryPackItem[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category, isActive])
+}
+
+enum IronmongeryCategory {
+  HINGE
+  PIVOT
+  DOOR_CLOSER
+  LOCK
+  LATCH
+  LEVER_HANDLE
+  PULL_HANDLE
+  ESCUTCHEON
+  TURN
+  CYLINDER
+  DOOR_VIEWER
+  KICK_PLATE
+  FINGER_PLATE
+  BUMP_PLATE
+  FIRE_PIN
+  FIRE_SIGNAGE
+  DOOR_EDGE_GUARD
+  DOOR_CHAIN
+  CABLEWAY
+  FINGER_PROTECTION
+  AIR_TRANSFER_GRILLE
+  INTUMESCENT_SEAL
+  LEAD_LINING
+  OTHER
+}
+
+model IronmongeryPack {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  // Pre-defined pack for common door types (e.g., "FD30 Internal", "External Entrance")
+  doorType    String?  // Internal, External, Fire, etc.
+  fireRating  String?  // FD30, FD60, etc.
+  // Metadata
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items     IronmongeryPackItem[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive, sortOrder])
+}
+
+model IronmongeryPackItem {
+  id        String   @id @default(cuid())
+  packId    String
+  itemId    String
+  quantity  Int      @default(1)
+  notes     String?
+
+  pack      IronmongeryPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  item      IronmongeryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([packId, itemId])
+  @@index([packId])
+}
+
+// ---- Rules & Lookups ----
+model FireCertificationRule {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  // Rule conditions (as JSON for flexibility)
+  conditions  Json     // e.g., { "fireRating": "FD30", "maxHeight": 2100, "maxWidth": 926 }
+  // Required components
+  coreCode    String?
+  glazingType String?
+  sealType    String?
+  ironmongeryRequirements Json? // Array of required category/specs
+  // Certification details
+  certBody    String?  // BWF, BM Trada, Certifire, etc.
+  certNumber  String?
+  validUntil  DateTime?
+  // Metadata
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+}
+
+model LeafSizingRule {
+  id          String   @id @default(cuid())
+  tenantId    String
+  frameType   String   // Single, Double, etc.
+  minHeight   Decimal  // mm
+  maxHeight   Decimal  // mm
+  minWidth    Decimal  // mm
+  maxWidth    Decimal  // mm
+  // Additional constraints
+  fireRating  String?
+  maxWeight   Decimal? // kg
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, frameType, isActive])
+}
+
+model WeightLookup {
+  id          String   @id @default(cuid())
+  tenantId    String
+  component   String   // Door core, Glass, Frame, etc.
+  specification String // Core type, glass thickness, etc.
+  weightPerM2 Decimal  // kg/m2
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, component, specification])
+  @@index([tenantId, component])
+}
+
+// ---- Materials Integration ----
+model MaterialItem {
+  id                String              @id @default(cuid())
+  tenantId          String
+  supplierId        String?
+  category          MaterialItemCategory
+  code              String
+  name              String
+  description       String?
+  cost              Decimal             @default(0)
+  currency          String              @default("GBP")
+  unit              String              @default("each") // each, m, m2, kg, etc.
+  stockQuantity     Decimal?            @default(0)
+  minStockLevel     Decimal?
+  leadTimeDays      Int?
+  isActive          Boolean             @default(true)
+  notes             String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier          Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  shoppingListItems ShoppingListItem[]
+  purchaseOrderLines PurchaseOrderLine[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category, isActive])
+  @@index([tenantId, supplierId])
+}
+
+enum MaterialItemCategory {
+  DOOR_BLANK
+  LIPPING
+  IRONMONGERY
+  GLASS
+  TIMBER
+  BOARD
+  VENEER
+  FINISH
+  HARDWARE
+  CONSUMABLE
+  OTHER
+}
+
+model ShoppingList {
+  id          String              @id @default(cuid())
+  tenantId    String
+  quoteId     String?
+  status      ShoppingListStatus  @default(DRAFT)
+  notes       String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quote       Quote?              @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  items       ShoppingListItem[]
+
+  @@index([tenantId, status])
+  @@index([quoteId])
+}
+
+enum ShoppingListStatus {
+  DRAFT
+  APPROVED
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+model ShoppingListItem {
+  id                    String        @id @default(cuid())
+  shoppingListId        String
+  materialItemId        String
+  descriptionOverride   String?
+  quantity              Decimal
+  unit                  String
+  sourceQuoteLineId     String?       // Optional link to Quote line that generated this
+  notes                 String?
+  createdAt             DateTime      @default(now())
+
+  shoppingList          ShoppingList  @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  materialItem          MaterialItem  @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
+  sourceQuoteLine       QuoteLine?    @relation(fields: [sourceQuoteLineId], references: [id], onDelete: SetNull)
+
+  @@index([shoppingListId])
+  @@index([materialItemId])
+}
+
+model PurchaseOrder {
+  id              String              @id @default(cuid())
+  tenantId        String
+  supplierId      String
+  status          PurchaseOrderStatus @default(DRAFT)
+  orderNumber     String?
+  orderDate       DateTime?
+  expectedDate    DateTime?
+  receivedDate    DateTime?
+  notes           String?
+  totalAmount     Decimal?            @default(0)
+  currency        String              @default("GBP")
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier        Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines           PurchaseOrderLine[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, supplierId])
+  @@index([orderNumber])
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrderLine {
+  id                String          @id @default(cuid())
+  purchaseOrderId   String
+  materialItemId    String
+  description       String
+  quantity          Decimal
+  unit              String
+  unitPrice         Decimal         @default(0)
+  lineTotal         Decimal         @default(0)
+  receivedQuantity  Decimal?        @default(0)
+  notes             String?
+  createdAt         DateTime        @default(now())
+
+  purchaseOrder     PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  materialItem      MaterialItem    @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseOrderId])
+  @@index([materialItemId])
 }
