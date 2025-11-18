@@ -635,20 +635,22 @@ model UploadedFile {
 }
 
 model ParsedSupplierLine {
-  id         String   @id @default(cuid())
-  tenantId   String
-  quoteId    String
-  page       Int?
-  rawText    String
+  id          String   @id @default(cuid())
+  tenantId    String
+  quoteId     String
+  page        Int?
+  rawText     String
   description String?
-  qty        Float?
-  costUnit   Float?
-  lineTotal  Float?
-  currency   String   @default("GBP")
-  supplier   String?
-  confidence Float?
-  usedStages String?
-  createdAt  DateTime @default(now())
+  qty         Float?
+  costUnit    Float?
+  lineTotal   Float?
+  currency    String   @default("GBP")
+  supplier    String?
+  confidence  Float?
+  usedStages  String?
+  imageIndex  Int?     // Index of associated image in extracted images array
+  imageRef    String?  // Reference to UploadedFile ID or data URL hash
+  createdAt   DateTime @default(now())
 
   @@index([tenantId, quoteId])
   @@index([tenantId, supplier])

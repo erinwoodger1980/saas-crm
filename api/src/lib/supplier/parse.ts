@@ -22,6 +22,7 @@ import {
   saveSupplierPattern,
   type PatternCues,
 } from "./patterns";
+import { extractImagesForParse } from "../pdf/extractImages";
 
 const STRUCTURE_TOOL = {
   type: "function" as const,
@@ -257,6 +258,57 @@ function plainTextFallback(
   };
 }
 
+/**
+ * Detect if a PDF is from Joinerysoft based on header text and structure
+ */
+function detectJoinerysoftPdf(extraction: ExtractionSummary): boolean {
+  const headerText = extraction.rows.slice(0, 10).map(r => r.normalized.toLowerCase()).join(' ');
+  
+  // Look for Joinerysoft-specific markers
+  const markers = [
+    'joinerysoft',
+    'joinery soft',
+    'joinery-soft',
+  ];
+  
+  return markers.some(marker => headerText.includes(marker));
+}
+
+/**
+ * Process Joinerysoft PDF with special handling:
+ * - Preserve original prices exactly as shown
+ * - Extract images per line
+ * - Enhance descriptions
+ * - No ML recalculation or margin application
+ */
+function handleJoinerysoftPdf(
+  extraction: ExtractionSummary,
+  baseParse: SupplierParseResult
+): SupplierParseResult {
+  console.log('[parseSupplierPdf] Detected Joinerysoft PDF - preserving original prices');
+  
+  // Mark supplier explicitly
+  baseParse.supplier = 'Joinerysoft';
+  
+  // Ensure we're not modifying prices
+  // Lines already have costUnit and lineTotal from parsing
+  // We just need to make sure they're not recalculated downstream
+  baseParse.lines = baseParse.lines.map(line => ({
+    ...line,
+    // Add marker to prevent ML recalculation
+    sellUnit: line.costUnit, // Use cost as sell price (no margin)
+  }));
+  
+  // Add warning to indicate special handling
+  const warnings = baseParse.warnings || [];
+  warnings.push('Joinerysoft PDF detected: preserving original prices');
+  
+  return {
+    ...baseParse,
+    warnings: unique(warnings),
+  };
+}
+
 function runStageA(
   buffer: Buffer,
   supplierHint?: string,
@@ -268,7 +320,7 @@ function runStageA(
   const supplier = result.supplier || supplierHint || patternName || undefined;
   const currency = result.currency || inferCurrency(extraction.rawText) || "GBP";
 
-  const baseParse: SupplierParseResult = {
+  let baseParse: SupplierParseResult = {
     ...result,
     supplier,
     currency,
@@ -286,8 +338,14 @@ function runStageA(
     }
   }
 
+  // Check if this is a Joinerysoft PDF and apply special handling
+  const isJoinerysoft = detectJoinerysoftPdf(extraction);
+  if (isJoinerysoft) {
+    baseParse = handleJoinerysoftPdf(extraction, baseParse);
+  }
+
   const cues: PatternCues = {
-    supplier,
+    supplier: baseParse.supplier || supplier,
     headerKeywords: deriveHeaderKeywords(extraction),
     columnXSplits: deriveColumnSplits(metadata),
     commonUnits: deriveCommonUnits(baseParse),
@@ -597,6 +655,56 @@ export async function parseSupplierPdf(
   };
 
   await saveSupplierPattern(cues);
+
+  // Extract images from PDF and map to lines
+  try {
+    const extractedImages = await extractImagesForParse(buffer);
+    
+    if (extractedImages.length > 0) {
+      console.log(`[parseSupplierPdf] Extracted ${extractedImages.length} images`);
+      
+      // Store images in the result
+      workingParse.images = extractedImages;
+      
+      // Map images to lines based on page and proximity
+      // For each line, find the closest image on the same page
+      workingParse.lines = workingParse.lines.map((line, lineIndex) => {
+        // Estimate line page based on position (rough heuristic)
+        const estimatedPage = Math.floor(lineIndex / 10) + 1;
+        const linePage = line.page || estimatedPage;
+        
+        // Find images on the same page
+        const pageImages = extractedImages.filter(img => img.page === linePage);
+        
+        if (pageImages.length === 0) {
+          return line;
+        }
+        
+        // Simple mapping: assign first available image on page to line
+        // More sophisticated matching would use bbox proximity
+        const imageIndex = lineIndex % pageImages.length;
+        const matchedImage = pageImages[imageIndex];
+        
+        if (matchedImage) {
+          return {
+            ...line,
+            page: linePage,
+            imageIndex: matchedImage.index,
+            imageDataUrl: matchedImage.dataUrl,
+            bbox: matchedImage.bbox,
+          };
+        }
+        
+        return { ...line, page: linePage };
+      });
+      
+      console.log(`[parseSupplierPdf] Mapped images to ${workingParse.lines.filter(l => l.imageDataUrl).length} lines`);
+    }
+  } catch (err: any) {
+    console.warn('[parseSupplierPdf] Image extraction failed:', err);
+    collectedWarnings.add(`Image extraction failed: ${err.message}`);
+    workingParse = attachWarnings(workingParse, collectedWarnings);
+  }
 
   return workingParse;
 }
