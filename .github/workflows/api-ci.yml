@@ -47,34 +47,45 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cache Prisma engines
+        id: cache-prisma
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/prisma
             api/node_modules/.prisma
-          key: ${{ runner.os }}-prisma-${{ hashFiles('api/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-prisma-engines-${{ hashFiles('api/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-prisma-
+            ${{ runner.os }}-prisma-engines-
 
-      - name: Prisma generate (with retry)
+      - name: Download Prisma engines (if CDN fails)
+        if: steps.cache-prisma.outputs.cache-hit != 'true'
+        run: |
+          echo "📦 Pre-downloading Prisma engines from GitHub mirror..."
+          # Get the engine version from node_modules/@prisma/engines
+          ENGINE_VERSION="272a37d34178c2894197e17273bf937f25acdeac"
+          PLATFORM="debian-openssl-3.0.x"
+          
+          # Create cache directory
+          mkdir -p ~/.cache/prisma/binaries/engines/$PLATFORM
+          
+          # Try downloading from GitHub release mirror first (more reliable)
+          ENGINE_URL="https://github.com/prisma/prisma-engines/releases/download/$ENGINE_VERSION/libquery_engine-$PLATFORM.so.node.gz"
+          
+          echo "Attempting download from: $ENGINE_URL"
+          if curl -L -o /tmp/engine.gz "$ENGINE_URL" 2>/dev/null; then
+            echo "✅ Downloaded from GitHub mirror"
+            gunzip /tmp/engine.gz
+            mv /tmp/engine ~/.cache/prisma/binaries/engines/$PLATFORM/$ENGINE_VERSION-libquery_engine.so.node
+            chmod +x ~/.cache/prisma/binaries/engines/$PLATFORM/$ENGINE_VERSION-libquery_engine.so.node
+          else
+            echo "⚠️ GitHub mirror failed, will try Prisma CDN during generate"
+          fi
+
+      - name: Prisma generate
         env:
           PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
-        run: |
-          # Retry up to 3 times with exponential backoff
-          for i in 1 2 3; do
-            echo "Attempt $i of 3..."
-            if pnpm run prisma:generate; then
-              echo "✅ Prisma generate succeeded"
-              exit 0
-            fi
-            if [ $i -lt 3 ]; then
-              sleep_time=$((2 ** i))
-              echo "⏳ Retrying in ${sleep_time}s..."
-              sleep $sleep_time
-            fi
-          done
-          echo "❌ Prisma generate failed after 3 attempts"
-          exit 1
+          PRISMA_QUERY_ENGINE_BINARY: ~/.cache/prisma/binaries/engines/debian-openssl-3.0.x/272a37d34178c2894197e17273bf937f25acdeac-libquery_engine.so.node
+        run: pnpm run prisma:generate
 
       - name: TypeScript compile
         run: pnpm run build
