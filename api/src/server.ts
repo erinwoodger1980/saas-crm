@@ -420,7 +420,20 @@ app.get("/health/storage", (_req, res) => {
 });
 
 /** Small auth guard for protected routers */
-function requireAuth(req: any, res: any, next: any) {
+async function requireAuth(req: any, res: any, next: any) {
+  // In dev mode, bypass auth and use LAJ Joinery tenant automatically
+  if (process.env.NODE_ENV !== "production" && !req.auth?.tenantId) {
+    try {
+      const lajTenant = await prisma.tenant.findUnique({ where: { slug: "laj-joinery" } });
+      if (lajTenant) {
+        req.auth = { tenantId: lajTenant.id, userId: null, email: "dev@laj.local", role: "owner" };
+        return next();
+      }
+    } catch (e) {
+      console.error("[requireAuth] Failed to load LAJ tenant in dev mode:", e);
+    }
+  }
+  
   if (!req.auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
   next();
 }
