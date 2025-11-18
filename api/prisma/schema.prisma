@@ -413,6 +413,8 @@ model TenantSettings {
   updatedAt         DateTime  @updatedAt
   createdAt         DateTime  @default(now())
   beta            Json     @default("{}")
+  // Feature flags for tenant-specific functionality
+  isFireDoorManufacturer Boolean @default(false)
 }
 
 model FollowUpLog {

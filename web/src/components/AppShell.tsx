@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code } from "lucide-react";
+import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import Image from "next/image";
 
@@ -28,6 +28,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [isDeveloper, setIsDeveloper] = useState(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedTenant, setImpersonatedTenant] = useState<string | null>(null);
+  const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
 
   useEffect(() => {
     // Check if user has developer access
@@ -61,6 +62,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
         // Invalid token format, ignore
       }
     }
+
+    // Fetch tenant settings to check for fire door manufacturer flag
+    apiFetch<{ isFireDoorManufacturer?: boolean }>("/tenant/settings")
+      .then((data) => {
+        if (data?.isFireDoorManufacturer) {
+          setIsFireDoorManufacturer(true);
+        }
+      })
+      .catch(() => {
+        // Failed to fetch settings, default to false
+      });
   }, []);
 
   function exitImpersonation() {
@@ -104,6 +116,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+          
+          {/* Fire Door Calculator - only for fire door manufacturers */}
+          {isFireDoorManufacturer && (
+            <Link
+              href="/fire-door-calculator"
+              className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
+                pathname?.startsWith("/fire-door-calculator")
+                  ? "bg-[rgb(var(--brand))]/10 text-[rgb(var(--brand))] font-medium"
+                  : "hover:bg-slate-100 text-slate-700"
+              }`}
+            >
+              <Flame size={16} />
+              Fire Door Calculator
+            </Link>
+          )}
         </nav>
 
         {/* Developer Section */}
