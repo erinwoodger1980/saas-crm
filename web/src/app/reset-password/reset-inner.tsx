@@ -30,7 +30,7 @@ export default function ResetInner() {
 
     setLoading(true);
     try {
-      await apiFetch("/auth/reset/complete", {
+      await apiFetch("/auth/reset-password", {
         method: "POST",
         json: { token, password },
       });
