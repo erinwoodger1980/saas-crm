@@ -334,6 +334,40 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
 });
 
+/** Database health check */
+app.get("/health/db", async (_req, res) => {
+  const start = Date.now();
+  try {
+    // Simple query to test connection
+    await prisma.$queryRaw`SELECT 1 as connected`;
+    const duration = Date.now() - start;
+    
+    res.json({ 
+      ok: true, 
+      database: "connected",
+      latency_ms: duration,
+      timestamp: new Date().toISOString()
+    });
+  } catch (e: any) {
+    const duration = Date.now() - start;
+    console.error('[health/db] Database connection failed:', {
+      error: e.message,
+      code: e.code,
+      latency_ms: duration,
+      timestamp: new Date().toISOString()
+    });
+    
+    res.status(503).json({ 
+      ok: false, 
+      database: "disconnected",
+      error: e.message,
+      code: e.code,
+      latency_ms: duration,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 /** Storage health: verifies UPLOAD_DIR exists and is writable */
 app.get("/health/storage", (_req, res) => {
   const configured = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
@@ -745,11 +779,56 @@ function startInboxWatcher() {
 
 startInboxWatcher();
 
+/* ---------------- Request timeout middleware ---------------- */
+const REQUEST_TIMEOUT_MS = 25000; // 25 seconds (Render has 30s timeout)
+app.use((req, res, next) => {
+  const timeoutId = setTimeout(() => {
+    if (!res.headersSent) {
+      console.error(`[timeout] Request timeout: ${req.method} ${req.path}`, {
+        tenantId: (req as any).auth?.tenantId,
+        userId: (req as any).auth?.userId,
+        timestamp: new Date().toISOString(),
+      });
+      res.status(504).json({ 
+        error: "request_timeout", 
+        message: "Request took too long to process",
+        path: req.path 
+      });
+    }
+  }, REQUEST_TIMEOUT_MS);
+
+  const originalSend = res.send;
+  res.send = function(data: any) {
+    clearTimeout(timeoutId);
+    return originalSend.call(this, data);
+  };
+
+  next();
+});
+
 /* ---------------- 404 + Error handlers ---------------- */
 app.use((req, res) => res.status(404).json({ error: "not_found", path: req.path }));
-app.use((err: any, _req: any, res: any, _next: any) => {
-  console.error(err);
-  res.status(500).json({ error: "internal_error" });
+app.use((err: any, req: any, res: any, _next: any) => {
+  // Structured error logging
+  const errorContext = {
+    timestamp: new Date().toISOString(),
+    method: req.method,
+    path: req.path,
+    tenantId: req.auth?.tenantId,
+    userId: req.auth?.userId,
+    errorType: err.name || 'UnknownError',
+    errorMessage: err.message,
+    stack: err.stack?.split('\n').slice(0, 5).join('\n'), // First 5 lines of stack
+  };
+  
+  console.error('[error-handler]', JSON.stringify(errorContext, null, 2));
+  
+  // Don't send error details in production
+  const isDev = process.env.NODE_ENV !== 'production';
+  res.status(500).json({ 
+    error: "internal_error",
+    ...(isDev ? { details: err.message, type: err.name } : {})
+  });
 });
 
 /** Start server with error handling */

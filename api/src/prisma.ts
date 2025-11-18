@@ -11,11 +11,32 @@ export const prisma =
       process.env.NODE_ENV === "production"
         ? ["error"]
         : ["query", "error", "warn"],
+    // Optimize for serverless/connection pooling
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL,
+      },
+    },
   });
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
+
+// Graceful shutdown handler for Prisma
+async function disconnectPrisma() {
+  try {
+    await prisma.$disconnect();
+    console.log('[prisma] Disconnected successfully');
+  } catch (e) {
+    console.error('[prisma] Error during disconnect:', e);
+  }
+}
+
+// Handle process termination
+process.on('beforeExit', disconnectPrisma);
+process.on('SIGINT', disconnectPrisma);
+process.on('SIGTERM', disconnectPrisma);
 
 // Prisma middleware: on Tenant.create, ensure a dev user exists for that tenant
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
