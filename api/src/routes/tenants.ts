@@ -294,6 +294,7 @@ async function updateSettings(req: any, res: any) {
     ownerFirstName,
     ownerLastName,
     aiFollowupLearning,
+    isFireDoorManufacturer,
   } = req.body || {};
 
   try {
@@ -366,6 +367,9 @@ async function updateSettings(req: any, res: any) {
     if (questionnaireEmailBody !== undefined) {
       const val = typeof questionnaireEmailBody === "string" ? questionnaireEmailBody.trim() : "";
       update.questionnaireEmailBody = val || null;
+    }
+    if (isFireDoorManufacturer !== undefined) {
+      update.isFireDoorManufacturer = !!isFireDoorManufacturer;
     }
 
     if (ownerFirstName !== undefined) {

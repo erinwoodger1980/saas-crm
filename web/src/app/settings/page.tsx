@@ -1384,6 +1384,20 @@ export default function SettingsPage() {
       <span>{user?.isEarlyAdopter ? "Enabled" : "Disabled"}</span>
     </label>
   </Section>
+
+  <Section title="Fire Door Calculator" description="Enable advanced fire door costing and pricing calculator">
+    <label className="flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={!!(s as any)?.isFireDoorManufacturer}
+        onChange={(e) => setS((prev) => (prev ? { ...prev, isFireDoorManufacturer: e.target.checked } as any : prev))}
+      />
+      <span>Enable Fire Door Calculator feature</span>
+    </label>
+    <p className="text-xs text-slate-600 mt-2">
+      When enabled, a "Fire Door Calculator" link will appear in the main navigation for quick access to the fire door pricing tool.
+    </p>
+  </Section>
   </>
       )}
 
