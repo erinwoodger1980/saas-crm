@@ -1,0 +1,64 @@
+name: Promote Staging to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "promote" to merge staging → main'
+        required: true
+        default: ''
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "promote" ]; then
+            echo "❌ Promotion cancelled - confirmation not provided"
+            exit 1
+          fi
+          echo "✅ Promotion confirmed"
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Merge staging to main
+        run: |
+          echo "📦 Fetching latest changes..."
+          git fetch origin
+          
+          echo "🔀 Checking out main branch..."
+          git checkout main
+          git pull origin main
+          
+          echo "🔀 Merging staging into main..."
+          git merge origin/staging --no-ff -m "chore: Promote staging to production
+
+          Merging validated changes from staging branch.
+          
+          Co-authored-by: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>"
+          
+          echo "📤 Pushing to main..."
+          git push origin main
+          
+          echo "✅ Successfully merged staging → main"
+
+      - name: Promotion Summary
+        run: |
+          echo "## 🎉 Staging Promoted to Production" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Merged:** staging → main" >> $GITHUB_STEP_SUMMARY
+          echo "**Promoted by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Next Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Monitor CI tests on main branch" >> $GITHUB_STEP_SUMMARY
+          echo "2. Once CI passes, manually deploy from [Render Dashboard](https://dashboard.render.com)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Verify deployment at https://joineryai.app" >> $GITHUB_STEP_SUMMARY

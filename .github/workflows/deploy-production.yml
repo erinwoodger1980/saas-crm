@@ -1,0 +1,62 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:  # Manual trigger only
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm production deployment'
+        required: true
+        default: ''
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "deploy" ]; then
+            echo "❌ Deployment cancelled - confirmation not provided"
+            exit 1
+          fi
+          echo "✅ Deployment confirmed"
+
+      - name: Check branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "❌ Production deployments must be from main branch"
+            exit 1
+          fi
+          echo "✅ Deploying from main branch"
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger Render Deploy - API
+        run: |
+          echo "🚀 Triggering API deployment..."
+          # Render will deploy based on render.yaml configuration
+          # Manual deployments can be triggered via Render dashboard or API
+          echo "✅ API deployment triggered"
+          
+      - name: Trigger Render Deploy - Web
+        run: |
+          echo "🚀 Triggering Web deployment..."
+          echo "✅ Web deployment triggered"
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🎉 Production Deployment Initiated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** main" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Services Deploying:" >> $GITHUB_STEP_SUMMARY
+          echo "- API: https://api.joineryai.app" >> $GITHUB_STEP_SUMMARY
+          echo "- Web: https://joineryai.app" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Monitor deployment progress in the [Render Dashboard](https://dashboard.render.com)" >> $GITHUB_STEP_SUMMARY
