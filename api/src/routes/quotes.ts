@@ -69,8 +69,50 @@ async function maybeTriggerFallbackAlert(fallbackCount: number) {
   }
 }
 
+/**
+ * Get tenant ID for the current request.
+ * In dev mode, use LAJ Joinery tenant for testing.
+ * In production, use authenticated tenant from JWT.
+ */
+async function getTenantId(req: any): Promise<string> {
+  const isDev = process.env.NODE_ENV !== "production";
+  
+  if (isDev) {
+    // In dev mode, always use LAJ Joinery tenant
+    const lajTenant = await prisma.tenant.findUnique({
+      where: { slug: "laj-joinery" },
+      select: { id: true },
+    });
+    
+    if (!lajTenant) {
+      throw new Error("LAJ Joinery tenant not found. Run: npx ts-node prisma/seedTenantLaj.ts");
+    }
+    
+    return lajTenant.id;
+  }
+  
+  // Production: use authenticated tenant
+  const tenantId = req.auth?.tenantId as string | undefined;
+  if (!tenantId) {
+    throw new Error("unauthorized");
+  }
+  
+  return tenantId;
+}
+
 function requireAuth(req: any, res: any, next: any) {
-  if (!req.auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
+  const isDev = process.env.NODE_ENV !== "production";
+  
+  // In dev mode, allow requests without auth (will use LAJ Joinery)
+  if (isDev) {
+    return next();
+  }
+  
+  // In production, require authentication
+  if (!req.auth?.tenantId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  
   next();
 }
 
@@ -338,7 +380,7 @@ const storage = multer.diskStorage({
  */
 router.get("/:id/lines", requireAuth, async (req: any, res) => {
   try {
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const id = String(req.params.id);
     const lines = await prisma.quoteLine.findMany({
       where: { quote: { id, tenantId } },
@@ -380,7 +422,7 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
  */
 router.patch("/:id/lines/:lineId", requireAuth, async (req: any, res) => {
   try {
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const quoteId = String(req.params.id);
     const lineId = String(req.params.lineId);
     const quote = await prisma.quote.findFirst({ where: { id: quoteId, tenantId } });
@@ -619,7 +661,7 @@ const upload = multer({ storage });
 
 /** GET /quotes */
 router.get("/", requireAuth, async (req: any, res) => {
-  const tenantId = req.auth.tenantId as string;
+  const tenantId = await getTenantId(req);
   const rows = await prisma.quote.findMany({
     where: { tenantId },
     orderBy: { createdAt: "desc" },
@@ -637,7 +679,7 @@ router.get("/", requireAuth, async (req: any, res) => {
 
 /** POST /quotes { title, leadId? } */
 router.post("/", requireAuth, async (req: any, res) => {
-  const tenantId = req.auth.tenantId as string;
+  const tenantId = await getTenantId(req);
   const { title, leadId } = req.body || {};
   if (!title) return res.status(400).json({ error: "title_required" });
 
@@ -656,7 +698,7 @@ router.post("/", requireAuth, async (req: any, res) => {
 
 /** GET /quotes/:id */
 router.get("/:id", requireAuth, async (req: any, res) => {
-  const tenantId = req.auth.tenantId as string;
+  const tenantId = await getTenantId(req);
   const id = String(req.params.id);
   const q = await prisma.quote.findFirst({
     where: { id, tenantId },
@@ -679,7 +721,7 @@ router.get("/:id", requireAuth, async (req: any, res) => {
 
 /** POST /quotes/:id/files  (multipart form-data: files[]) */
 router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: any, res) => {
-  const tenantId = req.auth.tenantId as string;
+  const tenantId = await getTenantId(req);
   const id = String(req.params.id);
   const q = await prisma.quote.findFirst({ where: { id, tenantId } });
   if (!q) return res.status(404).json({ error: "not_found" });
@@ -2701,7 +2743,7 @@ router.patch("/:id/lines/map", requireAuth, async (req: any, res) => {
  */
 router.post("/:id/price", requireAuth, async (req: any, res) => {
   try {
-    const tenantId = req.auth.tenantId as string;
+    const tenantId = await getTenantId(req);
     const id = String(req.params.id);
     const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true, tenant: true, lead: true } });
     if (!quote) return res.status(404).json({ error: "not_found" });
