@@ -1171,7 +1171,7 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const title =
       quote.title || `Estimate for ${client}`;
 
-    // Compute totals - FIX: Handle pence-to-pounds conversion
+    // Compute totals - CRITICAL: Use meta.sellTotalGBP when available
     const marginDefault = Number(
       quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25,
     );
@@ -1179,13 +1179,19 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       const qty = Number(ln.qty || 1);
       const metaAny: any = (ln.meta as any) || {};
       
-      // FIX: unitPrice is stored in pence, divide by 100 to get pounds
-      const unitPriceGBP = Number(ln.unitPrice || 0) / 100;
+      // CRITICAL FIX: If sellTotalGBP exists in meta, use it directly
+      let total: number;
+      if (metaAny?.sellTotalGBP != null && Number.isFinite(Number(metaAny.sellTotalGBP))) {
+        total = Number(metaAny.sellTotalGBP);
+      } else if (metaAny?.sellUnitGBP != null && Number.isFinite(Number(metaAny.sellUnitGBP))) {
+        total = Number(metaAny.sellUnitGBP) * qty;
+      } else {
+        // Fallback: unitPrice is in POUNDS, apply margin
+        const unitPriceGBP = Number(ln.unitPrice || 0);
+        const sellUnit = unitPriceGBP * (1 + marginDefault);
+        total = sellUnit * qty;
+      }
       
-      const sellUnit = Number(
-        metaAny?.sellUnitGBP ?? unitPriceGBP * (1 + marginDefault),
-      );
-      const total = qty * sellUnit;
       return { total };
     });
 
@@ -1388,13 +1394,19 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
       const qty = Number(ln.qty || 1);
       const metaAny: any = (ln.meta as any) || {};
       
-      // FIX: unitPrice is stored in pence, divide by 100 to get pounds
-      const unitPriceGBP = Number(ln.unitPrice || 0) / 100;
+      // CRITICAL FIX: If sellTotalGBP exists in meta, use it directly
+      let total: number;
+      if (metaAny?.sellTotalGBP != null && Number.isFinite(Number(metaAny.sellTotalGBP))) {
+        total = Number(metaAny.sellTotalGBP);
+      } else if (metaAny?.sellUnitGBP != null && Number.isFinite(Number(metaAny.sellUnitGBP))) {
+        total = Number(metaAny.sellUnitGBP) * qty;
+      } else {
+        // Fallback: unitPrice is in POUNDS, apply margin
+        const unitPriceGBP = Number(ln.unitPrice || 0);
+        const sellUnit = unitPriceGBP * (1 + marginDefault);
+        total = sellUnit * qty;
+      }
       
-      const sellUnit = Number(
-        metaAny?.sellUnitGBP ?? unitPriceGBP * (1 + marginDefault),
-      );
-      const total = qty * sellUnit;
       return { total };
     });
 
@@ -1679,18 +1691,32 @@ function buildQuoteProposalHtml(opts: {
   const scopeDescription = quoteMeta?.scopeDescription || 
     `This project involves supplying bespoke timber joinery products crafted to meet your specifications. All products are manufactured to the highest standards and comply with ${compliance}.`;
   
-  // Build rows for table - FIX: Handle pence-to-pounds conversion properly
+  // Build rows for table - CRITICAL: Use meta.sellTotalGBP directly when available
   const marginDefault = Number(quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25);
   const rows = quote.lines.map((ln: any) => {
     const qty = Number(ln.qty || 1);
     const metaAny: any = (ln.meta as any) || {};
     
-    // FIX: unitPrice is stored in pence, so divide by 100 to get pounds
-    const unitPriceGBP = Number(ln.unitPrice || 0) / 100;
+    // CRITICAL FIX: If sellTotalGBP exists in meta (from /lines/save-processed or /price),
+    // use it directly. Otherwise calculate from unitPrice + margin.
+    let sellUnit: number;
+    let total: number;
     
-    // Use sellUnitGBP if already calculated, otherwise apply margin to unitPrice
-    const sellUnit = Number(metaAny?.sellUnitGBP ?? (unitPriceGBP * (1 + marginDefault)));
-    const total = qty * sellUnit;
+    if (metaAny?.sellTotalGBP != null && Number.isFinite(Number(metaAny.sellTotalGBP))) {
+      // Use pre-calculated sell total from pricing
+      total = Number(metaAny.sellTotalGBP);
+      sellUnit = qty > 0 ? total / qty : 0;
+    } else if (metaAny?.sellUnitGBP != null && Number.isFinite(Number(metaAny.sellUnitGBP))) {
+      // Use pre-calculated sell unit price
+      sellUnit = Number(metaAny.sellUnitGBP);
+      total = sellUnit * qty;
+    } else {
+      // Fallback: calculate from unitPrice (which is in POUNDS, not pence in this system)
+      const unitPriceGBP = Number(ln.unitPrice || 0);
+      sellUnit = unitPriceGBP * (1 + marginDefault);
+      total = sellUnit * qty;
+    }
+    
     const dimensions = metaAny?.dimensions || "";
     
     // FIX: Ensure description is clean string, handle nulls and special chars
