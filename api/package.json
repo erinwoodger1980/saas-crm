@@ -20,6 +20,8 @@
     "seed:followups": "ts-node --transpile-only src/scripts/seed-followup-templates.ts",
     "followups:analyse": "ts-node --transpile-only src/scripts/followups-analyse.ts",
     "seed:wealden": "tsx prisma/seed_wealden.ts",
+    "seed:laj-tenant": "tsx prisma/seedTenantLaj.ts",
+    "seed:laj-materials": "tsx prisma/seedMaterialsLaj.ts",
     "postinstall": "node scripts/prisma-postinstall.mjs && npx puppeteer browsers install chrome",
     "test:supplier": "ts-node-dev --transpile-only scripts/test-supplier-parse.ts",
     "audit:prod": "ts-node --transpile-only scripts/prod_ml_audit.ts",
