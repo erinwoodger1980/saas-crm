@@ -30,6 +30,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [impersonatedTenant, setImpersonatedTenant] = useState<string | null>(null);
   const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
 
+  // Debug log whenever fire door flag changes
+  useEffect(() => {
+    console.log("[AppShell] Fire Door Manufacturer state changed to:", isFireDoorManufacturer);
+  }, [isFireDoorManufacturer]);
+
   useEffect(() => {
     // Check if user has developer access
     apiFetch<{ ok: boolean }>("/dev/stats")
@@ -66,14 +71,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
     // Fetch tenant settings to check for fire door manufacturer flag
     apiFetch<{ isFireDoorManufacturer?: boolean }>("/tenant/settings")
       .then((data) => {
+        console.log("[AppShell] Fire door flag from API:", data?.isFireDoorManufacturer);
         setIsFireDoorManufacturer(Boolean(data?.isFireDoorManufacturer));
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error("[AppShell] Failed to fetch settings:", error);
         // Failed to fetch settings, default to false
       });
     const handleTenantSettingsUpdate = (event: Event) => {
       const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean }>).detail;
+      console.log("[AppShell] Received tenant-settings:updated event:", detail);
       if (detail && Object.prototype.hasOwnProperty.call(detail, "isFireDoorManufacturer")) {
+        console.log("[AppShell] Updating fire door flag to:", detail.isFireDoorManufacturer);
         setIsFireDoorManufacturer(Boolean(detail.isFireDoorManufacturer));
       }
     };
