@@ -719,18 +719,8 @@ export async function recordQuoteForTraining(quoteId: string): Promise<void> {
     const quote = await prisma.quote.findUnique({
       where: { id: quoteId },
       include: {
-        lead: {
-          select: {
-            id: true,
-            tenantId: true,
-            projectType: true,
-            meta: true,
-          },
-        },
-        lines: {
-          where: { kind: { not: "DELETED" } },
-          orderBy: { order: "asc" },
-        },
+        lead: true,
+        lines: true,
       },
     });
 
@@ -749,10 +739,10 @@ export async function recordQuoteForTraining(quoteId: string): Promise<void> {
     // Check if we've already recorded this quote to avoid duplicates
     const existing = await logInferenceEvent({
       tenantId,
-      module: "estimator",
-      kind: "quote_training",
-      input: { quoteId },
-      output: { status: "check" },
+      model: "estimator",
+      modelVersionId: "training-v1",
+      inputHash: `quote-check-${quoteId}`,
+      outputJson: { status: "check", quoteId },
     });
 
     // Skip if already recorded (check by looking for recent training events)
@@ -779,20 +769,19 @@ export async function recordQuoteForTraining(quoteId: string): Promise<void> {
     // Build final confirmed lines
     const finalLines = quote.lines.map((line) => ({
       id: line.id,
-      kind: line.kind,
       description: line.description,
-      qty: line.qty,
-      costUnit: line.costUnit,
-      costTotal: line.costTotal,
-      sellUnit: line.sellUnit,
-      sellTotal: line.sellTotal,
+      qty: line.qty ? (typeof line.qty.toNumber === 'function' ? line.qty.toNumber() : Number(line.qty)) : null,
+      unitPrice: line.unitPrice ? (typeof line.unitPrice.toNumber === 'function' ? line.unitPrice.toNumber() : Number(line.unitPrice)) : null,
+      lineTotal: line.lineTotalGBP ? (typeof line.lineTotalGBP.toNumber === 'function' ? line.lineTotalGBP.toNumber() : Number(line.lineTotalGBP)) : null,
       currency: line.currency,
       meta: line.meta,
+      supplier: line.supplier,
+      sku: line.sku,
     }));
 
     // Calculate totals
-    const costTotal = finalLines.reduce((sum, line) => sum + (line.costTotal || 0), 0);
-    const sellTotal = finalLines.reduce((sum, line) => sum + (line.sellTotal || 0), 0);
+    const costTotal = finalLines.reduce((sum: number, line: any) => sum + (line.unitPrice || 0), 0);
+    const sellTotal = finalLines.reduce((sum: number, line: any) => sum + (line.lineTotal || 0), 0);
     const margin = sellTotal - costTotal;
     const marginPercent = costTotal > 0 ? (margin / costTotal) * 100 : 0;
 
@@ -813,14 +802,10 @@ export async function recordQuoteForTraining(quoteId: string): Promise<void> {
       source, // 'supplier' | 'user_quote' | 'historic'
       supplierName,
       currency: quote.currency || 'GBP',
-      projectType: quote.lead.projectType,
-      
       // Parsed lines from original PDF
       parsedLines,
-      
       // Final confirmed lines
       finalLines,
-      
       // Totals and margins
       totals: {
         costTotal,
@@ -829,12 +814,6 @@ export async function recordQuoteForTraining(quoteId: string): Promise<void> {
         marginPercent,
         lineCount: finalLines.length,
       },
-      
-      // Questionnaire answers (if available)
-      questionnaireAnswers: quote.lead.meta && typeof quote.lead.meta === 'object'
-        ? (quote.lead.meta as any).questionnaireAnswers
-        : undefined,
-      
       // Timestamps
       quotedAt: quote.createdAt,
       recordedAt: new Date(),
@@ -843,17 +822,10 @@ export async function recordQuoteForTraining(quoteId: string): Promise<void> {
     // Log as inference event for ML training
     await logInferenceEvent({
       tenantId,
-      module: "estimator",
-      kind: "quote_training",
-      input: {
-        quoteId,
-        leadId: quote.leadId,
-        source,
-        supplierName,
-        projectType: quote.lead.projectType,
-        lineCount: finalLines.length,
-      },
-      output: trainingRecord,
+      model: "estimator",
+      modelVersionId: "training-v1",
+      inputHash: `quote-train-${quoteId}`,
+      outputJson: trainingRecord,
     });
 
     // Also log as insight with summary

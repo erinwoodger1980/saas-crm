@@ -48,7 +48,12 @@ export type ParsedLineLike = {
     glass?: string;
     wood?: string;
     productType?: string;
-    imageRef?: { page: number; hash: string };
+    imageRef?: {
+      page: number;
+      hash: string;
+      dataUrl?: string;
+      bbox?: any;
+    };
     [key: string]: any;
   };
 };
@@ -676,8 +681,24 @@ export async function parseQuotePdf(
     // Convert to unified format
     if (debug) console.log("[parseQuotePdf] Converting to unified format...");
     const lines: ParsedQuoteLine[] = supplierResult.lines.map((line: any) => {
-      const description = String(line.description || "");
-      const meta = {
+      const description: string = String(line.description || "");
+      const meta: {
+        dimensions?: string;
+        area?: string;
+        type?: string;
+        finish?: string;
+        glass?: string;
+        wood?: string;
+        productType?: string;
+        productId?: any;
+        rawText?: any;
+        imageRef?: {
+          page: number;
+          hash: string;
+          dataUrl?: string;
+          bbox?: any;
+        };
+      } = {
         dimensions: line.dimensions,
         area: line.area,
         type: line.type || line.productType,

@@ -76,6 +76,7 @@ model Tenant {
   featureRequests             FeatureRequest[]
   // Supplier relations
   suppliers                   Supplier[]                @relation("SupplierToTenant")
+  pdfLayoutTemplates          PdfLayoutTemplate[]
   supplierQuoteRequests       SupplierQuoteRequest[]
   materialItems               MaterialItem[]
   shoppingLists               ShoppingList[]
@@ -1487,6 +1488,7 @@ model TenantAdsConfig {
 model Supplier {
   id                    String                @id @default(cuid())
   tenantId              String
+  tenant                Tenant @relation("SupplierToTenant", fields: [tenantId], references: [id])
   name                  String
   code                  String?               // Optional code for material supplier integration
   contactPerson         String?
@@ -1498,15 +1500,30 @@ model Supplier {
   notes                 String?
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
-  tenant                Tenant                @relation("SupplierToTenant", fields: [tenantId], references: [id], onDelete: Cascade)
   supplierQuoteRequests SupplierQuoteRequest[]
   materialItems         MaterialItem[]
   purchaseOrders        PurchaseOrder[]
   users                 User[]                // Supplier users linked to this supplier
-  
+
   @@index([tenantId])
   @@index([email])
   @@index([tenantId, isActive])
+}
+// Place at very end of file
+
+model PdfLayoutTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  fileHash    String?
+  pageCount   Int?
+  annotations Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, name])
 }
 
 // Supplier Quote Requests - Track quotes requested from suppliers
