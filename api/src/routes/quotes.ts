@@ -403,7 +403,10 @@ router.get("/:id/lines", requireAuth, async (req: any, res) => {
       surchargeGBP: (ln.meta as any)?.surchargeGBP ?? null,
     }));
 
-    return res.json(out);
+    // Fetch image URLs for lines that have imageFileId
+    const imageUrlMap = await fetchLineImageUrls(lines, tenantId);
+
+    return res.json({ lines: out, imageUrlMap });
   } catch (e: any) {
     console.error("[/quotes/:id/lines] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });

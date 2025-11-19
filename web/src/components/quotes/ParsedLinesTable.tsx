@@ -1,16 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Wand2, FileText, Download, Sparkles } from "lucide-react";
+import { Loader2, Wand2, FileText, Download, Image as ImageIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ParsedLineDto, QuestionnaireField, ParseResponse } from "@/lib/api/quotes";
 
 export type ParsedLinesTableProps = {
@@ -25,6 +19,7 @@ export type ParsedLinesTableProps = {
   onAutoMap: () => void;
   onShowRawParse: () => void;
   onDownloadCsv: () => void;
+  imageUrlMap?: Record<string, string>;
 };
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -41,9 +36,11 @@ export function ParsedLinesTable({
   onAutoMap,
   onShowRawParse,
   onDownloadCsv,
+  imageUrlMap = {},
 }: ParsedLinesTableProps) {
   const [drafts, setDrafts] = useState<Record<string, DraftValues>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
@@ -98,11 +95,12 @@ export function ParsedLinesTable({
   }
 
   return (
+    <>
     <Card className="rounded-2xl shadow-sm">
       <CardHeader className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <CardTitle className="text-xl font-semibold tracking-tight">Parsed supplier lines</CardTitle>
-          <p className="text-sm text-muted-foreground">Validate ML extraction, edit quantities, and map to questionnaire fields.</p>
+          <CardTitle className="text-xl font-semibold tracking-tight">Quote line items</CardTitle>
+          <p className="text-sm text-muted-foreground">Review and edit line items from all sources (supplier PDFs, ML estimates, manual entry)</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {isParsing && (
@@ -115,9 +113,6 @@ export function ParsedLinesTable({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onAutoMap} className="gap-2">
-            <Sparkles className="h-4 w-4" /> Auto-map
-          </Button>
           <Button type="button" variant="outline" size="sm" onClick={onShowRawParse} className="gap-2">
             <FileText className="h-4 w-4" /> Show raw parse
           </Button>
@@ -147,10 +142,10 @@ export function ParsedLinesTable({
             <table className="min-w-full text-sm">
               <thead className="sticky top-0 z-20 bg-muted/80 text-xs uppercase tracking-wide text-muted-foreground backdrop-blur shadow">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium sticky left-0 bg-muted/80 z-30">Description</th>
+                  <th className="px-4 py-3 text-left font-medium">Image</th>
+                  <th className="px-4 py-3 text-left font-medium sticky left-16 bg-muted/80 z-30">Description</th>
                   <th className="px-4 py-3 text-right font-medium">Qty</th>
                   <th className="px-4 py-3 text-right font-medium">Cost / unit</th>
-                  <th className="px-4 py-3 text-left font-medium">Map to question</th>
                   <th className="px-4 py-3 text-right font-medium">Sell / unit</th>
                   <th className="px-4 py-3 text-right font-medium">Sell total</th>
                 </tr>
@@ -160,18 +155,36 @@ export function ParsedLinesTable({
                   const draft = drafts[line.id];
                   const qty = draft?.qty ?? normalizeNumber(line.qty);
                   const unitPrice = draft?.unitPrice ?? normalizeNumber(line.unitPrice);
-                  const mappingValue = mapping[line.id] ?? null;
-                  const valueForSelect = mappingValue ?? "__none__";
                   const sellUnit = normalizeNumber(line.meta?.sellUnitGBP ?? line.meta?.sell_unit ?? line.sellUnit);
                   const sellTotal = normalizeNumber(line.meta?.sellTotalGBP ?? line.meta?.sell_total ?? line.sellTotal);
                   const hasError = qty != null && qty < 0 || unitPrice != null && unitPrice < 0;
+                  const imageFileId = line.meta?.imageFileId;
+                  const imageUrl = imageFileId ? imageUrlMap[imageFileId] : undefined;
 
                   return (
                     <tr
                       key={line.id}
                       className={`transition-colors ${hasError ? "bg-rose-50/80" : "hover:bg-slate-50/80"}`}
                     >
-                      <td className="max-w-md px-4 py-3 align-top sticky left-0 bg-white z-10 shadow-md">
+                      <td className="w-20 px-4 py-3 align-top">
+                        {imageUrl ? (
+                          <button
+                            onClick={() => setSelectedImage(imageUrl)}
+                            className="block w-12 h-12 rounded border overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+                          >
+                            <img 
+                              src={imageUrl} 
+                              alt="Line item"
+                              className="w-full h-full object-cover"
+                            />
+                          </button>
+                        ) : (
+                          <div className="w-12 h-12 rounded border bg-muted/30 flex items-center justify-center">
+                            <ImageIcon className="h-4 w-4 text-muted-foreground/40" />
+                          </div>
+                        )}
+                      </td>
+                      <td className="max-w-md px-4 py-3 align-top sticky left-16 bg-white z-10 shadow-sm">
                         <div className="line-clamp-2 font-medium" title={line.description ?? undefined}>
                           {line.description ?? "—"}
                         </div>
@@ -217,28 +230,6 @@ export function ParsedLinesTable({
                           <span className="absolute left-1 top-1 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Unit price</span>
                         </div>
                       </td>
-                      <td className="min-w-[14rem] px-4 py-3 align-top">
-                        <div className="relative group">
-                          <Select
-                            value={String(valueForSelect)}
-                            onValueChange={(value) => onMappingChange(line.id, value === "__none__" ? null : value)}
-                          >
-                            <SelectTrigger className="h-9 w-full text-left">
-                              <SelectValue placeholder="Select question" />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-80">
-                              <SelectItem value="__none__">— Not mapped —</SelectItem>
-                              {questionnaireFields.map((field) => (
-                                <SelectItem key={field.key} value={field.key}>
-                                  <span className="font-medium">{field.label}</span>
-                                  <span className="ml-1 text-muted-foreground">({field.key})</span>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <span className="absolute left-1 top-1 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Map to questionnaire</span>
-                        </div>
-                      </td>
                       <td className="w-40 px-4 py-3 text-right align-top">
                         {sellUnit != null ? formatCurrency(sellUnit, currency) : "—"}
                       </td>
@@ -247,11 +238,11 @@ export function ParsedLinesTable({
                       </td>
                     </tr>
                   );
-                })}
+                )}
                 {(lines ?? []).length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                      Upload supplier PDFs then parse to see ML extracted lines.
+                      No line items yet. Upload supplier PDFs or generate ML estimates to create lines.
                     </td>
                   </tr>
                 )}
@@ -272,6 +263,24 @@ export function ParsedLinesTable({
         </div>
       </CardContent>
     </Card>
+
+    <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+      <DialogContent className="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Line item image</DialogTitle>
+        </DialogHeader>
+        {selectedImage && (
+          <div className="flex items-center justify-center">
+            <img 
+              src={selectedImage} 
+              alt="Line item full size"
+              className="max-w-full max-h-[70vh] object-contain rounded"
+            />
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
