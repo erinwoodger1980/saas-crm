@@ -102,9 +102,12 @@ export async function apiFetch<T>(
       (maybeJson as any)?.error ||
       (maybeJson as any)?.message ||
       `Request failed ${res.status}`;
-    const e = new Error(msg) as any;
+    const detail = (maybeJson as any)?.detail;
+    const fullMsg = detail ? `${msg}: ${detail}` : msg;
+    const e = new Error(fullMsg) as any;
     e.status = res.status;
     e.body = raw;
+    e.detail = detail;
     throw e;
   }
 
