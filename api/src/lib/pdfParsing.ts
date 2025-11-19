@@ -11,7 +11,7 @@
  */
 
 import * as crypto from 'crypto';
-import { _is_gibberish } from '../../../ml/pdf_parser';
+import { _is_gibberish } from '../../../../ml/pdf_parser';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -554,7 +554,7 @@ export interface ParsedQuoteLine {
   qty: number | null;
   unitCost: number | null;
   lineCost: number | null;
-  currency?: string;
+  currency: string; // Made non-optional
   meta: {
     dimensions?: string;
     area?: string;
@@ -679,6 +679,8 @@ export async function parseQuotePdf(
     }
 
     if (debug) console.log("[parseQuotePdf] Converting to unified format...");
+    const resolvedCurrency = supplierResult.currency || currencyFallback;
+
     const lines: ParsedQuoteLine[] = supplierResult.lines
       .map((line: any) => {
         const description: string = String(line.description || "");
@@ -722,7 +724,7 @@ export async function parseQuotePdf(
 
         if (!description.trim() || _is_gibberish(description)) {
           warnings.push(`Invalid description detected: ${description}`);
-          return undefined;
+          return null;
         }
 
         return {
@@ -732,11 +734,11 @@ export async function parseQuotePdf(
           qty: line.qty ?? null,
           unitCost: line.costUnit ?? null,
           lineCost: line.lineTotal ?? null,
-          currency: supplierResult.currency || currencyFallback,
+          currency: resolvedCurrency,
           meta,
         };
       })
-      .filter((line): line is ParsedQuoteLine => line !== undefined);
+      .filter((line): line is ParsedQuoteLine => line !== null);
 
     const images: ParsedQuote['images'] = [];
     for (const line of lines) {
