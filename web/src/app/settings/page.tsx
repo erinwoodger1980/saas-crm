@@ -8,6 +8,8 @@ import { DEFAULT_EMAIL_TEMPLATES } from "@/lib/constants";
 import SourceCosts from "./SourceCosts";
 import { TenantImageImport } from "@/components/settings/TenantImageImport";
 import SuppliersSection from "@/components/settings/SuppliersSection";
+import SoftwareProfilesSection from "@/components/settings/SoftwareProfilesSection";
+import PdfTemplatesSection from "@/components/settings/PdfTemplatesSection";
 import {
   DEFAULT_TASK_PLAYBOOK,
   MANUAL_TASK_KEYS,
@@ -211,7 +213,7 @@ export default function SettingsPage() {
   const { user, mutate: mutateCurrentUser } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
-  const [currentStage, setCurrentStage] = useState<"business" | "questionnaire" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers">("business");
+  const [currentStage, setCurrentStage] = useState<"business" | "questionnaire" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers" | "software-profiles" | "pdf-templates">("business");
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -934,6 +936,8 @@ export default function SettingsPage() {
           { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
           { key: "workshop-processes", label: "Workshop", icon: "🛠️", description: "Workshop processes" },
           { key: "suppliers", label: "Suppliers", icon: "🏗️", description: "Manage supplier contacts" },
+          { key: "software-profiles", label: "Software", icon: "💻", description: "PDF parsing profiles" },
+          { key: "pdf-templates", label: "PDF Templates", icon: "📄", description: "View annotated PDF templates" },
           { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
         ].map((stage) => (
           <Button
@@ -2150,6 +2154,18 @@ export default function SettingsPage() {
         <SuppliersSection />
       </Section>
       </>
+      )}
+
+      {currentStage === "software-profiles" && (
+        <Section title="Software Profiles" description="Manage parsing profiles for software-generated quotes">
+          <SoftwareProfilesSection />
+        </Section>
+      )}
+
+      {currentStage === "pdf-templates" && (
+        <Section title="PDF Templates" description="View all annotated PDF templates (app-wide)">
+          <PdfTemplatesSection />
+        </Section>
       )}
 
       {currentStage === "integrations" && (

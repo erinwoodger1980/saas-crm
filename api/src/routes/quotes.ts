@@ -858,8 +858,9 @@ router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), a
 
 /**
  * PATCH /quotes/:id/source
- * Body: { quoteSourceType: "supplier" | "software", supplierProfileId: string }
+ * Body: { sourceType: "supplier" | "software", profileId: string }
  * Update the quote source classification for better parsing
+ * Supports prefixed IDs: sw_<id> for software profiles, sup_<id> for suppliers, or static IDs
  */
 router.patch("/:id/source", requireAuth, async (req: any, res) => {
   try {
@@ -868,27 +869,53 @@ router.patch("/:id/source", requireAuth, async (req: any, res) => {
     const q = await prisma.quote.findFirst({ where: { id, tenantId } });
     if (!q) return res.status(404).json({ error: "not_found" });
 
-    const { quoteSourceType, supplierProfileId } = req.body;
+    const { sourceType, profileId } = req.body;
 
     // Validate source type
-    if (quoteSourceType && !['supplier', 'software'].includes(quoteSourceType)) {
+    if (sourceType && !['supplier', 'software', null].includes(sourceType)) {
       return res.status(400).json({ error: 'invalid_source_type' });
     }
 
-    // Validate profile ID exists
-    if (supplierProfileId) {
-      const { getQuoteSourceProfile } = await import('../lib/quoteSourceProfiles');
-      const profile = getQuoteSourceProfile(supplierProfileId);
-      if (!profile) {
-        return res.status(400).json({ error: 'invalid_profile_id' });
+    // Validate and resolve profile ID
+    let resolvedProfileId: string | null = null;
+    
+    if (profileId) {
+      if (profileId.startsWith('sw_')) {
+        // Tenant software profile
+        const swId = profileId.slice(3);
+        const swProfile = await prisma.softwareProfile.findFirst({
+          where: { id: swId, tenantId },
+        });
+        if (!swProfile) {
+          return res.status(400).json({ error: 'software_profile_not_found' });
+        }
+        resolvedProfileId = profileId; // Store prefixed ID
+      } else if (profileId.startsWith('sup_')) {
+        // Supplier
+        const supId = profileId.slice(4);
+        const supplier = await prisma.supplier.findFirst({
+          where: { id: supId, tenantId },
+        });
+        if (!supplier) {
+          return res.status(400).json({ error: 'supplier_not_found' });
+        }
+        resolvedProfileId = profileId; // Store prefixed ID
+      } else {
+        // Static profile (from quoteSourceProfiles.ts)
+        const { getQuoteSourceProfile } = await import('../lib/quoteSourceProfiles');
+        const profile = getQuoteSourceProfile(profileId);
+        if (!profile) {
+          return res.status(400).json({ error: 'invalid_profile_id' });
+        }
+        resolvedProfileId = profileId;
       }
     }
 
     const updated = await prisma.quote.update({
       where: { id },
       data: {
-        quoteSourceType: quoteSourceType || q.quoteSourceType,
-        supplierProfileId: supplierProfileId || q.supplierProfileId,
+        quoteSourceType: sourceType || q.quoteSourceType,
+        supplierProfileId: resolvedProfileId || q.supplierProfileId,
       },
     });
 
@@ -901,20 +928,63 @@ router.patch("/:id/source", requireAuth, async (req: any, res) => {
 
 /**
  * GET /quotes/source-profiles
- * Returns list of available quote source profiles (suppliers and software)
+ * Returns list of available quote source profiles from three sources:
+ * 1. Static software profiles (from quoteSourceProfiles.ts)
+ * 2. Tenant-managed software profiles (from SoftwareProfile table)
+ * 3. Suppliers (from Supplier table)
  * Used for quote source classification UI
  */
-router.get("/source-profiles", requireAuth, async (_req: any, res) => {
+router.get("/source-profiles", requireAuth, async (req: any, res) => {
   try {
-  const { quoteSourceProfiles } = await import("../lib/quoteSourceProfiles");
+    const tenantId = req.auth.tenantId as string;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const { quoteSourceProfiles } = await import("../lib/quoteSourceProfiles");
     
-  const profiles = quoteSourceProfiles.map((profile: any) => ({
-      id: profile.id,
-      name: profile.name,
-      type: profile.type
+    // 1. Static software profiles (legacy/built-in)
+    const staticProfiles = quoteSourceProfiles
+      .filter((p: any) => p.type === "software")
+      .map((profile: any) => ({
+        id: profile.id,
+        name: profile.displayName,
+        type: "software" as const,
+        source: "static" as const,
+      }));
+    
+    // 2. Tenant-managed software profiles
+    const dbSoftwareProfiles = await prisma.softwareProfile.findMany({
+      where: { tenantId },
+      orderBy: { name: "asc" },
+    });
+    
+    const dynamicSoftware = dbSoftwareProfiles.map((p) => ({
+      id: `sw_${p.id}`,
+      name: p.displayName,
+      type: "software" as const,
+      source: "tenant" as const,
     }));
     
-    return res.json(profiles);
+    // 3. Suppliers
+    const suppliers = await prisma.supplier.findMany({
+      where: { tenantId, isActive: true },
+      orderBy: { name: "asc" },
+    });
+    
+    const supplierProfiles = suppliers.map((s) => ({
+      id: `sup_${s.id}`,
+      name: s.name,
+      type: "supplier" as const,
+      source: "tenant" as const,
+    }));
+    
+    // Merge all sources
+    const allProfiles = [
+      ...staticProfiles,
+      ...dynamicSoftware,
+      ...supplierProfiles,
+    ];
+    
+    return res.json(allProfiles);
   } catch (e: any) {
     console.error("[/quotes/source-profiles] failed:", e?.message || e);
     return res.status(500).json({ 

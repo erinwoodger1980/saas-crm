@@ -76,7 +76,6 @@ model Tenant {
   featureRequests             FeatureRequest[]
   // Supplier relations
   suppliers                   Supplier[]                @relation("SupplierToTenant")
-  pdfLayoutTemplates          PdfLayoutTemplate[]
   supplierQuoteRequests       SupplierQuoteRequest[]
   materialItems               MaterialItem[]
   shoppingLists               ShoppingList[]
@@ -87,6 +86,8 @@ model Tenant {
   questionnaires              Questionnaire[]
   questionnaireFields         QuestionnaireField[]
   questionnaireResponses      QuestionnaireResponse[]
+  // Software profile relations
+  softwareProfiles            SoftwareProfile[]     @relation("SoftwareProfiles")
   // Joinery costing engine relations
   materials                   Material[]
   glazingItems                GlazingItem[]
@@ -1513,21 +1514,37 @@ model Supplier {
   @@index([email])
   @@index([tenantId, isActive])
 }
+
+// Software Profiles - Tenant-managed parsing profiles for software-generated quotes
+model SoftwareProfile {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation("SoftwareProfiles", fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String   // Internal name/ID (e.g., "joinerysoft_v1")
+  displayName String   // User-friendly name shown in UI
+  matchHints  String?  // JSON: { textIncludes: [], filenameIncludes: [], emailDomainIncludes: [] }
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
 // Place at very end of file
 
 model PdfLayoutTemplate {
-  id          String   @id @default(cuid())
-  tenantId    String
-  name        String
-  description String?
-  fileHash    String?
-  pageCount   Int?
-  annotations Json
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  id                 String   @id @default(cuid())
+  name               String
+  description        String?
+  supplierProfileId  String?  // Optional: links to sw_<id> or sup_<id> profile
+  fileHash           String?  // Hash of original PDF for matching
+  pageCount          Int?
+  annotations        Json     // Array of annotation boxes
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  @@index([tenantId, name])
+  @@index([supplierProfileId])
+  @@index([name])
 }
 
 // Supplier Quote Requests - Track quotes requested from suppliers
