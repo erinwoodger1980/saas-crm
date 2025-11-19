@@ -79,6 +79,8 @@ export function PdfTrainerClient() {
     const loadProfiles = async () => {
       try {
         const raw = await fetchQuoteSourceProfiles();
+        console.log('[PdfTrainerClient] Raw profiles response:', raw);
+        
         // Map to component's expected shape
         const mapped = (raw || []).map((p: any) => ({
           id: p.id,
@@ -86,7 +88,13 @@ export function PdfTrainerClient() {
           type: p.type,
           source: p.source ?? 'tenant',
         }));
+        
+        console.log('[PdfTrainerClient] Mapped profiles:', mapped);
         setProfiles(mapped);
+        
+        if (mapped.length === 0) {
+          console.warn('[PdfTrainerClient] No profiles returned from API');
+        }
       } catch (error: any) {
         console.error('[PdfTrainerClient] Failed to load profiles:', error);
         toast({
@@ -211,23 +219,33 @@ export function PdfTrainerClient() {
                 Create annotation templates for supplier quote parsing
               </p>
             </div>
-            <Button
-              onClick={handleSave}
-              disabled={!document || annotations.length === 0 || isSaving}
-              size="lg"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Template
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => window.location.href = '/settings?tab=pdf-templates'}
+                size="lg"
+              >
+                <FileText className="mr-2 h-4 w-4" />
+                View Templates
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={!document || annotations.length === 0 || isSaving}
+                size="lg"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save Template
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

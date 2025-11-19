@@ -213,7 +213,18 @@ export default function SettingsPage() {
   const { user, mutate: mutateCurrentUser } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
-  const [currentStage, setCurrentStage] = useState<"business" | "questionnaire" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers" | "software-profiles" | "pdf-templates">("business");
+  
+  // Support ?tab=pdf-templates URL parameter
+  const initialTab = (() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab === 'pdf-templates') return 'pdf-templates';
+    }
+    return 'business';
+  })();
+  
+  const [currentStage, setCurrentStage] = useState<"business" | "questionnaire" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers" | "software-profiles" | "pdf-templates">(initialTab as any);
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
