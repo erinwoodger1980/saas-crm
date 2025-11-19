@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ReactNode, useMemo } from "react";
+import { ReactNode, useMemo, useEffect, useState } from "react";
 import clsx from "clsx";
 import {
   LayoutDashboard,
@@ -15,12 +15,14 @@ import {
   ArrowRight,
   Building2,
   Package,
+  Flame,
 } from "lucide-react";
 
 import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
 import AISearchBar from "@/components/AISearchBar";
+import { apiFetch } from "@/lib/api";
 
 const BASE_NAV: Array<{ href: string; label: string; description: string; icon: any }> = [
   { href: "/dashboard", label: "Dashboard", description: "Pulse & KPIs", icon: LayoutDashboard },
@@ -38,6 +40,34 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { brandName, shortName, logoUrl, initials, ownerFirstName, ownerLastName } = useTenantBrand();
   const { user } = useCurrentUser();
+  const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
+
+  // Fetch fire door manufacturer flag
+  useEffect(() => {
+    apiFetch<{ isFireDoorManufacturer?: boolean }>("/tenant/settings")
+      .then((data) => {
+        console.log("[AppShell] Fire door flag from API:", data?.isFireDoorManufacturer);
+        setIsFireDoorManufacturer(Boolean(data?.isFireDoorManufacturer));
+      })
+      .catch((error) => {
+        console.error("[AppShell] Failed to fetch settings:", error);
+      });
+
+    // Listen for settings updates
+    const handleTenantSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean }>).detail;
+      console.log("[AppShell] Received tenant-settings:updated event:", detail);
+      if (detail && Object.prototype.hasOwnProperty.call(detail, "isFireDoorManufacturer")) {
+        console.log("[AppShell] Updating fire door flag to:", detail.isFireDoorManufacturer);
+        setIsFireDoorManufacturer(Boolean(detail.isFireDoorManufacturer));
+      }
+    };
+
+    window.addEventListener("tenant-settings:updated", handleTenantSettingsUpdate as EventListener);
+    return () => {
+      window.removeEventListener("tenant-settings:updated", handleTenantSettingsUpdate as EventListener);
+    };
+  }, []);
 
   const navItems = useMemo(() => {
     const items = [...BASE_NAV];
@@ -196,6 +226,34 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     </Link>
                   );
                 })}
+                
+                {/* Fire Door Calculator - only for fire door manufacturers */}
+                {isFireDoorManufacturer && (
+                  <Link
+                    href="/fire-door-calculator"
+                    className={clsx(
+                      "group relative flex items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm transition-all",
+                      pathname === "/fire-door-calculator" || pathname?.startsWith("/fire-door-calculator/")
+                        ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
+                        : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
+                    )}
+                  >
+                    <span
+                      className={clsx(
+                        "flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors",
+                        pathname === "/fire-door-calculator" || pathname?.startsWith("/fire-door-calculator/")
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
+                      )}
+                    >
+                      <Flame className="h-4 w-4" />
+                    </span>
+                    <span className="flex flex-col leading-tight">
+                      <span className="font-semibold">Fire Door Calculator</span>
+                      <span className="text-xs text-slate-400">Pricing tool</span>
+                    </span>
+                  </Link>
+                )}
               </nav>
             </div>
           </div>
