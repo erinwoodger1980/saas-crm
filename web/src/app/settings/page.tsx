@@ -7,6 +7,7 @@ import { useCurrentUser, type CurrentUser } from "@/lib/use-current-user";
 import { DEFAULT_EMAIL_TEMPLATES } from "@/lib/constants";
 import SourceCosts from "./SourceCosts";
 import { TenantImageImport } from "@/components/settings/TenantImageImport";
+import SuppliersSection from "@/components/settings/SuppliersSection";
 import {
   DEFAULT_TASK_PLAYBOOK,
   MANUAL_TASK_KEYS,
@@ -210,7 +211,7 @@ export default function SettingsPage() {
   const { user, mutate: mutateCurrentUser } = useCurrentUser();
 
   const [loading, setLoading] = useState(true);
-  const [currentStage, setCurrentStage] = useState<"business" | "questionnaire" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations">("business");
+  const [currentStage, setCurrentStage] = useState<"business" | "questionnaire" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers">("business");
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -900,6 +901,7 @@ export default function SettingsPage() {
           { key: "marketing", label: "Marketing", icon: "�", description: "Landing pages and SEO" },
           { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
           { key: "workshop-processes", label: "Workshop", icon: "🛠️", description: "Workshop processes" },
+          { key: "suppliers", label: "Suppliers", icon: "🏗️", description: "Manage supplier contacts" },
           { key: "integrations", label: "Integrations", icon: "🔗", description: "Email and external connections" },
         ].map((stage) => (
           <Button
@@ -2099,6 +2101,14 @@ export default function SettingsPage() {
             </div>
           </div>
         </Section>
+      )}
+
+      {currentStage === "suppliers" && (
+      <>
+      <Section title="Suppliers" description="Manage your supplier contacts for outsourcing quote requests">
+        <SuppliersSection />
+      </Section>
+      </>
       )}
 
       {currentStage === "integrations" && (
