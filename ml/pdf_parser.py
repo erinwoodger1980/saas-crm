@@ -910,4 +910,4 @@ def determine_quote_type(text: str) -> str:
     else:
         return "unknown"
 
-__all__ = ["extract_text_from_pdf_bytes", "parse_totals_from_text", "parse_quote_lines_from_text", "parse_client_quote_from_text", "determine_quote_type"]
+__all__ = ["extract_text_from_pdf_bytes", "parse_totals_from_text", "parse_quote_lines_from_text", "parse_client_quote_from_text", "determine_quote_type", "_is_gibberish"]
