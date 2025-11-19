@@ -84,31 +84,36 @@ def _is_gibberish(text: str) -> bool:
     """
     if not text or len(text) < 20:
         return True
-    
+
     # Remove whitespace for analysis
     clean = text.replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '')
     if not clean:
         return True
-    
+
     # Count alphanumeric characters
     alpha_count = sum(1 for c in clean if c.isalnum())
     alpha_ratio = alpha_count / len(clean) if len(clean) > 0 else 0
-    
-    # If less than 50% alphanumeric, it's likely gibberish
-    if alpha_ratio < 0.5:
+
+    # If less than 60% alphanumeric, it's likely gibberish
+    if alpha_ratio < 0.6:
         return True
-    
+
     # Check for excessive extended ASCII (common in encoding issues)
-    extended_ascii = sum(1 for c in text[:200] if 127 < ord(c) < 160)
-    if extended_ascii > 10:
+    extended_ascii_count = sum(1 for c in clean if ord(c) > 127)
+    extended_ascii_ratio = extended_ascii_count / len(clean) if len(clean) > 0 else 0
+
+    # If more than 30% extended ASCII, it's likely gibberish
+    if extended_ascii_ratio > 0.3:
         return True
-    
-    # Check if we have recognizable words
-    words = text.split()[:30]
-    alpha_words = [w for w in words if len(w) > 2 and any(c.isalpha() for c in w)]
-    if len(alpha_words) < len(words) * 0.3:  # Less than 30% recognizable words
+
+    # Check for absence of meaningful delimiters (e.g., spaces, punctuation)
+    delimiter_count = sum(1 for c in text if c in ' .,;:\'"')
+    delimiter_ratio = delimiter_count / len(text) if len(text) > 0 else 0
+
+    # If delimiters are too sparse, it's likely gibberish
+    if delimiter_ratio < 0.05:
         return True
-    
+
     return False
 
 

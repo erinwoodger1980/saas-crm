@@ -11,6 +11,7 @@
  */
 
 import * as crypto from 'crypto';
+import { _is_gibberish } from '../../../ml/pdf_parser';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -665,9 +666,8 @@ export async function parseQuotePdf(
   const warnings: string[] = [];
 
   try {
-    // Use existing supplier parser as the foundation
     const { parseSupplierPdf } = await import('./supplier/parse');
-    
+
     if (debug) console.log("[parseQuotePdf] Parsing with supplier parser...");
     const supplierResult = await parseSupplierPdf(buffer, {
       supplierHint,
@@ -678,62 +678,66 @@ export async function parseQuotePdf(
       warnings.push(...supplierResult.warnings);
     }
 
-    // Convert to unified format
     if (debug) console.log("[parseQuotePdf] Converting to unified format...");
-    const lines: ParsedQuoteLine[] = supplierResult.lines.map((line: any) => {
-      const description: string = String(line.description || "");
-      const meta: {
-        dimensions?: string;
-        area?: string;
-        type?: string;
-        finish?: string;
-        glass?: string;
-        wood?: string;
-        productType?: string;
-        productId?: any;
-        rawText?: any;
-        imageRef?: {
-          page: number;
-          hash: string;
-          dataUrl?: string;
-          bbox?: any;
+    const lines: ParsedQuoteLine[] = supplierResult.lines
+      .map((line: any) => {
+        const description: string = String(line.description || "");
+        const meta: {
+          dimensions?: string;
+          area?: string;
+          type?: string;
+          finish?: string;
+          glass?: string;
+          wood?: string;
+          productType?: string;
+          productId?: any;
+          rawText?: any;
+          imageRef?: {
+            page: number;
+            hash: string;
+            dataUrl?: string;
+            bbox?: any;
+          };
+        } = {
+          dimensions: line.dimensions,
+          area: line.area,
+          type: line.type || line.productType,
+          wood: line.wood,
+          finish: line.finish,
+          glass: line.glass,
+          productId: line.productId,
+          rawText: line.rawText,
         };
-      } = {
-        dimensions: line.dimensions,
-        area: line.area,
-        type: line.type || line.productType,
-        wood: line.wood,
-        finish: line.finish,
-        glass: line.glass,
-        productId: line.productId,
-        rawText: line.rawText,
-      };
 
-      // Attach image if present
-      if (line.imageDataUrl) {
-        meta.imageRef = {
-          page: line.page || 1,
-          hash: line.imageIndex ? `img-${line.imageIndex}` : crypto.randomBytes(6).toString('hex'),
-          dataUrl: line.imageDataUrl,
-          bbox: line.bbox,
+        if (line.imageDataUrl) {
+          meta.imageRef = {
+            page: line.page || 1,
+            hash: line.imageIndex ? `img-${line.imageIndex}` : crypto.randomBytes(6).toString('hex'),
+            dataUrl: line.imageDataUrl,
+            bbox: line.bbox,
+          };
+        }
+
+        const kind = classifyLineKind(description, meta);
+
+        if (!description.trim() || _is_gibberish(description)) {
+          warnings.push(`Invalid description detected: ${description}`);
+          return null;
+        }
+
+        return {
+          id: crypto.randomBytes(8).toString("hex"),
+          kind,
+          description,
+          qty: line.qty ?? null,
+          unitCost: line.costUnit ?? null,
+          lineCost: line.lineTotal ?? null,
+          currency: supplierResult.currency || currencyFallback,
+          meta,
         };
-      }
+      })
+      .filter((line): line is ParsedQuoteLine => line !== null);
 
-      const kind = classifyLineKind(description, meta);
-
-      return {
-        id: crypto.randomBytes(8).toString("hex"),
-        kind,
-        description,
-        qty: line.qty ?? null,
-        unitCost: line.costUnit ?? null,
-        lineCost: line.lineTotal ?? null,
-        currency: supplierResult.currency || currencyFallback,
-        meta,
-      };
-    });
-
-    // Build image classification summary
     const images: ParsedQuote['images'] = [];
     for (const line of lines) {
       if (line.meta.imageRef) {
@@ -743,42 +747,20 @@ export async function parseQuotePdf(
           hash: line.meta.imageRef.hash,
           dataUrl: line.meta.imageRef.dataUrl,
           bbox: line.meta.imageRef.bbox,
-          classification: line.kind === "joinery" ? "joinery_elevation" : "unknown",
+          classification: "unknown",
         });
       }
     }
 
-    const result: ParsedQuote = {
-      source,
-      supplierName: supplierResult.supplier || supplierHint,
-      currency: supplierResult.currency || currencyFallback,
-      lines,
-      confidence: supplierResult.confidence,
-      warnings: warnings.length ? warnings : undefined,
-      images: images.length ? images : undefined,
-    };
-
-    if (debug) {
-      console.log("[parseQuotePdf] Parsing complete:", {
-        totalLines: result.lines.length,
-        joineryLines: result.lines.filter((l) => l.kind === "joinery").length,
-        deliveryLines: result.lines.filter((l) => l.kind === "delivery").length,
-        linesWithImages: result.lines.filter((l) => l.meta.imageRef).length,
-      });
-    }
-
-    return result;
-  } catch (error: any) {
-    console.error("[parseQuotePdf] Fatal parsing error:", error);
-    warnings.push(`Fatal parsing error: ${error.message}`);
-
     return {
       source,
-      currency: currencyFallback,
-      lines: [],
+      lines,
+      images,
       warnings,
-      confidence: 0,
     };
+  } catch (error) {
+    console.error("[parseQuotePdf] Error during parsing:", error);
+    throw error;
   }
 }
 

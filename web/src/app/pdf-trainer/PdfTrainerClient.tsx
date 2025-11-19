@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -37,7 +37,13 @@ import type {
   PdfLayoutTemplate,
 } from '@/types/pdfAnnotations';
 import { LABEL_DISPLAY_NAMES, LABEL_BORDER_COLORS } from '@/types/pdfAnnotations';
-import { quoteSourceProfiles } from '@/lib/quoteSourceProfiles';
+
+interface SourceProfile {
+  id: string;
+  displayName: string;
+  type: 'supplier' | 'software';
+  source: 'static' | 'tenant';
+}
 
 export function PdfTrainerClient() {
   const { toast } = useToast();
@@ -48,6 +54,8 @@ export function PdfTrainerClient() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [annotations, setAnnotations] = useState<AnnotationBox[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [profiles, setProfiles] = useState<SourceProfile[]>([]);
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
 
   // PDF document hook
   const {
@@ -63,6 +71,30 @@ export function PdfTrainerClient() {
     renderToCanvas,
     getPageDimensions,
   } = usePdfDocument(selectedFile);
+
+  // Load profiles on mount
+  useEffect(() => {
+    const loadProfiles = async () => {
+      try {
+        const response = await fetch('/api/quotes/source-profiles');
+        if (!response.ok) throw new Error('Failed to load profiles');
+        
+        const data = await response.json();
+        setProfiles(data.items || []);
+      } catch (error: any) {
+        console.error('[PdfTrainerClient] Failed to load profiles:', error);
+        toast({
+          title: 'Failed to load profiles',
+          description: error.message,
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoadingProfiles(false);
+      }
+    };
+
+    loadProfiles();
+  }, []);
 
   // File selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,28 +148,20 @@ export function PdfTrainerClient() {
     setIsSaving(true);
 
     try {
-      // Collect page sizes for all pages
-      const pageSizes: Array<{ width: number; height: number }> = [];
-      for (let i = 1; i <= totalPages; i++) {
-        const dims = await getPageDimensions(i);
-        if (dims) {
-          pageSizes.push(dims);
-        }
-      }
+      // Generate template name from profile
+      const profileName = profiles.find(p => p.id === supplierProfile)?.displayName || supplierProfile;
+      const templateName = `${profileName} - ${selectedFile?.name || 'template'}`;
 
-      const template: PdfLayoutTemplate = {
-        supplierProfile,
-        pdfMeta: {
-          pageCount: totalPages,
-          pageSizes,
-        },
-        annotations,
-      };
-
-      const response = await fetch('/api/pdf-layouts', {
+      const response = await fetch('/api/pdf-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(template),
+        body: JSON.stringify({
+          name: templateName,
+          description: `Annotated template for ${profileName}`,
+          supplierProfileId: supplierProfile,
+          pageCount: totalPages,
+          annotations,
+        }),
       });
 
       if (!response.ok) {
@@ -148,7 +172,7 @@ export function PdfTrainerClient() {
 
       toast({
         title: 'Template saved',
-        description: `Saved ${result.annotationCount} annotations for ${supplierProfile}`,
+  description: `Saved ${annotations.length} annotations for ${profileName}`,
       });
     } catch (error: any) {
       console.error('[PdfTrainerPage] Save failed:', error);
@@ -258,31 +282,37 @@ export function PdfTrainerClient() {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="profile">Profile</Label>
-                  <Select value={supplierProfile} onValueChange={setSupplierProfile}>
+                  <Select value={supplierProfile} onValueChange={setSupplierProfile} disabled={isLoadingProfiles}>
                     <SelectTrigger id="profile">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                        Suppliers
-                      </div>
-                      {quoteSourceProfiles.filter((p) => p.type === 'supplier').map((profile) => (
-                        <SelectItem key={profile.id} value={profile.id}>
-                          {profile.displayName}
-                        </SelectItem>
-                      ))}
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
-                        Software/Systems
-                      </div>
-                      {quoteSourceProfiles.filter((p) => p.type === 'software').map((profile) => (
-                        <SelectItem key={profile.id} value={profile.id}>
-                          {profile.displayName}
-                        </SelectItem>
-                      ))}
+                      {isLoadingProfiles ? (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">Loading profiles...</div>
+                      ) : (
+                        <>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                            Suppliers
+                          </div>
+                          {profiles.filter((p) => p.type === 'supplier').map((profile) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              {profile.displayName}
+                            </SelectItem>
+                          ))}
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
+                            Software/Systems
+                          </div>
+                          {profiles.filter((p) => p.type === 'software').map((profile) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              {profile.displayName}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {quoteSourceProfiles.find((p) => p.id === supplierProfile)?.type === 'supplier'
+                    {profiles.find((p) => p.id === supplierProfile)?.type === 'supplier'
                       ? '📦 Supplier quote (outsourced)'
                       : '🖥️ User software quote'}
                   </p>
