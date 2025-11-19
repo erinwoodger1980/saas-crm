@@ -11,9 +11,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame } from "lucide-react";
+import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame, ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import Image from "next/image";
+import { Button } from "@/components/ui/button";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -29,6 +30,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedTenant, setImpersonatedTenant] = useState<string | null>(null);
   const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Load sidebar state from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("sidebar-collapsed");
+    if (saved) setSidebarCollapsed(saved === "true");
+  }, []);
+
+  // Save sidebar state to localStorage
+  const toggleSidebar = () => {
+    const newState = !sidebarCollapsed;
+    setSidebarCollapsed(newState);
+    localStorage.setItem("sidebar-collapsed", String(newState));
+  };
 
   // Debug log whenever fire door flag changes
   useEffect(() => {
@@ -100,10 +115,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen grid grid-cols-[240px_1fr]">
+    <div className={`min-h-screen grid transition-all duration-300 ${sidebarCollapsed ? 'grid-cols-[64px_1fr]' : 'grid-cols-[240px_1fr]'}`}>
       {/* Sidebar */}
-      <aside className="bg-white border-r">
-        <div className="flex items-center gap-2 px-5 py-4">
+      <aside className="bg-white border-r flex flex-col relative">
+        <div className={`flex items-center gap-2 px-5 py-4 ${sidebarCollapsed ? 'justify-center px-2' : ''}`}>
           <Image
             src="/logo-full.png"  // put your Joinery AI logo in /web/public/logo-full.png
             alt="Joinery AI Logo"
@@ -111,26 +126,41 @@ export default function AppShell({ children }: { children: ReactNode }) {
             height={32}
             className="shrink-0"
           />
-          <span className="text-xl font-semibold tracking-tight">
-            <span className="text-[rgb(var(--brand))]">Joinery</span> AI
-          </span>
+          {!sidebarCollapsed && (
+            <span className="text-xl font-semibold tracking-tight whitespace-nowrap overflow-hidden">
+              <span className="text-[rgb(var(--brand))]">Joinery</span> AI
+            </span>
+          )}
         </div>
         <Separator />
-        <nav className="p-2 space-y-1">
+        
+        {/* Toggle button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleSidebar}
+          className={`absolute -right-3 top-20 z-10 h-6 w-6 rounded-full border bg-white shadow-md p-0 hover:bg-slate-50 ${sidebarCollapsed ? '' : ''}`}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </Button>
+
+        <nav className="p-2 space-y-1 flex-1">
           {nav.map(({ href, label, icon: Icon }) => {
             const active = pathname?.startsWith(href) && href === pathname;
             return (
               <Link
                 key={href}
                 href={href}
+                title={sidebarCollapsed ? label : undefined}
                 className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
                   active
                     ? "bg-[rgb(var(--brand))]/10 text-[rgb(var(--brand))] font-medium"
                     : "hover:bg-slate-100 text-slate-700"
-                }`}
+                } ${sidebarCollapsed ? 'justify-center' : ''}`}
               >
-                <Icon size={16} />
-                {label}
+                <Icon size={16} className="shrink-0" />
+                {!sidebarCollapsed && <span className="whitespace-nowrap overflow-hidden">{label}</span>}
               </Link>
             );
           })}
@@ -139,14 +169,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
           {isFireDoorManufacturer && (
             <Link
               href="/fire-door-calculator"
+              title={sidebarCollapsed ? "Fire Door Calculator" : undefined}
               className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
                 pathname?.startsWith("/fire-door-calculator")
                   ? "bg-[rgb(var(--brand))]/10 text-[rgb(var(--brand))] font-medium"
                   : "hover:bg-slate-100 text-slate-700"
-              }`}
+              } ${sidebarCollapsed ? 'justify-center' : ''}`}
             >
-              <Flame size={16} />
-              Fire Door Calculator
+              <Flame size={16} className="shrink-0" />
+              {!sidebarCollapsed && <span className="whitespace-nowrap overflow-hidden">Fire Door Calculator</span>}
             </Link>
           )}
         </nav>
@@ -155,20 +186,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {isDeveloper && (
           <>
             <Separator className="my-2" />
-            <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Developer
-            </div>
-            <nav className="p-2 space-y-1">
+            {!sidebarCollapsed && (
+              <div className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Developer
+              </div>
+            )}
+            <nav className="p-2 space-y-1 pb-4">
               <Link
                 href="/dev"
+                title={sidebarCollapsed ? "Dev Dashboard" : undefined}
                 className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
                   pathname?.startsWith("/dev")
                     ? "bg-purple-100 text-purple-700 font-medium"
                     : "hover:bg-slate-100 text-slate-700"
-                }`}
+                } ${sidebarCollapsed ? 'justify-center' : ''}`}
               >
-                <Code size={16} />
-                Dev Dashboard
+                <Code size={16} className="shrink-0" />
+                {!sidebarCollapsed && <span className="whitespace-nowrap overflow-hidden">Dev Dashboard</span>}
               </Link>
             </nav>
           </>

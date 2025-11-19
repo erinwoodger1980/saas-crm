@@ -1543,7 +1543,9 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     }
 
     const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
-    const filename = `${filenameSafe}.pdf`;
+    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
+    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
+    const filename = `${truncatedName}.pdf`;
     const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
     try {
       fs.writeFileSync(filepath, pdfBuffer);
@@ -1758,7 +1760,9 @@ router.post("/:id/render-proposal", requireAuth, async (req: any, res) => {
     }
 
     const filenameSafe = (title || `Quote ${quote.id}`).replace(/[^\w.\-]+/g, "_");
-    const filename = `${filenameSafe}.pdf`;
+    // Truncate filename to prevent ENAMETOOLONG errors (max 100 chars before extension)
+    const truncatedName = filenameSafe.length > 100 ? filenameSafe.substring(0, 100) : filenameSafe;
+    const filename = `${truncatedName}.pdf`;
     const filepath = path.join(UPLOAD_DIR, `${Date.now()}__${filename}`);
     try {
       fs.writeFileSync(filepath, pdfBuffer);
