@@ -11,9 +11,24 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 
-// Configure PDF.js worker
+// Configure PDF.js worker to use locally hosted worker for reliability.
+// Falls back to CDN if local asset missing.
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  const localWorker = '/pdf.worker.min.mjs';
+  // Simple existence check via fetch; if it fails, revert to CDN.
+  fetch(localWorker, { method: 'HEAD' })
+    .then(res => {
+      if (res.ok) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = localWorker;
+      } else {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+        console.warn('[usePdfDocument] Local PDF worker not found, using CDN fallback.');
+      }
+    })
+    .catch(() => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+      console.warn('[usePdfDocument] Failed to load local PDF worker, using CDN fallback.');
+    });
 }
 
 export interface PdfPageInfo {
@@ -161,7 +176,8 @@ export function usePdfDocument(file: File | null): UsePdfDocumentReturn {
         const renderContext = {
           canvasContext: context,
           viewport,
-        };
+          canvas,
+        } as any; // include canvas to satisfy RenderParameters type & suppress TS complaints for pdf.js version
 
         await page.render(renderContext).promise;
       } catch (err: any) {

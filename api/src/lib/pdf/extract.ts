@@ -354,8 +354,29 @@ export function extractStructuredText(buffer: Buffer): ExtractionSummary {
 
   const allSegments: string[] = [];
   for (const stream of streams) {
-    if (!/(Tj|TJ|'|\")/.test(stream.content)) continue;
-    const segments = extractSegments(stream.content, unicodeMap);
+    // Skip streams that are clearly font data, images, or other binary content
+    // Font streams typically contain: CIDFont, FontDescriptor, glyf, hmtx, head, hhea, maxp, loca
+    const content = stream.content;
+    
+    // Skip if contains font-related binary markers
+    if (/\b(CIDFont|FontDescriptor|glyf|hmtx|head|hhea|maxp|loca|cmap|cvt|fpgm|prep)\b/i.test(content)) {
+      continue;
+    }
+    
+    // Skip if has high ratio of non-ASCII characters (likely binary data)
+    const nonAsciiCount = (content.match(/[^\x20-\x7E\r\n\t]/g) || []).length;
+    const nonAsciiRatio = nonAsciiCount / content.length;
+    if (nonAsciiRatio > 0.4) {
+      continue; // More than 40% non-ASCII = likely binary
+    }
+    
+    // Now check for text operators
+    if (!/(Tj|TJ|'|\")/.test(content)) continue;
+    
+    // Additional check: must contain parentheses or angle brackets (string delimiters)
+    if (!(/\([\s\S]*?\)|<[\da-fA-F\s]+>/.test(content))) continue;
+    
+    const segments = extractSegments(content, unicodeMap);
     if (segments.length) {
       allSegments.push(...segments);
     }
