@@ -29,8 +29,7 @@ const BASE_NAV: Array<{ href: string; label: string; description: string; icon: 
   { href: "/opportunities", label: "Opportunities", description: "Quotes to win", icon: Target },
   // Quotes moved under AI Training; keep out of main nav
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },
-  { href: "/settings/suppliers", label: "Suppliers", description: "Manage suppliers", icon: Building2 },
-  { href: "/supplier-requests", label: "Quote Requests", description: "Supplier quotes", icon: Package },
+  { href: "/supplier-requests", label: "Outsourcing", description: "Supplier quotes", icon: Package },
 ] as Array<{ href: string; label: string; description: string; icon: any }>;
 
 const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "developer"]);
