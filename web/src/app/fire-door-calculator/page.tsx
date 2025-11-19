@@ -68,7 +68,19 @@ export default function FireDoorCalculatorPage() {
     setError(null);
     setResult(null);
     try {
-      if (!quoteId) throw new Error("Quote ID required (pricing saves a line on the quote)");
+      // Auto-create a quote if no ID provided
+      let targetQuoteId = quoteId;
+      if (!targetQuoteId) {
+        const newQuote = await apiFetch<{ id: string }>("/quotes", {
+          method: "POST",
+          json: {
+            customerName: "Fire Door Quote",
+            status: "draft",
+          },
+        });
+        targetQuoteId = newQuote.id;
+        setQuoteId(targetQuoteId);
+      }
 
       const context = buildContext({
         quantity,
@@ -96,7 +108,7 @@ export default function FireDoorCalculatorPage() {
         targetMarginPercentOnSell: num(targetMarginPercent) ?? undefined,
       };
 
-      const res = await priceDoorForQuote(quoteId, context, cfg);
+      const res = await priceDoorForQuote(targetQuoteId, context, cfg);
       setResult(res);
     } catch (e: any) {
       setError(e?.message || "Pricing failed");
@@ -126,8 +138,8 @@ export default function FireDoorCalculatorPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Quote ID (save target)</Label>
-                  <Input value={quoteId} onChange={(e) => setQuoteId(e.target.value)} placeholder="q_..." />
+                  <Label>Quote ID (optional - will auto-create)</Label>
+                  <Input value={quoteId} onChange={(e) => setQuoteId(e.target.value)} placeholder="Leave blank to create new quote" />
                 </div>
                 <div>
                   <Label>Quantity</Label>
@@ -263,7 +275,7 @@ export default function FireDoorCalculatorPage() {
           </Card>
 
           <div className="flex gap-3">
-            <Button onClick={onPrice} disabled={isPricing || !quoteId} className="gap-2">
+            <Button onClick={onPrice} disabled={isPricing} className="gap-2">
               {isPricing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {isPricing ? "Pricing..." : "Price and save to quote"}
             </Button>
@@ -311,7 +323,7 @@ export default function FireDoorCalculatorPage() {
               <CardTitle>Tips</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-muted-foreground">
-              <p>• Provide a valid Quote ID to save the priced line.</p>
+              <p>• Leave Quote ID blank to auto-create a new quote.</p>
               <p>• Set total glass area to include vision panels.</p>
               <p>• Lipping and frame values influence quantities.</p>
               <p>• Use config overrides to tune labour/overhead/margin.</p>
