@@ -37,6 +37,8 @@ export type QuoteDto = {
   proposalPdfUrl?: string | null;
   updatedAt?: string | null;
   createdAt?: string | null;
+  quoteSourceType?: string | null;
+  supplierProfileId?: string | null;
 };
 
 export type ParseResponse = {
@@ -405,4 +407,26 @@ export function normalizeQuestionnaireFields(raw: any): QuestionnaireField[] {
       } as QuestionnaireField;
     })
     .filter(Boolean) as QuestionnaireField[];
+}
+
+export type QuoteSourceProfile = {
+  id: string;
+  name: string;
+  type: 'supplier' | 'software';
+};
+
+export async function fetchQuoteSourceProfiles(): Promise<QuoteSourceProfile[]> {
+  return apiFetch<QuoteSourceProfile[]>('/quotes/source-profiles');
+}
+
+export async function updateQuoteSource(
+  quoteId: string, 
+  sourceType: 'supplier' | 'software' | null,
+  profileId: string | null
+): Promise<QuoteDto> {
+  if (!quoteId) throw new Error("quoteId required");
+  return apiFetch<QuoteDto>(`/quotes/${encodeURIComponent(quoteId)}/source`, {
+    method: 'PATCH',
+    json: { sourceType, profileId }
+  });
 }

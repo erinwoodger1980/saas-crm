@@ -840,10 +840,17 @@ export default function QuoteBuilderPage() {
 
                 <SupplierFilesCard
                   files={quote?.supplierFiles}
+                  quoteId={quoteId}
+                  quoteSourceType={quote?.quoteSourceType}
+                  supplierProfileId={quote?.supplierProfileId}
                   onOpen={handleOpenFile}
                   onUpload={handleUploadFiles}
                   onUploadClick={openUploadDialog}
                   isUploading={isUploading}
+                  onSourceUpdated={() => {
+                    // Refetch quote to get updated source info
+                    fetchQuote(quoteId).then(setQuote).catch(console.error);
+                  }}
                 />
 
                 {(quote?.supplierFiles ?? []).length > 0 && (

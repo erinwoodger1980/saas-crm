@@ -5,7 +5,7 @@
  * without full parsing (for auto-detection purposes)
  */
 
-import * as pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 
 /**
  * Extract text from the first page of a PDF
@@ -13,10 +13,11 @@ import * as pdfParse from 'pdf-parse';
  */
 export async function extractFirstPageText(buffer: Buffer): Promise<string> {
   try {
-    const data = await pdfParse(buffer, {
-      max: 1, // Only parse first page
-    });
-    return data.text || '';
+    const data: any = await pdfParse(buffer);
+    // Extract just the first page's text if possible
+    const text = data.text || '';
+    // Simple heuristic: take first 2000 chars (roughly first page)
+    return text.slice(0, 2000);
   } catch (error) {
     console.error('[extractFirstPageText] Failed:', error);
     return '';
@@ -33,9 +34,9 @@ export async function extractPdfMetadata(buffer: Buffer): Promise<{
   creator?: string;
 }> {
   try {
-    const data = await pdfParse(buffer);
+  const data: any = await pdfParse(buffer);
     return {
-      pageCount: data.numpages,
+  pageCount: data.numpages || 0,
       title: data.info?.Title,
       author: data.info?.Author,
       creator: data.info?.Creator,
