@@ -656,7 +656,7 @@ export async function parseSupplierPdf(
 
   await saveSupplierPattern(cues);
 
-  // Extract images from PDF and map to lines
+  // Extract images from PDF and map to lines with enhanced product data extraction
   try {
     const extractedImages = await extractImagesForParse(buffer);
     
@@ -666,8 +666,10 @@ export async function parseSupplierPdf(
       // Store images in the result
       workingParse.images = extractedImages;
       
-      // Map images to lines based on page and proximity
-      // For each line, find the closest image on the same page
+      // Enhanced: Extract structured product data from text near images
+      const fullText = rawText || "";
+      
+      // Map images to lines based on page, proximity, and text analysis
       workingParse.lines = workingParse.lines.map((line, lineIndex) => {
         // Estimate line page based on position (rough heuristic)
         const estimatedPage = Math.floor(lineIndex / 10) + 1;
@@ -680,10 +682,37 @@ export async function parseSupplierPdf(
           return line;
         }
         
-        // Simple mapping: assign first available image on page to line
-        // More sophisticated matching would use bbox proximity
-        const imageIndex = lineIndex % pageImages.length;
-        const matchedImage = pageImages[imageIndex];
+        // Enhanced matching: Use description keywords to find matching image
+        const description = String(line.description || "").toLowerCase();
+        const lineText = String((line as any).rawText || line.description || "").toLowerCase();
+        
+        // Look for product identifiers (FD1, FD2, etc.) or reference numbers
+        const productIdMatch = description.match(/\b(fd\d+|ref[:\s]*[\w-]+|item[:\s]*[\w-]+)\b/i);
+        let matchedImage = null;
+        
+        if (productIdMatch && fullText) {
+          // Find the product ID in the full text and locate nearby image
+          const productId = productIdMatch[0];
+          const productIdPos = fullText.toLowerCase().indexOf(productId.toLowerCase());
+          
+          if (productIdPos >= 0) {
+            // Find closest image to this text position (by page and index)
+            matchedImage = pageImages.reduce((closest, img) => {
+              if (!closest) return img;
+              // Prefer images earlier on the page for earlier text mentions
+              return img.index < closest.index ? img : closest;
+            }, pageImages[0]);
+          }
+        }
+        
+        // Fallback: assign images in sequence
+        if (!matchedImage) {
+          const imageIndex = lineIndex % pageImages.length;
+          matchedImage = pageImages[imageIndex];
+        }
+        
+        // Extract structured product data from description/rawText
+        const productData = extractProductDataFromText(lineText, fullText, productIdMatch?.[0]);
         
         if (matchedImage) {
           return {
@@ -692,13 +721,21 @@ export async function parseSupplierPdf(
             imageIndex: matchedImage.index,
             imageDataUrl: matchedImage.dataUrl,
             bbox: matchedImage.bbox,
+            // Enhanced: Add structured product data
+            productType: productData.type,
+            wood: productData.wood,
+            finish: productData.finish,
+            glass: productData.glass,
+            dimensions: productData.dimensions,
+            area: productData.area,
           };
         }
         
-        return { ...line, page: linePage };
+        return { ...line, page: linePage, ...productData };
       });
       
-      console.log(`[parseSupplierPdf] Mapped images to ${workingParse.lines.filter(l => l.imageDataUrl).length} lines`);
+      const mappedCount = workingParse.lines.filter(l => l.imageDataUrl).length;
+      console.log(`[parseSupplierPdf] Mapped images to ${mappedCount} lines with enhanced product data`);
     }
   } catch (err: any) {
     console.warn('[parseSupplierPdf] Image extraction failed:', err);
@@ -707,4 +744,64 @@ export async function parseSupplierPdf(
   }
 
   return workingParse;
+}
+
+/**
+ * Extract structured product data from supplier quote text
+ * Looks for: Type, Wood, Finish, Glass, Dimensions, Area
+ */
+function extractProductDataFromText(
+  lineText: string,
+  fullText: string,
+  productId?: string
+): {
+  type?: string;
+  wood?: string;
+  finish?: string;
+  glass?: string;
+  dimensions?: string;
+  area?: string;
+} {
+  const data: any = {};
+  
+  // Combine line and full text for searching
+  const searchText = `${lineText}\n${fullText}`;
+  
+  // Extract Type (e.g., "BRIO bifolding door, without decoration")
+  const typeMatch = searchText.match(/type[:\s]+([\w\s,]+?)(?:\n|wood|finish|glass|dimensions|$)/i);
+  if (typeMatch) {
+    data.type = typeMatch[1].trim().substring(0, 100); // Limit length
+  }
+  
+  // Extract Wood (e.g., "Accoya", "Oak", "Pine")
+  const woodMatch = searchText.match(/wood[:\s]+([\w\s]+?)(?:\n|finish|glass|dimensions|$)/i);
+  if (woodMatch) {
+    data.wood = woodMatch[1].trim().substring(0, 50);
+  }
+  
+  // Extract Finish (e.g., "White paint RAL 9016", "Natural oil")
+  const finishMatch = searchText.match(/finish[:\s]+([\w\s]+?(?:ral\s*\d+)?)(?:\n|glass|dimensions|$)/i);
+  if (finishMatch) {
+    data.finish = finishMatch[1].trim().substring(0, 50);
+  }
+  
+  // Extract Glass (e.g., "4GR -16Ar- 4GR Sel", "Double glazed")
+  const glassMatch = searchText.match(/glass[:\s]+([\w\s\-]+?)(?:\n|dimensions|fittings|$)/i);
+  if (glassMatch) {
+    data.glass = glassMatch[1].trim().substring(0, 50);
+  }
+  
+  // Extract Dimensions (e.g., "2475x2058mm", "2.4m x 2.0m")
+  const dimMatch = searchText.match(/(\d{3,4}\s*[x×]\s*\d{3,4}\s*mm|\d+\.?\d*\s*[mx]\s*[x×]\s*\d+\.?\d*\s*m)/i);
+  if (dimMatch) {
+    data.dimensions = dimMatch[1].trim();
+  }
+  
+  // Extract Area (e.g., "5.09m²", "5.09 m2")
+  const areaMatch = searchText.match(/(\d+\.?\d*\s*m[²2])/i);
+  if (areaMatch) {
+    data.area = areaMatch[1].trim();
+  }
+  
+  return data;
 }
