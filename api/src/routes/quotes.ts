@@ -3709,8 +3709,6 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       description: line.description || "",
       qty: line.qty || 1,
       unitPrice: new Prisma.Decimal(line.unitPrice || 0),
-      sellUnit: line.meta?.sellUnitGBP ? new Prisma.Decimal(line.meta.sellUnitGBP) : null,
-      sellTotal: line.meta?.sellTotalGBP ? new Prisma.Decimal(line.meta.sellTotalGBP) : null,
       currency: "GBP",
       meta: line.meta || {},
     }));
