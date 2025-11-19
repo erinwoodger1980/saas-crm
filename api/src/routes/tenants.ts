@@ -640,6 +640,24 @@ router.post("/settings/enrich", async (req, res) => {
           if (text.length > 20) testimonials.push(text);
         });
 
+      // Extract certifications/accreditations
+      const certifications: string[] = [];
+      $('[class*="cert"], [class*="accred"], [class*="member"], [class*="award"], [class*="badge"]')
+        .slice(0, 15)
+        .each((_i, el) => {
+          const text = $(el).text().trim().replace(/\s+/g, " ").slice(0, 200);
+          if (text.length > 10) certifications.push(text);
+        });
+
+      // Extract about/guarantee sections
+      const aboutSections: string[] = [];
+      $('[class*="about"], [class*="why-choose"], [class*="guarantee"], [class*="warranty"], [class*="promise"]')
+        .slice(0, 8)
+        .each((_i, el) => {
+          const text = $(el).text().trim().replace(/\s+/g, " ").slice(0, 500);
+          if (text.length > 30) aboutSections.push(text);
+        });
+
       const prompt = `
 Extract comprehensive company information from this website and return as JSON.
 
@@ -671,16 +689,24 @@ Required structure:
   }
 }
 
-IMPORTANT: Extract ALL information thoroughly:
-- Look for "About Us", "Why Choose Us", "Our Guarantee" sections
-- Find ALL testimonials/reviews on the page
-- Identify any certifications, memberships, insurance, accreditations
-- Extract complete business address including postcode
-- Find VAT number, company registration details
-- Look for warranty/guarantee information
-- Extract typical lead times, delivery areas, installation coverage
+IMPORTANT: Extract ALL information thoroughly and comprehensively:
+- Look for "About Us", "Why Choose Us", "Our Guarantee", "Services", "What We Do" sections
+- Find ALL testimonials/reviews/customer feedback on the page
+- Identify ANY certifications, memberships, trade associations, insurance details, accreditations
+- Extract COMPLETE business address including street, town, county, and POSTCODE
+- Find VAT number, company registration number, business registration details
+- Look for warranty/guarantee information, quality promises, satisfaction guarantees
+- Extract typical lead times, delivery areas, service coverage, installation details
+- Find payment terms, deposit requirements, quote validity periods
+- Look for opening hours, contact methods, response times
+- Extract any standard materials, finishes, glazing types, hardware used
+- Find typical markup/margin percentages if mentioned
+- Look for environmental commitments, sustainable practices
+- Extract any awards, recognitions, years in business, experience highlights
 
-Use UK English. Be thorough and professional. If information isn't found, omit the field.
+Be EXTREMELY thorough - extract every detail you can find. Use UK English spelling throughout.
+If specific information isn't found, omit that field entirely. Don't make up information.
+Prioritize accuracy and completeness over speed.
 
 SCRAPED DATA:
 - Page Title: ${seed.brandName}
@@ -692,13 +718,19 @@ SCRAPED DATA:
 NAVIGATION LINKS (${navLinks.length} found):
 ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
 
-PAGE CONTENT (analyzing for guarantees, testimonials, certifications, and company details):
-${text.slice(0, 3000)}
+CERTIFICATIONS/ACCREDITATIONS FOUND:
+${certifications.length > 0 ? certifications.join("\n") : "None found"}
+
+ABOUT/GUARANTEE SECTIONS:
+${aboutSections.length > 0 ? aboutSections.join("\n\n") : "None found"}
+
+FULL PAGE CONTENT (analyze thoroughly for all company details):
+${text.slice(0, 12000)}
 `;
 
       // Add timeout to OpenAI API call to prevent hanging
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+      const timeout = setTimeout(() => controller.abort(), 20000); // 20 second timeout for thorough analysis
       
       let ai;
       try {
@@ -710,8 +742,15 @@ ${text.slice(0, 3000)}
           },
           body: JSON.stringify({
             model: "gpt-4o-mini",
-            messages: [{ role: "user", content: prompt }],
+            messages: [
+              { 
+                role: "system", 
+                content: "You are an expert at extracting comprehensive business information from websites. Be thorough and extract every detail you can find." 
+              },
+              { role: "user", content: prompt }
+            ],
             response_format: { type: "json_object" },
+            temperature: 0.1, // Low temperature for consistent, accurate extraction
           }),
           signal: controller.signal,
         });
