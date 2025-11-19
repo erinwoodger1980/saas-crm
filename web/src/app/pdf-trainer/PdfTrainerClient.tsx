@@ -37,6 +37,8 @@ import type {
   PdfLayoutTemplate,
 } from '@/types/pdfAnnotations';
 import { LABEL_DISPLAY_NAMES, LABEL_BORDER_COLORS } from '@/types/pdfAnnotations';
+import { apiFetch } from '@/lib/api';
+import { fetchQuoteSourceProfiles } from '@/lib/api/quotes';
 
 interface SourceProfile {
   id: string;
@@ -76,16 +78,20 @@ export function PdfTrainerClient() {
   useEffect(() => {
     const loadProfiles = async () => {
       try {
-        const response = await fetch('/api/quotes/source-profiles');
-        if (!response.ok) throw new Error('Failed to load profiles');
-        
-        const data = await response.json();
-        setProfiles(data.items || []);
+        const raw = await fetchQuoteSourceProfiles();
+        // Map to component's expected shape
+        const mapped = (raw || []).map((p: any) => ({
+          id: p.id,
+          displayName: p.name ?? p.displayName ?? p.id,
+          type: p.type,
+          source: p.source ?? 'tenant',
+        }));
+        setProfiles(mapped);
       } catch (error: any) {
         console.error('[PdfTrainerClient] Failed to load profiles:', error);
         toast({
           title: 'Failed to load profiles',
-          description: error.message,
+          description: error?.message || 'Unable to fetch source profiles',
           variant: 'destructive',
         });
       } finally {
@@ -152,23 +158,16 @@ export function PdfTrainerClient() {
       const profileName = profiles.find(p => p.id === supplierProfile)?.displayName || supplierProfile;
       const templateName = `${profileName} - ${selectedFile?.name || 'template'}`;
 
-      const response = await fetch('/api/pdf-templates', {
+      const result = await apiFetch('/pdf-templates', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        json: {
           name: templateName,
           description: `Annotated template for ${profileName}`,
           supplierProfileId: supplierProfile,
           pageCount: totalPages,
           annotations,
-        }),
+        },
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save template');
-      }
-
-      const result = await response.json();
 
       toast({
         title: 'Template saved',
