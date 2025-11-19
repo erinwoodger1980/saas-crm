@@ -151,9 +151,35 @@ async function extractImagesFromBuffer(pdfBuffer: Buffer): Promise<ExtractedImag
         if (isJPEG || isPNG) {
           const imageBuffer = Buffer.from(streamData, 'binary');
           
-          // Skip very small images (likely icons or decorative elements)
-          if (imageBuffer.length < 1024) {
+          // ENHANCED FILTERING: Skip logos, headers, and decorative images
+          // 1. Skip very small images (icons, bullets, decorative elements)
+          if (imageBuffer.length < 5000) {  // Increased from 1KB to 5KB
             continue;
+          }
+          
+          // 2. Skip images that are too large (full-page backgrounds, headers)
+          if (imageBuffer.length > 500000) {  // 500KB max
+            continue;
+          }
+          
+          // 3. Filter by dimensions - product images are typically square or portrait
+          // Skip very wide/short images (likely headers or footers)
+          if (width && height) {
+            const aspectRatio = width / height;
+            // Skip images with extreme aspect ratios (headers: wide, footers: wide)
+            if (aspectRatio > 4 || aspectRatio < 0.25) {
+              continue;
+            }
+            
+            // Skip very small dimensions (likely logos or icons)
+            if (width < 100 || height < 100) {
+              continue;
+            }
+            
+            // Skip very large dimensions (likely full-page backgrounds)
+            if (width > 2000 || height > 2000) {
+              continue;
+            }
           }
           
           // Create base64 data URL for inline rendering
