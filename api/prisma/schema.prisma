@@ -618,6 +618,9 @@ model Quote {
   proposalPdfUrl      String?
   notes               String?
   meta                Json?
+  // Quote source classification (auto-detected or user-selected)
+  quoteSourceType     String?        @default("supplier") // "supplier" or "software"
+  supplierProfileId   String?        @default("generic_supplier") // e.g. "brio_v1", "joinerysoft_a"
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
   lead                Lead?          @relation(fields: [leadId], references: [id])
@@ -629,6 +632,7 @@ model Quote {
   shoppingLists       ShoppingList[]
 
   @@index([tenantId, leadId])
+  @@index([supplierProfileId])
 }
 
 model QuoteLine {

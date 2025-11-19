@@ -37,14 +37,7 @@ import type {
   PdfLayoutTemplate,
 } from '@/types/pdfAnnotations';
 import { LABEL_DISPLAY_NAMES, LABEL_BORDER_COLORS } from '@/types/pdfAnnotations';
-
-const SUPPLIER_PROFILES = [
-  'generic_supplier',
-  'brio_v1',
-  'siegenia_v1',
-  'user_quote_v1',
-  'historic_v1',
-];
+import { quoteSourceProfiles } from '@/lib/quoteSourceProfiles';
 
 export function PdfTrainerClient() {
   const { toast } = useToast();
@@ -257,10 +250,10 @@ export function PdfTrainerClient() {
         {/* Right: Controls */}
         <div className="w-96 border-l bg-card overflow-auto">
           <div className="p-6 space-y-6">
-            {/* Supplier profile */}
+            {/* Source profile */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Supplier Profile</CardTitle>
+                <CardTitle className="text-sm">Quote Source Profile</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -270,13 +263,29 @@ export function PdfTrainerClient() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {SUPPLIER_PROFILES.map((profile) => (
-                        <SelectItem key={profile} value={profile}>
-                          {profile}
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                        Suppliers
+                      </div>
+                      {quoteSourceProfiles.filter((p) => p.type === 'supplier').map((profile) => (
+                        <SelectItem key={profile.id} value={profile.id}>
+                          {profile.displayName}
+                        </SelectItem>
+                      ))}
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
+                        Software/Systems
+                      </div>
+                      {quoteSourceProfiles.filter((p) => p.type === 'software').map((profile) => (
+                        <SelectItem key={profile.id} value={profile.id}>
+                          {profile.displayName}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {quoteSourceProfiles.find((p) => p.id === supplierProfile)?.type === 'supplier'
+                      ? '📦 Supplier quote (outsourced)'
+                      : '🖥️ User software quote'}
+                  </p>
                 </div>
 
                 <div>
@@ -368,8 +377,8 @@ export function PdfTrainerClient() {
                         </div>
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
+                          size="sm"
+                          className="h-6 w-6 p-0"
                           onClick={() => handleFocusAnnotation(box.id)}
                           title="Focus"
                         >
@@ -377,8 +386,8 @@ export function PdfTrainerClient() {
                         </Button>
                         <Button
                           variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-destructive"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-destructive"
                           onClick={() => handleDeleteAnnotation(box.id)}
                           title="Delete"
                         >

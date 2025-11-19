@@ -802,6 +802,9 @@ export async function recordQuoteForTraining(quoteId: string): Promise<void> {
       source, // 'supplier' | 'user_quote' | 'historic'
       supplierName,
       currency: quote.currency || 'GBP',
+      // Quote source classification (for ML learning)
+      quoteSourceType: (quote as any).quoteSourceType || 'supplier',
+      supplierProfileId: (quote as any).supplierProfileId || 'generic_supplier',
       // Parsed lines from original PDF
       parsedLines,
       // Final confirmed lines
