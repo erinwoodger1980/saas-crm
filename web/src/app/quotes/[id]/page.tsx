@@ -11,7 +11,7 @@ import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
 import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp } from "lucide-react";
+import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp, Mail } from "lucide-react";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -109,6 +109,12 @@ export default function QuoteBuilderPage() {
   const [lineRevision, setLineRevision] = useState(0);
   const [estimatedLineRevision, setEstimatedLineRevision] = useState<number | null>(null);
   const lastLineSnapshotRef = useRef<string | null>(null);
+  const [isParsingOwnQuote, setIsParsingOwnQuote] = useState(false);
+  const [isUploadingOwnQuote, setIsUploadingOwnQuote] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
+  const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
 
   const questionnaireAnswers = useMemo(() => {
     if (!lead?.custom) return {};
@@ -118,6 +124,7 @@ export default function QuoteBuilderPage() {
   const currency = quote?.currency ?? "GBP";
   const tenantName = quote?.tenant?.name ?? null;
   const quoteStatus = quote?.status ?? null;
+  const proposalPdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
 
   useEffect(() => {
     if (!lines) return;
@@ -177,25 +184,54 @@ export default function QuoteBuilderPage() {
   const reestimateNeeded = estimate && estimatedLineRevision !== null && estimatedLineRevision !== lineRevision;
 
   const handleParse = useCallback(async () => {
-    if (!quoteId) return;
+    if (!quoteId || !quote?.supplierFiles?.length) {
+      toast({
+        title: "No files to parse",
+        description: "Upload supplier PDFs first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsParsing(true);
     setError(null);
+
     try {
-      const response = await parseSupplierPdfs(quoteId);
-      setParseMeta(response);
-      if (response?.async) {
-        toast({ title: "Parsing supplier PDFs", description: "ML parser started. Refreshing shortly." });
-      } else {
-        toast({ title: "Parse complete", description: `Parsed ${response?.created ?? 0} line(s).` });
-      }
+      // Parse supplier PDFs with full processing
+      const result = await apiFetch<{ lines: ParsedLineDto[]; count: number }>(
+        `/quotes/${encodeURIComponent(quoteId)}/process-supplier`,
+        {
+          method: "POST",
+          json: {
+            convertCurrency: true,
+            distributeDelivery: true,
+            hideDeliveryLine: true,
+            applyMarkup: true,
+          },
+        }
+      );
+
+      toast({
+        title: "Supplier quote processed",
+        description: `${result.count} line items ready with markup applied`,
+      });
+
+      // Refresh data
       await Promise.all([mutateQuote(), mutateLines()]);
+
+      // Auto-navigate to Quote Lines tab
+      setActiveTab("quote-lines");
     } catch (err: any) {
-      setError(err?.message || "Parse failed");
-      toast({ title: "Parse failed", description: err?.message || "ML parser returned an error", variant: "destructive" });
+      setError(err?.message || "Failed to parse supplier PDFs");
+      toast({
+        title: "Parse failed",
+        description: err?.message || "Unable to parse supplier files",
+        variant: "destructive",
+      });
     } finally {
       setIsParsing(false);
     }
-  }, [quoteId, mutateQuote, mutateLines, toast]);
+  }, [quoteId, quote?.supplierFiles, mutateQuote, mutateLines, toast]);
 
   const handleUploadFiles = useCallback(
     async (files: FileList | null) => {
@@ -408,6 +444,114 @@ export default function QuoteBuilderPage() {
     URL.revokeObjectURL(url);
   }, [lines, mapping, quoteId]);
 
+  const handleGenerateQuotePdf = useCallback(async () => {
+    if (!quoteId || !lines.length) {
+      toast({
+        title: "Cannot generate PDF",
+        description: "No line items to include in quote",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+    setError(null);
+
+    try {
+      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/render-pdf`, {
+        method: "POST",
+      });
+
+      await mutateQuote();
+
+      toast({
+        title: "PDF generated",
+        description: "Quote PDF is ready for preview",
+      });
+
+      // Auto-navigate to preview tab
+      setActiveTab("preview");
+    } catch (err: any) {
+      setError(err?.message || "Failed to generate PDF");
+      toast({
+        title: "PDF generation failed",
+        description: err?.message || "Unable to generate quote PDF",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  }, [quoteId, lines, mutateQuote, toast]);
+
+  const handleEmailToClient = useCallback(async () => {
+    if (!quoteId || !lead?.email) {
+      toast({
+        title: "Cannot send email",
+        description: lead ? "Client email address is required" : "Quote is not linked to a lead",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const pdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
+    if (!pdfUrl) {
+      toast({
+        title: "No PDF to send",
+        description: "Generate a PDF first from the Quote Lines tab",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingEmail(true);
+
+    try {
+      await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/send-email`, {
+        method: "POST",
+        json: {
+          to: lead.email,
+          subject: `Your quote from ${tenantName || 'us'}`,
+          includeAttachment: true,
+        },
+      });
+
+      toast({
+        title: "Email sent",
+        description: `Quote sent to ${lead.email}`,
+      });
+
+      await mutateQuote();
+    } catch (err: any) {
+      toast({
+        title: "Email failed",
+        description: err?.message || "Unable to send email",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  }, [quoteId, lead, quote?.meta, quote?.proposalPdfUrl, tenantName, mutateQuote, toast]);
+
+  const handleDownloadPdf = useCallback(() => {
+    const pdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
+    if (pdfUrl) {
+      window.open(pdfUrl, "_blank");
+    }
+  }, [quote?.meta, quote?.proposalPdfUrl]);
+
+  const handlePrintPdf = useCallback(() => {
+    const pdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
+    if (pdfUrl) {
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = pdfUrl;
+      document.body.appendChild(iframe);
+      iframe.onload = () => {
+        iframe.contentWindow?.print();
+      };
+    }
+  }, [quote?.meta, quote?.proposalPdfUrl]);
+
   const openUploadDialog = useCallback(() => {
     if (fileInputRef.current) fileInputRef.current.click();
   }, []);
@@ -462,9 +606,7 @@ export default function QuoteBuilderPage() {
     [quoteId, toast],
   );
 
-  // UI state for collapsible sections
-  const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
-  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
+  // UI state for collapsible sections (defined earlier in state section)
 
   const breadcrumbs = (
     <>
@@ -549,9 +691,9 @@ export default function QuoteBuilderPage() {
                 <FileUp className="h-4 w-4" />
                 <span className="text-xs">Supplier</span>
               </TabsTrigger>
-              <TabsTrigger value="joinerysoft" className="flex flex-col gap-1 py-3">
-                <Building2 className="h-4 w-4" />
-                <span className="text-xs">Joinerysoft</span>
+              <TabsTrigger value="own-quote" className="flex flex-col gap-1 py-3">
+                <FileUp className="h-4 w-4" />
+                <span className="text-xs">Own Quote</span>
               </TabsTrigger>
               <TabsTrigger value="ml-estimate" className="flex flex-col gap-1 py-3">
                 <Cpu className="h-4 w-4" />
@@ -740,12 +882,36 @@ export default function QuoteBuilderPage() {
               </div>
             </TabsContent>
 
-            <TabsContent value="joinerysoft" className="space-y-6">
-              <div className="rounded-2xl border bg-card p-8 shadow-sm">
-                <div className="text-center text-muted-foreground py-12">
-                  <Building2 className="h-12 w-12 mx-auto mb-4 opacity-40" />
-                  <h3 className="text-lg font-medium mb-2">Joinerysoft integration</h3>
-                  <p className="text-sm">Coming soon - import quotes directly from Joinerysoft</p>
+            <TabsContent value="own-quote" className="space-y-6">
+              <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-foreground mb-2">Upload your own quote</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Upload a quote you've already created. We'll parse it and make it beautiful.
+                    No currency conversion, markup, or delivery distribution applied - just clean formatting.
+                  </p>
+                </div>
+
+                {/* Info box */}
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                  <h3 className="text-sm font-semibold text-blue-900 mb-2">
+                    How it works
+                  </h3>
+                  <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                    <li>Upload your PDF quote (no transformations applied)</li>
+                    <li>Delivery charges kept as separate line items</li>
+                    <li>Original pricing preserved exactly as-is</li>
+                    <li>Perfect for quotes you've manually created</li>
+                  </ul>
+                </div>
+
+                {/* Placeholder for upload - will implement in next phase */}
+                <div className="text-center py-8 border-2 border-dashed border-muted rounded-xl">
+                  <FileUp className="h-12 w-12 mx-auto mb-4 opacity-40" />
+                  <h3 className="text-lg font-medium mb-2">Own quote upload</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Coming soon - upload your own quote PDFs
+                  </p>
                 </div>
               </div>
             </TabsContent>
@@ -755,8 +921,21 @@ export default function QuoteBuilderPage() {
                 <div>
                   <h2 className="text-2xl font-semibold text-foreground mb-2">ML estimate & pricing</h2>
                   <p className="text-sm text-muted-foreground">
-                    Generate AI-powered estimates from questionnaire data
+                    Generate AI-powered estimates from questionnaire answers and existing line items
                   </p>
+                </div>
+
+                {/* Info box explaining what ML uses */}
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                  <h3 className="text-sm font-semibold text-blue-900 mb-2">
+                    How ML estimation works
+                  </h3>
+                  <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                    <li>Analyzes your questionnaire answers from the Details tab</li>
+                    <li>Considers existing line items (if any from Supplier or Own Quote)</li>
+                    <li>Predicts pricing based on historical data and patterns</li>
+                    <li>Adds estimated line items to the Quote Lines tab for review</li>
+                  </ul>
                 </div>
 
               {/* Estimate summary */}
@@ -797,62 +976,41 @@ export default function QuoteBuilderPage() {
               <div className="space-y-4">
                 <Button
                   onClick={handleQuestionnaireEstimate}
-                  disabled={isEstimating || isPricing}
+                  disabled={isEstimating || isPricing || !leadId}
                   size="lg"
                   className="w-full gap-2"
                 >
                   {isEstimating ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Calculating...
+                      Generating estimate...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="h-4 w-4" />
-                      Generate ML estimate & pricing
+                      <Cpu className="h-4 w-4" />
+                      Generate ML estimate
                     </>
                   )}
                 </Button>
 
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
+                {!leadId && (
+                  <div className="text-sm text-muted-foreground text-center">
+                    Quote must be linked to a lead to generate ML estimates
                   </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">Or</span>
+                )}
+
+                {estimate && lines.length > 0 && (
+                  <div className="text-center">
+                    <Button
+                      variant="outline"
+                      onClick={() => setActiveTab("quote-lines")}
+                      className="gap-2"
+                    >
+                      <FileText className="h-4 w-4" />
+                      View {lines.length} estimated line items →
+                    </Button>
                   </div>
-                </div>
-
-                <ClientQuoteUploadCard
-                  files={quote?.clientQuoteFiles}
-                  onUpload={handleUploadClientQuoteFiles}
-                  onOpen={handleOpenClientQuoteFile}
-                  isUploading={isUploadingClientQuote}
-                />
-
-                <div className="text-center text-xs text-muted-foreground py-2">
-                  Use your own quote PDF and render a professional proposal
-                </div>
-
-                <Button
-                  onClick={handleRenderProposal}
-                  disabled={isRendering}
-                  size="lg"
-                  variant="default"
-                  className="w-full gap-2"
-                >
-                  {isRendering ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Rendering...
-                    </>
-                  ) : (
-                    <>
-                      <Printer className="h-4 w-4" />
-                      Render proposal PDF
-                    </>
-                  )}
-                </Button>
+                )}
               </div>
 
               {/* Metadata */}
@@ -891,11 +1049,33 @@ export default function QuoteBuilderPage() {
             <TabsContent value="quote-lines" className="space-y-6">
               {lines && lines.length > 0 ? (
                 <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
-                  <div>
-                    <h2 className="text-2xl font-semibold text-foreground mb-2">Quote line items</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Review and edit line items from all sources (supplier PDFs, ML estimates, manual entry)
-                    </p>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h2 className="text-2xl font-semibold text-foreground mb-2">Quote line items</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Review and edit line items from all sources (supplier PDFs, ML estimates, manual entry)
+                      </p>
+                    </div>
+
+                    {/* Generate PDF button */}
+                    <Button
+                      onClick={handleGenerateQuotePdf}
+                      disabled={isGeneratingPdf}
+                      size="lg"
+                      className="gap-2"
+                    >
+                      {isGeneratingPdf ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="h-4 w-4" />
+                          Generate PDF quote
+                        </>
+                      )}
+                    </Button>
                   </div>
 
                   <ParsedLinesTable
@@ -936,66 +1116,108 @@ export default function QuoteBuilderPage() {
             </TabsContent>
 
             <TabsContent value="preview" className="space-y-6">
-              <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
-                <div>
-                  <h2 className="text-2xl font-semibold text-foreground mb-2">Proposal preview & rendering</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Generate and download the final proposal PDF
-                  </p>
-                </div>
-
-                {estimate && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-6 bg-muted/30 rounded-xl">
+              {proposalPdfUrl ? (
+                <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                  <div className="flex items-start justify-between">
                     <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Total estimate</div>
-                      <div className="text-2xl font-bold text-foreground">
-                        {formatCurrency(estimate.estimatedTotal, currency)}
-                      </div>
+                      <h2 className="text-2xl font-semibold text-foreground mb-2">Quote preview</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Review the generated quote PDF before sending to client
+                      </p>
                     </div>
-                    <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Line items</div>
-                      <div className="text-2xl font-bold text-foreground">{lines?.length ?? 0}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1">Status</div>
-                      <div className="text-sm font-medium text-foreground capitalize">{quoteStatus ?? "Draft"}</div>
-                    </div>
-                  </div>
-                )}
 
-                <div className="space-y-4">
-                  <ClientQuoteUploadCard
-                    files={quote?.clientQuoteFiles}
-                    onUpload={handleUploadClientQuoteFiles}
-                    onOpen={handleOpenClientQuoteFile}
-                    isUploading={isUploadingClientQuote}
-                  />
-
-                  <div className="text-center text-xs text-muted-foreground py-2">
-                    Upload your own quote PDF or use the button below to generate from line items
-                  </div>
-
-                  <Button
-                    onClick={handleRenderProposal}
-                    disabled={isRendering}
-                    size="lg"
-                    variant="default"
-                    className="w-full gap-2"
-                  >
-                    {isRendering ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Rendering...
-                      </>
-                    ) : (
-                      <>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleDownloadPdf}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        Download
+                      </Button>
+                      <Button
+                        onClick={handlePrintPdf}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                      >
                         <Printer className="h-4 w-4" />
-                        Render proposal PDF
-                      </>
+                        Print
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* PDF Preview iframe */}
+                  <div className="relative w-full" style={{ height: "600px" }}>
+                    <iframe
+                      src={proposalPdfUrl}
+                      className="w-full h-full rounded-lg border"
+                      title="Quote PDF Preview"
+                    />
+                  </div>
+
+                  {/* Email section */}
+                  <div className="border-t pt-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-foreground mb-1">Ready to send?</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Send this quote to the client via email with PDF attachment
+                        </p>
+                      </div>
+                      <Button
+                        onClick={handleEmailToClient}
+                        disabled={isSendingEmail}
+                        size="lg"
+                        className="gap-2"
+                      >
+                        {isSendingEmail ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <Mail className="h-4 w-4" />
+                            Email to client
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    {estimate && (
+                      <div className="grid grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
+                        <div>
+                          <div className="text-xs font-medium text-muted-foreground mb-1">Total</div>
+                          <div className="text-lg font-bold text-foreground">
+                            {formatCurrency(estimate.estimatedTotal, currency)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-muted-foreground mb-1">Line items</div>
+                          <div className="text-lg font-bold text-foreground">{lines?.length ?? 0}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-muted-foreground mb-1">Status</div>
+                          <div className="text-sm font-medium text-foreground capitalize">{quoteStatus ?? "Draft"}</div>
+                        </div>
+                      </div>
                     )}
-                  </Button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="rounded-2xl border bg-card p-8 shadow-sm">
+                  <div className="text-center text-muted-foreground py-12">
+                    <Eye className="h-12 w-12 mx-auto mb-4 opacity-40" />
+                    <h3 className="text-lg font-medium mb-2">No PDF generated yet</h3>
+                    <p className="text-sm mb-4">Generate a PDF from the Quote Lines tab to preview and send to client</p>
+                    <Button variant="outline" onClick={() => setActiveTab("quote-lines")}>
+                      Go to Quote Lines
+                    </Button>
+                  </div>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         )}
