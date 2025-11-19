@@ -296,7 +296,7 @@ function decodeOctalEscape(segment: string, index: number): { value: string; con
   return { value: String.fromCharCode(code), consumed: digits.length };
 }
 
-function extractSegments(content: string, map: Record<number, string>): string[] {
+function extractSegments(content: string, map: UnicodeMap): string[] {
   const segments: string[] = [];
   const literal = /\((?:\\.|[^\\)])*\)/g;
   let match: RegExpExecArray | null;
