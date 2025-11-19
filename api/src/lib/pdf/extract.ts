@@ -296,21 +296,60 @@ function decodeOctalEscape(segment: string, index: number): { value: string; con
   return { value: String.fromCharCode(code), consumed: digits.length };
 }
 
-function extractSegments(content: string, map: UnicodeMap): string[] {
+function extractSegments(content: string, map: Record<number, string>): string[] {
   const segments: string[] = [];
   const literal = /\((?:\\.|[^\\)])*\)/g;
   let match: RegExpExecArray | null;
   while ((match = literal.exec(content))) {
     const inner = match[0].slice(1, -1);
     const decoded = decodePdfStringLiteral(inner, map);
-    if (decoded.trim()) segments.push(decoded);
+    const trimmed = decoded.trim();
+    if (trimmed && isValidTextSegment(trimmed)) {
+      segments.push(decoded);
+    }
   }
   const hex = /<([0-9A-Fa-f\s]+)>/g;
   while ((match = hex.exec(content))) {
     const decoded = decodePdfHexString(match[1], map);
-    if (decoded.trim()) segments.push(decoded);
+    const trimmed = decoded.trim();
+    if (trimmed && isValidTextSegment(trimmed)) {
+      segments.push(decoded);
+    }
   }
   return segments;
+}
+
+/**
+ * Filter out text segments that are clearly font binary data or garbage.
+ * Returns false if the segment should be rejected.
+ */
+function isValidTextSegment(text: string): boolean {
+  // Reject if contains font table names (these are binary font data)
+  if (/\b(glyf|hmtx|head|hhea|maxp|loca|cmap|cvt|fpgm|prep|post|name|OS\/2)\b/i.test(text)) {
+    return false;
+  }
+  
+  // Reject if contains common font format markers
+  if (/(CIDFont|FontDescriptor|FontFile|Type1|TrueType|OpenType)/i.test(text)) {
+    return false;
+  }
+  
+  // Reject if high ratio of non-printable characters (excluding common whitespace)
+  const nonPrintable = (text.match(/[^\x20-\x7E\r\n\t]/g) || []).length;
+  const nonPrintableRatio = nonPrintable / text.length;
+  if (nonPrintableRatio > 0.3) {
+    return false; // More than 30% non-printable = likely binary
+  }
+  
+  // Reject very short segments that are mostly symbols/weird characters
+  if (text.length < 10) {
+    const alphaNum = (text.match(/[a-zA-Z0-9]/g) || []).length;
+    if (alphaNum < text.length * 0.3) {
+      return false; // Less than 30% alphanumeric in short segment
+    }
+  }
+  
+  return true;
 }
 
 function splitIntoCells(line: string): ExtractedCell[] {
