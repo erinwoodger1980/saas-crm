@@ -66,13 +66,22 @@ export default function AppShell({ children }: { children: ReactNode }) {
     // Fetch tenant settings to check for fire door manufacturer flag
     apiFetch<{ isFireDoorManufacturer?: boolean }>("/tenant/settings")
       .then((data) => {
-        if (data?.isFireDoorManufacturer) {
-          setIsFireDoorManufacturer(true);
-        }
+        setIsFireDoorManufacturer(Boolean(data?.isFireDoorManufacturer));
       })
       .catch(() => {
         // Failed to fetch settings, default to false
       });
+    const handleTenantSettingsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean }>).detail;
+      if (detail && Object.prototype.hasOwnProperty.call(detail, "isFireDoorManufacturer")) {
+        setIsFireDoorManufacturer(Boolean(detail.isFireDoorManufacturer));
+      }
+    };
+
+    window.addEventListener("tenant-settings:updated", handleTenantSettingsUpdate as EventListener);
+    return () => {
+      window.removeEventListener("tenant-settings:updated", handleTenantSettingsUpdate as EventListener);
+    };
   }, []);
 
   function exitImpersonation() {
