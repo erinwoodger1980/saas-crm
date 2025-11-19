@@ -3359,6 +3359,46 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     
     const parsedLines: any[] = [];
     
+    // Helper functions for robust field extraction (same as in parse endpoint)
+    const pickQty = (ln: any): number | null => {
+      const candidates = [ln?.qty, ln?.quantity];
+      for (const c of candidates) {
+        if (c != null) {
+          const n = Number(c);
+          if (Number.isFinite(n) && n > 0) return n;
+        }
+      }
+      return null;
+    };
+    
+    const pickUnitCost = (ln: any): number | null => {
+      const candidates = [
+        ln?.costUnit, ln?.unit_price, ln?.unitPrice, ln?.price,
+        ln?.unit_cost, ln?.price_ex_vat, ln?.unit_price_ex_vat
+      ];
+      for (const c of candidates) {
+        if (c != null) {
+          const n = Number(c);
+          if (Number.isFinite(n) && n >= 0) return n;
+        }
+      }
+      return null;
+    };
+    
+    const pickLineTotal = (ln: any): number | null => {
+      const candidates = [
+        ln?.lineTotal, ln?.line_total, ln?.total, ln?.price_ex_vat,
+        ln?.amount, ln?.ex_vat_total
+      ];
+      for (const c of candidates) {
+        if (c != null) {
+          const n = Number(c);
+          if (Number.isFinite(n) && n >= 0) return n;
+        }
+      }
+      return null;
+    };
+    
     // Parse each supplier file
     for (const f of quote.supplierFiles) {
       if (!/pdf$/i.test(f.mimeType || "") && !/\.pdf$/i.test(f.name || "")) {
@@ -3381,12 +3421,37 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
           currencyHint: quote.currency || "GBP",
         });
         
-        if (parseResult?.lines) {
-          parsedLines.push(...parseResult.lines.map((line: any) => ({
-            ...line,
-            fileId: f.id,
-            sourceCurrency: parseResult.currency || quote.currency || "GBP",
-          })));
+        if (parseResult?.lines && Array.isArray(parseResult.lines)) {
+          const sourceCurrency = parseResult.currency || quote.currency || "GBP";
+          
+          for (const ln of parseResult.lines) {
+            const description = String(ln.description || (ln as any).desc || "Item");
+            const pickedQty = pickQty(ln);
+            const qty = Number.isFinite(Number(pickedQty)) && Number(pickedQty) > 0 ? Number(pickedQty) : 1;
+            
+            let unitPrice = pickUnitCost(ln);
+            let lineTotalParsed = pickLineTotal(ln);
+            
+            if ((unitPrice == null || !(unitPrice > 0)) && lineTotalParsed != null && qty > 0) {
+              unitPrice = lineTotalParsed / qty;
+            }
+            if (unitPrice == null || !Number.isFinite(unitPrice) || unitPrice < 0) {
+              unitPrice = 0;
+            }
+            
+            parsedLines.push({
+              description,
+              qty,
+              unitPrice,
+              fileId: f.id,
+              sourceCurrency,
+              currency: sourceCurrency,
+              meta: {
+                source: "supplier-parser",
+                raw: ln,
+              },
+            });
+          }
         }
       } catch (err: any) {
         console.error(`[process-supplier] Failed to parse file ${f.id}:`, err?.message);
@@ -3711,6 +3776,15 @@ ${tenantName}
         where: { id: quote.id },
         data: { status: "SENT" },
       });
+    }
+    
+    // Record quote for ML training when sent to client
+    try {
+      const { recordQuoteForTraining } = await import("../services/training");
+      await recordQuoteForTraining(quote.id);
+    } catch (trainingErr: any) {
+      console.warn("[/quotes/:id/send-email] Failed to record for training:", trainingErr.message);
+      // Don't fail the request if training recording fails
     }
     
     return res.json({

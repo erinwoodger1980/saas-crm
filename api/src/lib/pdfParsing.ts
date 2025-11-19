@@ -530,6 +530,283 @@ export function parseFromPlainText(text: string): ParsedLineLike[] {
 }
 
 // ============================================================================
+// UNIFIED PARSING ENTRY POINT
+// ============================================================================
+
+/**
+ * Line item types for classification
+ */
+export type LineKind = "joinery" | "delivery" | "hardware" | "other";
+
+/**
+ * Unified parsed quote line
+ */
+export interface ParsedQuoteLine {
+  id: string;
+  kind: LineKind;
+  description: string;
+  qty: number | null;
+  unitCost: number | null;
+  lineCost: number | null;
+  currency?: string;
+  meta: {
+    dimensions?: string;
+    area?: string;
+    type?: string;
+    system?: string;
+    finish?: string;
+    wood?: string;
+    glass?: string;
+    notes?: string;
+    imageRef?: {
+      page: number;
+      hash: string;
+      dataUrl?: string;
+      bbox?: { x: number; y: number; width: number; height: number };
+    };
+    rawText?: string;
+    productId?: string;
+    [key: string]: any;
+  };
+}
+
+/**
+ * Complete parsed quote result
+ */
+export interface ParsedQuote {
+  source: "supplier" | "user_quote" | "historic";
+  supplierName?: string;
+  currency?: string;
+  jobRef?: string;
+  lines: ParsedQuoteLine[];
+  confidence?: number;
+  warnings?: string[];
+  rawLayoutDebug?: any;
+  images?: Array<{
+    page: number;
+    index: number;
+    hash: string;
+    dataUrl?: string;
+    bbox?: { x: number; y: number; width: number; height: number };
+    classification: "joinery_elevation" | "logo" | "badge" | "icon" | "unknown";
+  }>;
+}
+
+/**
+ * Options for PDF parsing
+ */
+export interface ParseOptions {
+  source: "supplier" | "user_quote" | "historic";
+  currencyFallback?: string;
+  supplierHint?: string;
+  debug?: boolean;
+}
+
+/**
+ * Classify a line item by its description
+ */
+function classifyLineKind(description: string, meta: any): LineKind {
+  const text = `${description} ${meta.rawText || ""}`.toLowerCase();
+
+  // Delivery indicators
+  if (
+    /\b(delivery|shipping|freight|carriage|transport)\b/.test(text) &&
+    !/\bno delivery\b/.test(text)
+  ) {
+    return "delivery";
+  }
+
+  // Hardware indicators
+  if (
+    /\b(hinge|lock|handle|hardware|fitting|cylinder|threshold|ironmongery)\b/.test(text)
+  ) {
+    return "hardware";
+  }
+
+  // Joinery indicators
+  if (
+    meta.dimensions ||
+    meta.area ||
+    meta.productType ||
+    PATTERNS.keywords.test(text)
+  ) {
+    return "joinery";
+  }
+
+  return "other";
+}
+
+/**
+ * UNIFIED PDF PARSING ENTRY POINT
+ * 
+ * Parse any quote PDF into structured line items with images.
+ * This is the SINGLE entry point for all PDF parsing in the app.
+ * 
+ * @param buffer - PDF file buffer
+ * @param options - Parsing options (source, currency, supplier hints)
+ * @returns ParsedQuote with structured lines, images, and metadata
+ */
+export async function parseQuotePdf(
+  buffer: Buffer,
+  options: ParseOptions
+): Promise<ParsedQuote> {
+  const {
+    source,
+    currencyFallback = "GBP",
+    supplierHint,
+    debug = false,
+  } = options;
+
+  const warnings: string[] = [];
+
+  try {
+    // Use existing supplier parser as the foundation
+    const { parseSupplierPdf } = await import('./supplier/parse');
+    
+    if (debug) console.log("[parseQuotePdf] Parsing with supplier parser...");
+    const supplierResult = await parseSupplierPdf(buffer, {
+      supplierHint,
+      currencyHint: currencyFallback,
+    });
+
+    if (supplierResult.warnings) {
+      warnings.push(...supplierResult.warnings);
+    }
+
+    // Convert to unified format
+    if (debug) console.log("[parseQuotePdf] Converting to unified format...");
+    const lines: ParsedQuoteLine[] = supplierResult.lines.map((line: any) => {
+      const description = String(line.description || "");
+      const meta = {
+        dimensions: line.dimensions,
+        area: line.area,
+        type: line.type || line.productType,
+        wood: line.wood,
+        finish: line.finish,
+        glass: line.glass,
+        productId: line.productId,
+        rawText: line.rawText,
+      };
+
+      // Attach image if present
+      if (line.imageDataUrl) {
+        meta.imageRef = {
+          page: line.page || 1,
+          hash: line.imageIndex ? `img-${line.imageIndex}` : crypto.randomBytes(6).toString('hex'),
+          dataUrl: line.imageDataUrl,
+          bbox: line.bbox,
+        };
+      }
+
+      const kind = classifyLineKind(description, meta);
+
+      return {
+        id: crypto.randomBytes(8).toString("hex"),
+        kind,
+        description,
+        qty: line.qty ?? null,
+        unitCost: line.costUnit ?? null,
+        lineCost: line.lineTotal ?? null,
+        currency: supplierResult.currency || currencyFallback,
+        meta,
+      };
+    });
+
+    // Build image classification summary
+    const images: ParsedQuote['images'] = [];
+    for (const line of lines) {
+      if (line.meta.imageRef) {
+        images.push({
+          page: line.meta.imageRef.page,
+          index: parseInt(line.meta.imageRef.hash.replace('img-', '')) || 0,
+          hash: line.meta.imageRef.hash,
+          dataUrl: line.meta.imageRef.dataUrl,
+          bbox: line.meta.imageRef.bbox,
+          classification: line.kind === "joinery" ? "joinery_elevation" : "unknown",
+        });
+      }
+    }
+
+    const result: ParsedQuote = {
+      source,
+      supplierName: supplierResult.supplier || supplierHint,
+      currency: supplierResult.currency || currencyFallback,
+      lines,
+      confidence: supplierResult.confidence,
+      warnings: warnings.length ? warnings : undefined,
+      images: images.length ? images : undefined,
+    };
+
+    if (debug) {
+      console.log("[parseQuotePdf] Parsing complete:", {
+        totalLines: result.lines.length,
+        joineryLines: result.lines.filter((l) => l.kind === "joinery").length,
+        deliveryLines: result.lines.filter((l) => l.kind === "delivery").length,
+        linesWithImages: result.lines.filter((l) => l.meta.imageRef).length,
+      });
+    }
+
+    return result;
+  } catch (error: any) {
+    console.error("[parseQuotePdf] Fatal parsing error:", error);
+    warnings.push(`Fatal parsing error: ${error.message}`);
+
+    return {
+      source,
+      currency: currencyFallback,
+      lines: [],
+      warnings,
+      confidence: 0,
+    };
+  }
+}
+
+/**
+ * Convert ParsedQuoteLine to database format
+ */
+export function convertToDbFormat(
+  line: ParsedQuoteLine,
+  options: {
+    quoteId: string;
+    tenantId: string;
+    order?: number;
+  }
+) {
+  return {
+    id: crypto.randomBytes(16).toString("hex"),
+    quoteId: options.quoteId,
+    tenantId: options.tenantId,
+    order: options.order ?? 0,
+    kind: line.kind.toUpperCase(),
+    description: line.description,
+    qty: line.qty,
+    costUnit: line.unitCost,
+    costTotal: line.lineCost,
+    sellUnit: line.unitCost, // Will be adjusted with markup downstream
+    sellTotal: line.lineCost, // Will be adjusted with markup downstream
+    currency: line.currency || "GBP",
+    meta: JSON.stringify(line.meta),
+  };
+}
+
+/**
+ * Extract joinery lines with images for proposal rendering
+ */
+export function extractJoineryLinesWithImages(
+  parsedQuote: ParsedQuote
+): Array<ParsedQuoteLine & { imageDataUrl: string }> {
+  return parsedQuote.lines
+    .filter(
+      (line): line is ParsedQuoteLine & { meta: { imageRef: NonNullable<ParsedQuoteLine['meta']['imageRef']> } } =>
+        line.kind === "joinery" && !!line.meta.imageRef?.dataUrl
+    )
+    .map((line) => ({
+      ...line,
+      imageDataUrl: line.meta.imageRef!.dataUrl!,
+    }));
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -540,4 +817,7 @@ export const pdfParsing = {
   attachImagesToLines,
   hashImage,
   parseFromPlainText,
+  parseQuotePdf,
+  convertToDbFormat,
+  extractJoineryLinesWithImages,
 };

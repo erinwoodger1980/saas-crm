@@ -276,6 +276,49 @@ export default function QuoteBuilderPage() {
     [quoteId, mutateQuote, toast],
   );
 
+  const handleUploadOwnQuote = useCallback(
+    async (files: FileList | null) => {
+      if (!quoteId || !files || files.length === 0) return;
+      setIsUploadingOwnQuote(true);
+      setError(null);
+      try {
+        // Upload files as supplier files
+        for (const file of Array.from(files)) {
+          await uploadSupplierPdf(quoteId, file);
+        }
+        
+        // Parse without transformations
+        const res = await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/process-supplier`, {
+          method: 'POST',
+          body: JSON.stringify({
+            convertCurrency: false,
+            distributeDelivery: false,
+            hideDeliveryLine: false,
+            applyMarkup: false,
+          }),
+        });
+        
+        toast({ 
+          title: "Own quote processed", 
+          description: `${res.count} line items extracted without modifications` 
+        });
+        
+        await Promise.all([mutateQuote(), mutateLines()]);
+        setActiveTab("quote-lines");
+      } catch (err: any) {
+        setError(err?.message || "Upload failed");
+        toast({ 
+          title: "Upload failed", 
+          description: err?.message || "Unable to process own quote", 
+          variant: "destructive" 
+        });
+      } finally {
+        setIsUploadingOwnQuote(false);
+      }
+    },
+    [quoteId, mutateQuote, mutateLines, toast],
+  );
+
   const _handleSaveMappings = useCallback(async () => {
     if (!quoteId) return;
     setIsSavingMappings(true);
@@ -339,6 +382,14 @@ export default function QuoteBuilderPage() {
 
   const handleQuestionnaireEstimate = useCallback(async () => {
     if (!quoteId) return;
+    if (!leadId) {
+      toast({
+        title: "Cannot generate estimate",
+        description: "Quote must be linked to a lead to generate ML estimates",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsEstimating(true);
     setIsPricing(true);
     try {
@@ -905,13 +956,62 @@ export default function QuoteBuilderPage() {
                   </ul>
                 </div>
 
-                {/* Placeholder for upload - will implement in next phase */}
-                <div className="text-center py-8 border-2 border-dashed border-muted rounded-xl">
-                  <FileUp className="h-12 w-12 mx-auto mb-4 opacity-40" />
-                  <h3 className="text-lg font-medium mb-2">Own quote upload</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Coming soon - upload your own quote PDFs
-                  </p>
+                {/* Upload area */}
+                <div className="space-y-4">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    multiple
+                    onChange={(e) => handleUploadOwnQuote(e.target.files)}
+                    className="hidden"
+                  />
+                  
+                  <div 
+                    className="text-center py-8 border-2 border-dashed border-muted rounded-xl hover:border-primary/50 transition-colors cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <FileUp className="h-12 w-12 mx-auto mb-4 opacity-40" />
+                    <h3 className="text-lg font-medium mb-2">Upload your quote</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Click to browse or drag PDF files here
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                      disabled={isUploadingOwnQuote}
+                    >
+                      {isUploadingOwnQuote ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <FileUp className="h-4 w-4 mr-2" />
+                          Select PDF
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  
+                  {quote?.supplierFiles && quote.supplierFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium">Uploaded files:</h4>
+                      {quote.supplierFiles.map((file) => (
+                        <div key={file.id} className="flex items-center gap-2 text-sm p-2 rounded border">
+                          <FileText className="h-4 w-4" />
+                          <span>{file.name}</span>
+                          <span className="text-muted-foreground">
+                            ({(file.sizeBytes ? file.sizeBytes / 1024 : 0).toFixed(1)} KB)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </TabsContent>

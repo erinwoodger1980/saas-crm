@@ -699,3 +699,180 @@ export async function retrainModel(opts: { tenantId: string; module: ModuleName;
   });
   return { ok: true } as const;
 }
+
+/**
+ * Record a confirmed quote for ML training
+ * 
+ * Called when a quote is accepted, sent, or won to feed the ML estimator
+ * with real-world quote data including:
+ * - Original parsed lines from PDF (supplier or user quote)
+ * - Final confirmed quote lines with sell prices
+ * - Metadata (source, supplier, currency, totals)
+ * 
+ * This creates a complete training example for the ML model to learn from.
+ * 
+ * @param quoteId - ID of the quote to record
+ */
+export async function recordQuoteForTraining(quoteId: string): Promise<void> {
+  try {
+    // Load the quote and related data
+    const quote = await prisma.quote.findUnique({
+      where: { id: quoteId },
+      include: {
+        lead: {
+          select: {
+            id: true,
+            tenantId: true,
+            projectType: true,
+            meta: true,
+          },
+        },
+        lines: {
+          where: { kind: { not: "DELETED" } },
+          orderBy: { order: "asc" },
+        },
+      },
+    });
+
+    if (!quote) {
+      console.warn(`[recordQuoteForTraining] Quote ${quoteId} not found`);
+      return;
+    }
+
+    if (!quote.lead) {
+      console.warn(`[recordQuoteForTraining] Quote ${quoteId} has no associated lead`);
+      return;
+    }
+
+    const tenantId = quote.lead.tenantId;
+
+    // Check if we've already recorded this quote to avoid duplicates
+    const existing = await logInferenceEvent({
+      tenantId,
+      module: "estimator",
+      kind: "quote_training",
+      input: { quoteId },
+      output: { status: "check" },
+    });
+
+    // Skip if already recorded (check by looking for recent training events)
+    const recentTraining = await prisma.$queryRaw<any[]>`
+      SELECT id FROM "InferenceEvent"
+      WHERE "tenantId" = ${tenantId}
+        AND module = 'estimator'
+        AND kind = 'quote_training'
+        AND input::jsonb @> ${{quoteId: quoteId}}::jsonb
+        AND "createdAt" > NOW() - INTERVAL '7 days'
+      LIMIT 1
+    `;
+
+    if (recentTraining && recentTraining.length > 0) {
+      console.log(`[recordQuoteForTraining] Quote ${quoteId} already recorded recently, skipping`);
+      return;
+    }
+
+    // Extract parsed lines from quote.meta (if available from original PDF parse)
+    const parsedLines = quote.meta && typeof quote.meta === 'object' 
+      ? (quote.meta as any).parsedLines || (quote.meta as any).originalLines || []
+      : [];
+
+    // Build final confirmed lines
+    const finalLines = quote.lines.map((line) => ({
+      id: line.id,
+      kind: line.kind,
+      description: line.description,
+      qty: line.qty,
+      costUnit: line.costUnit,
+      costTotal: line.costTotal,
+      sellUnit: line.sellUnit,
+      sellTotal: line.sellTotal,
+      currency: line.currency,
+      meta: line.meta,
+    }));
+
+    // Calculate totals
+    const costTotal = finalLines.reduce((sum, line) => sum + (line.costTotal || 0), 0);
+    const sellTotal = finalLines.reduce((sum, line) => sum + (line.sellTotal || 0), 0);
+    const margin = sellTotal - costTotal;
+    const marginPercent = costTotal > 0 ? (margin / costTotal) * 100 : 0;
+
+    // Extract source information
+    const source = quote.meta && typeof quote.meta === 'object'
+      ? (quote.meta as any).source || 'unknown'
+      : 'unknown';
+
+    const supplierName = quote.meta && typeof quote.meta === 'object'
+      ? (quote.meta as any).supplierName || (quote.meta as any).supplier
+      : undefined;
+
+    // Build training record
+    const trainingRecord = {
+      quoteId: quote.id,
+      leadId: quote.leadId,
+      tenantId,
+      source, // 'supplier' | 'user_quote' | 'historic'
+      supplierName,
+      currency: quote.currency || 'GBP',
+      projectType: quote.lead.projectType,
+      
+      // Parsed lines from original PDF
+      parsedLines,
+      
+      // Final confirmed lines
+      finalLines,
+      
+      // Totals and margins
+      totals: {
+        costTotal,
+        sellTotal,
+        margin,
+        marginPercent,
+        lineCount: finalLines.length,
+      },
+      
+      // Questionnaire answers (if available)
+      questionnaireAnswers: quote.lead.meta && typeof quote.lead.meta === 'object'
+        ? (quote.lead.meta as any).questionnaireAnswers
+        : undefined,
+      
+      // Timestamps
+      quotedAt: quote.createdAt,
+      recordedAt: new Date(),
+    };
+
+    // Log as inference event for ML training
+    await logInferenceEvent({
+      tenantId,
+      module: "estimator",
+      kind: "quote_training",
+      input: {
+        quoteId,
+        leadId: quote.leadId,
+        source,
+        supplierName,
+        projectType: quote.lead.projectType,
+        lineCount: finalLines.length,
+      },
+      output: trainingRecord,
+    });
+
+    // Also log as insight with summary
+    await logInsight({
+      tenantId,
+      module: "estimator",
+      inputSummary: `${source} quote: ${finalLines.length} lines, ${quote.currency} ${sellTotal.toFixed(2)}`,
+      decision: `Recorded for training: margin ${marginPercent.toFixed(1)}%`,
+      confidence: 1.0,
+      userFeedback: {
+        type: "quote_accepted",
+        quoteId,
+        source,
+      },
+    });
+
+    console.log(`[recordQuoteForTraining] Successfully recorded quote ${quoteId} for ML training`);
+  } catch (error: any) {
+    console.error(`[recordQuoteForTraining] Failed for quote ${quoteId}:`, error);
+    // Don't throw - training data collection should not break the main workflow
+  }
+}
