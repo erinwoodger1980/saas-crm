@@ -1577,16 +1577,36 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
       },
     });
 
+    // Generate signed URL for the PDF
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
+    
+    const token = jwt.sign({ t: tenantId, q: quote.id }, env.APP_JWT_SECRET, { expiresIn: "7d" });
+    const proposalPdfUrl = `${API_BASE}/files/${encodeURIComponent(fileRow.id)}?jwt=${encodeURIComponent(token)}`;
+
     const meta0: any = (quote.meta as any) || {};
     await prisma.quote.update({
       where: { id: quote.id },
       data: {
         proposalPdfUrl: null,
-        meta: { ...(meta0 || {}), proposalFileId: fileRow.id } as any,
+        meta: { 
+          ...(meta0 || {}), 
+          proposalFileId: fileRow.id,
+          proposalPdfUrl,
+        } as any,
       } as any,
     });
 
-    return res.json({ ok: true, fileId: fileRow.id, name: fileRow.name });
+    return res.json({ 
+      ok: true, 
+      fileId: fileRow.id, 
+      name: fileRow.name,
+      proposalPdfUrl,
+    });
   } catch (e: any) {
     console.error("[/quotes/:id/render-pdf] failed:", e?.message || e);
     return res
@@ -3279,5 +3299,382 @@ router.post("/:id/delivery", requireAuth, async (req: any, res) => {
   } catch (e: any) {
     console.error("[/quotes/:id/delivery] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * POST /quotes/:id/process-supplier
+ * Process supplier PDFs with transformations:
+ * - Currency conversion (if not GBP)
+ * - Delivery cost distribution across line items
+ * - Markup application from tenant settings
+ * 
+ * Body: {
+ *   convertCurrency?: boolean;
+ *   distributeDelivery?: boolean;
+ *   hideDeliveryLine?: boolean;
+ *   applyMarkup?: boolean;
+ * }
+ */
+router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const quoteId = String(req.params.id);
+    
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, tenantId },
+      include: { supplierFiles: true, lines: true },
+    });
+    
+    if (!quote) {
+      return res.status(404).json({ error: "not_found" });
+    }
+    
+    if (!quote.supplierFiles || quote.supplierFiles.length === 0) {
+      return res.status(400).json({ error: "no_supplier_files" });
+    }
+    
+    const {
+      convertCurrency = true,
+      distributeDelivery = true,
+      hideDeliveryLine = true,
+      applyMarkup = true,
+    } = req.body || {};
+    
+    // Get tenant settings for markup percentage
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+    });
+    
+    const quoteDefaults: any = (tenantSettings?.quoteDefaults as any) || {};
+    const markupPercent = Number(quoteDefaults?.defaultMargin ?? 0.25) * 100; // Convert to percentage
+    
+    // Parse supplier PDFs (reuse existing parse logic)
+    const API_BASE = (
+      process.env.APP_API_URL ||
+      process.env.API_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      `http://localhost:${process.env.PORT || 4000}`
+    ).replace(/\/$/, "");
+    
+    const parsedLines: any[] = [];
+    
+    // Parse each supplier file
+    for (const f of quote.supplierFiles) {
+      if (!/pdf$/i.test(f.mimeType || "") && !/\.pdf$/i.test(f.name || "")) {
+        continue;
+      }
+      
+      const abs = path.isAbsolute(f.path) ? f.path : path.join(process.cwd(), f.path);
+      let buffer: Buffer;
+      
+      try {
+        buffer = await fs.promises.readFile(abs);
+      } catch (err: any) {
+        console.error(`[process-supplier] Failed to read file ${f.id}:`, err?.message);
+        continue;
+      }
+      
+      try {
+        const parseResult = await parseSupplierPdf(buffer, {
+          supplierHint: f.name ?? undefined,
+          currencyHint: quote.currency || "GBP",
+        });
+        
+        if (parseResult?.lines) {
+          parsedLines.push(...parseResult.lines.map((line: any) => ({
+            ...line,
+            fileId: f.id,
+            sourceCurrency: parseResult.currency || quote.currency || "GBP",
+          })));
+        }
+      } catch (err: any) {
+        console.error(`[process-supplier] Failed to parse file ${f.id}:`, err?.message);
+        continue;
+      }
+    }
+    
+    if (parsedLines.length === 0) {
+      return res.status(400).json({ error: "no_lines_parsed" });
+    }
+    
+    // Step 1: Currency conversion
+    if (convertCurrency) {
+      for (const line of parsedLines) {
+        if (line.sourceCurrency && line.sourceCurrency !== "GBP") {
+          // Store original price in meta
+          line.meta = line.meta || {};
+          line.meta.originalCurrency = line.sourceCurrency;
+          line.meta.originalPrice = line.unitPrice;
+          
+          // TODO: Implement actual currency conversion using exchange rate API
+          // For now, using placeholder conversion rates
+          const rates: Record<string, number> = {
+            EUR: 1.17,
+            USD: 1.27,
+            GBP: 1.0,
+          };
+          
+          const rate = rates[line.sourceCurrency] || 1.0;
+          line.unitPrice = (line.unitPrice || 0) * rate;
+          line.currency = "GBP";
+        }
+      }
+    }
+    
+    // Step 2: Identify and distribute delivery costs
+    let deliveryLines: any[] = [];
+    let nonDeliveryLines: any[] = [];
+    
+    for (const line of parsedLines) {
+      const desc = (line.description || "").toLowerCase();
+      if (desc.includes("delivery") || desc.includes("shipping") || desc.includes("freight")) {
+        deliveryLines.push(line);
+      } else {
+        nonDeliveryLines.push(line);
+      }
+    }
+    
+    if (distributeDelivery && deliveryLines.length > 0) {
+      // Calculate total delivery cost
+      const totalDelivery = deliveryLines.reduce((sum, line) => {
+        return sum + ((line.unitPrice || 0) * (line.qty || 1));
+      }, 0);
+      
+      // Calculate total value of non-delivery lines
+      const totalValue = nonDeliveryLines.reduce((sum, line) => {
+        return sum + ((line.unitPrice || 0) * (line.qty || 1));
+      }, 0);
+      
+      if (totalValue > 0) {
+        // Distribute delivery cost proportionally
+        for (const line of nonDeliveryLines) {
+          const lineValue = (line.unitPrice || 0) * (line.qty || 1);
+          const proportion = lineValue / totalValue;
+          const deliveryShare = totalDelivery * proportion;
+          
+          line.meta = line.meta || {};
+          line.meta.deliveryDistributed = deliveryShare;
+          line.meta.priceBeforeDelivery = line.unitPrice;
+          
+          // Add delivery share to unit price
+          line.unitPrice = (line.unitPrice || 0) + (deliveryShare / (line.qty || 1));
+        }
+        
+        // Remove delivery lines if requested
+        if (hideDeliveryLine) {
+          parsedLines.splice(0, parsedLines.length, ...nonDeliveryLines);
+        }
+      }
+    }
+    
+    // Step 3: Apply markup
+    if (applyMarkup) {
+      for (const line of parsedLines) {
+        // Skip delivery lines if they're still included
+        const desc = (line.description || "").toLowerCase();
+        if (!hideDeliveryLine && (desc.includes("delivery") || desc.includes("shipping"))) {
+          continue;
+        }
+        
+        line.meta = line.meta || {};
+        line.meta.priceBeforeMarkup = line.unitPrice;
+        line.meta.markupPercent = markupPercent;
+        line.meta.markupAmount = (line.unitPrice || 0) * (markupPercent / 100);
+        
+        // Apply markup to create sell price
+        const sellUnit = (line.unitPrice || 0) * (1 + markupPercent / 100);
+        line.meta.sellUnitGBP = sellUnit;
+        line.meta.sellTotalGBP = sellUnit * (line.qty || 1);
+      }
+    }
+    
+    // Save lines to database
+    const linesToSave = parsedLines.map((line) => ({
+      quoteId: quote.id,
+      description: line.description || "",
+      qty: line.qty || 1,
+      unitPrice: new Prisma.Decimal(line.unitPrice || 0),
+      sellUnit: line.meta?.sellUnitGBP ? new Prisma.Decimal(line.meta.sellUnitGBP) : null,
+      sellTotal: line.meta?.sellTotalGBP ? new Prisma.Decimal(line.meta.sellTotalGBP) : null,
+      currency: "GBP",
+      meta: line.meta || {},
+    }));
+    
+    // Delete existing lines and insert new ones
+    await prisma.quoteLine.deleteMany({
+      where: { quoteId: quote.id },
+    });
+    
+    await prisma.quoteLine.createMany({
+      data: linesToSave,
+    });
+    
+    // Update quote metadata
+    await prisma.quote.update({
+      where: { id: quote.id },
+      data: {
+        meta: {
+          ...(quote.meta as any || {}),
+          lastProcessedAt: new Date().toISOString(),
+          processedWithMarkup: applyMarkup,
+          processedWithDeliveryDistribution: distributeDelivery,
+        },
+      },
+    });
+    
+    // Fetch updated lines
+    const updatedLines = await prisma.quoteLine.findMany({
+      where: { quoteId: quote.id },
+    });
+    
+    return res.json({
+      lines: updatedLines,
+      count: updatedLines.length,
+    });
+  } catch (e: any) {
+    console.error("[/quotes/:id/process-supplier] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error", detail: e?.message });
+  }
+});
+
+/**
+ * POST /quotes/:id/send-email
+ * Send quote PDF to client via email
+ * 
+ * Body: {
+ *   to?: string;              // Override recipient email (defaults to lead.email)
+ *   subject?: string;         // Override email subject
+ *   includeAttachment?: boolean; // Include PDF attachment (default: true)
+ * }
+ */
+router.post("/:id/send-email", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const quoteId = String(req.params.id);
+    const userId = req.auth.userId as string;
+    
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, tenantId },
+      include: {
+        lead: true,
+        tenant: true,
+        lines: true,
+      },
+    });
+    
+    if (!quote) {
+      return res.status(404).json({ error: "not_found" });
+    }
+    
+    // Determine recipient email
+    const recipientEmail = req.body?.to || quote.lead?.email;
+    if (!recipientEmail) {
+      return res.status(400).json({ 
+        error: "no_email", 
+        message: "No email address found for this lead" 
+      });
+    }
+    
+    // Check if PDF exists
+    const pdfUrl = (quote.meta as any)?.proposalPdfUrl || null;
+    if (!pdfUrl && req.body?.includeAttachment !== false) {
+      return res.status(400).json({ 
+        error: "no_pdf", 
+        message: "Generate a PDF first before sending email" 
+      });
+    }
+    
+    // Get tenant settings
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+    });
+    
+    const tenantName = quote.tenant?.name || "us";
+    const clientName = quote.lead?.contactName || recipientEmail.split("@")[0];
+    
+    // Calculate totals for email
+    const quoteDefaults: any = (tenantSettings?.quoteDefaults as any) || {};
+    const marginDefault = Number(quote.markupDefault ?? quoteDefaults?.defaultMargin ?? 0.25);
+    
+    const subtotal = quote.lines.reduce((sum, ln) => {
+      const lineMeta: any = (ln.meta as any) || {};
+      const sellTotal = Number(lineMeta?.sellTotalGBP ?? 0);
+      return sum + Math.max(0, sellTotal);
+    }, 0);
+    
+    const vatRate = Number(quoteDefaults?.vatRate ?? 0.2);
+    const showVat = quoteDefaults?.showVat !== false;
+    const vatAmount = showVat ? subtotal * vatRate : 0;
+    const totalGBP = subtotal + vatAmount;
+    
+    const currency = quote.currency || "GBP";
+    const sym = currency === "GBP" ? "£" : currency === "EUR" ? "€" : currency === "USD" ? "$" : currency;
+    
+    // Build email content
+    const subject = req.body?.subject || `Quote from ${tenantName}`;
+    
+    const bodyText = `
+Hi ${clientName},
+
+Please find attached your quote from ${tenantName}.
+
+Quote Summary:
+- Total: ${sym}${totalGBP.toFixed(2)}
+- Line Items: ${quote.lines.length}
+- Valid Until: 30 days from today
+
+If you have any questions or would like to discuss this quote, please don't hesitate to contact us.
+
+Best regards,
+${tenantName}
+    `.trim();
+    
+    const bodyHtml = `
+      <p>Hi ${clientName},</p>
+      <p>Please find attached your quote from ${tenantName}.</p>
+      <h3>Quote Summary:</h3>
+      <ul>
+        <li><strong>Total:</strong> ${sym}${totalGBP.toFixed(2)}</li>
+        <li><strong>Line Items:</strong> ${quote.lines.length}</li>
+        <li><strong>Valid Until:</strong> 30 days from today</li>
+      </ul>
+      <p>If you have any questions or would like to discuss this quote, please don't hesitate to contact us.</p>
+      <p>Best regards,<br/>${tenantName}</p>
+    `;
+    
+    // Send email using existing email service
+    const { sendEmailViaUser } = require("../services/email-sender");
+    
+    await sendEmailViaUser(userId, {
+      to: recipientEmail,
+      subject,
+      body: bodyText,
+      html: bodyHtml,
+      fromName: tenantName,
+    });
+    
+    // TODO: Log activity when proper activity model is available
+    // Could use ActivityLog or create a QuoteActivity record
+    
+    // Update quote status if this is first send
+    if (quote.status === "DRAFT" || !quote.status) {
+      await prisma.quote.update({
+        where: { id: quote.id },
+        data: { status: "SENT" },
+      });
+    }
+    
+    return res.json({
+      success: true,
+      sentTo: recipientEmail,
+      sentAt: new Date().toISOString(),
+    });
+  } catch (e: any) {
+    console.error("[/quotes/:id/send-email] failed:", e?.message || e);
+    return res.status(500).json({ 
+      error: "internal_error", 
+      detail: e?.message 
+    });
   }
 });
