@@ -1,60 +1,77 @@
-// Unified timeline that combines communication logs, tasks, and follow-ups
-import { useState } from "react";
+/**
+ * Unified Activity Timeline
+ * 
+ * Single, integrated view of all lead activity:
+ * - Notes, calls, emails
+ * - Tasks and follow-ups
+ * - Status changes
+ * - Quote events
+ * 
+ * Features:
+ * - Live updates via SWR
+ * - Optimistic UI updates
+ * - Date grouping
+ * - Type-specific icons and formatting
+ */
+
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { 
+  FileText, 
+  CheckSquare, 
+  Mail, 
+  Phone, 
+  TrendingUp, 
+  FileSignature,
+  Calendar,
+  Clock,
+  Plus,
+  X,
+} from "lucide-react";
+import { 
+  ActivityEvent, 
+  groupActivitiesByDate,
+  getActivityTimestamp,
+} from "@/lib/activity-types";
 
 type CommunicationType = 'call' | 'email' | 'note';
 
-type CommunicationEntry = {
-  id: string;
-  type: CommunicationType;
-  content: string;
-  timestamp: string;
-};
-
-type Task = {
-  id: string;
-  title: string;
-  description?: string;
-  status: string;
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  dueAt?: string;
-  createdAt?: string;
-  completedAt?: string;
-  meta?: {
-    type?: string;
-    leadEmail?: string;
-  };
-};
-
-type TimelineItem = {
-  type: 'communication' | 'task';
-  timestamp: number;
-  data: CommunicationEntry | Task;
-};
-
 interface UnifiedActivityTimelineProps {
-  communications: CommunicationEntry[];
-  tasks: Task[];
-  onAddCommunication: (type: CommunicationType, content: string) => Promise<void>;
+  // All activities come from the unified hook
+  activities: ActivityEvent[];
+  isLoading?: boolean;
+  
+  // Action handlers
+  onAddNote: (content: string) => Promise<void>;
+  onAddCall: (summary: string) => Promise<void>;
+  onAddEmail: (summary: string) => Promise<void>;
   onCreateTask: (task: {
     title: string;
     description: string;
-    priority: Task['priority'];
+    priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
     dueAt: string;
   }) => Promise<void>;
   onCompleteTask: (taskId: string) => Promise<void>;
-  onComposeEmail: (taskId: string) => void;
-  loading?: boolean;
+  onComposeEmail?: (taskId: string) => void;
+  
+  // Quick actions
+  onScheduleEmailFollowup?: () => Promise<void>;
+  onSchedulePhoneFollowup?: () => Promise<void>;
+  onCreateAutoSequence?: () => Promise<void>;
 }
 
 export function UnifiedActivityTimeline({
-  communications,
-  tasks,
-  onAddCommunication,
+  activities,
+  isLoading = false,
+  onAddNote,
+  onAddCall,
+  onAddEmail,
   onCreateTask,
   onCompleteTask,
   onComposeEmail,
-  loading = false,
+  onScheduleEmailFollowup,
+  onSchedulePhoneFollowup,
+  onCreateAutoSequence,
 }: UnifiedActivityTimelineProps) {
   const [activeTab, setActiveTab] = useState<'timeline' | 'add-note' | 'add-task'>('timeline');
   const [communicationType, setCommunicationType] = useState<CommunicationType>('note');
@@ -62,48 +79,47 @@ export function UnifiedActivityTimeline({
   const [taskForm, setTaskForm] = useState({
     title: '',
     description: '',
-    priority: 'MEDIUM' as Task['priority'],
+    priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
     dueAt: '',
   });
   const [saving, setSaving] = useState(false);
 
-  // Combine and sort timeline items
-  const timelineItems: TimelineItem[] = [
-    ...communications.map(comm => ({
-      type: 'communication' as const,
-      timestamp: new Date(comm.timestamp).getTime(),
-      data: comm,
-    })),
-    ...tasks.map(task => ({
-      type: 'task' as const,
-      timestamp: task.createdAt ? new Date(task.createdAt).getTime() : Date.now(),
-      data: task,
-    })),
-  ].sort((a, b) => b.timestamp - a.timestamp);
+  // Group activities by date
+  const groupedActivities = groupActivitiesByDate(activities);
 
-  const handleAddNote = async () => {
+  const handleAddCommunication = useCallback(async () => {
     if (!noteContent.trim()) return;
     setSaving(true);
     try {
-      await onAddCommunication(communicationType, noteContent);
+      if (communicationType === 'note') {
+        await onAddNote(noteContent);
+      } else if (communicationType === 'call') {
+        await onAddCall(noteContent);
+      } else if (communicationType === 'email') {
+        await onAddEmail(noteContent);
+      }
       setNoteContent('');
       setActiveTab('timeline');
+    } catch (error) {
+      console.error('Failed to add communication:', error);
     } finally {
       setSaving(false);
     }
-  };
+  }, [noteContent, communicationType, onAddNote, onAddCall, onAddEmail]);
 
-  const handleCreateTask = async () => {
+  const handleCreateTask = useCallback(async () => {
     if (!taskForm.title.trim()) return;
     setSaving(true);
     try {
       await onCreateTask(taskForm);
       setTaskForm({ title: '', description: '', priority: 'MEDIUM', dueAt: '' });
       setActiveTab('timeline');
+    } catch (error) {
+      console.error('Failed to create task:', error);
     } finally {
       setSaving(false);
     }
-  };
+  }, [taskForm, onCreateTask]);
 
   return (
     <div className="space-y-4">
