@@ -667,7 +667,9 @@ export async function parseSupplierPdf(
       workingParse.images = extractedImages;
       
       // Enhanced: Extract structured product data from text near images
-      const fullText = rawText || "";
+      // Get the full text from the PDF for product ID matching
+      const extraction = extractStructuredText(buffer);
+      const fullText = extraction?.rawText || "";
       
       // Map images to lines based on page, proximity, and text analysis
       workingParse.lines = workingParse.lines.map((line, lineIndex) => {
