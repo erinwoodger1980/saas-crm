@@ -47,6 +47,7 @@ type Settings = {
   taskPlaybook?: TaskPlaybook | null;
   questionnaireEmailSubject?: string | null;
   questionnaireEmailBody?: string | null;
+  isFireDoorManufacturer?: boolean;
   emailTemplates?: {
     declineQuote?: { subject: string; body: string };
     requestSupplierQuote?: { subject: string; body: string };
@@ -414,7 +415,7 @@ export default function SettingsPage() {
         inbox,
         questionnaire: serializeQuestionnaire(qFields),
         taskPlaybook: playbook,
-        isFireDoorManufacturer: (s as any)?.isFireDoorManufacturer,
+        isFireDoorManufacturer: s?.isFireDoorManufacturer,
       } as any;
 
       const updated = await apiFetch<Settings>("/tenant/settings", { method: "PATCH", json: payload });
@@ -1390,8 +1391,8 @@ export default function SettingsPage() {
     <label className="flex items-center gap-2">
       <input
         type="checkbox"
-        checked={!!(s as any)?.isFireDoorManufacturer}
-        onChange={(e) => setS((prev) => (prev ? { ...prev, isFireDoorManufacturer: e.target.checked } as any : prev))}
+        checked={!!s?.isFireDoorManufacturer}
+        onChange={(e) => setS((prev) => (prev ? { ...prev, isFireDoorManufacturer: e.target.checked } : prev))}
       />
       <span>Enable Fire Door Calculator feature</span>
     </label>
