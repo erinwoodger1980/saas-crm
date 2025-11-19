@@ -698,6 +698,38 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const validTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      toast({ title: "Invalid file type", description: "Please upload PNG, JPG, WebP, SVG, or GIF", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const form = new FormData();
+      form.append('logo', file, file.name);
+      const url = `${API_BASE || '/api'}/tenant/settings/upload-logo`;
+      const res = await fetch(url, { method: 'POST', body: form, credentials: 'include' as RequestCredentials });
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data?.error || 'Upload failed');
+
+      // Update settings with new logo URL
+      if (data.logoUrl) {
+        setS((prev) => prev ? { ...prev, logoUrl: data.logoUrl } : prev);
+        toast({ title: 'Logo uploaded successfully', description: 'Your logo has been updated' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Failed to upload logo', description: e?.message || '', variant: 'destructive' });
+    } finally {
+      // Reset input so same file can be reselected
+      e.currentTarget.value = '';
+    }
+  }
+
   async function handleQuotePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1056,7 +1088,7 @@ export default function SettingsPage() {
           onChange={(e) => setProfileLastName(e.target.value)}
         />
       </Field>
-      <Field label="Logo URL" hint="Auto-populated from website import">
+      <Field label="Logo URL" hint="Auto-populated from website import or upload your own">
         <div className="flex gap-2 items-center">
           <input
             className="flex-1 rounded-2xl border bg-white/95 px-4 py-2 text-sm"
@@ -1064,6 +1096,15 @@ export default function SettingsPage() {
             onChange={(e) => setS((prev) => (prev ? { ...prev, logoUrl: e.target.value } : prev))}
             placeholder="https://example.com/logo.png"
           />
+          <label className="inline-flex items-center gap-2 rounded-2xl border bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+              className="hidden"
+              onChange={handleLogoUpload}
+            />
+            📤 Upload
+          </label>
           {s.logoUrl && (
             <span className="inline-flex items-center justify-center w-8 h-8 rounded border overflow-hidden bg-white">
               {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -891,6 +891,65 @@ router.get("/settings/by-slug/:slug", async (req, res) => {
   });
 });
 
+/**
+ * POST /tenant/settings/upload-logo
+ * Upload a logo image and update tenant settings
+ */
+router.post("/settings/upload-logo", upload.single("logo"), async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  if (!req.file || !req.file.buffer) {
+    return res.status(400).json({ error: "logo file is required" });
+  }
+
+  try {
+    const originalname = req.file.originalname;
+    const ext = originalname.split('.').pop()?.toLowerCase() || 'jpg';
+
+    // Validate extension
+    if (!['jpg', 'jpeg', 'png', 'webp', 'svg', 'gif'].includes(ext)) {
+      return res.status(400).json({ error: 'Invalid file type. Use JPG, PNG, WebP, SVG, or GIF' });
+    }
+
+    // Get tenant slug for storage
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { slug: true, id: true },
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    // Store file using existing infrastructure
+    const { publicUrl } = await putObject({
+      tenantSlug: tenant.slug,
+      buffer: req.file.buffer,
+      ext,
+    });
+
+    // Update tenant settings with new logo URL
+    const updated = await prisma.tenantSettings.upsert({
+      where: { tenantId },
+      update: { logoUrl: publicUrl },
+      create: {
+        tenantId,
+        slug: tenant.slug,
+        brandName: "Your Company",
+        logoUrl: publicUrl,
+        questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+        questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+      },
+    });
+
+    res.json({ ok: true, logoUrl: publicUrl, settings: updated });
+  } catch (e: any) {
+    console.error("[upload-logo] failed", e);
+    res.status(500).json({ error: e?.message || "upload failed" });
+  }
+});
+
 /* ============================================================
    INBOX WATCH
 ============================================================ */
