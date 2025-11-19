@@ -1,10 +1,12 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node", "jest"],
-    "rootDir": ".",
-    "outDir": "./.tmp-test"
+    "target": "ES2017",
+    "module": "commonjs",
+    "baseUrl": "./",
+    "paths": {
+      "ml/pdf_parser": ["/Users/Erin/saas-crm/api/ml/pdf_parser.d.ts"]
+    },
+    "strict": true
   },
-  "include": ["src/**/*", "tests/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/lib/testPathsResolution.ts", "src/lib/testImportResolution.ts"]
 }
