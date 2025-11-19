@@ -3703,14 +3703,76 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       }
     }
     
-    // Save lines to database
-    const linesToSave = parsedLines.map((line) => ({
-      quoteId: quote.id,
-      description: line.description || "",
-      qty: line.qty || 1,
-      unitPrice: new Prisma.Decimal(line.unitPrice || 0),
-      currency: "GBP",
-      meta: line.meta || {},
+    // Save lines to database (with numeric sanitization to avoid overflow)
+    const MAX_UNIT_PRICE = 100000; // Upper bound for realistic per-unit supplier costs
+    const MAX_QTY = 10000;         // Guard against OCR producing huge quantities
+    const sanitizeNumber = (raw: any, def = 0) => {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0) return def;
+      if (n > 1e12) return def; // absolute hard cap (corrupt extraction)
+      return n;
+    };
+
+    const cleanedLines = parsedLines
+      .map((line) => {
+        const originalQty = line.qty;
+        const originalUnit = line.unitPrice;
+        const qty = sanitizeNumber(originalQty, 1);
+        let unit = sanitizeNumber(originalUnit, 0);
+
+        // Clamp unrealistic values
+        let clamped = false;
+        if (qty > MAX_QTY) { clamped = true; }
+        if (unit > MAX_UNIT_PRICE) { clamped = true; }
+        const finalQty = Math.min(qty, MAX_QTY);
+        const finalUnit = Math.min(unit, MAX_UNIT_PRICE);
+
+        if (finalQty <= 0) return null; // discard nonsensical
+
+        // Update meta with sanitization info
+        line.meta = line.meta || {};
+        if (clamped || finalQty !== originalQty || finalUnit !== originalUnit) {
+          line.meta.sanitized = true;
+          line.meta.originalValues = { qty: originalQty, unitPrice: originalUnit };
+          line.meta.finalValues = { qty: finalQty, unitPrice: finalUnit };
+        }
+
+        return {
+          quoteId: quote.id,
+          description: line.description || "Item",
+          qty: finalQty,
+          unitPrice: finalUnit,
+          currency: "GBP",
+          meta: line.meta,
+        };
+      })
+      .filter(Boolean) as Array<{
+        quoteId: string;
+        description: string;
+        qty: number;
+        unitPrice: number;
+        currency: string;
+        meta: any;
+      }>;
+
+    if (!cleanedLines.length) {
+      return res.status(400).json({
+        error: "parse_sanitized_empty",
+        detail: "All parsed lines discarded due to invalid numeric values",
+      });
+    }
+
+    const linesToSave = cleanedLines.map((line) => ({
+      quoteId: line.quoteId,
+      description: line.description,
+      qty: new Prisma.Decimal(line.qty),
+      unitPrice: new Prisma.Decimal(line.unitPrice),
+      currency: line.currency,
+      // Provide computed totals into meta; database lineTotalGBP will default or can be derived later
+      meta: {
+        ...(line.meta || {}),
+        lineTotalComputedGBP: line.unitPrice * line.qty,
+      },
     }));
     
     // Delete existing lines and insert new ones
