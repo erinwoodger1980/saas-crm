@@ -414,6 +414,7 @@ export default function SettingsPage() {
         inbox,
         questionnaire: serializeQuestionnaire(qFields),
         taskPlaybook: playbook,
+        isFireDoorManufacturer: (s as any)?.isFireDoorManufacturer,
       } as any;
 
       const updated = await apiFetch<Settings>("/tenant/settings", { method: "PATCH", json: payload });
