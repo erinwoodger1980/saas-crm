@@ -96,12 +96,12 @@ export function ParsedLinesTable({
 
   return (
     <>
-    <Card className="rounded-2xl shadow-sm">
-      <CardHeader className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <CardTitle className="text-xl font-semibold tracking-tight">Quote line items</CardTitle>
-          <p className="text-sm text-muted-foreground">Review and edit line items from all sources (supplier PDFs, ML estimates, manual entry)</p>
-        </div>
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-xl font-semibold tracking-tight">Quote line items</CardTitle>
+            <p className="text-sm text-muted-foreground">Review and edit line items from all sources (supplier PDFs, ML estimates, manual entry)</p>
+          </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {isParsing && (
             <Badge variant="secondary" className="flex items-center gap-1">
@@ -157,7 +157,7 @@ export function ParsedLinesTable({
                   const unitPrice = draft?.unitPrice ?? normalizeNumber(line.unitPrice);
                   const sellUnit = normalizeNumber(line.meta?.sellUnitGBP ?? line.meta?.sell_unit ?? line.sellUnit);
                   const sellTotal = normalizeNumber(line.meta?.sellTotalGBP ?? line.meta?.sell_total ?? line.sellTotal);
-                  const hasError = qty != null && qty < 0 || unitPrice != null && unitPrice < 0;
+                  const hasError = (qty != null && qty < 0) || (unitPrice != null && unitPrice < 0);
                   const imageFileId = line.meta?.imageFileId;
                   const imageUrl = imageFileId ? imageUrlMap[imageFileId] : undefined;
 
@@ -238,7 +238,7 @@ export function ParsedLinesTable({
                       </td>
                     </tr>
                   );
-                )}
+                })}
                 {(lines ?? []).length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
@@ -262,24 +262,24 @@ export function ParsedLinesTable({
           </div>
         </div>
       </CardContent>
-    </Card>
+      </Card>
 
-    <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
-      <DialogContent className="max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>Line item image</DialogTitle>
-        </DialogHeader>
-        {selectedImage && (
-          <div className="flex items-center justify-center">
-            <img 
-              src={selectedImage} 
-              alt="Line item full size"
-              className="max-w-full max-h-[70vh] object-contain rounded"
-            />
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+      <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Line item image</DialogTitle>
+          </DialogHeader>
+          {selectedImage && (
+            <div className="flex items-center justify-center">
+              <img 
+                src={selectedImage} 
+                alt="Line item full size"
+                className="max-w-full max-h-[70vh] object-contain rounded"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
