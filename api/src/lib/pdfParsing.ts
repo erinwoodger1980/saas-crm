@@ -11,7 +11,7 @@
  */
 
 import * as crypto from 'crypto';
-import { _is_gibberish } from '../../../../ml/pdf_parser';
+import { _is_gibberish } from 'ml/pdf_parser';
 
 // ============================================================================
 // TYPE DEFINITIONS

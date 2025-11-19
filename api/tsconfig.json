@@ -13,7 +13,11 @@
     "resolveJsonModule": true,
 
     "verbatimModuleSyntax": false,
-  "types": ["node", "jest"]
+    "types": ["node", "jest"],
+    "baseUrl": ".",
+    "paths": {
+      "ml/*": ["./src/ml/*"]
+    }
   },
   "include": ["src/**/*", "src/types/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]
