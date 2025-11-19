@@ -3498,7 +3498,9 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       `http://localhost:${process.env.PORT || 4000}`
     ).replace(/\/$/, "");
     
-    const parsedLines: any[] = [];
+  const parsedLines: any[] = [];
+  let gibberishCount = 0;
+  const skippedGibberishSamples: string[] = [];
     
     // Helper functions for robust field extraction (same as in parse endpoint)
     const pickQty = (ln: any): number | null => {
@@ -3588,8 +3590,32 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
               unitPrice = 0;
             }
             
+            // Quality filtering to remove gibberish OCR lines
+            const desc = String(description || "").trim();
+            const quality = (() => {
+              if (!desc) return 0;
+              const len = desc.length;
+              if (len < 3) return 0; // too short
+              const printable = desc.replace(/[\r\n]/g, "").split("").filter(ch => /[\x20-\x7E]/.test(ch)).length;
+              const asciiRatio = printable / len;
+              const alphaNum = desc.replace(/[^A-Za-z0-9]/g, "").length / len;
+              const weirdChars = desc.replace(/[A-Za-z0-9\s£€$.,\-\/()%]/g, "").length / len;
+              let score = 0;
+              if (asciiRatio > 0.85) score += 0.4; else if (asciiRatio > 0.7) score += 0.25;
+              if (alphaNum > 0.4) score += 0.4; else if (alphaNum > 0.25) score += 0.25;
+              if (weirdChars < 0.15) score += 0.2; else if (weirdChars < 0.3) score += 0.1;
+              return Math.min(1, score);
+            })();
+            const isGibberish = quality < 0.5;
+            if (isGibberish) {
+              // Skip but record a sample for diagnostics (limit meta array growth)
+              skippedGibberishSamples.push(desc.slice(0, 140));
+              gibberishCount += 1;
+              continue;
+            }
+
             parsedLines.push({
-              description,
+              description: desc,
               qty,
               unitPrice,
               fileId: f.id,
@@ -3598,6 +3624,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
               meta: {
                 source: "supplier-parser",
                 raw: ln,
+                qualityScore: quality,
               },
             });
           }
@@ -3609,7 +3636,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     }
     
     if (parsedLines.length === 0) {
-      return res.status(400).json({ error: "no_lines_parsed" });
+      return res.status(400).json({ error: "no_lines_parsed", gibberishSkipped: gibberishCount, gibberishSamples: skippedGibberishSamples.slice(0,5) });
     }
     
     // Step 1: Currency conversion
@@ -3853,6 +3880,8 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     return res.json({
       lines: updatedLines,
       count: updatedLines.length,
+      gibberishSkipped: gibberishCount,
+      gibberishSample: skippedGibberishSamples.slice(0,5),
     });
   } catch (e: any) {
     console.error("[/quotes/:id/process-supplier] failed:", e?.message || e);
