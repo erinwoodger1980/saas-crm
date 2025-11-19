@@ -1086,6 +1086,13 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             // Image extraction data
             imageIndex: typeof (ln as any)?.imageIndex === 'number' ? (ln as any).imageIndex : undefined,
             imageDataUrl: typeof (ln as any)?.imageDataUrl === 'string' ? (ln as any).imageDataUrl : undefined,
+            // Enhanced: Structured product data
+            productType: typeof (ln as any)?.productType === 'string' ? (ln as any).productType : undefined,
+            wood: typeof (ln as any)?.wood === 'string' ? (ln as any).wood : undefined,
+            finish: typeof (ln as any)?.finish === 'string' ? (ln as any).finish : undefined,
+            glass: typeof (ln as any)?.glass === 'string' ? (ln as any).glass : undefined,
+            dimensions: typeof (ln as any)?.dimensions === 'string' ? (ln as any).dimensions : undefined,
+            area: typeof (ln as any)?.area === 'string' ? (ln as any).area : undefined,
           };
 
           const row = await prisma.quoteLine.create({
@@ -1994,19 +2001,33 @@ function buildQuoteProposalHtml(opts: {
       total = sellUnit * qty;
     }
     
+    // Enhanced: Build cleaner description from structured product data
+    let description = "";
     const dimensions = metaAny?.dimensions || "";
+    
+    // If we have structured product data, use it to build a clean description
+    if (metaAny?.productType || metaAny?.wood || metaAny?.finish) {
+      const parts: string[] = [];
+      if (metaAny.productType) parts.push(metaAny.productType);
+      if (metaAny.wood) parts.push(`${metaAny.wood} wood`);
+      if (metaAny.finish) parts.push(metaAny.finish);
+      if (metaAny.glass) parts.push(`with ${metaAny.glass} glazing`);
+      description = parts.join(", ");
+    }
+    
+    // Fallback to original description if no structured data
+    if (!description) {
+      description = String(ln.description || "Item");
+      // Remove any control characters or binary data
+      description = description.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
+      // Truncate very long descriptions
+      if (description.length > 200) {
+        description = description.substring(0, 197) + "...";
+      }
+    }
     
     // NEW: Get image URL if available
     const imageUrl = metaAny?.imageFileId ? imageUrlMap[metaAny.imageFileId] : undefined;
-    
-    // FIX: Ensure description is clean string, handle nulls and special chars
-    let description = String(ln.description || "Item");
-    // Remove any control characters or binary data
-    description = description.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
-    // Truncate very long descriptions
-    if (description.length > 200) {
-      description = description.substring(0, 197) + "...";
-    }
     
     return { description, qty, unit: sellUnit, total, dimensions, imageUrl };
   });
