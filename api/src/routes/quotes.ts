@@ -1382,6 +1382,14 @@ router.post("/:id/render-pdf", requireAuth, async (req: any, res) => {
     const sym = currencySymbol(cur);
     const vatRate = Number(quoteDefaults?.vatRate ?? 0.2);
     const showVat = quoteDefaults?.showVat !== false; // default true for UK
+    
+    // Log lead data for debugging
+    if (!quote.lead || !quote.leadId) {
+      console.warn(`[render-pdf] Quote ${id} has no lead attached (leadId: ${quote.leadId})`);
+    } else {
+      console.log(`[render-pdf] Using lead data: contactName=${quote.lead.contactName}, email=${quote.lead.email}`);
+    }
+    
     const client = quote.lead?.contactName || quote.lead?.email || "Client";
     const title =
       quote.title || `Estimate for ${client}`;
