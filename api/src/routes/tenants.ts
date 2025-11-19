@@ -640,30 +640,59 @@ router.post("/settings/enrich", async (req, res) => {
         });
 
       const prompt = `
-Return JSON with: brandName, phone, address, logoUrl, links (<=6 {label,url}),
-introSuggestion (short plain text greeting for enquiries),
-and quoteDefaults with: tagline, email, businessHours, overview (2-3 sentences about the company),
-defaultTimber, defaultFinish, defaultGlazing, defaultFittings (if joinery/construction),
-delivery (estimated timeframe), installation (if offered),
-terms (brief payment/validity terms),
-guarantees (array of {title, description} max 3),
-testimonials (array of {quote, client, role} max 3 from scraped testimonials),
-certifications (array of {name, description} if mentioned).
+Extract comprehensive company information from this website and return as JSON.
 
-UK English. Be concise and professional.
+Required structure:
+{
+  "brandName": "Company Name",
+  "phone": "contact phone",
+  "address": "full business address with postcode",
+  "logoUrl": "best quality logo URL",
+  "links": [{label: "Nav Label", url: "URL"}],  // max 6 useful nav links
+  "introSuggestion": "Brief greeting for customer enquiries",
+  "quoteDefaults": {
+    "tagline": "company tagline/slogan",
+    "email": "contact email for quotes",
+    "businessHours": "opening hours",
+    "overview": "2-3 sentence company description highlighting expertise",
+    "defaultTimber": "default wood species if joinery company",
+    "defaultFinish": "default finish option",
+    "defaultGlazing": "default glazing type",
+    "defaultFittings": "default hardware/fittings",
+    "defaultMarginPercent": <number if standard markup mentioned>,
+    "defaultVatRate": 20,  // UK VAT rate
+    "delivery": "delivery information and typical timeframes",
+    "installation": "installation services description",
+    "terms": "payment terms and quote validity period",
+    "guarantees": [{title: "Guarantee Name", description: "What's covered"}],  // max 3
+    "testimonials": [{quote: "Customer feedback", client: "Client Name", role: "Position/Company"}],  // max 3
+    "certifications": [{name: "Certification/Membership", description: "Details"}]  // max 5
+  }
+}
 
-SCRAPED:
-- Title/og: ${seed.brandName}
-- Phone: ${seed.phone || "-"}
-- JSON-LD address: ${JSON.stringify(seed.address)}
-- Candidate logo: ${seed.logoUrl || "-"}
-- Found testimonials: ${testimonials.slice(0, 3).join(" | ")}
+IMPORTANT: Extract ALL information thoroughly:
+- Look for "About Us", "Why Choose Us", "Our Guarantee" sections
+- Find ALL testimonials/reviews on the page
+- Identify any certifications, memberships, insurance, accreditations
+- Extract complete business address including postcode
+- Find VAT number, company registration details
+- Look for warranty/guarantee information
+- Extract typical lead times, delivery areas, installation coverage
 
-NAV LINKS:
+Use UK English. Be thorough and professional. If information isn't found, omit the field.
+
+SCRAPED DATA:
+- Page Title: ${seed.brandName}
+- Phone Found: ${seed.phone || "Not found"}
+- JSON-LD Address: ${JSON.stringify(seed.address)}
+- Logo Candidate: ${seed.logoUrl || "Not found"}
+- Testimonials Found: ${testimonials.length > 0 ? testimonials.slice(0, 3).join(" | ") : "None found"}
+
+NAVIGATION LINKS (${navLinks.length} found):
 ${navLinks.map((l) => `- ${l.label} -> ${l.url}`).join("\n")}
 
-BODY TEXT SAMPLE:
-${text.slice(0, 2000)}
+PAGE CONTENT (analyzing for guarantees, testimonials, certifications, and company details):
+${text.slice(0, 3000)}
 `;
 
       // Add timeout to OpenAI API call to prevent hanging
@@ -796,16 +825,39 @@ router.post("/settings/import-quote-pdf", upload.single("pdfFile"), async (req, 
     }
 
     const prompt = `
-Return JSON with keys: brandName, phone, email, address, quoteDefaults.
-quoteDefaults contains: tagline, businessHours, overview, delivery, installation, terms,
-guarantees (<=3 {title, description}), testimonials (<=3 {quote, client, role}), certifications (<=5 {name, description}).
-If not present, omit or leave as null. UK English.
+Extract company information from this PDF quote/proposal and return as JSON.
 
-PDF TEXT (truncated):
+Required structure:
+{
+  "brandName": "Company Name",
+  "phone": "contact number",
+  "email": "contact email",
+  "address": "full business address",
+  "quoteDefaults": {
+    "tagline": "company tagline or slogan",
+    "businessHours": "opening hours",
+    "overview": "2-3 sentence company description",
+    "delivery": "delivery information and timeframes",
+    "installation": "installation services offered",
+    "terms": "payment terms and quote validity",
+    "defaultMarginPercent": <number if mentioned>,
+    "defaultVatRate": <number if VAT rate is stated, e.g. 20>,
+    "guarantees": [{title: "Guarantee Name", description: "Details"}],  // max 3
+    "testimonials": [{quote: "Testimonial text", client: "Client Name", role: "Position/Company"}],  // max 3
+    "certifications": [{name: "Certification Name", description: "Details"}]  // max 5
+  }
+}
+
+Extract ALL information present. For guarantees, look for warranties, quality promises, satisfaction guarantees.
+For testimonials, look for customer reviews, feedback, recommendations.
+For certifications, look for accreditations, memberships, qualifications, insurance details.
+Use UK English spelling. If information is not found, omit the field or use null.
+
+PDF TEXT:
 ${text}
 `;
 
-    const ai = await fetch("https://api.openai.com/v1/responses", {
+    const ai = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${env.OPENAI_API_KEY}`,
@@ -813,7 +865,7 @@ ${text}
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        input: prompt,
+        messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
       }),
     });
