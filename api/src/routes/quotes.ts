@@ -707,25 +707,29 @@ router.post("/", requireAuth, async (req: any, res) => {
 
 /** GET /quotes/:id */
 router.get("/:id", requireAuth, async (req: any, res) => {
-  const tenantId = await getTenantId(req);
-  const id = String(req.params.id);
-  const q = await prisma.quote.findFirst({
-    where: { id, tenantId },
-    include: { lines: true, supplierFiles: true },
-  });
-  if (!q) return res.status(404).json({ error: "not_found" });
-  
-  // Separate client quote files from supplier files
-  const allFiles = q.supplierFiles || [];
-  // Compare by string value to avoid Prisma enum type narrowing issues at compile time
-  const supplierFiles = allFiles.filter((f) => String(f.kind) === "SUPPLIER_QUOTE");
-  const clientQuoteFiles = allFiles.filter((f) => String(f.kind) === "CLIENT_QUOTE");
-  
-  res.json({
-    ...q,
-    supplierFiles,
-    clientQuoteFiles,
-  });
+  try {
+    const tenantId = await getTenantId(req);
+    const id = String(req.params.id);
+    const q = await prisma.quote.findFirst({
+      where: { id, tenantId },
+      include: { lines: true, supplierFiles: true },
+    });
+    if (!q) return res.status(404).json({ error: "not_found" });
+
+    // Separate client quote files from supplier files (safe guards if relation missing)
+    const allFiles = Array.isArray(q.supplierFiles) ? q.supplierFiles : [];
+    const supplierFiles = allFiles.filter((f) => String(f.kind) === "SUPPLIER_QUOTE");
+    const clientQuoteFiles = allFiles.filter((f) => String(f.kind) === "CLIENT_QUOTE");
+
+    return res.json({
+      ...q,
+      supplierFiles,
+      clientQuoteFiles,
+    });
+  } catch (e: any) {
+    console.error("[/quotes/:id] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error", detail: e?.message });
+  }
 });
 
 /** POST /quotes/:id/files  (multipart form-data: files[]) */
