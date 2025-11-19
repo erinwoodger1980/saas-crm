@@ -48,8 +48,8 @@ export default function SuppliersPage() {
 
   const fetchSuppliers = async () => {
     try {
-      const data = await apiFetch<Supplier[]>("/suppliers");
-      setSuppliers(data);
+      const resp = await apiFetch<{ ok?: boolean; items?: Supplier[] }>("/suppliers");
+      setSuppliers(Array.isArray(resp?.items) ? resp.items : []);
     } catch (err) {
       console.error("Failed to fetch suppliers:", err);
     } finally {
