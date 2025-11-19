@@ -3528,6 +3528,54 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       where: { quoteId: quote.id },
     });
     
+    // Log training data for ML improvement
+    try {
+      const inputHash = crypto
+        .createHash("sha256")
+        .update(`${tenantId}:${quoteId}:${Date.now()}`)
+        .digest("hex")
+        .slice(0, 16);
+      
+      await logInferenceEvent({
+        tenantId,
+        model: "supplier_processor",
+        modelVersionId: `v1-${new Date().toISOString().slice(0, 10)}`,
+        inputHash,
+        outputJson: {
+          linesProcessed: parsedLines.length,
+          currencyConversions: parsedLines.filter(l => l.meta?.originalCurrency).length,
+          deliveryLinesFound: deliveryLines.length,
+          markupApplied: applyMarkup,
+          markupPercent: applyMarkup ? markupPercent : null,
+        },
+        confidence: 1.0,
+        meta: {
+          quoteId: quote.id,
+          supplierFileCount: quote.supplierFiles.length,
+          convertCurrency,
+          distributeDelivery,
+          hideDeliveryLine,
+          applyMarkup,
+        },
+      });
+      
+      await logInsight({
+        tenantId,
+        module: "supplier_processor",
+        inputSummary: `quote:${quote.id}:process-supplier`,
+        decision: `processed_${parsedLines.length}_lines`,
+        confidence: 1.0,
+        userFeedback: {
+          kind: "supplier_processor",
+          quoteId: quote.id,
+          linesProcessed: parsedLines.length,
+          markupPercent,
+        },
+      });
+    } catch (err: any) {
+      console.warn("[process-supplier] Training log failed:", err?.message);
+    }
+    
     return res.json({
       lines: updatedLines,
       count: updatedLines.length,
