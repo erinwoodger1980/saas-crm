@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
 import DeclineEnquiryButton from "./DeclineEnquiryButton";
 import { UnifiedActivityTimeline } from "@/components/leads/UnifiedActivityTimeline";
+import { useLeadActivity } from "@/lib/use-lead-activity";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -346,8 +347,15 @@ export default function LeadModal({
   const [creatingEmailTask, setCreatingEmailTask] = useState(false);
   const [creatingPhoneTask, setCreatingPhoneTask] = useState(false);
   const [creatingSequence, setCreatingSequence] = useState(false);
-  const [followUpTasks, setFollowUpTasks] = useState<any[]>([]);
-  const [loadingFollowUpTasks, setLoadingFollowUpTasks] = useState(false);
+  
+  // Unified activity hook - replaces old followUpTasks state
+  const {
+    activities,
+    isLoading: loadingActivity,
+    isError: activityError,
+    refresh: refreshActivity,
+    addActivityOptimistic,
+  } = useLeadActivity(lead?.id || null);
   
   // Email composer state
   const [showEmailComposer, setShowEmailComposer] = useState(false);
@@ -941,26 +949,7 @@ export default function LeadModal({
   // Load follow-up tasks when communication tab is opened
   // Note: Inline the logic to avoid referencing a not-yet-initialized callback
   // which can trigger a Temporal Dead Zone error during render.
-  useEffect(() => {
-    if (!(open && currentStage === 'communication' && lead?.id)) return;
-    let cancelled = false;
-    (async () => {
-      setLoadingFollowUpTasks(true);
-      try {
-        const data = await apiFetch<{ items: any[] }>(
-          `/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(lead.id)}&mine=false`
-        );
-        if (!cancelled) setFollowUpTasks(data.items || []);
-      } catch (error) {
-        console.error("Failed to load follow-up tasks:", error);
-      } finally {
-        if (!cancelled) setLoadingFollowUpTasks(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, currentStage, lead?.id]);
+  // Activity data now loaded by useLeadActivity hook
 
   /* ----------------------------- Save helpers ----------------------------- */
 
@@ -1410,20 +1399,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     return null;
   }, [tenantOwnerFirstName, followupBrand]);
 
-  // Load follow-up tasks for this lead
-  const loadFollowUpTasks = useCallback(async () => {
-    if (!lead?.id) return;
-    setLoadingFollowUpTasks(true);
-    try {
-      const data = await apiFetch<{ items: any[] }>(`/tasks?relatedType=LEAD&relatedId=${encodeURIComponent(lead.id)}&mine=false`);
-      setFollowUpTasks(data.items || []);
-    } catch (error) {
-      console.error("Failed to load follow-up tasks:", error);
-    } finally {
-      setLoadingFollowUpTasks(false);
-    }
-  }, [lead?.id]);
-
   // Create email follow-up task
   async function createEmailTask() {
     if (!lead?.id) return;
@@ -1448,7 +1423,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       });
       
       toast("Email follow-up task created");
-      await loadFollowUpTasks();
+      await refreshActivity();
       await reloadTasks(); // Also reload main tasks
     } catch (error) {
       console.error("Failed to create email task:", error);
@@ -1482,7 +1457,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       });
       
       toast("Phone follow-up task created");
-      await loadFollowUpTasks();
+      await refreshActivity();
       await reloadTasks(); // Also reload main tasks
     } catch (error) {
       console.error("Failed to create phone task:", error);
@@ -1537,7 +1512,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       ]);
       
       toast("Follow-up sequence created: Email in 3 days, phone in 1 week");
-      await loadFollowUpTasks();
+      await refreshActivity();
       await reloadTasks(); // Also reload main tasks
     } catch (error) {
       console.error("Failed to create sequence:", error);
@@ -1551,7 +1526,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   async function completeFollowUpTask(taskId: string) {
     try {
       await apiFetch(`/tasks/${taskId}/complete`, { method: "POST" });
-      await loadFollowUpTasks();
+      await refreshActivity();
       await reloadTasks(); // Also reload main tasks
     } catch (error) {
       console.error("Failed to complete task:", error);
@@ -1602,17 +1577,19 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   }
 
-  // Get pending and completed follow-up tasks
-  const pendingFollowUpTasks = followUpTasks.filter(task => 
-    task.status !== "DONE" && 
-    task.meta?.type && 
-    ["email_followup", "phone_followup"].includes(task.meta.type)
+  // Get pending and completed follow-up tasks from unified activities
+  const pendingFollowUpTasks = activities.filter(event => 
+    event.type === 'task' &&
+    event.status !== "DONE" && 
+    event.meta?.type && 
+    ["email_followup", "phone_followup"].includes(event.meta.type)
   );
 
-  const completedFollowUpTasks = followUpTasks.filter(task =>
-    task.status === "DONE" &&
-    task.meta?.type &&
-    ["email_followup", "phone_followup"].includes(task.meta.type)
+  const completedFollowUpTasks = activities.filter(event =>
+    event.type === 'task' &&
+    event.status === "DONE" &&
+    event.meta?.type &&
+    ["email_followup", "phone_followup"].includes(event.meta.type)
   );
 
   /* ----------------------------- Actions ----------------------------- */
@@ -3102,21 +3079,95 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-purple-50/70 to-blue-50/60 min-h-[60vh]">
               <div className="max-w-6xl mx-auto">
                 <UnifiedActivityTimeline
-                  communications={lead?.communicationLog || []}
-                  tasks={followUpTasks}
-                  onAddCommunication={async (type, content) => {
-                    const oldType = communicationType;
+                  activities={activities}
+                  isLoading={loadingActivity}
+                  onAddNote={async (content) => {
+                    // Optimistically add note
+                    addActivityOptimistic({
+                      type: 'note',
+                      id: `temp-${Date.now()}`,
+                      text: content,
+                      author: { id: '', name: 'You', email: '' },
+                      createdAt: new Date().toISOString(),
+                    });
+                    
+                    // Save to backend
                     const oldNote = newNote;
+                    const oldType = communicationType;
                     try {
-                      setCommunicationType(type);
                       setNewNote(content);
+                      setCommunicationType('note');
                       await addCommunicationNote();
+                      await refreshActivity();
+                    } catch (error) {
+                      console.error('Failed to add note:', error);
+                      await refreshActivity();
                     } finally {
-                      setCommunicationType(oldType);
                       setNewNote(oldNote);
+                      setCommunicationType(oldType);
+                    }
+                  }}
+                  onAddCall={async (summary) => {
+                    addActivityOptimistic({
+                      type: 'call',
+                      id: `temp-${Date.now()}`,
+                      direction: 'outbound',
+                      summary,
+                      loggedAt: new Date().toISOString(),
+                    });
+                    
+                    const oldNote = newNote;
+                    const oldType = communicationType;
+                    try {
+                      setNewNote(summary);
+                      setCommunicationType('call');
+                      await addCommunicationNote();
+                      await refreshActivity();
+                    } catch (error) {
+                      console.error('Failed to add call:', error);
+                      await refreshActivity();
+                    } finally {
+                      setNewNote(oldNote);
+                      setCommunicationType(oldType);
+                    }
+                  }}
+                  onAddEmail={async (summary) => {
+                    addActivityOptimistic({
+                      type: 'email',
+                      id: `temp-${Date.now()}`,
+                      direction: 'outbound',
+                      summary,
+                      sentAt: new Date().toISOString(),
+                    });
+                    
+                    const oldNote = newNote;
+                    const oldType = communicationType;
+                    try {
+                      setNewNote(summary);
+                      setCommunicationType('email');
+                      await addCommunicationNote();
+                      await refreshActivity();
+                    } catch (error) {
+                      console.error('Failed to add email log:', error);
+                      await refreshActivity();
+                    } finally {
+                      setNewNote(oldNote);
+                      setCommunicationType(oldType);
                     }
                   }}
                   onCreateTask={async (task) => {
+                    // Optimistically add task
+                    addActivityOptimistic({
+                      type: 'task',
+                      id: `temp-${Date.now()}`,
+                      title: task.title,
+                      description: task.description || undefined,
+                      status: 'OPEN',
+                      priority: task.priority,
+                      dueAt: task.dueAt || undefined,
+                      createdAt: new Date().toISOString(),
+                    });
+                    
                     const oldComposer = { ...taskComposer };
                     try {
                       setTaskComposer({
@@ -3126,64 +3177,32 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         dueAt: task.dueAt,
                       });
                       await createManualTask();
+                      await refreshActivity();
+                    } catch (error) {
+                      console.error('Failed to create task:', error);
+                      await refreshActivity();
                     } finally {
                       setTaskComposer(oldComposer);
                     }
                   }}
-                  onCompleteTask={completeFollowUpTask}
+                  onCompleteTask={async (taskId) => {
+                    await completeFollowUpTask(taskId);
+                    await refreshActivity();
+                  }}
                   onComposeEmail={openEmailComposer}
-                  loading={loadingFollowUpTasks}
+                  onScheduleEmailFollowup={async () => {
+                    await createEmailTask();
+                    await refreshActivity();
+                  }}
+                  onSchedulePhoneFollowup={async () => {
+                    await createPhoneTask();
+                    await refreshActivity();
+                  }}
+                  onCreateAutoSequence={async () => {
+                    await createFollowupSequence();
+                    await refreshActivity();
+                  }}
                 />
-
-                {/* Quick Follow-up Scheduler */}
-                <div className="mt-6 rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50 p-4">
-                  <h3 className="text-sm font-semibold text-slate-900 mb-3">
-                    ⚡ Quick Follow-up Scheduling
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <button
-                      className="p-3 rounded-lg bg-white border border-slate-200 hover:border-blue-300 text-left transition-colors disabled:opacity-50"
-                      onClick={createEmailTask}
-                      disabled={creatingEmailTask}
-                    >
-                      <div className="flex items-center gap-2 font-medium text-sm mb-1">
-                        <span>📧</span>
-                        Email Follow-up
-                      </div>
-                      <div className="text-xs text-slate-600">
-                        {creatingEmailTask ? 'Creating...' : `Schedule email in ${emailTaskDays} days`}
-                      </div>
-                    </button>
-
-                    <button
-                      className="p-3 rounded-lg bg-white border border-slate-200 hover:border-blue-300 text-left transition-colors disabled:opacity-50"
-                      onClick={createPhoneTask}
-                      disabled={creatingPhoneTask}
-                    >
-                      <div className="flex items-center gap-2 font-medium text-sm mb-1">
-                        <span>📞</span>
-                        Phone Follow-up
-                      </div>
-                      <div className="text-xs text-slate-600">
-                        {creatingPhoneTask ? 'Creating...' : `Schedule call in ${phoneTaskDays} days`}
-                      </div>
-                    </button>
-
-                    <button
-                      className="p-3 rounded-lg bg-white border border-slate-200 hover:border-indigo-300 text-left transition-colors disabled:opacity-50"
-                      onClick={createFollowupSequence}
-                      disabled={creatingSequence}
-                    >
-                      <div className="flex items-center gap-2 font-medium text-sm mb-1">
-                        <span>⚡</span>
-                        Auto Sequence
-                      </div>
-                      <div className="text-xs text-slate-600">
-                        {creatingSequence ? 'Creating...' : 'Email (3d) + Phone (7d)'}
-                      </div>
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -3382,7 +3401,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   <section className="rounded-xl border p-4 bg-white">
                     <div className="mb-2 text-sm font-semibold text-slate-900 flex items-center justify-between">
                       <span>Scheduled Tasks</span>
-                      {loadingFollowUpTasks && (
+                      {loadingActivity && (
                         <span className="text-xs text-slate-500">Loading...</span>
                       )}
                     </div>
@@ -3393,57 +3412,62 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           No scheduled follow-up tasks. Create one above.
                         </div>
                       ) : (
-                        pendingFollowUpTasks.map((task) => (
-                          <div
-                            key={task.id}
-                            className="rounded-md border p-3 bg-blue-50"
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-2">
-                                <span>
-                                  {task.meta?.type === "email_followup" ? "📧" : "📞"}
+                        pendingFollowUpTasks.map((event) => {
+                          if (event.type !== 'task') return null;
+                          return (
+                            <div
+                              key={event.id}
+                              className="rounded-md border p-3 bg-blue-50"
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2">
+                                  <span>
+                                    {event.meta?.type === "email_followup" ? "📧" : "📞"}
+                                  </span>
+                                  <span className="text-sm font-medium">{event.title}</span>
+                                </div>
+                                <span className="text-xs text-slate-500">
+                                  {event.dueAt
+                                    ? `Due ${new Date(event.dueAt).toLocaleDateString()}`
+                                    : "Due soon"}
                                 </span>
-                                <span className="text-sm font-medium">{task.title}</span>
                               </div>
-                              <span className="text-xs text-slate-500">
-                                {task.dueAt
-                                  ? `Due ${new Date(task.dueAt).toLocaleDateString()}`
-                                  : "Due soon"}
-                              </span>
-                            </div>
-                            <div className="text-xs text-slate-600 mb-2">
-                              {task.description}
-                            </div>
-                            <div className="flex gap-2">
-                              {task.meta?.type === "email_followup" ? (
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => openEmailComposer(task.id)}
-                                >
-                                  Compose &amp; Send
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    toast("Call logging would open here");
-                                  }}
-                                >
-                                  Log Call
-                                </Button>
+                              {event.description && (
+                                <div className="text-xs text-slate-600 mb-2">
+                                  {event.description}
+                                </div>
                               )}
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => completeFollowUpTask(task.id)}
-                              >
-                                Mark Done
-                              </Button>
+                              <div className="flex gap-2">
+                                {event.meta?.type === "email_followup" ? (
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => openEmailComposer(event.id)}
+                                  >
+                                    Compose &amp; Send
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      toast("Call logging would open here");
+                                    }}
+                                  >
+                                    Log Call
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => completeFollowUpTask(event.id)}
+                                >
+                                  Mark Done
+                                </Button>
+                              </div>
                             </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
 
@@ -3453,24 +3477,27 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           Completed
                         </div>
                         <div className="space-y-2">
-                          {completedFollowUpTasks.map((task) => (
-                            <div
-                              key={task.id}
-                              className="rounded-md border p-2 bg-slate-50 opacity-75"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-green-600">✓</span>
-                                  <span className="text-xs">{task.title}</span>
+                          {completedFollowUpTasks.map((event) => {
+                            if (event.type !== 'task') return null;
+                            return (
+                              <div
+                                key={event.id}
+                                className="rounded-md border p-2 bg-slate-50 opacity-75"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-green-600">✓</span>
+                                    <span className="text-xs">{event.title}</span>
+                                  </div>
+                                  <span className="text-xs text-slate-400">
+                                    {event.completedAt
+                                      ? new Date(event.completedAt).toLocaleDateString()
+                                      : "Done"}
+                                  </span>
                                 </div>
-                                <span className="text-xs text-slate-400">
-                                  {task.completedAt
-                                    ? new Date(task.completedAt).toLocaleDateString()
-                                    : "Done"}
-                                </span>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
