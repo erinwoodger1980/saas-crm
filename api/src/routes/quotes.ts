@@ -735,8 +735,32 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
   const q = await prisma.quote.findFirst({ where: { id, tenantId } });
   if (!q) return res.status(404).json({ error: "not_found" });
 
+  // Auto-detect quote source from first PDF
+  let detectedSourceType: string | undefined;
+  let detectedProfileId: string | undefined;
+
   const saved = [];
   for (const f of (req.files as Express.Multer.File[])) {
+    // Auto-detect quote source from first PDF
+    if (!detectedSourceType && f.mimetype === 'application/pdf') {
+      try {
+        const { extractFirstPageText } = await import('../lib/pdfMetadata');
+        const { autoDetectQuoteSourceProfile } = await import('../lib/quoteSourceProfiles');
+        
+        const buffer = await fs.promises.readFile(f.path);
+        const firstPageText = await extractFirstPageText(buffer);
+        const profile = autoDetectQuoteSourceProfile(f.originalname, firstPageText);
+        
+        if (profile) {
+          detectedSourceType = profile.type;
+          detectedProfileId = profile.id;
+          console.log(`[quotes/:id/files] Auto-detected: ${profile.displayName} (${profile.type})`);
+        }
+      } catch (error) {
+        console.error('[quotes/:id/files] Auto-detection failed:', error);
+      }
+    }
+
     const row = await prisma.uploadedFile.create({
       data: {
         tenantId,
@@ -751,9 +775,25 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
     saved.push(row);
   }
 
-  // TODO: parse PDFs, extract tables → quote lines
-  // For now, return files and leave lines empty.
-  res.json({ ok: true, files: saved });
+  // Update quote with detected source type and profile (if detected)
+  if (detectedSourceType && detectedProfileId) {
+    await prisma.quote.update({
+      where: { id },
+      data: {
+        quoteSourceType: detectedSourceType,
+        supplierProfileId: detectedProfileId,
+      },
+    });
+  }
+
+  res.json({ 
+    ok: true, 
+    files: saved,
+    detected: detectedSourceType ? {
+      sourceType: detectedSourceType,
+      profileId: detectedProfileId,
+    } : null,
+  });
 });
 
 /** POST /quotes/:id/client-quote-files  (multipart form-data: files[]) */
@@ -781,6 +821,74 @@ router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), a
   }
 
   res.json({ ok: true, files: saved });
+});
+
+/**
+ * PATCH /quotes/:id/source
+ * Body: { quoteSourceType: "supplier" | "software", supplierProfileId: string }
+ * Update the quote source classification for better parsing
+ */
+router.patch("/:id/source", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    const id = String(req.params.id);
+    const q = await prisma.quote.findFirst({ where: { id, tenantId } });
+    if (!q) return res.status(404).json({ error: "not_found" });
+
+    const { quoteSourceType, supplierProfileId } = req.body;
+
+    // Validate source type
+    if (quoteSourceType && !['supplier', 'software'].includes(quoteSourceType)) {
+      return res.status(400).json({ error: 'invalid_source_type' });
+    }
+
+    // Validate profile ID exists
+    if (supplierProfileId) {
+      const { getQuoteSourceProfile } = await import('../lib/quoteSourceProfiles');
+      const profile = getQuoteSourceProfile(supplierProfileId);
+      if (!profile) {
+        return res.status(400).json({ error: 'invalid_profile_id' });
+      }
+    }
+
+    const updated = await prisma.quote.update({
+      where: { id },
+      data: {
+        quoteSourceType: quoteSourceType || q.quoteSourceType,
+        supplierProfileId: supplierProfileId || q.supplierProfileId,
+      },
+    });
+
+    res.json({ ok: true, quote: updated });
+  } catch (e: any) {
+    console.error('[/quotes/:id/source] failed:', e?.message || e);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+/**
+ * GET /quotes/source-profiles
+ * Returns list of available quote source profiles (suppliers and software)
+ * Used for quote source classification UI
+ */
+router.get("/source-profiles", requireAuth, async (_req: any, res) => {
+  try {
+  const { quoteSourceProfiles } = await import("../lib/quoteSourceProfiles");
+    
+  const profiles = quoteSourceProfiles.map((profile: any) => ({
+      id: profile.id,
+      name: profile.name,
+      type: profile.type
+    }));
+    
+    return res.json(profiles);
+  } catch (e: any) {
+    console.error("[/quotes/source-profiles] failed:", e?.message || e);
+    return res.status(500).json({ 
+      error: "internal_error", 
+      detail: e?.message 
+    });
+  }
 });
 
 export default router;

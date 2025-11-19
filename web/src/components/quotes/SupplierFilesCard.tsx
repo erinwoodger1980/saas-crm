@@ -1,19 +1,86 @@
-import { useCallback, useState } from "react";
-import { FileText, Loader2, Upload, ExternalLink } from "lucide-react";
+import { useCallback, useState, useEffect } from "react";
+import { FileText, Loader2, Upload, ExternalLink, Edit3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { SupplierFileDto } from "@/lib/api/quotes";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { SupplierFileDto, QuoteSourceProfile } from "@/lib/api/quotes";
+import { fetchQuoteSourceProfiles, updateQuoteSource } from "@/lib/api/quotes";
 
 export type SupplierFilesCardProps = {
   files?: SupplierFileDto[] | null;
+  quoteId: string;
+  quoteSourceType?: string | null;
+  supplierProfileId?: string | null;
   onOpen: (_file: SupplierFileDto) => void;
   onUpload: (_files: FileList | null) => void;
   onUploadClick?: () => void;
   isUploading?: boolean;
+  onSourceUpdated?: () => void;
 };
 
-export function SupplierFilesCard({ files, onOpen, onUpload, onUploadClick, isUploading }: SupplierFilesCardProps) {
+export function SupplierFilesCard({ 
+  files, 
+  quoteId, 
+  quoteSourceType, 
+  supplierProfileId, 
+  onOpen, 
+  onUpload, 
+  onUploadClick, 
+  isUploading,
+  onSourceUpdated 
+}: SupplierFilesCardProps) {
   const [dragging, setDragging] = useState(false);
+  const [profiles, setProfiles] = useState<QuoteSourceProfile[]>([]);
+  const [selectedType, setSelectedType] = useState<string>(quoteSourceType || "");
+  const [selectedProfile, setSelectedProfile] = useState<string>(supplierProfileId || "");
+  const [isUpdatingSource, setIsUpdatingSource] = useState(false);
+
+  useEffect(() => {
+    fetchQuoteSourceProfiles().then(setProfiles).catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    setSelectedType(quoteSourceType || "");
+    setSelectedProfile(supplierProfileId || "");
+  }, [quoteSourceType, supplierProfileId]);
+
+  const handleTypeChange = async (newType: string) => {
+    setSelectedType(newType);
+    setSelectedProfile(""); // Reset profile when type changes
+    
+    try {
+      setIsUpdatingSource(true);
+      await updateQuoteSource(quoteId, newType as 'supplier' | 'software' | null, null);
+      onSourceUpdated?.();
+    } catch (err) {
+      console.error("Failed to update quote source type:", err);
+    } finally {
+      setIsUpdatingSource(false);
+    }
+  };
+
+  const handleProfileChange = async (newProfile: string) => {
+    setSelectedProfile(newProfile);
+    
+    try {
+      setIsUpdatingSource(true);
+      await updateQuoteSource(quoteId, selectedType as 'supplier' | 'software' | null, newProfile);
+      onSourceUpdated?.();
+    } catch (err) {
+      console.error("Failed to update quote source profile:", err);
+    } finally {
+      setIsUpdatingSource(false);
+    }
+  };
+
+  const filteredProfiles = profiles.filter(p => p.type === selectedType);
 
   const handleDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
@@ -43,6 +110,62 @@ export function SupplierFilesCard({ files, onOpen, onUpload, onUploadClick, isUp
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Quote Source Selection */}
+        {(files ?? []).length > 0 && (
+          <div className="rounded-xl border bg-muted/20 p-4 space-y-4">
+            <div className="flex items-start gap-4">
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="source-type" className="text-xs font-medium text-muted-foreground">Quote Source Type</Label>
+                <Select value={selectedType} onValueChange={handleTypeChange} disabled={isUpdatingSource}>
+                  <SelectTrigger id="source-type" className="w-full">
+                    <SelectValue placeholder="Select source type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="supplier">Supplier</SelectItem>
+                    <SelectItem value="software">Software</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="source-profile" className="text-xs font-medium text-muted-foreground">Specific Source</Label>
+                <Select 
+                  value={selectedProfile} 
+                  onValueChange={handleProfileChange} 
+                  disabled={!selectedType || isUpdatingSource}
+                >
+                  <SelectTrigger id="source-profile" className="w-full">
+                    <SelectValue placeholder={selectedType ? "Select source..." : "Choose type first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredProfiles.map(profile => (
+                      <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {selectedProfile && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2 w-full"
+                onClick={() => {
+                  const firstFile = (files ?? [])[0];
+                  if (firstFile) {
+                    window.open(`/pdf-trainer?quoteId=${quoteId}&profileId=${selectedProfile}&fileId=${firstFile.id}`, '_blank');
+                  }
+                }}
+              >
+                <Edit3 className="h-4 w-4" />
+                Annotate Template for ML Training
+              </Button>
+            )}
+          </div>
+        )}
+
         <div
           className={`rounded-2xl border-2 border-dashed p-6 text-center text-sm transition ${
             dragging ? "border-emerald-400 bg-emerald-50" : "border-muted"
