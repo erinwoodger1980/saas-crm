@@ -158,11 +158,29 @@ export default function PublicQuestionnairePage() {
   }, [slug, leadId]);
 
   /* ---------------- Derived ---------------- */
-  const questions: QField[] = useMemo(
+  // Standard contact fields that appear once at the top
+  const STANDARD_FIELDS = ['contact_name', 'email', 'phone', 'address', 'description', 'notes'];
+  
+  const allQuestions: QField[] = useMemo(
     () => normalizeQuestions((settings as any)?.questionnaire ?? [])
       .filter((q) => q.askInQuestionnaire !== false && q.internalOnly !== true),
     [settings]
   );
+
+  // Split questions into contact fields (shown once) and item fields (repeated per item)
+  const contactFields = useMemo(
+    () => allQuestions.filter(q => STANDARD_FIELDS.includes(q.key)),
+    [allQuestions]
+  );
+  
+  const questions = useMemo(
+    () => allQuestions.filter(q => !STANDARD_FIELDS.includes(q.key)),
+    [allQuestions]
+  );
+
+  // Contact field answers (not per-item, just global)
+  const [contactAnswers, setContactAnswers] = useState<Record<string, any>>({});
+  const [contactErrors, setContactErrors] = useState<Record<string, string>>({});
 
   /* ---------------- Refs & field helpers ---------------- */
   const registerFieldRef = (fieldKey: string) =>
@@ -170,6 +188,16 @@ export default function PublicQuestionnairePage() {
       if (el) fieldRefs.current[fieldKey] = el;
       else delete fieldRefs.current[fieldKey];
     };
+
+  const setContactField = (key: string, value: any) => {
+    setContactAnswers((prev) => ({ ...prev, [key]: value }));
+    setContactErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
 
   const setItemField = (itemIndex: number, key: string, value: any) => {
     setItemAnswers((prev) => prev.map((it, i) => (i === itemIndex ? { ...it, [key]: value } : it)));
@@ -231,14 +259,37 @@ export default function PublicQuestionnairePage() {
 
   /* ---------------- Validation ---------------- */
   function validate(): boolean {
+    // Validate contact fields first
+    const nextContactErrors: Record<string, string> = {};
+    let firstInvalidKey: string | null = null;
+
+    for (const q of contactFields) {
+      const val = contactAnswers[q.key];
+      if (q.required && isEmptyValue(val)) {
+        nextContactErrors[q.key] = "This field is required.";
+        if (!firstInvalidKey) firstInvalidKey = `contact-${q.key}`;
+      }
+    }
+
+    setContactErrors(nextContactErrors);
+
+    // Validate item fields
     if (questions.length === 0) {
       setItemErrors(itemAnswers.map(() => ({})));
+      if (Object.keys(nextContactErrors).length > 0) {
+        const el = fieldRefs.current[firstInvalidKey!];
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        setBanner("Please fix the highlighted fields.");
+        return false;
+      }
       setBanner(null);
       return true;
     }
 
     const next = itemAnswers.map(() => ({} as Record<string, string>));
-    let firstInvalidKey: string | null = null;
 
     itemAnswers.forEach((_, itemIdx) => {
       const shouldValidate = itemIdx === 0 || hasItemContent(itemIdx);
@@ -371,7 +422,10 @@ export default function PublicQuestionnairePage() {
       ];
 
       await postJSON(`/public/leads/${encodeURIComponent(lead.id)}/submit-questionnaire`, {
-        answers: { items: itemsPayload },
+        answers: { 
+          ...contactAnswers,  // Include contact fields at top level
+          items: itemsPayload 
+        },
         uploads: flattenedUploads,
       });
 
@@ -444,16 +498,93 @@ export default function PublicQuestionnairePage() {
         {lead ? (
           <form onSubmit={onSubmit} className={`${cardClasses} space-y-6 max-w-3xl`}>
             <div>
+              <h2 className="text-lg font-semibold text-slate-900">Your contact information</h2>
+              <p className="text-sm text-slate-500">
+                Please provide your details so we can get in touch with you.
+              </p>
+            </div>
+
+            {/* Contact Fields Section */}
+            {contactFields.length > 0 && (
+              <div className="space-y-4 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-5">
+                {contactFields.map((q) => {
+                  const fieldId = `contact-${q.key}`;
+                  const hasErr = !!contactErrors[q.key];
+                  const inputClass = `${baseInputClasses} ${hasErr ? "border-rose-300 focus:ring-rose-300" : ""}`;
+                  const commonProps = {
+                    ref: registerFieldRef(fieldId),
+                    "aria-invalid": hasErr || undefined,
+                    "aria-describedby": hasErr ? `${fieldId}-err` : undefined,
+                  } as any;
+
+                  return (
+                    <div key={q.key} className="space-y-2">
+                      <label className="block text-sm font-medium text-slate-700">
+                        {q.label || q.key}
+                        {q.required ? <span className="text-rose-500"> *</span> : null}
+                      </label>
+
+                      {q.type === "textarea" ? (
+                        <textarea
+                          {...commonProps}
+                          className={`${inputClass} min-h-[100px]`}
+                          value={valueOrEmpty(contactAnswers[q.key])}
+                          onChange={(e) => setContactField(q.key, e.target.value)}
+                          placeholder={q.key === 'address' ? 'Your full address including postcode' : undefined}
+                        />
+                      ) : q.type === "select" ? (
+                        <select
+                          {...commonProps}
+                          className={inputClass}
+                          value={valueOrEmpty(contactAnswers[q.key])}
+                          onChange={(e) => setContactField(q.key, e.target.value)}
+                        >
+                          <option value="">Select…</option>
+                          {(q.options ?? []).map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          {...commonProps}
+                          type={q.type === "number" ? "number" : q.type === "date" ? "date" : q.type === "email" ? "email" : q.type === "phone" ? "tel" : "text"}
+                          className={inputClass}
+                          value={valueOrEmpty(contactAnswers[q.key])}
+                          onChange={(e) => setContactField(q.key, e.target.value)}
+                          placeholder={
+                            q.key === 'contact_name' ? 'Your full name' :
+                            q.key === 'email' ? 'your.email@example.com' :
+                            q.key === 'phone' ? 'Your phone number' :
+                            undefined
+                          }
+                        />
+                      )}
+
+                      {hasErr ? (
+                        <p id={`${fieldId}-err`} className="text-sm text-rose-600">
+                          {contactErrors[q.key]}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Project Details Section */}
+            <div className="pt-4">
               <h2 className="text-lg font-semibold text-slate-900">Your project details</h2>
               <p className="text-sm text-slate-500">
-                We’ll use this to prepare your estimate and follow up with any questions.
+                Tell us about what you need. You can add multiple items if you have different requirements.
               </p>
             </div>
 
             <div className="space-y-5">
               {questions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-white/60 px-4 py-6 text-sm text-slate-500">
-                  No questions yet.
+                  No project questions configured yet.
                 </div>
               ) : (
                 <div className="space-y-5">

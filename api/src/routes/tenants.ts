@@ -21,6 +21,7 @@ const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
 const router = Router();
 import multer from "multer";
 import pdfParse from "pdf-parse";
+import { putObject } from "../lib/storage";
 // Safe JSON parsing helper - prevents JSON.parse errors from causing 500s
 function safeParseJson<T = any>(value: any, fallback: T): T {
   if (value === null || value === undefined) return fallback;
