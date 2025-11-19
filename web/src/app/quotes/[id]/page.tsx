@@ -10,7 +10,8 @@ import { SupplierFilesCard } from "@/components/quotes/SupplierFilesCard";
 import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
 import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText, Building2, Cpu, Edit3, Eye, FileUp } from "lucide-react";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -52,13 +53,18 @@ export default function QuoteBuilderPage() {
   } = useSWR<QuoteDto>(quoteId ? ["quote", quoteId] : null, () => fetchQuote(quoteId), { revalidateOnFocus: false });
 
   const {
-    data: lines,
+    data: linesData,
     error: linesError,
     isLoading: linesLoading,
     mutate: mutateLines,
-  } = useSWR<ParsedLineDto[]>(quoteId ? ["quote-lines", quoteId] : null, () => fetchParsedLines(quoteId), {
-    revalidateOnFocus: false,
-  });
+  } = useSWR<{ lines: ParsedLineDto[]; imageUrlMap: Record<string, string> }>(
+    quoteId ? ["quote-lines", quoteId] : null, 
+    () => fetchParsedLines(quoteId), 
+    { revalidateOnFocus: false }
+  );
+  
+  const lines = linesData?.lines ?? [];
+  const imageUrlMap = linesData?.imageUrlMap ?? {};
 
   const {
     data: questionnaireFields = [],
@@ -72,6 +78,8 @@ export default function QuoteBuilderPage() {
     const res = await apiFetch<{ lead: any }>(`/leads/${leadId}`);
     return res?.lead ?? res ?? null;
   });
+
+  const [activeTab, setActiveTab] = useState<string>("details");
 
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [parseMeta, setParseMeta] = useState<ParseResponse | null>(null);
@@ -531,227 +539,225 @@ export default function QuoteBuilderPage() {
             <div className="h-96 rounded-2xl bg-muted/40 animate-pulse"></div>
           </div>
         ) : (
-          <div className="space-y-8">
-            {/* ========== STAGE 1: CLIENT & PROJECT DETAILS ========== */}
-            <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
-              <div>
-                <h2 className="text-2xl font-semibold text-foreground mb-2">Client & project details</h2>
-                <p className="text-sm text-muted-foreground">
-                  Core information about the client and project requirements
-                </p>
-              </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-6 h-auto">
+              <TabsTrigger value="details" className="flex flex-col gap-1 py-3">
+                <FileText className="h-4 w-4" />
+                <span className="text-xs">Details</span>
+              </TabsTrigger>
+              <TabsTrigger value="supplier" className="flex flex-col gap-1 py-3">
+                <FileUp className="h-4 w-4" />
+                <span className="text-xs">Supplier</span>
+              </TabsTrigger>
+              <TabsTrigger value="joinerysoft" className="flex flex-col gap-1 py-3">
+                <Building2 className="h-4 w-4" />
+                <span className="text-xs">Joinerysoft</span>
+              </TabsTrigger>
+              <TabsTrigger value="ml-estimate" className="flex flex-col gap-1 py-3">
+                <Cpu className="h-4 w-4" />
+                <span className="text-xs">ML Estimate</span>
+              </TabsTrigger>
+              <TabsTrigger value="quote-lines" className="flex flex-col gap-1 py-3">
+                <Edit3 className="h-4 w-4" />
+                <span className="text-xs">Quote Lines</span>
+              </TabsTrigger>
+              <TabsTrigger value="preview" className="flex flex-col gap-1 py-3">
+                <Eye className="h-4 w-4" />
+                <span className="text-xs">Preview</span>
+              </TabsTrigger>
+            </TabsList>
 
-              <LeadDetailsCard 
-                lead={lead}
-                questionnaireAnswers={questionnaireAnswers}
-              />
-
-              {/* Questionnaire summary */}
-              {keyQuestionnaireFields.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                    Key project details
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {keyQuestionnaireFields.map((field) => {
-                      const value = questionnaireAnswers[field.key];
-                      if (!value) return null;
-                      return (
-                        <div key={field.key} className="space-y-1">
-                          <div className="text-xs font-medium text-muted-foreground">{field.label}</div>
-                          <div className="text-sm text-foreground">
-                            {Array.isArray(value) ? value.join(", ") : String(value)}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Full questionnaire (collapsible) */}
-              <div className="space-y-4">
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-between"
-                  onClick={() => setQuestionnaireOpen(!questionnaireOpen)}
-                >
-                  <span>Full questionnaire (advanced)</span>
-                  {questionnaireOpen ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </Button>
-                {questionnaireOpen && (
-                  <div className="mt-4">
-                    <QuestionnaireForm
-                      fields={questionnaireFields}
-                      answers={questionnaireAnswers}
-                      isSaving={questionnaireSaving}
-                      disabled={quoteLoading || !leadId}
-                      onAutoSave={handleQuestionnaireSave}
-                      onEstimateFromAnswers={handleQuestionnaireEstimate}
-                      estimateSupported={Boolean(leadId)}
-                      estimateDisabledReason={leadId ? undefined : "Quote is not linked to a lead."}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ========== STAGE 2: SUPPLIER QUOTE → ESTIMATE ========== */}
-            <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
-              <div>
-                <h2 className="text-2xl font-semibold text-foreground mb-2">Supplier quote → Estimate</h2>
-                <p className="text-sm text-muted-foreground">
-                  Upload supplier PDFs, parse line items, and generate pricing estimates
-                </p>
-              </div>
-
-              <SupplierFilesCard
-                files={quote?.supplierFiles}
-                onOpen={handleOpenFile}
-                onUpload={handleUploadFiles}
-                onUploadClick={openUploadDialog}
-                isUploading={isUploading}
-              />
-
-              {(quote?.supplierFiles ?? []).length > 0 && (
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 bg-muted/30 rounded-xl">
-                  <div>
-                    <h3 className="font-medium text-foreground mb-1">Parse supplier PDFs</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Extract line items and pricing using ML
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleParse}
-                    disabled={isParsing}
-                    size="lg"
-                    className="gap-2"
-                  >
-                    {isParsing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Parsing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" />
-                        Parse & build estimate
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
-
-              {lines && lines.length > 0 && (
-                <div className="text-center py-4">
-                  <Button 
-                    variant="ghost" 
-                    className="gap-2"
-                    onClick={() => {
-                      document.getElementById('line-items-section')?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                  >
-                    <FileText className="h-4 w-4" />
-                    View {lines.length} parsed line item{lines.length !== 1 ? 's' : ''}
-                  </Button>
-                </div>
-              )}
-
-              {/* Advanced tools (collapsible) */}
-              {lines && lines.length > 0 && (
-                <div className="space-y-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="gap-2"
-                    onClick={() => setAdvancedToolsOpen(!advancedToolsOpen)}
-                  >
-                    <span className="text-xs text-muted-foreground">Advanced tools</span>
-                    {advancedToolsOpen ? (
-                      <ChevronDown className="h-3 w-3" />
-                    ) : (
-                      <ChevronRight className="h-3 w-3" />
-                    )}
-                  </Button>
-                  {advancedToolsOpen && (
-                    <div className="mt-4 space-y-2">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setMapping((prev) => autoMap(lines, questionnaireFields, prev));
-                            toast({ title: "Mapping suggested", description: "Mapped similar fields based on keywords." });
-                          }}
-                        >
-                          Auto-map to questionnaire
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleDownloadCsv}
-                          className="gap-2"
-                        >
-                          <Download className="h-4 w-4" />
-                          Download CSV
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setRawParseOpen(true)}
-                          className="gap-2"
-                        >
-                          <FileText className="h-4 w-4" />
-                          View raw parse
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* ========== LINE ITEMS (PARSED FROM SUPPLIER) ========== */}
-            {lines && lines.length > 0 && (
-              <div id="line-items-section" className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+            <TabsContent value="details" className="space-y-6">
+              <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
                 <div>
-                  <h2 className="text-2xl font-semibold text-foreground mb-2">Line items parsed from supplier quote</h2>
+                  <h2 className="text-2xl font-semibold text-foreground mb-2">Client & project details</h2>
                   <p className="text-sm text-muted-foreground">
-                    Review quantities, prices, and mappings to questionnaire fields
+                    Core information about the client and project requirements
                   </p>
                 </div>
 
-                <ParsedLinesTable
-                  lines={lines}
-                  questionnaireFields={questionnaireFields}
-                  mapping={mapping}
-                  onMappingChange={(lineId, questionKey) => setMapping((prev) => ({ ...prev, [lineId]: questionKey }))}
-                  onLineChange={handleLineChange}
-                  currency={currency}
-                  isParsing={isParsing}
-                  parseMeta={parseMeta}
-                  onAutoMap={() => {
-                    setMapping((prev) => autoMap(lines, questionnaireFields, prev));
-                    toast({ title: "Mapping suggested", description: "Mapped similar fields based on keywords." });
-                  }}
-                  onShowRawParse={() => setRawParseOpen(true)}
-                  onDownloadCsv={handleDownloadCsv}
+                <LeadDetailsCard 
+                  lead={lead}
+                  questionnaireAnswers={questionnaireAnswers}
                 />
-              </div>
-            )}
 
-            {/* ========== STAGE 3: PRICING & PROPOSAL ========== */}
-            <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
-              <div>
-                <h2 className="text-2xl font-semibold text-foreground mb-2">Pricing & proposal</h2>
-                <p className="text-sm text-muted-foreground">
-                  Generate final pricing and create a professional proposal PDF
-                </p>
+                {/* Questionnaire summary */}
+                {keyQuestionnaireFields.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                      Key project details
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {keyQuestionnaireFields.map((field) => {
+                        const value = questionnaireAnswers[field.key];
+                        if (!value) return null;
+                        return (
+                          <div key={field.key} className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">{field.label}</div>
+                            <div className="text-sm text-foreground">
+                              {Array.isArray(value) ? value.join(", ") : String(value)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Full questionnaire (collapsible) */}
+                <div className="space-y-4">
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-between"
+                    onClick={() => setQuestionnaireOpen(!questionnaireOpen)}
+                  >
+                    <span>Full questionnaire (advanced)</span>
+                    {questionnaireOpen ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </Button>
+                  {questionnaireOpen && (
+                    <div className="mt-4">
+                      <QuestionnaireForm
+                        fields={questionnaireFields}
+                        answers={questionnaireAnswers}
+                        isSaving={questionnaireSaving}
+                        disabled={quoteLoading || !leadId}
+                        onAutoSave={handleQuestionnaireSave}
+                        onEstimateFromAnswers={handleQuestionnaireEstimate}
+                        estimateSupported={Boolean(leadId)}
+                        estimateDisabledReason={leadId ? undefined : "Quote is not linked to a lead."}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
+            </TabsContent>
+
+            <TabsContent value="supplier" className="space-y-6">
+              <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-foreground mb-2">Supplier quote upload & parsing</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Upload supplier PDFs and extract line items using ML
+                  </p>
+                </div>
+
+                <SupplierFilesCard
+                  files={quote?.supplierFiles}
+                  onOpen={handleOpenFile}
+                  onUpload={handleUploadFiles}
+                  onUploadClick={openUploadDialog}
+                  isUploading={isUploading}
+                />
+
+                {(quote?.supplierFiles ?? []).length > 0 && (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 bg-muted/30 rounded-xl">
+                    <div>
+                      <h3 className="font-medium text-foreground mb-1">Parse supplier PDFs</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Extract line items and pricing using ML
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleParse}
+                      disabled={isParsing}
+                      size="lg"
+                      className="gap-2"
+                    >
+                      {isParsing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Parsing...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" />
+                          Parse & build estimate
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {lines && lines.length > 0 && (
+                  <div className="text-center py-4">
+                    <Button 
+                      variant="outline" 
+                      className="gap-2"
+                      onClick={() => setActiveTab("quote-lines")}
+                    >
+                      <FileText className="h-4 w-4" />
+                      View {lines.length} parsed line item{lines.length !== 1 ? 's' : ''} →
+                    </Button>
+                  </div>
+                )}
+
+                {/* Advanced tools (collapsible) */}
+                {lines && lines.length > 0 && (
+                  <div className="space-y-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="gap-2"
+                      onClick={() => setAdvancedToolsOpen(!advancedToolsOpen)}
+                    >
+                      <span className="text-xs text-muted-foreground">Advanced tools</span>
+                      {advancedToolsOpen ? (
+                        <ChevronDown className="h-3 w-3" />
+                      ) : (
+                        <ChevronRight className="h-3 w-3" />
+                      )}
+                    </Button>
+                    {advancedToolsOpen && (
+                      <div className="mt-4 space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDownloadCsv}
+                            className="gap-2"
+                          >
+                            <Download className="h-4 w-4" />
+                            Download CSV
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setRawParseOpen(true)}
+                            className="gap-2"
+                          >
+                            <FileText className="h-4 w-4" />
+                            View raw parse
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="joinerysoft" className="space-y-6">
+              <div className="rounded-2xl border bg-card p-8 shadow-sm">
+                <div className="text-center text-muted-foreground py-12">
+                  <Building2 className="h-12 w-12 mx-auto mb-4 opacity-40" />
+                  <h3 className="text-lg font-medium mb-2">Joinerysoft integration</h3>
+                  <p className="text-sm">Coming soon - import quotes directly from Joinerysoft</p>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="ml-estimate" className="space-y-6">
+              <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-foreground mb-2">ML estimate & pricing</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Generate AI-powered estimates from questionnaire data
+                  </p>
+                </div>
 
               {/* Estimate summary */}
               {estimate && (
@@ -866,8 +872,132 @@ export default function QuoteBuilderPage() {
                   </Button>
                 </div>
               )}
-            </div>
-          </div>
+
+              {lines && lines.length > 0 && (
+                <div className="text-center py-4">
+                  <Button 
+                    variant="outline" 
+                    className="gap-2"
+                    onClick={() => setActiveTab("quote-lines")}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    View generated line items →
+                  </Button>
+                </div>
+              )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="quote-lines" className="space-y-6">
+              {lines && lines.length > 0 ? (
+                <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-semibold text-foreground mb-2">Quote line items</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Review and edit line items from all sources (supplier PDFs, ML estimates, manual entry)
+                    </p>
+                  </div>
+
+                  <ParsedLinesTable
+                    lines={lines}
+                    questionnaireFields={questionnaireFields}
+                    mapping={mapping}
+                    onMappingChange={(lineId, questionKey) => setMapping((prev) => ({ ...prev, [lineId]: questionKey }))}
+                    onLineChange={handleLineChange}
+                    currency={currency}
+                    isParsing={isParsing}
+                    parseMeta={parseMeta}
+                    onAutoMap={() => {
+                      setMapping((prev) => autoMap(lines, questionnaireFields, prev));
+                      toast({ title: "Mapping suggested", description: "Mapped similar fields based on keywords." });
+                    }}
+                    onShowRawParse={() => setRawParseOpen(true)}
+                    onDownloadCsv={handleDownloadCsv}
+                    imageUrlMap={imageUrlMap}
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border bg-card p-8 shadow-sm">
+                  <div className="text-center text-muted-foreground py-12">
+                    <Edit3 className="h-12 w-12 mx-auto mb-4 opacity-40" />
+                    <h3 className="text-lg font-medium mb-2">No line items yet</h3>
+                    <p className="text-sm mb-4">Parse a supplier quote or generate an ML estimate to create line items</p>
+                    <div className="flex gap-2 justify-center">
+                      <Button variant="outline" onClick={() => setActiveTab("supplier")}>
+                        Upload supplier quote
+                      </Button>
+                      <Button variant="outline" onClick={() => setActiveTab("ml-estimate")}>
+                        Generate ML estimate
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="preview" className="space-y-6">
+              <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-foreground mb-2">Proposal preview & rendering</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Generate and download the final proposal PDF
+                  </p>
+                </div>
+
+                {estimate && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-6 bg-muted/30 rounded-xl">
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Total estimate</div>
+                      <div className="text-2xl font-bold text-foreground">
+                        {formatCurrency(estimate.estimatedTotal, currency)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Line items</div>
+                      <div className="text-2xl font-bold text-foreground">{lines?.length ?? 0}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Status</div>
+                      <div className="text-sm font-medium text-foreground capitalize">{quoteStatus ?? "Draft"}</div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <ClientQuoteUploadCard
+                    files={quote?.clientQuoteFiles}
+                    onUpload={handleUploadClientQuoteFiles}
+                    onOpen={handleOpenClientQuoteFile}
+                    isUploading={isUploadingClientQuote}
+                  />
+
+                  <div className="text-center text-xs text-muted-foreground py-2">
+                    Upload your own quote PDF or use the button below to generate from line items
+                  </div>
+
+                  <Button
+                    onClick={handleRenderProposal}
+                    disabled={isRendering}
+                    size="lg"
+                    variant="default"
+                    className="w-full gap-2"
+                  >
+                    {isRendering ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Rendering...
+                      </>
+                    ) : (
+                      <>
+                        <Printer className="h-4 w-4" />
+                        Render proposal PDF
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         )}
       </div>
 

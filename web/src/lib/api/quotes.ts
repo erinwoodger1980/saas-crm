@@ -137,16 +137,26 @@ export async function fetchQuote(quoteId: string): Promise<QuoteDto> {
   return quote;
 }
 
-export async function fetchParsedLines(quoteId: string): Promise<ParsedLineDto[]> {
+export async function fetchParsedLines(quoteId: string): Promise<{ lines: ParsedLineDto[]; imageUrlMap: Record<string, string> }> {
   if (!quoteId) throw new Error("quoteId required");
   try {
-    const lines = await apiFetch<ParsedLineDto[]>(`/quotes/${encodeURIComponent(quoteId)}/lines`);
-    if (Array.isArray(lines)) return lines;
-    return [];
+    const response = await apiFetch<{ lines: ParsedLineDto[]; imageUrlMap: Record<string, string> } | ParsedLineDto[]>(`/quotes/${encodeURIComponent(quoteId)}/lines`);
+    
+    // Handle new format with imageUrlMap
+    if (response && typeof response === 'object' && 'lines' in response && 'imageUrlMap' in response) {
+      return { lines: response.lines || [], imageUrlMap: response.imageUrlMap || {} };
+    }
+    
+    // Handle old format (array of lines)
+    if (Array.isArray(response)) {
+      return { lines: response, imageUrlMap: {} };
+    }
+    
+    return { lines: [], imageUrlMap: {} };
   } catch (err: any) {
     if (err?.status === 404) {
       const quote = await fetchQuote(quoteId);
-      return Array.isArray(quote?.lines) ? quote.lines ?? [] : [];
+      return { lines: Array.isArray(quote?.lines) ? quote.lines ?? [] : [], imageUrlMap: {} };
     }
     throw err;
   }
