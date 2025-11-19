@@ -710,16 +710,45 @@ router.get("/:id", requireAuth, async (req: any, res) => {
   try {
     const tenantId = await getTenantId(req);
     const id = String(req.params.id);
-    const q = await prisma.quote.findFirst({
-      where: { id, tenantId },
-      include: { lines: true, supplierFiles: true },
-    });
+    let q: any;
+    try {
+      q = await prisma.quote.findFirst({
+        where: { id, tenantId },
+        include: { lines: true, supplierFiles: true },
+      });
+    } catch (inner: any) {
+      const msg = inner?.message || String(inner);
+      // Common production mismatch: schema expects quoteSourceType/supplierProfileId but column absent.
+      if (/Unknown column/.test(msg) || /doesn't exist/.test(msg)) {
+        console.warn(`[quotes/:id] Prisma schema mismatch, falling back to raw query: ${msg}`);
+        // Raw minimal query without new columns
+        const rows: any[] = await prisma.$queryRawUnsafe(
+          `SELECT id, tenantId, leadId, title, status, currency, exchangeRate, deliveryCost, markupDefault, subtotalMaterialGBP, subtotalLabourGBP, subtotalOtherGBP, totalGBP, proposalPdfUrl, notes, meta, createdAt, updatedAt FROM "Quote" WHERE id = $1 AND tenantId = $2 LIMIT 1`,
+          id,
+          tenantId,
+        );
+        q = rows[0] || null;
+        if (q) {
+          q.quoteSourceType = null;
+          q.supplierProfileId = null;
+          q.lines = [];
+          q.supplierFiles = [];
+          q.__partial = true;
+        }
+      } else {
+        throw inner; // rethrow if different error
+      }
+    }
     if (!q) return res.status(404).json({ error: "not_found" });
 
-    // Separate client quote files from supplier files (safe guards if relation missing)
+    // If we only have partial data, still respond so UI can load gracefully
+    if (q.__partial) {
+      return res.json(q);
+    }
+
     const allFiles = Array.isArray(q.supplierFiles) ? q.supplierFiles : [];
-    const supplierFiles = allFiles.filter((f) => String(f.kind) === "SUPPLIER_QUOTE");
-    const clientQuoteFiles = allFiles.filter((f) => String(f.kind) === "CLIENT_QUOTE");
+    const supplierFiles = allFiles.filter((f: any) => String(f.kind) === "SUPPLIER_QUOTE");
+    const clientQuoteFiles = allFiles.filter((f: any) => String(f.kind) === "CLIENT_QUOTE");
 
     return res.json({
       ...q,
