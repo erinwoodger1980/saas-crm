@@ -7,13 +7,10 @@ import useSWR from "swr";
 import { ParsedLinesTable } from "@/components/quotes/ParsedLinesTable";
 import { QuestionnaireForm } from "@/components/quotes/QuestionnaireForm";
 import { SupplierFilesCard } from "@/components/quotes/SupplierFilesCard";
-import { QuoteStepper } from "@/components/quotes/QuoteStepper";
-import { QuoteEstimateSidebar } from "@/components/quotes/QuoteEstimateSidebar";
 import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
 import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles, Printer } from "lucide-react";
+import { Loader2, Sparkles, Printer, ChevronDown, ChevronRight, Download, FileText } from "lucide-react";
 import {
   fetchQuote,
   fetchParsedLines,
@@ -457,15 +454,9 @@ export default function QuoteBuilderPage() {
     [quoteId, toast],
   );
 
-  // Determine current step based on state
-  const [currentTab, setCurrentTab] = useState("questionnaire");
-  const currentStep = currentTab === "questionnaire" ? 0 : currentTab === "supplier" ? 1 : 2;
-
-  const steps = [
-    { id: "questionnaire", title: "Questionnaire", description: "Gather project details" },
-    { id: "supplier", title: "Supplier quote", description: "Upload & parse PDFs" },
-    { id: "pricing", title: "Pricing & proposal", description: "Review & finalize" },
-  ];
+  // UI state for collapsible sections
+  const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
 
   const breadcrumbs = (
     <>
@@ -486,8 +477,13 @@ export default function QuoteBuilderPage() {
 
   const rawSummaries = parseMeta?.summaries ?? [];
 
+  // Extract key questionnaire fields for summary (first 5-8 fields)
+  const keyQuestionnaireFields = questionnaireFields
+    .filter(f => f.askInQuestionnaire !== false && !f.internalOnly)
+    .slice(0, 6);
+
   return (
-    <div className="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-6 lg:py-8">
+    <div className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6 lg:py-8">
       <input
         ref={fileInputRef}
         type="file"
@@ -496,78 +492,99 @@ export default function QuoteBuilderPage() {
         hidden
         onChange={(event) => handleUploadFiles(event.target.files)}
       />
-        <div className="space-y-6">
-          {/* Header */}
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">{breadcrumbs}</div>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="space-y-2">
-                <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                  {quote?.title ?? "Quote Builder"}
-                </h1>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                  {tenantName && <span className="font-medium text-foreground">{tenantName}</span>}
-                  {quote?.updatedAt && (
-                    <span>Updated {new Date(quote.updatedAt).toLocaleString()}</span>
-                  )}
+      
+      <div className="space-y-8">
+        {/* ========== PROJECT OVERVIEW ========== */}
+        <div className="space-y-4">
+          {/* Breadcrumbs */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">{breadcrumbs}</div>
+          
+          {/* Header with actions */}
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <h1 className="text-4xl font-bold tracking-tight text-foreground">
+                {quote?.title ?? "Quote Builder"}
+              </h1>
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                {tenantName && <span className="font-medium text-foreground">{tenantName}</span>}
+                {quote?.updatedAt && (
+                  <span>Last updated {new Date(quote.updatedAt).toLocaleDateString()}</span>
+                )}
+              </div>
+            </div>
+            <Link href={`/quotes/${quoteId}/print`} target="_blank">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Printer className="h-4 w-4" />
+                Print quote sheet
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        {/* Notices */}
+        {errorBanner}
+        {noticeBanner}
+
+        {quoteLoading || linesLoading ? (
+          <div className="space-y-6">
+            <div className="h-48 rounded-2xl bg-muted/40 animate-pulse"></div>
+            <div className="h-96 rounded-2xl bg-muted/40 animate-pulse"></div>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {/* ========== STAGE 1: CLIENT & PROJECT DETAILS ========== */}
+            <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+              <div>
+                <h2 className="text-2xl font-semibold text-foreground mb-2">Client & project details</h2>
+                <p className="text-sm text-muted-foreground">
+                  Core information about the client and project requirements
+                </p>
+              </div>
+
+              <LeadDetailsCard 
+                lead={lead}
+                questionnaireAnswers={questionnaireAnswers}
+              />
+
+              {/* Questionnaire summary */}
+              {keyQuestionnaireFields.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                    Key project details
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {keyQuestionnaireFields.map((field) => {
+                      const value = questionnaireAnswers[field.key];
+                      if (!value) return null;
+                      return (
+                        <div key={field.key} className="space-y-1">
+                          <div className="text-xs font-medium text-muted-foreground">{field.label}</div>
+                          <div className="text-sm text-foreground">
+                            {Array.isArray(value) ? value.join(", ") : String(value)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-              <Link href={`/quotes/${quoteId}/print`} target="_blank">
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Printer className="h-4 w-4" />
-                  Print Quote Sheet
-                </Button>
-              </Link>
-              {pricingBreakdown && (
-                <Button variant="secondary" size="sm" className="gap-2" onClick={() => setBreakdownOpen(true)}>
-                  <Sparkles className="h-4 w-4" />
-                  View pricing breakdown
-                </Button>
               )}
-            </div>
-          </div>
 
-          {/* Stepper */}
-          <div className="rounded-2xl border bg-card p-6 shadow-sm">
-            <QuoteStepper
-              steps={steps}
-              currentStep={currentStep}
-              onStepClick={(idx) => {
-                const stepMap = ["questionnaire", "supplier", "lines"];
-                setCurrentTab(stepMap[idx] ?? "questionnaire");
-              }}
-            />
-          </div>
-
-          {/* Notices */}
-          {errorBanner}
-          {noticeBanner}
-
-          {quoteLoading || linesLoading ? (
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+              {/* Full questionnaire (collapsible) */}
               <div className="space-y-4">
-                <div className="h-24 rounded-2xl bg-muted/40 animate-pulse"></div>
-                <div className="h-96 rounded-2xl bg-muted/40 animate-pulse"></div>
-              </div>
-              <div className="h-[600px] rounded-2xl bg-muted/40 animate-pulse"></div>
-            </div>
-          ) : (
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-              {/* Left: Main working area with tabs */}
-              <div className="space-y-4">
-                <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="questionnaire">Questionnaire</TabsTrigger>
-                    <TabsTrigger value="supplier">Supplier quote</TabsTrigger>
-                    <TabsTrigger value="lines">Line items</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="questionnaire" className="mt-6 space-y-4">
-                    <LeadDetailsCard 
-                      lead={lead}
-                      questionnaireAnswers={questionnaireAnswers}
-                    />
-                    
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-between"
+                  onClick={() => setQuestionnaireOpen(!questionnaireOpen)}
+                >
+                  <span>Full questionnaire (advanced)</span>
+                  {questionnaireOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </Button>
+                {questionnaireOpen && (
+                  <div className="mt-4">
                     <QuestionnaireForm
                       fields={questionnaireFields}
                       answers={questionnaireAnswers}
@@ -578,100 +595,281 @@ export default function QuoteBuilderPage() {
                       estimateSupported={Boolean(leadId)}
                       estimateDisabledReason={leadId ? undefined : "Quote is not linked to a lead."}
                     />
-
-                    <ClientQuoteUploadCard
-                      files={quote?.clientQuoteFiles}
-                      onUpload={handleUploadClientQuoteFiles}
-                      onOpen={handleOpenClientQuoteFile}
-                      isUploading={isUploadingClientQuote}
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="supplier" className="mt-6 space-y-4">
-                    <SupplierFilesCard
-                      files={quote?.supplierFiles}
-                      onOpen={handleOpenFile}
-                      onUpload={handleUploadFiles}
-                      onUploadClick={openUploadDialog}
-                      isUploading={isUploading}
-                    />
-                    
-                    {(quote?.supplierFiles ?? []).length > 0 && (
-                      <div className="rounded-2xl border bg-card p-6 shadow-sm">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-lg font-semibold">Ready to parse?</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              Extract line items from your supplier PDFs using ML
-                            </p>
-                          </div>
-                          <Button
-                            onClick={handleParse}
-                            disabled={isParsing}
-                            size="lg"
-                            className="gap-2"
-                          >
-                            {isParsing ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Parsing...
-                              </>
-                            ) : (
-                              <>
-                                <Sparkles className="h-4 w-4" />
-                                Parse supplier PDFs
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="lines" className="mt-6 space-y-4">
-                    <ParsedLinesTable
-                      lines={lines}
-                      questionnaireFields={questionnaireFields}
-                      mapping={mapping}
-                      onMappingChange={(lineId, questionKey) => setMapping((prev) => ({ ...prev, [lineId]: questionKey }))}
-                      onLineChange={handleLineChange}
-                      currency={currency}
-                      isParsing={isParsing}
-                      parseMeta={parseMeta}
-                      onAutoMap={() => {
-                        setMapping((prev) => autoMap(lines, questionnaireFields, prev));
-                        toast({ title: "Mapping suggested", description: "Mapped similar fields based on keywords." });
-                      }}
-                      onShowRawParse={() => setRawParseOpen(true)}
-                      onDownloadCsv={handleDownloadCsv}
-                    />
-                  </TabsContent>
-                </Tabs>
-              </div>
-
-              {/* Right: Sticky estimate sidebar */}
-              <div>
-                <QuoteEstimateSidebar
-                  quote={quote}
-                  estimate={estimate}
-                  linesCount={lines?.length ?? 0}
-                  filesCount={quote?.supplierFiles?.length ?? 0}
-                  currency={currency}
-                  isEstimating={isEstimating}
-                  isRendering={isRendering}
-                  isUploading={isUploading}
-                  onEstimate={handleQuestionnaireEstimate}
-                  onRenderProposal={handleRenderProposal}
-                  onUploadClick={openUploadDialog}
-                  reestimate={Boolean(reestimateNeeded)}
-                  lastEstimateAt={lastEstimateAt}
-                  cacheHit={estimate?.meta?.cacheHit}
-                  latencyMs={estimate?.meta?.latencyMs ?? null}
-                />
+                  </div>
+                )}
               </div>
             </div>
-          )}
-        </div>
+
+            {/* ========== STAGE 2: SUPPLIER QUOTE → ESTIMATE ========== */}
+            <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+              <div>
+                <h2 className="text-2xl font-semibold text-foreground mb-2">Supplier quote → Estimate</h2>
+                <p className="text-sm text-muted-foreground">
+                  Upload supplier PDFs, parse line items, and generate pricing estimates
+                </p>
+              </div>
+
+              <SupplierFilesCard
+                files={quote?.supplierFiles}
+                onOpen={handleOpenFile}
+                onUpload={handleUploadFiles}
+                onUploadClick={openUploadDialog}
+                isUploading={isUploading}
+              />
+
+              {(quote?.supplierFiles ?? []).length > 0 && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 bg-muted/30 rounded-xl">
+                  <div>
+                    <h3 className="font-medium text-foreground mb-1">Parse supplier PDFs</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Extract line items and pricing using ML
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleParse}
+                    disabled={isParsing}
+                    size="lg"
+                    className="gap-2"
+                  >
+                    {isParsing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Parsing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Parse & build estimate
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {lines && lines.length > 0 && (
+                <div className="text-center py-4">
+                  <Button 
+                    variant="ghost" 
+                    className="gap-2"
+                    onClick={() => {
+                      document.getElementById('line-items-section')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                  >
+                    <FileText className="h-4 w-4" />
+                    View {lines.length} parsed line item{lines.length !== 1 ? 's' : ''}
+                  </Button>
+                </div>
+              )}
+
+              {/* Advanced tools (collapsible) */}
+              {lines && lines.length > 0 && (
+                <div className="space-y-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="gap-2"
+                    onClick={() => setAdvancedToolsOpen(!advancedToolsOpen)}
+                  >
+                    <span className="text-xs text-muted-foreground">Advanced tools</span>
+                    {advancedToolsOpen ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                  </Button>
+                  {advancedToolsOpen && (
+                    <div className="mt-4 space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setMapping((prev) => autoMap(lines, questionnaireFields, prev));
+                            toast({ title: "Mapping suggested", description: "Mapped similar fields based on keywords." });
+                          }}
+                        >
+                          Auto-map to questionnaire
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleDownloadCsv}
+                          className="gap-2"
+                        >
+                          <Download className="h-4 w-4" />
+                          Download CSV
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setRawParseOpen(true)}
+                          className="gap-2"
+                        >
+                          <FileText className="h-4 w-4" />
+                          View raw parse
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ========== LINE ITEMS (PARSED FROM SUPPLIER) ========== */}
+            {lines && lines.length > 0 && (
+              <div id="line-items-section" className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-foreground mb-2">Line items parsed from supplier quote</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Review quantities, prices, and mappings to questionnaire fields
+                  </p>
+                </div>
+
+                <ParsedLinesTable
+                  lines={lines}
+                  questionnaireFields={questionnaireFields}
+                  mapping={mapping}
+                  onMappingChange={(lineId, questionKey) => setMapping((prev) => ({ ...prev, [lineId]: questionKey }))}
+                  onLineChange={handleLineChange}
+                  currency={currency}
+                  isParsing={isParsing}
+                  parseMeta={parseMeta}
+                  onAutoMap={() => {
+                    setMapping((prev) => autoMap(lines, questionnaireFields, prev));
+                    toast({ title: "Mapping suggested", description: "Mapped similar fields based on keywords." });
+                  }}
+                  onShowRawParse={() => setRawParseOpen(true)}
+                  onDownloadCsv={handleDownloadCsv}
+                />
+              </div>
+            )}
+
+            {/* ========== STAGE 3: PRICING & PROPOSAL ========== */}
+            <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+              <div>
+                <h2 className="text-2xl font-semibold text-foreground mb-2">Pricing & proposal</h2>
+                <p className="text-sm text-muted-foreground">
+                  Generate final pricing and create a professional proposal PDF
+                </p>
+              </div>
+
+              {/* Estimate summary */}
+              {estimate && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-muted/30 rounded-xl">
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Estimated total</div>
+                    <div className="text-2xl font-bold text-foreground">
+                      {formatCurrency(estimate.estimatedTotal, currency)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Line items</div>
+                    <div className="text-2xl font-bold text-foreground">{lines?.length ?? 0}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Supplier files</div>
+                    <div className="text-2xl font-bold text-foreground">{quote?.supplierFiles?.length ?? 0}</div>
+                  </div>
+                  {estimate.confidence != null && (
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground mb-1">Confidence</div>
+                      <div className="text-2xl font-bold text-foreground">
+                        {Math.round(estimate.confidence * 100)}%
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {reestimateNeeded && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  ⚠️ Line items have changed since last estimate. Re-run estimate for updated pricing.
+                </div>
+              )}
+
+              {/* Primary actions */}
+              <div className="space-y-4">
+                <Button
+                  onClick={handleQuestionnaireEstimate}
+                  disabled={isEstimating || isPricing}
+                  size="lg"
+                  className="w-full gap-2"
+                >
+                  {isEstimating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Calculating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Generate ML estimate & pricing
+                    </>
+                  )}
+                </Button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or</span>
+                  </div>
+                </div>
+
+                <ClientQuoteUploadCard
+                  files={quote?.clientQuoteFiles}
+                  onUpload={handleUploadClientQuoteFiles}
+                  onOpen={handleOpenClientQuoteFile}
+                  isUploading={isUploadingClientQuote}
+                />
+
+                <div className="text-center text-xs text-muted-foreground py-2">
+                  Use your own quote PDF and render a professional proposal
+                </div>
+
+                <Button
+                  onClick={handleRenderProposal}
+                  disabled={isRendering}
+                  size="lg"
+                  variant="default"
+                  className="w-full gap-2"
+                >
+                  {isRendering ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Rendering...
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="h-4 w-4" />
+                      Render proposal PDF
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Metadata */}
+              {lastEstimateAt && (
+                <div className="text-xs text-muted-foreground text-center">
+                  Last estimate: {new Date(lastEstimateAt).toLocaleString()}
+                  {estimate?.meta?.cacheHit && " (cached)"}
+                  {estimate?.meta?.latencyMs && ` · ${estimate.meta.latencyMs}ms`}
+                </div>
+              )}
+
+              {pricingBreakdown && (
+                <div className="text-center">
+                  <Button variant="outline" size="sm" className="gap-2" onClick={() => setBreakdownOpen(true)}>
+                    <Sparkles className="h-4 w-4" />
+                    View detailed pricing breakdown
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <Dialog open={rawParseOpen} onOpenChange={setRawParseOpen}>
         <DialogContent className="max-h-[80vh] overflow-y-auto">
