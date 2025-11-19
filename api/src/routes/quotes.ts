@@ -601,6 +601,11 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
       const sellUnit = Number(ln.unit_price_marked_up ?? 0);
       const sellTotal = Number(ln.total_marked_up ?? sellUnit * qty);
 
+      // CRITICAL: Preserve existing meta fields (especially imageFileId) from original parsed lines
+      // Match by description to find the original line
+      const originalLine = quote.lines.find(ol => ol.description === description);
+      const originalMeta = originalLine?.meta ? (originalLine.meta as any) : {};
+
       await prisma.quoteLine.create({
         data: {
           quoteId: quote.id,
@@ -613,6 +618,7 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
           deliveryShareGBP: new Prisma.Decimal(0),
           lineTotalGBP: new Prisma.Decimal(Number.isFinite(sellTotal) ? sellTotal : 0),
           meta: {
+            ...originalMeta,  // Preserve existing meta fields (imageFileId, dimensions, etc.)
             pricingMethod: "markup",
             markupPercent,
             vatPercent,
