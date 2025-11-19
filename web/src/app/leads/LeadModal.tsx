@@ -19,6 +19,7 @@ import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { Button } from "@/components/ui/button";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
 import DeclineEnquiryButton from "./DeclineEnquiryButton";
+import { UnifiedActivityTimeline } from "@/components/leads/UnifiedActivityTimeline";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -275,7 +276,7 @@ function toIsoOrUndefined(localValue: string): string | undefined {
 
 /* ----------------------------- Component ----------------------------- */
 
-type Stage = 'client' | 'quote' | 'communication' | 'order' | 'tasks';
+type Stage = 'client' | 'quote' | 'communication' | 'order' | 'tasks' | 'activity';
 
 export default function LeadModal({
   open,
@@ -428,6 +429,12 @@ export default function LeadModal({
       title: 'Quote Details',
       icon: '�',
       description: 'Questionnaire and quote information'
+    },
+    {
+      id: 'activity' as const,
+      title: 'Activity',
+      icon: '📋',
+      description: 'Unified timeline: communication, tasks & follow-ups'
     },
     {
       id: 'communication' as const,
@@ -3086,6 +3093,97 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     )}
                   </section>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ACTIVITY STAGE - Unified Timeline */}
+          {currentStage === "activity" && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-purple-50/70 to-blue-50/60 min-h-[60vh]">
+              <div className="max-w-6xl mx-auto">
+                <UnifiedActivityTimeline
+                  communications={lead?.communicationLog || []}
+                  tasks={followUpTasks}
+                  onAddCommunication={async (type, content) => {
+                    const oldType = communicationType;
+                    const oldNote = newNote;
+                    try {
+                      setCommunicationType(type);
+                      setNewNote(content);
+                      await addCommunicationNote();
+                    } finally {
+                      setCommunicationType(oldType);
+                      setNewNote(oldNote);
+                    }
+                  }}
+                  onCreateTask={async (task) => {
+                    const oldComposer = { ...taskComposer };
+                    try {
+                      setTaskComposer({
+                        title: task.title,
+                        description: task.description,
+                        priority: task.priority,
+                        dueAt: task.dueAt,
+                      });
+                      await createManualTask();
+                    } finally {
+                      setTaskComposer(oldComposer);
+                    }
+                  }}
+                  onCompleteTask={completeFollowUpTask}
+                  onComposeEmail={openEmailComposer}
+                  loading={loadingFollowUpTasks}
+                />
+
+                {/* Quick Follow-up Scheduler */}
+                <div className="mt-6 rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50 p-4">
+                  <h3 className="text-sm font-semibold text-slate-900 mb-3">
+                    ⚡ Quick Follow-up Scheduling
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <button
+                      className="p-3 rounded-lg bg-white border border-slate-200 hover:border-blue-300 text-left transition-colors disabled:opacity-50"
+                      onClick={createEmailTask}
+                      disabled={creatingEmailTask}
+                    >
+                      <div className="flex items-center gap-2 font-medium text-sm mb-1">
+                        <span>📧</span>
+                        Email Follow-up
+                      </div>
+                      <div className="text-xs text-slate-600">
+                        {creatingEmailTask ? 'Creating...' : `Schedule email in ${emailTaskDays} days`}
+                      </div>
+                    </button>
+
+                    <button
+                      className="p-3 rounded-lg bg-white border border-slate-200 hover:border-blue-300 text-left transition-colors disabled:opacity-50"
+                      onClick={createPhoneTask}
+                      disabled={creatingPhoneTask}
+                    >
+                      <div className="flex items-center gap-2 font-medium text-sm mb-1">
+                        <span>📞</span>
+                        Phone Follow-up
+                      </div>
+                      <div className="text-xs text-slate-600">
+                        {creatingPhoneTask ? 'Creating...' : `Schedule call in ${phoneTaskDays} days`}
+                      </div>
+                    </button>
+
+                    <button
+                      className="p-3 rounded-lg bg-white border border-slate-200 hover:border-indigo-300 text-left transition-colors disabled:opacity-50"
+                      onClick={createFollowupSequence}
+                      disabled={creatingSequence}
+                    >
+                      <div className="flex items-center gap-2 font-medium text-sm mb-1">
+                        <span>⚡</span>
+                        Auto Sequence
+                      </div>
+                      <div className="text-xs text-slate-600">
+                        {creatingSequence ? 'Creating...' : 'Email (3d) + Phone (7d)'}
+                      </div>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
