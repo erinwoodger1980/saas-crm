@@ -193,6 +193,15 @@ function serializeQuestionnaire(fields: QField[]): any[] {
     .filter(Boolean);
 }
 
+function emitTenantSettingsUpdate(payload: Partial<Settings>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new CustomEvent("tenant-settings:updated", { detail: payload }));
+  } catch {
+    // no-op
+  }
+}
+
 /* ============================================================
    Page
 ============================================================ */
@@ -218,6 +227,7 @@ export default function SettingsPage() {
   const [qHideInternal, setQHideInternal] = useState(true);
   const [qOnlyPublic, setQOnlyPublic] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingFireDoor, setSavingFireDoor] = useState(false);
   const [enrichingWebsite, setEnrichingWebsite] = useState(false);
   const [uploadingQuotePdf, setUploadingQuotePdf] = useState(false);
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
@@ -422,11 +432,33 @@ export default function SettingsPage() {
       setS(updated);
       setQFields(normalizeQuestionnaire((updated as any)?.questionnaire ?? []));
       setPlaybook(normalizeTaskPlaybook((updated as any)?.taskPlaybook ?? DEFAULT_TASK_PLAYBOOK));
+      emitTenantSettingsUpdate({ isFireDoorManufacturer: updated?.isFireDoorManufacturer });
       toast({ title: "Settings saved" });
     } catch (e: any) {
       toast({ title: "Failed to save settings", description: e?.message, variant: "destructive" });
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function handleFireDoorToggle(nextValue: boolean) {
+    if (!s || savingFireDoor) return;
+    const previousValue = !!s.isFireDoorManufacturer;
+    setS((prev) => (prev ? { ...prev, isFireDoorManufacturer: nextValue } : prev));
+    setSavingFireDoor(true);
+    try {
+      const updated = await apiFetch<Settings>("/tenant/settings", {
+        method: "PATCH",
+        json: { isFireDoorManufacturer: nextValue },
+      });
+      setS(updated);
+      emitTenantSettingsUpdate({ isFireDoorManufacturer: updated?.isFireDoorManufacturer });
+      toast({ title: nextValue ? "Fire Door Calculator enabled" : "Fire Door Calculator disabled" });
+    } catch (e: any) {
+      setS((prev) => (prev ? { ...prev, isFireDoorManufacturer: previousValue } : prev));
+      toast({ title: "Failed to update Fire Door setting", description: e?.message, variant: "destructive" });
+    } finally {
+      setSavingFireDoor(false);
     }
   }
 
@@ -1392,10 +1424,14 @@ export default function SettingsPage() {
       <input
         type="checkbox"
         checked={!!s?.isFireDoorManufacturer}
-        onChange={(e) => setS((prev) => (prev ? { ...prev, isFireDoorManufacturer: e.target.checked } : prev))}
+        disabled={savingFireDoor}
+        onChange={(e) => handleFireDoorToggle(e.target.checked)}
       />
       <span>Enable Fire Door Calculator feature</span>
     </label>
+    {savingFireDoor && (
+      <p className="text-xs text-slate-500 mt-1">Saving…</p>
+    )}
     <p className="text-xs text-slate-600 mt-2">
       When enabled, a "Fire Door Calculator" link will appear in the main navigation for quick access to the fire door pricing tool.
     </p>
