@@ -3524,11 +3524,19 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
       }
       
       try {
-        const parseResult = await parseSupplierPdf(buffer, {
+        let parseResult = await parseSupplierPdf(buffer, {
           supplierHint: f.name ?? undefined,
           currencyHint: quote.currency || "GBP",
         });
-        
+
+        // Fallback: if structured parser returns no lines, try simple fallback parser
+        if (!parseResult?.lines || !Array.isArray(parseResult.lines) || parseResult.lines.length === 0) {
+          const fb = await fallbackParseSupplierPdf(buffer);
+          if (fb?.lines?.length) {
+            parseResult = fb as any;
+          }
+        }
+
         if (parseResult?.lines && Array.isArray(parseResult.lines)) {
           const sourceCurrency = parseResult.currency || quote.currency || "GBP";
           
