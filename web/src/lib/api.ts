@@ -14,7 +14,27 @@ declare const process: { env?: Record<string, string | undefined> };
 const RAW_API_BASE = (typeof process !== "undefined" && (
   (process as any)?.env?.NEXT_PUBLIC_API_BASE_URL || (process as any)?.env?.NEXT_PUBLIC_API_BASE || ""
 )) as string;
-export const API_BASE = String(RAW_API_BASE).replace(/\/+$/g, "");
+
+function inferApiBase(): string {
+  if (RAW_API_BASE) return String(RAW_API_BASE).replace(/\/+$/g, "");
+
+  if (typeof window !== "undefined") {
+    const { hostname } = window.location;
+    // Production heuristic: joineryai.app / www.joineryai.app should talk to api.joineryai.app
+    if (/\.?(joineryai)\.app$/i.test(hostname)) {
+      return "https://api.joineryai.app";
+    }
+    // Default: same-origin /api proxy (works in dev with rewrites)
+    if (hostname === "localhost" || hostname.endsWith(".local")) {
+      return "/api";
+    }
+  }
+
+  // Server-side or unknown host: fall back to "/api" so Next rewrites/dev proxies kick in
+  return "/api";
+}
+
+export const API_BASE = inferApiBase();
 export const API_BASE_URL = API_BASE; // alias
 
 if (!API_BASE && typeof window !== "undefined") {
