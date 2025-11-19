@@ -404,9 +404,21 @@ async function updateSettings(req: any, res: any) {
       update.beta = nextBeta;
     }
 
-    const saved = await prisma.tenantSettings.update({
+    const saved = await prisma.tenantSettings.upsert({
       where: { tenantId },
-      data: update,
+      create: {
+        tenantId,
+        slug: `tenant-${tenantId.slice(0, 6).toLowerCase()}`,
+        brandName: "Your Company",
+        introHtml: "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
+        links: [],
+        taskPlaybook: DEFAULT_TASK_PLAYBOOK,
+        questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+        questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+        questionnaire: [],
+        ...update,
+      },
+      update,
     });
 
     if (sanitizedQuestionnaire) {
