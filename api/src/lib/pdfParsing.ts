@@ -722,7 +722,7 @@ export async function parseQuotePdf(
 
         if (!description.trim() || _is_gibberish(description)) {
           warnings.push(`Invalid description detected: ${description}`);
-          return null;
+          return undefined;
         }
 
         return {
@@ -736,7 +736,7 @@ export async function parseQuotePdf(
           meta,
         };
       })
-      .filter((line): line is ParsedQuoteLine => line !== null);
+      .filter((line): line is ParsedQuoteLine => line !== undefined);
 
     const images: ParsedQuote['images'] = [];
     for (const line of lines) {
