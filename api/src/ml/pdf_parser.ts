@@ -23,7 +23,53 @@ export function _is_gibberish(text: string): boolean {
   return false;
 }
 
-export function extract_text_from_pdf_bytes(_bytes: Uint8Array): string {
-  // Placeholder; real implementation can bridge to Python via a subprocess.
-  return "";
+export function extract_text_from_pdf_bytes(bytes: Uint8Array): string {
+  // Try to call Python implementation (ml/pdf_parser.py) if available.
+  try {
+    const cp = require('child_process') as typeof import('child_process');
+    const path = require('path') as typeof import('path');
+    const fs = require('fs') as typeof import('fs');
+
+    const base64Input = Buffer.from(bytes).toString('base64');
+
+    // Inline Python to import ml.pdf_parser and call extract_text_from_pdf_bytes
+    const pyCode = [
+      'import sys, base64',
+      'from ml.pdf_parser import extract_text_from_pdf_bytes',
+      'data = base64.b64decode(sys.stdin.read())',
+      'out = extract_text_from_pdf_bytes(data) or ""',
+      'sys.stdout.write(out)'
+    ].join('\n');
+
+    // Heuristic to find repo root that contains ml/pdf_parser.py
+    const candidates = [
+      path.resolve(__dirname, '../../..'),
+      path.resolve(process.cwd(), '..'),
+      process.cwd(),
+    ];
+    let cwd = candidates.find((d) => fs.existsSync(path.join(d, 'ml', 'pdf_parser.py')));
+    if (!cwd) {
+      cwd = process.cwd();
+    }
+
+    const pythonCmd = process.env.PYTHON || 'python3';
+    const res = cp.spawnSync(pythonCmd, ['-c', pyCode], {
+      input: base64Input,
+      encoding: 'utf-8',
+      cwd,
+      timeout: 15000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+
+    if (res.error) {
+      return "";
+    }
+    if (typeof res.status === 'number' && res.status !== 0) {
+      return "";
+    }
+    return (res.stdout || '').toString();
+  } catch {
+    // Fallback to empty string when Python is unavailable
+    return "";
+  }
 }
