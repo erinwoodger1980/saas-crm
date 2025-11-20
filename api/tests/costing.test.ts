@@ -42,6 +42,27 @@ describe('Questionnaire Costing (Mocked Prisma)', () => {
     expect(inputs).toEqual({ door_height_mm: 2000, door_width_mm: 800, quantity: 2 });
   });
 
+  test('buildCostingInputs falls back to estimated measurement fields', async () => {
+    (prisma.questionnaireResponse.findUnique as jest.Mock).mockResolvedValueOnce({
+      id: responseId,
+      quoteId,
+      tenantId,
+      answers: [
+        { id: 'est-h', fieldId: 'f_est_h', value: 2050, field: { costingInputKey: 'estimated_height_mm', type: 'NUMBER' } },
+        { id: 'est-w', fieldId: 'f_est_w', value: 910, field: { costingInputKey: 'estimated_width_mm', type: 'NUMBER' } },
+      ],
+    } as any);
+
+    const inputs = await buildCostingInputs(quoteId, tenantId);
+
+    expect(inputs).toMatchObject({
+      estimated_height_mm: 2050,
+      estimated_width_mm: 910,
+      door_height_mm: 2050,
+      door_width_mm: 910,
+    });
+  });
+
   test('calculateCost derives expected cost', async () => {
     const inputs = await buildCostingInputs(quoteId, tenantId);
     const result = await calculateCost(inputs, tenantId);

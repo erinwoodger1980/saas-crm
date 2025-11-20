@@ -1,6 +1,7 @@
 // api/src/routes/leads.ts
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { MeasurementSource } from "@prisma/client";
 import { gmailSend, getAccessTokenForTenant, gmailFetchAttachment } from "../services/gmail";
 import { logInsight, logEvent } from "../services/training";
 import { UiStatus, loadTaskPlaybook, ensureTaskFromRecipe, TaskPlaybook } from "../task-playbook";
@@ -196,6 +197,31 @@ function toMaybeNumber(value: any): number | null {
   }
   const num = Number(value);
   return Number.isNaN(num) ? null : num;
+}
+
+const MIN_MEASUREMENT_MM = 300;
+const MAX_MEASUREMENT_MM = 3000;
+
+function normalizeMeasurement(value: any): number | null {
+  const num = toMaybeNumber(value);
+  if (num === null) return null;
+  const clamped = Math.max(MIN_MEASUREMENT_MM, Math.min(MAX_MEASUREMENT_MM, num));
+  return Math.round(clamped / 10) * 10;
+}
+
+function normalizeMeasurementSource(input: any): MeasurementSource | null {
+  if (input === null || input === undefined) return null;
+  const raw = String(input).trim().toUpperCase();
+  if (raw === "MANUAL") return "MANUAL";
+  if (raw === "PHOTO_ESTIMATE") return "PHOTO_ESTIMATE";
+  return null;
+}
+
+function normalizeConfidence(input: any): number | null {
+  const num = toMaybeNumber(input);
+  if (num === null) return null;
+  const clamped = Math.max(0, Math.min(1, num));
+  return Math.round(clamped * 100) / 100;
 }
 
 function buildComputedValues(lead: any): Record<string, any> {
@@ -829,6 +855,10 @@ router.patch("/:id", async (req, res) => {
     dateQuoteSent?: string | Date | null;
     startDate?: string | Date | null;
     deliveryDate?: string | Date | null;
+    estimatedWidthMm?: number | string | null;
+    estimatedHeightMm?: number | string | null;
+    measurementSource?: MeasurementSource | string | null;
+    measurementConfidence?: number | string | null;
   };
 
   const prevCustom = ((existing.custom as any) || {}) as Record<string, any>;
@@ -891,6 +921,19 @@ router.patch("/:id", async (req, res) => {
   if (body.dateQuoteSent !== undefined) applyCanonical("dateQuoteSent", body.dateQuoteSent);
   if (body.startDate !== undefined) applyCanonical("startDate", body.startDate);
   if (body.deliveryDate !== undefined) applyCanonical("deliveryDate", body.deliveryDate);
+
+  if (body.estimatedWidthMm !== undefined) {
+    data.estimatedWidthMm = normalizeMeasurement(body.estimatedWidthMm);
+  }
+  if (body.estimatedHeightMm !== undefined) {
+    data.estimatedHeightMm = normalizeMeasurement(body.estimatedHeightMm);
+  }
+  if (body.measurementSource !== undefined) {
+    data.measurementSource = normalizeMeasurementSource(body.measurementSource);
+  }
+  if (body.measurementConfidence !== undefined) {
+    data.measurementConfidence = normalizeConfidence(body.measurementConfidence);
+  }
 
   applyQuestionnairePatch(body.questionnaire);
   applyQuestionnairePatch(body.custom);
