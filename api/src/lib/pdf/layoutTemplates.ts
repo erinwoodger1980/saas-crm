@@ -1,5 +1,6 @@
 import { prisma } from "../../db";
 import type { SupplierParseResult } from "../../types/parse";
+import { assessDescriptionQuality } from "./quality";
 
 export type AnnotationLabel =
   | "joinery_image"
@@ -289,6 +290,36 @@ export function extractRowsUsingTemplate(
   return { rows, matchedAnnotations };
 }
 
+function applyDescriptionQualityGate<T extends { description: string; meta?: Record<string, any> }>(
+  lines: T[],
+  sampleLimit = 5,
+): { lines: T[]; rejected: number; samples: string[] } {
+  const kept: T[] = [];
+  let rejected = 0;
+  const samples: string[] = [];
+
+  for (const line of lines) {
+    const assessment = assessDescriptionQuality(line.description);
+    line.meta = {
+      ...(line.meta || {}),
+      descriptionQuality: assessment.score,
+      descriptionQualityReasons: assessment.reasons,
+    };
+
+    if (assessment.gibberish) {
+      rejected += 1;
+      if (samples.length < sampleLimit) {
+        samples.push(line.description.slice(0, 140));
+      }
+      continue;
+    }
+
+    kept.push(line);
+  }
+
+  return { lines: kept, rejected, samples };
+}
+
 export async function parsePdfWithTemplate(
   buffer: Buffer,
   template: LayoutTemplateRecord,
@@ -336,16 +367,24 @@ export async function parsePdfWithTemplate(
     }
   );
 
-  const lines = extraction.rows
+  const extractedLines = extraction.rows
     .map((row) => convertRowToLine(row))
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
+
+  const qualityGate = applyDescriptionQualityGate(extractedLines);
+  const lines = qualityGate.lines;
 
   const meta: TemplateParseMeta = {
     ...baseMeta,
     matchedAnnotations: extraction.matchedAnnotations,
     matchedRows: lines.length,
     method: lines.length >= (options.minLines ?? DEFAULT_MIN_LINES) ? "template" : "template_failed",
-    reason: lines.length ? undefined : "no_rows_extracted",
+    reason:
+      lines.length > 0
+        ? undefined
+        : qualityGate.rejected > 0 && extractedLines.length > 0
+        ? "quality_rejected"
+        : "no_rows_extracted",
   };
 
   if (meta.method !== "template") {
@@ -354,10 +393,23 @@ export async function parsePdfWithTemplate(
 
   const detectedTotals = computeTotals(lines);
   const warnings: string[] = [];
+  if (qualityGate.rejected) {
+    warnings.push(`Discarded ${qualityGate.rejected} low-quality OCR rows`);
+  }
   const hasMissingPrices = lines.some((line) => line.costUnit == null && line.lineTotal == null);
   if (hasMissingPrices) {
     warnings.push("Template matched rows but some prices were missing");
   }
+
+  const descriptionQualityMeta =
+    qualityGate.rejected || qualityGate.samples.length
+      ? {
+          method: "template",
+          rejected: qualityGate.rejected,
+          kept: lines.length,
+          samples: qualityGate.samples.length ? qualityGate.samples : undefined,
+        }
+      : undefined;
 
   const supplierResult: SupplierParseResult = {
     currency: options.currencyHint || "GBP",
@@ -376,6 +428,7 @@ export async function parsePdfWithTemplate(
     usedStages: ["template"],
     meta: {
       template: meta,
+        ...(descriptionQualityMeta ? { descriptionQuality: descriptionQualityMeta } : {}),
     },
   };
 

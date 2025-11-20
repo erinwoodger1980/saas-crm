@@ -72,6 +72,17 @@ export type TemplateParseMetaDto = {
   reason?: string | null;
 };
 
+export type PdfTemplateSummary = {
+  id: string;
+  name: string;
+  description?: string | null;
+  supplierProfileId?: string | null;
+  pageCount?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  annotationCount?: number | null;
+};
+
 export type EstimateResponse = {
   estimatedTotal?: number | null;
   predictedTotal?: number | null;
@@ -434,6 +445,11 @@ export type QuoteSourceProfile = {
 
 export async function fetchQuoteSourceProfiles(): Promise<QuoteSourceProfile[]> {
   return apiFetch<QuoteSourceProfile[]>('/quotes/source-profiles');
+}
+
+export async function fetchPdfTemplates(): Promise<PdfTemplateSummary[]> {
+  const res = await apiFetch<{ items?: PdfTemplateSummary[] }>("/pdf-templates");
+  return Array.isArray(res?.items) ? res.items : [];
 }
 
 export async function updateQuoteSource(
