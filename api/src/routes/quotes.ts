@@ -320,6 +320,32 @@ function flattenQuestionnaireFeatures(raw: any): Record<string, any> {
   return out;
 }
 
+function descriptionQualityScore(raw: string | null | undefined): number {
+  const desc = String(raw || "").trim();
+  if (!desc) return 0;
+  const len = desc.length;
+  if (len < 3) return 0;
+  const printable = desc
+    .replace(/[\r\n]/g, "")
+    .split("")
+    .filter((ch) => /[\x20-\x7E]/.test(ch)).length;
+  const asciiRatio = printable / len;
+  const alphaNumRatio = desc.replace(/[^A-Za-z0-9]/g, "").length / len;
+  const weirdRatio = desc.replace(/[A-Za-z0-9\s£€$.,\-\/%()]/g, "").length / len;
+  let score = 0;
+  if (asciiRatio > 0.85) score += 0.4;
+  else if (asciiRatio > 0.7) score += 0.25;
+  if (alphaNumRatio > 0.4) score += 0.4;
+  else if (alphaNumRatio > 0.25) score += 0.25;
+  if (weirdRatio < 0.15) score += 0.2;
+  else if (weirdRatio < 0.3) score += 0.1;
+  return Math.min(1, score);
+}
+
+function isGibberishDescription(raw: string | null | undefined): boolean {
+  return descriptionQualityScore(raw) < 0.5;
+}
+
 const ESTIMATE_CACHE_DAYS = (() => {
   const raw = Number(process.env.ESTIMATE_CACHE_DAYS);
   if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
@@ -1018,6 +1044,7 @@ router.get("/:id", requireAuth, async (req: any, res) => {
   try {
     const tenantId = await getTenantId(req);
     const id = String(req.params.id);
+    await normaliseQuoteSourceTypeColumn(id);
     let q: any;
     try {
       q = await prisma.quote.findFirst({
@@ -1634,11 +1661,21 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
         // STEP: Create quote lines (we'll map images after all lines are created)
         const tempLineInfo: Array<{ id: string; page: number | null }> = [];
+        let gibberishSkipped = 0;
+        const gibberishSamples: string[] = [];
         
         let lineIndex = 0;
         for (const ln of parseResult.lines) {
           lineIndex += 1;
           const description = String(ln.description || `${f.name || "Line"} ${lineIndex}`);
+          const qualityScore = descriptionQualityScore(description);
+          if (qualityScore < 0.5) {
+            gibberishSkipped += 1;
+            if (gibberishSamples.length < 5) {
+              gibberishSamples.push(description.slice(0, 140));
+            }
+            continue;
+          }
           // Quantities & prices can arrive under different keys and sometimes as formatted strings.
           // Use robust pickers with sensible fallbacks to avoid zeroing real values.
           const pickedQty = pickQty(ln);
@@ -1658,6 +1695,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             parsed: parseResult,
             fallback: info.usedFallback,
             confidence: parseResult.confidence ?? null,
+            qualityScore,
             // Image extraction data
             imageIndex: typeof (ln as any)?.imageIndex === 'number' ? (ln as any).imageIndex : undefined,
             imageDataUrl: typeof (ln as any)?.imageDataUrl === 'string' ? (ln as any).imageDataUrl : undefined,
@@ -1718,6 +1756,14 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
             imageIndex: typeof (ln as any)?.imageIndex === 'number' ? (ln as any).imageIndex : null,
             imageRef: typeof (ln as any)?.imageRef === 'string' ? (ln as any).imageRef : null,
           });
+        }
+
+        if (gibberishSkipped) {
+          info.gibberishSkipped = gibberishSkipped;
+          if (gibberishSamples.length) {
+            info.gibberishSamples = gibberishSamples;
+          }
+          warnings.add(`Skipped ${gibberishSkipped} low-quality OCR lines`);
         }
 
         // STEP: Map extracted images to quote lines
@@ -4046,24 +4092,13 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
             
             // Quality filtering to remove gibberish OCR lines
             const desc = String(description || "").trim();
-            const quality = (() => {
-              if (!desc) return 0;
-              const len = desc.length;
-              if (len < 3) return 0; // too short
-              const printable = desc.replace(/[\r\n]/g, "").split("").filter(ch => /[\x20-\x7E]/.test(ch)).length;
-              const asciiRatio = printable / len;
-              const alphaNum = desc.replace(/[^A-Za-z0-9]/g, "").length / len;
-              const weirdChars = desc.replace(/[A-Za-z0-9\s£€$.,\-\/()%]/g, "").length / len;
-              let score = 0;
-              if (asciiRatio > 0.85) score += 0.4; else if (asciiRatio > 0.7) score += 0.25;
-              if (alphaNum > 0.4) score += 0.4; else if (alphaNum > 0.25) score += 0.25;
-              if (weirdChars < 0.15) score += 0.2; else if (weirdChars < 0.3) score += 0.1;
-              return Math.min(1, score);
-            })();
+            const quality = descriptionQualityScore(desc);
             const isGibberish = quality < 0.5;
             if (isGibberish) {
               // Skip but record a sample for diagnostics (limit meta array growth)
-              skippedGibberishSamples.push(desc.slice(0, 140));
+              if (skippedGibberishSamples.length < 5) {
+                skippedGibberishSamples.push(desc.slice(0, 140));
+              }
               gibberishCount += 1;
               continue;
             }
