@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { estimateDimensionsFromPhotoClient } from "@/lib/api/measurements";
+import { cn } from "@/lib/utils";
 
 const MIN_DIMENSION_MM = 300;
 const MAX_DIMENSION_MM = 3000;
@@ -23,10 +24,27 @@ type PhotoMeasurementFieldProps = {
     notes?: string | null;
   };
   disabled?: boolean;
+  widthField?: string;
+  heightField?: string;
+  widthLabel?: string;
+  heightLabel?: string;
+  helperText?: string;
+  className?: string;
   onChange: (patch: Record<string, any>) => void;
 };
 
-export function PhotoMeasurementField({ value, context, disabled, onChange }: PhotoMeasurementFieldProps) {
+export function PhotoMeasurementField({
+  value,
+  context,
+  disabled,
+  widthField = "estimated_width_mm",
+  heightField = "estimated_height_mm",
+  widthLabel = "Estimated width (mm)",
+  heightLabel = "Estimated height (mm)",
+  helperText = "This size is an estimate for quoting only. Final measurements will be checked by our surveyor before manufacture.",
+  className,
+  onChange,
+}: PhotoMeasurementFieldProps) {
   const [cameraFile, setCameraFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +85,7 @@ export function PhotoMeasurementField({ value, context, disabled, onChange }: Ph
   };
 
   const handleManualDimension = useCallback(
-    (field: "estimated_width_mm" | "estimated_height_mm", raw: string) => {
+    (field: string, raw: string) => {
       const trimmed = raw.trim();
       if (!trimmed) {
         onChange({ [field]: null, measurement_source: "MANUAL" });
@@ -79,11 +97,7 @@ export function PhotoMeasurementField({ value, context, disabled, onChange }: Ph
         return;
       }
       const valueMm = clampDimension(parsed);
-      onChange({
-        [field]: valueMm,
-        measurement_source: "MANUAL",
-        measurement_confidence: null,
-      });
+      onChange({ [field]: valueMm, measurement_source: "MANUAL", measurement_confidence: null });
       setWarning(null);
       setError(null);
     },
@@ -113,8 +127,8 @@ export function PhotoMeasurementField({ value, context, disabled, onChange }: Ph
       }
 
       onChange({
-        estimated_width_mm: response.width_mm ?? null,
-        estimated_height_mm: response.height_mm ?? null,
+        [widthField]: response.width_mm ?? null,
+        [heightField]: response.height_mm ?? null,
         measurement_source: "PHOTO_ESTIMATE",
         measurement_confidence: response.confidence ?? null,
       });
@@ -147,7 +161,7 @@ export function PhotoMeasurementField({ value, context, disabled, onChange }: Ph
   }, [measurementSource, widthMm, heightMm, measurementConfidence]);
 
   return (
-    <div className="mt-4 space-y-3 rounded-2xl border border-dashed border-muted bg-muted/10 p-4">
+    <div className={cn("mt-4 space-y-3 rounded-2xl border border-dashed border-muted bg-muted/10 p-4", className)}>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
@@ -201,7 +215,7 @@ export function PhotoMeasurementField({ value, context, disabled, onChange }: Ph
 
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1">
-          <Label className="text-xs uppercase text-muted-foreground">Estimated width (mm)</Label>
+          <Label className="text-xs uppercase text-muted-foreground">{widthLabel}</Label>
           <Input
             type="number"
             min={MIN_DIMENSION_MM}
@@ -210,12 +224,12 @@ export function PhotoMeasurementField({ value, context, disabled, onChange }: Ph
             disabled={disabled}
             value={widthMm ?? ""}
             placeholder="e.g. 1200"
-            onChange={(event) => onChange({ estimated_width_mm: event.target.value ? Number(event.target.value) : null })}
-            onBlur={(event) => handleManualDimension("estimated_width_mm", event.target.value)}
+            onChange={(event) => onChange({ [widthField]: event.target.value ? Number(event.target.value) : null })}
+            onBlur={(event) => handleManualDimension(widthField, event.target.value)}
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs uppercase text-muted-foreground">Estimated height (mm)</Label>
+          <Label className="text-xs uppercase text-muted-foreground">{heightLabel}</Label>
           <Input
             type="number"
             min={MIN_DIMENSION_MM}
@@ -224,16 +238,14 @@ export function PhotoMeasurementField({ value, context, disabled, onChange }: Ph
             disabled={disabled}
             value={heightMm ?? ""}
             placeholder="e.g. 2100"
-            onChange={(event) => onChange({ estimated_height_mm: event.target.value ? Number(event.target.value) : null })}
-            onBlur={(event) => handleManualDimension("estimated_height_mm", event.target.value)}
+            onChange={(event) => onChange({ [heightField]: event.target.value ? Number(event.target.value) : null })}
+            onBlur={(event) => handleManualDimension(heightField, event.target.value)}
           />
         </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          This size is an estimate for quoting only. Final measurements will be checked by our surveyor before manufacture.
-        </p>
+        <p className="text-xs text-muted-foreground">{helperText}</p>
         <Button
           type="button"
           size="sm"
