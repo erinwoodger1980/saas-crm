@@ -450,6 +450,24 @@ function mapQuoteSourceForResponse<T extends { quoteSourceType?: any }>(quote: T
   } as T;
 }
 
+function shouldFallbackQuoteQuery(err: any): boolean {
+  if (!err) return false;
+  const code = err?.code;
+  if (code && ["P2021", "P2022", "P2010"].includes(code)) {
+    return true;
+  }
+  const msg = (err?.message || String(err || "")) as string;
+  if (!msg) return false;
+  if (/Unknown column/i.test(msg)) return true;
+  if (/does(?:n't| not)\s+exist/i.test(msg) && /quote/i.test(msg)) return true;
+  if (/quoteSourceType/i.test(msg) || /supplierProfileId/i.test(msg)) {
+    if (/column/i.test(msg) || /field/i.test(msg) || /select/i.test(msg)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function tryTemplateParsers(
   buffer: Buffer,
   options: {
@@ -906,7 +924,7 @@ router.get("/:id", requireAuth, async (req: any, res) => {
     } catch (inner: any) {
       const msg = inner?.message || String(inner);
       // Common production mismatch: schema expects quoteSourceType/supplierProfileId but column absent.
-  if (/Unknown column/i.test(msg) || /does(?:n't| not)\s+exist/i.test(msg)) {
+      if (shouldFallbackQuoteQuery(inner)) {
         console.warn(`[quotes/:id] Prisma schema mismatch, falling back to raw query: ${msg}`);
         // Raw minimal query without new columns
         const rows: any[] = await prisma.$queryRawUnsafe(
