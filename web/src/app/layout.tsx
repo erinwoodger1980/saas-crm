@@ -36,8 +36,6 @@ function DevAuth() {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { user } = useCurrentUser();
-  const isWorkshopOnly = user?.role === 'workshop';
 
   const isAuthRoute = pathname?.startsWith("/login");
   const isPublicQuestionnaire = pathname?.startsWith("/q/");
@@ -50,6 +48,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const isEarlyAccessRoute = pathname?.startsWith("/early-access");
   const isWorkshopRoute = pathname === "/workshop";
   const isDevConsole = pathname?.startsWith("/dev");
+
+  const shouldFetchUser = !(
+    isAuthRoute ||
+    isPublicQuestionnaire ||
+    isPublicThankYou ||
+    isMarketingRoute ||
+    isTenantLandingPage ||
+    isVanityTenantLandingPage ||
+    isEarlyAccessRoute
+  );
+
+  const { user } = useCurrentUser({ enabled: shouldFetchUser });
+  const isWorkshopOnly = user?.role === 'workshop';
 
   const shouldUseShell = !(
     isAuthRoute ||

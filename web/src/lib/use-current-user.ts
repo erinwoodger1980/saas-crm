@@ -17,7 +17,12 @@ export type CurrentUser = {
 
 const fetcher = (path: string) => apiFetch<CurrentUser>(path);
 
-export function useCurrentUser() {
+type UseCurrentUserOptions = {
+  enabled?: boolean;
+};
+
+export function useCurrentUser(options?: UseCurrentUserOptions) {
+  const enabled = options?.enabled !== false;
   // Track legacy JWT only for backward-compat; cookie-first auth should still work without it
   // underscore variables retained for potential legacy debugging; unused currently
   const [_jwt, setStoredJwt] = useState<string | null>(() =>
@@ -50,24 +55,25 @@ export function useCurrentUser() {
 
   // Always attempt cookie-first auth; server will respond 401 if not logged in
   const { data, error, isValidating, mutate } = useSWR<CurrentUser>(
-    "/auth/me",
+    enabled ? "/auth/me" : null,
     fetcher,
     { revalidateOnFocus: false },
   );
 
   useEffect(() => {
+    if (!enabled) return;
     const status = (error as any)?.status ?? (error as any)?.response?.status;
     if (status === 401) {
       // Clear legacy tokens so any JWT-gated UI updates
       clearJwt();
       setStoredJwt(null);
     }
-  }, [error]);
+  }, [error, enabled]);
 
   return {
-    user: data ?? null,
+    user: enabled ? data ?? null : null,
     error,
-    isLoading: !data && !error && isValidating,
+    isLoading: enabled ? (!data && !error && isValidating) : false,
     mutate,
   };
 }
