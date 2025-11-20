@@ -103,6 +103,6 @@ jobs:
           SKIP_DEV_BOOTSTRAP: '1'
           PORT: 4455
         run: |
-          node dist/index.js &
+          node dist/server.js &
           sleep 5
-          pgrep -f "dist/index.js" && echo "API started successfully"
+          pgrep -f "dist/server.js" && echo "API started successfully"
