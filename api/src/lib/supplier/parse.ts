@@ -23,6 +23,11 @@ import {
   type PatternCues,
 } from "./patterns";
 import { extractImagesForParse } from "../pdf/extractImages";
+import {
+  loadPdfLayoutTemplate,
+  parsePdfWithTemplate,
+  type TemplateParseMeta,
+} from "../pdf/layoutTemplates";
 
 const STRUCTURE_TOOL = {
   type: "function" as const,
@@ -607,10 +612,34 @@ function computeConfidence(
 
 export async function parseSupplierPdf(
   buffer: Buffer,
-  options?: { supplierHint?: string; currencyHint?: string },
+  options?: { supplierHint?: string; currencyHint?: string; supplierProfileId?: string | null },
 ): Promise<SupplierParseResult> {
   const supplierHint = options?.supplierHint;
   const currencyHint = options?.currencyHint || "GBP";
+  const supplierProfileId = options?.supplierProfileId ?? null;
+
+  let templateMeta: TemplateParseMeta | null = null;
+
+  if (supplierProfileId) {
+    try {
+      const layoutTemplate = await loadPdfLayoutTemplate(supplierProfileId);
+      if (layoutTemplate) {
+        const templateOutcome = await parsePdfWithTemplate(buffer, layoutTemplate, {
+          supplierHint,
+          currencyHint,
+        });
+        templateMeta = templateOutcome.meta;
+        if (templateOutcome.result) {
+          return templateOutcome.result;
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[parseSupplierPdf] Template parsing failed for ${supplierProfileId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
 
   const pattern = await loadSupplierPattern(supplierHint);
   const stageA = runStageA(buffer, supplierHint, pattern?.supplier);
@@ -743,6 +772,13 @@ export async function parseSupplierPdf(
     console.warn('[parseSupplierPdf] Image extraction failed:', err);
     collectedWarnings.add(`Image extraction failed: ${err.message}`);
     workingParse = attachWarnings(workingParse, collectedWarnings);
+  }
+
+  if (templateMeta) {
+    workingParse.meta = {
+      ...(workingParse.meta || {}),
+      template: templateMeta,
+    };
   }
 
   return workingParse;

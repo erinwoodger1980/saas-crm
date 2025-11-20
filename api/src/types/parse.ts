@@ -24,12 +24,31 @@ export type SupplierParseResult = {
   confidence?: number;
   warnings?: string[];
   error?: string;
-  usedStages?: Array<"pdfjs" | "ocr" | "llm">;
+  usedStages?: Array<"pdfjs" | "ocr" | "llm" | "template">;
   quality?: "ok" | "poor";
   meta?: {
     fallbackCleaner?: boolean;
     rawRows?: number;
     discardedRows?: number;
+    fallbackScored?: {
+      kept?: number | null;
+      discarded?: number | null;
+    } | null;
+    unmapped_rows?: Array<{
+      description?: string;
+      score?: number;
+      reasons?: string[];
+    }>;
+    template?: {
+      templateId?: string;
+      templateName?: string;
+      supplierProfileId?: string | null;
+      matchedRows?: number;
+      annotationCount?: number;
+      matchedAnnotations?: number;
+      method?: string;
+      reason?: string;
+    } | null;
   };
   // Extracted images with bounding boxes
   images?: Array<{

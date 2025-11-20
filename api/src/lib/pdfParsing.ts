@@ -605,6 +605,7 @@ export interface ParseOptions {
   source: "supplier" | "user_quote" | "historic";
   currencyFallback?: string;
   supplierHint?: string;
+  profile?: string | null;
   debug?: boolean;
 }
 
@@ -672,6 +673,7 @@ export async function parseQuotePdf(
     const supplierResult = await parseSupplierPdf(buffer, {
       supplierHint,
       currencyHint: currencyFallback,
+      supplierProfileId: options.profile ?? undefined,
     });
 
     if (supplierResult.warnings) {

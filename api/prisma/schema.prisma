@@ -14,94 +14,94 @@ datasource db {
 }
 
 model Tenant {
-  id                    String                 @id @default(cuid())
-  name                  String
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @default(now()) @updatedAt
-  stripeCustomerId      String?                @unique
-  stripeSubscriptionId  String?                @unique
-  trialEndsAt           DateTime?
-  discountCodeUsed      String?
-  seatsOffice           Int                    @default(5)
-  seatsWorkshop         Int                    @default(10)
-  seatsDisplay          Int                    @default(2)
-  subscriptionStatus    SubscriptionStatus?
-  plan                  Plan?
-  financialYearEnd      String?                @default("12-31") // MM-DD format for financial year end
+  id                         String                      @id @default(cuid())
+  name                       String
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @default(now()) @updatedAt
+  stripeCustomerId           String?                     @unique
+  stripeSubscriptionId       String?                     @unique
+  trialEndsAt                DateTime?
+  discountCodeUsed           String?
+  seatsOffice                Int                         @default(5)
+  seatsWorkshop              Int                         @default(10)
+  seatsDisplay               Int                         @default(2)
+  subscriptionStatus         SubscriptionStatus?
+  plan                       Plan?
+  financialYearEnd           String?                     @default("12-31") // MM-DD format for financial year end
   // SEO & Ads optimization fields
-  keywords              String[]               @default([])
-  serviceAreas          String[]               @default([])
-  homeUrl               String?
-  googleAdsCustomerId   String?                // Google Ads customer ID
-  googleAdsRefreshToken String?                // OAuth refresh token for Ads API
-  targetCPL             Decimal?               @default(50) // Target cost per lead
-  emailIngests          EmailIngest[]
-  emailMessages         EmailMessage[]
-  emailThreads          EmailThread[]
-  GmailTenantConnection GmailTenantConnection?
-  gmailUserConnections  GmailUserConnection[]  @relation("GmailUserConnections")
-  leads                 Lead[]
-  leadFieldDefs         LeadFieldDef[]
-  Ms365TenantConnection Ms365TenantConnection?
-  ms365UserConnections  Ms365UserConnection[]  @relation("Ms365UserConnections")
-  opportunities         Opportunity[]
-  quotes                Quote[]
-  UploadedFile          UploadedFile[]
-  users                 User[]
-  feedbacks             Feedback[]
-  tasks                 Task[]
-  automationRules       AutomationRule[]
-  notifications         Notification[]
-  streaks               Streak[]
-  activityLogs          ActivityLog[]
-  userPreferences       UserPreference[]
-  trainingInsights      TrainingInsights[]
-  modelOverrides        ModelOverride[]
-  trainingEvents        TrainingEvent[]
-  followUpTemplates     FollowUpTemplate[]
-  followUpEvents        FollowUpEvent[]
-  sourceSpends          SourceSpend[]
+  keywords                   String[]                    @default([])
+  serviceAreas               String[]                    @default([])
+  homeUrl                    String?
+  googleAdsCustomerId        String? // Google Ads customer ID
+  googleAdsRefreshToken      String? // OAuth refresh token for Ads API
+  targetCPL                  Decimal?                    @default(50) // Target cost per lead
+  emailIngests               EmailIngest[]
+  emailMessages              EmailMessage[]
+  emailThreads               EmailThread[]
+  GmailTenantConnection      GmailTenantConnection?
+  gmailUserConnections       GmailUserConnection[]       @relation("GmailUserConnections")
+  leads                      Lead[]
+  leadFieldDefs              LeadFieldDef[]
+  Ms365TenantConnection      Ms365TenantConnection?
+  ms365UserConnections       Ms365UserConnection[]       @relation("Ms365UserConnections")
+  opportunities              Opportunity[]
+  quotes                     Quote[]
+  UploadedFile               UploadedFile[]
+  users                      User[]
+  feedbacks                  Feedback[]
+  tasks                      Task[]
+  automationRules            AutomationRule[]
+  notifications              Notification[]
+  streaks                    Streak[]
+  activityLogs               ActivityLog[]
+  userPreferences            UserPreference[]
+  trainingInsights           TrainingInsights[]
+  modelOverrides             ModelOverride[]
+  trainingEvents             TrainingEvent[]
+  followUpTemplates          FollowUpTemplate[]
+  followUpEvents             FollowUpEvent[]
+  sourceSpends               SourceSpend[]
   // Workshop relations
-  processPlans                ProcessPlan[]
-  timeEntries                 TimeEntry[]
-  holidays                    Holiday[]
-  targets                     Target[]
-  workshopProcessDefinitions  WorkshopProcessDefinition[]
-  projectProcessAssignments   ProjectProcessAssignment[]
-  keywordPerformance          KeywordPerformance[]
-  keywordSuggestions          KeywordSuggestion[]
-  landingTenant               LandingTenant?
-  slug                        String                 @unique // Required for landing pages and URLs
+  processPlans               ProcessPlan[]
+  timeEntries                TimeEntry[]
+  holidays                   Holiday[]
+  targets                    Target[]
+  workshopProcessDefinitions WorkshopProcessDefinition[]
+  projectProcessAssignments  ProjectProcessAssignment[]
+  keywordPerformance         KeywordPerformance[]
+  keywordSuggestions         KeywordSuggestion[]
+  landingTenant              LandingTenant?
+  slug                       String                      @unique // Required for landing pages and URLs
   // Feature Requests (inverse relation)
-  featureRequests             FeatureRequest[]
+  featureRequests            FeatureRequest[]
   // Supplier relations
-  suppliers                   Supplier[]                @relation("SupplierToTenant")
-  supplierQuoteRequests       SupplierQuoteRequest[]
-  materialItems               MaterialItem[]
-  shoppingLists               ShoppingList[]
-  purchaseOrders              PurchaseOrder[]
+  suppliers                  Supplier[]                  @relation("SupplierToTenant")
+  supplierQuoteRequests      SupplierQuoteRequest[]
+  materialItems              MaterialItem[]
+  shoppingLists              ShoppingList[]
+  purchaseOrders             PurchaseOrder[]
   // Timesheet relations
-  timesheets                  Timesheet[]
+  timesheets                 Timesheet[]
   // Questionnaire relations
-  questionnaires              Questionnaire[]
-  questionnaireFields         QuestionnaireField[]
-  questionnaireResponses      QuestionnaireResponse[]
+  questionnaires             Questionnaire[]
+  questionnaireFields        QuestionnaireField[]
+  questionnaireResponses     QuestionnaireResponse[]
   // Software profile relations
-  softwareProfiles            SoftwareProfile[]     @relation("SoftwareProfiles")
+  softwareProfiles           SoftwareProfile[]           @relation("SoftwareProfiles")
   // Joinery costing engine relations
-  materials                   Material[]
-  glazingItems                GlazingItem[]
-  doorCores                   DoorCore[]
-  leafStyles                  LeafStyle[]
-  leafFacings                 LeafFacing[]
-  frameFinishes               FrameFinish[]
-  sprayFinishes               SprayFinish[]
-  veneerLayons                VeneerLayon[]
-  ironmongeryItems            IronmongeryItem[]
-  ironmongeryPacks            IronmongeryPack[]
-  fireCertificationRules      FireCertificationRule[]
-  leafSizingRules             LeafSizingRule[]
-  weightLookups               WeightLookup[]
+  materials                  Material[]
+  glazingItems               GlazingItem[]
+  doorCores                  DoorCore[]
+  leafStyles                 LeafStyle[]
+  leafFacings                LeafFacing[]
+  frameFinishes              FrameFinish[]
+  sprayFinishes              SprayFinish[]
+  veneerLayons               VeneerLayon[]
+  ironmongeryItems           IronmongeryItem[]
+  ironmongeryPacks           IronmongeryPack[]
+  fireCertificationRules     FireCertificationRule[]
+  leafSizingRules            LeafSizingRule[]
+  weightLookups              WeightLookup[]
 }
 
 /// ==============================
@@ -145,120 +145,121 @@ model FeatureRequest {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status])
 }
 
 model User {
-  id                    String                  @id @default(cuid())
-  tenantId              String
-  email                 String                  @unique
-  name                  String?
-  role                  String                  @default("user") // user, admin, workshop, supplier, developer
-  supplierId            String?                 // Link to Supplier if role is "supplier"
-  isEarlyAdopter        Boolean                 @default(false)
-  passwordHash          String?
-  signupCompleted       Boolean                 @default(false)
-  workshopHoursPerDay   Decimal?                @default(8)
-  workshopColor         String?                 // Hex color for schedule display (e.g. "#3b82f6")
-  isDeveloper           Boolean                 @default(false) // Global developer access across all tenants
-  GmailTenantConnection GmailTenantConnection[]
-  Ms365TenantConnection Ms365TenantConnection[]
-  gmailUserConnection   GmailUserConnection?    @relation("GmailUserConnection")
-  ms365UserConnection   Ms365UserConnection?    @relation("Ms365UserConnection")
-  passwordResetToken    PasswordResetToken?
-  signupTokens          SignupToken[]
-  tenant                Tenant                  @relation(fields: [tenantId], references: [id])
-  supplier              Supplier?               @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  feedbacks             Feedback[]              @relation("FeedbackAuthor")
-  resolvedFeedbacks     Feedback[]              @relation("FeedbackResolver")
+  id                        String                     @id @default(cuid())
+  tenantId                  String
+  email                     String                     @unique
+  name                      String?
+  role                      String                     @default("user") // user, admin, workshop, supplier, developer
+  supplierId                String? // Link to Supplier if role is "supplier"
+  isEarlyAdopter            Boolean                    @default(false)
+  passwordHash              String?
+  signupCompleted           Boolean                    @default(false)
+  workshopHoursPerDay       Decimal?                   @default(8)
+  workshopColor             String? // Hex color for schedule display (e.g. "#3b82f6")
+  isDeveloper               Boolean                    @default(false) // Global developer access across all tenants
+  GmailTenantConnection     GmailTenantConnection[]
+  Ms365TenantConnection     Ms365TenantConnection[]
+  gmailUserConnection       GmailUserConnection?       @relation("GmailUserConnection")
+  ms365UserConnection       Ms365UserConnection?       @relation("Ms365UserConnection")
+  passwordResetToken        PasswordResetToken?
+  signupTokens              SignupToken[]
+  tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
+  supplier                  Supplier?                  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  feedbacks                 Feedback[]                 @relation("FeedbackAuthor")
+  resolvedFeedbacks         Feedback[]                 @relation("FeedbackResolver")
   // Workshop relations
-  processPlansAssigned       ProcessPlan[]
-  projectProcessAssignments  ProjectProcessAssignment[]
-  timeEntries                TimeEntry[]
-  holidays                   Holiday[]
-  supplierQuoteRequests      SupplierQuoteRequest[]
-  timesheets                 Timesheet[]             @relation("TimesheetUser")
-  signedOffTimesheets        Timesheet[]             @relation("TimesheetSignedOffBy")
+  processPlansAssigned      ProcessPlan[]
+  projectProcessAssignments ProjectProcessAssignment[]
+  timeEntries               TimeEntry[]
+  holidays                  Holiday[]
+  supplierQuoteRequests     SupplierQuoteRequest[]
+  timesheets                Timesheet[]                @relation("TimesheetUser")
+  signedOffTimesheets       Timesheet[]                @relation("TimesheetSignedOffBy")
+  PdfLayoutTemplate         PdfLayoutTemplate[]
 }
 
 model SignupToken {
-  id         String   @id @default(uuid())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id @default(uuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId     String
-  token      String   @unique
+  token      String    @unique
   expiresAt  DateTime
   consumedAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }
 
 model Lead {
-  id            String         @id @default(cuid())
-  tenantId      String
-  createdById   String
-  contactName   String
-  email         String?
-  status        LeadStatus     @default(NEW)
-  capturedAt    DateTime       @default(now())
-  nextActionAt  DateTime?
-  nextAction    String?
-  briefJson     Json?
-  custom        Json?
-  description   String?
-  emailIngests  EmailIngest[]
-  emailMessages EmailMessage[]
-  emailThreads  EmailThread[]
-  followUpLogs  FollowUpLog[]
-  followUpEvents FollowUpEvent[]
-  estimatedValue Decimal?
-  quotedValue    Decimal?
-  dateQuoteSent  DateTime?
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  opportunity   Opportunity?
-  Quote         Quote[]
+  id                    String                 @id @default(cuid())
+  tenantId              String
+  createdById           String
+  contactName           String
+  email                 String?
+  status                LeadStatus             @default(NEW)
+  capturedAt            DateTime               @default(now())
+  nextActionAt          DateTime?
+  nextAction            String?
+  briefJson             Json?
+  custom                Json?
+  description           String?
+  emailIngests          EmailIngest[]
+  emailMessages         EmailMessage[]
+  emailThreads          EmailThread[]
+  followUpLogs          FollowUpLog[]
+  followUpEvents        FollowUpEvent[]
+  estimatedValue        Decimal?
+  quotedValue           Decimal?
+  dateQuoteSent         DateTime?
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
+  opportunity           Opportunity?
+  Quote                 Quote[]
   supplierQuoteRequests SupplierQuoteRequest[]
 }
 
 model Opportunity {
-  id            String         @id @default(cuid())
-  tenantId      String
-  leadId        String         @unique
-  title         String
-  startDate     DateTime?
-  deliveryDate  DateTime?
-  valueGBP      Decimal?
-  stage         OppStage       @default(QUALIFY)
-  wonAt         DateTime?
-  lostAt        DateTime?
-  createdAt     DateTime       @default(now())
+  id                       String                     @id @default(cuid())
+  tenantId                 String
+  leadId                   String                     @unique
+  title                    String
+  startDate                DateTime?
+  deliveryDate             DateTime?
+  valueGBP                 Decimal?
+  stage                    OppStage                   @default(QUALIFY)
+  wonAt                    DateTime?
+  lostAt                   DateTime?
+  createdAt                DateTime                   @default(now())
   // Material tracking
-  timberOrderedAt   DateTime?
-  timberExpectedAt  DateTime?
-  timberReceivedAt  DateTime?
-  timberNotApplicable Boolean @default(false)
-  glassOrderedAt    DateTime?
-  glassExpectedAt   DateTime?
-  glassReceivedAt   DateTime?
-  glassNotApplicable Boolean @default(false)
-  ironmongeryOrderedAt   DateTime?
-  ironmongeryExpectedAt  DateTime?
-  ironmongeryReceivedAt  DateTime?
-  ironmongeryNotApplicable Boolean @default(false)
-  paintOrderedAt    DateTime?
-  paintExpectedAt   DateTime?
-  paintReceivedAt   DateTime?
-  paintNotApplicable Boolean @default(false)
-  emailMessages EmailMessage[]
-  emailThreads  EmailThread[]
-  lead          Lead           @relation(fields: [leadId], references: [id])
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  timberOrderedAt          DateTime?
+  timberExpectedAt         DateTime?
+  timberReceivedAt         DateTime?
+  timberNotApplicable      Boolean                    @default(false)
+  glassOrderedAt           DateTime?
+  glassExpectedAt          DateTime?
+  glassReceivedAt          DateTime?
+  glassNotApplicable       Boolean                    @default(false)
+  ironmongeryOrderedAt     DateTime?
+  ironmongeryExpectedAt    DateTime?
+  ironmongeryReceivedAt    DateTime?
+  ironmongeryNotApplicable Boolean                    @default(false)
+  paintOrderedAt           DateTime?
+  paintExpectedAt          DateTime?
+  paintReceivedAt          DateTime?
+  paintNotApplicable       Boolean                    @default(false)
+  emailMessages            EmailMessage[]
+  emailThreads             EmailThread[]
+  lead                     Lead                       @relation(fields: [leadId], references: [id])
+  tenant                   Tenant                     @relation(fields: [tenantId], references: [id])
   // Workshop relations
-  processPlans          ProcessPlan[]
-  projectProcesses      ProjectProcessAssignment[]
-  timeEntries           TimeEntry[]
-  supplierQuoteRequests SupplierQuoteRequest[]
+  processPlans             ProcessPlan[]
+  projectProcesses         ProjectProcessAssignment[]
+  timeEntries              TimeEntry[]
+  supplierQuoteRequests    SupplierQuoteRequest[]
 
   @@index([tenantId, stage])
 }
@@ -300,49 +301,49 @@ model LeadFieldDef {
 }
 
 model GmailTenantConnection {
-  id            String   @id @default(cuid())
-  tenantId      String   @unique
+  id            String    @id @default(cuid())
+  tenantId      String    @unique
   connectedById String?
   gmailAddress  String?
   refreshToken  String
-  sentCursor    String?  // Checkpoint for Sent folder crawling (historyId or message ID)
+  sentCursor    String? // Checkpoint for Sent folder crawling (historyId or message ID)
   sentLastSync  DateTime? // Last time Sent folder was synced
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  connectedBy   User?    @relation(fields: [connectedById], references: [id])
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  connectedBy   User?     @relation(fields: [connectedById], references: [id])
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
 }
 
 model Ms365TenantConnection {
-  id            String   @id @default(cuid())
-  tenantId      String   @unique
+  id            String    @id @default(cuid())
+  tenantId      String    @unique
   connectedById String?
   ms365Address  String?
   refreshToken  String
-  sentCursor    String?  // Checkpoint for Sent folder crawling (delta link or message ID)
+  sentCursor    String? // Checkpoint for Sent folder crawling (delta link or message ID)
   sentLastSync  DateTime? // Last time Sent folder was synced
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  connectedBy   User?    @relation(fields: [connectedById], references: [id])
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  connectedBy   User?     @relation(fields: [connectedById], references: [id])
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
 }
 
 model GmailUserConnection {
-  id           String   @id @default(cuid())
-  userId       String   @unique
+  id           String    @id @default(cuid())
+  userId       String    @unique
   tenantId     String
   gmailAddress String
   refreshToken String
-  sentCursor   String?  // Checkpoint for Sent folder crawling per user
+  sentCursor   String? // Checkpoint for Sent folder crawling per user
   sentLastSync DateTime? // Last time Sent folder was synced for this user
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation("GmailUserConnection", fields: [userId], references: [id], onDelete: Cascade)
-  tenant       Tenant   @relation("GmailUserConnections", fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation("GmailUserConnection", fields: [userId], references: [id], onDelete: Cascade)
+  tenant       Tenant    @relation("GmailUserConnections", fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tenantId])
@@ -350,17 +351,17 @@ model GmailUserConnection {
 }
 
 model Ms365UserConnection {
-  id           String   @id @default(cuid())
-  userId       String   @unique
+  id           String    @id @default(cuid())
+  userId       String    @unique
   tenantId     String
   ms365Address String
   refreshToken String
-  sentCursor   String?  // Checkpoint for Sent folder crawling per user
+  sentCursor   String? // Checkpoint for Sent folder crawling per user
   sentLastSync DateTime? // Last time Sent folder was synced for this user
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation("Ms365UserConnection", fields: [userId], references: [id], onDelete: Cascade)
-  tenant       Tenant   @relation("Ms365UserConnections", fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation("Ms365UserConnection", fields: [userId], references: [id], onDelete: Cascade)
+  tenant       Tenant    @relation("Ms365UserConnections", fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tenantId])
@@ -396,48 +397,48 @@ model LeadTrainingExample {
 /// *
 ///  * ✅ Unified TenantSettings (only ONE model)
 model TenantSettings {
-  tenantId          String    @id
-  slug              String    @unique
-  brandName         String
-  introHtml         String?
-  website           String?
-  phone             String?
-  links             Json?
-  questionnaire     Json?
-  logoUrl           String?
-  inbox             Json?
-  inboxLastRun      DateTime?
-  inboxWatchEnabled Boolean   @default(false)
-  quoteDefaults     Json?
-  taskPlaybook      Json?     @default("{}")
+  tenantId                  String    @id
+  slug                      String    @unique
+  brandName                 String
+  introHtml                 String?
+  website                   String?
+  phone                     String?
+  links                     Json?
+  questionnaire             Json?
+  logoUrl                   String?
+  inbox                     Json?
+  inboxLastRun              DateTime?
+  inboxWatchEnabled         Boolean   @default(false)
+  quoteDefaults             Json?
+  taskPlaybook              Json?     @default("{}")
   questionnaireEmailSubject String?
   questionnaireEmailBody    String?
-  updatedAt         DateTime  @updatedAt
-  createdAt         DateTime  @default(now())
-  beta            Json     @default("{}")
+  updatedAt                 DateTime  @updatedAt
+  createdAt                 DateTime  @default(now())
+  beta                      Json      @default("{}")
   // Feature flags for tenant-specific functionality
-  isFireDoorManufacturer Boolean @default(false)
+  isFireDoorManufacturer    Boolean   @default(false)
 }
 
 model FollowUpLog {
-  id        String   @id @default(cuid())
-  tenantId  String
-  leadId    String
-  variant   String
-  subject   String
-  body      String
-  sentAt    DateTime @default(now())
-  opened    Boolean?
-  replied   Boolean?
-  converted Boolean?
-  delayDays Int?
-  messageId String?
-  provider  String?
-  threadId  String?
-  channel   String   @default("email")
+  id           String    @id @default(cuid())
+  tenantId     String
+  leadId       String
+  variant      String
+  subject      String
+  body         String
+  sentAt       DateTime  @default(now())
+  opened       Boolean?
+  replied      Boolean?
+  converted    Boolean?
+  delayDays    Int?
+  messageId    String?
+  provider     String?
+  threadId     String?
+  channel      String    @default("email")
   scheduledFor DateTime?
-  metadata  Json?
-  lead      Lead     @relation(fields: [leadId], references: [id])
+  metadata     Json?
+  lead         Lead      @relation(fields: [leadId], references: [id])
 
   @@index([tenantId, leadId, sentAt])
   @@index([tenantId, channel, sentAt])
@@ -461,27 +462,27 @@ model FollowUpTemplate {
 }
 
 model FollowUpEvent {
-  id           String   @id @default(cuid())
-  tenantId     String
-  leadId       String
-  quoteId      String?
-  variant      String
-  templateKey  String
-  scheduledAt  DateTime
-  sentAt       DateTime?
-  openedAt     DateTime?
-  repliedAt    DateTime?
-  convertedAt  DateTime?
-  result       String?
-  source       String?
-  pixelToken   String?  @unique
-  costPence    Int?
-  meta         Json?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
-  lead         Lead     @relation(fields: [leadId], references: [id])
-  quote        Quote?   @relation(fields: [quoteId], references: [id])
+  id          String    @id @default(cuid())
+  tenantId    String
+  leadId      String
+  quoteId     String?
+  variant     String
+  templateKey String
+  scheduledAt DateTime
+  sentAt      DateTime?
+  openedAt    DateTime?
+  repliedAt   DateTime?
+  convertedAt DateTime?
+  result      String?
+  source      String?
+  pixelToken  String?   @unique
+  costPence   Int?
+  meta        Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  lead        Lead      @relation(fields: [leadId], references: [id])
+  quote       Quote?    @relation(fields: [quoteId], references: [id])
 
   @@index([tenantId, leadId, scheduledAt])
 }
@@ -603,69 +604,71 @@ model EmailMessage {
 /// *
 ///  * =============== Quoting ===============
 model Quote {
-  id                  String         @id @default(cuid())
-  tenantId            String
-  leadId              String?
-  title               String
-  status              QuoteStatus    @default(DRAFT)
-  currency            String         @default("GBP")
-  exchangeRate        Decimal?
-  deliveryCost        Decimal?       @default(0)
-  markupDefault       Decimal?       @default(0)
-  subtotalMaterialGBP Decimal?       @default(0)
-  subtotalLabourGBP   Decimal?       @default(0)
-  subtotalOtherGBP    Decimal?       @default(0)
-  totalGBP            Decimal?       @default(0)
-  proposalPdfUrl      String?
-  notes               String?
-  meta                Json?
+  id                    String                 @id @default(cuid())
+  tenantId              String
+  leadId                String?
+  title                 String
+  status                QuoteStatus            @default(DRAFT)
+  currency              String                 @default("GBP")
+  exchangeRate          Decimal?
+  deliveryCost          Decimal?               @default(0)
+  markupDefault         Decimal?               @default(0)
+  subtotalMaterialGBP   Decimal?               @default(0)
+  subtotalLabourGBP     Decimal?               @default(0)
+  subtotalOtherGBP      Decimal?               @default(0)
+  totalGBP              Decimal?               @default(0)
+  proposalPdfUrl        String?
+  notes                 String?
+  meta                  Json?
   // Quote source classification (auto-detected or user-selected)
-  quoteSourceType     String?        @default("supplier") // "supplier" or "software"
-  supplierProfileId   String?        @default("generic_supplier") // e.g. "brio_v1", "joinerysoft_a"
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  lead                Lead?          @relation(fields: [leadId], references: [id])
-  tenant              Tenant         @relation(fields: [tenantId], references: [id])
-  lines               QuoteLine[]
-  supplierFiles       UploadedFile[]
-  followUpEvents      FollowUpEvent[]
+  quoteSourceType       QuoteSourceType?
+  // Global PDF layout / parser profile key (e.g. "brio_v1", "joinerysoft_a")
+  supplierProfileId     String?
+  pdfLayoutTemplate     PdfLayoutTemplate?     @relation(fields: [supplierProfileId], references: [supplierProfileId])
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  lead                  Lead?                  @relation(fields: [leadId], references: [id])
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
+  lines                 QuoteLine[]
+  supplierFiles         UploadedFile[]
+  followUpEvents        FollowUpEvent[]
   questionnaireResponse QuestionnaireResponse?
-  shoppingLists       ShoppingList[]
+  shoppingLists         ShoppingList[]
 
   @@index([tenantId, leadId])
   @@index([supplierProfileId])
 }
 
 model QuoteLine {
-  id                    String             @id @default(cuid())
-  quoteId               String
-  supplier              String?
-  sku                   String?
-  description           String
-  qty                   Decimal            @default(1)
-  unitPrice             Decimal            @default(0)
-  currency              String             @default("GBP")
-  deliveryShareGBP      Decimal            @default(0)
-  lineTotalGBP          Decimal            @default(0)
-  meta                  Json?
-  quote                 Quote              @relation(fields: [quoteId], references: [id])
-  shoppingListItems     ShoppingListItem[]
+  id                String             @id @default(cuid())
+  quoteId           String
+  supplier          String?
+  sku               String?
+  description       String
+  qty               Decimal            @default(1)
+  unitPrice         Decimal            @default(0)
+  currency          String             @default("GBP")
+  deliveryShareGBP  Decimal            @default(0)
+  lineTotalGBP      Decimal            @default(0)
+  meta              Json?
+  quote             Quote              @relation(fields: [quoteId], references: [id])
+  shoppingListItems ShoppingListItem[]
 
   @@index([quoteId])
 }
 
 model UploadedFile {
-  id         String   @id @default(cuid())
-  tenantId   String
-  quoteId    String?
-  kind       FileKind
-  name       String
-  path       String
-  mimeType   String?
-  sizeBytes  Int?
-  uploadedAt DateTime @default(now())
-  quote      Quote?   @relation(fields: [quoteId], references: [id])
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  id                   String                @id @default(cuid())
+  tenantId             String
+  quoteId              String?
+  kind                 FileKind
+  name                 String
+  path                 String
+  mimeType             String?
+  sizeBytes            Int?
+  uploadedAt           DateTime              @default(now())
+  quote                Quote?                @relation(fields: [quoteId], references: [id])
+  tenant               Tenant                @relation(fields: [tenantId], references: [id])
   supplierQuoteRequest SupplierQuoteRequest?
 
   @@index([tenantId, quoteId])
@@ -685,8 +688,8 @@ model ParsedSupplierLine {
   supplier    String?
   confidence  Float?
   usedStages  String?
-  imageIndex  Int?     // Index of associated image in extracted images array
-  imageRef    String?  // Reference to UploadedFile ID or data URL hash
+  imageIndex  Int? // Index of associated image in extracted images array
+  imageRef    String? // Reference to UploadedFile ID or data URL hash
   createdAt   DateTime @default(now())
 
   @@index([tenantId, quoteId])
@@ -729,23 +732,23 @@ model InferenceEvent {
 }
 
 model ModelVersion {
-  id           String   @id @default(cuid())
-  model        String
-  label        String
-  versionId    String?  @unique
-  metricsJson  Json
-  datasetHash  String
-  isProduction Boolean  @default(false)
-  awaitingApproval Boolean @default(false)
-  approvedAt    DateTime?
-  approvedById  String?
-  createdAt    DateTime @default(now())
+  id               String    @id @default(cuid())
+  model            String
+  label            String
+  versionId        String?   @unique
+  metricsJson      Json
+  datasetHash      String
+  isProduction     Boolean   @default(false)
+  awaitingApproval Boolean   @default(false)
+  approvedAt       DateTime?
+  approvedById     String?
+  createdAt        DateTime  @default(now())
 
   @@index([model, isProduction])
 }
 
 model TrainingRun {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   tenantId       String?
   model          String
   datasetHash    String
@@ -755,7 +758,7 @@ model TrainingRun {
   datasetCount   Int?
   startedAt      DateTime?
   finishedAt     DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   @@index([model, createdAt])
   @@index([tenantId, createdAt])
@@ -797,7 +800,7 @@ model MLTrainingSample {
 model TrainingInsights {
   id           String   @id @default(cuid())
   tenantId     String
-  module       String   // lead_classifier | quote_builder | estimator | sales_assistant
+  module       String // lead_classifier | quote_builder | estimator | sales_assistant
   inputSummary String?
   decision     String?
   confidence   Float?
@@ -829,7 +832,7 @@ model TrainingEvent {
   id        String   @id @default(cuid())
   tenantId  String
   module    String
-  kind      String   // FEEDBACK | RETRAIN | RESET | PARAM_CHANGE
+  kind      String // FEEDBACK | RETRAIN | RESET | PARAM_CHANGE
   payload   Json
   actorId   String?
   createdAt DateTime @default(now())
@@ -900,22 +903,22 @@ enum FileKind {
 }
 
 model Feedback {
-  id            String          @id @default(cuid())
-  tenantId      String
-  userId        String?
-  feature       String // e.g. "quoteParserV2" or area slug
-  rating        Int? // 1–5 optional
-  comment       String?
-  sourceUrl     String?
-  status        FeedbackStatus  @default(OPEN)
-  priority      FeedbackPriority @default(MEDIUM)
-  category      String?         // UI, Feature, Bug, Performance, etc.
-  devNotes      String?         // Internal developer notes
-  linkedTaskId  String?         // Link to development task/sprint item
-  resolvedAt    DateTime?
-  resolvedById  String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id           String           @id @default(cuid())
+  tenantId     String
+  userId       String?
+  feature      String // e.g. "quoteParserV2" or area slug
+  rating       Int? // 1–5 optional
+  comment      String?
+  sourceUrl    String?
+  status       FeedbackStatus   @default(OPEN)
+  priority     FeedbackPriority @default(MEDIUM)
+  category     String? // UI, Feature, Bug, Performance, etc.
+  devNotes     String? // Internal developer notes
+  linkedTaskId String? // Link to development task/sprint item
+  resolvedAt   DateTime?
+  resolvedById String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   tenant     Tenant @relation(fields: [tenantId], references: [id])
   user       User?  @relation("FeedbackAuthor", fields: [userId], references: [id])
@@ -948,22 +951,22 @@ enum FeedbackPriority {
 // ==============================
 
 model DevTask {
-  id            String        @id @default(cuid())
-  title         String
-  description   String?       @db.Text
-  status        DevTaskStatus @default(BACKLOG)
-  priority      FeedbackPriority @default(MEDIUM)
-  category      String?       // Feature, Bug, Refactor, Infrastructure
-  sprint        String?       // Sprint identifier (e.g., "2025-W46")
+  id             String           @id @default(cuid())
+  title          String
+  description    String?          @db.Text
+  status         DevTaskStatus    @default(BACKLOG)
+  priority       FeedbackPriority @default(MEDIUM)
+  category       String? // Feature, Bug, Refactor, Infrastructure
+  sprint         String? // Sprint identifier (e.g., "2025-W46")
   estimatedHours Decimal?
-  actualHours   Decimal?
-  assignee      String?       // Developer name/email
-  feedbackIds   String[]      @default([]) // Related feedback IDs
-  tenantIds     String[]      @default([]) // Related tenant IDs
-  notes         String?       @db.Text
-  completedAt   DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  actualHours    Decimal?
+  assignee       String? // Developer name/email
+  feedbackIds    String[]         @default([]) // Related feedback IDs
+  tenantIds      String[]         @default([]) // Related tenant IDs
+  notes          String?          @db.Text
+  completedAt    DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@index([status, priority])
   @@index([sprint])
@@ -1186,17 +1189,17 @@ enum WorkshopProcess {
 model WorkshopProcessDefinition {
   id                String   @id @default(cuid())
   tenantId          String
-  code              String   // e.g., "MACHINING", "ASSEMBLY", etc.
-  name              String   // Display name
+  code              String // e.g., "MACHINING", "ASSEMBLY", etc.
+  name              String // Display name
   sortOrder         Int      @default(0)
   requiredByDefault Boolean  @default(true) // Whether this process is required by default for new projects
   estimatedHours    Decimal? // Optional estimated hours for this process
   isColorKey        Boolean  @default(false) // If true, this process determines the project's schedule color
-  assignmentGroup   String?  // Group code for batch user assignment (e.g., "PRODUCTION")
+  assignmentGroup   String? // Group code for batch user assignment (e.g., "PRODUCTION")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  tenant           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant           Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   projectProcesses ProjectProcessAssignment[]
 
   @@unique([tenantId, code])
@@ -1205,21 +1208,21 @@ model WorkshopProcessDefinition {
 
 // Per-project process enablement and assignment
 model ProjectProcessAssignment {
-  id                   String    @id @default(cuid())
-  tenantId             String
-  opportunityId        String    // The project (WON opportunity)
-  processDefinitionId  String
-  required             Boolean   @default(true) // Whether this process is required for this specific project
-  assignedUserId       String?   // User assigned to this process for this project
-  estimatedHours       Decimal?  // Override estimated hours for this specific project
-  completedAt          DateTime? // When this process was marked complete
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  tenantId            String
+  opportunityId       String // The project (WON opportunity)
+  processDefinitionId String
+  required            Boolean   @default(true) // Whether this process is required for this specific project
+  assignedUserId      String? // User assigned to this process for this project
+  estimatedHours      Decimal? // Override estimated hours for this specific project
+  completedAt         DateTime? // When this process was marked complete
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  opportunity       Opportunity                @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-  processDefinition WorkshopProcessDefinition  @relation(fields: [processDefinitionId], references: [id], onDelete: Cascade)
-  assignedUser      User?                      @relation(fields: [assignedUserId], references: [id])
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  opportunity       Opportunity               @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  processDefinition WorkshopProcessDefinition @relation(fields: [processDefinitionId], references: [id], onDelete: Cascade)
+  assignedUser      User?                     @relation(fields: [assignedUserId], references: [id])
 
   @@unique([opportunityId, processDefinitionId])
   @@index([tenantId, opportunityId])
@@ -1227,34 +1230,34 @@ model ProjectProcessAssignment {
 }
 
 model ProcessPlan {
-  id             String           @id @default(cuid())
+  id             String          @id @default(cuid())
   tenantId       String
-  projectId      String           // references Opportunity.id (a WON opportunity acts as a project)
+  projectId      String // references Opportunity.id (a WON opportunity acts as a project)
   process        WorkshopProcess
-  plannedWeek    Int              // 1..4 relative to current week (UI-level convention)
+  plannedWeek    Int // 1..4 relative to current week (UI-level convention)
   assignedUserId String?
   notes          String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project   Opportunity @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignee  User?       @relation(fields: [assignedUserId], references: [id])
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project  Opportunity @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User?       @relation(fields: [assignedUserId], references: [id])
 
   @@unique([tenantId, projectId, process])
   @@index([tenantId, assignedUserId])
 }
 
 model TimeEntry {
-  id        String           @id @default(cuid())
+  id        String          @id @default(cuid())
   tenantId  String
   projectId String
   process   WorkshopProcess
   userId    String
   date      DateTime
-  hours     Decimal          @default(0)
+  hours     Decimal         @default(0)
   notes     String?
-  createdAt DateTime         @default(now())
+  createdAt DateTime        @default(now())
 
   tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   project Opportunity @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1272,7 +1275,7 @@ model Holiday {
   endDate   DateTime
   notes     String?
   createdAt DateTime @default(now())
-  
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1281,16 +1284,16 @@ model Holiday {
 }
 
 model Target {
-  id                  String   @id @default(cuid())
-  tenantId            String
-  year                Int
-  enquiriesTarget     Int?     @default(0)
-  quotesValueTarget   Decimal? @default(0)
-  quotesCountTarget   Int?     @default(0)
-  salesValueTarget    Decimal? @default(0)
-  salesCountTarget    Int?     @default(0)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                String   @id @default(cuid())
+  tenantId          String
+  year              Int
+  enquiriesTarget   Int?     @default(0)
+  quotesValueTarget Decimal? @default(0)
+  quotesCountTarget Int?     @default(0)
+  salesValueTarget  Decimal? @default(0)
+  salesCountTarget  Int?     @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1299,117 +1302,120 @@ model Target {
 
 // Landing page lead capture (public, no tenant association)
 model LandingLead {
-  id            String   @id @default(cuid())
-  createdAt     DateTime @default(now())
-  source        String
-  name          String
-  email         String
-  phone         String
-  postcode      String
-  projectType   String
-  propertyType  String
-  message       String?
-  userAgent     String?
-  ip            String?
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  source       String
+  name         String
+  email        String
+  phone        String
+  postcode     String
+  projectType  String
+  propertyType String
+  message      String?
+  userAgent    String?
+  ip           String?
+
   // Simple index to speed up dedupe checks:
   @@index([email, source, createdAt])
 }
 
 // Multi-tenant landing page system
 model LandingTenant {
-  id             String                @id @default(cuid())
-  tenantId       String                @unique
-  name           String?
-  homeUrl        String?
-  email          String?
-  phone          String?
-  address        String?
-  brandColor     String?               // hex
-  logoUrl        String?
+  id            String                @id @default(cuid())
+  tenantId      String                @unique
+  name          String?
+  homeUrl       String?
+  email         String?
+  phone         String?
+  address       String?
+  brandColor    String? // hex
+  logoUrl       String?
   // Editor fields
-  headline       String?
-  subhead        String?
-  urgencyBanner  String?
-  ctaText        String?               @default("Get Your Free Quote")
-  guarantees     Json?                 // Array of guarantee objects
-  publishedAt    DateTime?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
-  content        LandingTenantContent?
-  images         LandingTenantImage[]
-  reviews        LandingTenantReview[]
-  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  headline      String?
+  subhead       String?
+  urgencyBanner String?
+  ctaText       String?               @default("Get Your Free Quote")
+  guarantees    Json? // Array of guarantee objects
+  publishedAt   DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  content       LandingTenantContent?
+  images        LandingTenantImage[]
+  reviews       LandingTenantReview[]
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model LandingTenantContent {
-  id            String         @id @default(cuid())
-  tenantId      String         @unique
+  id            String        @id @default(cuid())
+  tenantId      String        @unique
   headline      String?
   subhead       String?
   priceFromText String?
   priceRange    String?
-  guarantees    String?        // JSON string: { bullets:[], riskReversal:"" }
-  urgency       String?        // JSON string: { text:"", sub:"" }
-  faqJson       String?        // JSON array of Q&As
-  leadMagnet    String?        // JSON { title, cta, url }
-  serviceAreas  String?        // JSON string array
-  published     Boolean        @default(false)
-  updatedAt     DateTime       @updatedAt
-  tenant        LandingTenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guarantees    String? // JSON string: { bullets:[], riskReversal:"" }
+  urgency       String? // JSON string: { text:"", sub:"" }
+  faqJson       String? // JSON array of Q&As
+  leadMagnet    String? // JSON { title, cta, url }
+  serviceAreas  String? // JSON string array
+  published     Boolean       @default(false)
+  updatedAt     DateTime      @updatedAt
+  tenant        LandingTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model LandingTenantImage {
-  id               String        @id @default(cuid())
-  landingTenantId  String
-  url              String        // Image URL
-  altText          String?
-  caption          String?
-  order            Int           @default(0)
-  createdAt        DateTime      @default(now())
-  tenant           LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  landingTenantId String
+  url             String // Image URL
+  altText         String?
+  caption         String?
+  order           Int           @default(0)
+  createdAt       DateTime      @default(now())
+  tenant          LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+
   @@index([landingTenantId, order])
 }
 
 model LandingTenantReview {
-  id               String        @id @default(cuid())
-  landingTenantId  String
-  author           String
-  text             String
-  rating           Int           @default(5)
-  date             DateTime      @default(now())
-  location         String?
-  order            Int           @default(0)
-  createdAt        DateTime      @default(now())
-  tenant           LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  landingTenantId String
+  author          String
+  text            String
+  rating          Int           @default(5)
+  date            DateTime      @default(now())
+  location        String?
+  order           Int           @default(0)
+  createdAt       DateTime      @default(now())
+  tenant          LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+
   @@index([landingTenantId, order])
 }
 
 // Google Ads keyword performance tracking
 model KeywordPerformance {
-  id              String   @id @default(cuid())
-  tenantId        String
-  keyword         String
-  matchType       String   // EXACT, PHRASE, BROAD
+  id                String   @id @default(cuid())
+  tenantId          String
+  keyword           String
+  matchType         String // EXACT, PHRASE, BROAD
   // Performance metrics (7-day rolling)
-  impressions     Int      @default(0)
-  clicks          Int      @default(0)
-  conversions     Int      @default(0)
-  cost            Decimal  @default(0)
+  impressions       Int      @default(0)
+  clicks            Int      @default(0)
+  conversions       Int      @default(0)
+  cost              Decimal  @default(0)
   // Calculated metrics
-  ctr             Decimal  @default(0) // Click-through rate
-  conversionRate  Decimal  @default(0)
-  cpl             Decimal  @default(0) // Cost per lead
-  qualityScore    Int?     // 1-10 from Google Ads
+  ctr               Decimal  @default(0) // Click-through rate
+  conversionRate    Decimal  @default(0)
+  cpl               Decimal  @default(0) // Cost per lead
+  qualityScore      Int? // 1-10 from Google Ads
   // Status flags
-  isActive        Boolean  @default(true)
-  isUnderperforming Boolean @default(false) // CTR < 1% OR CPL > target
+  isActive          Boolean  @default(true)
+  isUnderperforming Boolean  @default(false) // CTR < 1% OR CPL > target
   // Timestamps
-  weekStartDate   DateTime // Monday of the week this data represents
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  weekStartDate     DateTime // Monday of the week this data represents
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+
   @@unique([tenantId, keyword, weekStartDate])
   @@index([tenantId, isUnderperforming])
   @@index([weekStartDate])
@@ -1417,21 +1423,21 @@ model KeywordPerformance {
 
 // SEO keyword optimization suggestions
 model KeywordSuggestion {
-  id           String   @id @default(cuid())
-  tenantId     String
-  keyword      String
-  suggestedFor String   // 'headline', 'subhead', 'meta_title', 'meta_description'
-  oldText      String?
-  newText      String
-  reason       String   // Why this suggestion was made
+  id             String    @id @default(cuid())
+  tenantId       String
+  keyword        String
+  suggestedFor   String // 'headline', 'subhead', 'meta_title', 'meta_description'
+  oldText        String?
+  newText        String
+  reason         String // Why this suggestion was made
   conversionRate Decimal // The keyword's conversion rate that prompted this
-  status       String   @default("pending") // pending, approved, rejected, applied
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  appliedAt    DateTime?
+  status         String    @default("pending") // pending, approved, rejected, applied
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  appliedAt      DateTime?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+
   @@index([tenantId, status])
   @@index([createdAt])
 }
@@ -1444,11 +1450,11 @@ model AiSession {
   taskKey     String
   description String
   files       Json
-  mode        String   // "dry-run" | "pr"
+  mode        String // "dry-run" | "pr"
   rounds      Int      @default(0)
   maxRounds   Int      @default(3)
   status      String   @default("OPEN") // OPEN|RUNNING|READY|FAILED
-  messages    Json     // [{ role: "system"|"user"|"assistant", content: string }]
+  messages    Json // [{ role: "system"|"user"|"assistant", content: string }]
   patchText   String?
   branch      String?
   prUrl       String?
@@ -1481,34 +1487,34 @@ model InterestRegistration {
 model TenantAdsConfig {
   id                  String   @id @default(cuid())
   tenantId            String   @unique
-  googleAdsCustomerId String   // e.g. "448-935-8197" or "4489358197"
+  googleAdsCustomerId String // e.g. "448-935-8197" or "4489358197"
   status              String   @default("active")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
-  
+
   @@index([googleAdsCustomerId])
 }
 
 // Suppliers - External companies that provide quotes
 model Supplier {
-  id                    String                @id @default(cuid())
+  id                    String                 @id @default(cuid())
   tenantId              String
-  tenant                Tenant @relation("SupplierToTenant", fields: [tenantId], references: [id])
+  tenant                Tenant                 @relation("SupplierToTenant", fields: [tenantId], references: [id])
   name                  String
-  code                  String?               // Optional code for material supplier integration
+  code                  String? // Optional code for material supplier integration
   contactPerson         String?
   email                 String?
   phone                 String?
   address               String?
-  defaultCurrency       String?               @default("GBP")
-  isActive              Boolean               @default(true)
+  defaultCurrency       String?                @default("GBP")
+  isActive              Boolean                @default(true)
   notes                 String?
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
   supplierQuoteRequests SupplierQuoteRequest[]
   materialItems         MaterialItem[]
   purchaseOrders        PurchaseOrder[]
-  users                 User[]                // Supplier users linked to this supplier
+  users                 User[] // Supplier users linked to this supplier
 
   @@index([tenantId])
   @@index([email])
@@ -1520,9 +1526,9 @@ model SoftwareProfile {
   id          String   @id @default(cuid())
   tenantId    String
   tenant      Tenant   @relation("SoftwareProfiles", fields: [tenantId], references: [id], onDelete: Cascade)
-  name        String   // Internal name/ID (e.g., "joinerysoft_v1")
-  displayName String   // User-friendly name shown in UI
-  matchHints  String?  // JSON: { textIncludes: [], filenameIncludes: [], emailDomainIncludes: [] }
+  name        String // Internal name/ID (e.g., "joinerysoft_v1")
+  displayName String // User-friendly name shown in UI
+  matchHints  String? // JSON: { textIncludes: [], filenameIncludes: [], emailDomainIncludes: [] }
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1533,18 +1539,36 @@ model SoftwareProfile {
 // Place at very end of file
 
 model PdfLayoutTemplate {
-  id                 String   @id @default(cuid())
-  name               String
-  description        String?
-  supplierProfileId  String?  // Optional: links to sw_<id> or sup_<id> profile
-  fileHash           String?  // Hash of original PDF for matching
-  pageCount          Int?
-  annotations        Json     // Array of annotation boxes
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String                @id @default(cuid())
+  supplierProfileId String                @unique
+  name              String
+  description       String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  createdByUserId   String?
+  createdByUser     User?                 @relation(fields: [createdByUserId], references: [id])
+  pageCount         Int?
+  meta              Json?
+  annotations       PdfLayoutAnnotation[]
+  Quote             Quote[]
 
-  @@index([supplierProfileId])
   @@index([name])
+}
+
+model PdfLayoutAnnotation {
+  id         String             @id @default(cuid())
+  templateId String
+  template   PdfLayoutTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  page       Int
+  x          Float
+  y          Float
+  width      Float
+  height     Float
+  label      PdfAnnotationLabel
+  rowId      String?
+  createdAt  DateTime           @default(now())
+
+  @@index([templateId, page])
 }
 
 // Supplier Quote Requests - Track quotes requested from suppliers
@@ -1554,7 +1578,7 @@ model SupplierQuoteRequest {
   supplierId     String
   leadId         String?
   opportunityId  String?
-  requestedById  String    // User who requested the quote
+  requestedById  String // User who requested the quote
   status         String    @default("pending") // pending, quote_received, accepted, declined
   notes          String?
   sentAt         DateTime  @default(now())
@@ -1563,14 +1587,14 @@ model SupplierQuoteRequest {
   uploadedFileId String?   @unique // If supplier uploads a quote document
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  
-  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  requestedBy    User         @relation(fields: [requestedById], references: [id])
-  uploadedFile   UploadedFile? @relation(fields: [uploadedFileId], references: [id], onDelete: SetNull)
-  
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier     Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  opportunity  Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  requestedBy  User          @relation(fields: [requestedById], references: [id])
+  uploadedFile UploadedFile? @relation(fields: [uploadedFileId], references: [id], onDelete: SetNull)
+
   @@index([tenantId])
   @@index([supplierId])
   @@index([leadId])
@@ -1580,22 +1604,22 @@ model SupplierQuoteRequest {
 
 // Timesheet sign-offs for workshop hours
 model Timesheet {
-  id             String    @id @default(cuid())
-  tenantId       String
-  userId         String
-  weekStartDate  DateTime
-  weekEndDate    DateTime
-  totalHours     Decimal   @default(0)
-  status         String    @default("pending") // pending, signed_off, rejected
-  signedOffById  String?
-  signedOffAt    DateTime?
-  notes          String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  tenantId      String
+  userId        String
+  weekStartDate DateTime
+  weekEndDate   DateTime
+  totalHours    Decimal   @default(0)
+  status        String    @default("pending") // pending, signed_off, rejected
+  signedOffById String?
+  signedOffAt   DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user         User   @relation("TimesheetUser", fields: [userId], references: [id], onDelete: Cascade)
-  signedOffBy  User?  @relation("TimesheetSignedOffBy", fields: [signedOffById], references: [id], onDelete: SetNull)
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User   @relation("TimesheetUser", fields: [userId], references: [id], onDelete: Cascade)
+  signedOffBy User?  @relation("TimesheetSignedOffBy", fields: [signedOffById], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, userId, weekStartDate])
   @@index([tenantId])
@@ -1617,6 +1641,22 @@ enum QuestionnaireFieldType {
   DATE
 }
 
+enum QuoteSourceType {
+  SUPPLIER
+  USER_SOFTWARE
+}
+
+enum PdfAnnotationLabel {
+  JOINERY_IMAGE
+  DESCRIPTION
+  QTY
+  UNIT_COST
+  LINE_TOTAL
+  DELIVERY_ROW
+  HEADER_LOGO
+  IGNORE
+}
+
 // Questionnaire template (form definition)
 model Questionnaire {
   id          String   @id @default(cuid())
@@ -1627,7 +1667,7 @@ model Questionnaire {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   fields    QuestionnaireField[]
   responses QuestionnaireResponse[]
 
@@ -1636,31 +1676,31 @@ model Questionnaire {
 
 // Questionnaire field definition
 model QuestionnaireField {
-  id              String                  @id @default(cuid())
-  tenantId        String
-  questionnaireId String
-  key             String                  // Stable identifier (e.g., "door_height")
-  label           String                  // Display label (e.g., "Door Height (mm)")
-  type            QuestionnaireFieldType
-  options         Json?                   // For SELECT type: ["Option 1", "Option 2"]
-  required        Boolean                 @default(false)
+  id                 String                 @id @default(cuid())
+  tenantId           String
+  questionnaireId    String
+  key                String // Stable identifier (e.g., "door_height")
+  label              String // Display label (e.g., "Door Height (mm)")
+  type               QuestionnaireFieldType
+  options            Json? // For SELECT type: ["Option 1", "Option 2"]
+  required           Boolean                @default(false)
   // NOTE: Both sortOrder and order retained temporarily while UI/routes migrate.
   // Prefer using sortOrder going forward; order will be deprecated.
-  order           Int                     @default(0)
-  sortOrder       Int                     @default(0)
+  order              Int                    @default(0)
+  sortOrder          Int                    @default(0)
   // Activity & presentation helpers (referenced by questionnaire-fields route & admin UI)
-  isActive        Boolean                 @default(true)
-  placeholder     String?
-  helpText        String?
-  config          Json?                   // Arbitrary per-field config (e.g. validation rules)
+  isActive           Boolean                @default(true)
+  placeholder        String?
+  helpText           String?
+  config             Json? // Arbitrary per-field config (e.g. validation rules)
   // Flag to indicate the field is required for costing calculations (future use)
-  requiredForCosting Boolean              @default(false)
-  costingInputKey String?                 // Maps to costing engine input (e.g., "door_height_mm")
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  requiredForCosting Boolean                @default(false)
+  costingInputKey    String? // Maps to costing engine input (e.g., "door_height_mm")
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  questionnaire Questionnaire  @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  questionnaire Questionnaire         @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
   answers       QuestionnaireAnswer[]
 
   @@unique([questionnaireId, key])
@@ -1681,9 +1721,9 @@ model QuestionnaireResponse {
   completedAt     DateTime?
   updatedAt       DateTime  @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  questionnaire Questionnaire  @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
-  quote         Quote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  questionnaire Questionnaire         @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  quote         Quote?                @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   answers       QuestionnaireAnswer[]
 
   @@index([tenantId, questionnaireId])
@@ -1692,10 +1732,10 @@ model QuestionnaireResponse {
 
 // Individual answer to a questionnaire field
 model QuestionnaireAnswer {
-  id         String   @id @default(cuid())
+  id         String @id @default(cuid())
   responseId String
   fieldId    String
-  value      Json     // Stores any type: string, number, boolean, array, etc.
+  value      Json // Stores any type: string, number, boolean, array, etc.
 
   response QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
   field    QuestionnaireField    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
@@ -1711,32 +1751,32 @@ model QuestionnaireAnswer {
 
 // ---- Materials: Timber, Boards, Mouldings ----
 model Material {
-  id          String   @id @default(cuid())
-  tenantId    String
-  category    MaterialCategory
-  code        String
-  name        String
-  description String?
-  supplier    String?
+  id           String           @id @default(cuid())
+  tenantId     String
+  category     MaterialCategory
+  code         String
+  name         String
+  description  String?
+  supplier     String?
   // Pricing
-  unitCost    Decimal  @default(0)
-  currency    String   @default("GBP")
-  unit        String   @default("m") // m, m2, m3, each, etc.
+  unitCost     Decimal          @default(0)
+  currency     String           @default("GBP")
+  unit         String           @default("m") // m, m2, m3, each, etc.
   // Specifications
-  thickness   Decimal? // mm
-  width       Decimal? // mm
-  length      Decimal? // mm
-  species     String?  // For timber: Oak, Ash, Pine, etc.
-  grade       String?  // A, B, C, Prime, etc.
-  finish      String?  // Rough sawn, planed, etc.
+  thickness    Decimal? // mm
+  width        Decimal? // mm
+  length       Decimal? // mm
+  species      String? // For timber: Oak, Ash, Pine, etc.
+  grade        String? // A, B, C, Prime, etc.
+  finish       String? // Rough sawn, planed, etc.
   // Metadata
-  isActive    Boolean  @default(true)
-  isStock     Boolean  @default(false) // In stock vs made-to-order
+  isActive     Boolean          @default(true)
+  isStock      Boolean          @default(false) // In stock vs made-to-order
   leadTimeDays Int?
-  minOrderQty Decimal?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  minOrderQty  Decimal?
+  notes        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1757,28 +1797,28 @@ enum MaterialCategory {
 
 // ---- Glazing: Glass, Beading, Tape ----
 model GlazingItem {
-  id          String   @id @default(cuid())
-  tenantId    String
-  category    GlazingCategory
-  code        String
-  name        String
-  description String?
-  supplier    String?
+  id           String          @id @default(cuid())
+  tenantId     String
+  category     GlazingCategory
+  code         String
+  name         String
+  description  String?
+  supplier     String?
   // Pricing
-  unitCost    Decimal  @default(0)
-  currency    String   @default("GBP")
-  unit        String   @default("m2") // m2, m, each
+  unitCost     Decimal         @default(0)
+  currency     String          @default("GBP")
+  unit         String          @default("m2") // m2, m, each
   // Specifications
-  thickness   Decimal? // mm
-  glassType   String?  // Clear, Obscured, Toughened, Laminated, DGU
-  uValue      Decimal? // Thermal performance
-  fireRating  String?  // FD30, FD60, etc.
+  thickness    Decimal? // mm
+  glassType    String? // Clear, Obscured, Toughened, Laminated, DGU
+  uValue       Decimal? // Thermal performance
+  fireRating   String? // FD30, FD60, etc.
   // Metadata
-  isActive    Boolean  @default(true)
+  isActive     Boolean         @default(true)
   leadTimeDays Int?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  notes        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1795,27 +1835,27 @@ enum GlazingCategory {
 
 // ---- Door Construction ----
 model DoorCore {
-  id          String   @id @default(cuid())
-  tenantId    String
-  code        String
-  name        String
-  description String?
-  supplier    String?
+  id           String   @id @default(cuid())
+  tenantId     String
+  code         String
+  name         String
+  description  String?
+  supplier     String?
   // Pricing
-  unitCost    Decimal  @default(0)
-  currency    String   @default("GBP")
+  unitCost     Decimal  @default(0)
+  currency     String   @default("GBP")
   // Specifications
-  fireRating  String?  // None, FD30, FD60, FD90, FD120
-  acoustic    Boolean  @default(false)
-  maxHeight   Decimal? // mm
-  maxWidth    Decimal? // mm
-  weight      Decimal? // kg per m2
+  fireRating   String? // None, FD30, FD60, FD90, FD120
+  acoustic     Boolean  @default(false)
+  maxHeight    Decimal? // mm
+  maxWidth     Decimal? // mm
+  weight       Decimal? // kg per m2
   // Metadata
-  isActive    Boolean  @default(true)
+  isActive     Boolean  @default(true)
   leadTimeDays Int?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1824,25 +1864,25 @@ model DoorCore {
 }
 
 model LeafStyle {
-  id          String   @id @default(cuid())
-  tenantId    String
-  code        String
-  name        String
-  description String?
+  id             String   @id @default(cuid())
+  tenantId       String
+  code           String
+  name           String
+  description    String?
   // Pricing adjustments (multipliers or fixed costs)
-  costMultiplier Decimal @default(1.0)
-  additionalCost Decimal @default(0)
-  currency    String   @default("GBP")
+  costMultiplier Decimal  @default(1.0)
+  additionalCost Decimal  @default(0)
+  currency       String   @default("GBP")
   // Specifications
-  panelCount  Int?     // 2-panel, 4-panel, etc.
-  glassArea   Decimal? // % of door that is glass
-  complexity  String?  // Simple, Medium, Complex
+  panelCount     Int? // 2-panel, 4-panel, etc.
+  glassArea      Decimal? // % of door that is glass
+  complexity     String? // Simple, Medium, Complex
   // Metadata
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1860,9 +1900,9 @@ model LeafFacing {
   costPerM2   Decimal  @default(0)
   currency    String   @default("GBP")
   // Specifications
-  material    String?  // Veneer, Paint-grade MDF, etc.
+  material    String? // Veneer, Paint-grade MDF, etc.
   thickness   Decimal? // mm
-  finish      String?  // Prefinished, unfinished
+  finish      String? // Prefinished, unfinished
   // Metadata
   isActive    Boolean  @default(true)
   notes       String?
@@ -1886,7 +1926,7 @@ model FrameFinish {
   currency    String   @default("GBP")
   // Specifications
   material    String?
-  profile     String?  // Rebated, square, chamfered
+  profile     String? // Rebated, square, chamfered
   // Metadata
   isActive    Boolean  @default(true)
   notes       String?
@@ -1911,7 +1951,7 @@ model SprayFinish {
   // Specifications
   coats       Int      @default(3)
   colour      String?
-  sheen       String?  // Matt, Satin, Gloss
+  sheen       String? // Matt, Satin, Gloss
   dryTimeDays Int?
   // Metadata
   isActive    Boolean  @default(true)
@@ -1938,7 +1978,7 @@ model VeneerLayon {
   species     String?
   grade       String?
   thickness   Decimal? // mm
-  backing     String?  // Paper, fleece, etc.
+  backing     String? // Paper, fleece, etc.
   // Metadata
   isActive    Boolean  @default(true)
   notes       String?
@@ -1953,31 +1993,31 @@ model VeneerLayon {
 
 // ---- Ironmongery ----
 model IronmongeryItem {
-  id          String   @id @default(cuid())
-  tenantId    String
-  category    IronmongeryCategory
-  code        String
-  name        String
-  description String?
-  supplier    String?
+  id           String              @id @default(cuid())
+  tenantId     String
+  category     IronmongeryCategory
+  code         String
+  name         String
+  description  String?
+  supplier     String?
   // Pricing
-  unitCost    Decimal  @default(0)
-  currency    String   @default("GBP")
+  unitCost     Decimal             @default(0)
+  currency     String              @default("GBP")
   // Specifications
-  material    String?  // Brass, SS, Chrome, etc.
-  finish      String?  // Polished, satin, etc.
-  fireRated   Boolean  @default(false)
-  grade       String?  // Grade 13, 14, etc. for locks
+  material     String? // Brass, SS, Chrome, etc.
+  finish       String? // Polished, satin, etc.
+  fireRated    Boolean             @default(false)
+  grade        String? // Grade 13, 14, etc. for locks
   // Metadata
-  isActive    Boolean  @default(true)
+  isActive     Boolean             @default(true)
   leadTimeDays Int?
-  notes       String?
-  imageUrl    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  notes        String?
+  imageUrl     String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
-  tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  packItems     IronmongeryPackItem[]
+  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  packItems IronmongeryPackItem[]
 
   @@unique([tenantId, code])
   @@index([tenantId, category, isActive])
@@ -2017,8 +2057,8 @@ model IronmongeryPack {
   name        String
   description String?
   // Pre-defined pack for common door types (e.g., "FD30 Internal", "External Entrance")
-  doorType    String?  // Internal, External, Fire, etc.
-  fireRating  String?  // FD30, FD60, etc.
+  doorType    String? // Internal, External, Fire, etc.
+  fireRating  String? // FD30, FD60, etc.
   // Metadata
   isActive    Boolean  @default(true)
   sortOrder   Int      @default(0)
@@ -2026,22 +2066,22 @@ model IronmongeryPack {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  items     IronmongeryPackItem[]
+  tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  IronmongeryPackItem[]
 
   @@unique([tenantId, code])
   @@index([tenantId, isActive, sortOrder])
 }
 
 model IronmongeryPackItem {
-  id        String   @id @default(cuid())
-  packId    String
-  itemId    String
-  quantity  Int      @default(1)
-  notes     String?
+  id       String  @id @default(cuid())
+  packId   String
+  itemId   String
+  quantity Int     @default(1)
+  notes    String?
 
-  pack      IronmongeryPack @relation(fields: [packId], references: [id], onDelete: Cascade)
-  item      IronmongeryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  pack IronmongeryPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  item IronmongeryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@unique([packId, itemId])
   @@index([packId])
@@ -2049,26 +2089,26 @@ model IronmongeryPackItem {
 
 // ---- Rules & Lookups ----
 model FireCertificationRule {
-  id          String   @id @default(cuid())
-  tenantId    String
-  name        String
-  description String?
+  id                      String    @id @default(cuid())
+  tenantId                String
+  name                    String
+  description             String?
   // Rule conditions (as JSON for flexibility)
-  conditions  Json     // e.g., { "fireRating": "FD30", "maxHeight": 2100, "maxWidth": 926 }
+  conditions              Json // e.g., { "fireRating": "FD30", "maxHeight": 2100, "maxWidth": 926 }
   // Required components
-  coreCode    String?
-  glazingType String?
-  sealType    String?
+  coreCode                String?
+  glazingType             String?
+  sealType                String?
   ironmongeryRequirements Json? // Array of required category/specs
   // Certification details
-  certBody    String?  // BWF, BM Trada, Certifire, etc.
-  certNumber  String?
-  validUntil  DateTime?
+  certBody                String? // BWF, BM Trada, Certifire, etc.
+  certNumber              String?
+  validUntil              DateTime?
   // Metadata
-  isActive    Boolean  @default(true)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive                Boolean   @default(true)
+  notes                   String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -2076,20 +2116,20 @@ model FireCertificationRule {
 }
 
 model LeafSizingRule {
-  id          String   @id @default(cuid())
-  tenantId    String
-  frameType   String   // Single, Double, etc.
-  minHeight   Decimal  // mm
-  maxHeight   Decimal  // mm
-  minWidth    Decimal  // mm
-  maxWidth    Decimal  // mm
+  id         String   @id @default(cuid())
+  tenantId   String
+  frameType  String // Single, Double, etc.
+  minHeight  Decimal // mm
+  maxHeight  Decimal // mm
+  minWidth   Decimal // mm
+  maxWidth   Decimal // mm
   // Additional constraints
-  fireRating  String?
-  maxWeight   Decimal? // kg
-  notes       String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  fireRating String?
+  maxWeight  Decimal? // kg
+  notes      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -2097,14 +2137,14 @@ model LeafSizingRule {
 }
 
 model WeightLookup {
-  id          String   @id @default(cuid())
-  tenantId    String
-  component   String   // Door core, Glass, Frame, etc.
+  id            String   @id @default(cuid())
+  tenantId      String
+  component     String // Door core, Glass, Frame, etc.
   specification String // Core type, glass thickness, etc.
-  weightPerM2 Decimal  // kg/m2
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  weightPerM2   Decimal // kg/m2
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -2114,27 +2154,27 @@ model WeightLookup {
 
 // ---- Materials Integration ----
 model MaterialItem {
-  id                String              @id @default(cuid())
-  tenantId          String
-  supplierId        String?
-  category          MaterialItemCategory
-  code              String
-  name              String
-  description       String?
-  cost              Decimal             @default(0)
-  currency          String              @default("GBP")
-  unit              String              @default("each") // each, m, m2, kg, etc.
-  stockQuantity     Decimal?            @default(0)
-  minStockLevel     Decimal?
-  leadTimeDays      Int?
-  isActive          Boolean             @default(true)
-  notes             String?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  id            String               @id @default(cuid())
+  tenantId      String
+  supplierId    String?
+  category      MaterialItemCategory
+  code          String
+  name          String
+  description   String?
+  cost          Decimal              @default(0)
+  currency      String               @default("GBP")
+  unit          String               @default("each") // each, m, m2, kg, etc.
+  stockQuantity Decimal?             @default(0)
+  minStockLevel Decimal?
+  leadTimeDays  Int?
+  isActive      Boolean              @default(true)
+  notes         String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
-  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier          Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  shoppingListItems ShoppingListItem[]
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier           Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  shoppingListItems  ShoppingListItem[]
   purchaseOrderLines PurchaseOrderLine[]
 
   @@unique([tenantId, code])
@@ -2157,17 +2197,17 @@ enum MaterialItemCategory {
 }
 
 model ShoppingList {
-  id          String              @id @default(cuid())
-  tenantId    String
-  quoteId     String?
-  status      ShoppingListStatus  @default(DRAFT)
-  notes       String?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id        String             @id @default(cuid())
+  tenantId  String
+  quoteId   String?
+  status    ShoppingListStatus @default(DRAFT)
+  notes     String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
 
-  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  quote       Quote?              @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  items       ShoppingListItem[]
+  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quote  Quote?             @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  items  ShoppingListItem[]
 
   @@index([tenantId, status])
   @@index([quoteId])
@@ -2182,42 +2222,42 @@ enum ShoppingListStatus {
 }
 
 model ShoppingListItem {
-  id                    String        @id @default(cuid())
-  shoppingListId        String
-  materialItemId        String
-  descriptionOverride   String?
-  quantity              Decimal
-  unit                  String
-  sourceQuoteLineId     String?       // Optional link to Quote line that generated this
-  notes                 String?
-  createdAt             DateTime      @default(now())
+  id                  String   @id @default(cuid())
+  shoppingListId      String
+  materialItemId      String
+  descriptionOverride String?
+  quantity            Decimal
+  unit                String
+  sourceQuoteLineId   String? // Optional link to Quote line that generated this
+  notes               String?
+  createdAt           DateTime @default(now())
 
-  shoppingList          ShoppingList  @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
-  materialItem          MaterialItem  @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
-  sourceQuoteLine       QuoteLine?    @relation(fields: [sourceQuoteLineId], references: [id], onDelete: SetNull)
+  shoppingList    ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  materialItem    MaterialItem @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
+  sourceQuoteLine QuoteLine?   @relation(fields: [sourceQuoteLineId], references: [id], onDelete: SetNull)
 
   @@index([shoppingListId])
   @@index([materialItemId])
 }
 
 model PurchaseOrder {
-  id              String              @id @default(cuid())
-  tenantId        String
-  supplierId      String
-  status          PurchaseOrderStatus @default(DRAFT)
-  orderNumber     String?
-  orderDate       DateTime?
-  expectedDate    DateTime?
-  receivedDate    DateTime?
-  notes           String?
-  totalAmount     Decimal?            @default(0)
-  currency        String              @default("GBP")
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  id           String              @id @default(cuid())
+  tenantId     String
+  supplierId   String
+  status       PurchaseOrderStatus @default(DRAFT)
+  orderNumber  String?
+  orderDate    DateTime?
+  expectedDate DateTime?
+  receivedDate DateTime?
+  notes        String?
+  totalAmount  Decimal?            @default(0)
+  currency     String              @default("GBP")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
-  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier        Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  lines           PurchaseOrderLine[]
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines    PurchaseOrderLine[]
 
   @@index([tenantId, status])
   @@index([tenantId, supplierId])
@@ -2234,20 +2274,20 @@ enum PurchaseOrderStatus {
 }
 
 model PurchaseOrderLine {
-  id                String          @id @default(cuid())
-  purchaseOrderId   String
-  materialItemId    String
-  description       String
-  quantity          Decimal
-  unit              String
-  unitPrice         Decimal         @default(0)
-  lineTotal         Decimal         @default(0)
-  receivedQuantity  Decimal?        @default(0)
-  notes             String?
-  createdAt         DateTime        @default(now())
+  id               String   @id @default(cuid())
+  purchaseOrderId  String
+  materialItemId   String
+  description      String
+  quantity         Decimal
+  unit             String
+  unitPrice        Decimal  @default(0)
+  lineTotal        Decimal  @default(0)
+  receivedQuantity Decimal? @default(0)
+  notes            String?
+  createdAt        DateTime @default(now())
 
-  purchaseOrder     PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  materialItem      MaterialItem    @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  materialItem  MaterialItem  @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
 
   @@index([purchaseOrderId])
   @@index([materialItemId])

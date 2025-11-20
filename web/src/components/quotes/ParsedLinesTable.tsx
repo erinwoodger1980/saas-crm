@@ -54,6 +54,11 @@ export function ParsedLinesTable({
   const parseSummaries = (parseMeta?.summaries ?? []) as Array<Record<string, any>>;
   const poorSummaries = parseSummaries.filter((summary) => summary && summary.quality === "poor");
   const showLowQualityNotice = parseMeta?.quality === "poor" || poorSummaries.length > 0;
+  const fallbackStats = parseMeta?.fallbackScored || null;
+  const keptRows = typeof fallbackStats?.kept === "number" ? fallbackStats.kept : null;
+  const discardedRows = typeof fallbackStats?.discarded === "number" ? fallbackStats.discarded : null;
+  const showDiscardedWarning =
+    keptRows != null && discardedRows != null ? discardedRows > keptRows : discardedRows != null && discardedRows > 10;
 
   const totals = useMemo(() => computeTotals(lines), [lines]);
 
@@ -176,6 +181,20 @@ export function ParsedLinesTable({
                 )}
               </ul>
             )}
+          </div>
+        )}
+
+        {showDiscardedWarning && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+              <AlertTriangle className="h-4 w-4" /> Many rows were discarded
+            </div>
+            <p className="mt-2 text-xs text-amber-800">
+              We discarded a lot of dubious rows from this PDF. Please review the remaining line items carefully and confirm they look correct before quoting.
+            </p>
+            <p className="mt-2 text-[11px] font-medium text-amber-700">
+              {keptRows != null ? `${keptRows} kept` : "— kept"} · {discardedRows != null ? `${discardedRows} discarded` : "— discarded"}
+            </p>
           </div>
         )}
 
