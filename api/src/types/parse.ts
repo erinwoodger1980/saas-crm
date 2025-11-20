@@ -49,6 +49,12 @@ export type SupplierParseResult = {
       method?: string;
       reason?: string;
     } | null;
+    descriptionQuality?: {
+      method?: string | null;
+      kept?: number | null;
+      rejected?: number | null;
+      samples?: string[] | null;
+    } | null;
   };
   // Extracted images with bounding boxes
   images?: Array<{

@@ -1,5 +1,6 @@
 import { inflateRawSync, inflateSync } from "node:zlib";
 import type { SupplierParseResult } from "../../types/parse";
+import { assessDescriptionQuality, type DescriptionQualityAssessment } from "./quality";
 
 const MAX_LINE_VALUE = 1_000_000;
 const MAX_QTY = 1_000;
@@ -19,11 +20,17 @@ type ScoredRow = RawRow & {
   total: number | null;
   score: number;
   reason: string[];
+  qualityScore: number;
+  qualityReasons: string[];
+  gibberish: boolean;
+  quality: DescriptionQualityAssessment;
 };
 
-const DIMENSION_RE = /(?:\b|\s)(\d{3,4})\s*[xX×]\s*(\d{3,4})\s*mm\b/;
+const DIMENSION_RE = /(?:\b|\s)(\d{3,4})\s*[xX\u00D7]\s*(\d{3,4})\s*mm\b/;
 const AREA_RE = /\b\d+(?:\.\d+)?\s*(?:m2|m²)\b/;
 const MONEY_RE = /£?\s*\d[\d,]*(?:\.\d{1,2})?/;
+const JOINERY_KEYWORD_RE = /\b(door|window|frame|sash|bifold|slider|casement|flush|panel|glaze|glass|timber|oak|pine|hardwood|softwood|threshold|lintel|lantern|roof|stair|balustrade|cladding|handle|hinge|ironmongery|install|supply|fit|labour|uPVC|aluminium|garage|shutter|skylight|aperture|fascia|soffit|gable|truss)\b/i;
+const MATERIAL_KEYWORD_RE = /\b(oak|pine|spruce|hardwood|softwood|timber|aluminium|alu|upvc|composite|laminate|glass|glazing|ironmongery|steel|powder|paint|lacquer|factory|finish|primed|treated)\b/i;
 
 function parseMoney(value: string | null | undefined): number | null {
   if (!value) return null;
@@ -111,50 +118,121 @@ function scoreRawRow(row: RawRow): ScoredRow {
   const unit = parseSafeMoney(row.unitText || "");
   const total = parseSafeMoney(row.totalText || "");
 
+  const quality = assessDescriptionQuality(cleanedDescription);
   let score = 0;
   const reason: string[] = [];
 
-  if (cleanedDescription.length > 10) {
+  if (quality.score >= 0.75) {
+    score += 3;
+    reason.push("quality_high");
+  } else if (quality.score >= 0.6) {
+    score += 2;
+    reason.push("quality_mid");
+  } else if (quality.score >= 0.5) {
     score += 1;
-    reason.push("desc_len");
+    reason.push("quality_borderline");
+  } else {
+    score -= 2;
+    reason.push("quality_low");
   }
 
-  if (DIMENSION_RE.test(cleanedDescription)) {
+  if (quality.gibberish) {
+    score -= 5;
+    reason.push("quality_gibberish");
+  }
+
+  if (cleanedDescription.length > 18) {
+    score += 1;
+    reason.push("desc_len");
+  } else if (cleanedDescription.length && cleanedDescription.length < 8) {
+    score -= 2;
+    reason.push("short_desc");
+  }
+
+  const hasDimension = DIMENSION_RE.test(cleanedDescription);
+  const hasArea = AREA_RE.test(cleanedDescription);
+  if (hasDimension) {
     score += 3;
     reason.push("dimension");
   }
-
-  if (AREA_RE.test(cleanedDescription)) {
+  if (hasArea) {
     score += 2;
     reason.push("area");
   }
 
-  if (unit != null || total != null || (row.totalText && MONEY_RE.test(row.totalText)) || (row.unitText && MONEY_RE.test(row.unitText))) {
+  const hasJoineryKeyword = JOINERY_KEYWORD_RE.test(cleanedDescription);
+  if (hasJoineryKeyword) {
+    score += 2;
+    reason.push("joinery_kw");
+  }
+
+  if (MATERIAL_KEYWORD_RE.test(cleanedDescription)) {
+    score += 1;
+    reason.push("material_kw");
+  }
+
+  const hasMoneyHints =
+    unit != null ||
+    total != null ||
+    (row.totalText && MONEY_RE.test(row.totalText)) ||
+    (row.unitText && MONEY_RE.test(row.unitText));
+  if (hasMoneyHints) {
     score += 2;
     reason.push("money");
   }
 
-  if (qty != null && qty > 0 && qty < 100) {
+  if (qty != null && qty > 0 && qty <= MAX_QTY) {
     score += 1;
     reason.push("qty");
+  } else if (qty != null && qty > MAX_QTY) {
+    score -= 1;
+    reason.push("qty_excess");
   }
 
-  const nonWordRatio = cleanedDescription
-    ? cleanedDescription.replace(/[A-Za-z0-9£.,/()\- ]/g, "").length / cleanedDescription.length
-    : 1;
-  if (nonWordRatio > 0.4) {
-    score -= 3;
-    reason.push("gibberish");
+  const digitOnlyRatio = cleanedDescription
+    ? cleanedDescription.replace(/[^0-9]/g, "").length / cleanedDescription.length
+    : 0;
+  if (digitOnlyRatio > 0.65 && !hasMoneyHints) {
+    score -= 2;
+    reason.push("digit_noise");
   }
 
-  return { ...row, cleanedDescription, qty, unit, total, score, reason };
+  if (!hasMoneyHints && !hasJoineryKeyword && cleanedDescription.length < 20 && !hasDimension && !hasArea) {
+    score -= 1;
+    reason.push("weak_signal");
+  }
+
+  return {
+    ...row,
+    cleanedDescription,
+    qty,
+    unit,
+    total,
+    score,
+    reason,
+    qualityScore: quality.score,
+    qualityReasons: quality.reasons,
+    gibberish: quality.gibberish,
+    quality,
+  };
 }
 
 function isPlausibleJoineryRow(row: ScoredRow): boolean {
   if (!row.cleanedDescription || row.score <= 0) return false;
-  if (DIMENSION_RE.test(row.cleanedDescription)) return true;
-  if ((row.unit != null || row.total != null) && row.cleanedDescription.length > 20) return true;
-  if (AREA_RE.test(row.cleanedDescription) && (row.unit != null || row.total != null || row.qty != null)) return true;
+  if (row.gibberish) return false;
+  if (row.qualityScore < 0.5) return false;
+
+  const hasMoney = row.unit != null || row.total != null;
+  const hasDimension = DIMENSION_RE.test(row.cleanedDescription);
+  const hasArea = AREA_RE.test(row.cleanedDescription);
+  const hasJoineryKeyword = JOINERY_KEYWORD_RE.test(row.cleanedDescription);
+
+  if (hasDimension) return true;
+  if (hasArea && (hasMoney || row.qty != null)) return true;
+  if (hasJoineryKeyword && (hasMoney || row.cleanedDescription.length > 25 || row.qty != null)) return true;
+  if (hasMoney && row.cleanedDescription.length > 20 && row.qualityScore >= 0.6) return true;
+  if (row.cleanedDescription.length > 30 && row.qualityScore >= 0.7) return true;
+
   return false;
 }
 
@@ -299,6 +377,15 @@ function parseLines(text: string): SupplierParseResult {
   const scoredRows = rawRows.map(scoreRawRow);
   const keepRows = scoredRows.filter(isPlausibleJoineryRow);
   const discardedRowDetails = scoredRows.filter((row) => !isPlausibleJoineryRow(row));
+  const gibberishRows = discardedRowDetails.filter((row) => row.gibberish);
+  const gibberishSamples = gibberishRows
+    .map((row) => (row.cleanedDescription || row.descriptionText || "").slice(0, 140))
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (gibberishRows.length) {
+    warnings.push(`Dropped ${gibberishRows.length} low-quality OCR rows`);
+  }
 
   const cleanedLines = keepRows
     .map((row) => {
@@ -318,10 +405,12 @@ function parseLines(text: string): SupplierParseResult {
         lineTotal: row.total ?? undefined,
         meta: {
           rawDescription: row.descriptionText,
-          cleanedBy: "fallback_cleaner_v2",
+          cleanedBy: "fallback_cleaner_v3",
           parseSource: "pdf_fallback_v2",
           score: row.score,
           scoreReasons: row.reason,
+          descriptionQuality: row.qualityScore,
+          descriptionQualityReasons: row.qualityReasons,
         },
       };
     })
@@ -336,6 +425,16 @@ function parseLines(text: string): SupplierParseResult {
     kept: keepRows.length,
     discarded: discardedRowDetails.length,
   };
+
+  const descriptionQualityMeta =
+    gibberishRows.length || keepRows.length
+      ? {
+          method: "fallback",
+          rejected: gibberishRows.length,
+          kept: keepRows.length,
+          samples: gibberishSamples.length ? gibberishSamples : undefined,
+        }
+      : undefined;
 
   const totalCandidateRows = scoredRows.length;
   const parseQuality: "ok" | "poor" =
@@ -404,6 +503,7 @@ function parseLines(text: string): SupplierParseResult {
       rawRows: rawRows.length,
       discardedRows: discardedRowDetails.length,
       fallbackScored: fallbackScoredMeta,
+      ...(descriptionQualityMeta ? { descriptionQuality: descriptionQualityMeta } : {}),
       ...(unmappedRows ? { unmapped_rows: unmappedRows } : {}),
     },
   };

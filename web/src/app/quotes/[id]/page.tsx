@@ -7,6 +7,7 @@ import useSWR from "swr";
 import { ParsedLinesTable } from "@/components/quotes/ParsedLinesTable";
 import { QuestionnaireForm } from "@/components/quotes/QuestionnaireForm";
 import { SupplierFilesCard } from "@/components/quotes/SupplierFilesCard";
+import { TemplatePickerDialog } from "@/components/quotes/TemplatePickerDialog";
 import { LeadDetailsCard } from "@/components/quotes/LeadDetailsCard";
 import { ClientQuoteUploadCard } from "@/components/quotes/ClientQuoteUploadCard";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import {
   processQuoteFromFile,
   saveClientQuoteLines,
   priceQuoteFromQuestionnaire,
+  updateQuoteSource,
   type SupplierFileDto as SupplierFile,
 } from "@/lib/api/quotes";
 import type {
@@ -86,6 +88,8 @@ export default function QuoteBuilderPage() {
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
   const [lastEstimateAt, setLastEstimateAt] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [isTemplatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [isTemplateSelectionSaving, setTemplateSelectionSaving] = useState(false);
   const [_isSavingMappings, setIsSavingMappings] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingClientQuote, setIsUploadingClientQuote] = useState(false);
@@ -203,8 +207,9 @@ export default function QuoteBuilderPage() {
 
   const reestimateNeeded = estimate && estimatedLineRevision !== null && estimatedLineRevision !== lineRevision;
 
-  const handleParse = useCallback(async () => {
-    if (!quoteId || !quote?.supplierFiles?.length) {
+  const runSupplierProcessing = useCallback(async () => {
+    if (!quoteId) return;
+    if (!quote?.supplierFiles?.length) {
       toast({
         title: "No files to parse",
         description: "Upload supplier PDFs first",
@@ -217,7 +222,6 @@ export default function QuoteBuilderPage() {
     setError(null);
 
     try {
-      // Parse supplier PDFs with full processing
       const result = await apiFetch<{ lines: ParsedLineDto[]; count: number }>(
         `/quotes/${encodeURIComponent(quoteId)}/process-supplier`,
         {
@@ -236,10 +240,7 @@ export default function QuoteBuilderPage() {
         description: `${result.count} line items ready with markup applied`,
       });
 
-      // Refresh data
       await Promise.all([mutateQuote(), mutateLines()]);
-
-      // Auto-navigate to Quote Lines tab
       setActiveTab("quote-lines");
     } catch (err: any) {
       setError(err?.message || "Failed to parse supplier PDFs");
@@ -252,6 +253,46 @@ export default function QuoteBuilderPage() {
       setIsParsing(false);
     }
   }, [quoteId, quote?.supplierFiles, mutateQuote, mutateLines, toast]);
+
+  const handleParse = useCallback(() => {
+    if (!quoteId || !quote?.supplierFiles?.length) {
+      toast({
+        title: "No files to parse",
+        description: "Upload supplier PDFs first",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (isParsing || isTemplateSelectionSaving) return;
+    setTemplatePickerOpen(true);
+  }, [quoteId, quote?.supplierFiles, toast, isParsing, isTemplateSelectionSaving]);
+
+  const handleTemplateConfirm = useCallback(
+    async ({ sourceType, profileId }: { sourceType: "supplier" | "software" | null; profileId: string | null }) => {
+      if (!quoteId) return;
+      setTemplateSelectionSaving(true);
+      const nextSource = sourceType ?? null;
+      const nextProfile = profileId ?? null;
+      const prevSource = quote?.quoteSourceType ?? null;
+      const prevProfile = quote?.supplierProfileId ?? null;
+
+      try {
+        if (nextSource !== prevSource || nextProfile !== prevProfile) {
+          await updateQuoteSource(quoteId, nextSource, nextProfile);
+          await mutateQuote();
+        }
+        setTemplatePickerOpen(false);
+        await runSupplierProcessing();
+      } catch (err: any) {
+        const message = err?.message || "Failed to save template selection";
+        setError(message);
+        toast({ title: "Template picker failed", description: message, variant: "destructive" });
+      } finally {
+        setTemplateSelectionSaving(false);
+      }
+    },
+    [quoteId, quote?.quoteSourceType, quote?.supplierProfileId, mutateQuote, runSupplierProcessing, toast],
+  );
 
   const handleUploadFiles = useCallback(
     async (files: FileList | null) => {
@@ -868,8 +909,7 @@ export default function QuoteBuilderPage() {
                   onUploadClick={openUploadDialog}
                   isUploading={isUploading}
                   onSourceUpdated={() => {
-                    // Refetch quote to get updated source info
-                    fetchQuote(quoteId).then(setQuote).catch(console.error);
+                    void mutateQuote();
                   }}
                 />
 
@@ -1523,6 +1563,17 @@ export default function QuoteBuilderPage() {
           </pre>
         </DialogContent>
       </Dialog>
+
+      <TemplatePickerDialog
+        open={isTemplatePickerOpen}
+        onOpenChange={setTemplatePickerOpen}
+        quoteId={quoteId}
+        supplierFiles={quote?.supplierFiles}
+        initialSourceType={quote?.quoteSourceType}
+        initialProfileId={quote?.supplierProfileId}
+        onConfirm={handleTemplateConfirm}
+        isSubmitting={isTemplateSelectionSaving || isParsing}
+      />
     </div>
   );
 }

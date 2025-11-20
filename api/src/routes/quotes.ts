@@ -23,6 +23,7 @@ import {
   type TemplateParseMeta,
   type TemplateParseOutcome,
 } from "../lib/pdf/layoutTemplates";
+import { descriptionQualityScore } from "../lib/pdf/quality";
 import { fromDbQuoteSourceType, normalizeQuoteSourceValue, toDbQuoteSourceType } from "../lib/quoteSourceType";
 
 const router = Router();
@@ -320,32 +321,6 @@ function flattenQuestionnaireFeatures(raw: any): Record<string, any> {
   return out;
 }
 
-function descriptionQualityScore(raw: string | null | undefined): number {
-  const desc = String(raw || "").trim();
-  if (!desc) return 0;
-  const len = desc.length;
-  if (len < 3) return 0;
-  const printable = desc
-    .replace(/[\r\n]/g, "")
-    .split("")
-    .filter((ch) => /[\x20-\x7E]/.test(ch)).length;
-  const asciiRatio = printable / len;
-  const alphaNumRatio = desc.replace(/[^A-Za-z0-9]/g, "").length / len;
-  const weirdRatio = desc.replace(/[A-Za-z0-9\s£€$.,\-\/%()]/g, "").length / len;
-  let score = 0;
-  if (asciiRatio > 0.85) score += 0.4;
-  else if (asciiRatio > 0.7) score += 0.25;
-  if (alphaNumRatio > 0.4) score += 0.4;
-  else if (alphaNumRatio > 0.25) score += 0.25;
-  if (weirdRatio < 0.15) score += 0.2;
-  else if (weirdRatio < 0.3) score += 0.1;
-  return Math.min(1, score);
-}
-
-function isGibberishDescription(raw: string | null | undefined): boolean {
-  return descriptionQualityScore(raw) < 0.5;
-}
-
 const ESTIMATE_CACHE_DAYS = (() => {
   const raw = Number(process.env.ESTIMATE_CACHE_DAYS);
   if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
@@ -443,6 +418,24 @@ function normaliseParseMeta(meta?: SupplierParseResult["meta"]) {
     Object.values(templateCandidate).some((value) => value !== null && value !== undefined)
       ? templateCandidate
       : null;
+  const descriptionQualityRaw = (meta as any).descriptionQuality;
+  const descriptionQuality =
+    descriptionQualityRaw && typeof descriptionQualityRaw === "object"
+      ? {
+          method:
+            typeof (descriptionQualityRaw as any).method === "string"
+              ? (descriptionQualityRaw as any).method
+              : null,
+          kept: safeNumber((descriptionQualityRaw as any).kept),
+          rejected: safeNumber((descriptionQualityRaw as any).rejected),
+          samples: Array.isArray((descriptionQualityRaw as any).samples)
+            ? (descriptionQualityRaw as any).samples
+                .filter((value: any) => typeof value === "string" && value.trim())
+                .map((value: string) => value.slice(0, 160))
+                .slice(0, 5)
+            : null,
+        }
+      : null;
   const normalized = {
     fallbackCleaner: meta.fallbackCleaner === true,
     rawRows: safeNumber((meta as any).rawRows),
@@ -450,6 +443,7 @@ function normaliseParseMeta(meta?: SupplierParseResult["meta"]) {
     fallbackScored,
     unmappedRows: unmappedRowsRaw,
     template,
+    descriptionQuality,
   };
   if (
     !normalized.fallbackCleaner &&
@@ -457,7 +451,8 @@ function normaliseParseMeta(meta?: SupplierParseResult["meta"]) {
     normalized.discardedRows == null &&
     !normalized.fallbackScored &&
     !normalized.unmappedRows &&
-    !normalized.template
+    !normalized.template &&
+    !normalized.descriptionQuality
   ) {
     return null;
   }
