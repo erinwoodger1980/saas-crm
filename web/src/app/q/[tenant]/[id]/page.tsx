@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { PhotoMeasurementField } from "@/components/questionnaire/PhotoMeasurementField";
 
 /* -------- Tiny public fetch helpers (no auth cookie required) -------- */
 async function getJSON<T>(path: string): Promise<T> {
@@ -37,17 +38,46 @@ type TenantSettings = {
 type PublicLead = {
   lead: {
     id: string;
-    contactName: string;
+    contactName: string | null;
+    email?: string | null;
+    phone?: string | null;
+    address?: string | null;
     custom: Record<string, any>;
   };
 };
 
-type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLDivElement;
 
 type ItemPayload = {
   itemNumber: number;
   photos: { filename: string; mimeType: string; base64: string; itemIndex: number }[];
 } & Record<string, any>;
+
+const WIDTH_FIELD_CANDIDATES = [
+  "estimated_width_mm",
+  "photo_width_mm",
+  "rough_width_mm",
+  "approx_width_mm",
+  "approx_width",
+  "door_width_mm",
+  "width_mm",
+  "width",
+];
+
+const HEIGHT_FIELD_CANDIDATES = [
+  "estimated_height_mm",
+  "photo_height_mm",
+  "rough_height_mm",
+  "approx_height_mm",
+  "approx_height",
+  "door_height_mm",
+  "height_mm",
+  "height",
+];
+
+const OPENING_TYPE_FIELD_KEYS = ["opening_type", "door_type", "window_type", "item_type", "product_type"];
+const FLOOR_LEVEL_FIELD_KEYS = ["floor_level", "installation_floor", "storey", "floor", "level"];
+const NOTES_FIELD_KEYS = ["notes", "additional_notes", "description", "comments"];
 /* ---------------- Normalizers ---------------- */
 function normalizeQuestions(raw: any): QField[] {
   const out: QField[] = [];
@@ -178,9 +208,77 @@ export default function PublicQuestionnairePage() {
     [allQuestions]
   );
 
+  const measurementFieldMeta = useMemo(() => {
+    if (!questions.length) return null;
+    const widthKey = findMeasurementFieldKey(questions, WIDTH_FIELD_CANDIDATES, ["width"]);
+    const heightKey = findMeasurementFieldKey(questions, HEIGHT_FIELD_CANDIDATES, ["height"]);
+    if (!widthKey || !heightKey) return null;
+    return {
+      widthKey,
+      heightKey,
+      widthQuestion: questions.find((q) => q.key === widthKey) ?? null,
+      heightQuestion: questions.find((q) => q.key === heightKey) ?? null,
+    };
+  }, [questions]);
+
+  const measurementKeys = measurementFieldMeta ? [measurementFieldMeta.widthKey, measurementFieldMeta.heightKey] : [];
+  const measurementKeysLower = measurementFieldMeta
+    ? [measurementFieldMeta.widthKey.toLowerCase(), measurementFieldMeta.heightKey.toLowerCase()]
+    : [];
+
   // Contact field answers (not per-item, just global)
   const [contactAnswers, setContactAnswers] = useState<Record<string, any>>({});
   const [contactErrors, setContactErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!lead || !contactFields.length) return;
+    const defaults: Record<string, any> = {
+      contact_name: lead.contactName ?? null,
+      email: lead.email ?? null,
+      phone: lead.phone ?? null,
+      address: lead.address ?? null,
+    };
+    const appliedKeys: string[] = [];
+    setContactAnswers((prev) => {
+      let mutated = false;
+      const next = { ...prev };
+      contactFields.forEach((field) => {
+        const defaultValue = defaults[field.key];
+        if (!isEmptyValue(defaultValue) && isEmptyValue(prev[field.key])) {
+          next[field.key] = defaultValue;
+          appliedKeys.push(field.key);
+          mutated = true;
+        }
+      });
+      return mutated ? next : prev;
+    });
+
+    if (appliedKeys.length) {
+      setContactErrors((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        appliedKeys.forEach((key) => {
+          if (next[key]) {
+            delete next[key];
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [lead, contactFields]);
+
+  const getLeadSummaryValue = (key: string, fallback?: string | null) => {
+    const normalize = (val: any) => {
+      if (val == null) return "";
+      const str = String(val).trim();
+      return str;
+    };
+    const fromAnswers = normalize(contactAnswers[key]);
+    if (fromAnswers) return fromAnswers;
+    const fromFallback = normalize(fallback);
+    return fromFallback || "Not provided";
+  };
 
   /* ---------------- Refs & field helpers ---------------- */
   const registerFieldRef = (fieldKey: string) =>
@@ -199,16 +297,25 @@ export default function PublicQuestionnairePage() {
     });
   };
 
-  const setItemField = (itemIndex: number, key: string, value: any) => {
-    setItemAnswers((prev) => prev.map((it, i) => (i === itemIndex ? { ...it, [key]: value } : it)));
+  const applyItemPatch = useCallback((itemIndex: number, patch: Record<string, any>) => {
+    setItemAnswers((prev) => prev.map((it, i) => (i === itemIndex ? { ...it, ...patch } : it)));
     setItemErrors((prev) =>
       prev.map((errs, i) => {
-        if (i !== itemIndex || !errs[key]) return errs;
+        if (i !== itemIndex) return errs;
+        const keys = Object.keys(patch);
+        const hasError = keys.some((key) => errs[key]);
+        if (!hasError) return errs;
         const next = { ...errs };
-        delete next[key];
+        for (const key of keys) {
+          if (next[key]) delete next[key];
+        }
         return next;
       })
     );
+  }, []);
+
+  const setItemField = (itemIndex: number, key: string, value: any) => {
+    applyItemPatch(itemIndex, { [key]: value });
   };
 
   const handleItemFileChange = (itemIndex: number, fileList: FileList | null) => {
@@ -240,7 +347,12 @@ export default function PublicQuestionnairePage() {
   const addItem = () => {
     setItemAnswers((prev) => {
       const last = prev[prev.length - 1] ?? {};
-      const entries = Object.entries(last).filter(([k]) => !k.toLowerCase().includes("size"));
+      const entries = Object.entries(last).filter(([k]) => {
+        const lower = k.toLowerCase();
+        if (lower.includes("size")) return false;
+        if (measurementKeysLower.includes(lower)) return false;
+        return true;
+      });
       const base = Object.fromEntries(entries);
       return [...prev, base];
     });
@@ -497,6 +609,39 @@ export default function PublicQuestionnairePage() {
 
         {lead ? (
           <form onSubmit={onSubmit} className={`${cardClasses} space-y-6 max-w-3xl`}>
+            <div className="rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lead contact</div>
+              <dl className="mt-3 grid gap-4 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs uppercase text-slate-500">Name</dt>
+                  <dd className="text-sm font-medium text-slate-900">
+                    {getLeadSummaryValue("contact_name", lead.contactName ?? null)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase text-slate-500">Email</dt>
+                  <dd className="text-sm font-medium text-slate-900 break-words">
+                    {getLeadSummaryValue("email", lead.email ?? null)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase text-slate-500">Phone</dt>
+                  <dd className="text-sm font-medium text-slate-900">
+                    {getLeadSummaryValue("phone", lead.phone ?? null)}
+                  </dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="text-xs uppercase text-slate-500">Address</dt>
+                  <dd className="text-sm font-medium text-slate-900 whitespace-pre-line">
+                    {getLeadSummaryValue(
+                      "address",
+                      (lead.address as string | null) ?? (lead.custom?.address as string | null) ?? null
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Your contact information</h2>
               <p className="text-sm text-slate-500">
@@ -594,8 +739,45 @@ export default function PublicQuestionnairePage() {
                   </p>
 
                   {itemAnswers.map((_, itemIdx) => {
+                    const itemData = itemAnswers[itemIdx] ?? {};
                     const itemErr = itemErrors[itemIdx] ?? {};
                     const sectionLabel = `Item ${itemIdx + 1}`;
+                    const measurementValue =
+                      measurementFieldMeta
+                        ? {
+                            widthMm: toNumericValue(itemData[measurementFieldMeta.widthKey]),
+                            heightMm: toNumericValue(itemData[measurementFieldMeta.heightKey]),
+                            measurementSource:
+                              typeof itemData.measurement_source === "string" ? itemData.measurement_source : null,
+                            measurementConfidence: toNumericValue(itemData.measurement_confidence),
+                          }
+                        : null;
+                    const measurementContext =
+                      measurementFieldMeta
+                        ? {
+                            openingType: pickFirstStringValue(itemData, OPENING_TYPE_FIELD_KEYS),
+                            floorLevel: pickFirstStringValue(itemData, FLOOR_LEVEL_FIELD_KEYS),
+                            notes: pickFirstStringValue(itemData, NOTES_FIELD_KEYS),
+                          }
+                        : null;
+                    const measurementWidthError =
+                      measurementFieldMeta ? itemErr[measurementFieldMeta.widthKey] : null;
+                    const measurementHeightError =
+                      measurementFieldMeta ? itemErr[measurementFieldMeta.heightKey] : null;
+                    const registerMeasurementRef =
+                      measurementFieldMeta
+                        ? (el: HTMLDivElement | null) => {
+                            const widthFieldId = makeFieldKey(itemIdx, measurementFieldMeta.widthKey);
+                            const heightFieldId = makeFieldKey(itemIdx, measurementFieldMeta.heightKey);
+                            if (el) {
+                              fieldRefs.current[widthFieldId] = el;
+                              fieldRefs.current[heightFieldId] = el;
+                            } else {
+                              delete fieldRefs.current[widthFieldId];
+                              delete fieldRefs.current[heightFieldId];
+                            }
+                          }
+                        : undefined;
 
                     return (
                       <div
@@ -609,6 +791,9 @@ export default function PublicQuestionnairePage() {
 
                         <div className="space-y-4">
                           {questions.map((q) => {
+                            if (measurementFieldMeta && measurementKeys.includes(q.key)) {
+                              return null;
+                            }
                             const fieldId = makeFieldKey(itemIdx, q.key);
                             const hasErr = !!itemErr[q.key];
                             const inputClass = `${baseInputClasses} ${hasErr ? "border-rose-300 focus:ring-rose-300" : ""}`;
@@ -691,6 +876,39 @@ export default function PublicQuestionnairePage() {
                             );
                           })}
                         </div>
+
+                        {measurementFieldMeta ? (
+                          <div
+                            ref={registerMeasurementRef}
+                            tabIndex={-1}
+                            className="space-y-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--brand))]/40"
+                          >
+                            <div className="text-sm font-medium text-slate-700">
+                              {measurementFieldMeta.widthQuestion?.label || "Width"} &amp;{" "}
+                              {measurementFieldMeta.heightQuestion?.label || "Height"}
+                              {measurementFieldMeta.widthQuestion?.required || measurementFieldMeta.heightQuestion?.required ? (
+                                <span className="text-rose-500"> *</span>
+                              ) : null}
+                            </div>
+                            <PhotoMeasurementField
+                              value={measurementValue || undefined}
+                              context={measurementContext || undefined}
+                              disabled={submitting}
+                              widthField={measurementFieldMeta.widthKey}
+                              heightField={measurementFieldMeta.heightKey}
+                              widthLabel={measurementFieldMeta.widthQuestion?.label || "Estimated width (mm)"}
+                              heightLabel={measurementFieldMeta.heightQuestion?.label || "Estimated height (mm)"}
+                              helperText="Take or upload a quick photo and we'll auto-fill rough sizes. We'll confirm exact measurements on survey."
+                              onChange={(patch) => applyItemPatch(itemIdx, patch)}
+                              className="bg-white"
+                            />
+                            {(measurementWidthError || measurementHeightError) && (
+                              <p className="text-xs text-rose-600">
+                                {measurementWidthError || measurementHeightError || "Please provide rough measurements."}
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
 
                         <div className="space-y-2 rounded-2xl border border-dashed border-slate-200 bg-white/60 px-4 py-4">
                           <div className="text-sm font-medium text-slate-700">{sectionLabel} photo</div>
@@ -787,6 +1005,45 @@ export default function PublicQuestionnairePage() {
       </div>
     </Shell>
   );
+}
+
+function findMeasurementFieldKey(questions: QField[], candidates: string[], keywords: string[]): string | null {
+  const normalized = candidates.map((candidate) => candidate.toLowerCase());
+  for (const question of questions) {
+    const key = question.key.toLowerCase();
+    if (normalized.includes(key)) {
+      return question.key;
+    }
+  }
+  for (const question of questions) {
+    const key = question.key.toLowerCase();
+    if (keywords.some((keyword) => key.includes(keyword))) {
+      return question.key;
+    }
+  }
+  return null;
+}
+
+function toNumericValue(value: any): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function pickFirstStringValue(record: Record<string, any>, keys: string[]): string | null {
+  if (!record) return null;
+  for (const key of keys) {
+    const raw = record[key];
+    if (typeof raw === "string" && raw.trim()) {
+      return raw.trim();
+    }
+  }
+  return null;
 }
 
 /* ---------------- Small helpers ---------------- */

@@ -102,6 +102,9 @@ router.get("/leads/:id", async (req, res) => {
     lead: {
       id: lead.id,
       contactName: lead.contactName,
+      email: lead.email ?? null,
+      phone: lead.phone ?? null,
+      address: (lead.address as any) ?? (lead as any).location ?? null,
       custom: filterCustom(lead.custom),
     },
   });
