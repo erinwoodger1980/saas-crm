@@ -1,6 +1,9 @@
 import { inflateRawSync, inflateSync } from "node:zlib";
 import type { SupplierParseResult } from "../../types/parse";
 
+const MAX_LINE_VALUE = 1_000_000;
+const MAX_QTY = 1_000;
+
 function parseMoney(value: string | null | undefined): number | null {
   if (!value) return null;
   const cleaned = value
@@ -202,8 +205,61 @@ function parseLines(text: string): SupplierParseResult {
     parsedLines.push({ description, qty, unit, costUnit, lineTotal });
   }
 
-  const productLines = parsedLines.filter((ln) => !/delivery/i.test(ln.description));
-  const deliveryLine = parsedLines.find((ln) => /delivery/i.test(ln.description));
+  const rawRows = parsedLines.map((ln) => ({
+    rawDescription: ln.description,
+    qty: ln.qty ?? null,
+    unit: ln.unit,
+    costUnit: ln.costUnit ?? null,
+    lineTotal: ln.lineTotal ?? null,
+  }));
+
+  const cleanedRows = rawRows
+    .map((row) => {
+      const desc = normaliseDescription(row.rawDescription || "");
+      let qty = typeof row.qty === "number" && Number.isFinite(row.qty) ? row.qty : null;
+      if (qty != null && qty > MAX_QTY) qty = null;
+      const unitPrice = parseSafeMoney(row.costUnit != null ? String(row.costUnit) : "");
+      const total = parseSafeMoney(row.lineTotal != null ? String(row.lineTotal) : "");
+      return {
+        rawDesc: row.rawDescription,
+        desc,
+        qty,
+        unitPrice,
+        total,
+        displayUnit: row.unit,
+      };
+    })
+    .filter((row) => !looksLikeGarbageLine(row.desc, row.qty, row.unitPrice, row.total));
+
+  const discardedRows = rawRows.length - cleanedRows.length;
+
+  const cleanedLines = cleanedRows.map((row) => ({
+    description: row.desc,
+    qty: row.qty ?? (row.unitPrice || row.total ? 1 : undefined),
+    unit: row.displayUnit,
+    costUnit: row.unitPrice ?? undefined,
+    lineTotal: row.total ?? undefined,
+    meta: {
+      rawDescription: row.rawDesc,
+      cleanedBy: "fallback_cleaner_v1",
+    },
+  }));
+
+  if (!cleanedLines.length) {
+    warnings.push("Fallback cleaner rejected all candidate lines");
+    throw new Error("pdf_fallback_unreliable");
+  }
+
+  const parseQuality: "ok" | "poor" =
+    !rawRows.length || cleanedLines.length === 0 || cleanedLines.length < Math.ceil(Math.max(1, rawRows.length) * 0.5)
+      ? "poor"
+      : "ok";
+  if (parseQuality === "poor" && !warnings.some((w) => /manual/i.test(w))) {
+    warnings.push("Line quality is low; please review and map manually.");
+  }
+
+  const productLines = cleanedLines.filter((ln) => !/delivery/i.test(ln.description));
+  const deliveryLine = cleanedLines.find((ln) => /delivery/i.test(ln.description));
 
   if (!detectedTotals.delivery && deliveryLine?.lineTotal != null) {
     detectedTotals.delivery = deliveryLine.lineTotal;
@@ -224,18 +280,14 @@ function parseLines(text: string): SupplierParseResult {
   }
 
   let confidence = 0;
-  if (parsedLines.length) {
+  if (cleanedLines.length) {
     let score = 0;
-    for (const ln of parsedLines) {
+    for (const ln of cleanedLines) {
       if (ln.qty && ln.costUnit && ln.lineTotal) score += 1;
       else if (ln.lineTotal && (ln.qty || ln.costUnit)) score += 0.75;
       else if (ln.lineTotal) score += 0.5;
     }
-    confidence = Math.min(1, score / parsedLines.length);
-  }
-
-  if (parsedLines.length === 0) {
-    warnings.push("Fallback parser did not identify any line items");
+    confidence = Math.min(1, score / cleanedLines.length);
   }
 
   const currency = text.includes("€") ? "EUR" : text.includes("$") ? "USD" : "GBP";
@@ -244,10 +296,16 @@ function parseLines(text: string): SupplierParseResult {
   return {
     currency,
     supplier,
-    lines: parsedLines,
+    lines: cleanedLines,
     detected_totals: detectedTotals,
     confidence,
     warnings: warnings.length ? warnings : undefined,
+    quality: parseQuality,
+    meta: {
+      fallbackCleaner: true,
+      rawRows: rawRows.length,
+      discardedRows: discardedRows < 0 ? 0 : discardedRows,
+    },
   };
 }
 
@@ -376,6 +434,87 @@ function decodePdfHexString(raw: string): string {
   return String.fromCharCode(
     ...pairs.map((hex) => parseInt(hex, 16)).filter((n) => Number.isFinite(n) && n > 0),
   );
+}
+
+function collapseSpacedText(input: string): string {
+  if (!input) return "";
+  const tokens = input.trim().split(/\s+/);
+  const result: string[] = [];
+  let letterBuffer = "";
+
+  const flushLetters = () => {
+    if (!letterBuffer) return;
+    result.push(letterBuffer);
+    letterBuffer = "";
+  };
+
+  for (const token of tokens) {
+    if (/^[A-Za-z]$/.test(token)) {
+      letterBuffer += token;
+      continue;
+    }
+    flushLetters();
+    if (token) result.push(token);
+  }
+
+  flushLetters();
+  return result.join(" ").replace(/\s{2,}/g, " ").trim();
+}
+
+function normaliseDescription(raw: string): string {
+  if (!raw) return "";
+  const collapsed = collapseSpacedText(raw.replace(/\s+/g, " "));
+  const cleaned = collapsed
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\-:.,]+/, "")
+    .replace(/[\-:.,]+$/, "")
+    .trim();
+  if (!cleaned) return "";
+  const alpha = cleaned.replace(/[^A-Za-z0-9.,/\-()&%+\s]/g, "");
+  if (!alpha) return "";
+  const weirdRatio = 1 - alpha.length / cleaned.length;
+  if (weirdRatio > 0.4) return "";
+  return cleaned;
+}
+
+function parseSafeMoney(raw: string | number | null | undefined): number | null {
+  if (raw == null) return null;
+  const trimmed = String(raw).replace(/[£€$]/g, "").trim();
+  const stripped = trimmed.replace(/[^0-9,.-]/g, "");
+  if (!stripped) return null;
+  const lastComma = stripped.lastIndexOf(",");
+  const lastDot = stripped.lastIndexOf(".");
+  let normalized = stripped;
+  if (lastComma !== -1 && lastDot !== -1) {
+    normalized = lastComma < lastDot ? stripped.replace(/,/g, "") : stripped.replace(/\./g, "").replace(/,/g, ".");
+  } else if (lastComma !== -1 && lastDot === -1) {
+    const decimals = stripped.length - lastComma - 1;
+    normalized = decimals === 2 ? stripped.replace(/,/g, ".") : stripped.replace(/,/g, "");
+  } else {
+    normalized = stripped.replace(/,/g, "");
+  }
+  const value = Number(normalized);
+  if (!Number.isFinite(value)) return null;
+  if (value < 0 || value > MAX_LINE_VALUE) return null;
+  return value;
+}
+
+function looksLikeGarbageLine(desc: string, qty: number | null, unitPrice: number | null, total: number | null): boolean {
+  if (!desc || desc.trim().length < 3) return true;
+  const compact = desc.replace(/\s+/g, "");
+  if (!compact) return true;
+  const sanitized = compact.replace(/[^A-Za-z0-9.,/\-()&%+]/g, "");
+  const weirdRatio = 1 - sanitized.length / compact.length;
+  if (weirdRatio > 0.4) return true;
+
+  if (qty != null && (!Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY)) return true;
+  if (!/[A-Za-z]/.test(desc)) return true;
+
+  if (unitPrice != null && !Number.isFinite(unitPrice)) return true;
+  if (total != null && !Number.isFinite(total)) return true;
+
+  if (unitPrice == null && total == null) return true;
+  return false;
 }
 
 function extractTextSegments(content: string): string[] {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Wand2, FileText, Download, Image as ImageIcon } from "lucide-react";
+import { Loader2, Wand2, FileText, Download, Image as ImageIcon, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +50,10 @@ export function ParsedLinesTable({
       timerMap.clear();
     };
   }, []);
+
+  const parseSummaries = (parseMeta?.summaries ?? []) as Array<Record<string, any>>;
+  const poorSummaries = parseSummaries.filter((summary) => summary && summary.quality === "poor");
+  const showLowQualityNotice = parseMeta?.quality === "poor" || poorSummaries.length > 0;
 
   const totals = useMemo(() => computeTotals(lines), [lines]);
 
@@ -111,6 +115,11 @@ export function ParsedLinesTable({
           {parseMeta?.usedStages && parseMeta.usedStages.length > 0 && (
             <span className="hidden sm:inline">Stages: {parseMeta.usedStages.join(" · ")}</span>
           )}
+          {showLowQualityNotice && (
+            <Badge variant="destructive" className="hidden sm:inline-flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" /> Low quality
+            </Badge>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onShowRawParse} className="gap-2">
@@ -134,6 +143,39 @@ export function ParsedLinesTable({
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {showLowQualityNotice && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-rose-700">
+              <AlertTriangle className="h-4 w-4" /> Low confidence parse
+            </div>
+            <p className="mt-2 text-xs text-rose-800">
+              The fallback cleaner flagged these lines as unreliable. Double-check descriptions, line totals, and mappings before sending a quote.
+            </p>
+            {poorSummaries.length > 0 && (
+              <ul className="mt-3 space-y-1 text-xs text-rose-800">
+                {poorSummaries.slice(0, 3).map((summary, index) => {
+                  const cleaner = (summary?.cleaner ?? {}) as Record<string, any>;
+                  const rawRows = typeof cleaner?.rawRows === "number" ? cleaner.rawRows : null;
+                  const discardedRows = typeof cleaner?.discardedRows === "number" ? cleaner.discardedRows : null;
+                  const label = summary?.name || summary?.fileId || summary?.id || `File #${index + 1}`;
+                  return (
+                    <li key={`${label}-${index}`} className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-rose-900">{label}</span>
+                      <span className="text-[11px] text-rose-700">
+                        {rawRows != null ? `${rawRows} rows` : "Unknown rows"}
+                        {discardedRows != null ? ` · ${discardedRows} trimmed` : null}
+                      </span>
+                    </li>
+                  );
+                })}
+                {poorSummaries.length > 3 && (
+                  <li className="text-[11px] text-rose-700">+{poorSummaries.length - 3} more files with low confidence</li>
+                )}
+              </ul>
+            )}
           </div>
         )}
 

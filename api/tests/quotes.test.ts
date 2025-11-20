@@ -81,10 +81,10 @@ describe('Quotes API', () => {
     const app = makeApp();
     const res = await request(app).get('/quotes/q1/lines');
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThanOrEqual(2);
-    expect(res.body[0]).toHaveProperty('description');
-    expect(res.body[0]).toHaveProperty('qty');
+  expect(Array.isArray(res.body?.lines)).toBe(true);
+  expect(res.body.lines.length).toBeGreaterThanOrEqual(2);
+  expect(res.body.lines[0]).toHaveProperty('description');
+  expect(res.body.lines[0]).toHaveProperty('qty');
   });
 
   it('POST /quotes/:id/price (ml questionnaire) scales totals and updates quote', async () => {

@@ -75,10 +75,13 @@ async function maybeTriggerFallbackAlert(fallbackCount: number) {
  * In production, use authenticated tenant from JWT.
  */
 async function getTenantId(req: any): Promise<string> {
+  const tenantId = req.auth?.tenantId as string | undefined;
+  if (tenantId) return tenantId;
+
   const isDev = process.env.NODE_ENV !== "production";
   
   if (isDev) {
-    // In dev mode, always use LAJ Joinery tenant
+    // In dev mode, fall back to LAJ Joinery tenant when no auth context
     const lajTenant = await prisma.tenant.findUnique({
       where: { slug: "laj-joinery" },
       select: { id: true },
@@ -91,13 +94,7 @@ async function getTenantId(req: any): Promise<string> {
     return lajTenant.id;
   }
   
-  // Production: use authenticated tenant
-  const tenantId = req.auth?.tenantId as string | undefined;
-  if (!tenantId) {
-    throw new Error("unauthorized");
-  }
-  
-  return tenantId;
+  throw new Error("unauthorized");
 }
 
 function requireAuth(req: any, res: any, next: any) {
@@ -142,6 +139,16 @@ function normalizeCurrency(input: any): string {
   return upper;
 }
 
+function pickNumber(obj: any, keys: string[]): number | null {
+  if (!obj || typeof obj !== "object") return null;
+  for (const key of keys) {
+    const val = (obj as any)[key];
+    const n = toNumber(val);
+    if (Number.isFinite(n) && n != null) return n;
+  }
+  return null;
+}
+
 function currencySymbol(code: string | undefined): string {
   switch ((code || "GBP").toUpperCase()) {
     case "GBP":
@@ -162,27 +169,6 @@ function safeNumber(value: any): number | null {
     if (!trimmed) return null;
     const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-/**
- * Robustly pick the first numeric field from a set of common variants.
- * Context:
- *  - In the sample supplier PDF, ML payloads contained fields like:
- *      • quantity (a.k.a. quantity)
- *      • unit_price (a.k.a. unitPrice, unit_cost)
- *      • total (a.k.a. line_total, price_ex_vat)
- *  - Some values arrive as currency-formatted strings (e.g. "£4,321.86" or "4.321,86").
- *  - Previously we ran safeNumber/Number directly, which turned these into NaN → null → 0 downstream.
- * This helper normalises strings and returns the first finite number found or null.
- */
-function pickNumber(obj: any, keys: string[]): number | null {
-  if (!obj || typeof obj !== "object") return null;
-  for (const key of keys) {
-    const val = (obj as any)[key];
-    const n = toNumber(val);
-    if (Number.isFinite(n) && n != null) return n;
   }
   return null;
 }
@@ -360,7 +346,33 @@ function sanitiseParseResult(result: SupplierParseResult, supplier?: string | nu
     confidence: result.confidence ?? null,
     warnings: result.warnings ?? [],
     usedStages: Array.isArray(result.usedStages) ? result.usedStages : null,
+    quality: result.quality ?? null,
+    meta: normaliseParseMeta(result.meta),
   };
+}
+
+function normaliseParseMeta(meta?: SupplierParseResult["meta"]) {
+  if (!meta || typeof meta !== "object") return null;
+  const normalized = {
+    fallbackCleaner: meta.fallbackCleaner === true,
+    rawRows: safeNumber((meta as any).rawRows),
+    discardedRows: safeNumber((meta as any).discardedRows),
+  };
+  if (!normalized.fallbackCleaner && normalized.rawRows == null && normalized.discardedRows == null) {
+    return null;
+  }
+  return normalized;
+}
+
+function summariseParseQuality(entries: Array<Record<string, any>>): "ok" | "poor" | null {
+  if (!Array.isArray(entries) || !entries.length) return null;
+  let sawOk = false;
+  for (const entry of entries) {
+    const quality = entry?.quality;
+    if (quality === "poor") return "poor";
+    if (quality === "ok") sawOk = true;
+  }
+  return sawOk ? "ok" : null;
 }
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
@@ -706,6 +718,63 @@ router.post("/", requireAuth, async (req: any, res) => {
 });
 
 /** GET /quotes/:id */
+/**
+ * GET /quotes/source-profiles
+ * Returns list of available quote source profiles from three sources:
+ * 1. Static software profiles (from quoteSourceProfiles.ts)
+ * 2. Tenant-managed software profiles (from SoftwareProfile table)
+ * 3. Suppliers (from Supplier table)
+ * Used for quote source classification UI
+ */
+router.get("/source-profiles", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = await getTenantId(req);
+
+    const { quoteSourceProfiles } = await import("../lib/quoteSourceProfiles");
+
+    const staticProfiles = quoteSourceProfiles
+      .filter((p: any) => p.type === "software")
+      .map((profile: any) => ({
+        id: profile.id,
+        name: profile.displayName,
+        type: "software" as const,
+        source: "static" as const,
+      }));
+
+    const dbSoftwareProfiles = await prisma.softwareProfile.findMany({
+      where: { tenantId },
+      orderBy: { name: "asc" },
+    });
+
+    const dynamicSoftware = dbSoftwareProfiles.map((p) => ({
+      id: `sw_${p.id}`,
+      name: p.displayName,
+      type: "software" as const,
+      source: "tenant" as const,
+    }));
+
+    const suppliers = await prisma.supplier.findMany({
+      where: { tenantId, isActive: true },
+      orderBy: { name: "asc" },
+    });
+
+    const supplierProfiles = suppliers.map((s) => ({
+      id: `sup_${s.id}`,
+      name: s.name,
+      type: "supplier" as const,
+      source: "tenant" as const,
+    }));
+
+    return res.json([...staticProfiles, ...dynamicSoftware, ...supplierProfiles]);
+  } catch (e: any) {
+    console.error("[/quotes/source-profiles] failed:", e?.message || e);
+    if (e?.message === "unauthorized") {
+      return res.status(401).json({ error: "unauthorized" });
+    }
+    return res.status(500).json({ error: "internal_error", detail: e?.message });
+  }
+});
+
 router.get("/:id", requireAuth, async (req: any, res) => {
   try {
     const tenantId = await getTenantId(req);
@@ -927,76 +996,6 @@ router.patch("/:id/source", requireAuth, async (req: any, res) => {
 });
 
 /**
- * GET /quotes/source-profiles
- * Returns list of available quote source profiles from three sources:
- * 1. Static software profiles (from quoteSourceProfiles.ts)
- * 2. Tenant-managed software profiles (from SoftwareProfile table)
- * 3. Suppliers (from Supplier table)
- * Used for quote source classification UI
- */
-router.get("/source-profiles", requireAuth, async (req: any, res) => {
-  try {
-    const tenantId = req.auth.tenantId as string;
-    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
-
-    const { quoteSourceProfiles } = await import("../lib/quoteSourceProfiles");
-    
-    // 1. Static software profiles (legacy/built-in)
-    const staticProfiles = quoteSourceProfiles
-      .filter((p: any) => p.type === "software")
-      .map((profile: any) => ({
-        id: profile.id,
-        name: profile.displayName,
-        type: "software" as const,
-        source: "static" as const,
-      }));
-    
-    // 2. Tenant-managed software profiles
-    const dbSoftwareProfiles = await prisma.softwareProfile.findMany({
-      where: { tenantId },
-      orderBy: { name: "asc" },
-    });
-    
-    const dynamicSoftware = dbSoftwareProfiles.map((p) => ({
-      id: `sw_${p.id}`,
-      name: p.displayName,
-      type: "software" as const,
-      source: "tenant" as const,
-    }));
-    
-    // 3. Suppliers
-    const suppliers = await prisma.supplier.findMany({
-      where: { tenantId, isActive: true },
-      orderBy: { name: "asc" },
-    });
-    
-    const supplierProfiles = suppliers.map((s) => ({
-      id: `sup_${s.id}`,
-      name: s.name,
-      type: "supplier" as const,
-      source: "tenant" as const,
-    }));
-    
-    // Merge all sources
-    const allProfiles = [
-      ...staticProfiles,
-      ...dynamicSoftware,
-      ...supplierProfiles,
-    ];
-    
-    return res.json(allProfiles);
-  } catch (e: any) {
-    console.error("[/quotes/source-profiles] failed:", e?.message || e);
-    return res.status(500).json({ 
-      error: "internal_error", 
-      detail: e?.message 
-    });
-  }
-});
-
-export default router;
-
-/**
  * PATCH /quotes/:id/preference
  * Body: { pricingMode: "ml" | "margin", margin?: number }
  * Persists the per-quote pricing preference and optional default margin.
@@ -1179,23 +1178,54 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           }
         }
 
+        let fallbackError: string | null = null;
         if (!parseResult || parseResult.lines.length === 0) {
-          const fallback = await fallbackParseSupplierPdf(buffer);
-          parseResult = fallback;
           info.usedFallback = true;
           fallbackUsed += 1;
-          console.warn(`[parse] quote ${quote.id} file ${f.id} using fallback parser (mlErrors=${mlErrors.length})`);
-          if (fallback.warnings) fallback.warnings.forEach((w) => warnings.add(w));
-          if (mlErrors.length) {
-            warnings.add(`ML parser failed for ${f.name || f.id}; fallback parser applied.`);
+          try {
+            const fallback = await fallbackParseSupplierPdf(buffer);
+            parseResult = fallback;
+            console.warn(
+              `[parse] quote ${quote.id} file ${f.id} using fallback parser (mlErrors=${mlErrors.length})`,
+            );
+            if (fallback.warnings) fallback.warnings.forEach((w) => warnings.add(w));
+            if (mlErrors.length) {
+              warnings.add(`ML parser failed for ${f.name || f.id}; fallback parser applied.`);
+            }
+          } catch (err: any) {
+            fallbackError = err?.message || "fallback_failed";
           }
         } else if (parseResult.warnings) {
           parseResult.warnings.forEach((w) => warnings.add(w));
         }
 
-        info.warnings = parseResult?.warnings || [];
-        if (parseResult?.confidence != null) info.confidence = parseResult.confidence;
-        if (parseResult?.detected_totals) info.detected_totals = parseResult.detected_totals;
+        if (fallbackError) {
+          warnings.add(`Fallback parser failed for ${f.name || f.id}: ${fallbackError}`);
+          fails.push({
+            fileId: f.id,
+            name: f.name,
+            status: 422,
+            error: {
+              error: "fallback_failed",
+              detail: fallbackError,
+              mlErrors,
+            },
+          });
+          summaries.push({
+            ...info,
+            error: "fallback_failed",
+            fallbackError,
+            warnings: [`Fallback parser failed: ${fallbackError}`],
+          });
+          continue;
+        }
+
+  info.warnings = parseResult?.warnings || [];
+  if (parseResult?.confidence != null) info.confidence = parseResult.confidence;
+  if (parseResult?.detected_totals) info.detected_totals = parseResult.detected_totals;
+  if (parseResult?.quality) info.quality = parseResult.quality;
+  const cleanerMeta = normaliseParseMeta(parseResult?.meta);
+  if (cleanerMeta) info.cleaner = cleanerMeta;
         if (mlErrors.length) info.mlErrors = mlErrors;
 
         const usedStagesArr = Array.isArray(parseResult?.usedStages)
@@ -1454,6 +1484,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       }
 
   const warningsArr = [...warnings];
+  const aggregatedQuality = summariseParseQuality(summaries);
       if (created.length === 0) {
         await maybeTriggerFallbackAlert(fallbackUsed);
         return {
@@ -1465,6 +1496,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           summaries,
           timeoutMs: TIMEOUT_MS,
           message: fallbackUsed ? "ML could not parse the PDF. Fallback parser attempted but produced no lines." : undefined,
+          quality: aggregatedQuality,
         } as const;
       }
 
@@ -1503,6 +1535,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         warnings: finalWarnings,
         timeoutMs: TIMEOUT_MS,
         message: fallbackUsed ? "ML could not parse some files. Fallback parser applied." : undefined,
+        quality: aggregatedQuality,
       } as const;
     };
 
@@ -3636,9 +3669,16 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
 
         // Fallback: if structured parser returns no lines, try simple fallback parser
         if (!parseResult?.lines || !Array.isArray(parseResult.lines) || parseResult.lines.length === 0) {
-          const fb = await fallbackParseSupplierPdf(buffer);
-          if (fb?.lines?.length) {
-            parseResult = fb as any;
+          try {
+            const fb = await fallbackParseSupplierPdf(buffer);
+            if (fb?.lines?.length) {
+              parseResult = fb as any;
+            }
+          } catch (fallbackErr: any) {
+            console.warn(
+              `[process-supplier] Fallback parser failed for file ${f.id}:`,
+              fallbackErr?.message || fallbackErr,
+            );
           }
         }
 
@@ -4108,3 +4148,5 @@ ${tenantName}
     });
   }
 });
+
+export default router;
