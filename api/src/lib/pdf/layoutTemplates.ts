@@ -93,21 +93,61 @@ const SUPPORTED_LABELS: Record<AnnotationLabel, boolean> = {
 
 export type RowAnnotationsMap = Record<string, LayoutTemplateAnnotation[]>;
 
+function shouldFallbackPdfTemplateQuery(err: any): boolean {
+  if (!err) return false;
+  const msg = (err?.message || String(err || "")) as string;
+  if (!msg) return false;
+  return /createdByUserId/i.test(msg) && /does not exist|Unknown column/i.test(msg);
+}
+
 export async function loadPdfLayoutTemplate(profileId: string | null | undefined): Promise<LayoutTemplateRecord | null> {
   if (!profileId) return null;
-  const record = await prisma.pdfLayoutTemplate.findFirst({
-    where: { supplierProfileId: profileId },
-    orderBy: { updatedAt: "desc" },
-    include: {
-      annotations: {
-        orderBy: [{ page: "asc" }, { y: "asc" }, { x: "asc" }],
+  try {
+    const record = await prisma.pdfLayoutTemplate.findFirst({
+      where: { supplierProfileId: profileId },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        annotations: {
+          orderBy: [{ page: "asc" }, { y: "asc" }, { x: "asc" }],
+        },
       },
-    },
-  });
+    });
+    if (!record) return null;
+
+    const annotations = normaliseAnnotations(record.annotations);
+    if (!annotations.length) return null;
+
+    const pageSizes = extractPageSizes(record.meta);
+
+    return {
+      id: record.id,
+      name: record.name,
+      supplierProfileId: record.supplierProfileId ?? undefined,
+      annotations,
+      pageCount: record.pageCount ?? undefined,
+      pageSizes,
+    };
+  } catch (err: any) {
+    if (!shouldFallbackPdfTemplateQuery(err)) throw err;
+    console.warn("[pdfTemplate] Schema mismatch detected, loading template via legacy fallback:", err?.message || err);
+    return await loadPdfLayoutTemplateFallback(profileId);
+  }
+}
+
+async function loadPdfLayoutTemplateFallback(profileId: string): Promise<LayoutTemplateRecord | null> {
+  const rows: any[] = await prisma.$queryRawUnsafe(
+    `SELECT "id", "name", "supplierProfileId", "pageCount", "meta", "updatedAt" FROM "PdfLayoutTemplate" WHERE "supplierProfileId" = $1 ORDER BY "updatedAt" DESC LIMIT 1`,
+    profileId,
+  );
+  const record = rows[0];
   if (!record) return null;
 
-  const annotations = normaliseAnnotations(record.annotations);
-  if (!annotations.length) return null;
+  const annotations = await prisma.pdfLayoutAnnotation.findMany({
+    where: { templateId: record.id },
+    orderBy: [{ page: "asc" }, { y: "asc" }, { x: "asc" }],
+  });
+  const normalised = normaliseAnnotations(annotations);
+  if (!normalised.length) return null;
 
   const pageSizes = extractPageSizes(record.meta);
 
@@ -115,7 +155,7 @@ export async function loadPdfLayoutTemplate(profileId: string | null | undefined
     id: record.id,
     name: record.name,
     supplierProfileId: record.supplierProfileId ?? undefined,
-    annotations,
+    annotations: normalised,
     pageCount: record.pageCount ?? undefined,
     pageSizes,
   };

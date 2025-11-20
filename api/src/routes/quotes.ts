@@ -977,6 +977,7 @@ router.post("/", requireAuth, async (req: any, res) => {
       // Sensible defaults; store pricing preference in meta
       markupDefault: new Prisma.Decimal(0.25),
       meta: { pricingMode: "ml" },
+      quoteSourceType: null,
     },
   });
   res.json(mapQuoteSourceForResponse(q));
