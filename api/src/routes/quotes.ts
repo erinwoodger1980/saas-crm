@@ -499,6 +499,34 @@ type QuoteFallbackOptions = {
   includeSupplierFiles?: boolean;
 };
 
+async function normaliseQuoteSourceTypeColumn(quoteId: string) {
+  try {
+    const rows: Array<{ quoteSourceType: string | null }> = await prisma.$queryRawUnsafe(
+      `SELECT "quoteSourceType"::text AS "quoteSourceType" FROM "Quote" WHERE "id" = $1 LIMIT 1`,
+      quoteId,
+    );
+    const current = rows[0]?.quoteSourceType;
+    if (!current) return;
+    const apiValue = normalizeQuoteSourceValue(current);
+    if (!apiValue) return;
+    const dbValue = toDbQuoteSourceType(apiValue);
+    if (!dbValue || current === dbValue) return;
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Quote" SET "quoteSourceType" = $2 WHERE "id" = $1`,
+      quoteId,
+      dbValue,
+    );
+    console.warn(
+      `[quoteSourceType] normalized legacy value for quote ${quoteId}: ${current} -> ${dbValue}`,
+    );
+  } catch (err: any) {
+    console.warn(
+      `[quoteSourceType] normalization failed for quote ${quoteId}:`,
+      err?.message || err,
+    );
+  }
+}
+
 async function loadQuoteFallback(
   quoteId: string,
   tenantId: string,
@@ -799,6 +827,8 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
     const id = String(req.params.id);
     const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { lines: true } });
     if (!quote) return res.status(404).json({ error: "not_found" });
+
+    await normaliseQuoteSourceTypeColumn(id);
 
     const body = req.body || {};
     const clientQuote = body.clientQuote || body.client_quote || null;
@@ -1261,6 +1291,8 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       }
     }
     if (!quote) return res.status(404).json({ error: "not_found" });
+
+    await normaliseQuoteSourceTypeColumn(quoteId);
 
     const supplierTemplates = quote.supplierProfileId
       ? await prisma.pdfLayoutTemplate.findMany({
@@ -3882,6 +3914,8 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     if (!quote) {
       return res.status(404).json({ error: "not_found" });
     }
+
+    await normaliseQuoteSourceTypeColumn(quoteId);
     
     if (!quote.supplierFiles || quote.supplierFiles.length === 0) {
       return res.status(400).json({ error: "no_supplier_files" });
