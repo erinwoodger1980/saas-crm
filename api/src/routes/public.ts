@@ -98,14 +98,29 @@ router.get("/leads/:id", async (req, res) => {
   const id = String(req.params.id);
   const lead = await prisma.lead.findUnique({ where: { id } });
   if (!lead) return res.status(404).json({ error: "not found" });
+
+  const filteredCustom = filterCustom(lead.custom);
+  const extractString = (keys: string[]): string | null => {
+    for (const key of keys) {
+      const raw = (filteredCustom as any)?.[key];
+      if (typeof raw === "string" && raw.trim()) return raw.trim();
+    }
+    return null;
+  };
+
+  const phone = extractString(["phone", "contactPhone", "contact_phone", "tel"]);
+  const address =
+    extractString(["address", "address_line", "address1", "address_line1", "location"]) ??
+    ((lead as any).location ?? null);
+
   return res.json({
     lead: {
       id: lead.id,
       contactName: lead.contactName,
       email: lead.email ?? null,
-      phone: lead.phone ?? null,
-      address: (lead.address as any) ?? (lead as any).location ?? null,
-      custom: filterCustom(lead.custom),
+      phone,
+      address,
+      custom: filteredCustom,
     },
   });
 });
