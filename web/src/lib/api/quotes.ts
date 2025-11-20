@@ -53,6 +53,7 @@ export type ParseResponse = {
   confidence?: number | null;
   startedAt?: string | null;
   finishedAt?: string | null;
+  quality?: "ok" | "poor" | null;
 };
 
 export type EstimateResponse = {

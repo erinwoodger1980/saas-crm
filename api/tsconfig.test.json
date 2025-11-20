@@ -6,7 +6,9 @@
     "paths": {
       "ml/pdf_parser": ["/Users/Erin/saas-crm/api/ml/pdf_parser.d.ts"]
     },
-    "strict": true
+    "strict": true,
+    "esModuleInterop": true,
+    "isolatedModules": true
   },
   "include": ["src/lib/testPathsResolution.ts", "src/lib/testImportResolution.ts"]
 }

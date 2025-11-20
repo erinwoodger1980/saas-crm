@@ -157,6 +157,8 @@ export default function QuoteBuilderPage() {
         setNotice(lastParse.message);
       } else if (Array.isArray(lastParse?.warnings) && lastParse.warnings.length > 0) {
         setNotice(lastParse.warnings.join(" \u2022 "));
+      } else if (lastParse?.quality === "poor") {
+        setNotice("Parser flagged this quote as low quality. Review extracted lines before sending.");
       } else {
         setNotice(null);
       }
