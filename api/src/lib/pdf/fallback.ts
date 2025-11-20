@@ -4,6 +4,27 @@ import type { SupplierParseResult } from "../../types/parse";
 const MAX_LINE_VALUE = 1_000_000;
 const MAX_QTY = 1_000;
 
+type RawRow = {
+  descriptionText: string;
+  qtyText?: string | null;
+  unitText?: string | null;
+  totalText?: string | null;
+  displayUnitText?: string | null;
+};
+
+type ScoredRow = RawRow & {
+  cleanedDescription: string;
+  qty: number | null;
+  unit: number | null;
+  total: number | null;
+  score: number;
+  reason: string[];
+};
+
+const DIMENSION_RE = /(?:\b|\s)(\d{3,4})\s*[xX×]\s*(\d{3,4})\s*mm\b/;
+const AREA_RE = /\b\d+(?:\.\d+)?\s*(?:m2|m²)\b/;
+const MONEY_RE = /£?\s*\d[\d,]*(?:\.\d{1,2})?/;
+
 function parseMoney(value: string | null | undefined): number | null {
   if (!value) return null;
   const cleaned = value
@@ -73,6 +94,68 @@ function inferSupplier(lines: string[]): string | undefined {
     return trimmed;
   }
   return undefined;
+}
+
+function normaliseDescriptionForScoring(raw: string): string {
+  if (!raw) return "";
+  return raw
+    .replace(/[\u00A0\t]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[^A-Za-z0-9£().,/+\-]+/, "")
+    .trim();
+}
+
+function scoreRawRow(row: RawRow): ScoredRow {
+  const cleanedDescription = normaliseDescriptionForScoring(row.descriptionText || "");
+  const qty = row.qtyText ? Number(String(row.qtyText).replace(/[^0-9.]/g, "")) || null : null;
+  const unit = parseSafeMoney(row.unitText || "");
+  const total = parseSafeMoney(row.totalText || "");
+
+  let score = 0;
+  const reason: string[] = [];
+
+  if (cleanedDescription.length > 10) {
+    score += 1;
+    reason.push("desc_len");
+  }
+
+  if (DIMENSION_RE.test(cleanedDescription)) {
+    score += 3;
+    reason.push("dimension");
+  }
+
+  if (AREA_RE.test(cleanedDescription)) {
+    score += 2;
+    reason.push("area");
+  }
+
+  if (unit != null || total != null || (row.totalText && MONEY_RE.test(row.totalText)) || (row.unitText && MONEY_RE.test(row.unitText))) {
+    score += 2;
+    reason.push("money");
+  }
+
+  if (qty != null && qty > 0 && qty < 100) {
+    score += 1;
+    reason.push("qty");
+  }
+
+  const nonWordRatio = cleanedDescription
+    ? cleanedDescription.replace(/[A-Za-z0-9£.,/()\- ]/g, "").length / cleanedDescription.length
+    : 1;
+  if (nonWordRatio > 0.4) {
+    score -= 3;
+    reason.push("gibberish");
+  }
+
+  return { ...row, cleanedDescription, qty, unit, total, score, reason };
+}
+
+function isPlausibleJoineryRow(row: ScoredRow): boolean {
+  if (!row.cleanedDescription || row.score <= 0) return false;
+  if (DIMENSION_RE.test(row.cleanedDescription)) return true;
+  if ((row.unit != null || row.total != null) && row.cleanedDescription.length > 20) return true;
+  if (AREA_RE.test(row.cleanedDescription) && (row.unit != null || row.total != null || row.qty != null)) return true;
+  return false;
 }
 
 function parseLines(text: string): SupplierParseResult {
@@ -205,53 +288,60 @@ function parseLines(text: string): SupplierParseResult {
     parsedLines.push({ description, qty, unit, costUnit, lineTotal });
   }
 
-  const rawRows = parsedLines.map((ln) => ({
-    rawDescription: ln.description,
-    qty: ln.qty ?? null,
-    unit: ln.unit,
-    costUnit: ln.costUnit ?? null,
-    lineTotal: ln.lineTotal ?? null,
+  const rawRows: RawRow[] = parsedLines.map((ln) => ({
+    descriptionText: ln.description,
+    qtyText: ln.qty != null ? String(ln.qty) : null,
+    unitText: ln.costUnit != null ? String(ln.costUnit) : null,
+    totalText: ln.lineTotal != null ? String(ln.lineTotal) : null,
+    displayUnitText: ln.unit ?? null,
   }));
 
-  const cleanedRows = rawRows
+  const scoredRows = rawRows.map(scoreRawRow);
+  const keepRows = scoredRows.filter(isPlausibleJoineryRow);
+  const discardedRowDetails = scoredRows.filter((row) => !isPlausibleJoineryRow(row));
+
+  const cleanedLines = keepRows
     .map((row) => {
-      const desc = normaliseDescription(row.rawDescription || "");
-      let qty = typeof row.qty === "number" && Number.isFinite(row.qty) ? row.qty : null;
-      if (qty != null && qty > MAX_QTY) qty = null;
-      const unitPrice = parseSafeMoney(row.costUnit != null ? String(row.costUnit) : "");
-      const total = parseSafeMoney(row.lineTotal != null ? String(row.lineTotal) : "");
+      const normalizedDesc =
+        normaliseDescription(row.cleanedDescription || row.descriptionText || "") ||
+        row.cleanedDescription ||
+        row.descriptionText ||
+        "";
+      if (!normalizedDesc) return null;
+      const qty = row.qty != null && row.qty > 0 && row.qty <= MAX_QTY ? row.qty : null;
+      const inferredQty = qty ?? (row.unit != null || row.total != null ? 1 : null);
       return {
-        rawDesc: row.rawDescription,
-        desc,
-        qty,
-        unitPrice,
-        total,
-        displayUnit: row.unit,
+        description: normalizedDesc,
+        qty: inferredQty ?? undefined,
+        unit: row.displayUnitText ?? undefined,
+        costUnit: row.unit ?? undefined,
+        lineTotal: row.total ?? undefined,
+        meta: {
+          rawDescription: row.descriptionText,
+          cleanedBy: "fallback_cleaner_v2",
+          parseSource: "pdf_fallback_v2",
+          score: row.score,
+          scoreReasons: row.reason,
+        },
       };
     })
-    .filter((row) => !looksLikeGarbageLine(row.desc, row.qty, row.unitPrice, row.total));
-
-  const discardedRows = rawRows.length - cleanedRows.length;
-
-  const cleanedLines = cleanedRows.map((row) => ({
-    description: row.desc,
-    qty: row.qty ?? (row.unitPrice || row.total ? 1 : undefined),
-    unit: row.displayUnit,
-    costUnit: row.unitPrice ?? undefined,
-    lineTotal: row.total ?? undefined,
-    meta: {
-      rawDescription: row.rawDesc,
-      cleanedBy: "fallback_cleaner_v1",
-    },
-  }));
+    .filter((ln): ln is NonNullable<typeof ln> => Boolean(ln));
 
   if (!cleanedLines.length) {
-    warnings.push("Fallback cleaner rejected all candidate lines");
-    throw new Error("pdf_fallback_unreliable");
+    warnings.push("Fallback classifier rejected all candidate lines");
+    throw new Error("pdf_parse_no_plausible_lines");
   }
 
+  const fallbackScoredMeta = {
+    kept: keepRows.length,
+    discarded: discardedRowDetails.length,
+  };
+
+  const totalCandidateRows = scoredRows.length;
   const parseQuality: "ok" | "poor" =
-    !rawRows.length || cleanedLines.length === 0 || cleanedLines.length < Math.ceil(Math.max(1, rawRows.length) * 0.5)
+    !totalCandidateRows ||
+    cleanedLines.length === 0 ||
+    cleanedLines.length < Math.ceil(Math.max(1, totalCandidateRows) * 0.5)
       ? "poor"
       : "ok";
   if (parseQuality === "poor" && !warnings.some((w) => /manual/i.test(w))) {
@@ -293,6 +383,14 @@ function parseLines(text: string): SupplierParseResult {
   const currency = text.includes("€") ? "EUR" : text.includes("$") ? "USD" : "GBP";
   const supplier = inferSupplier(rawLines);
 
+  const unmappedRows = discardedRowDetails.length
+    ? discardedRowDetails.slice(0, 10).map((row) => ({
+        description: row.cleanedDescription || row.descriptionText || "",
+        score: row.score,
+        reasons: row.reason,
+      }))
+    : undefined;
+
   return {
     currency,
     supplier,
@@ -304,7 +402,9 @@ function parseLines(text: string): SupplierParseResult {
     meta: {
       fallbackCleaner: true,
       rawRows: rawRows.length,
-      discardedRows: discardedRows < 0 ? 0 : discardedRows,
+      discardedRows: discardedRowDetails.length,
+      fallbackScored: fallbackScoredMeta,
+      ...(unmappedRows ? { unmapped_rows: unmappedRows } : {}),
     },
   };
 }
@@ -497,24 +597,6 @@ function parseSafeMoney(raw: string | number | null | undefined): number | null 
   if (!Number.isFinite(value)) return null;
   if (value < 0 || value > MAX_LINE_VALUE) return null;
   return value;
-}
-
-function looksLikeGarbageLine(desc: string, qty: number | null, unitPrice: number | null, total: number | null): boolean {
-  if (!desc || desc.trim().length < 3) return true;
-  const compact = desc.replace(/\s+/g, "");
-  if (!compact) return true;
-  const sanitized = compact.replace(/[^A-Za-z0-9.,/\-()&%+]/g, "");
-  const weirdRatio = 1 - sanitized.length / compact.length;
-  if (weirdRatio > 0.4) return true;
-
-  if (qty != null && (!Number.isFinite(qty) || qty <= 0 || qty > MAX_QTY)) return true;
-  if (!/[A-Za-z]/.test(desc)) return true;
-
-  if (unitPrice != null && !Number.isFinite(unitPrice)) return true;
-  if (total != null && !Number.isFinite(total)) return true;
-
-  if (unitPrice == null && total == null) return true;
-  return false;
 }
 
 function extractTextSegments(content: string): string[] {

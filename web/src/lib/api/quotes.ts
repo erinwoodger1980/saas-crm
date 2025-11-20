@@ -54,6 +54,22 @@ export type ParseResponse = {
   startedAt?: string | null;
   finishedAt?: string | null;
   quality?: "ok" | "poor" | null;
+  fallbackScored?: {
+    kept?: number | null;
+    discarded?: number | null;
+  };
+  template?: TemplateParseMetaDto | null;
+};
+
+export type TemplateParseMetaDto = {
+  id?: string | null;
+  name?: string | null;
+  supplierProfileId?: string | null;
+  matchedRows?: number | null;
+  annotationCount?: number | null;
+  matchedAnnotations?: number | null;
+  method?: "template" | "template_failed" | string | null;
+  reason?: string | null;
 };
 
 export type EstimateResponse = {

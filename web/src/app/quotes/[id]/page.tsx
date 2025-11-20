@@ -153,10 +153,28 @@ export default function QuoteBuilderPage() {
     const lastParse = (quote?.meta as any)?.lastParse ?? null;
     if (lastParse) {
       setParseMeta(lastParse);
+      const templateMeta = lastParse?.template ?? null;
       if (lastParse?.message) {
         setNotice(lastParse.message);
       } else if (Array.isArray(lastParse?.warnings) && lastParse.warnings.length > 0) {
         setNotice(lastParse.warnings.join(" \u2022 "));
+      } else if (templateMeta?.method === "template_failed") {
+        setNotice("Saved layout template didn't match this PDF, so we used the fallback parser.");
+      } else if (templateMeta?.method === "template") {
+        const matched = typeof templateMeta?.matchedRows === "number" ? templateMeta.matchedRows : null;
+        const label = templateMeta?.name || "layout template";
+        setNotice(
+          matched && matched > 0
+            ? `${label} matched ${matched} rows automatically.`
+            : `${label} was applied successfully.`
+        );
+      } else if (
+        typeof lastParse?.fallbackScored?.discarded === "number" &&
+        ((typeof lastParse?.fallbackScored?.kept === "number" &&
+          lastParse.fallbackScored.discarded > lastParse.fallbackScored.kept) ||
+          lastParse.fallbackScored.discarded > 10)
+      ) {
+        setNotice("We discarded a lot of dubious rows from this PDF parse. Review the remaining lines carefully.");
       } else if (lastParse?.quality === "poor") {
         setNotice("Parser flagged this quote as low quality. Review extracted lines before sending.");
       } else {
