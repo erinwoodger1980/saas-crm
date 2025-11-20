@@ -1036,12 +1036,12 @@ enum TaskPriority {
   LOW
   MEDIUM
   HIGH
+  URGENT
+}
 
 enum MeasurementSource {
   MANUAL
   PHOTO_ESTIMATE
-}
-  URGENT
 }
 
 model TaskAssignee {
