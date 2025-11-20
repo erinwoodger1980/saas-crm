@@ -16,6 +16,14 @@ import type { SupplierParseResult } from "../types/parse";
 import { logInsight, logInferenceEvent } from "../services/training";
 import { redactSupplierLine } from "../lib/ml/redact";
 import { sendParserErrorAlert, sendParserFallbackAlert } from "../lib/ops/alerts";
+import {
+  parsePdfWithTemplate,
+  normaliseAnnotations,
+  type LayoutTemplateRecord,
+  type TemplateParseMeta,
+  type TemplateParseOutcome,
+} from "../lib/pdf/layoutTemplates";
+import { fromDbQuoteSourceType, normalizeQuoteSourceValue, toDbQuoteSourceType } from "../lib/quoteSourceType";
 
 const router = Router();
 
@@ -353,15 +361,125 @@ function sanitiseParseResult(result: SupplierParseResult, supplier?: string | nu
 
 function normaliseParseMeta(meta?: SupplierParseResult["meta"]) {
   if (!meta || typeof meta !== "object") return null;
+  const fallbackScoredRaw = (meta as any).fallbackScored;
+  const fallbackScored =
+    fallbackScoredRaw && typeof fallbackScoredRaw === "object"
+      ? {
+          kept: safeNumber((fallbackScoredRaw as any).kept),
+          discarded: safeNumber((fallbackScoredRaw as any).discarded),
+        }
+      : null;
+  const unmappedRowsRaw = Array.isArray((meta as any).unmapped_rows)
+    ? (meta as any).unmapped_rows
+        .map((row: any) => ({
+          description:
+            typeof row?.description === "string" && row.description.trim() ? row.description.trim() : null,
+          score: safeNumber(row?.score),
+          reasons: Array.isArray(row?.reasons)
+            ? row.reasons.filter((reason: any) => typeof reason === "string").slice(0, 5)
+            : null,
+        }))
+        .filter(
+          (row: { description: string | null; score: number | null; reasons: string[] | null }) =>
+            row.description != null || row.score != null || (row.reasons != null && row.reasons.length > 0),
+        )
+        .slice(0, 5)
+    : null;
+  const templateRaw = (meta as any).template;
+  const templateCandidate =
+    templateRaw && typeof templateRaw === "object"
+      ? {
+          id:
+            typeof (templateRaw as any).templateId === "string"
+              ? (templateRaw as any).templateId
+              : typeof (templateRaw as any).id === "string"
+              ? (templateRaw as any).id
+              : null,
+          name:
+            typeof (templateRaw as any).templateName === "string"
+              ? (templateRaw as any).templateName
+              : typeof (templateRaw as any).name === "string"
+              ? (templateRaw as any).name
+              : null,
+          supplierProfileId:
+            typeof (templateRaw as any).supplierProfileId === "string"
+              ? (templateRaw as any).supplierProfileId
+              : null,
+          matchedRows: safeNumber((templateRaw as any).matchedRows),
+          annotationCount: safeNumber((templateRaw as any).annotationCount),
+          matchedAnnotations: safeNumber((templateRaw as any).matchedAnnotations),
+          method: typeof (templateRaw as any).method === "string" ? (templateRaw as any).method : null,
+          reason: typeof (templateRaw as any).reason === "string" ? (templateRaw as any).reason : null,
+        }
+      : null;
+  const template =
+    templateCandidate &&
+    Object.values(templateCandidate).some((value) => value !== null && value !== undefined)
+      ? templateCandidate
+      : null;
   const normalized = {
     fallbackCleaner: meta.fallbackCleaner === true,
     rawRows: safeNumber((meta as any).rawRows),
     discardedRows: safeNumber((meta as any).discardedRows),
+    fallbackScored,
+    unmappedRows: unmappedRowsRaw,
+    template,
   };
-  if (!normalized.fallbackCleaner && normalized.rawRows == null && normalized.discardedRows == null) {
+  if (
+    !normalized.fallbackCleaner &&
+    normalized.rawRows == null &&
+    normalized.discardedRows == null &&
+    !normalized.fallbackScored &&
+    !normalized.unmappedRows &&
+    !normalized.template
+  ) {
     return null;
   }
   return normalized;
+}
+
+function mapQuoteSourceForResponse<T extends { quoteSourceType?: any }>(quote: T | null): T | null {
+  if (!quote) return quote;
+  const normalized = fromDbQuoteSourceType((quote as any).quoteSourceType) ?? null;
+  if ((quote as any).quoteSourceType === normalized) {
+    return quote;
+  }
+  return {
+    ...(quote as any),
+    quoteSourceType: normalized,
+  } as T;
+}
+
+async function tryTemplateParsers(
+  buffer: Buffer,
+  options: {
+    templates: LayoutTemplateRecord[];
+    supplierHint?: string;
+    currencyHint?: string;
+  }
+): Promise<TemplateParseOutcome | null> {
+  if (!options.templates.length) return null;
+  let lastOutcome: TemplateParseOutcome | null = null;
+
+  for (const template of options.templates) {
+    if (!Array.isArray(template.annotations) || template.annotations.length === 0) {
+      continue;
+    }
+    try {
+      const outcome = await parsePdfWithTemplate(buffer, template, {
+        supplierHint: options.supplierHint,
+        currencyHint: options.currencyHint,
+      });
+      lastOutcome = outcome;
+      if (outcome.meta.method === "template") {
+        return outcome;
+      }
+    } catch (err: any) {
+      console.warn(`[parse] Template ${template.id} failed:`, err?.message || err);
+    }
+  }
+
+  return lastOutcome;
 }
 
 function summariseParseQuality(entries: Array<Record<string, any>>): "ok" | "poor" | null {
@@ -714,7 +832,7 @@ router.post("/", requireAuth, async (req: any, res) => {
       meta: { pricingMode: "ml" },
     },
   });
-  res.json(q);
+  res.json(mapQuoteSourceForResponse(q));
 });
 
 /** GET /quotes/:id */
@@ -812,15 +930,16 @@ router.get("/:id", requireAuth, async (req: any, res) => {
 
     // If we only have partial data, still respond so UI can load gracefully
     if (q.__partial) {
-      return res.json(q);
+      return res.json(mapQuoteSourceForResponse(q));
     }
 
-    const allFiles = Array.isArray(q.supplierFiles) ? q.supplierFiles : [];
+    const normalizedQuote = mapQuoteSourceForResponse(q);
+    const allFiles = Array.isArray(normalizedQuote?.supplierFiles) ? normalizedQuote.supplierFiles : [];
     const supplierFiles = allFiles.filter((f: any) => String(f.kind) === "SUPPLIER_QUOTE");
     const clientQuoteFiles = allFiles.filter((f: any) => String(f.kind) === "CLIENT_QUOTE");
 
     return res.json({
-      ...q,
+      ...normalizedQuote,
       supplierFiles,
       clientQuoteFiles,
     });
@@ -879,10 +998,11 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
 
   // Update quote with detected source type and profile (if detected)
   if (detectedSourceType && detectedProfileId) {
+    const dbSourceType = toDbQuoteSourceType(detectedSourceType);
     await prisma.quote.update({
       where: { id },
       data: {
-        quoteSourceType: detectedSourceType,
+        quoteSourceType: dbSourceType,
         supplierProfileId: detectedProfileId,
       },
     });
@@ -938,60 +1058,70 @@ router.patch("/:id/source", requireAuth, async (req: any, res) => {
     const q = await prisma.quote.findFirst({ where: { id, tenantId } });
     if (!q) return res.status(404).json({ error: "not_found" });
 
-    const { sourceType, profileId } = req.body;
+    const rawSourceType = req.body?.sourceType;
+    const rawProfileId = req.body?.profileId;
 
-    // Validate source type
-    if (sourceType && !['supplier', 'software', null].includes(sourceType)) {
-      return res.status(400).json({ error: 'invalid_source_type' });
+    let normalizedSource: "supplier" | "software" | null | undefined = undefined;
+    if (rawSourceType === null || rawSourceType === "") {
+      normalizedSource = null;
+    } else if (rawSourceType !== undefined) {
+      const parsedSource = normalizeQuoteSourceValue(rawSourceType);
+      if (!parsedSource) {
+        return res.status(400).json({ error: "invalid_source_type" });
+      }
+      normalizedSource = parsedSource;
     }
 
-    // Validate and resolve profile ID
-    let resolvedProfileId: string | null = null;
-    
-    if (profileId) {
-      if (profileId.startsWith('sw_')) {
-        // Tenant software profile
-        const swId = profileId.slice(3);
+    let resolvedProfileId: string | null | undefined = undefined;
+    if (rawProfileId === null || rawProfileId === "") {
+      resolvedProfileId = null;
+    } else if (rawProfileId !== undefined) {
+      if (rawProfileId.startsWith("sw_")) {
+        const swId = rawProfileId.slice(3);
         const swProfile = await prisma.softwareProfile.findFirst({
           where: { id: swId, tenantId },
         });
         if (!swProfile) {
-          return res.status(400).json({ error: 'software_profile_not_found' });
+          return res.status(400).json({ error: "software_profile_not_found" });
         }
-        resolvedProfileId = profileId; // Store prefixed ID
-      } else if (profileId.startsWith('sup_')) {
-        // Supplier
-        const supId = profileId.slice(4);
+        resolvedProfileId = rawProfileId;
+      } else if (rawProfileId.startsWith("sup_")) {
+        const supId = rawProfileId.slice(4);
         const supplier = await prisma.supplier.findFirst({
           where: { id: supId, tenantId },
         });
         if (!supplier) {
-          return res.status(400).json({ error: 'supplier_not_found' });
+          return res.status(400).json({ error: "supplier_not_found" });
         }
-        resolvedProfileId = profileId; // Store prefixed ID
+        resolvedProfileId = rawProfileId;
       } else {
-        // Static profile (from quoteSourceProfiles.ts)
-        const { getQuoteSourceProfile } = await import('../lib/quoteSourceProfiles');
-        const profile = getQuoteSourceProfile(profileId);
+        const { getQuoteSourceProfile } = await import("../lib/quoteSourceProfiles");
+        const profile = getQuoteSourceProfile(rawProfileId);
         if (!profile) {
-          return res.status(400).json({ error: 'invalid_profile_id' });
+          return res.status(400).json({ error: "invalid_profile_id" });
         }
-        resolvedProfileId = profileId;
+        resolvedProfileId = rawProfileId;
       }
     }
 
     const updated = await prisma.quote.update({
       where: { id },
       data: {
-        quoteSourceType: sourceType || q.quoteSourceType,
-        supplierProfileId: resolvedProfileId || q.supplierProfileId,
+        quoteSourceType:
+          normalizedSource === undefined
+            ? q.quoteSourceType
+            : normalizedSource === null
+            ? null
+            : toDbQuoteSourceType(normalizedSource),
+        supplierProfileId:
+          resolvedProfileId === undefined ? q.supplierProfileId : resolvedProfileId,
       },
     });
 
-    res.json({ ok: true, quote: updated });
+    res.json({ ok: true, quote: mapQuoteSourceForResponse(updated) });
   } catch (e: any) {
-    console.error('[/quotes/:id/source] failed:', e?.message || e);
-    res.status(500).json({ error: 'internal_error' });
+    console.error("[/quotes/:id/source] failed:", e?.message || e);
+    res.status(500).json({ error: "internal_error" });
   }
 });
 
@@ -1020,7 +1150,7 @@ router.patch("/:id/preference", requireAuth, async (req: any, res) => {
     }
 
     const saved = await prisma.quote.update({ where: { id: q.id }, data: updates });
-    return res.json({ ok: true, quote: saved });
+    return res.json({ ok: true, quote: mapQuoteSourceForResponse(saved) });
   } catch (e: any) {
     console.error("[/quotes/:id/preference] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
@@ -1041,6 +1171,32 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
     });
     if (!quote) return res.status(404).json({ error: "not_found" });
 
+    const supplierTemplates = quote.supplierProfileId
+      ? await prisma.pdfLayoutTemplate.findMany({
+          where: { supplierProfileId: quote.supplierProfileId },
+          orderBy: { updatedAt: "desc" },
+          select: {
+            id: true,
+            name: true,
+            supplierProfileId: true,
+            pageCount: true,
+            annotations: {
+              orderBy: [{ page: "asc" }, { y: "asc" }, { x: "asc" }],
+            },
+          },
+        })
+      : [];
+
+    const templateRecords: LayoutTemplateRecord[] = supplierTemplates
+      .map((template) => ({
+        id: template.id,
+        name: template.name,
+        supplierProfileId: template.supplierProfileId ?? undefined,
+        annotations: normaliseAnnotations(template.annotations),
+        pageCount: template.pageCount ?? undefined,
+      }))
+      .filter((template) => template.annotations.length);
+
     const API_BASE = (
       process.env.APP_API_URL ||
       process.env.API_URL ||
@@ -1060,11 +1216,14 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       String(req.query.forceFallback ?? "").toLowerCase() === "true";
 
     const doParse = async () => {
-      const created: any[] = [];
-      const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }> = [];
-      const summaries: any[] = [];
-      const warnings = new Set<string>();
-      let fallbackUsed = 0;
+  const created: any[] = [];
+  const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }> = [];
+  const summaries: any[] = [];
+  const warnings = new Set<string>();
+  let fallbackUsed = 0;
+  const fallbackScoreTotals = { kept: 0, discarded: 0 };
+  let sawFallbackScores = false;
+      let aggregatedTemplateMeta: TemplateParseMeta | null = null;
       const parsedLinesForDb: Prisma.ParsedSupplierLineCreateManyInput[] = [];
 
       const filesToParse = [...quote.supplierFiles]
@@ -1081,7 +1240,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         const url = `${API_BASE}/files/${encodeURIComponent(f.id)}?jwt=${encodeURIComponent(token)}`;
         console.log(`[parse] quote ${quote.id} file ${f.id} signed URL length=${url.length}`);
 
-        const info: any = { fileId: f.id, name: f.name, headStatus: null, usedFallback: false };
+  const info: any = { fileId: f.id, name: f.name, headStatus: null, usedFallback: false };
         const mlErrors: any[] = [];
         let latestMlPayload: any = null;
         let latencyMs: number | null = null;
@@ -1116,17 +1275,44 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         const supplierHint =
           (typeof req.body?.supplierHint === "string" && req.body.supplierHint) ||
           (typeof quote.title === "string" ? quote.title : undefined);
-        try {
-          const hybrid = await parseSupplierPdf(buffer, {
-            supplierHint: supplierHint ?? f.name ?? undefined,
-            currencyHint: quote.currency || "GBP",
-          });
-          parseResult = hybrid;
-          info.hybrid = { used: true, confidence: hybrid.confidence, stages: hybrid.usedStages };
-          if (hybrid.warnings) hybrid.warnings.forEach((w: string) => warnings.add(w));
-        } catch (err: any) {
-          info.hybrid = { used: false, error: err?.message || String(err) };
-          warnings.add(`Hybrid parser failed for ${f.name || f.id}: ${err?.message || err}`);
+
+        if (templateRecords.length) {
+          try {
+            const templateOutcome = await tryTemplateParsers(buffer, {
+              templates: templateRecords,
+              supplierHint: supplierHint ?? f.name ?? undefined,
+              currencyHint: quote.currency || "GBP",
+            });
+            if (templateOutcome) {
+              info.template = templateOutcome.meta;
+              if (!aggregatedTemplateMeta || aggregatedTemplateMeta.method !== "template") {
+                aggregatedTemplateMeta = templateOutcome.meta;
+              }
+              if (templateOutcome.meta.method === "template" && templateOutcome.result) {
+                parseResult = templateOutcome.result;
+              }
+            }
+          } catch (err: any) {
+            console.warn(`[parse] Template parser failed for ${f.name || f.id}:`, err?.message || err);
+          }
+        }
+
+        if (!parseResult) {
+          try {
+            const hybrid = await parseSupplierPdf(buffer, {
+              supplierHint: supplierHint ?? f.name ?? undefined,
+              currencyHint: quote.currency || "GBP",
+              supplierProfileId: quote.supplierProfileId ?? undefined,
+            });
+            parseResult = hybrid;
+            info.hybrid = { used: true, confidence: hybrid.confidence, stages: hybrid.usedStages };
+            if (hybrid.warnings) hybrid.warnings.forEach((w: string) => warnings.add(w));
+          } catch (err: any) {
+            info.hybrid = { used: false, error: err?.message || String(err) };
+            warnings.add(`Hybrid parser failed for ${f.name || f.id}: ${err?.message || err}`);
+          }
+        } else {
+          info.hybrid = { used: false, skipped: "template" };
         }
 
         const mlHeaders: Record<string, string> = {};
@@ -1224,8 +1410,24 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
   if (parseResult?.confidence != null) info.confidence = parseResult.confidence;
   if (parseResult?.detected_totals) info.detected_totals = parseResult.detected_totals;
   if (parseResult?.quality) info.quality = parseResult.quality;
-  const cleanerMeta = normaliseParseMeta(parseResult?.meta);
-  if (cleanerMeta) info.cleaner = cleanerMeta;
+        const cleanerMeta = normaliseParseMeta(parseResult?.meta);
+        if (cleanerMeta) {
+          info.cleaner = cleanerMeta;
+          const keptValue =
+            typeof cleanerMeta?.fallbackScored?.kept === "number" && Number.isFinite(cleanerMeta.fallbackScored.kept)
+              ? cleanerMeta.fallbackScored.kept
+              : null;
+          const discardedValue =
+            typeof cleanerMeta?.fallbackScored?.discarded === "number" &&
+            Number.isFinite(cleanerMeta.fallbackScored.discarded)
+              ? cleanerMeta.fallbackScored.discarded
+              : null;
+          if (keptValue != null || discardedValue != null) {
+            fallbackScoreTotals.kept += keptValue ?? 0;
+            fallbackScoreTotals.discarded += discardedValue ?? 0;
+            sawFallbackScores = true;
+          }
+        }
         if (mlErrors.length) info.mlErrors = mlErrors;
 
         const usedStagesArr = Array.isArray(parseResult?.usedStages)
@@ -1497,6 +1699,7 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           timeoutMs: TIMEOUT_MS,
           message: fallbackUsed ? "ML could not parse the PDF. Fallback parser attempted but produced no lines." : undefined,
           quality: aggregatedQuality,
+          template: aggregatedTemplateMeta ?? undefined,
         } as const;
       }
 
@@ -1536,6 +1739,8 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         timeoutMs: TIMEOUT_MS,
         message: fallbackUsed ? "ML could not parse some files. Fallback parser applied." : undefined,
         quality: aggregatedQuality,
+        fallbackScored: sawFallbackScores ? fallbackScoreTotals : undefined,
+        template: aggregatedTemplateMeta ?? undefined,
       } as const;
     };
 
@@ -3665,6 +3870,7 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
         let parseResult = await parseSupplierPdf(buffer, {
           supplierHint: f.name ?? undefined,
           currencyHint: quote.currency || "GBP",
+          supplierProfileId: quote.supplierProfileId ?? undefined,
         });
 
         // Fallback: if structured parser returns no lines, try simple fallback parser
