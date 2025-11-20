@@ -906,7 +906,7 @@ router.get("/:id", requireAuth, async (req: any, res) => {
     } catch (inner: any) {
       const msg = inner?.message || String(inner);
       // Common production mismatch: schema expects quoteSourceType/supplierProfileId but column absent.
-      if (/Unknown column/.test(msg) || /doesn't exist/.test(msg)) {
+  if (/Unknown column/i.test(msg) || /does(?:n't| not)\s+exist/i.test(msg)) {
         console.warn(`[quotes/:id] Prisma schema mismatch, falling back to raw query: ${msg}`);
         // Raw minimal query without new columns
         const rows: any[] = await prisma.$queryRawUnsafe(
