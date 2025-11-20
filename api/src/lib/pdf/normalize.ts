@@ -61,10 +61,30 @@ export function normaliseWhitespace(text: string): string {
   return text.replace(/[\u00A0\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
 }
 
+function collapseSpacedSequences(text: string): string {
+  let output = text;
+
+  const collapseRuns = (pattern: RegExp) => {
+    output = output.replace(pattern, (segment) => segment.replace(/\s+/g, ""));
+  };
+
+  // Collapse runs like "L A N G V A L D A" -> "LANGVALDA"
+  collapseRuns(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g);
+  // Collapse numeric runs like "1 2 3" -> "123" (when they belong to one number)
+  collapseRuns(/\b(?:\d\s+){2,}\d\b/g);
+
+  // Remove stray spaces inside numbers (e.g., "1 , 200 . 50")
+  output = output.replace(/(\d)\s+(?=[\d,.-])/g, "$1");
+  output = output.replace(/([,.-])\s+(?=\d)/g, "$1");
+
+  return output;
+}
+
 export function cleanText(input: string): string {
   const ligature = decodeLigatures(decodeCp1252(input));
   const collapsed = ligature.replace(/[\u0000-\u001f]/g, " ");
-  return normaliseWhitespace(collapsed);
+  const normalised = normaliseWhitespace(collapsed);
+  return collapseSpacedSequences(normalised);
 }
 
 export function scoreAlphaNumericQuality(text: string): number {
