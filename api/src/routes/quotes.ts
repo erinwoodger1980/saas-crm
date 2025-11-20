@@ -471,6 +471,76 @@ function shouldFallbackQuoteQuery(err: any): boolean {
   return false;
 }
 
+const QUOTE_FALLBACK_COLUMNS = [
+  "id",
+  "tenantId",
+  "leadId",
+  "title",
+  "status",
+  "currency",
+  "exchangeRate",
+  "deliveryCost",
+  "markupDefault",
+  "subtotalMaterialGBP",
+  "subtotalLabourGBP",
+  "subtotalOtherGBP",
+  "totalGBP",
+  "proposalPdfUrl",
+  "notes",
+  "meta",
+  "createdAt",
+  "updatedAt",
+];
+
+const QUOTE_FALLBACK_SELECT = QUOTE_FALLBACK_COLUMNS.map((col) => `"${col}"`).join(", ");
+
+type QuoteFallbackOptions = {
+  includeLines?: boolean;
+  includeSupplierFiles?: boolean;
+};
+
+async function loadQuoteFallback(
+  quoteId: string,
+  tenantId: string,
+  options: QuoteFallbackOptions = {},
+) {
+  const rows: any[] = await prisma.$queryRawUnsafe(
+    `SELECT ${QUOTE_FALLBACK_SELECT} FROM "Quote" WHERE "id" = $1 AND "tenantId" = $2 LIMIT 1`,
+    quoteId,
+    tenantId,
+  );
+  const quote = rows[0] || null;
+  if (!quote) return null;
+
+  const relationFetchers: Array<Promise<void>> = [];
+  if (options.includeLines) {
+    relationFetchers.push(
+      prisma.quoteLine
+        .findMany({ where: { quoteId }, orderBy: { id: "asc" } })
+        .then((lines) => {
+          quote.lines = lines;
+        }),
+    );
+  }
+  if (options.includeSupplierFiles) {
+    relationFetchers.push(
+      prisma.uploadedFile
+        .findMany({ where: { quoteId, tenantId } })
+        .then((files) => {
+          quote.supplierFiles = files;
+        }),
+    );
+  }
+  if (relationFetchers.length) {
+    await Promise.all(relationFetchers);
+  }
+
+  quote.quoteSourceType = null;
+  quote.supplierProfileId = null;
+  quote.__partial = true;
+  return quote;
+}
+
 async function tryTemplateParsers(
   buffer: Buffer,
   options: {
@@ -929,45 +999,10 @@ router.get("/:id", requireAuth, async (req: any, res) => {
       // Common production mismatch: schema expects quoteSourceType/supplierProfileId but column absent.
       if (shouldFallbackQuoteQuery(inner)) {
         console.warn(`[quotes/:id] Prisma schema mismatch, falling back to raw query: ${msg}`);
-        // Raw minimal query without new columns
-        const fallbackColumns = [
-          "id",
-          "tenantId",
-          "leadId",
-          "title",
-          "status",
-          "currency",
-          "exchangeRate",
-          "deliveryCost",
-          "markupDefault",
-          "subtotalMaterialGBP",
-          "subtotalLabourGBP",
-          "subtotalOtherGBP",
-          "totalGBP",
-          "proposalPdfUrl",
-          "notes",
-          "meta",
-          "createdAt",
-          "updatedAt",
-        ];
-        const columnSql = fallbackColumns.map((col) => `"${col}"`).join(", ");
-        const rows: any[] = await prisma.$queryRawUnsafe(
-          `SELECT ${columnSql} FROM "Quote" WHERE "id" = $1 AND "tenantId" = $2 LIMIT 1`,
-          id,
-          tenantId,
-        );
-        q = rows[0] || null;
-        if (q) {
-          const [lines, supplierFiles] = await Promise.all([
-            prisma.quoteLine.findMany({ where: { quoteId: id }, orderBy: { id: "asc" } }),
-            prisma.uploadedFile.findMany({ where: { quoteId: id, tenantId } }),
-          ]);
-          q.quoteSourceType = null;
-          q.supplierProfileId = null;
-          q.lines = lines;
-          q.supplierFiles = supplierFiles;
-          q.__partial = true;
-        }
+        q = await loadQuoteFallback(id, tenantId, {
+          includeLines: true,
+          includeSupplierFiles: true,
+        });
       } else {
         throw inner; // rethrow if different error
       }
@@ -1211,10 +1246,20 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const quoteId = String(req.params.id);
   try {
-    const quote = await prisma.quote.findFirst({
-      where: { id: quoteId, tenantId },
-      include: { supplierFiles: true },
-    });
+    let quote: any;
+    try {
+      quote = await prisma.quote.findFirst({
+        where: { id: quoteId, tenantId },
+        include: { supplierFiles: true },
+      });
+    } catch (err: any) {
+      if (shouldFallbackQuoteQuery(err)) {
+        console.warn(`[parse] Prisma schema mismatch, falling back to raw query: ${err?.message || err}`);
+        quote = await loadQuoteFallback(quoteId, tenantId, { includeSupplierFiles: true });
+      } else {
+        throw err;
+      }
+    }
     if (!quote) return res.status(404).json({ error: "not_found" });
 
     const supplierTemplates = quote.supplierProfileId
@@ -3816,10 +3861,23 @@ router.post("/:id/process-supplier", requireAuth, async (req: any, res) => {
     const tenantId = req.auth.tenantId as string;
     const quoteId = String(req.params.id);
     
-    const quote = await prisma.quote.findFirst({
-      where: { id: quoteId, tenantId },
-      include: { supplierFiles: true, lines: true },
-    });
+    let quote: any;
+    try {
+      quote = await prisma.quote.findFirst({
+        where: { id: quoteId, tenantId },
+        include: { supplierFiles: true, lines: true },
+      });
+    } catch (err: any) {
+      if (shouldFallbackQuoteQuery(err)) {
+        console.warn(`[/quotes/:id/process-supplier] Prisma schema mismatch, falling back: ${err?.message || err}`);
+        quote = await loadQuoteFallback(quoteId, tenantId, {
+          includeLines: true,
+          includeSupplierFiles: true,
+        });
+      } else {
+        throw err;
+      }
+    }
     
     if (!quote) {
       return res.status(404).json({ error: "not_found" });
