@@ -930,17 +930,42 @@ router.get("/:id", requireAuth, async (req: any, res) => {
       if (shouldFallbackQuoteQuery(inner)) {
         console.warn(`[quotes/:id] Prisma schema mismatch, falling back to raw query: ${msg}`);
         // Raw minimal query without new columns
+        const fallbackColumns = [
+          "id",
+          "tenantId",
+          "leadId",
+          "title",
+          "status",
+          "currency",
+          "exchangeRate",
+          "deliveryCost",
+          "markupDefault",
+          "subtotalMaterialGBP",
+          "subtotalLabourGBP",
+          "subtotalOtherGBP",
+          "totalGBP",
+          "proposalPdfUrl",
+          "notes",
+          "meta",
+          "createdAt",
+          "updatedAt",
+        ];
+        const columnSql = fallbackColumns.map((col) => `"${col}"`).join(", ");
         const rows: any[] = await prisma.$queryRawUnsafe(
-          `SELECT id, tenantId, leadId, title, status, currency, exchangeRate, deliveryCost, markupDefault, subtotalMaterialGBP, subtotalLabourGBP, subtotalOtherGBP, totalGBP, proposalPdfUrl, notes, meta, createdAt, updatedAt FROM "Quote" WHERE id = $1 AND tenantId = $2 LIMIT 1`,
+          `SELECT ${columnSql} FROM "Quote" WHERE "id" = $1 AND "tenantId" = $2 LIMIT 1`,
           id,
           tenantId,
         );
         q = rows[0] || null;
         if (q) {
+          const [lines, supplierFiles] = await Promise.all([
+            prisma.quoteLine.findMany({ where: { quoteId: id }, orderBy: { id: "asc" } }),
+            prisma.uploadedFile.findMany({ where: { quoteId: id, tenantId } }),
+          ]);
           q.quoteSourceType = null;
           q.supplierProfileId = null;
-          q.lines = [];
-          q.supplierFiles = [];
+          q.lines = lines;
+          q.supplierFiles = supplierFiles;
           q.__partial = true;
         }
       } else {
