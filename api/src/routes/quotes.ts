@@ -465,6 +465,9 @@ function shouldFallbackQuoteQuery(err: any): boolean {
       return true;
     }
   }
+  if (/enum\s+['"]?QuoteSourceType['"]?/i.test(msg) && /not\s+found/i.test(msg)) {
+    return true;
+  }
   return false;
 }
 
