@@ -99,6 +99,7 @@ function buildImageInput(buffer: Buffer, mimeType?: string) {
   return {
     type: "input_image" as const,
     image_url: `data:${safeMime};base64,${base64}`,
+    detail: "high" as const,
   };
 }
 
@@ -130,7 +131,6 @@ export async function estimateDimensionsFromPhoto(options: {
         ],
       },
     ],
-    response_format: { type: "json_object" },
   });
 
   const rawText = Array.isArray((response as any)?.output_text)
