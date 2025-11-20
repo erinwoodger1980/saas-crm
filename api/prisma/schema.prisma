@@ -1036,6 +1036,11 @@ enum TaskPriority {
   LOW
   MEDIUM
   HIGH
+
+enum MeasurementSource {
+  MANUAL
+  PHOTO_ESTIMATE
+}
   URGENT
 }
 
@@ -1127,6 +1132,10 @@ model Streak {
 }
 
 model ActivityLog {
+  estimatedWidthMm      Int?
+  estimatedHeightMm     Int?
+  measurementSource     MeasurementSource?
+  measurementConfidence Float?
   id        String         @id @default(cuid())
   tenantId  String
   entity    ActivityEntity

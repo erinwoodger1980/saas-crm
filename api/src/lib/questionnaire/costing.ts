@@ -51,7 +51,37 @@ export async function buildCostingInputs(
     inputs[field.costingInputKey] = typedValue;
   }
 
+  applyMeasurementFallbacks(inputs);
+
   return inputs;
+}
+
+const WIDTH_FALLBACK_KEYS = ["estimated_width_mm", "photo_width_mm", "rough_width_mm"];
+const HEIGHT_FALLBACK_KEYS = ["estimated_height_mm", "photo_height_mm", "rough_height_mm"];
+
+function applyMeasurementFallbacks(inputs: CostingInput) {
+  ensureMeasurementKey(inputs, "door_width_mm", WIDTH_FALLBACK_KEYS);
+  ensureMeasurementKey(inputs, "door_height_mm", HEIGHT_FALLBACK_KEYS);
+}
+
+function ensureMeasurementKey(inputs: CostingInput, primaryKey: string, fallbackKeys: string[]) {
+  if (toNumber(inputs[primaryKey]) != null) return;
+  for (const key of fallbackKeys) {
+    const candidate = toNumber(inputs[key]);
+    if (candidate != null) {
+      inputs[primaryKey] = candidate;
+      return;
+    }
+  }
+}
+
+function toNumber(value: any): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 /**

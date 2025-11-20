@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { QuestionnaireField } from "@/lib/api/quotes";
+import { PhotoMeasurementField } from "@/components/questionnaire/PhotoMeasurementField";
 
 export type QuestionnaireFormProps = {
   fields: QuestionnaireField[];
@@ -83,15 +84,19 @@ export function QuestionnaireForm({
     }
   }
 
-  function handleItemChange(itemIdx: number, key: string, value: any) {
+  function applyItemPatch(itemIdx: number, patch: Record<string, any>) {
     setItemAnswers((prev) => {
       const next = [...prev];
-      next[itemIdx] = { ...next[itemIdx], [key]: value };
+      next[itemIdx] = { ...next[itemIdx], ...patch };
       return next;
     });
     pendingRef.current = true;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(flush, AUTOSAVE_DELAY);
+  }
+
+  function handleItemChange(itemIdx: number, key: string, value: any) {
+    applyItemPatch(itemIdx, { [key]: value });
   }
 
   function addItem() {
@@ -212,6 +217,35 @@ export function QuestionnaireForm({
                     );
                   })}
                 </div>
+
+                <PhotoMeasurementField
+                  value={{
+                    widthMm: typeof item.estimated_width_mm === "number" ? item.estimated_width_mm : null,
+                    heightMm: typeof item.estimated_height_mm === "number" ? item.estimated_height_mm : null,
+                    measurementSource: (item.measurement_source as string) ?? null,
+                    measurementConfidence:
+                      typeof item.measurement_confidence === "number" ? item.measurement_confidence : null,
+                  }}
+                  context={{
+                    openingType:
+                      (item.opening_type as string) ||
+                      (item.door_type as string) ||
+                      (item.window_type as string) ||
+                      null,
+                    floorLevel:
+                      (item.floor_level as string) ||
+                      (item.installation_floor as string) ||
+                      (item.storey as string) ||
+                      null,
+                    notes:
+                      (item.notes as string) ||
+                      (item.additional_notes as string) ||
+                      (item.description as string) ||
+                      null,
+                  }}
+                  disabled={disabled}
+                  onChange={(patch) => applyItemPatch(itemIdx, patch)}
+                />
               </div>
             ))}
 
