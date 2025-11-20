@@ -531,7 +531,8 @@ router.post("/import-historical", async (req, res) => {
             title: `Historical Quote - ${recordDate.toISOString().split('T')[0]}`,
             status: 'SENT',
             totalGBP: value || 0,
-            createdAt: recordDate
+            createdAt: recordDate,
+            quoteSourceType: null,
           }
         });
         imported++;

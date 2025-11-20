@@ -265,6 +265,7 @@ router.post("/supplier/rfq/:token/upload", async (req, res) => {
         leadId: lead.id,
         title: `Supplier Quote — ${claims.email}`,
         status: "DRAFT" as any,
+        quoteSourceType: null,
       },
       select: { id: true },
     });
