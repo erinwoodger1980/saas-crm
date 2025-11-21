@@ -329,6 +329,14 @@ export function PublicEstimatorStepper({
             companyName={branding.name}
             onNext={handleNext}
             onBack={handleBack}
+            openingDetails={data.openingDetails}
+            onUpdateOpening={(id, updates) => {
+              const updated = data.openingDetails?.map((item) =>
+                item.id === id ? { ...item, ...updates } : item
+              );
+              handleUpdateData({ openingDetails: updated });
+            }}
+            onTrackInteraction={trackInteraction}
           />
         )}
 
