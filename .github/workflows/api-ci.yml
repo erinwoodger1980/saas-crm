@@ -20,6 +20,8 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -86,6 +88,14 @@ jobs:
             fi
           done
 
+      - name: Migrate database (deploy)
+        if: ${{ env.DATABASE_URL != '' }}
+        run: |
+          echo "🚀 Running prisma migrate deploy against provisioned database"
+          npx prisma migrate deploy || {
+            echo "⚠️ migrate deploy failed; continuing (non-blocking)";
+          }
+
       - name: TypeScript compile
         run: pnpm run build
 
@@ -97,7 +107,7 @@ jobs:
           APP_JWT_SECRET: test-ci-secret
           JWT_SECRET: test-ci-secret
           OPENAI_API_KEY: test-ci-openai
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DATABASE_URL: ${{ env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres' }}
           WEB_ORIGIN: http://localhost:3000
           BILLING_ENABLED: 'false'
           SKIP_DEV_BOOTSTRAP: '1'
