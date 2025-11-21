@@ -52,6 +52,7 @@ export default function DevLayout({ children }: { children: ReactNode }) {
     { href: "/dev/feedback", label: "Feedback", icon: MessageSquare },
     { href: "/dev/tasks", label: "Tasks", icon: GitBranch },
     { href: "/dev/ml", label: "ML Status", icon: Server },
+    { href: "/dev/ml/samples", label: "ML Samples", icon: Server },
   ];
 
   return (
