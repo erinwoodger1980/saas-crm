@@ -15,9 +15,9 @@ router.get('/', ensureDeveloper, async (_req, res) => {
   try {
     const users = await prisma.user.findMany({
       where: { isDeveloper: true },
-      select: { id: true, email: true, name: true, role: true }
+      select: { id: true, email: true, isDeveloper: true, role: true }
     });
-    res.json({ ok: true, items: users });
+    res.json({ ok: true, developers: users });
   } catch (e: any) {
     res.status(500).json({ ok: false, error: 'failed_to_list', detail: e?.message });
   }
@@ -35,12 +35,12 @@ router.post('/', ensureDeveloper, async (req: any, res) => {
       return res.status(400).json({ ok: false, error: 'email_invalid' });
     }
 
-    let user = await prisma.user.findFirst({ where: { email: normalized } });
-    if (user) {
-      if (!user.isDeveloper) {
-        user = await prisma.user.update({ where: { id: user.id }, data: { isDeveloper: true, role: 'owner' } });
-      }
-      return res.status(200).json({ ok: true, item: { id: user.id, email: user.email, promoted: true } });
+    const existing = await prisma.user.findFirst({ where: { email: normalized } });
+    if (existing) {
+      const updated = existing.isDeveloper
+        ? existing
+        : await prisma.user.update({ where: { id: existing.id }, data: { isDeveloper: true, role: 'owner' } });
+      return res.status(200).json({ ok: true, item: { id: updated.id, email: updated.email, promoted: !existing.isDeveloper } });
     }
 
     // Create global developer user without tenant association (requires later linking)
@@ -49,7 +49,7 @@ router.post('/', ensureDeveloper, async (req: any, res) => {
     if (!anyTenant) return res.status(500).json({ ok: false, error: 'no_tenant_available' });
 
     const passwordHash = await bcrypt.hash('DevAccess123!', 10);
-    user = await prisma.user.create({
+    const created = await prisma.user.create({
       data: {
         tenantId: anyTenant.id,
         email: normalized,
@@ -61,8 +61,7 @@ router.post('/', ensureDeveloper, async (req: any, res) => {
       },
       select: { id: true, email: true }
     });
-
-    res.status(201).json({ ok: true, item: { id: user.id, email: user.email, created: true } });
+    res.status(201).json({ ok: true, item: { id: created.id, email: created.email, created: true } });
   } catch (e: any) {
     res.status(500).json({ ok: false, error: 'failed_to_add', detail: e?.message });
   }
