@@ -5,47 +5,15 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { usePublicEstimator } from '@/lib/publicEstimator/usePublicEstimator';
 import { ProgressBar } from './ProgressBar';
 import { WelcomeStep } from './steps/WelcomeStep';
 import { PropertyBasicsStep } from './steps/PropertyBasicsStep';
 
-export interface BrandingData {
-  brandName: string;
-  logoUrl?: string;
-  primaryColor?: string;
-  secondaryColor?: string;
-  heroImageUrl?: string;
-  galleryImageUrls?: string[];
-  reviewScore?: number;
-  reviewCount?: number;
-  reviewSourceLabel?: string;
-  testimonials?: Array<{
-    name: string;
-    location?: string;
-    quote: string;
-  }>;
-}
-
-export interface EstimatorData {
-  propertyType?: string;
-  itemCount?: number;
-  timeframe?: string;
-  budget?: string;
-  items?: Array<Record<string, any>>;
-  globalSpecs?: {
-    timber?: string;
-    glass?: string;
-    ironmongery?: string;
-    finish?: string;
-  };
-}
-
 interface PublicEstimatorStepperProps {
-  branding: BrandingData;
-  initialData?: EstimatorData;
-  onSave?: (data: EstimatorData) => void;
-  onComplete?: (data: EstimatorData) => void;
+  tenantSlug: string;
+  onComplete?: () => void;
 }
 
 const STEP_LABELS = [
@@ -58,19 +26,30 @@ const STEP_LABELS = [
 ];
 
 export function PublicEstimatorStepper({
-  branding,
-  initialData = {},
-  onSave,
+  tenantSlug,
   onComplete,
 }: PublicEstimatorStepperProps) {
   const [currentStep, setCurrentStep] = useState(1);
-  const [data, setData] = useState<EstimatorData>(initialData);
+  
+  // Use the hook for state management, auto-save, and pricing
+  const {
+    branding,
+    data,
+    isLoadingBranding,
+    isSaving,
+    updateData,
+    trackInteraction,
+  } = usePublicEstimator({
+    tenantSlug,
+    onError: (error) => console.error('Estimator error:', error),
+  });
 
-  const handleDataChange = (updates: Partial<EstimatorData>) => {
-    const newData = { ...data, ...updates };
-    setData(newData);
-    onSave?.(newData);
-  };
+  // Track when user starts the questionnaire
+  useEffect(() => {
+    if (currentStep === 1 && branding) {
+      trackInteraction('QUESTIONNAIRE_STARTED');
+    }
+  }, [currentStep, branding, trackInteraction]);
 
   const handleNext = () => {
     if (currentStep < STEP_LABELS.length) {
@@ -85,6 +64,28 @@ export function PublicEstimatorStepper({
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
+
+  // Show loading state while branding loads
+  if (isLoadingBranding) {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-2xl items-center justify-center px-4">
+        <div className="text-center">
+          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900 mx-auto" />
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!branding) {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-2xl items-center justify-center px-4">
+        <div className="text-center">
+          <p className="text-slate-600">Unable to load estimator. Please try again.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto min-h-screen max-w-2xl px-4 py-6">
@@ -104,13 +105,16 @@ export function PublicEstimatorStepper({
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg md:p-8">
         {currentStep === 1 && (
           <WelcomeStep
-            brandName={branding.brandName}
+            brandName={branding.name}
             brandLogo={branding.logoUrl}
             heroImage={branding.heroImageUrl}
             reviewScore={branding.reviewScore}
             reviewCount={branding.reviewCount}
             reviewSource={branding.reviewSourceLabel}
-            testimonials={branding.testimonials}
+            testimonials={branding.testimonials?.map(t => ({
+              name: t.author,
+              quote: t.text,
+            }))}
             primaryColor={branding.primaryColor}
             onNext={handleNext}
           />
@@ -123,7 +127,7 @@ export function PublicEstimatorStepper({
             timeframe={data.timeframe}
             budget={data.budget}
             primaryColor={branding.primaryColor}
-            onChange={handleDataChange}
+            onChange={updateData}
             onNext={handleNext}
             onBack={handleBack}
           />

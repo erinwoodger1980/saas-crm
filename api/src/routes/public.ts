@@ -762,4 +762,61 @@ router.get("/ml/health", async (_req, res) => {
   }
 });
 
+/* ---------- PUBLIC: interaction tracking ---------- */
+/** POST /public/interactions - Track lead interaction events */
+router.post("/interactions", async (req, res) => {
+  try {
+    const { projectId, leadId, type, metadata } = req.body as {
+      projectId?: string;
+      leadId?: string;
+      type: string;
+      metadata?: Record<string, any>;
+    };
+
+    if (!type) {
+      return res.status(400).json({ error: "type required" });
+    }
+
+    // At least one identifier required
+    if (!projectId && !leadId) {
+      return res.status(400).json({ error: "projectId or leadId required" });
+    }
+
+    // Get tenantId from project or lead
+    let tenantId: string | null = null;
+    if (projectId) {
+      const project = await prisma.publicProject.findUnique({
+        where: { id: projectId },
+        select: { tenantId: true },
+      });
+      tenantId = project?.tenantId || null;
+    } else if (leadId) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { tenantId: true },
+      });
+      tenantId = lead?.tenantId || null;
+    }
+
+    if (!tenantId) {
+      return res.status(404).json({ error: "tenant not found" });
+    }
+
+    await prisma.leadInteraction.create({
+      data: {
+        tenantId,
+        leadId: leadId || null,
+        projectId: projectId || null,
+        type,
+        metadata: metadata || Prisma.JsonNull,
+      },
+    });
+
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[public interactions] create failed:", e);
+    return res.status(500).json({ error: e?.message || "failed to track interaction" });
+  }
+});
+
 export default router;
