@@ -1,5 +1,5 @@
 import { GoogleAdsApi, Customer } from 'google-ads-api';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma';
 import dayjs from 'dayjs';
 
 // Centralized logger helper (could be expanded to use a real logger later)
@@ -11,7 +11,6 @@ function logAds(msg: string, meta?: Record<string, any>) {
   }
 }
 
-const prisma = new PrismaClient();
 
 interface GoogleAdsConfig {
   client_id: string;

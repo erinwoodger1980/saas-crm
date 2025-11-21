@@ -1,8 +1,7 @@
 import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../prisma";
 
 const router = Router();
-const prisma = new PrismaClient();
 
 function authTenantId(req: any): string | null {
   return (req?.auth?.tenantId as string) || null;

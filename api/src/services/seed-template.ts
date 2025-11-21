@@ -1,7 +1,5 @@
 // Service to initialize new tenants with seed template data from Demo Tenant
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../prisma';
 const TEMPLATE_SLUG = 'demo-tenant'; // Use Demo Tenant as the template (contains questionnaire from acme.test)
 
 export async function initializeTenantWithSeedData(tenantId: string) {

@@ -32,6 +32,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install API dependencies (for shared schema generation)
+        working-directory: api
+        run: pnpm install --frozen-lockfile
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
