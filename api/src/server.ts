@@ -598,7 +598,8 @@ app.use("/marketing/roi", marketingRoiRouter);
 app.use("/keywords", requireAuth, keywordsRouter);
 app.use("/ads", requireAuth, adsRouter);
 app.use("/feature-requests", featureRequestsRouter);
-app.use("/measurements", requireAuth, measurementsRouter);
+// Photo measurement endpoint powers public questionnaire uploads, so keep it unauthenticated.
+app.use("/measurements", measurementsRouter);
 app.use("/workshop", requireAuth, workshopRouter);
 app.use("/workshop-processes", requireAuth, workshopProcessesRouter);
 app.use("/timesheets", requireAuth, timesheetsRouter);
