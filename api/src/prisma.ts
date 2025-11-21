@@ -1,22 +1,24 @@
 import { PrismaClient } from "@prisma/client";
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from "bcrypt";
 
 // Prevent multiple instances in dev (important for ts-node-dev / Next.js)
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
+// Configure PG pool + adapter to satisfy engineType 'client' requirements in Prisma v7
+const connectionString = process.env.DATABASE_URL as string | undefined;
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
+    adapter,
     log:
       process.env.NODE_ENV === "production"
         ? ["error"]
         : ["query", "error", "warn"],
-    // Optimize for serverless/connection pooling
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL,
-      },
-    },
   });
 
 if (process.env.NODE_ENV !== "production") {
