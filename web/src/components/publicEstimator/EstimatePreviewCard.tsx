@@ -69,6 +69,35 @@ export function EstimatePreviewCard({
     );
   }
 
+  // Show manual quote required message
+  if (estimate.needsManualQuote) {
+    return (
+      <div className={`rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-6 shadow-lg ${className}`}>
+        <div className="text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+            <Info className="h-6 w-6 text-amber-600" />
+          </div>
+          <h3 className="font-semibold text-slate-900">Manual Quote Required</h3>
+          <p className="mt-2 text-sm text-slate-600">
+            We'll review your details and provide a detailed quote within 24 hours.
+          </p>
+          {estimate.manualQuoteReason && (
+            <p className="mt-2 text-xs text-slate-500">
+              Reason: {estimate.manualQuoteReason}
+            </p>
+          )}
+          <div className="mt-4 rounded-2xl bg-white border border-amber-200 p-3">
+            <p className="text-xs text-slate-600">
+              <strong>What happens next:</strong><br />
+              Our team will review your requirements and contact you with a personalized quote.
+              You'll receive an email from {companyName} within one business day.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const visibleItems = showAllItems ? estimate.items : estimate.items.slice(0, 3);
   const hasMoreItems = estimate.items.length > 3;
   const favouritesCount = favouriteItemIds.length;
@@ -202,31 +231,33 @@ export function EstimatePreviewCard({
           )}
 
           {/* Totals */}
-          <div className="border-t border-slate-200 bg-slate-50 p-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">Net total</span>
-                <span className="font-medium text-slate-900">
-                  £{estimate.totalNet.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">VAT (20%)</span>
-                <span className="font-medium text-slate-900">
-                  £{estimate.totalVat.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-200 pt-2">
-                <span className="font-semibold text-slate-900">Total</span>
-                <span 
-                  className="text-2xl font-bold"
-                  style={{ color: primaryColor }}
-                >
-                  £{estimate.totalGross.toFixed(2)}
-                </span>
+          {!estimate.needsManualQuote && (
+            <div className="border-t border-slate-200 bg-slate-50 p-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-600">Net total</span>
+                  <span className="font-medium text-slate-900">
+                    £{estimate.totalNet.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-600">VAT (20%)</span>
+                  <span className="font-medium text-slate-900">
+                    £{estimate.totalVat.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+                  <span className="font-semibold text-slate-900">Total</span>
+                  <span 
+                    className="text-2xl font-bold"
+                    style={{ color: primaryColor }}
+                  >
+                    £{estimate.totalGross.toFixed(2)}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Disclaimer */}
           {estimate.disclaimer && (

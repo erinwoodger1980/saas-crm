@@ -44,6 +44,8 @@ export interface EstimatePreview {
   totalVat: number;
   totalGross: number;
   disclaimer: string;
+  needsManualQuote?: boolean;
+  manualQuoteReason?: string;
 }
 
 export interface TenantBranding {
@@ -278,6 +280,8 @@ export function usePublicEstimator({
           sourceInfo: entryContext.sourceInfo,
           payload: data,
           projectId: projectId || undefined, // Update existing if present
+          needsManualQuote: estimatePreview?.needsManualQuote || false,
+          manualQuoteReason: estimatePreview?.manualQuoteReason,
         }),
       });
       
@@ -306,7 +310,7 @@ export function usePublicEstimator({
     } finally {
       setIsSaving(false);
     }
-  }, [entryContext, branding, data, projectId, onError]);
+  }, [entryContext, branding, data, projectId, estimatePreview, onError]);
   
   // Auto-save with debounce on data changes
   useEffect(() => {

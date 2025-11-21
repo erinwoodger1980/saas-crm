@@ -451,29 +451,60 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
 /** POST /public/projects - Create or update a public project session */
 router.post("/projects", async (req, res) => {
   try {
-    const { tenantId, leadId, entryMode, sourceInfo, payload, projectId } = req.body as {
+    const { tenantId, leadId, entryMode, sourceInfo, payload, projectId, needsManualQuote, manualQuoteReason } = req.body as {
       tenantId: string;
       leadId?: string;
       entryMode: 'AD' | 'INVITE';
       sourceInfo?: Record<string, any>;
       payload: Record<string, any>;
       projectId?: string;
+      needsManualQuote?: boolean;
+      manualQuoteReason?: string;
     };
 
     if (!tenantId || !entryMode || !payload) {
       return res.status(400).json({ error: "tenantId, entryMode and payload required" });
     }
 
+    // Add manual quote flag to payload if needed
+    const enrichedPayload = {
+      ...payload,
+      ...(needsManualQuote && { needsManualQuote, manualQuoteReason }),
+    };
+
     // Update existing or create new
     if (projectId) {
       const updated = await prisma.publicProject.update({
         where: { id: projectId },
         data: {
-          payload,
+          payload: enrichedPayload,
           leadId: leadId || null,
           updatedAt: new Date(),
         },
       });
+
+      // If linked to a lead and needs manual quote, flag the lead
+      if (leadId && needsManualQuote) {
+        const lead = await prisma.lead.findUnique({
+          where: { id: leadId },
+          select: { custom: true },
+        });
+        if (lead) {
+          const custom = (lead.custom as any) || {};
+          await prisma.lead.update({
+            where: { id: leadId },
+            data: {
+              custom: {
+                ...custom,
+                needsManualQuote: true,
+                manualQuoteReason,
+                manualQuoteFlaggedAt: new Date().toISOString(),
+              },
+            },
+          });
+        }
+      }
+
       return res.json({ projectId: updated.id, url: `/estimate/${updated.id}` });
     }
 
@@ -483,9 +514,31 @@ router.post("/projects", async (req, res) => {
         leadId: leadId || null,
         entryMode: entryMode === 'INVITE' ? 'INVITE' : 'AD',
         sourceInfo: sourceInfo || Prisma.JsonNull,
-        payload,
+        payload: enrichedPayload,
       },
     });
+
+    // If linked to a lead and needs manual quote, flag the lead
+    if (leadId && needsManualQuote) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { custom: true },
+      });
+      if (lead) {
+        const custom = (lead.custom as any) || {};
+        await prisma.lead.update({
+          where: { id: leadId },
+          data: {
+            custom: {
+              ...custom,
+              needsManualQuote: true,
+              manualQuoteReason,
+              manualQuoteFlaggedAt: new Date().toISOString(),
+            },
+          },
+        });
+      }
+    }
 
     return res.json({ projectId: created.id, url: `/estimate/${created.id}` });
   } catch (e: any) {

@@ -39,6 +39,8 @@ interface EstimateResponse {
   totalGBP: number;
   currency: string;
   note: string;
+  needsManualQuote?: boolean;
+  manualQuoteReason?: string;
 }
 
 /**
@@ -49,6 +51,54 @@ interface EstimateResponse {
 export async function estimateQuote(req: EstimateRequest): Promise<EstimateResponse> {
   const items = req.items || [];
   const VAT_RATE = 0.20;
+
+  // Check if we have enough information to provide a reliable estimate
+  let needsManualQuote = false;
+  let manualQuoteReason: string | undefined;
+
+  // Insufficient items
+  if (items.length === 0) {
+    needsManualQuote = true;
+    manualQuoteReason = 'No items provided';
+  }
+
+  // Check if any items are missing critical dimensions
+  const itemsMissingDimensions = items.filter(item => !item.widthMm || !item.heightMm || item.widthMm <= 0 || item.heightMm <= 0);
+  if (!needsManualQuote && itemsMissingDimensions.length > items.length * 0.5) {
+    // More than 50% of items missing dimensions
+    needsManualQuote = true;
+    manualQuoteReason = 'Insufficient measurement details';
+  }
+
+  // Check for unusual sizes that might need special pricing
+  const itemsWithUnusualSize = items.filter(item => {
+    if (!item.widthMm || !item.heightMm) return false;
+    const areaSqM = (item.widthMm * item.heightMm) / 1000000;
+    return areaSqM > 10 || areaSqM < 0.3; // Very large or very small
+  });
+  if (!needsManualQuote && itemsWithUnusualSize.length > 0) {
+    needsManualQuote = true;
+    manualQuoteReason = 'Unusual dimensions requiring specialist review';
+  }
+
+  // If we need manual quote, return early with placeholder values
+  if (needsManualQuote) {
+    return {
+      items: items.map(item => ({
+        description: item.description || 'Opening',
+        netGBP: 0,
+        vatGBP: 0,
+        totalGBP: 0,
+      })),
+      subtotalNet: 0,
+      totalVAT: 0,
+      totalGBP: 0,
+      currency: 'GBP',
+      note: 'Manual quote required',
+      needsManualQuote: true,
+      manualQuoteReason,
+    };
+  }
 
   // Simple heuristic-based pricing for preview
   const estimatedItems = items.map((item) => {
@@ -76,6 +126,7 @@ export async function estimateQuote(req: EstimateRequest): Promise<EstimateRespo
     totalGBP: Math.round(totalGBP * 100) / 100,
     currency: 'GBP',
     note: 'Estimate only – final price subject to survey and detailed specification.',
+    needsManualQuote: false,
   };
 }
 
