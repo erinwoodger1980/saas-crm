@@ -263,12 +263,18 @@ router.get("/settings", async (req, res) => {
     console.error('[GET /tenant/settings] Failed:', {
       tenantId,
       error: error.message,
-      stack: error.stack?.split('\n').slice(0, 3).join('\n'),
+      errorCode: error.code,
+      errorName: error.name,
+      stack: error.stack?.split('\n').slice(0, 5).join('\n'),
       timestamp: new Date().toISOString(),
     });
     res.status(500).json({ 
       error: 'settings_fetch_failed',
-      message: process.env.NODE_ENV === 'production' ? 'Failed to load settings' : error.message
+      message: error.message,
+      details: process.env.NODE_ENV === 'production' ? undefined : {
+        code: error.code,
+        name: error.name
+      }
     });
   }
 });
