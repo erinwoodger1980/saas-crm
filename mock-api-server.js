@@ -88,6 +88,9 @@ app.post('/leads/import/preview', upload.single('csvFile'), (req, res) => {
 app.post('/leads/import/execute', (req, res) => {
   console.log('Received import execute request');
   const { fieldMapping, totalRows } = req.body;
+  if (fieldMapping) {
+    console.log('Applying field mapping:', fieldMapping);
+  }
   
   // Mock successful import
   res.json({

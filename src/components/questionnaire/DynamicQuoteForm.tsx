@@ -1,7 +1,7 @@
 // src/components/questionnaire/DynamicQuoteForm.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Save, AlertCircle } from "lucide-react";
 
 interface QuestionnaireField {
@@ -39,11 +39,7 @@ export default function DynamicQuoteForm({
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    fetchFieldsAndAnswers();
-  }, [quoteId]);
-
-  async function fetchFieldsAndAnswers() {
+  const fetchFieldsAndAnswers = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -70,7 +66,11 @@ export default function DynamicQuoteForm({
     } finally {
       setLoading(false);
     }
-  }
+  }, [quoteId]);
+
+  useEffect(() => {
+    fetchFieldsAndAnswers();
+  }, [fetchFieldsAndAnswers]);
 
   function validateForm(): boolean {
     const newErrors: Record<string, string> = {};

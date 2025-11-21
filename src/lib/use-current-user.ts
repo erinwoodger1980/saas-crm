@@ -18,8 +18,8 @@ export type CurrentUser = {
 const fetcher = (path: string) => apiFetch<CurrentUser>(path);
 
 export function useCurrentUser() {
-  // Maintain legacy JWT for any older flows; cookie-first will still succeed without it
-  const [jwt, setStoredJwt] = useState<string | null>(() =>
+  // Maintain legacy JWT for any older flows; value is unused but state updates trigger revalidation
+  const [, setStoredJwt] = useState<string | null>(() =>
     typeof window !== "undefined" ? getJwt() : null,
   );
 

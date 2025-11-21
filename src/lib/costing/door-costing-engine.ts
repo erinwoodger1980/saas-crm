@@ -12,7 +12,6 @@ import {
   type DoorCostingInput as DimensionsDoorCostingInput,
   type DimensionRules,
   type DerivedDimensions,
-  type LeafConfiguration,
   calculateDerivedDimensions,
 } from "./derived-dimensions";
 

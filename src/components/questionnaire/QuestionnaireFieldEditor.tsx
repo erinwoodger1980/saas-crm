@@ -111,7 +111,8 @@ export default function QuestionnaireFieldEditor() {
       });
       if (!res.ok) throw new Error("Delete failed");
       await fetchFields();
-    } catch (_err) {
+    } catch (err) {
+      console.error("Failed to delete field", err);
       alert("Failed to delete field");
     }
   }
