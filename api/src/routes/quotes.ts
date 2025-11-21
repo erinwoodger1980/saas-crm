@@ -1137,41 +1137,49 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
   // Auto-detect quote source from first PDF
   let detectedSourceType: string | undefined;
   let detectedProfileId: string | undefined;
+  const incomingFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
+  if (!incomingFiles.length) {
+    return res.status(400).json({ error: "no_files", message: "No files uploaded under field 'files'" });
+  }
 
-  const saved = [];
-  for (const f of (req.files as Express.Multer.File[])) {
-    // Auto-detect quote source from first PDF
-    if (!detectedSourceType && f.mimetype === 'application/pdf') {
-      try {
-        const { extractFirstPageText } = await import('../lib/pdfMetadata');
-        const { autoDetectQuoteSourceProfile } = await import('../lib/quoteSourceProfiles');
-        
-        const buffer = await fs.promises.readFile(f.path);
-        const firstPageText = await extractFirstPageText(buffer);
-        const profile = autoDetectQuoteSourceProfile(f.originalname, firstPageText);
-        
-        if (profile) {
-          detectedSourceType = profile.type;
-          detectedProfileId = profile.id;
-          console.log(`[quotes/:id/files] Auto-detected: ${profile.displayName} (${profile.type})`);
+  const saved: any[] = [];
+  const errors: Array<{ name: string; message: string }> = [];
+  for (const f of incomingFiles) {
+    try {
+      // Auto-detect quote source from first PDF (only attempt once, first PDF)
+      if (!detectedSourceType && f.mimetype === "application/pdf") {
+        try {
+          const { extractFirstPageText } = await import("../lib/pdfMetadata");
+          const { autoDetectQuoteSourceProfile } = await import("../lib/quoteSourceProfiles");
+          const buffer = await fs.promises.readFile(f.path);
+          const firstPageText = await extractFirstPageText(buffer);
+          const profile = autoDetectQuoteSourceProfile(f.originalname, firstPageText);
+          if (profile) {
+            detectedSourceType = profile.type;
+            detectedProfileId = profile.id;
+            console.log(`[quotes/:id/files] Auto-detected: ${profile.displayName} (${profile.type})`);
+          }
+        } catch (autoErr: any) {
+          console.error("[quotes/:id/files] Auto-detection failed:", autoErr?.message || autoErr);
         }
-      } catch (error) {
-        console.error('[quotes/:id/files] Auto-detection failed:', error);
       }
-    }
 
-    const row = await prisma.uploadedFile.create({
-      data: {
-        tenantId,
-        quoteId: id,
-        kind: "SUPPLIER_QUOTE",
-        name: f.originalname,
-        path: path.relative(process.cwd(), f.path),
-        mimeType: f.mimetype,
-        sizeBytes: f.size,
-      },
-    });
-    saved.push(row);
+      const row = await prisma.uploadedFile.create({
+        data: {
+          tenantId,
+          quoteId: id,
+          kind: "SUPPLIER_QUOTE",
+          name: f.originalname || null,
+          path: path.relative(process.cwd(), f.path),
+          mimeType: f.mimetype || null,
+          sizeBytes: f.size || null,
+        },
+      });
+      saved.push(row);
+    } catch (fileErr: any) {
+      console.error("[quotes/:id/files] Failed to persist file:", f.originalname, fileErr?.message || fileErr);
+      errors.push({ name: f.originalname, message: fileErr?.message || "persist_failed" });
+    }
   }
 
   // Update quote with detected source type and profile (if detected)
@@ -1185,14 +1193,20 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
       },
     });
   }
+  if (!saved.length && errors.length) {
+    return res.status(500).json({ error: "upload_failed", filesSaved: 0, errors });
+  }
 
-  res.json({ 
-    ok: true, 
+  res.json({
+    ok: true,
     files: saved,
-    detected: detectedSourceType ? {
-      sourceType: detectedSourceType,
-      profileId: detectedProfileId,
-    } : null,
+    errors: errors.length ? errors : null,
+    detected: detectedSourceType
+      ? {
+          sourceType: detectedSourceType,
+          profileId: detectedProfileId,
+        }
+      : null,
   });
 });
 

@@ -16,6 +16,7 @@ export interface PublicProjectPayload {
     images?: string[];
     notes?: string;
   }>;
+  inspirationImages?: string[]; // user-selected inspiration / style preference images
   globalSpecs?: {
     timberType?: string;
     glassType?: string;
@@ -312,14 +313,22 @@ export function usePublicEstimator({
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
     }
-    
-    // Only auto-save if we have minimal data
-    if (data.propertyType || data.itemCount) {
+
+    // Broaden auto-save conditions: any meaningful data entered
+    const shouldSave = Boolean(
+      data.propertyType ||
+      data.itemCount ||
+      (data.openingDetails && data.openingDetails.length > 0) ||
+      (data.globalSpecs && Object.keys(data.globalSpecs).some(k => (data.globalSpecs as any)[k])) ||
+      (data.contactDetails && Object.keys(data.contactDetails).some(k => (data.contactDetails as any)[k]))
+    );
+
+    if (shouldSave) {
       autoSaveTimerRef.current = setTimeout(() => {
         saveProject();
-      }, 2000); // 2 second debounce
+      }, 1500); // slightly faster debounce for better perceived persistence
     }
-    
+
     return () => {
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
