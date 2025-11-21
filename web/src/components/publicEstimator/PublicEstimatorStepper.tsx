@@ -12,6 +12,7 @@ import { WelcomeStep } from './steps/WelcomeStep';
 import { PropertyBasicsStep } from './steps/PropertyBasicsStep';
 import { OpeningDetailsStep } from './steps/OpeningDetailsStep';
 import { GlobalSpecsStep } from './steps/GlobalSpecsStep';
+import { EstimateSummaryStep } from './steps/EstimateSummaryStep';
 import { EstimatePreviewCard } from './EstimatePreviewCard';
 
 interface PublicEstimatorStepperProps {
@@ -49,6 +50,18 @@ export function PublicEstimatorStepper({
     tenantSlug,
     onError: (error) => console.error('Estimator error:', error),
   });
+
+  // Handle item removal from estimate summary
+  const handleRemoveItem = (itemId: string) => {
+    const updated = data.openingDetails?.filter(item => item.id !== itemId) || [];
+    updateData({ openingDetails: updated });
+  };
+
+  // Handle editing item (go back to step 3)
+  const handleEditItem = (itemId: string) => {
+    setCurrentStep(3);
+    // TODO: Scroll to specific item
+  };
 
   // Handle share functionality using Web Share API
   const handleShare = async () => {
@@ -187,7 +200,22 @@ export function PublicEstimatorStepper({
           />
         )}
 
-        {currentStep > 4 && (
+        {currentStep === 5 && (
+          <EstimateSummaryStep
+            estimate={estimatePreview}
+            isLoading={isLoadingEstimate}
+            favouriteItemIds={data.favouriteItemIds}
+            onToggleFavourite={toggleFavourite}
+            onEditItem={handleEditItem}
+            onRemoveItem={handleRemoveItem}
+            primaryColor={branding.primaryColor}
+            companyName={branding.name}
+            onNext={handleNext}
+            onBack={handleBack}
+          />
+        )}
+
+        {currentStep > 5 && (
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">
               Step {currentStep}: {STEP_LABELS[currentStep - 1]}
