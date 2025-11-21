@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { ReactNode, useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Code, Database, MessageSquare, GitBranch, Server, Users, ArrowLeft } from "lucide-react";
+import { Code, Database, MessageSquare, GitBranch, Server, ArrowLeft } from "lucide-react";
 
 export default function DevLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedTenant, setImpersonatedTenant] = useState<string | null>(null);
 

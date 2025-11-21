@@ -12,10 +12,23 @@ export type PhotoMeasurementContext = {
   notes?: string | null;
 };
 
+export type PhotoMeasurementAttributes = {
+  productType?: string | null;
+  openingConfig?: string | null;
+  material?: string | null;
+  colour?: string | null;
+  glazingStyle?: string | null;
+  ironmongeryFinish?: string | null;
+  styleTags?: string[] | null;
+  description?: string | null;
+  notes?: string | null;
+};
+
 export type PhotoMeasurementResult = {
   widthMm: number | null;
   heightMm: number | null;
   confidence: number | null;
+  attributes: PhotoMeasurementAttributes;
 };
 
 export function parseVisionResponseText(raw: string): any {
@@ -62,10 +75,43 @@ function clampConfidence(value: number | null): number | null {
   return Math.round(clamped * 100) / 100;
 }
 
+function sanitizeString(value: any): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  return null;
+}
+
+function sanitizeStringArray(value: any): string[] | null {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    const cleaned = value.map((v) => sanitizeString(v)).filter((v): v is string => Boolean(v));
+    return cleaned.length ? cleaned : null;
+  }
+  if (typeof value === "string") {
+    const parts = value
+      .split(/[;,]/)
+      .map((part) => sanitizeString(part))
+      .filter((part): part is string => Boolean(part));
+    return parts.length ? parts : null;
+  }
+  return null;
+}
+
 export function normalizeVisionEstimate(payload: any): PhotoMeasurementResult {
   const widthRaw = payload?.width_mm ?? payload?.widthMm ?? payload?.width ?? null;
   const heightRaw = payload?.height_mm ?? payload?.heightMm ?? payload?.height ?? null;
   const confidenceRaw = payload?.confidence ?? payload?.confidence_score ?? null;
+  const productType = sanitizeString(payload?.product_type ?? payload?.productType);
+  const openingConfig = sanitizeString(payload?.opening_config ?? payload?.openingConfig);
+  const material = sanitizeString(payload?.material);
+  const colour = sanitizeString(payload?.colour ?? payload?.color);
+  const glazingStyle = sanitizeString(payload?.glazing_style ?? payload?.glazingStyle);
+  const ironmongeryFinish = sanitizeString(payload?.ironmongery ?? payload?.ironmongery_finish ?? payload?.hardware);
+  const styleTags = sanitizeStringArray(payload?.style_tags ?? payload?.styleTags);
+  const description = sanitizeString(payload?.description);
+  const notes = sanitizeString(payload?.notes ?? payload?.reasoning ?? payload?.explanation);
 
   const width = clampDimension(coerceNumber(widthRaw));
   const height = clampDimension(coerceNumber(heightRaw));
@@ -75,6 +121,17 @@ export function normalizeVisionEstimate(payload: any): PhotoMeasurementResult {
     widthMm: width,
     heightMm: height,
     confidence,
+    attributes: {
+      productType,
+      openingConfig,
+      material,
+      colour,
+      glazingStyle,
+      ironmongeryFinish,
+      styleTags,
+      description,
+      notes,
+    },
   };
 }
 
@@ -83,9 +140,9 @@ function buildPrompt(context?: PhotoMeasurementContext): string {
     "You are assisting a bespoke joinery estimator.",
     "Estimate the overall width and height of the main window or door opening in millimetres.",
     "Use any reference object (tape measure, bricks, A4 paper, door handle) to scale.",
-    "Respond with JSON: {\"width_mm\": number | null, \"height_mm\": number | null, \"confidence\": number between 0 and 1}.",
+    "Respond with compact JSON containing: width_mm, height_mm, confidence (0-1), product_type, opening_config, material, colour, glazing_style, ironmongery, style_tags (array), description, notes.",
     "Clamp dimensions between 300 and 3000 mm and round to the nearest 10 before responding.",
-    "Confidence should reflect how reliable the estimate is. If you cannot see the full opening or reference, return confidence <= 0.4 and null dimensions.",
+    "Confidence should reflect how reliable the estimate is. If you cannot see the full opening or reference, return confidence <= 0.4 and null dimensions but still describe what you see.",
     context?.openingType ? `Opening type: ${context.openingType}` : null,
     context?.floorLevel ? `Floor level: ${context.floorLevel}` : null,
     context?.notes ? `Notes: ${context.notes}` : null,

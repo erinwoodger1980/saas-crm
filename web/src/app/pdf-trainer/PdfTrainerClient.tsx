@@ -8,6 +8,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -44,20 +45,27 @@ interface SourceProfile {
   id: string;
   displayName: string;
   type: 'supplier' | 'software';
-  source: 'static' | 'tenant';
+  source: 'static' | 'tenant' | 'link';
 }
 
 export function PdfTrainerClient() {
+  const searchParams = useSearchParams();
+  const queryProfileId = searchParams.get('profileId');
+  const queryQuoteId = searchParams.get('quoteId');
+  const queryFileId = searchParams.get('fileId');
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const remoteFileLoadedRef = useRef(false);
 
   // State
-  const [supplierProfile, setSupplierProfile] = useState<string>('generic_supplier');
+  const [supplierProfile, setSupplierProfile] = useState<string>(queryProfileId || 'generic_supplier');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [annotations, setAnnotations] = useState<AnnotationBox[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [profiles, setProfiles] = useState<SourceProfile[]>([]);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
+  const [isLoadingRemoteFile, setIsLoadingRemoteFile] = useState(false);
+  const [remoteFileError, setRemoteFileError] = useState<string | null>(null);
 
   // PDF document hook
   const {
@@ -82,17 +90,31 @@ export function PdfTrainerClient() {
         console.log('[PdfTrainerClient] Raw profiles response:', raw);
         
         // Map to component's expected shape
-        const mapped = (raw || []).map((p: any) => ({
+        let mapped: SourceProfile[] = (raw || []).map((p: any) => ({
           id: p.id,
           displayName: p.name ?? p.displayName ?? p.id,
           type: p.type,
           source: p.source ?? 'tenant',
         }));
+
+        if (queryProfileId && !mapped.some((p) => p.id === queryProfileId)) {
+          mapped = [
+            {
+              id: queryProfileId,
+              displayName: humanizeProfileId(queryProfileId),
+              type: 'supplier',
+              source: 'link',
+            },
+            ...mapped,
+          ];
+        }
         
         console.log('[PdfTrainerClient] Mapped profiles:', mapped);
         setProfiles(mapped);
-        
-        if (mapped.length === 0) {
+
+        if (queryProfileId) {
+          setSupplierProfile(queryProfileId);
+        } else if (mapped.length === 0) {
           console.warn('[PdfTrainerClient] No profiles returned from API');
         }
       } catch (error: any) {
@@ -108,7 +130,49 @@ export function PdfTrainerClient() {
     };
 
     loadProfiles();
-  }, []);
+  }, [queryProfileId, toast]);
+
+  useEffect(() => {
+    if (!queryQuoteId || !queryFileId) return;
+    if (remoteFileLoadedRef.current) return;
+    let aborted = false;
+    remoteFileLoadedRef.current = true;
+    setIsLoadingRemoteFile(true);
+    setRemoteFileError(null);
+
+    (async () => {
+      try {
+        const signed = await apiFetch<{ ok?: boolean; url?: string }>(
+          `/quotes/${encodeURIComponent(queryQuoteId)}/files/${encodeURIComponent(queryFileId)}/signed`
+        );
+        if (aborted) return;
+        const url = signed?.url;
+        if (!url) throw new Error('Missing signed download URL');
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Download failed (${response.status})`);
+        const blob = await response.blob();
+        if (aborted) return;
+        const filename = extractFilename(response.headers.get('Content-Disposition')) || `supplier-file-${queryFileId}.pdf`;
+        const inferredType = blob.type || 'application/pdf';
+        const file = new File([blob], filename, { type: inferredType });
+        setSelectedFile(file);
+        setAnnotations([]);
+        toast({ title: 'PDF loaded', description: filename });
+      } catch (error: any) {
+        if (aborted) return;
+        console.error('[PdfTrainerClient] Remote file load failed:', error);
+        const message = error?.message || 'Unable to load PDF from quote context';
+        setRemoteFileError(message);
+        toast({ title: 'Failed to load PDF', description: message, variant: 'destructive' });
+      } finally {
+        if (!aborted) setIsLoadingRemoteFile(false);
+      }
+    })();
+
+    return () => {
+      aborted = true;
+    };
+  }, [queryQuoteId, queryFileId, toast]);
 
   // File selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -349,10 +413,24 @@ export function PdfTrainerClient() {
                     variant="outline"
                     className="w-full mt-2"
                     onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoadingRemoteFile}
                   >
                     <Upload className="mr-2 h-4 w-4" />
                     {selectedFile ? selectedFile.name : 'Choose PDF'}
                   </Button>
+                  {queryQuoteId && queryFileId && (
+                    <p
+                      className={`text-xs mt-2 ${remoteFileError ? 'text-destructive' : 'text-muted-foreground'}`}
+                    >
+                      {isLoadingRemoteFile
+                        ? 'Loading PDF from quote context...'
+                        : remoteFileError
+                        ? `Linked PDF unavailable (${remoteFileError}). Upload a file manually.`
+                        : selectedFile
+                        ? 'Using the PDF attached to this quote. Upload another file to replace it.'
+                        : 'Select a PDF if you want to override the quote attachment.'}
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -497,4 +575,29 @@ export function PdfTrainerClient() {
       </div>
     </div>
   );
+}
+
+function extractFilename(disposition: string | null): string | null {
+  if (!disposition) return null;
+  const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1]);
+    } catch {
+      return utfMatch[1];
+    }
+  }
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] ?? null;
+}
+
+function humanizeProfileId(profileId: string): string {
+  if (!profileId) return 'Supplier profile';
+  if (profileId.startsWith('sup_')) {
+    return profileId
+      .replace(/^sup_/, '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+  return profileId;
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { PhotoMeasurementField } from "@/components/questionnaire/PhotoMeasurementField";
+import { InspirationUploadField } from "@/components/questionnaire/InspirationUploadField";
 import {
   buildOpeningDescription,
   DESCRIPTION_AUTO_MODE,
@@ -71,6 +72,7 @@ type FieldElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement |
 type ItemPayload = {
   itemNumber: number;
   photos: { filename: string; mimeType: string; base64: string; itemIndex: number }[];
+  inspiration_photos?: { filename: string; mimeType: string; base64: string; itemIndex: number }[];
 } & Record<string, any>;
 
 const WIDTH_FIELD_CANDIDATES = [
@@ -277,6 +279,7 @@ export default function PublicQuestionnairePage() {
   const [itemAnswers, setItemAnswers] = useState<Record<string, any>[]>([{}]);
   const [itemErrors, setItemErrors] = useState<Record<string, string>[]>([{}]);
   const [itemFiles, setItemFiles] = useState<File[][]>([[]]);
+  const [itemInspirationFiles, setItemInspirationFiles] = useState<File[][]>([[]]);
   // Per-item, per-question file uploads (for questions of type 'file')
   const [itemQuestionFiles, setItemQuestionFiles] = useState<Record<string, File[]>[]>([{}]);
   const [globalSpecs, setGlobalSpecs] = useState<GlobalSpecState>(DEFAULT_GLOBAL_SPECS);
@@ -331,10 +334,11 @@ export default function PublicQuestionnairePage() {
         });
         if (!answers.length) answers.push({});
 
-        setItemAnswers(answers);
-        setItemErrors(Array.from({ length: answers.length }, () => ({})));
-  setItemFiles(Array.from({ length: answers.length }, () => []));
-  setItemQuestionFiles(Array.from({ length: answers.length }, () => ({})));
+          setItemAnswers(answers);
+          setItemErrors(Array.from({ length: answers.length }, () => ({})));
+          setItemFiles(Array.from({ length: answers.length }, () => []));
+          setItemInspirationFiles(Array.from({ length: answers.length }, () => []));
+          setItemQuestionFiles(Array.from({ length: answers.length }, () => ({})));
         fieldRefs.current = {};
       } catch (e: any) {
         setBanner(e?.message || "Failed to load");
@@ -551,6 +555,11 @@ export default function PublicQuestionnairePage() {
     setItemFiles((prev) => prev.map((arr, i) => (i === itemIndex ? [] : arr)));
   };
 
+  const handleInspirationFileChange = (itemIndex: number, fileList: FileList | null) => {
+    const next = fileList ? Array.from(fileList).slice(0, 1) : [];
+    setItemInspirationFiles((prev) => prev.map((arr, i) => (i === itemIndex ? next : arr)));
+  };
+
   const setItemQuestionFile = (itemIndex: number, key: string, fileList: FileList | null) => {
     const nextFiles = fileList ? Array.from(fileList) : [];
     setItemQuestionFiles((prev) => prev.map((rec, i) => (i === itemIndex ? { ...(rec ?? {}), [key]: nextFiles } : rec)));
@@ -655,13 +664,15 @@ export default function PublicQuestionnairePage() {
     });
     setItemErrors((prev) => [...prev, {}]);
     setItemFiles((prev) => [...prev, []]);
+    setItemInspirationFiles((prev) => [...prev, []]);
   };
 
   const hasItemContent = (idx: number) => {
     const item = itemAnswers[idx] ?? {};
     const hasValues = Object.values(item).some((v) => !isEmptyValue(v));
     const hasPhotos = (itemFiles[idx]?.length ?? 0) > 0;
-    return hasValues || hasPhotos;
+    const hasInspirationPhotos = (itemInspirationFiles[idx]?.length ?? 0) > 0;
+    return hasValues || hasPhotos || hasInspirationPhotos;
   };
 
   const makeFieldKey = (itemIndex: number, key: string) => `item-${itemIndex}-${key}`;
@@ -676,6 +687,11 @@ export default function PublicQuestionnairePage() {
       const val = contactAnswers[q.key];
       if (q.required && isEmptyValue(val)) {
         nextContactErrors[q.key] = "This field is required.";
+        if (!firstInvalidKey) firstInvalidKey = `contact-${q.key}`;
+        continue;
+      }
+      if (q.key === "email" && !isEmptyValue(val) && !looksLikeEmail(String(val))) {
+        nextContactErrors[q.key] = "Enter a valid email address.";
         if (!firstInvalidKey) firstInvalidKey = `contact-${q.key}`;
       }
     }
@@ -784,6 +800,19 @@ export default function PublicQuestionnairePage() {
           };
         })
       );
+      const rawItemInspirationUploads = await Promise.all(itemInspirationFiles.map((list) => filesToBase64(list)));
+      const itemInspirationUploads = rawItemInspirationUploads.map((uploads, idx) =>
+        uploads.map((upload, photoIdx) => {
+          const rawName = upload.filename?.trim() || "";
+          const label = `Item ${idx + 1} inspiration`;
+          const fallback = `${label} ${photoIdx + 1}.jpg`;
+          return {
+            ...upload,
+            filename: rawName ? `${label} - ${rawName}` : fallback,
+            itemIndex: idx + 1,
+          };
+        })
+      );
 
       // Convert per-question file uploads to base64 and include alongside general uploads
       const rawItemQuestionUploads = await Promise.all(
@@ -811,7 +840,9 @@ export default function PublicQuestionnairePage() {
       const itemsPayload: ItemPayload[] = itemAnswers
   .map((item, idx) => {
     const trimmedEntries = Object.entries(item).filter(([, val]) => !isEmptyValue(val));
-    const photos = itemUploads[idx] ?? [];
+    const measurementPhotos = itemUploads[idx] ?? [];
+    const inspirationPhotos = itemInspirationUploads[idx] ?? [];
+    const photos = [...measurementPhotos, ...inspirationPhotos];
     // include per-question file references as separate fields if present
     const questionFiles = itemQuestionUploads[idx] ?? [];
     for (const qf of questionFiles) {
@@ -827,6 +858,7 @@ export default function PublicQuestionnairePage() {
       itemNumber: idx + 1,
       ...base,
       photos,
+      inspiration_photos: inspirationPhotos.length ? inspirationPhotos : undefined,
     };
   })
   .filter((item): item is ItemPayload => item !== null);
@@ -835,11 +867,14 @@ export default function PublicQuestionnairePage() {
       const flattenedUploads = [
         ...generalUploads,
         ...itemUploads.flat(),
+        ...itemInspirationUploads.flat(),
         ...itemQuestionUploads.flat().map((u) => ({ filename: u.filename, mimeType: u.mimeType, base64: u.base64 })),
       ];
 
+      const normalizedContacts = normalizeContactAnswers(contactAnswers);
+
       const answersPayload = {
-        ...contactAnswers,
+        ...normalizedContacts,
         ...globalSpecs,
         items: itemsPayload,
       };
@@ -955,6 +990,7 @@ export default function PublicQuestionnairePage() {
               <p className="text-sm text-slate-500">
                 Please provide your details so we can get in touch with you.
               </p>
+              <p className="text-xs text-slate-500">We send your estimate to this email, so double-check it.</p>
             </div>
 
             {/* Contact Fields Section */}
@@ -969,11 +1005,30 @@ export default function PublicQuestionnairePage() {
                     "aria-invalid": hasErr || undefined,
                     "aria-describedby": hasErr ? `${fieldId}-err` : undefined,
                   } as any;
+                  const labelText = q.key === "contact_name" ? "Full name" : q.label || q.key;
+                  const textInputPlaceholder =
+                    q.key === "contact_name"
+                      ? "Your full name"
+                      : q.key === "email"
+                      ? "your.email@example.com"
+                      : q.key === "phone"
+                      ? "Your phone number"
+                      : undefined;
+                  const inputType =
+                    q.type === "number"
+                      ? "number"
+                      : q.type === "date"
+                      ? "date"
+                      : q.key === "email" || q.type === "email"
+                      ? "email"
+                      : q.key === "phone" || q.type === "phone"
+                      ? "tel"
+                      : "text";
 
                   return (
                     <div key={q.key} className="space-y-2">
                       <label className="block text-sm font-medium text-slate-700">
-                        {q.label || q.key}
+                        {labelText}
                         {q.required ? <span className="text-rose-500"> *</span> : null}
                       </label>
 
@@ -983,7 +1038,7 @@ export default function PublicQuestionnairePage() {
                           className={`${inputClass} min-h-[100px]`}
                           value={valueOrEmpty(contactAnswers[q.key])}
                           onChange={(e) => setContactField(q.key, e.target.value)}
-                          placeholder={q.key === 'address' ? 'Your full address including postcode' : undefined}
+                          placeholder={q.key === "address" ? "Your full address including postcode" : undefined}
                         />
                       ) : q.type === "select" ? (
                         <select
@@ -1002,16 +1057,11 @@ export default function PublicQuestionnairePage() {
                       ) : (
                         <input
                           {...commonProps}
-                          type={q.type === "number" ? "number" : q.type === "date" ? "date" : q.type === "email" ? "email" : q.type === "phone" ? "tel" : "text"}
+                          type={inputType}
                           className={inputClass}
                           value={valueOrEmpty(contactAnswers[q.key])}
                           onChange={(e) => setContactField(q.key, e.target.value)}
-                          placeholder={
-                            q.key === 'contact_name' ? 'Your full name' :
-                            q.key === 'email' ? 'your.email@example.com' :
-                            q.key === 'phone' ? 'Your phone number' :
-                            undefined
-                          }
+                          placeholder={textInputPlaceholder}
                         />
                       )}
 
@@ -1328,6 +1378,24 @@ export default function PublicQuestionnairePage() {
                           </div>
                         ) : null}
 
+                        <InspirationUploadField
+                          className="bg-white/80"
+                          disabled={submitting}
+                          files={itemInspirationFiles[itemIdx] ?? []}
+                          attributes={(itemAnswers[itemIdx]?.inspiration_attributes as Record<string, any>) ?? null}
+                          onFilesChange={(fileList) => handleInspirationFileChange(itemIdx, fileList)}
+                          onResult={(result) =>
+                            applyItemPatch(itemIdx, {
+                              inspiration_attributes: result.attributes,
+                              inspiration_description: result.attributes?.description ?? null,
+                              inspiration_confidence: result.confidence ?? null,
+                              inspiration_source: "INSPIRATION_PHOTO",
+                              vision_source: "INSPIRATION_PHOTO",
+                              inference_source: "INSPIRATION_PHOTO",
+                            })
+                          }
+                        />
+
                         <div className="space-y-2 rounded-2xl border border-dashed border-slate-200 bg-white/60 px-4 py-4">
                           <div className="text-sm font-medium text-slate-700">{sectionLabel} photo</div>
                           <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-[rgb(var(--brand))]/10 px-4 py-2 text-sm font-medium text-[rgb(var(--brand))] transition hover:bg-[rgb(var(--brand))]/15">
@@ -1465,11 +1533,29 @@ function pickFirstStringValue(record: Record<string, any>, keys: string[]): stri
 }
 
 /* ---------------- Small helpers ---------------- */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
 function isEmptyValue(v: any) {
   return v === undefined || v === null || String(v).trim() === "";
 }
 function valueOrEmpty(v: any) {
   return v == null ? "" : String(v);
+}
+
+function looksLikeEmail(value: any): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return EMAIL_REGEX.test(trimmed);
+}
+
+function normalizeContactAnswers(answers: Record<string, any>): Record<string, any> {
+  const normalized: Record<string, any> = {};
+  Object.keys(answers || {}).forEach((key) => {
+    const val = answers[key];
+    normalized[key] = typeof val === "string" ? val.trim() : val;
+  });
+  return normalized;
 }
 
 function normalizeGlobalSpecValue(raw: any): string {

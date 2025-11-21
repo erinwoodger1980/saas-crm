@@ -12,8 +12,6 @@ import {
   Target,
   Wrench,
   Sparkles,
-  ArrowRight,
-  Building2,
   Package,
   Flame,
 } from "lucide-react";

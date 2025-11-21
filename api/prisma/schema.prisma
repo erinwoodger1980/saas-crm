@@ -42,6 +42,7 @@ model Tenant {
   gmailUserConnections       GmailUserConnection[]       @relation("GmailUserConnections")
   leads                      Lead[]
   leadFieldDefs              LeadFieldDef[]
+  leadVisionInferences       LeadVisionInference[]
   Ms365TenantConnection      Ms365TenantConnection?
   ms365UserConnections       Ms365UserConnection[]       @relation("Ms365UserConnections")
   opportunities              Opportunity[]
@@ -226,6 +227,12 @@ model Lead {
   Quote                 Quote[]
   supplierQuoteRequests SupplierQuoteRequest[]
   questionnaireMatches QuoteQuestionnaireMatch[] @relation("LeadQuestionnaireMatches")
+  visionInferences      LeadVisionInference[]
+}
+
+enum VisionInferenceSource {
+  MEASUREMENT
+  INSPIRATION
 }
 
 model Opportunity {
@@ -735,6 +742,29 @@ model QuoteQuestionnaireMatch {
   @@index([tenantId, quoteId])
   @@index([quoteId])
   @@index([leadId])
+}
+
+model LeadVisionInference {
+  id          String                 @id @default(cuid())
+  tenantId    String
+  leadId      String
+  itemNumber  Int?
+  source      VisionInferenceSource  @default(MEASUREMENT)
+  widthMm     Float?
+  heightMm    Float?
+  confidence  Float?
+  attributes  Json?
+  description String?
+  notes       String?
+  photoLabel  String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId])
+  @@index([leadId, itemNumber])
 }
 
 model Estimate {

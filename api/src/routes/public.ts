@@ -11,9 +11,172 @@ import {
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { prisma } from "../prisma";
+import { Prisma } from "@prisma/client";
 
 const router = Router();
 import fetch from "node-fetch";
+
+const WIDTH_FIELD_CANDIDATES = [
+  "estimated_width_mm",
+  "photo_width_mm",
+  "rough_width_mm",
+  "approx_width_mm",
+  "approx_width",
+  "door_width_mm",
+  "width_mm",
+  "width",
+];
+
+const HEIGHT_FIELD_CANDIDATES = [
+  "estimated_height_mm",
+  "photo_height_mm",
+  "rough_height_mm",
+  "approx_height_mm",
+  "approx_height",
+  "door_height_mm",
+  "height_mm",
+  "height",
+];
+
+function toNumber(value: any): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function pickNumber(record: Record<string, any>, keys: string[]): number | null {
+  if (!record || typeof record !== "object") return null;
+  for (const key of keys) {
+    if (key in record) {
+      const value = toNumber(record[key]);
+      if (value != null) return value;
+    }
+  }
+  return null;
+}
+
+function stringOrNull(value: any): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  return null;
+}
+
+function firstPhotoLabel(item: Record<string, any>, opts?: { inspiration?: boolean }): string | null {
+  const pickLabel = (list: any[]): string | null => {
+    if (!Array.isArray(list) || !list.length) return null;
+    const first = list.find((entry) => entry && typeof entry === "object" && typeof entry.filename === "string");
+    if (first) {
+      const trimmed = first.filename.trim();
+      if (trimmed) return trimmed;
+    }
+    return null;
+  };
+
+  if (opts?.inspiration) {
+    const explicit = pickLabel(Array.isArray(item?.inspiration_photos) ? item.inspiration_photos : []);
+    if (explicit) return explicit;
+    const inspirationFromPhotos = Array.isArray(item?.photos)
+      ? item.photos.filter((photo: any) => typeof photo?.filename === "string" && /inspiration/i.test(photo.filename))
+      : [];
+    const fallback = pickLabel(inspirationFromPhotos);
+    if (fallback) return fallback;
+  }
+
+  const general = pickLabel(Array.isArray(item?.photos) ? item.photos : []);
+  return general;
+}
+
+function resolveInferenceSource(raw: any): "MEASUREMENT" | "INSPIRATION" {
+  const label = typeof raw === "string" ? raw.toLowerCase() : "";
+  if (label.includes("inspiration")) return "INSPIRATION";
+  return "MEASUREMENT";
+}
+
+function pickAttributes(record: any, key: string): Record<string, any> | null {
+  if (!record || typeof record !== "object") return null;
+  const raw = (record as any)[key];
+  if (raw && typeof raw === "object") return raw as Record<string, any>;
+  return null;
+}
+
+function buildMeasurementInference(item: Record<string, any>, params: { tenantId: string; leadId: string; itemNumber: number }): Prisma.LeadVisionInferenceCreateManyInput | null {
+  const attributes = pickAttributes(item, "measurement_attributes");
+  const widthMm = pickNumber(item, WIDTH_FIELD_CANDIDATES);
+  const heightMm = pickNumber(item, HEIGHT_FIELD_CANDIDATES);
+  const confidence = toNumber(item.measurement_confidence ?? item.inference_confidence ?? item.vision_confidence);
+  if (!attributes && widthMm == null && heightMm == null && confidence == null) {
+    return null;
+  }
+
+  const description =
+    stringOrNull(item.measurement_description) ||
+    (attributes ? stringOrNull((attributes as any).description) : null);
+  const notes = attributes ? stringOrNull((attributes as any).notes ?? (attributes as any).reasoning) : null;
+  const sourceLabel = item.measurement_source ?? item.inference_source ?? item.vision_source ?? "measurement";
+
+  return {
+    tenantId: params.tenantId,
+    leadId: params.leadId,
+    itemNumber: params.itemNumber,
+    source: resolveInferenceSource(sourceLabel),
+    widthMm: widthMm ?? null,
+    heightMm: heightMm ?? null,
+    confidence: confidence ?? null,
+    attributes: attributes ? (attributes as Prisma.InputJsonValue) : Prisma.JsonNull,
+    description: description ?? null,
+    notes: notes ?? null,
+    photoLabel: firstPhotoLabel(item) ?? null,
+  };
+}
+
+function buildInspirationInference(item: Record<string, any>, params: { tenantId: string; leadId: string; itemNumber: number }): Prisma.LeadVisionInferenceCreateManyInput | null {
+  const attributes = pickAttributes(item, "inspiration_attributes");
+  if (!attributes) return null;
+  const confidence = toNumber(item.inspiration_confidence ?? item.vision_confidence ?? item.inference_confidence);
+  const description = stringOrNull(item.inspiration_description) || stringOrNull((attributes as any).description);
+  const notes = stringOrNull((attributes as any).notes ?? (attributes as any).story ?? (attributes as any).reasoning);
+  const sourceLabel = item.inspiration_source ?? item.vision_source ?? "inspiration";
+
+  return {
+    tenantId: params.tenantId,
+    leadId: params.leadId,
+    itemNumber: params.itemNumber,
+    source: resolveInferenceSource(sourceLabel || "inspiration"),
+    widthMm: null,
+    heightMm: null,
+    confidence: confidence ?? null,
+    attributes: attributes ? (attributes as Prisma.InputJsonValue) : Prisma.JsonNull,
+    description: description ?? null,
+    notes: notes ?? null,
+    photoLabel: firstPhotoLabel(item, { inspiration: true }) ?? null,
+  };
+}
+
+function buildVisionInferenceInputs(params: {
+  tenantId: string;
+  leadId: string;
+  items: any[] | undefined;
+}): Prisma.LeadVisionInferenceCreateManyInput[] {
+  const items = Array.isArray(params.items) ? params.items : [];
+  const out: Prisma.LeadVisionInferenceCreateManyInput[] = [];
+  items.forEach((item, idx) => {
+    if (!item || typeof item !== "object") return;
+    const base = { tenantId: params.tenantId, leadId: params.leadId, itemNumber: idx + 1 };
+    const measurement = buildMeasurementInference(item, base);
+    if (measurement) out.push(measurement);
+    const inspiration = buildInspirationInference(item, base);
+    if (inspiration) out.push(inspiration);
+  });
+  return out;
+}
 
 /* ---------- helpers ---------- */
 function filterCustom(custom: any) {
@@ -176,6 +339,12 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
     }
 
     // Safely merge (do not explode if uploads missing)
+    const visionInferences = buildVisionInferenceInputs({
+      tenantId: lead.tenantId,
+      leadId: lead.id,
+      items: Array.isArray(answers.items) ? answers.items : [],
+    });
+
     const merged = {
       ...prev,
       ...answers,
@@ -195,15 +364,24 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
       uiStatus: "READY_TO_QUOTE",
     };
 
-    const updated = await prisma.lead.update({
-      where: { id },
-      data: {
-        status: "READY_TO_QUOTE",
-        custom: merged,
-        nextAction: "Prepare quote",
-        nextActionAt: new Date(),
-        ...specsToPrismaData(globalSpecs),
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedLead = await tx.lead.update({
+        where: { id },
+        data: {
+          status: "READY_TO_QUOTE",
+          custom: merged,
+          nextAction: "Prepare quote",
+          nextActionAt: new Date(),
+          ...specsToPrismaData(globalSpecs),
+        },
+      });
+
+      await tx.leadVisionInference.deleteMany({ where: { leadId: id } });
+      if (visionInferences.length) {
+        await tx.leadVisionInference.createMany({ data: visionInferences });
+      }
+
+      return updatedLead;
     });
 
     return res.json({ ok: true, lead: { id: updated.id } });

@@ -126,11 +126,20 @@ export function PhotoMeasurementField({
         setWarning("We couldn't read enough reference points. Please type your best guess.");
       }
 
+      const attributePatch: Record<string, any> = {};
+      if (response.attributes) {
+        attributePatch.measurement_attributes = response.attributes;
+        if (response.attributes.description) {
+          attributePatch.measurement_description = response.attributes.description;
+        }
+      }
+
       onChange({
         [widthField]: response.width_mm ?? null,
         [heightField]: response.height_mm ?? null,
         measurement_source: "PHOTO_ESTIMATE",
         measurement_confidence: response.confidence ?? null,
+        ...attributePatch,
       });
 
       if (response.confidence != null && response.confidence < 0.5) {
@@ -138,9 +147,12 @@ export function PhotoMeasurementField({
       }
 
       if (response.width_mm && response.height_mm) {
+        const extraDescription = response.attributes?.description ? ` ${response.attributes.description}` : "";
         setStatusMessage(
-          `Estimated from photo: ${response.width_mm} x ${response.height_mm} mm. Please adjust if this looks wrong.`,
+          `Estimated from photo: ${response.width_mm} x ${response.height_mm} mm.${extraDescription ? ` ${extraDescription}` : ""} Adjust if this looks wrong.`,
         );
+      } else if (response.attributes?.description) {
+        setStatusMessage(response.attributes.description);
       } else {
         setStatusMessage("Estimation complete. Adjust the values if needed.");
       }

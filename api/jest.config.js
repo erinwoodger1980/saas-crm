@@ -5,6 +5,7 @@ module.exports = {
   roots: ['<rootDir>/tests'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^ml/(.*)$': '<rootDir>/src/ml/$1',
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   globals: {
