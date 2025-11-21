@@ -732,13 +732,18 @@ router.get("/ml/status/:tenantId", requireDeveloper, async (req: any, res) => {
 router.post("/ml/train/:tenantId", requireDeveloper, async (req: any, res) => {
   try {
     const { tenantId } = req.params;
-    
-    // Call ML service to trigger training
-    const ML_API_URL = process.env.ML_API_URL || "http://localhost:8001";
+    // Resolve ML API base (align with other ML routes for consistency)
+    const ML_API_URL = (process.env.ML_API_URL || process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000").replace(/\/$/, "");
+
+    const controller = new AbortController();
+    const timeoutMs = Number(process.env.ML_TRAIN_TIMEOUT_MS || 30000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
     const response = await fetch(`${ML_API_URL}/train/${tenantId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
-    });
+    , signal: controller.signal });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const error = await response.text();
@@ -749,7 +754,63 @@ router.post("/ml/train/:tenantId", requireDeveloper, async (req: any, res) => {
     res.json({ ok: true, result });
   } catch (error: any) {
     console.error("Failed to trigger ML training:", error);
+    const isAbort = /AbortError/i.test(error?.name || "") || /aborted/i.test(error?.message || "");
+    if (isAbort) {
+      return res.status(504).json({ error: "ml_training_timeout", timeoutMs });
+    }
     res.status(500).json({ error: error.message });
+  }
+});
+
+// List ML samples (developer cross-tenant view)
+// GET /dev/ml/samples?tenantId=...&status=...&limit=...
+router.get('/ml/samples', requireDeveloper, async (req: any, res) => {
+  try {
+    const tenantId = typeof req.query.tenantId === 'string' && req.query.tenantId.trim() ? req.query.tenantId.trim() : undefined;
+    const statusRaw = typeof req.query.status === 'string' ? req.query.status.trim().toUpperCase() : undefined;
+    const status = statusRaw && ['PENDING','APPROVED','REJECTED'].includes(statusRaw) ? statusRaw : undefined;
+    const limit = Math.max(1, Math.min(Number(req.query.limit ?? 200), 500));
+
+    const where: any = {};
+    if (tenantId) where.tenantId = tenantId;
+    if (status) where.status = status;
+
+    const items = await prisma.mLTrainingSample.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        tenantId: true,
+        messageId: true,
+        attachmentId: true,
+        url: true,
+        filename: true,
+        quotedAt: true,
+        status: true,
+        createdAt: true,
+        estimatedTotal: true,
+        confidence: true,
+        currency: true,
+      }
+    });
+
+    // Attach tenant slugs/names for display
+    const distinctTenantIds = Array.from(new Set(items.map(i => i.tenantId)));
+    const tenants = distinctTenantIds.length ? await prisma.tenant.findMany({
+      where: { id: { in: distinctTenantIds } },
+      select: { id: true, name: true, slug: true }
+    }) : [];
+    const tenantMap = new Map(tenants.map(t => [t.id, t]));
+    const enriched = items.map(i => ({
+      ...i,
+      tenant: tenantMap.get(i.tenantId) || null
+    }));
+
+    res.json({ ok: true, count: enriched.length, items: enriched });
+  } catch (e: any) {
+    console.error('[dev/ml/samples] failed:', e?.message || e);
+    res.status(500).json({ error: 'internal_error' });
   }
 });
 

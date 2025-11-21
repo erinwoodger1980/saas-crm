@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Server, RefreshCcw, Search, Filter } from "lucide-react";
+import { Server, RefreshCcw, Search, Filter, Database } from "lucide-react";
 
 interface MLSample {
   id: string;
@@ -24,14 +24,11 @@ interface MLSample {
   updatedAt: string;
   notes?: string | null;
   label?: string | null;
+  tenant?: { id: string; name: string; slug: string } | null;
 }
 
-interface SamplesResponse {
-  ok: boolean;
-  count: number;
-  nextCursor: string | null;
-  items: MLSample[];
-}
+interface DevSamplesResponse { ok: boolean; count: number; items: MLSample[] }
+interface DevTenantsResponse { ok: boolean; tenants: Array<{ id: string; name: string; slug: string }> }
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "All" },
@@ -46,51 +43,49 @@ export default function MLSamplesPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  const [tenants, setTenants] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [tenantFilter, setTenantFilter] = useState<string>("");
 
-  const loadSamples = useCallback(async (opts: { reset?: boolean } = {}) => {
+  const loadSamples = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params: string[] = ["limit=50"]; // fetch 50 at a time
-      if (cursor && !opts.reset) params.push(`cursor=${encodeURIComponent(cursor)}`);
-      if (search.trim()) params.push(`q=${encodeURIComponent(search.trim())}`);
-      // Date filters could be added later: after, before
-      const url = `/internal/ml/samples?${params.join("&")}`;
-      const resp = await apiFetch<SamplesResponse>(url);
+      const params: string[] = [];
+      if (tenantFilter) params.push(`tenantId=${encodeURIComponent(tenantFilter)}`);
+      if (search.trim()) params.push(`q=${encodeURIComponent(search.trim())}`); // (future: backend search)
+      if (statusFilter) params.push(`status=${encodeURIComponent(statusFilter)}`);
+      params.push('limit=200');
+      const url = `/dev/ml/samples${params.length ? '?' + params.join('&') : ''}`;
+      const resp = await apiFetch<DevSamplesResponse>(url);
       if (!resp.ok) throw new Error("Failed to load samples");
       let newItems = resp.items;
       if (statusFilter) {
         newItems = newItems.filter(s => s.status === statusFilter);
       }
-      if (opts.reset) {
-        setSamples(newItems);
-      } else {
-        setSamples(prev => [...prev, ...newItems.filter(n => !prev.find(p => p.id === n.id))]);
-      }
-      setCursor(resp.nextCursor);
-      setHasMore(!!resp.nextCursor);
+      setSamples(newItems);
     } catch (e: any) {
       setError(e?.message || "Failed to load samples");
     } finally {
       setLoading(false);
     }
-  }, [cursor, search, statusFilter]);
+  }, [tenantFilter, search, statusFilter]);
 
   useEffect(() => {
-    // initial load
-    loadSamples({ reset: true });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // initial load: fetch tenants then samples
+    (async () => {
+      try {
+        const t = await apiFetch<DevTenantsResponse>('/dev/tenants');
+        if (t.ok) setTenants(t.tenants);
+      } catch {}
+      loadSamples();
+    })();
+  }, []); // eslint-disable-line
 
   // When search or statusFilter changes, reset list
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      setCursor(null);
-      loadSamples({ reset: true });
-    }, 400); // debounce
+    const timeout = setTimeout(() => { loadSamples(); }, 400);
     return () => clearTimeout(timeout);
-  }, [search, statusFilter, loadSamples]);
+  }, [search, statusFilter, tenantFilter, loadSamples]);
 
   async function updateStatus(id: string, status: 'APPROVED' | 'REJECTED' | 'PENDING') {
     try {
@@ -115,7 +110,7 @@ export default function MLSamplesPage() {
           ML Samples
         </h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => { setCursor(null); loadSamples({ reset: true }); }} disabled={loading}>
+          <Button variant="outline" onClick={() => loadSamples()} disabled={loading}>
             <RefreshCcw className="w-4 h-4 mr-1" /> Refresh
           </Button>
         </div>
@@ -131,6 +126,19 @@ export default function MLSamplesPage() {
               onChange={e => setSearch(e.target.value)}
               className="w-64"
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-slate-500" />
+            <select
+              className="border rounded px-2 py-1 text-sm"
+              value={tenantFilter}
+              onChange={e => setTenantFilter(e.target.value)}
+            >
+              <option value="">All Tenants</option>
+              {tenants.map(t => (
+                <option key={t.id} value={t.id}>{t.slug || t.name}</option>
+              ))}
+            </select>
           </div>
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-slate-500" />
@@ -163,6 +171,7 @@ export default function MLSamplesPage() {
               <tr className="text-left">
                 <th className="px-3 py-2 font-medium">ID</th>
                 <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Tenant</th>
                 <th className="px-3 py-2 font-medium">Filename</th>
                 <th className="px-3 py-2 font-medium">Message / Attachment</th>
                 <th className="px-3 py-2 font-medium">Quoted At</th>
@@ -185,6 +194,7 @@ export default function MLSamplesPage() {
                   <td className="px-3 py-2">
                     <span className={`px-2 py-1 rounded text-xs font-semibold ${s.status === 'APPROVED' ? 'bg-green-100 text-green-700' : s.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{s.status}</span>
                   </td>
+                  <td className="px-3 py-2 text-xs whitespace-nowrap max-w-[140px] truncate" title={s.tenant?.slug || s.tenantId}>{s.tenant?.slug || s.tenantId}</td>
                   <td className="px-3 py-2 max-w-[180px] truncate" title={s.filename || ''}>{s.filename || '—'}</td>
                   <td className="px-3 py-2 text-xs">
                     <div className="truncate max-w-[160px]" title={s.messageId || ''}>{s.messageId || '∅'}</div>
@@ -221,11 +231,6 @@ export default function MLSamplesPage() {
             </tbody>
           </table>
         </div>
-        {hasMore && !loading && (
-          <div className="p-4 flex justify-center">
-            <Button variant="outline" onClick={() => loadSamples()}>Load More</Button>
-          </div>
-        )}
       </Card>
     </div>
   );
