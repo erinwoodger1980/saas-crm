@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * PublicQuestionnairePage currently supports invite-style links (/q/[tenant]/[leadId]) only.
+ * It loads TenantSettings + an existing Lead, renders a single long form (contact → global specs → items),
+ * then posts answers/uploads to /public/leads/:id/submit-questionnaire where they merge into lead.custom
+ * and the lead's global spec columns. Tenant branding here is limited to brandName, introHtml, website,
+ * phone, logoUrl and links; no colours, galleries or testimonials exist yet, and there is no live pricing.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
