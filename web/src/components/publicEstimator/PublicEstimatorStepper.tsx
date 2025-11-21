@@ -10,6 +10,7 @@ import { usePublicEstimator } from '@/lib/publicEstimator/usePublicEstimator';
 import { ProgressBar } from './ProgressBar';
 import { WelcomeStep } from './steps/WelcomeStep';
 import { PropertyBasicsStep } from './steps/PropertyBasicsStep';
+import { EstimatePreviewCard } from './EstimatePreviewCard';
 
 interface PublicEstimatorStepperProps {
   tenantSlug: string;
@@ -35,14 +36,42 @@ export function PublicEstimatorStepper({
   const {
     branding,
     data,
+    estimatePreview,
     isLoadingBranding,
+    isLoadingEstimate,
     isSaving,
     updateData,
+    toggleFavourite,
     trackInteraction,
   } = usePublicEstimator({
     tenantSlug,
     onError: (error) => console.error('Estimator error:', error),
   });
+
+  // Handle share functionality using Web Share API
+  const handleShare = async () => {
+    if (!estimatePreview || !branding) return;
+
+    const shareData = {
+      title: `${branding.name} - Estimate`,
+      text: `My joinery estimate: £${estimatePreview.totalGross.toFixed(2)} for ${estimatePreview.items.length} items`,
+      url: window.location.href,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        trackInteraction('ESTIMATE_SHARED', { method: 'native' });
+      } else {
+        // Fallback: copy to clipboard
+        await navigator.clipboard.writeText(window.location.href);
+        alert('Link copied to clipboard!');
+        trackInteraction('ESTIMATE_SHARED', { method: 'clipboard' });
+      }
+    } catch (error) {
+      console.error('Share failed:', error);
+    }
+  };
 
   // Track when user starts the questionnaire
   useEffect(() => {
@@ -88,21 +117,24 @@ export function PublicEstimatorStepper({
   }
 
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-4 py-6">
-      {/* Progress indicator */}
-      {currentStep > 1 && (
-        <div className="mb-6">
-          <ProgressBar
-            currentStep={currentStep - 1}
-            totalSteps={STEP_LABELS.length - 1}
-            stepLabels={STEP_LABELS.slice(1)}
-            brandColor={branding.primaryColor}
-          />
-        </div>
-      )}
+    <div className="mx-auto min-h-screen px-4 py-6 lg:max-w-7xl">
+      <div className="lg:grid lg:grid-cols-12 lg:gap-8">
+        {/* Main content area */}
+        <div className="lg:col-span-7">
+          {/* Progress indicator */}
+          {currentStep > 1 && (
+            <div className="mb-6">
+              <ProgressBar
+                currentStep={currentStep - 1}
+                totalSteps={STEP_LABELS.length - 1}
+                stepLabels={STEP_LABELS.slice(1)}
+                brandColor={branding.primaryColor}
+              />
+            </div>
+          )}
 
-      {/* Step content */}
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg md:p-8">
+          {/* Step content */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg md:p-8">
         {currentStep === 1 && (
           <WelcomeStep
             brandName={branding.name}
@@ -169,6 +201,25 @@ export function PublicEstimatorStepper({
             >
               Back
             </button>
+          </div>
+        )}
+          </div>
+        </div>
+
+        {/* Estimate preview - sticky on desktop, below on mobile */}
+        {currentStep >= 3 && (
+          <div className="lg:col-span-5">
+            <div className="mt-6 lg:sticky lg:top-6 lg:mt-0">
+              <EstimatePreviewCard
+                estimate={estimatePreview}
+                isLoading={isLoadingEstimate}
+                favouriteItemIds={data.favouriteItemIds}
+                onToggleFavourite={toggleFavourite}
+                onShare={handleShare}
+                primaryColor={branding.primaryColor}
+                companyName={branding.name}
+              />
+            </div>
           </div>
         )}
       </div>
