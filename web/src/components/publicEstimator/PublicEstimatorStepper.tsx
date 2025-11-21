@@ -58,12 +58,63 @@ export function PublicEstimatorStepper({
   const handleRemoveItem = (itemId: string) => {
     const updated = data.openingDetails?.filter(item => item.id !== itemId) || [];
     updateData({ openingDetails: updated });
+    trackInteraction('ITEM_REMOVED', { itemId, remainingCount: updated.length });
   };
 
   // Handle editing item (go back to step 3)
   const handleEditItem = (itemId: string) => {
     setCurrentStep(3);
+    trackInteraction('ITEM_EDITED', { itemId, fromStep: currentStep });
     // TODO: Scroll to specific item
+  };
+
+  // Wrap toggle favourite to add tracking
+  const handleToggleFavourite = (itemId: string) => {
+    const wasFavourite = data.favouriteItemIds?.includes(itemId);
+    toggleFavourite(itemId);
+    trackInteraction('ESTIMATE_FAVOURITED', { 
+      itemId, 
+      action: wasFavourite ? 'removed' : 'added',
+      totalFavourites: wasFavourite 
+        ? (data.favouriteItemIds?.length || 1) - 1 
+        : (data.favouriteItemIds?.length || 0) + 1
+    });
+  };
+
+  // Wrap updateData to add tracking for specific updates
+  const handleUpdateData = (updates: any) => {
+    // Track when items are added/updated
+    if (updates.openingDetails) {
+      const oldCount = data.openingDetails?.length || 0;
+      const newCount = updates.openingDetails.length;
+      
+      if (newCount > oldCount) {
+        trackInteraction('ITEM_ADDED', { 
+          itemCount: newCount,
+          step: currentStep 
+        });
+      } else if (newCount === oldCount) {
+        trackInteraction('ITEM_UPDATED', { 
+          itemCount: newCount,
+          step: currentStep 
+        });
+      }
+    }
+    
+    // Track spec selections
+    if (updates.globalSpecs) {
+      const specs = updates.globalSpecs;
+      const specCount = Object.keys(specs).filter(k => specs[k]).length;
+      trackInteraction('SPECS_UPDATED', { 
+        specCount,
+        hasTimber: !!specs.timberType,
+        hasGlass: !!specs.glassType,
+        hasFinish: !!specs.finish,
+        step: currentStep
+      });
+    }
+    
+    updateData(updates);
   };
 
   // Handle final submission
@@ -115,10 +166,42 @@ export function PublicEstimatorStepper({
     }
   }, [currentStep, branding, trackInteraction]);
 
+  // Track step progression
+  useEffect(() => {
+    if (currentStep > 1 && branding) {
+      const stepName = STEP_LABELS[currentStep - 1];
+      trackInteraction('STEP_VIEWED', { 
+        step: currentStep, 
+        stepName,
+        totalSteps: STEP_LABELS.length 
+      });
+    }
+  }, [currentStep, branding, trackInteraction]);
+
+  // Track when estimate is first previewed
+  useEffect(() => {
+    if (estimatePreview && estimatePreview.items.length > 0) {
+      trackInteraction('ESTIMATE_PREVIEWED', {
+        itemCount: estimatePreview.items.length,
+        totalGross: estimatePreview.totalGross,
+        step: currentStep,
+      });
+    }
+  }, [estimatePreview?.items.length]); // Only track when item count changes
+
   const handleNext = () => {
     if (currentStep < STEP_LABELS.length) {
+      const fromStep = currentStep;
+      const fromStepName = STEP_LABELS[fromStep - 1];
+      
       setCurrentStep((prev) => prev + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      
+      // Track progression
+      trackInteraction('STEP_COMPLETED', { 
+        step: fromStep, 
+        stepName: fromStepName 
+      });
     }
   };
 
@@ -194,7 +277,7 @@ export function PublicEstimatorStepper({
             timeframe={data.timeframe}
             budget={data.budget}
             primaryColor={branding.primaryColor}
-            onChange={updateData}
+            onChange={handleUpdateData}
             onNext={handleNext}
             onBack={handleBack}
           />
@@ -204,7 +287,7 @@ export function PublicEstimatorStepper({
           <OpeningDetailsStep
             items={data.openingDetails}
             primaryColor={branding.primaryColor}
-            onChange={updateData}
+            onChange={handleUpdateData}
             onNext={handleNext}
             onBack={handleBack}
           />
@@ -214,7 +297,7 @@ export function PublicEstimatorStepper({
           <GlobalSpecsStep
             globalSpecs={data.globalSpecs}
             primaryColor={branding.primaryColor}
-            onChange={updateData}
+            onChange={handleUpdateData}
             onNext={handleNext}
             onBack={handleBack}
           />
@@ -225,7 +308,7 @@ export function PublicEstimatorStepper({
             estimate={estimatePreview}
             isLoading={isLoadingEstimate}
             favouriteItemIds={data.favouriteItemIds}
-            onToggleFavourite={toggleFavourite}
+            onToggleFavourite={handleToggleFavourite}
             onEditItem={handleEditItem}
             onRemoveItem={handleRemoveItem}
             primaryColor={branding.primaryColor}
@@ -242,7 +325,7 @@ export function PublicEstimatorStepper({
             isInviteMode={entryContext?.entryMode === 'INVITE'}
             primaryColor={branding.primaryColor}
             companyName={branding.name}
-            onChange={updateData}
+            onChange={handleUpdateData}
             onSubmit={handleFinalSubmit}
             onBack={handleBack}
           />
@@ -258,7 +341,7 @@ export function PublicEstimatorStepper({
                 estimate={estimatePreview}
                 isLoading={isLoadingEstimate}
                 favouriteItemIds={data.favouriteItemIds}
-                onToggleFavourite={toggleFavourite}
+                onToggleFavourite={handleToggleFavourite}
                 onShare={handleShare}
                 primaryColor={branding.primaryColor}
                 companyName={branding.name}
