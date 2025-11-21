@@ -16,6 +16,7 @@ import {
   toNumberGBP,
   toISODate,
 } from "../lib/leads/fieldMap";
+import { extractGlobalSpecsFromAnswers, specsToPrismaData } from "../lib/globalSpecs";
 
 const router = Router();
 
@@ -1356,6 +1357,7 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
     if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
 
     const answers = (req.body?.answers ?? {}) as Record<string, any>;
+    const globalSpecs = extractGlobalSpecsFromAnswers(answers);
     const prev = (lead.custom as any) || {};
     const merged: Record<string, any> = { ...prev, uiStatus: "INFO_REQUESTED" as UiStatus };
     const canonicalUpdates: Record<string, any> = {};
@@ -1375,6 +1377,7 @@ router.post("/:id/submit-questionnaire", async (req, res) => {
     const data: any = {
       status: uiToDb("INFO_REQUESTED"),
       custom: merged,
+      ...specsToPrismaData(globalSpecs),
     };
     for (const [key, value] of Object.entries(canonicalUpdates)) {
       data[key] = value;
