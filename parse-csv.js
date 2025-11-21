@@ -4,7 +4,6 @@
 // Usage: node parse-csv.js your-file.csv
 
 const fs = require('fs');
-const path = require('path');
 
 function parseCSV(csvText) {
   const lines = csvText.split('\n').filter(line => line.trim());

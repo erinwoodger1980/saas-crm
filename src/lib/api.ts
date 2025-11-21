@@ -36,9 +36,6 @@ function emitJwtChange(token: string | null) {
   }
 }
 
-/** Read/write JWT in localStorage (browser only) */
-let lastCookieJwt: string | null = null;
-
 export function getJwt(): string | null {
   if (typeof window === "undefined") return null;
 
@@ -83,7 +80,6 @@ export function setJwt(token: string) {
   try {
     localStorage.setItem("jwt", token);
   } catch {}
-  lastCookieJwt = token;
   emitJwtChange(token);
 
   // Also set a cookie so the API (and Next middleware) can read it
@@ -104,7 +100,6 @@ export function clearJwt() {
   try {
     localStorage.removeItem("jwt");
   } catch {}
-  lastCookieJwt = null;
   emitJwtChange(null);
   document.cookie = `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0`;
   document.cookie = "jwt=; Path=/; Max-Age=0";

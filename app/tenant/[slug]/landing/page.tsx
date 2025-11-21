@@ -2,6 +2,7 @@
 import { getTenantBySlug } from '@/lib/tenant/getTenantBySlug';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
+import Image from 'next/image';
 
 function titleCase(str: string) {
   return str.replace(/\b\w/g, c => c.toUpperCase());
@@ -58,7 +59,16 @@ export default async function LandingPage({ params }: { params: { slug: string }
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto py-12">
         <div className="flex flex-col items-center mb-8">
-          {tenant.logoUrl && <img src={tenant.logoUrl} alt={tenant.name} className="h-16 mb-2" />}
+          {tenant.logoUrl && (
+            <Image
+              src={tenant.logoUrl}
+              alt={tenant.name}
+              width={256}
+              height={64}
+              className="h-16 w-auto mb-2"
+              priority
+            />
+          )}
           <h1 className="text-3xl font-bold" style={{ color: tenant.primary }}>{tenant.name}</h1>
           <p className="text-gray-600 mt-2">Expert joinery, tailored for you.</p>
         </div>
