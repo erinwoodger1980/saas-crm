@@ -166,13 +166,13 @@ router.post("/", async (req: any, res: Response) => {
       description: description?.trim() || null,
       supplierProfileId: supplierProfileId.trim(),
       pageCount: Number.isFinite(Number(pageCount)) ? Number(pageCount) : null,
+      createdByUserId: req.auth?.userId || null,
       annotations: {
         createMany: {
           data: annotationWrites,
         },
       },
       // Optional fields (backward compatible - only set if present)
-      ...(req.auth?.userId && { createdByUserId: req.auth.userId }),
       ...(typeof meta === "object" && meta !== null && { meta }),
     };
 
