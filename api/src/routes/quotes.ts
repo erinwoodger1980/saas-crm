@@ -1169,10 +1169,10 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
           tenantId,
           quoteId: id,
           kind: "SUPPLIER_QUOTE",
-          name: f.originalname || null,
+          name: f.originalname,
           path: path.relative(process.cwd(), f.path),
-          mimeType: f.mimetype || null,
-          sizeBytes: f.size || null,
+          mimeType: f.mimetype,
+          sizeBytes: f.size,
         },
       });
       saved.push(row);

@@ -19,7 +19,7 @@ router.post("/make-me-admin", requireAuth, async (req, res) => {
     const updated = await prisma.user.update({
       where: { id: userId },
       data: { role: "admin" },
-      select: { id: true, email: true, name: true, role: true }
+      select: { id: true, email: true, name: true, role: true, isDeveloper: true }
     });
 
     res.json({ 
@@ -29,6 +29,30 @@ router.post("/make-me-admin", requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error("Error making admin:", error);
+    res.status(500).json({ error: "Failed to update role" });
+  }
+});
+
+router.post("/make-me-developer", requireAuth, async (req, res) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { isDeveloper: true },
+      select: { id: true, email: true, name: true, role: true, isDeveloper: true }
+    });
+
+    res.json({ 
+      success: true, 
+      message: "You are now a developer! Refresh the page.",
+      user: updated 
+    });
+  } catch (error) {
+    console.error("Error making developer:", error);
     res.status(500).json({ error: "Failed to update role" });
   }
 });

@@ -5,9 +5,20 @@
 
 'use client';
 
-import { Heart, Edit2, Trash2, ChevronRight, Sparkles, AlertCircle } from 'lucide-react';
+import { Heart, ChevronRight, Sparkles, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ItemEditCard } from './ItemEditCard';
 import type { EstimatePreview } from '@/lib/publicEstimator/usePublicEstimator';
+
+interface OpeningItem {
+  id: string;
+  type: string;
+  location?: string;
+  width?: number;
+  height?: number;
+  images?: string[];
+  notes?: string;
+}
 
 interface EstimateSummaryStepProps {
   estimate: EstimatePreview | null;
@@ -20,6 +31,9 @@ interface EstimateSummaryStepProps {
   companyName?: string;
   onNext: () => void;
   onBack: () => void;
+  openingDetails?: OpeningItem[]; // Source data for inline editing
+  onUpdateOpening?: (id: string, updates: Partial<OpeningItem>) => void;
+  onTrackInteraction?: (type: string, metadata?: Record<string, any>) => void;
 }
 
 export function EstimateSummaryStep({
@@ -33,6 +47,9 @@ export function EstimateSummaryStep({
   companyName = 'us',
   onNext,
   onBack,
+  openingDetails = [],
+  onUpdateOpening,
+  onTrackInteraction,
 }: EstimateSummaryStepProps) {
   const favouritedItems = estimate?.items.filter(item => 
     favouriteItemIds.includes(item.id)
@@ -109,63 +126,17 @@ export function EstimateSummaryStep({
           
           <div className="space-y-3">
             {favouritedItems.map((item) => (
-              <div
+              <ItemEditCard
                 key={item.id}
-                className="rounded-3xl border-2 bg-white p-4 transition"
-                style={{ borderColor: `${primaryColor}40` }}
-              >
-                <div className="flex items-start gap-4">
-                  {/* Favourite toggle */}
-                  {onToggleFavourite && (
-                    <button
-                      onClick={() => onToggleFavourite(item.id)}
-                      className="mt-1 flex-shrink-0 transition hover:scale-110"
-                    >
-                      <Heart
-                        className="h-6 w-6 fill-current"
-                        style={{ color: primaryColor }}
-                      />
-                    </button>
-                  )}
-                  
-                  {/* Item details */}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-slate-900">{item.description}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                      <span>Net: £{item.netGBP.toFixed(2)}</span>
-                      <span>•</span>
-                      <span>VAT: £{item.vatGBP.toFixed(2)}</span>
-                    </div>
-                  </div>
-                  
-                  {/* Price and actions */}
-                  <div className="flex flex-shrink-0 flex-col items-end gap-2">
-                    <p className="text-lg font-bold" style={{ color: primaryColor }}>
-                      £{item.totalGBP.toFixed(2)}
-                    </p>
-                    <div className="flex gap-1">
-                      {onEditItem && (
-                        <button
-                          onClick={() => onEditItem(item.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-slate-100"
-                          title="Edit"
-                        >
-                          <Edit2 className="h-4 w-4 text-slate-600" />
-                        </button>
-                      )}
-                      {onRemoveItem && (
-                        <button
-                          onClick={() => onRemoveItem(item.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-red-50"
-                          title="Remove"
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                item={item}
+                opening={openingDetails.find((o) => o.id === item.id)}
+                isFavourite={true}
+                primaryColor={primaryColor}
+                onToggleFavourite={onToggleFavourite}
+                onRemove={onRemoveItem}
+                onUpdateOpening={onUpdateOpening}
+                onTrackInteraction={onTrackInteraction}
+              />
             ))}
           </div>
           
@@ -192,59 +163,17 @@ export function EstimateSummaryStep({
           
           <div className="space-y-3">
             {otherItems.map((item) => (
-              <div
+              <ItemEditCard
                 key={item.id}
-                className="rounded-3xl border-2 border-slate-200 bg-white p-4 transition hover:border-slate-300"
-              >
-                <div className="flex items-start gap-4">
-                  {/* Favourite toggle */}
-                  {onToggleFavourite && (
-                    <button
-                      onClick={() => onToggleFavourite(item.id)}
-                      className="mt-1 flex-shrink-0 transition hover:scale-110"
-                    >
-                      <Heart className="h-6 w-6 text-slate-300 hover:text-slate-400" />
-                    </button>
-                  )}
-                  
-                  {/* Item details */}
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-slate-900">{item.description}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                      <span>Net: £{item.netGBP.toFixed(2)}</span>
-                      <span>•</span>
-                      <span>VAT: £{item.vatGBP.toFixed(2)}</span>
-                    </div>
-                  </div>
-                  
-                  {/* Price and actions */}
-                  <div className="flex flex-shrink-0 flex-col items-end gap-2">
-                    <p className="text-lg font-bold text-slate-900">
-                      £{item.totalGBP.toFixed(2)}
-                    </p>
-                    <div className="flex gap-1">
-                      {onEditItem && (
-                        <button
-                          onClick={() => onEditItem(item.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-slate-100"
-                          title="Edit"
-                        >
-                          <Edit2 className="h-4 w-4 text-slate-600" />
-                        </button>
-                      )}
-                      {onRemoveItem && (
-                        <button
-                          onClick={() => onRemoveItem(item.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-red-50"
-                          title="Remove"
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                item={item}
+                opening={openingDetails.find((o) => o.id === item.id)}
+                isFavourite={false}
+                primaryColor={primaryColor}
+                onToggleFavourite={onToggleFavourite}
+                onRemove={onRemoveItem}
+                onUpdateOpening={onUpdateOpening}
+                onTrackInteraction={onTrackInteraction}
+              />
             ))}
           </div>
           
