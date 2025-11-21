@@ -426,6 +426,7 @@ router.post("/train", async (req: any, res) => {
     const recentSamples = await prisma.mLTrainingSample.findMany({
       where: {
         tenantId,
+        status: "APPROVED", // Only use approved samples for training
         OR: [
           { createdAt: { gte: lookbackSince } },
           { quotedAt: { gte: lookbackSince } },
