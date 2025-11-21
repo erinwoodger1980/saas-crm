@@ -150,52 +150,79 @@ export function usePublicEstimator({
     }
   }, [tenantSlug]);
   
-  // Load tenant branding
-  useEffect(() => {
-    const loadBranding = async () => {
-      try {
-        setIsLoadingBranding(true);
-        const response = await fetch(`${API_BASE}/public/tenant/${tenantSlug}/branding`);
+  // Stable error handler ref (prevents effect dependency churn)
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
 
+  // Single-flight branding loader guard
+  const brandingLoadStartedRef = useRef(false);
+
+  // Load tenant branding (single attempt + optional one retry on network failure)
+  useEffect(() => {
+    if (!tenantSlug) return;
+    if (brandingLoadStartedRef.current) return; // prevent re-entry
+    brandingLoadStartedRef.current = true;
+
+    let cancelled = false;
+
+    const fallbackBranding: TenantBranding = {
+      name: 'Your Company',
+      slug: tenantSlug,
+      logoUrl: undefined,
+      primaryColor: undefined,
+      secondaryColor: undefined,
+      heroImageUrl: undefined,
+      galleryImageUrls: [],
+      testimonials: [],
+      reviewScore: undefined,
+      reviewCount: undefined,
+      reviewSourceLabel: undefined,
+      serviceArea: undefined,
+    };
+
+    const mapApiBranding = (raw: any): TenantBranding => ({
+      name: raw?.brandName || raw?.name || 'Your Company',
+      slug: raw?.slug || tenantSlug,
+      logoUrl: raw?.logoUrl || undefined,
+      primaryColor: raw?.primaryColor || undefined,
+      secondaryColor: raw?.secondaryColor || undefined,
+      heroImageUrl: raw?.heroImageUrl || undefined,
+      galleryImageUrls: Array.isArray(raw?.galleryImageUrls) ? raw.galleryImageUrls : [],
+      testimonials: Array.isArray(raw?.testimonials) ? raw.testimonials : [],
+      reviewScore: raw?.reviewScore || undefined,
+      reviewCount: raw?.reviewCount || undefined,
+      reviewSourceLabel: raw?.reviewSourceLabel || undefined,
+      serviceArea: raw?.serviceArea || undefined,
+    });
+
+    const loadOnce = async (attempt: number) => {
+      try {
+        if (attempt === 0) setIsLoadingBranding(true);
+        const response = await fetch(`${API_BASE}/public/tenant/${tenantSlug}/branding`);
         if (!response.ok) {
-          // Fallback: continue with generic branding so estimator still loads
-          console.warn('Branding request failed, using generic branding');
-          setBranding({
-            tenantId: null,
-            slug: tenantSlug,
-            brandName: 'Your Company',
-            logoUrl: null,
-            primaryColor: null,
-            secondaryColor: null,
-            questionnaire: [],
-          } as any);
+          console.warn('[branding] non-OK response', response.status, 'using fallback');
+          if (!cancelled) setBranding(fallbackBranding);
           return;
         }
-
-        const brandingData = await response.json();
-        setBranding(brandingData);
-      } catch (error) {
-        console.error('Failed to load branding:', error);
-        // Fallback generic branding
-        setBranding({
-          tenantId: null,
-          slug: tenantSlug,
-          brandName: 'Your Company',
-          logoUrl: null,
-          primaryColor: null,
-          secondaryColor: null,
-          questionnaire: [],
-        } as any);
-        onError?.(error as Error);
+        const raw = await response.json();
+        if (!cancelled) setBranding(mapApiBranding(raw));
+      } catch (err: any) {
+        console.error('[branding] fetch failed', err?.message || err);
+        if (attempt < 1) {
+          // one retry after short delay
+          setTimeout(() => loadOnce(attempt + 1), 500);
+          return;
+        }
+        if (!cancelled) setBranding(fallbackBranding);
+        onErrorRef.current?.(err as Error);
       } finally {
-        setIsLoadingBranding(false);
+        if (!cancelled) setIsLoadingBranding(false);
       }
     };
 
-    if (tenantSlug) {
-      loadBranding();
-    }
-  }, [tenantSlug, onError]);
+    loadOnce(0);
+    return () => { cancelled = true; };
+  }, [tenantSlug]);
   
   // Load saved project if projectId is present
   useEffect(() => {

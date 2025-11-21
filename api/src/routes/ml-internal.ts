@@ -583,20 +583,29 @@ router.post("/collect-train-save", async (req: any, res) => {
     const seenSamples = new Set<string>();
     const seenFileIds = new Set<string>();
 
-    const emailSamples: TrainingItem[] = Array.isArray(ingestJson.items)
-      ? ingestJson.items
-          .filter((it: any) => it?.messageId && it?.attachmentId && it?.url)
-          .map((it: any) => ({
-            sourceType: "supplier_quote",
-            messageId: String(it.messageId),
-            attachmentId: String(it.attachmentId),
-            quoteId: null,
-            fileId: null,
-            url: String(it.url),
-            filename: it.filename ?? null,
-            quotedAt: it.sentAt ?? null,
-          }))
-      : [];
+    const rawIngestItems: any[] = Array.isArray(ingestJson.items) ? ingestJson.items : [];
+    const emailSamples: TrainingItem[] = rawIngestItems
+      .filter((it: any) => it && it.url)
+      .map((it: any, idx: number) => {
+        let messageId = it.messageId ? String(it.messageId) : null;
+        let attachmentId = it.attachmentId ? String(it.attachmentId) : null;
+        // Synthesize surrogate IDs if missing (e.g. attachment stripped or future provider variants)
+        if (!messageId || !attachmentId) {
+          const base = `gmail_${messageId || attachmentId || idx}`;
+          messageId = messageId || base;
+          attachmentId = attachmentId || base;
+        }
+        return {
+          sourceType: "supplier_quote",
+          messageId,
+          attachmentId,
+          quoteId: null,
+          fileId: null,
+          url: String(it.url),
+          filename: it.filename ?? null,
+          quotedAt: it.sentAt ?? null,
+        } as TrainingItem;
+      });
 
     const lookback = new Date(Date.now() - SAMPLE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
     const clientQuoteSamples: TrainingItem[] = [];
@@ -709,51 +718,55 @@ router.post("/collect-train-save", async (req: any, res) => {
     // 2) Save to DB (upsert on tenantId+messageId+attachmentId or tenantId+quoteId)
     let saved = 0;
     for (const data of trainingItems) {
-      if (data.quoteId) {
-        await prisma.mLTrainingSample.upsert({
-          where: { tenantId_quoteId: { tenantId, quoteId: data.quoteId } },
-          create: {
-            tenantId,
-            messageId: data.messageId ?? data.quoteId,
-            attachmentId: data.attachmentId ?? data.quoteId,
-            url: data.url,
-            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-            sourceType: data.sourceType,
-            quoteId: data.quoteId,
-            fileId: data.fileId ?? null,
-          },
-          update: {
-            url: data.url,
-            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-            sourceType: data.sourceType,
-            fileId: data.fileId ?? null,
-          },
-        });
-      } else if (data.messageId && data.attachmentId) {
-        await prisma.mLTrainingSample.upsert({
-          where: {
-            tenantId_messageId_attachmentId: {
+      try {
+        if (data.quoteId) {
+          await prisma.mLTrainingSample.upsert({
+            where: { tenantId_quoteId: { tenantId, quoteId: data.quoteId } },
+            create: {
+              tenantId,
+              messageId: data.messageId ?? data.quoteId,
+              attachmentId: data.attachmentId ?? data.quoteId,
+              url: data.url,
+              quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+              sourceType: data.sourceType,
+              quoteId: data.quoteId,
+              fileId: data.fileId ?? null,
+            },
+            update: {
+              url: data.url,
+              quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+              sourceType: data.sourceType,
+              fileId: data.fileId ?? null,
+            },
+          });
+        } else if (data.messageId && data.attachmentId) {
+          await prisma.mLTrainingSample.upsert({
+            where: {
+              tenantId_messageId_attachmentId: {
+                tenantId,
+                messageId: data.messageId,
+                attachmentId: data.attachmentId,
+              },
+            },
+            create: {
               tenantId,
               messageId: data.messageId,
               attachmentId: data.attachmentId,
+              url: data.url,
+              quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+              sourceType: data.sourceType,
             },
-          },
-          create: {
-            tenantId,
-            messageId: data.messageId,
-            attachmentId: data.attachmentId,
-            url: data.url,
-            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-            sourceType: data.sourceType,
-          },
-          update: {
-            url: data.url,
-            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-            sourceType: data.sourceType,
-          },
-        });
+            update: {
+              url: data.url,
+              quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+              sourceType: data.sourceType,
+            },
+          });
+        }
+        saved += 1;
+      } catch (err) {
+        console.warn("[collect-train-save] upsert failed", (err as any)?.message || err);
       }
-      saved += 1;
     }
 
     const datasetCount = trainingItems.length;
@@ -1157,36 +1170,49 @@ router.post("/collect-train-save-ms365", async (req: any, res) => {
         : null;
 
     type Item = { messageId: string; attachmentId: string; url: string; quotedAt?: string | null };
-    const items: Item[] = Array.isArray(ingestJson.items)
-      ? ingestJson.items
-          .filter((it: any) => it?.messageId && it?.attachmentId && it?.url)
-          .map((it: any) => ({
-            messageId: String(it.messageId),
-            attachmentId: String(it.attachmentId),
-            url: String(it.url),
-            quotedAt: it.quotedAt ?? null,
-          }))
-      : [];
+    const rawItems: any[] = Array.isArray(ingestJson.items) ? ingestJson.items : [];
+    const items: Item[] = rawItems
+      .filter((it: any) => it && it.url)
+      .map((it: any, idx: number) => {
+        let mId = it.messageId ? String(it.messageId) : null;
+        let aId = it.attachmentId ? String(it.attachmentId) : null;
+        // Synthesize surrogate IDs if missing (e.g. future ms365 API variations)
+        if (!mId || !aId) {
+          const base = `ms365_${mId || aId || idx}`;
+          mId = mId || base;
+          aId = aId || base;
+        }
+        return {
+          messageId: mId,
+          attachmentId: aId,
+          url: String(it.url),
+          quotedAt: it.quotedAt ?? null,
+        } as Item;
+      });
 
     let saved = 0;
     for (const data of items) {
-      await prisma.mLTrainingSample.upsert({
-        where: { tenantId_messageId_attachmentId: { tenantId, messageId: data.messageId, attachmentId: data.attachmentId } },
-        create: {
-          tenantId,
-          messageId: data.messageId,
-          attachmentId: data.attachmentId,
-          url: data.url,
-          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-          sourceType: "supplier_quote",
-        },
-        update: {
-          url: data.url,
-          quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
-          sourceType: "supplier_quote",
-        },
-      });
-      saved += 1;
+      try {
+        await prisma.mLTrainingSample.upsert({
+          where: { tenantId_messageId_attachmentId: { tenantId, messageId: data.messageId, attachmentId: data.attachmentId } },
+          create: {
+            tenantId,
+            messageId: data.messageId,
+            attachmentId: data.attachmentId,
+            url: data.url,
+            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+            sourceType: "supplier_quote",
+          },
+          update: {
+            url: data.url,
+            quotedAt: data.quotedAt ? new Date(data.quotedAt) : null,
+            sourceType: "supplier_quote",
+          },
+        });
+        saved += 1;
+      } catch (err) {
+        console.warn("[collect-train-save-ms365] upsert failed", (err as any)?.message || err);
+      }
     }
 
     const datasetCount = items.length;

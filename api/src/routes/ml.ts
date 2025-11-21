@@ -389,20 +389,37 @@ router.post("/train", async (req: any, res) => {
 
     let ingestSaved = 0;
     for (const item of normalizedIngest) {
-      if (!item.messageId || !item.attachmentId) continue;
+      // Existing email-based samples require messageId + attachmentId
+      let messageId = item.messageId;
+      let attachmentId = item.attachmentId;
+
+      // If missing (e.g. direct file upload with fileId / quoteId only), synthesise stable surrogate IDs
+      if (!messageId || !attachmentId) {
+        if (item.fileId) {
+          messageId = messageId || `file_${item.fileId}`;
+          attachmentId = attachmentId || `file_${item.fileId}`;
+        } else if (item.quoteId) {
+          messageId = messageId || `quote_${item.quoteId}`;
+          attachmentId = attachmentId || `quote_${item.quoteId}`;
+        } else {
+          // Cannot persist sample without any anchor identifiers
+          continue;
+        }
+      }
+
       try {
         await prisma.mLTrainingSample.upsert({
           where: {
             tenantId_messageId_attachmentId: {
               tenantId,
-              messageId: item.messageId,
-              attachmentId: item.attachmentId,
+              messageId: messageId,
+              attachmentId: attachmentId,
             },
           },
           create: {
             tenantId,
-            messageId: item.messageId,
-            attachmentId: item.attachmentId,
+            messageId: messageId,
+            attachmentId: attachmentId,
             url: item.url,
             quotedAt: item.quotedAt ? new Date(item.quotedAt) : null,
             sourceType: item.sourceType ?? "supplier_quote",
@@ -739,6 +756,75 @@ router.post("/train-client-quotes", async (req: any, res) => {
     try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
 
     if (!r.ok) return res.status(r.status).json(json);
+
+    // Attempt to persist training samples locally if ML service returned them
+    // Expected flexible shape: json.items OR json.training_items OR json.samples
+    const rawItems: any[] = Array.isArray(json.items)
+      ? json.items
+      : Array.isArray(json.training_items)
+      ? json.training_items
+      : Array.isArray(json.samples)
+      ? json.samples
+      : [];
+
+    let saved = 0;
+    for (const it of rawItems) {
+      try {
+        const fileId = it.fileId || it.file_id || null;
+        const quoteId = it.quoteId || it.quote_id || null;
+        const url = String(it.url || it.downloadUrl || it.signedUrl || it.signed_url || "");
+        if (!url) continue;
+
+        // Surrogate IDs if email metadata missing
+        let messageId = it.messageId || it.message_id || null;
+        let attachmentId = it.attachmentId || it.attachment_id || null;
+        if (!messageId || !attachmentId) {
+          if (fileId) {
+            messageId = messageId || `file_${fileId}`;
+            attachmentId = attachmentId || `file_${fileId}`;
+          } else if (quoteId) {
+            messageId = messageId || `quote_${quoteId}`;
+            attachmentId = attachmentId || `quote_${quoteId}`;
+          } else {
+            // Fallback using index to ensure persistence for anonymous item
+            messageId = messageId || `clientq_${saved}`;
+            attachmentId = attachmentId || `clientq_${saved}`;
+          }
+        }
+
+        await prisma.mLTrainingSample.upsert({
+          where: {
+            tenantId_messageId_attachmentId: {
+              tenantId,
+              messageId: String(messageId),
+              attachmentId: String(attachmentId),
+            },
+          },
+          create: {
+            tenantId,
+            messageId: String(messageId),
+            attachmentId: String(attachmentId),
+            url,
+            quotedAt: it.quotedAt ? new Date(it.quotedAt) : it.sentAt ? new Date(it.sentAt) : null,
+            sourceType: (it.sourceType || it.source_type || "client_quote") as string,
+            quoteId: quoteId ? String(quoteId) : undefined,
+            fileId: fileId ? String(fileId) : undefined,
+          },
+          update: {
+            url,
+            quotedAt: it.quotedAt ? new Date(it.quotedAt) : it.sentAt ? new Date(it.sentAt) : null,
+            sourceType: (it.sourceType || it.source_type || undefined) as string | undefined,
+            quoteId: quoteId ? String(quoteId) : undefined,
+            fileId: fileId ? String(fileId) : undefined,
+          },
+        });
+        saved += 1;
+      } catch (err) {
+        console.warn("[train-client-quotes] upsert failed", (err as any)?.message || err);
+      }
+    }
+
+    json.saved_local = saved;
     return res.json(json);
   } catch (e: any) {
     const msg = e?.message || String(e);
@@ -826,12 +912,57 @@ router.post("/train-supplier-quotes", async (req: any, res) => {
     const text = await r.text();
     let json: any = {};
     try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
-    
+
     if (!r.ok) {
       const msg = json?.detail || json?.error || "ml_train_failed";
       return res.status(r.status).json({ error: msg, detail: json });
     }
-    
+
+    // Persist training samples locally so they appear in approval UI
+    let saved = 0;
+    for (const it of items) {
+      // synthesise stable surrogate IDs for non-email uploads
+      const messageId = `file_${it.fileId || it.quoteId || saved}`; // use quoteId fallback then ordinal
+      const attachmentId = `file_${it.fileId || it.quoteId || saved}`;
+      try {
+        await prisma.mLTrainingSample.upsert({
+          where: {
+            tenantId_messageId_attachmentId: {
+              tenantId,
+              messageId,
+              attachmentId,
+            },
+          },
+          create: {
+            tenantId,
+            messageId,
+            attachmentId,
+            url: it.url,
+            quotedAt: it.quotedAt ? new Date(it.quotedAt) : null,
+            sourceType: it.sourceType ?? "supplier_quote",
+            quoteId: it.quoteId ?? undefined,
+            fileId: it.fileId ?? undefined,
+          },
+          update: {
+            url: it.url,
+            quotedAt: it.quotedAt ? new Date(it.quotedAt) : null,
+            sourceType: it.sourceType ?? undefined,
+            quoteId: it.quoteId ?? undefined,
+            fileId: it.fileId ?? undefined,
+          },
+        });
+        saved += 1;
+      } catch (e) {
+        console.warn("[train-supplier-quotes] upsert failed", (e as any)?.message || e);
+      }
+    }
+
+    // Augment response with local persistence stats
+    json.training_records_saved = typeof json.training_records_saved === 'number'
+      ? json.training_records_saved
+      : saved;
+    json.saved_local = saved;
+    json.ok = json.ok !== false; // normalise ok flag
     return res.json(json);
   } catch (e: any) {
     const msg = e?.message || String(e);

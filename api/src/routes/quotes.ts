@@ -3527,7 +3527,18 @@ router.get("/:id/files/:fileId/signed", requireAuth, async (req: any, res) => {
     const tenantId = req.auth.tenantId as string;
     const id = String(req.params.id);
     const fileId = String(req.params.fileId);
-    const quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { supplierFiles: true } });
+    let quote: any;
+    try {
+      quote = await prisma.quote.findFirst({ where: { id, tenantId }, include: { supplierFiles: true } });
+    } catch (inner: any) {
+      // Mirror fallback logic used in other quote endpoints to handle production schema drift
+      if (shouldFallbackQuoteQuery(inner)) {
+        console.warn(`[quotes/:id/files/:fileId/signed] Prisma schema mismatch, falling back: ${inner?.message || inner}`);
+        quote = await loadQuoteFallback(id, tenantId, { includeSupplierFiles: true });
+      } else {
+        throw inner;
+      }
+    }
     if (!quote) return res.status(404).json({ error: "not_found" });
     const f = quote.supplierFiles.find((x) => x.id === fileId);
     if (!f) return res.status(404).json({ error: "file_not_found" });
