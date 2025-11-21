@@ -11,6 +11,7 @@ import { ProgressBar } from './ProgressBar';
 import { WelcomeStep } from './steps/WelcomeStep';
 import { PropertyBasicsStep } from './steps/PropertyBasicsStep';
 import { OpeningDetailsStep } from './steps/OpeningDetailsStep';
+import { GlobalSpecsStep } from './steps/GlobalSpecsStep';
 import { EstimatePreviewCard } from './EstimatePreviewCard';
 
 interface PublicEstimatorStepperProps {
@@ -176,7 +177,17 @@ export function PublicEstimatorStepper({
           />
         )}
 
-        {currentStep > 3 && (
+        {currentStep === 4 && (
+          <GlobalSpecsStep
+            globalSpecs={data.globalSpecs}
+            primaryColor={branding.primaryColor}
+            onChange={updateData}
+            onNext={handleNext}
+            onBack={handleBack}
+          />
+        )}
+
+        {currentStep > 4 && (
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">
               Step {currentStep}: {STEP_LABELS[currentStep - 1]}
