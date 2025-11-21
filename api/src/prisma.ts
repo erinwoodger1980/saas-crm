@@ -1,20 +1,12 @@
 import { PrismaClient } from "@prisma/client";
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from "bcrypt";
 
 // Prevent multiple instances in dev (important for ts-node-dev / Next.js)
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-// Configure PG pool + adapter to satisfy engineType 'client' requirements in Prisma v7
-const connectionString = process.env.DATABASE_URL as string | undefined;
-const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool);
-
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    adapter,
     log:
       process.env.NODE_ENV === "production"
         ? ["error"]
@@ -35,7 +27,6 @@ async function disconnectPrisma() {
   }
 }
 
-// Handle process termination
 process.on('beforeExit', disconnectPrisma);
 process.on('SIGINT', disconnectPrisma);
 process.on('SIGTERM', disconnectPrisma);
@@ -48,7 +39,6 @@ const tenantCreateMiddleware = async (params: any, next: any): Promise<any> => {
     if (params.model === 'Tenant' && params.action === 'create') {
       const tenant = result as { id: string; slug?: string | null; name?: string | null };
       if (tenant?.id) {
-        // We may not always have slug on result depending on select; fetch if missing
         let slug = (tenant as any).slug as string | undefined;
         if (!slug) {
           const t = await prisma.tenant.findUnique({ where: { id: tenant.id }, select: { slug: true } });
@@ -72,8 +62,6 @@ const tenantCreateMiddleware = async (params: any, next: any): Promise<any> => {
             });
             console.log(`[prisma] Created dev user ${email} for new tenant ${slug}`);
           }
-
-          // Seed workshop processes from template tenant (default: Demo Tenant unless overridden)
           const templateSlug = process.env.TEMPLATE_TENANT_SLUG || undefined;
           const templateName = process.env.TEMPLATE_TENANT_NAME || 'Demo Tenant';
           const template = templateSlug
@@ -100,7 +88,7 @@ const tenantCreateMiddleware = async (params: any, next: any): Promise<any> => {
                     }
                   });
                 } catch (e: any) {
-                  if (e?.code !== 'P2002') throw e; // skip duplicates
+                  if (e?.code !== 'P2002') throw e;
                 }
               }
               console.log(`[prisma] Seeded ${templateProcesses.length} workshop processes for new tenant ${slug} from template ${templateSlug || templateName}`);
@@ -115,7 +103,6 @@ const tenantCreateMiddleware = async (params: any, next: any): Promise<any> => {
   return result;
 };
 
-// Only register middleware if $use is available (not available in all environments)
 if (typeof (prisma as any).$use === 'function') {
   (prisma as any).$use(tenantCreateMiddleware);
 } else {
