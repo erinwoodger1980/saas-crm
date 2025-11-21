@@ -1,14 +1,17 @@
+/* eslint-env node */
+
 import { cp, mkdir, realpath, rm, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 async function main() {
-  const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const projectRoot = path.resolve(scriptDir, "..");
   const generatedDir = path.join(projectRoot, "node_modules", ".prisma");
 
   if (!existsSync(generatedDir)) {
-    console.warn("[prisma-sync] Skipping sync – node_modules/.prisma not found");
+    globalThis.console.warn("[prisma-sync] Skipping sync – node_modules/.prisma not found");
     return;
   }
 
@@ -25,10 +28,10 @@ async function main() {
   const relativeTarget = path.relative(path.dirname(clientLocalLink), generatedDir) || "../.prisma";
   await symlink(relativeTarget, clientLocalLink, "dir");
 
-  console.log("[prisma-sync] Prisma client artifacts synced for web workspace");
+  globalThis.console.log("[prisma-sync] Prisma client artifacts synced for web workspace");
 }
 
 main().catch((error) => {
-  console.error("[prisma-sync] Failed to link Prisma client", error);
-  process.exitCode = 1;
+  globalThis.console.error("[prisma-sync] Failed to link Prisma client", error);
+  globalThis.process.exitCode = 1;
 });

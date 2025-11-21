@@ -33,6 +33,14 @@ export default function AcceptInvitePage() {
       return;
     }
     setToken(t);
+    const inviteCtx: InviteContext = {
+      email: params.get("email") || undefined,
+      role: params.get("role") || undefined,
+      companyName: params.get("company") || undefined,
+    };
+    if (inviteCtx.email || inviteCtx.role || inviteCtx.companyName) {
+      setCtx(inviteCtx);
+    }
     // If you implement an invite context endpoint later, fetch it here.
   }, []);
 

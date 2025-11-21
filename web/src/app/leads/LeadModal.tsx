@@ -1,7 +1,7 @@
 // web/src/app/leads/LeadModal.tsx
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, apiFetch } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import {
@@ -53,6 +53,7 @@ export type Lead = {
     content: string;
     timestamp: string;
   }> | null;
+  visionInferences?: VisionInference[] | null;
 };
 
 type Task = {
@@ -66,6 +67,28 @@ type Task = {
   dueAt?: string | null;
   completedAt?: string | null;
   meta?: { key?: string } | null;
+};
+
+type VisionInference = {
+  id: string;
+  itemNumber: number | null;
+  source: "MEASUREMENT" | "INSPIRATION" | (string & {});
+  widthMm?: number | null;
+  heightMm?: number | null;
+  confidence?: number | null;
+  attributes?: Record<string, any> | null;
+  description?: string | null;
+  notes?: string | null;
+  photoLabel?: string | null;
+  createdAt?: string | null;
+};
+
+type VisionInferenceGroup = {
+  key: string;
+  itemNumber: number | null;
+  measurement?: VisionInference;
+  inspiration?: VisionInference;
+  extras: VisionInference[];
 };
 
 type QuestionnaireField = {
@@ -172,6 +195,39 @@ function avatarText(name?: string | null) {
   if (!name) return "?";
   const p = name.trim().split(/\s+/);
   return (p[0][0] + (p[1]?.[0] || p[0][1] || "")).toUpperCase();
+}
+
+function formatDimensionLabel(width?: number | null, height?: number | null): string {
+  if (width && height) return `${width} × ${height} mm`;
+  if (width) return `${width} mm width`;
+  if (height) return `${height} mm height`;
+  return "No rough measurement";
+}
+
+function formatConfidenceLabel(value?: number | null): string | null {
+  if (value == null) return null;
+  return `${Math.round(value * 100)}% confidence`;
+}
+
+function ensureStringArray(value: any): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (entry == null ? "" : String(entry)))
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[;,]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function joinList(values: string[]): string | null {
+  if (!values.length) return null;
+  return values.join(", ");
 }
 
 const FIELD_TYPES = new Set(["text", "textarea", "select", "number", "date", "source"]);
@@ -318,6 +374,12 @@ export default function LeadModal({
 
   // Stage navigation
   const [currentStage, setCurrentStage] = useState<Stage>(initialStage);
+
+  useEffect(() => {
+    if (showFollowUp) {
+      setCurrentStage("activity");
+    }
+  }, [showFollowUp]);
 
   // Form inputs
   const [nameInput, setNameInput] = useState("");
@@ -504,7 +566,7 @@ export default function LeadModal({
       }
     }
     loadSuppliers();
-  }, [open]);
+  }, [open, authHeaders]);
 
   useEffect(() => {
     if (!open) return;
@@ -605,7 +667,7 @@ export default function LeadModal({
           }
         } catch (probeErr) {
           // Not an opportunityId, use leadPreview.id as-is
-          console.log('[LeadModal] leadPreview.id is a leadId');
+          console.debug('[LeadModal] treating leadPreview.id as a leadId', probeErr);
         }
 
         const [one, tlist, s] = await Promise.all([
@@ -712,7 +774,7 @@ export default function LeadModal({
             console.log('[LeadModal] detected lead.id is opportunityId:', actualOpportunityId);
           }
         } catch (probeErr: any) {
-          console.log('[LeadModal] lead.id is not an opportunityId, treating as leadId');
+          console.debug('[LeadModal] lead.id is not an opportunityId, treating as leadId', probeErr);
         }
         
         const [defs, users, oppDetails] = await Promise.all([
@@ -800,7 +862,7 @@ export default function LeadModal({
       }
     })();
     return () => { cancelled = true; };
-  }, [open, lead?.id, uiStatus, authHeaders]);
+  }, [open, lead?.id, uiStatus, authHeaders, opportunityId]);
 
   function getAssignmentFor(defId: string): ProcAssignment | undefined {
     return wkAssignments.find((a) => (a.processDefinitionId === defId) || (a.processCode && wkDefs.find(d => d.id===defId)?.code === a.processCode));
@@ -2332,6 +2394,33 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     if (typeof raw === "string" && raw) return raw;
     return null;
   }, [customData]);
+  const visionGroups = useMemo<VisionInferenceGroup[]>(() => {
+    if (!lead || !Array.isArray(lead.visionInferences) || !lead.visionInferences.length) {
+      return [];
+    }
+    const list = lead.visionInferences;
+    const map = new Map<string, VisionInferenceGroup>();
+    list.forEach((entry) => {
+      if (!entry) return;
+      const key = entry.itemNumber != null ? String(entry.itemNumber) : "general";
+      if (!map.has(key)) {
+        map.set(key, { key, itemNumber: entry.itemNumber ?? null, extras: [] });
+      }
+      const group = map.get(key)!;
+      if (entry.source === "MEASUREMENT" && !group.measurement) {
+        group.measurement = entry;
+      } else if (entry.source === "INSPIRATION" && !group.inspiration) {
+        group.inspiration = entry;
+      } else {
+        group.extras.push(entry);
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const aVal = a.itemNumber ?? Number.MAX_SAFE_INTEGER;
+      const bVal = b.itemNumber ?? Number.MAX_SAFE_INTEGER;
+      return aVal - bVal;
+    });
+  }, [lead]);
   const openTasks = tasks.filter(t => t.status !== "DONE");
 /* ----------------------------- Render ----------------------------- */
 
@@ -3007,7 +3096,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     <div className="text-xs text-slate-400">No details</div>
                                   ) : (
                                     Object.entries(it).map(([k, v]) => {
-                                      if (k === "photos") return null;
+                                      if (k === "photos" || k === "inspiration_photos") return null;
                                       return (
                                         <div key={k} className="flex items-start gap-2">
                                           <div className="text-xs text-slate-500 w-28">
@@ -3047,9 +3136,235 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                       </div>
                                     </div>
                                   )}
+
+                                  {Array.isArray(it.inspiration_photos) && it.inspiration_photos.length > 0 && (
+                                    <div className="mt-2">
+                                      <div className="text-xs text-slate-500">Inspiration photos</div>
+                                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        {it.inspiration_photos.map((p: any, pidx: number) => {
+                                          const dataUrl =
+                                            p && p.base64
+                                              ? `data:${p.mimeType || "image/jpeg"};base64,${p.base64}`
+                                              : null;
+                                          return (
+                                            <a
+                                              key={`insp-${pidx}`}
+                                              href={dataUrl || "#"}
+                                              download={p?.filename || `inspiration-${pidx + 1}`}
+                                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white"
+                                            >
+                                              <span aria-hidden>🎨</span>
+                                              {p?.filename || `inspiration-${pidx + 1}`}
+                                            </a>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {visionGroups.length > 0 && (
+                        <div className="mt-4 space-y-3">
+                          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <span aria-hidden>✨</span>
+                            AI vision insights
+                          </div>
+                          <div className="space-y-3">
+                            {visionGroups.map((group) => {
+                              const measurement = group.measurement;
+                              const inspiration = group.inspiration;
+                              const measurementAttrs = (measurement?.attributes || {}) as Record<string, any>;
+                              const inspirationAttrs = (inspiration?.attributes || {}) as Record<string, any>;
+                              const measurementRows = [
+                                { label: "Product type", value: measurementAttrs.productType },
+                                { label: "Opening config", value: measurementAttrs.openingConfig },
+                                { label: "Material", value: measurementAttrs.material },
+                                { label: "Colour", value: measurementAttrs.colour },
+                                { label: "Glazing", value: measurementAttrs.glazingStyle },
+                                { label: "Ironmongery", value: measurementAttrs.ironmongeryFinish },
+                              ].filter((row) => row.value);
+                              const measurementTags = ensureStringArray(measurementAttrs.styleTags);
+                              const inspirationTags = ensureStringArray(inspirationAttrs.styleTags);
+                              const palette = ensureStringArray(inspirationAttrs.palette);
+                              const heroFeatures = ensureStringArray(inspirationAttrs.heroFeatures);
+                              const materialCues = ensureStringArray(inspirationAttrs.materialCues);
+                              const glazingCues = ensureStringArray(inspirationAttrs.glazingCues);
+                              const hardwareCues = ensureStringArray(inspirationAttrs.hardwareCues);
+                              const recommendedSpecs = inspirationAttrs.recommendedSpecs;
+                              const specPairs = recommendedSpecs
+                                ? [
+                                    { label: "Timber", value: recommendedSpecs.timber },
+                                    { label: "Finish", value: recommendedSpecs.finish },
+                                    { label: "Glazing", value: recommendedSpecs.glazing },
+                                    { label: "Ironmongery", value: recommendedSpecs.ironmongery },
+                                  ].filter((row) => row.value)
+                                : [];
+                              const confidenceLabel = formatConfidenceLabel(measurement?.confidence);
+                              const inspConfidenceLabel = formatConfidenceLabel(inspiration?.confidence);
+
+                              return (
+                                <div
+                                  key={group.key}
+                                  className="space-y-3 rounded-xl border border-indigo-100 bg-white/80 p-4"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-slate-900">
+                                    <span>{group.itemNumber ? `Item ${group.itemNumber}` : "General"} AI summary</span>
+                                    {(measurement?.photoLabel || inspiration?.photoLabel) && (
+                                      <span className="text-xs font-medium text-slate-500">
+                                        {measurement?.photoLabel || inspiration?.photoLabel}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {measurement ? (
+                                    <div className="space-y-2 rounded-lg border border-slate-200/80 bg-white/95 p-3">
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                        Photo measurement
+                                      </div>
+                                      <div className="text-sm text-slate-800">
+                                        {formatDimensionLabel(measurement.widthMm, measurement.heightMm)}
+                                      </div>
+                                      {confidenceLabel && (
+                                        <div className="text-xs text-slate-500">{confidenceLabel}</div>
+                                      )}
+                                      {measurement.description && (
+                                        <p className="text-sm text-slate-700 whitespace-pre-line">
+                                          {measurement.description}
+                                        </p>
+                                      )}
+                                      {measurement.notes && (
+                                        <p className="text-xs text-slate-500">{measurement.notes}</p>
+                                      )}
+                                      {measurementRows.length > 0 && (
+                                        <div className="grid gap-1 text-xs text-slate-600">
+                                          {measurementRows.map((row) => (
+                                            <div key={row.label}>
+                                              <span className="text-slate-500 mr-1">{row.label}:</span>
+                                              {row.value}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {measurementTags.length > 0 && (
+                                        <div>
+                                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                            Style tags
+                                          </div>
+                                          <div className="mt-1 flex flex-wrap gap-1">
+                                            {measurementTags.map((tag) => (
+                                              <span
+                                                key={tag}
+                                                className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                                              >
+                                                {tag}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs text-slate-500">
+                                      No measurement photo processed yet.
+                                    </div>
+                                  )}
+
+                                  {inspiration && (
+                                    <div className="space-y-2 rounded-lg border border-amber-100/80 bg-amber-50/60 p-3">
+                                      <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                        Inspiration analysis
+                                      </div>
+                                      {inspiration.description && (
+                                        <p className="text-sm text-amber-900 whitespace-pre-line">
+                                          {inspiration.description}
+                                        </p>
+                                      )}
+                                      {inspiration.notes && (
+                                        <p className="text-xs text-amber-700">{inspiration.notes}</p>
+                                      )}
+                                      {(inspirationAttrs.mood || inspConfidenceLabel) && (
+                                        <div className="text-xs text-amber-800">
+                                          {inspirationAttrs.mood && <span className="mr-2">Mood: {inspirationAttrs.mood}</span>}
+                                          {inspConfidenceLabel}
+                                        </div>
+                                      )}
+                                      {palette.length > 0 && (
+                                        <div>
+                                          <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                            Palette
+                                          </div>
+                                          <div className="mt-1 flex flex-wrap gap-2">
+                                            {palette.map((colour, idx) => (
+                                              <div key={`${group.key}-palette-${idx}`} className="flex items-center gap-1 text-xs text-amber-900">
+                                                <span
+                                                  className="h-4 w-4 rounded-full border border-amber-200"
+                                                  style={{ backgroundColor: colour }}
+                                                />
+                                                {colour}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {inspirationTags.length > 0 && (
+                                        <div>
+                                          <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                            Style tags
+                                          </div>
+                                          <div className="mt-1 flex flex-wrap gap-1">
+                                            {inspirationTags.map((tag) => (
+                                              <span
+                                                key={`${group.key}-tag-${tag}`}
+                                                className="rounded-full bg-white/80 px-2 py-0.5 text-xs text-amber-800"
+                                              >
+                                                {tag}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {heroFeatures.length > 0 && (
+                                        <div className="text-xs text-amber-900">
+                                          <span className="font-semibold">Key features:</span> {joinList(heroFeatures)}
+                                        </div>
+                                      )}
+                                      {materialCues.length > 0 && (
+                                        <div className="text-xs text-amber-900">
+                                          <span className="font-semibold">Material cues:</span> {joinList(materialCues)}
+                                        </div>
+                                      )}
+                                      {glazingCues.length > 0 && (
+                                        <div className="text-xs text-amber-900">
+                                          <span className="font-semibold">Glazing cues:</span> {joinList(glazingCues)}
+                                        </div>
+                                      )}
+                                      {hardwareCues.length > 0 && (
+                                        <div className="text-xs text-amber-900">
+                                          <span className="font-semibold">Hardware cues:</span> {joinList(hardwareCues)}
+                                        </div>
+                                      )}
+                                      {specPairs.length > 0 && (
+                                        <div>
+                                          <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                                            Recommended specs
+                                          </div>
+                                          <ul className="mt-1 space-y-0.5 text-xs text-amber-900">
+                                            {specPairs.map((pair) => (
+                                              <li key={`${group.key}-${pair.label}`}>{pair.label}: {pair.value}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -3078,6 +3393,11 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           {currentStage === "activity" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-purple-50/70 to-blue-50/60 min-h-[60vh]">
               <div className="max-w-6xl mx-auto">
+                {activityError && (
+                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    Couldn’t load the latest lead activity. Please refresh the panel.
+                  </div>
+                )}
                 <UnifiedActivityTimeline
                   activities={activities}
                   isLoading={loadingActivity}
@@ -4230,6 +4550,90 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     }
                   })()}
                 </pre>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showSupplierModal && (
+          <div className="absolute inset-0 z-[85] flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-900">Request supplier quote</h3>
+                <button
+                  type="button"
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                  onClick={() => setShowSupplierModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+
+              {suppliers.length === 0 ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  No suppliers found. Add suppliers in Settings → Suppliers first.
+                </div>
+              ) : (
+                <label className="block text-xs font-semibold text-slate-700">
+                  Supplier
+                  <select
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner"
+                    value={selectedSupplierId}
+                    onChange={(e) => setSelectedSupplierId(e.target.value)}
+                    disabled={busyTask}
+                  >
+                    <option value="">Select a supplier…</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name || supplier.companyName || "Supplier"}
+                        {supplier.email ? ` — ${supplier.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Deadline (days)
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner"
+                    value={quoteDeadlineDays}
+                    onChange={(e) => setQuoteDeadlineDays(e.target.value)}
+                    disabled={busyTask}
+                  />
+                </label>
+                <label className="block text-xs font-semibold text-slate-700">
+                  Notes
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner"
+                    value={quoteNotes}
+                    onChange={(e) => setQuoteNotes(e.target.value)}
+                    placeholder="Add context for the supplier"
+                    disabled={busyTask}
+                  />
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  onClick={() => setShowSupplierModal(false)}
+                  disabled={busyTask}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                  onClick={submitSupplierQuoteRequest}
+                  disabled={busyTask || !selectedSupplierId}
+                >
+                  {busyTask ? "Sending…" : "Send request"}
+                </button>
               </div>
             </div>
           </div>

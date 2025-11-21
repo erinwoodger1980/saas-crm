@@ -276,6 +276,23 @@ function serializeLeadRow(lead: any, extras: Record<string, any> = {}) {
   return payload;
 }
 
+function serializeVisionInference(record: any) {
+  return {
+    id: record.id,
+    itemNumber: record.itemNumber ?? null,
+    source: record.source,
+    widthMm: record.widthMm ?? null,
+    heightMm: record.heightMm ?? null,
+    confidence: record.confidence ?? null,
+    attributes: record.attributes ?? null,
+    description: record.description ?? null,
+    notes: record.notes ?? null,
+    photoLabel: record.photoLabel ?? null,
+    createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : null,
+    updatedAt: record.updatedAt instanceof Date ? record.updatedAt.toISOString() : null,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* CSV Import Helpers                                                  */
 /* ------------------------------------------------------------------ */
@@ -1253,6 +1270,11 @@ router.get("/:id", async (req, res) => {
 
   const lead = await prisma.lead.findFirst({
     where: { id: req.params.id, tenantId },
+    include: {
+      visionInferences: {
+        orderBy: [{ itemNumber: "asc" }, { createdAt: "asc" }],
+      },
+    },
   });
   if (!lead) return res.status(404).json({ error: "not found" });
 
@@ -1264,10 +1286,15 @@ router.get("/:id", async (req, res) => {
     orderBy: { sortOrder: "asc" },
   });
 
+  const visionInferences = Array.isArray((lead as any).visionInferences)
+    ? (lead as any).visionInferences.map(serializeVisionInference)
+    : [];
+
   res.json({
     lead: serializeLeadRow(lead, {
       quoteId: existingQuote?.id || null,
       quoteStatus: existingQuote?.status || null,
+      visionInferences,
     }),
     fields,
   });
