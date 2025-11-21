@@ -730,35 +730,36 @@ router.get("/ml/status/:tenantId", requireDeveloper, async (req: any, res) => {
 
 // Trigger ML training for specific tenant
 router.post("/ml/train/:tenantId", requireDeveloper, async (req: any, res) => {
+  // Declare timeout before try so it's visible in catch
+  const timeoutMs = Number(process.env.ML_TRAIN_TIMEOUT_MS || 30000);
   try {
     const { tenantId } = req.params;
-    // Resolve ML API base (align with other ML routes for consistency)
     const ML_API_URL = (process.env.ML_API_URL || process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000").replace(/\/$/, "");
 
     const controller = new AbortController();
-    const timeoutMs = Number(process.env.ML_TRAIN_TIMEOUT_MS || 30000);
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     const response = await fetch(`${ML_API_URL}/train/${tenantId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    , signal: controller.signal });
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal
+    });
     clearTimeout(timeout);
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`ML training failed: ${error}`);
+      const errorText = await response.text();
+      throw new Error(`ML training failed: ${errorText}`);
     }
 
     const result = await response.json();
-    res.json({ ok: true, result });
+    return res.json({ ok: true, result, timeoutMs });
   } catch (error: any) {
     console.error("Failed to trigger ML training:", error);
     const isAbort = /AbortError/i.test(error?.name || "") || /aborted/i.test(error?.message || "");
     if (isAbort) {
       return res.status(504).json({ error: "ml_training_timeout", timeoutMs });
     }
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message, timeoutMs });
   }
 });
 
@@ -775,7 +776,7 @@ router.get('/ml/samples', requireDeveloper, async (req: any, res) => {
     if (tenantId) where.tenantId = tenantId;
     if (status) where.status = status;
 
-    const items = await prisma.mLTrainingSample.findMany({
+    const itemsRaw = await prisma.mLTrainingSample.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -785,15 +786,23 @@ router.get('/ml/samples', requireDeveloper, async (req: any, res) => {
         messageId: true,
         attachmentId: true,
         url: true,
-        filename: true,
         quotedAt: true,
         status: true,
         createdAt: true,
-        estimatedTotal: true,
-        confidence: true,
-        currency: true,
+        updatedAt: true,
       }
     });
+
+    // Map to UI shape, adding placeholder nulls for fields not yet in schema
+    const items = itemsRaw.map(i => ({
+      ...i,
+      filename: null,
+      textChars: null,
+      currency: null,
+      estimatedTotal: null,
+      confidence: null,
+      updatedAt: i.updatedAt,
+    }));
 
     // Attach tenant slugs/names for display
     const distinctTenantIds = Array.from(new Set(items.map(i => i.tenantId)));

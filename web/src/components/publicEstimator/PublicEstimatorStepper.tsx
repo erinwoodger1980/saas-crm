@@ -11,6 +11,7 @@ import { ProgressBar } from './ProgressBar';
 import { WelcomeStep } from './steps/WelcomeStep';
 import { PropertyBasicsStep } from './steps/PropertyBasicsStep';
 import { OpeningDetailsStep } from './steps/OpeningDetailsStep';
+import { SocialProofPanel } from './SocialProofPanel';
 import { GlobalSpecsStep } from './steps/GlobalSpecsStep';
 import { EstimateSummaryStep } from './steps/EstimateSummaryStep';
 import { ContactConversionStep } from './steps/ContactConversionStep';
@@ -137,22 +138,32 @@ export function PublicEstimatorStepper({
   // Handle share functionality using Web Share API
   const handleShare = async () => {
     if (!estimatePreview || !branding) return;
+    // Ensure project persisted before sharing so link is resumable
+    const id = await saveProject();
+    let shareUrl = window.location.href;
+    if (id) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('projectId', id);
+      url.searchParams.set('tenant', branding.slug);
+      shareUrl = url.toString();
+      // Update current history to reflect canonical share URL
+      window.history.replaceState({}, '', shareUrl);
+    }
 
     const shareData = {
       title: `${branding.name} - Estimate`,
       text: `My joinery estimate: £${estimatePreview.totalGross.toFixed(2)} for ${estimatePreview.items.length} items`,
-      url: window.location.href,
+      url: shareUrl,
     };
 
     try {
       if (navigator.share) {
         await navigator.share(shareData);
-        trackInteraction('ESTIMATE_SHARED', { method: 'native' });
+        trackInteraction('ESTIMATE_SHARED', { method: 'native', hasProjectId: Boolean(id) });
       } else {
-        // Fallback: copy to clipboard
-        await navigator.clipboard.writeText(window.location.href);
+        await navigator.clipboard.writeText(shareUrl);
         alert('Link copied to clipboard!');
-        trackInteraction('ESTIMATE_SHARED', { method: 'clipboard' });
+        trackInteraction('ESTIMATE_SHARED', { method: 'clipboard', hasProjectId: Boolean(id) });
       }
     } catch (error) {
       console.error('Share failed:', error);
@@ -290,6 +301,8 @@ export function PublicEstimatorStepper({
             onChange={handleUpdateData}
             onNext={handleNext}
             onBack={handleBack}
+            inspirationImages={data.inspirationImages || []}
+            onInspirationChange={(images) => handleUpdateData({ inspirationImages: images })}
           />
         )}
 
@@ -340,13 +353,18 @@ export function PublicEstimatorStepper({
             <div className="mt-6 lg:sticky lg:top-6 lg:mt-0">
               <EstimatePreviewCard
                 estimate={estimatePreview}
-                isLoading={isLoadingEstimate}
+                // Treat null estimate with existing items as loading to suppress empty flash
+                isLoading={isLoadingEstimate || (!isLoadingEstimate && !estimatePreview && (data.openingDetails?.length || 0) > 0)}
                 favouriteItemIds={data.favouriteItemIds}
                 onToggleFavourite={handleToggleFavourite}
                 onShare={handleShare}
                 primaryColor={branding.primaryColor}
                 companyName={branding.name}
               />
+              {/* Social Proof */}
+              <div className="mt-4">
+                <SocialProofPanel branding={branding} primaryColor={branding.primaryColor} />
+              </div>
             </div>
           </div>
         )}

@@ -25,6 +25,8 @@ interface OpeningDetailsStepProps {
   onChange: (data: { openingDetails: OpeningItem[] }) => void;
   onNext: () => void;
   onBack: () => void;
+  inspirationImages?: string[];
+  onInspirationChange?: (images: string[]) => void;
 }
 
 const OPENING_TYPES = [
@@ -43,6 +45,8 @@ export function OpeningDetailsStep({
   onChange,
   onNext,
   onBack,
+  inspirationImages = [],
+  onInspirationChange,
 }: OpeningDetailsStepProps) {
   const [currentItems, setCurrentItems] = useState<OpeningItem[]>(
     items.length > 0 ? items : []
@@ -80,13 +84,49 @@ export function OpeningDetailsStep({
     }
   };
 
-  const handleImageUpload = async (id: string, file: File) => {
-    // TODO: Implement actual image upload to server
-    // For now, create a local URL
-    const localUrl = URL.createObjectURL(file);
-    const item = currentItems.find(i => i.id === id);
-    const images = item?.images || [];
-    handleUpdateItem(id, { images: [...images, localUrl] });
+  const handleImageUpload = async (id: string, files: FileList | File[]) => {
+    const list = Array.from(files);
+    for (const file of list) {
+      const localUrl = URL.createObjectURL(file);
+      const item = currentItems.find(i => i.id === id);
+      const images = item?.images || [];
+      // Basic client-side image analysis (dimensions) for UX enrichment
+      try {
+        const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+          img.onerror = reject;
+          img.src = localUrl;
+        });
+        const autoNote = `Photo ${images.length + 1}: ${dims.w}x${dims.h}px`;
+        handleUpdateItem(id, {
+          images: [...images, localUrl],
+          notes: item?.notes ? item.notes : autoNote,
+        });
+      } catch {
+        handleUpdateItem(id, { images: [...images, localUrl] });
+      }
+    }
+  };
+
+  const handleInspirationUpload = (files: FileList | null) => {
+    if (!files || !files.length) return;
+    const existing = inspirationImages.slice();
+    const next: string[] = [];
+    Array.from(files).forEach(f => {
+      try {
+        const url = URL.createObjectURL(f);
+        next.push(url);
+      } catch {}
+    });
+    const merged = [...existing, ...next];
+    onInspirationChange?.(merged);
+  };
+
+  const removeInspiration = (index: number) => {
+    const copy = inspirationImages.slice();
+    copy.splice(index, 1);
+    onInspirationChange?.(copy);
   };
 
   const handleRemoveImage = (itemId: string, imageIndex: number) => {
@@ -275,10 +315,10 @@ export function OpeningDetailsStep({
                 <input
                   type="file"
                   accept="image/*"
-                  capture="environment"
+                  multiple
                   onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (file) handleImageUpload(item.id, file);
+                    const files = e.target.files;
+                    if (files && files.length) handleImageUpload(item.id, files);
                   }}
                   className="hidden"
                 />
@@ -310,6 +350,40 @@ export function OpeningDetailsStep({
         <Plus className="h-5 w-5" />
         Add another opening
       </button>
+
+      {/* Inspiration images section */}
+      <div className="pt-6 space-y-4">
+        <h3 className="text-xl font-semibold text-slate-900">Inspiration photos (optional)</h3>
+        <p className="text-sm text-slate-600">Show styles you like. This helps us tailor the specification and finish.</p>
+
+        {inspirationImages.length > 0 && (
+          <div className="grid grid-cols-3 gap-3">
+            {inspirationImages.map((src, i) => (
+              <div key={i} className="relative aspect-square overflow-hidden rounded-xl border">
+                <img src={src} alt={`Inspiration ${i + 1}`} className="h-full w-full object-cover" />
+                <button
+                  onClick={() => removeInspiration(i)}
+                  className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/70"
+                  title="Remove"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-6 text-center text-sm font-medium text-slate-600 transition hover:border-slate-400 hover:bg-slate-100">
+          <span>Upload inspiration photos</span>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={e => handleInspirationUpload(e.target.files)}
+            className="hidden"
+          />
+        </label>
+      </div>
 
       {/* Navigation */}
       <div className="flex gap-3 pt-4">
