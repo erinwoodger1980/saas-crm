@@ -228,11 +228,58 @@ model Lead {
   supplierQuoteRequests SupplierQuoteRequest[]
   questionnaireMatches QuoteQuestionnaireMatch[] @relation("LeadQuestionnaireMatches")
   visionInferences      LeadVisionInference[]
+  interactions          LeadInteraction[]
+  publicProjects        PublicProject[]
+}
+
+enum LeadInteractionType {
+  QUESTIONNAIRE_STARTED
+  QUESTIONNAIRE_COMPLETED
+  ESTIMATE_PREVIEWED
+  ESTIMATE_SHARED
+  ESTIMATE_FAVOURITED
+  PROJECT_SAVED
+  CLIENT_PROCEEDED
+  CLIENT_DECLINED
+}
+
+model LeadInteraction {
+  id        String               @id @default(cuid())
+  tenantId  String
+  leadId    String?
+  entryMode String?              // AD or INVITE
+  type      LeadInteractionType
+  metadata  Json?                // UTM params, projectId, share channel, etc.
+  createdAt DateTime             @default(now())
+  lead      Lead?                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId, createdAt])
+  @@index([tenantId, type, createdAt])
 }
 
 enum VisionInferenceSource {
   MEASUREMENT
   INSPIRATION
+}
+
+enum PublicProjectEntryMode {
+  AD
+  INVITE
+}
+
+model PublicProject {
+  id          String                  @id @default(cuid())
+  tenantId    String
+  leadId      String?                 // Linked when contact details submitted or from invite
+  entryMode   PublicProjectEntryMode
+  sourceInfo  Json?                   // UTM params, referrer, gclid, fbclid
+  payload     Json                    // openings, specs, estimate snapshot, favourites
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  lead        Lead?                   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, leadId])
+  @@index([tenantId, createdAt])
 }
 
 model Opportunity {
@@ -409,6 +456,7 @@ model LeadTrainingExample {
 
 /// *
 ///  * ✅ Unified TenantSettings (only ONE model)
+///  * Extended with premium branding + social proof for public mobile estimator.
 model TenantSettings {
   tenantId                  String    @id
   slug                      String    @unique
@@ -419,6 +467,18 @@ model TenantSettings {
   links                     Json?
   questionnaire             Json?
   logoUrl                   String?
+  // Premium branding fields for public estimator
+  primaryColor              String?   // Hex color for buttons, accents
+  secondaryColor            String?   // Hex color for subtle backgrounds
+  heroImageUrl              String?   // Main hero/header image
+  galleryImageUrls          String[]  @default([]) // Product gallery images
+  // Social proof
+  testimonials              Json?     // Array of {name, location, quote}
+  reviewScore               Decimal?  // e.g. 4.9
+  reviewCount               Int?      // e.g. 128
+  reviewSourceLabel         String?   // e.g. "Google Reviews", "Trustpilot"
+  serviceArea               String?   // e.g. "Kent and East Sussex"
+  // Existing fields
   inbox                     Json?
   inboxLastRun              DateTime?
   inboxWatchEnabled         Boolean   @default(false)

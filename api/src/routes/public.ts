@@ -16,6 +16,14 @@ import { Prisma } from "@prisma/client";
 const router = Router();
 import fetch from "node-fetch";
 
+/**
+ * Current public questionnaire surface:
+ * - GET /tenant/by-slug/:slug exposes brandName, introHtml, website, phone, logoUrl, links and questionnaire schema.
+ * - GET /leads/:id returns invite-only lead contact info + normalized global specs for prefilling.
+ * - POST /leads/:id/submit-questionnaire merges answers/uploads into lead.custom, updates lead global spec columns
+ *   and vision inference rows.
+ * There is no public pricing preview or project session storage yet; everything writes directly to the Lead record.
+ */
 const WIDTH_FIELD_CANDIDATES = [
   "estimated_width_mm",
   "photo_width_mm",
@@ -260,6 +268,37 @@ router.get("/tenant/by-slug/:slug", async (req, res) => {
   });
 });
 
+/** GET /public/tenant/:tenantSlug/branding
+ *  Enhanced endpoint for public estimator with premium branding + social proof.
+ */
+router.get("/tenant/:tenantSlug/branding", async (req, res) => {
+  const slug = String(req.params.tenantSlug);
+  const s = await prisma.tenantSettings.findUnique({ where: { slug } });
+  if (!s) return res.status(404).json({ error: "not found" });
+
+  return res.json({
+    tenantId: s.tenantId,
+    slug: s.slug,
+    brandName: s.brandName,
+    logoUrl: (s as any).logoUrl ?? null,
+    website: (s as any).website ?? null,
+    phone: (s as any).phone ?? null,
+    // Premium branding
+    primaryColor: (s as any).primaryColor ?? null,
+    secondaryColor: (s as any).secondaryColor ?? null,
+    heroImageUrl: (s as any).heroImageUrl ?? null,
+    galleryImageUrls: Array.isArray((s as any).galleryImageUrls) ? (s as any).galleryImageUrls : [],
+    // Social proof
+    testimonials: (s as any).testimonials ?? null,
+    reviewScore: (s as any).reviewScore ?? null,
+    reviewCount: (s as any).reviewCount ?? null,
+    reviewSourceLabel: (s as any).reviewSourceLabel ?? null,
+    serviceArea: (s as any).serviceArea ?? null,
+    // Form structure
+    questionnaire: normalizeQuestionnaire((s as any).questionnaire ?? []),
+  });
+});
+
 /* ---------- PUBLIC: read minimal lead for form ---------- */
 /** GET /public/leads/:id */
 router.get("/leads/:id", async (req, res) => {
@@ -388,6 +427,107 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
   } catch (e: any) {
     console.error("[public submit-questionnaire] failed:", e);
     return res.status(500).json({ error: e?.message || "submit failed" });
+  }
+});
+
+/* ---------- PUBLIC: project save/restore ---------- */
+/** POST /public/projects - Create or update a public project session */
+router.post("/projects", async (req, res) => {
+  try {
+    const { tenantId, leadId, entryMode, sourceInfo, payload, projectId } = req.body as {
+      tenantId: string;
+      leadId?: string;
+      entryMode: 'AD' | 'INVITE';
+      sourceInfo?: Record<string, any>;
+      payload: Record<string, any>;
+      projectId?: string;
+    };
+
+    if (!tenantId || !entryMode || !payload) {
+      return res.status(400).json({ error: "tenantId, entryMode and payload required" });
+    }
+
+    // Update existing or create new
+    if (projectId) {
+      const updated = await prisma.publicProject.update({
+        where: { id: projectId },
+        data: {
+          payload,
+          leadId: leadId || null,
+          updatedAt: new Date(),
+        },
+      });
+      return res.json({ projectId: updated.id, url: `/estimate/${updated.id}` });
+    }
+
+    const created = await prisma.publicProject.create({
+      data: {
+        tenantId,
+        leadId: leadId || null,
+        entryMode: entryMode === 'INVITE' ? 'INVITE' : 'AD',
+        sourceInfo: sourceInfo || Prisma.JsonNull,
+        payload,
+      },
+    });
+
+    return res.json({ projectId: created.id, url: `/estimate/${created.id}` });
+  } catch (e: any) {
+    console.error("[public projects] create/update failed:", e);
+    return res.status(500).json({ error: e?.message || "failed to save project" });
+  }
+});
+
+/** GET /public/projects/:id - Load a saved project */
+router.get("/projects/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const project = await prisma.publicProject.findUnique({ where: { id } });
+    if (!project) return res.status(404).json({ error: "project not found" });
+
+    return res.json({
+      projectId: project.id,
+      tenantId: project.tenantId,
+      leadId: project.leadId,
+      entryMode: project.entryMode,
+      sourceInfo: project.sourceInfo,
+      payload: project.payload,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    });
+  } catch (e: any) {
+    console.error("[public projects] load failed:", e);
+    return res.status(500).json({ error: e?.message || "failed to load project" });
+  }
+});
+
+/* ---------- PUBLIC: pricing preview ---------- */
+/** POST /public/estimates/preview - Get live price estimate for in-progress questionnaire */
+router.post("/estimates/preview", async (req, res) => {
+  try {
+    const { tenantId, items, globalSpecs } = req.body as {
+      tenantId: string;
+      items: Array<{
+        description: string;
+        widthMm?: number;
+        heightMm?: number;
+        openingType?: string;
+        specs?: Record<string, string>;
+      }>;
+      globalSpecs?: Record<string, string>;
+    };
+
+    if (!tenantId || !Array.isArray(items)) {
+      return res.status(400).json({ error: "tenantId and items array required" });
+    }
+
+    // Import estimate service (inline for now to avoid circular deps)
+    const { estimateQuote } = await import("../services/pricing/estimateQuote");
+    const estimate = await estimateQuote({ tenantId, items, globalSpecs });
+
+    return res.json(estimate);
+  } catch (e: any) {
+    console.error("[public estimates preview] failed:", e);
+    return res.status(500).json({ error: e?.message || "estimate failed" });
   }
 });
 

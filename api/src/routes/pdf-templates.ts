@@ -160,20 +160,29 @@ router.post("/", async (req: any, res: Response) => {
       });
     }
 
-    const template = await prisma.pdfLayoutTemplate.create({
-      data: {
-        name: name.trim(),
-        description: description?.trim() || null,
-        supplierProfileId: supplierProfileId.trim(),
-        pageCount: Number.isFinite(Number(pageCount)) ? Number(pageCount) : null,
-        createdByUserId: req.auth?.userId ?? null,
-        meta: typeof meta === "object" && meta !== null ? meta : undefined,
-        annotations: {
-          createMany: {
-            data: annotationWrites,
-          },
+    // Prepare data object
+    const createData: any = {
+      name: name.trim(),
+      description: description?.trim() || null,
+      supplierProfileId: supplierProfileId.trim(),
+      pageCount: Number.isFinite(Number(pageCount)) ? Number(pageCount) : null,
+      annotations: {
+        createMany: {
+          data: annotationWrites,
         },
       },
+    };
+    
+    // Add optional fields only if they exist (for backward compatibility)
+    if (req.auth?.userId) {
+      createData.createdByUserId = req.auth.userId;
+    }
+    if (typeof meta === "object" && meta !== null) {
+      createData.meta = meta;
+    }
+
+    const template = await prisma.pdfLayoutTemplate.create({
+      data: createData,
       select: detailSelect,
     });
 
