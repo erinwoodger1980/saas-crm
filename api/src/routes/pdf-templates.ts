@@ -160,8 +160,8 @@ router.post("/", async (req: any, res: Response) => {
       });
     }
 
-    // Prepare data object
-    const createData: any = {
+    // Prepare data object - all fields are optional except core ones
+    const createData: Prisma.PdfLayoutTemplateCreateInput = {
       name: name.trim(),
       description: description?.trim() || null,
       supplierProfileId: supplierProfileId.trim(),
@@ -171,36 +171,44 @@ router.post("/", async (req: any, res: Response) => {
           data: annotationWrites,
         },
       },
+      // Optional fields (backward compatible - only set if present)
+      ...(req.auth?.userId && { createdByUserId: req.auth.userId }),
+      ...(typeof meta === "object" && meta !== null && { meta }),
     };
-    
-    // Add optional fields only if they exist (for backward compatibility)
-    if (req.auth?.userId) {
-      createData.createdByUserId = req.auth.userId;
-    }
-    if (typeof meta === "object" && meta !== null) {
-      createData.meta = meta;
-    }
+
+    console.log("[POST /pdf-templates] Creating template with data:", {
+      name: createData.name,
+      supplierProfileId: createData.supplierProfileId,
+      annotationCount: annotationWrites.length,
+      hasUserId: !!createData.createdByUserId,
+      hasMeta: !!createData.meta,
+    });
 
     const template = await prisma.pdfLayoutTemplate.create({
       data: createData,
       select: detailSelect,
     });
 
-    console.log("[POST /pdf-templates] Created template:", {
+    console.log("[POST /pdf-templates] Successfully created template:", {
       id: template.id,
       name: template.name,
       supplierProfileId: template.supplierProfileId,
-      annotationCount: annotationWrites.length,
     });
 
     res.status(201).json({ ok: true, item: serializeTemplate(template, true) });
   } catch (error: any) {
-    console.error("[POST /pdf-templates] Error:", error);
+    console.error("[POST /pdf-templates] Error creating template:", {
+      error: error?.message,
+      code: error?.code,
+      meta: error?.meta,
+      stack: error?.stack?.split('\n').slice(0, 3).join('\n'),
+    });
     const isUnique = error?.code === "P2002";
     res.status(isUnique ? 409 : 500).json({
       ok: false,
       error: isUnique ? "Supplier profile already has a template" : "Failed to create template",
       detail: error?.message,
+      code: error?.code,
     });
   }
 });
