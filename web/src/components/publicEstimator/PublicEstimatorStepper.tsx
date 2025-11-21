@@ -10,6 +10,7 @@ import { usePublicEstimator } from '@/lib/publicEstimator/usePublicEstimator';
 import { ProgressBar } from './ProgressBar';
 import { WelcomeStep } from './steps/WelcomeStep';
 import { PropertyBasicsStep } from './steps/PropertyBasicsStep';
+import { OpeningDetailsStep } from './steps/OpeningDetailsStep';
 import { EstimatePreviewCard } from './EstimatePreviewCard';
 
 interface PublicEstimatorStepperProps {
@@ -166,27 +167,13 @@ export function PublicEstimatorStepper({
         )}
 
         {currentStep === 3 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Opening details</h2>
-            <p className="text-slate-600">
-              Coming soon: Per-item capture with photos, measurements, and specs
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleBack}
-                className="flex-1 rounded-2xl border-2 border-slate-200 px-6 py-3 font-medium transition hover:border-slate-300"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleNext}
-                className="flex-1 rounded-2xl px-6 py-3 font-medium text-white transition"
-                style={{ backgroundColor: branding.primaryColor || '#3b82f6' }}
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <OpeningDetailsStep
+            items={data.openingDetails}
+            primaryColor={branding.primaryColor}
+            onChange={updateData}
+            onNext={handleNext}
+            onBack={handleBack}
+          />
         )}
 
         {currentStep > 3 && (

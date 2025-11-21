@@ -802,13 +802,18 @@ router.post("/interactions", async (req, res) => {
       return res.status(404).json({ error: "tenant not found" });
     }
 
+    // Merge projectId into metadata if present
+    const metadataWithProject = metadata ? { ...metadata } : {};
+    if (projectId) {
+      metadataWithProject.projectId = projectId;
+    }
+
     await prisma.leadInteraction.create({
       data: {
         tenantId,
         leadId: leadId || null,
-        projectId: projectId || null,
-        type,
-        metadata: metadata || Prisma.JsonNull,
+        type: type as any, // Type validated by enum constraint
+        metadata: Object.keys(metadataWithProject).length > 0 ? metadataWithProject : Prisma.JsonNull,
       },
     });
 
