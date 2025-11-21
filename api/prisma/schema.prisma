@@ -911,23 +911,31 @@ model PasswordResetToken {
   user      User     @relation(fields: [userId], references: [id])
 }
 
+enum MLSampleStatus {
+  PENDING  // Awaiting review
+  APPROVED // Ready for training
+  REJECTED // Not suitable for training
+}
+
 model MLTrainingSample {
-  id           String    @id @default(cuid())
+  id           String         @id @default(cuid())
   tenantId     String
   messageId    String
   attachmentId String
   url          String
   quotedAt     DateTime?
-  sourceType   String    @default("supplier_quote")
+  sourceType   String         @default("supplier_quote")
   quoteId      String?
   fileId       String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  status       MLSampleStatus @default(PENDING)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   @@unique([tenantId, messageId, attachmentId])
   @@unique([tenantId, quoteId])
   @@index([tenantId])
   @@index([tenantId, createdAt])
+  @@index([tenantId, status])
   @@index([messageId])
   @@index([attachmentId])
   @@index([quotedAt])

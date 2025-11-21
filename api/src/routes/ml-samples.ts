@@ -15,6 +15,7 @@ const SAMPLE_SELECT = {
   currency: true,
   estimatedTotal: true,
   confidence: true,
+  status: true,
   createdAt: true,
   updatedAt: true,
   // If you added these in your schema:
@@ -91,8 +92,7 @@ router.get("/samples", async (req: any, res) => {
 
 /**
  * PATCH /internal/ml/samples/:id
- * Body can include a subset of { notes?: string, label?: string }
- * (Make sure these fields exist in your Prisma model before using.)
+ * Body can include a subset of { notes?: string, label?: string, status?: 'PENDING'|'APPROVED'|'REJECTED' }
  */
 router.patch("/samples/:id", async (req: any, res) => {
   try {
@@ -100,11 +100,14 @@ router.patch("/samples/:id", async (req: any, res) => {
     if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const id = req.params.id;
-    const { notes, label } = req.body ?? {};
+    const { notes, label, status } = req.body ?? {};
 
     const data: any = {};
     if (typeof notes === "string") data.notes = notes;
     if (typeof label === "string") data.label = label;
+    if (status && ["PENDING", "APPROVED", "REJECTED"].includes(status)) {
+      data.status = status;
+    }
 
     if (!Object.keys(data).length) {
       return res.status(400).json({ error: "no_updates" });
@@ -124,6 +127,46 @@ router.patch("/samples/:id", async (req: any, res) => {
     return res.json({ ok: true, sample: updated });
   } catch (e: any) {
     console.error("[ml-samples] patch failed:", e?.message || e);
+    if (e?.code === "P2025") return res.status(404).json({ error: "not_found" });
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * PATCH /internal/ml/samples/:id/status
+ * Body: { status: 'PENDING' | 'APPROVED' | 'REJECTED' }
+ * Quick endpoint for approval workflow
+ */
+router.patch("/samples/:id/status", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const id = req.params.id;
+    const { status } = req.body ?? {};
+
+    if (!status || !["PENDING", "APPROVED", "REJECTED"].includes(status)) {
+      return res.status(400).json({ error: "invalid_status" });
+    }
+
+    // Verify tenant ownership first
+    const existing = await prisma.mLTrainingSample.findUnique({
+      where: { id },
+      select: { id: true, tenantId: true },
+    });
+
+    if (!existing) return res.status(404).json({ error: "not_found" });
+    if (existing.tenantId !== tenantId) return res.status(403).json({ error: "forbidden" });
+
+    const updated = await prisma.mLTrainingSample.update({
+      where: { id },
+      data: { status },
+      select: SAMPLE_SELECT,
+    });
+
+    return res.json({ ok: true, sample: updated });
+  } catch (e: any) {
+    console.error("[ml-samples] status update failed:", e?.message || e);
     if (e?.code === "P2025") return res.status(404).json({ error: "not_found" });
     return res.status(500).json({ error: "internal_error" });
   }

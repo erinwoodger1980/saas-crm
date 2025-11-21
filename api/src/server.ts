@@ -66,6 +66,7 @@ import mlSamples from "./routes/ml-samples";
 import mlOpsRouter from "./routes/ml-ops";
 import mlInsightsRouter from "./routes/ml-insights";
 import mlStatusRouter from "./routes/ml-status";
+import mlTrainingUploadRouter from "./routes/ml-training-upload";
 import featureFlagsRouter from "./routes/feature-flags";
 import workshopRouter from "./routes/workshop";
 import workshopProcessesRouter from "./routes/workshop-processes";
@@ -639,6 +640,9 @@ app.use((req, _res, next) => {
 
 /** ---------- ML parse + proxy (public endpoints used by server-side flows) ---------- */
 app.use("/ml", mlParseRouter);
+
+/** ---------- ML training upload (manual PDF uploads for training data) ---------- */
+app.use("/ml/training", requireAuth, mlTrainingUploadRouter);
 
 /** ---------- ML proxy (forwards to FastAPI) - requires auth ---------- */
 app.use("/ml", requireAuth, mlProxyRouter);

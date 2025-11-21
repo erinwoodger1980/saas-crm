@@ -21,11 +21,22 @@ type MLStatus = {
   };
 };
 
+type MLSample = {
+  id: string;
+  messageId: string;
+  attachmentId: string;
+  url: string;
+  quotedAt: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+};
+
 export default function MLStatusPage() {
   const params = useParams();
   const tenantId = params?.id as string | undefined;
 
   const [statuses, setStatuses] = useState<MLStatus[]>([]);
+  const [pendingSamples, setPendingSamples] = useState<MLSample[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,10 +60,26 @@ export default function MLStatusPage() {
         const data = await apiFetch<{ ok: boolean; statuses: MLStatus[] }>("/dev/ml/status");
         if (data.ok) setStatuses(data.statuses);
       }
+
+      // Load pending samples for review
+      await loadPendingSamples();
     } catch (e: any) {
       setError(e?.message || "Failed to load ML status");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadPendingSamples() {
+    try {
+      const data = await apiFetch<{ ok: boolean; items: MLSample[] }>("/internal/ml/samples?limit=50");
+      if (data.ok && data.items) {
+        // Filter for pending samples
+        const pending = data.items.filter(s => s.status === 'PENDING');
+        setPendingSamples(pending);
+      }
+    } catch (e: any) {
+      console.error("Failed to load pending samples:", e);
     }
   }
 
@@ -64,6 +91,19 @@ export default function MLStatusPage() {
       loadMLStatus();
     } catch (e: any) {
       alert("Failed to trigger training: " + e.message);
+    }
+  }
+
+  async function updateSampleStatus(sampleId: string, status: 'APPROVED' | 'REJECTED') {
+    try {
+      await apiFetch(`/internal/ml/samples/${sampleId}/status`, {
+        method: "PATCH",
+        json: { status }
+      });
+      // Reload pending samples
+      await loadPendingSamples();
+    } catch (e: any) {
+      alert("Failed to update sample: " + e.message);
     }
   }
 
@@ -96,6 +136,72 @@ export default function MLStatusPage() {
         </h1>
         <Button variant="outline" onClick={loadMLStatus}>Refresh</Button>
       </div>
+
+      {/* Pending Samples Section */}
+      {pendingSamples.length > 0 && (
+        <Card className="p-6 border-yellow-300 bg-yellow-50">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-yellow-600" />
+            Pending Quote Samples ({pendingSamples.length})
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Review quotes collected from emails before they're used for ML training.
+            Approve quality quotes and reject any that are incomplete or incorrect.
+          </p>
+          
+          <div className="space-y-3">
+            {pendingSamples.map((sample) => (
+              <Card key={sample.id} className="p-4 bg-white">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
+                        {sample.messageId.slice(0, 12)}...
+                      </span>
+                      {sample.quotedAt && (
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(sample.quotedAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      Attachment: {sample.attachmentId}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Added: {new Date(sample.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.open(sample.url, '_blank')}
+                    >
+                      View PDF
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => updateSampleStatus(sample.id, 'APPROVED')}
+                    >
+                      ✓ Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => updateSampleStatus(sample.id, 'REJECTED')}
+                    >
+                      ✗ Reject
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className="space-y-6">
         {statuses.map((status) => (
