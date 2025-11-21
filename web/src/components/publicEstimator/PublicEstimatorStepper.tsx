@@ -306,7 +306,8 @@ export function PublicEstimatorStepper({
         {currentStep === 5 && (
           <EstimateSummaryStep
             estimate={estimatePreview}
-            isLoading={isLoadingEstimate}
+            // Treat null estimate WITH items as loading to prevent confusing "No items" flash
+            isLoading={isLoadingEstimate || (!isLoadingEstimate && !estimatePreview && (data.openingDetails?.length || 0) > 0)}
             favouriteItemIds={data.favouriteItemIds}
             onToggleFavourite={handleToggleFavourite}
             onEditItem={handleEditItem}

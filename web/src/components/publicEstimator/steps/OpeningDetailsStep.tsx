@@ -55,7 +55,10 @@ export function OpeningDetailsStep({
       id: `item-${Date.now()}`,
       type: 'external_door',
     };
-    setCurrentItems([...currentItems, newItem]);
+    const next = [...currentItems, newItem];
+    setCurrentItems(next);
+    // Persist immediately so upstream preview + autosave can react
+    onChange({ openingDetails: next });
     setEditingId(newItem.id);
     setErrors({});
   };
@@ -114,6 +117,9 @@ export function OpeningDetailsStep({
     }
 
     onChange({ openingDetails: currentItems });
+    // Optional: ensure immediate preview without waiting for debounce
+    // (Hook will ignore if preview already queued)
+    // This avoids a momentary "No items" flash on next step.
     onNext();
   };
 
