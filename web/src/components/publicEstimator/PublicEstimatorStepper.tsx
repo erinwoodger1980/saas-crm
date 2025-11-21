@@ -13,6 +13,7 @@ import { PropertyBasicsStep } from './steps/PropertyBasicsStep';
 import { OpeningDetailsStep } from './steps/OpeningDetailsStep';
 import { GlobalSpecsStep } from './steps/GlobalSpecsStep';
 import { EstimateSummaryStep } from './steps/EstimateSummaryStep';
+import { ContactConversionStep } from './steps/ContactConversionStep';
 import { EstimatePreviewCard } from './EstimatePreviewCard';
 
 interface PublicEstimatorStepperProps {
@@ -40,12 +41,14 @@ export function PublicEstimatorStepper({
     branding,
     data,
     estimatePreview,
+    entryContext,
     isLoadingBranding,
     isLoadingEstimate,
     isSaving,
     updateData,
     toggleFavourite,
     trackInteraction,
+    saveProject,
   } = usePublicEstimator({
     tenantSlug,
     onError: (error) => console.error('Estimator error:', error),
@@ -61,6 +64,23 @@ export function PublicEstimatorStepper({
   const handleEditItem = (itemId: string) => {
     setCurrentStep(3);
     // TODO: Scroll to specific item
+  };
+
+  // Handle final submission
+  const handleFinalSubmit = async () => {
+    try {
+      // Save final project state
+      await saveProject();
+      
+      // Track completion
+      await trackInteraction('QUESTIONNAIRE_COMPLETED');
+      
+      // Call parent completion handler
+      onComplete?.();
+    } catch (error) {
+      console.error('Submission error:', error);
+      throw error;
+    }
   };
 
   // Handle share functionality using Web Share API
@@ -215,19 +235,17 @@ export function PublicEstimatorStepper({
           />
         )}
 
-        {currentStep > 5 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">
-              Step {currentStep}: {STEP_LABELS[currentStep - 1]}
-            </h2>
-            <p className="text-slate-600">Additional steps coming soon...</p>
-            <button
-              onClick={handleBack}
-              className="w-full rounded-2xl border-2 border-slate-200 px-6 py-3 font-medium transition hover:border-slate-300"
-            >
-              Back
-            </button>
-          </div>
+        {currentStep === 6 && (
+          <ContactConversionStep
+            contactDetails={data.contactDetails}
+            entryMode={entryContext?.entryMode}
+            isInviteMode={entryContext?.entryMode === 'INVITE'}
+            primaryColor={branding.primaryColor}
+            companyName={branding.name}
+            onChange={updateData}
+            onSubmit={handleFinalSubmit}
+            onBack={handleBack}
+          />
         )}
           </div>
         </div>
