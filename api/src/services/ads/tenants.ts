@@ -3,11 +3,10 @@
  * Manages sub-accounts and shared negative keyword lists
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../prisma';
 import { createCustomerClient, getAdsClient, digitsOnly } from '../../lib/googleAds';
 import { DEFAULT_NEGATIVE_KEYWORDS } from './constants';
 
-const prisma = new PrismaClient();
 
 /**
  * Create a Google Ads sub-account for a tenant and save to TenantAdsConfig

@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma';
 import { GoogleAdsClient } from './google-ads';
 
-const prisma = new PrismaClient();
 
 interface OptimizationSuggestion {
   keyword: string;

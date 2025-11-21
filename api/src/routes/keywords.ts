@@ -1,10 +1,9 @@
 import express, { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma';
 import { createGoogleAdsClient } from '../lib/google-ads';
 import { createAdsOptimizer } from '../lib/ads-optimizer';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 /**
  * GET /keywords/:tenantId/report

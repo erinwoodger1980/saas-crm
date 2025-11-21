@@ -4,14 +4,13 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma';
 import { z } from 'zod';
 import { createSubAccount, ensureNegativeList, getTenantCustomerId, listCampaigns } from '../services/ads/tenants';
 import { bootstrapSearchCampaign, gbpToMicros } from '../services/ads/bootstrap';
 import { checkMccEnv, canAccessCustomer, digitsOnly, formatCustomerId } from '../lib/googleAds';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Reusable resolver that accepts either id or slug
 async function resolveTenant(param: string) {
