@@ -8,9 +8,7 @@ generator webClient {
 }
 
 datasource db {
-  provider          = "postgresql"
-  url               = env("DATABASE_URL")
-  shadowDatabaseUrl = env("postgresql://joineryai_shadow_user:7zmNESACuFyK50AIvvIcRdKrJiJ38RLc@dpg-d3r0aher433s73e2rjtg-a.oregon-postgres.render.com/joineryai_shadow")
+  provider = "postgresql"
 }
 
 model Tenant {

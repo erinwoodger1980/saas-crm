@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Code, Database, MessageSquare, GitBranch, Server, ArrowLeft } from "lucide-react";
+import { Code, Database, MessageSquare, GitBranch, Server, ArrowLeft, Users } from "lucide-react";
 
 export default function DevLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -53,6 +53,7 @@ export default function DevLayout({ children }: { children: ReactNode }) {
     { href: "/dev/tasks", label: "Tasks", icon: GitBranch },
     { href: "/dev/ml", label: "ML Status", icon: Server },
     { href: "/dev/ml/samples", label: "ML Samples", icon: Server },
+    { href: "/dev/developers", label: "Developers", icon: Users },
   ];
 
   return (
