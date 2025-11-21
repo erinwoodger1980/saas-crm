@@ -272,31 +272,48 @@ router.get("/tenant/by-slug/:slug", async (req, res) => {
  *  Enhanced endpoint for public estimator with premium branding + social proof.
  */
 router.get("/tenant/:tenantSlug/branding", async (req, res) => {
-  const slug = String(req.params.tenantSlug);
-  const s = await prisma.tenantSettings.findUnique({ where: { slug } });
-  if (!s) return res.status(404).json({ error: "not found" });
+  const slug = String(req.params.tenantSlug || "").trim();
+  if (!slug) return res.status(400).json({ error: "slug_required" });
+  try {
+    const s = await prisma.tenantSettings.findUnique({ where: { slug } });
+    if (!s) return res.status(404).json({ error: "unknown_tenant" });
 
-  return res.json({
-    tenantId: s.tenantId,
-    slug: s.slug,
-    brandName: s.brandName,
-    logoUrl: (s as any).logoUrl ?? null,
-    website: (s as any).website ?? null,
-    phone: (s as any).phone ?? null,
-    // Premium branding
-    primaryColor: (s as any).primaryColor ?? null,
-    secondaryColor: (s as any).secondaryColor ?? null,
-    heroImageUrl: (s as any).heroImageUrl ?? null,
-    galleryImageUrls: Array.isArray((s as any).galleryImageUrls) ? (s as any).galleryImageUrls : [],
-    // Social proof
-    testimonials: (s as any).testimonials ?? null,
-    reviewScore: (s as any).reviewScore ?? null,
-    reviewCount: (s as any).reviewCount ?? null,
-    reviewSourceLabel: (s as any).reviewSourceLabel ?? null,
-    serviceArea: (s as any).serviceArea ?? null,
-    // Form structure
-    questionnaire: normalizeQuestionnaire((s as any).questionnaire ?? []),
-  });
+    return res.json({
+      tenantId: s.tenantId,
+      slug: s.slug,
+      brandName: s.brandName,
+      logoUrl: (s as any).logoUrl ?? null,
+      website: (s as any).website ?? null,
+      phone: (s as any).phone ?? null,
+      // Premium branding (all optional)
+      primaryColor: (s as any).primaryColor ?? null,
+      secondaryColor: (s as any).secondaryColor ?? null,
+      heroImageUrl: (s as any).heroImageUrl ?? null,
+      galleryImageUrls: Array.isArray((s as any).galleryImageUrls) ? (s as any).galleryImageUrls : [],
+      // Social proof
+      testimonials: (s as any).testimonials ?? null,
+      reviewScore: (s as any).reviewScore ?? null,
+      reviewCount: (s as any).reviewCount ?? null,
+      reviewSourceLabel: (s as any).reviewSourceLabel ?? null,
+      serviceArea: (s as any).serviceArea ?? null,
+      // Form structure
+      questionnaire: normalizeQuestionnaire((s as any).questionnaire ?? []),
+    });
+  } catch (err: any) {
+    console.error('[public branding] failed', {
+      slug,
+      error: err?.message,
+      code: err?.code,
+      stack: err?.stack?.split('\n').slice(0,4).join('\n'),
+      timestamp: new Date().toISOString(),
+    });
+    // If it's a known prisma missing column error, surface a clearer message
+    const msg = String(err?.message || '').toLowerCase();
+    if (msg.includes('column') && msg.includes('does not exist')) {
+      return res.status(500).json({ error: 'branding_schema_out_of_sync', message: 'Branding unavailable - run migrations' });
+    }
+    return res.status(500).json({ error: 'branding_fetch_failed' });
+  }
 });
 
 /* ---------- PUBLIC: read minimal lead for form ---------- */

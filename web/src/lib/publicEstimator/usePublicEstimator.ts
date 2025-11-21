@@ -156,21 +156,42 @@ export function usePublicEstimator({
       try {
         setIsLoadingBranding(true);
         const response = await fetch(`${API_BASE}/public/tenant/${tenantSlug}/branding`);
-        
+
         if (!response.ok) {
-          throw new Error(`Failed to load branding: ${response.statusText}`);
+          // Fallback: continue with generic branding so estimator still loads
+          console.warn('Branding request failed, using generic branding');
+          setBranding({
+            tenantId: null,
+            slug: tenantSlug,
+            brandName: 'Your Company',
+            logoUrl: null,
+            primaryColor: null,
+            secondaryColor: null,
+            questionnaire: [],
+          } as any);
+          return;
         }
-        
+
         const brandingData = await response.json();
         setBranding(brandingData);
       } catch (error) {
         console.error('Failed to load branding:', error);
+        // Fallback generic branding
+        setBranding({
+          tenantId: null,
+          slug: tenantSlug,
+          brandName: 'Your Company',
+          logoUrl: null,
+          primaryColor: null,
+          secondaryColor: null,
+          questionnaire: [],
+        } as any);
         onError?.(error as Error);
       } finally {
         setIsLoadingBranding(false);
       }
     };
-    
+
     if (tenantSlug) {
       loadBranding();
     }
