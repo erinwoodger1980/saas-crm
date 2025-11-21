@@ -12,6 +12,14 @@
 
 import * as crypto from 'crypto';
 import { _is_gibberish } from 'ml/pdf_parser';
+import { loadPdfLayoutTemplate } from './pdf/layoutTemplates';
+import {
+  matchRowsToQuestionnaireItems,
+  parsePdfToRows,
+  type QuestionnaireItemSpec,
+  type MatchedQuoteLine,
+  type ParsedRow,
+} from './pdf/smartAssistant';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -596,6 +604,12 @@ export interface ParsedQuote {
     bbox?: { x: number; y: number; width: number; height: number };
     classification: "joinery_elevation" | "logo" | "badge" | "icon" | "unknown";
   }>;
+  smartAssistant?: {
+    rows: ParsedRow[];
+    matches: MatchedQuoteLine[];
+    questionnaireItemCount: number;
+    templateId?: string | null;
+  };
 }
 
 /**
@@ -607,6 +621,13 @@ export interface ParseOptions {
   supplierHint?: string;
   profile?: string | null;
   debug?: boolean;
+  questionnaireItems?: QuestionnaireItemSpec[];
+  smartAssistant?: {
+    enabled?: boolean;
+    items?: QuestionnaireItemSpec[];
+    minConfidence?: number;
+    dimensionToleranceMm?: number;
+  };
 }
 
 /**
@@ -683,6 +704,12 @@ export async function parseQuotePdf(
     if (debug) console.log("[parseQuotePdf] Converting to unified format...");
     const resolvedCurrency = supplierResult.currency || currencyFallback;
 
+    const questionnaireItems =
+      options.smartAssistant?.items ?? options.questionnaireItems ?? [];
+    const smartAssistantEnabled =
+      (options.smartAssistant?.enabled ?? true) && questionnaireItems.length > 0;
+    let smartAssistantPayload: ParsedQuote["smartAssistant"] | undefined;
+
     const lines: ParsedQuoteLine[] = supplierResult.lines
       .map((line: any) => {
         const description: string = String(line.description || "");
@@ -756,12 +783,42 @@ export async function parseQuotePdf(
       }
     }
 
-    return {
+    if (smartAssistantEnabled) {
+      try {
+        const template = options.profile ? await loadPdfLayoutTemplate(options.profile) : null;
+        const parsedRows = await parsePdfToRows({
+          buffer,
+          template,
+          supplierLines: supplierResult.lines,
+          currency: resolvedCurrency,
+        });
+        const matches = matchRowsToQuestionnaireItems(parsedRows, questionnaireItems, {
+          dimensionToleranceMm: options.smartAssistant?.dimensionToleranceMm,
+          minConfidence: options.smartAssistant?.minConfidence,
+        });
+        smartAssistantPayload = {
+          rows: parsedRows,
+          matches,
+          questionnaireItemCount: questionnaireItems.length,
+          templateId: template?.id ?? null,
+        };
+      } catch (assistantError: any) {
+        const message = assistantError?.message || String(assistantError);
+        warnings.push(`[smart-assistant] ${message}`);
+        if (debug) console.warn("[parseQuotePdf] smart assistant failed:", message);
+      }
+    }
+
+    const parsedQuote: ParsedQuote = {
       source,
       lines,
       images,
       warnings,
     };
+    if (smartAssistantPayload) {
+      parsedQuote.smartAssistant = smartAssistantPayload;
+    }
+    return parsedQuote;
   } catch (error) {
     console.error("[parseQuotePdf] Error during parsing:", error);
     throw error;

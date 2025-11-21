@@ -46,6 +46,7 @@ model Tenant {
   ms365UserConnections       Ms365UserConnection[]       @relation("Ms365UserConnections")
   opportunities              Opportunity[]
   quotes                     Quote[]
+  quoteQuestionnaireMatches  QuoteQuestionnaireMatch[]
   UploadedFile               UploadedFile[]
   users                      User[]
   feedbacks                  Feedback[]
@@ -224,6 +225,7 @@ model Lead {
   opportunity           Opportunity?
   Quote                 Quote[]
   supplierQuoteRequests SupplierQuoteRequest[]
+  questionnaireMatches QuoteQuestionnaireMatch[] @relation("LeadQuestionnaireMatches")
 }
 
 model Opportunity {
@@ -638,6 +640,7 @@ model Quote {
   followUpEvents        FollowUpEvent[]
   questionnaireResponse QuestionnaireResponse?
   shoppingLists         ShoppingList[]
+  questionnaireMatches  QuoteQuestionnaireMatch[]
 
   @@index([tenantId, leadId])
   @@index([supplierProfileId])
@@ -698,6 +701,40 @@ model ParsedSupplierLine {
 
   @@index([tenantId, quoteId])
   @@index([tenantId, supplier])
+}
+
+model QuoteQuestionnaireMatch {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  quoteId               String
+  leadId                String?
+  questionnaireItemId   String
+  questionnaireLabel    String?
+  description           String
+  matchStatus           String   @default("unmatched")
+  confidenceScore       Float    @default(0)
+  parsedRowId           String?
+  rowPage               Int?
+  rowBBox               Json?
+  imageBBox             Json?
+  widthMm               Float?
+  heightMm              Float?
+  thicknessMm           Float?
+  quantity              Float?
+  unitPrice             Float?
+  lineTotal             Float?
+  currency              String?
+  meta                  Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quote  Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  lead   Lead?  @relation("LeadQuestionnaireMatches", fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, quoteId])
+  @@index([quoteId])
+  @@index([leadId])
 }
 
 model Estimate {
