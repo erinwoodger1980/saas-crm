@@ -45,7 +45,8 @@ interface SourceProfile {
   id: string;
   displayName: string;
   type: 'supplier' | 'software';
-  source: 'static' | 'tenant' | 'link';
+  source: 'static' | 'tenant' | 'link' | 'global';
+  tenantName?: string | null;
 }
 
 export function PdfTrainerClient() {
@@ -92,9 +93,10 @@ export function PdfTrainerClient() {
         // Map to component's expected shape
         let mapped: SourceProfile[] = (raw || []).map((p: any) => ({
           id: p.id,
-          displayName: p.name ?? p.displayName ?? p.id,
+          displayName: p.name ?? p.displayName ?? humanizeProfileId(p.id),
           type: p.type,
-          source: p.source ?? 'tenant',
+          source: (p.source ?? (p.type === 'software' ? 'static' : 'tenant')) as SourceProfile['source'],
+          tenantName: p.tenantName ?? null,
         }));
 
         if (queryProfileId && !mapped.some((p) => p.id === queryProfileId)) {
@@ -377,7 +379,15 @@ export function PdfTrainerClient() {
                           </div>
                           {profiles.filter((p) => p.type === 'supplier').map((profile) => (
                             <SelectItem key={profile.id} value={profile.id}>
-                              {profile.displayName}
+                              <span className="flex flex-col text-left">
+                                <span>{profile.displayName}</span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {profile.source === 'tenant' && 'Your supplier'}
+                                  {profile.source === 'global' && `Shared · ${profile.tenantName ?? 'Global library'}`}
+                                  {profile.source === 'static' && 'Built-in template'}
+                                  {profile.source === 'link' && 'Linked to this quote'}
+                                </span>
+                              </span>
                             </SelectItem>
                           ))}
                           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">
@@ -385,7 +395,14 @@ export function PdfTrainerClient() {
                           </div>
                           {profiles.filter((p) => p.type === 'software').map((profile) => (
                             <SelectItem key={profile.id} value={profile.id}>
-                              {profile.displayName}
+                              <span className="flex flex-col text-left">
+                                <span>{profile.displayName}</span>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {profile.source === 'tenant' && 'Tenant software profile'}
+                                  {profile.source === 'static' && 'Built-in template'}
+                                  {profile.source === 'link' && 'Linked to this quote'}
+                                </span>
+                              </span>
                             </SelectItem>
                           ))}
                         </>

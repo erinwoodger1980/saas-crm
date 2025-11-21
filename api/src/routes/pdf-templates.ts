@@ -8,7 +8,7 @@
 import { Router, Response } from "express";
 import { PdfAnnotationLabel, Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
-import { normaliseAnnotations } from "../lib/pdf/layoutTemplates";
+import { normaliseAnnotations, shouldFallbackPdfTemplateQuery } from "../lib/pdf/layoutTemplates";
 
 const router = Router();
 
@@ -79,12 +79,8 @@ const detailSelect: Prisma.PdfLayoutTemplateSelect = {
  */
 router.get("/", async (_req: any, res: Response) => {
   try {
-    const templates = await prisma.pdfLayoutTemplate.findMany({
-      orderBy: { createdAt: "desc" },
-      select: listSelect,
-    });
-
-    res.json({ ok: true, items: templates.map((tpl) => serializeTemplate(tpl)) });
+    const templates = await fetchTemplateSummaries();
+    res.json({ ok: true, items: templates });
   } catch (error: any) {
     console.error("[GET /pdf-templates] Error:", error);
     res.status(500).json({
@@ -321,6 +317,62 @@ router.delete("/:id", async (req: any, res: Response) => {
 });
 
 export default router;
+
+async function fetchTemplateSummaries(): Promise<any[]> {
+  try {
+    const templates = await prisma.pdfLayoutTemplate.findMany({
+      orderBy: { createdAt: "desc" },
+      select: listSelect,
+    });
+    return templates.map((tpl) => serializeTemplate(tpl));
+  } catch (error: any) {
+    if (!shouldFallbackPdfTemplateQuery(error)) throw error;
+    console.warn("[GET /pdf-templates] Schema mismatch detected, using fallback query:", error?.message || error);
+    const rows = await prisma.$queryRawUnsafe<Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      supplierProfileId: string | null;
+      pageCount: number | null;
+      createdAt: Date;
+      updatedAt: Date;
+      annotationCount: number;
+    }>>(`
+      SELECT tpl."id",
+             tpl."name",
+             tpl."description",
+             tpl."supplierProfileId",
+             tpl."pageCount",
+             tpl."createdAt",
+             tpl."updatedAt",
+             COUNT(ann."id")::int AS "annotationCount"
+      FROM "PdfLayoutTemplate" tpl
+      LEFT JOIN "PdfLayoutAnnotation" ann ON ann."templateId" = tpl."id"
+      GROUP BY tpl."id",
+               tpl."name",
+               tpl."description",
+               tpl."supplierProfileId",
+               tpl."pageCount",
+               tpl."createdAt",
+               tpl."updatedAt"
+      ORDER BY tpl."createdAt" DESC
+    `);
+
+    return rows.map((row) =>
+      serializeTemplate({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        supplierProfileId: row.supplierProfileId,
+        pageCount: row.pageCount,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        _count: { annotations: Number(row.annotationCount) || 0 },
+        createdByUser: null,
+      }),
+    );
+  }
+}
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;

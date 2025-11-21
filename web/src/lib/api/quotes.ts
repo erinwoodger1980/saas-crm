@@ -441,6 +441,8 @@ export type QuoteSourceProfile = {
   id: string;
   name: string;
   type: 'supplier' | 'software';
+  source?: 'static' | 'tenant' | 'global';
+  tenantName?: string | null;
 };
 
 export async function fetchQuoteSourceProfiles(): Promise<QuoteSourceProfile[]> {
