@@ -8,7 +8,8 @@
     "build": "npm run check:no-localhost && next build --turbopack",
     "check:no-localhost": "node -e \"const {execSync}=require('child_process'); try{ execSync('grep -R \"localhost:4000\" src && exit 1',{stdio:'inherit'}); }catch(e){}\"",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:opening-description": "tsx src/lib/buildOpeningDescription.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

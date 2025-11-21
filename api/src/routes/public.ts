@@ -3,6 +3,11 @@ import { Router } from "express";
 import fs from "fs";
 import path from "path";
 import { normalizeQuestionnaire } from "../lib/questionnaire";
+import {
+  extractGlobalSpecsFromAnswers,
+  normalizeLeadGlobalSpecs,
+  specsToPrismaData,
+} from "../lib/globalSpecs";
 import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { prisma } from "../prisma";
@@ -113,6 +118,8 @@ router.get("/leads/:id", async (req, res) => {
     extractString(["address", "address_line", "address1", "address_line1", "location"]) ??
     ((lead as any).location ?? null);
 
+  const normalizedSpecs = normalizeLeadGlobalSpecs(lead as any);
+
   return res.json({
     lead: {
       id: lead.id,
@@ -120,6 +127,10 @@ router.get("/leads/:id", async (req, res) => {
       email: lead.email ?? null,
       phone,
       address,
+      global_timber_spec: normalizedSpecs.timber || null,
+      global_glass_spec: normalizedSpecs.glass || null,
+      global_ironmongery_spec: normalizedSpecs.ironmongery || null,
+      global_finish_spec: normalizedSpecs.finish || null,
       custom: filteredCustom,
     },
   });
@@ -140,6 +151,7 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
     };
 
     const prev = (typeof lead.custom === "object" && lead.custom) ? (lead.custom as any) : {};
+    const globalSpecs = extractGlobalSpecsFromAnswers(answers);
 
     // Extract individual field values from items structure for LeadModal compatibility
     const individualFieldValues: Record<string, any> = {};
@@ -190,6 +202,7 @@ router.post("/leads/:id/submit-questionnaire", async (req, res) => {
         custom: merged,
         nextAction: "Prepare quote",
         nextActionAt: new Date(),
+        ...specsToPrismaData(globalSpecs),
       },
     });
 

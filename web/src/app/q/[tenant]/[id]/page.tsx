@@ -4,6 +4,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { PhotoMeasurementField } from "@/components/questionnaire/PhotoMeasurementField";
+import {
+  buildOpeningDescription,
+  DESCRIPTION_AUTO_MODE,
+  DESCRIPTION_MANUAL_MODE,
+  type GlobalSpecs as DescriptionGlobalSpecs,
+  type StructuralInfo,
+} from "@/lib/buildOpeningDescription";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 /* -------- Tiny public fetch helpers (no auth cookie required) -------- */
 async function getJSON<T>(path: string): Promise<T> {
@@ -42,6 +58,10 @@ type PublicLead = {
     email?: string | null;
     phone?: string | null;
     address?: string | null;
+    global_timber_spec?: string | null;
+    global_glass_spec?: string | null;
+    global_ironmongery_spec?: string | null;
+    global_finish_spec?: string | null;
     custom: Record<string, any>;
   };
 };
@@ -78,6 +98,131 @@ const HEIGHT_FIELD_CANDIDATES = [
 const OPENING_TYPE_FIELD_KEYS = ["opening_type", "door_type", "window_type", "item_type", "product_type"];
 const FLOOR_LEVEL_FIELD_KEYS = ["floor_level", "installation_floor", "storey", "floor", "level"];
 const NOTES_FIELD_KEYS = ["notes", "additional_notes", "description", "comments"];
+
+const GLOBAL_SPEC_KEYS = [
+  "global_timber_spec",
+  "global_glass_spec",
+  "global_ironmongery_spec",
+  "global_finish_spec",
+] as const;
+type GlobalSpecKey = (typeof GLOBAL_SPEC_KEYS)[number];
+
+type GlobalSpecState = Record<GlobalSpecKey, string>;
+
+const DEFAULT_GLOBAL_SPECS: GlobalSpecState = {
+  global_timber_spec: "",
+  global_glass_spec: "",
+  global_ironmongery_spec: "",
+  global_finish_spec: "",
+};
+
+const CORE_CONTACT_KEYS = ["contact_name", "email", "phone", "address"] as const;
+
+const CONTACT_FIELD_FALLBACKS: Record<(typeof CORE_CONTACT_KEYS)[number], QField> = {
+  contact_name: { key: "contact_name", label: "Your name", type: "text", required: true },
+  email: { key: "email", label: "Email", type: "text", required: true },
+  phone: { key: "phone", label: "Phone number", type: "text", required: false },
+  address: { key: "address", label: "Project address", type: "textarea", required: false },
+};
+
+const TIMBER_OPTIONS = [
+  "Accoya (painted)",
+  "Softwood (painted)",
+  "Oak (stained)",
+  "uPVC",
+  "Aluminium",
+];
+
+const GLASS_OPTIONS = [
+  "Double glazed",
+  "Triple glazed",
+  "Acoustic glass",
+  "Laminated glass",
+  "Heritage slimline glazing",
+];
+
+const IRONMONGERY_OPTIONS = [
+  "Satin chrome",
+  "Polished brass",
+  "Black antique",
+  "Oil-rubbed bronze",
+];
+
+const FINISH_OPTIONS = [
+  "Factory-painted RAL 9016",
+  "Factory-painted RAL 7016",
+  "Stained",
+  "Primed only",
+];
+
+const UNSET_SPEC_VALUE = "__unset__";
+const CUSTOM_SPEC_VALUE = "__custom__";
+
+const GLOBAL_SPEC_FIELD_CONFIG: Array<{
+  key: GlobalSpecKey;
+  label: string;
+  helper: string;
+  placeholder: string;
+  options: string[];
+}> = [
+  {
+    key: "global_timber_spec",
+    label: "Timber / base material",
+    helper: "Used for every opening unless you override an item",
+    placeholder: "e.g. Accoya, oak, aluminium",
+    options: TIMBER_OPTIONS,
+  },
+  {
+    key: "global_glass_spec",
+    label: "Glass specification",
+    helper: "Applies across all glazing descriptions",
+    placeholder: "e.g. Double glazed acoustic",
+    options: GLASS_OPTIONS,
+  },
+  {
+    key: "global_ironmongery_spec",
+    label: "Ironmongery / hardware",
+    helper: "We’ll mention this in each description",
+    placeholder: "e.g. Satin chrome handles",
+    options: IRONMONGERY_OPTIONS,
+  },
+  {
+    key: "global_finish_spec",
+    label: "Finish",
+    helper: "Adds the finishing statement to each item",
+    placeholder: "e.g. Factory-painted RAL 7016",
+    options: FINISH_OPTIONS,
+  },
+];
+
+const PRODUCT_TYPE_FIELD_KEYS = [
+  "product_type",
+  "opening_type",
+  "item_type",
+  "vision_product_type",
+];
+const OPENING_CONFIG_FIELD_KEYS = ["opening_config", "configuration", "sash_configuration", "vision_opening_config"];
+const GLAZING_STYLE_FIELD_KEYS = ["glazing_style", "bar_layout", "grid_pattern"];
+const GLASS_FIELD_KEYS = ["glass", "glass_type", "glazing_type", "vision_glass_type"];
+const COLOUR_FIELD_KEYS = ["colour", "color", "finish_colour", "finish_color", "vision_colour", "vision_color"];
+const MATERIAL_FIELD_KEYS = ["material", "frame_material", "vision_material"];
+const FINISH_FIELD_KEYS = ["finish", "finish_type", "coating", "vision_finish"];
+const IRONMONGERY_FIELD_KEYS = ["ironmongery", "hardware_finish", "handle_finish", "vision_ironmongery"];
+
+const STRUCTURAL_FIELD_KEYS = new Set([
+  ...PRODUCT_TYPE_FIELD_KEYS,
+  ...OPENING_CONFIG_FIELD_KEYS,
+  ...GLAZING_STYLE_FIELD_KEYS,
+  ...GLASS_FIELD_KEYS,
+  ...COLOUR_FIELD_KEYS,
+  ...MATERIAL_FIELD_KEYS,
+  ...FINISH_FIELD_KEYS,
+  ...IRONMONGERY_FIELD_KEYS,
+]);
+
+const DESCRIPTION_FIELD_KEYS = new Set(["description", "item_description", "opening_description"]);
+const DESCRIPTION_KEY_PRIORITY = ["opening_description", "item_description", "description"] as const;
+const MAX_SPEC_INPUT_LENGTH = 280;
 /* ---------------- Normalizers ---------------- */
 function normalizeQuestions(raw: any): QField[] {
   const out: QField[] = [];
@@ -134,6 +279,7 @@ export default function PublicQuestionnairePage() {
   const [itemFiles, setItemFiles] = useState<File[][]>([[]]);
   // Per-item, per-question file uploads (for questions of type 'file')
   const [itemQuestionFiles, setItemQuestionFiles] = useState<Record<string, File[]>[]>([{}]);
+  const [globalSpecs, setGlobalSpecs] = useState<GlobalSpecState>(DEFAULT_GLOBAL_SPECS);
 
   const fieldRefs = useRef<Record<string, FieldElement | null>>({});
 
@@ -158,12 +304,27 @@ export default function PublicQuestionnairePage() {
 
         // Pre-fill items from existing custom.items (if any)
         const custom = (l.lead && typeof l.lead.custom === "object" && l.lead.custom) || {};
+        setGlobalSpecs({
+          global_timber_spec: normalizeGlobalSpecValue(
+            (l.lead as any)?.global_timber_spec ?? (custom as any)?.global_timber_spec ?? ""
+          ),
+          global_glass_spec: normalizeGlobalSpecValue(
+            (l.lead as any)?.global_glass_spec ?? (custom as any)?.global_glass_spec ?? ""
+          ),
+          global_ironmongery_spec: normalizeGlobalSpecValue(
+            (l.lead as any)?.global_ironmongery_spec ?? (custom as any)?.global_ironmongery_spec ?? ""
+          ),
+          global_finish_spec: normalizeGlobalSpecValue(
+            (l.lead as any)?.global_finish_spec ?? (custom as any)?.global_finish_spec ?? ""
+          ),
+        });
         const existingItems = Array.isArray((custom as any).items) ? (custom as any).items : [];
         const answers = existingItems.map((existing: any) => {
           if (existing && typeof existing === "object") {
             const copy = { ...(existing as Record<string, any>) };
             delete copy.photos;
             delete copy.itemNumber;
+            copy.description_mode = typeof copy.description_mode === "string" ? copy.description_mode : DESCRIPTION_AUTO_MODE;
             return copy;
           }
           return {};
@@ -190,22 +351,55 @@ export default function PublicQuestionnairePage() {
   /* ---------------- Derived ---------------- */
   // Standard contact fields that appear once at the top
   const STANDARD_FIELDS = ['contact_name', 'email', 'phone', 'address', 'description', 'notes'];
-  
+
   const allQuestions: QField[] = useMemo(
     () => normalizeQuestions((settings as any)?.questionnaire ?? [])
       .filter((q) => q.askInQuestionnaire !== false && q.internalOnly !== true),
     [settings]
   );
 
-  // Split questions into contact fields (shown once) and item fields (repeated per item)
-  const contactFields = useMemo(
-    () => allQuestions.filter(q => STANDARD_FIELDS.includes(q.key)),
+  const rawContactFields = useMemo(
+    () => allQuestions.filter((q) => STANDARD_FIELDS.includes(q.key)),
     [allQuestions]
   );
-  
-  const questions = useMemo(
-    () => allQuestions.filter(q => !STANDARD_FIELDS.includes(q.key)),
+
+  const contactFields = useMemo(() => {
+    const configuredMap = new Map(rawContactFields.map((field) => [field.key, field]));
+    const ordered: QField[] = [];
+    CORE_CONTACT_KEYS.forEach((key) => {
+      const field = configuredMap.get(key) ?? CONTACT_FIELD_FALLBACKS[key];
+      if (field) ordered.push(field);
+      configuredMap.delete(key);
+    });
+    configuredMap.forEach((field) => ordered.push(field));
+    return ordered;
+  }, [rawContactFields]);
+
+  const rawItemQuestions = useMemo(
+    () => allQuestions.filter((q) => !STANDARD_FIELDS.includes(q.key)),
     [allQuestions]
+  );
+
+  const descriptionQuestion = useMemo(
+    () => rawItemQuestions.find((q) => DESCRIPTION_FIELD_KEYS.has(q.key)),
+    [rawItemQuestions]
+  );
+
+  const descriptionFieldKey = descriptionQuestion?.key ?? "description";
+
+  const questions = useMemo(
+    () => rawItemQuestions.filter((q) => !DESCRIPTION_FIELD_KEYS.has(q.key)),
+    [rawItemQuestions]
+  );
+
+  const normalizedGlobalSpecs = useMemo<DescriptionGlobalSpecs>(
+    () => ({
+      timber: specValueOrNull(globalSpecs.global_timber_spec),
+      glass: specValueOrNull(globalSpecs.global_glass_spec),
+      ironmongery: specValueOrNull(globalSpecs.global_ironmongery_spec),
+      finish: specValueOrNull(globalSpecs.global_finish_spec),
+    }),
+    [globalSpecs]
   );
 
   const measurementFieldMeta = useMemo(() => {
@@ -268,6 +462,21 @@ export default function PublicQuestionnairePage() {
     }
   }, [lead, contactFields]);
 
+  useEffect(() => {
+    setItemAnswers((prev) =>
+      prev.map((item) => {
+        const mode: string = typeof item.description_mode === "string" ? item.description_mode : DESCRIPTION_AUTO_MODE;
+        if (mode === DESCRIPTION_MANUAL_MODE) return item;
+        const recomposed = buildOpeningDescription(extractStructuralInfo(item), normalizedGlobalSpecs);
+        const currentDescription = getItemDescriptionValue(item);
+        if (recomposed === currentDescription && mode === (item.description_mode ?? DESCRIPTION_AUTO_MODE)) {
+          return item;
+        }
+        return applyDescriptionValue({ ...item, description_mode: DESCRIPTION_AUTO_MODE }, recomposed, descriptionFieldKey);
+      })
+    );
+  }, [normalizedGlobalSpecs, descriptionFieldKey]);
+
   const getLeadSummaryValue = (key: string, fallback?: string | null) => {
     const normalize = (val: any) => {
       if (val == null) return "";
@@ -297,22 +506,38 @@ export default function PublicQuestionnairePage() {
     });
   };
 
-  const applyItemPatch = useCallback((itemIndex: number, patch: Record<string, any>) => {
-    setItemAnswers((prev) => prev.map((it, i) => (i === itemIndex ? { ...it, ...patch } : it)));
-    setItemErrors((prev) =>
-      prev.map((errs, i) => {
-        if (i !== itemIndex) return errs;
-        const keys = Object.keys(patch);
-        const hasError = keys.some((key) => errs[key]);
-        if (!hasError) return errs;
-        const next = { ...errs };
-        for (const key of keys) {
-          if (next[key]) delete next[key];
-        }
-        return next;
-      })
-    );
-  }, []);
+  const applyItemPatch = useCallback(
+    (itemIndex: number, patch: Record<string, any>, options?: { forceDescriptionRefresh?: boolean }) => {
+      setItemAnswers((prev) =>
+        prev.map((it, i) => {
+          if (i !== itemIndex) return it;
+          let next = { ...it, ...patch };
+          const mode: string = typeof next.description_mode === "string" ? next.description_mode : DESCRIPTION_AUTO_MODE;
+          const touchedStructural = Object.keys(patch).some((key) => STRUCTURAL_FIELD_KEYS.has(key));
+          if ((options?.forceDescriptionRefresh || touchedStructural) && mode !== DESCRIPTION_MANUAL_MODE) {
+            const recomposed = buildOpeningDescription(extractStructuralInfo(next), normalizedGlobalSpecs);
+            next = applyDescriptionValue(next, recomposed, descriptionFieldKey);
+            next.description_mode = DESCRIPTION_AUTO_MODE;
+          }
+          return next;
+        })
+      );
+      setItemErrors((prev) =>
+        prev.map((errs, i) => {
+          if (i !== itemIndex) return errs;
+          const keys = Object.keys(patch);
+          const hasError = keys.some((key) => errs[key]);
+          if (!hasError) return errs;
+          const next = { ...errs };
+          for (const key of keys) {
+            if (next[key]) delete next[key];
+          }
+          return next;
+        })
+      );
+    },
+    [normalizedGlobalSpecs, descriptionFieldKey]
+  );
 
   const setItemField = (itemIndex: number, key: string, value: any) => {
     applyItemPatch(itemIndex, { [key]: value });
@@ -344,6 +569,72 @@ export default function PublicQuestionnairePage() {
     setItemQuestionFiles((prev) => prev.map((rec, i) => (i === itemIndex ? { ...(rec ?? {}), [key]: [] } : rec)));
   };
 
+  const handleGlobalSpecSelect = useCallback(
+    (key: GlobalSpecKey, selection: string, options: string[]) => {
+      setGlobalSpecs((prev) => {
+        if (selection === UNSET_SPEC_VALUE) {
+          return { ...prev, [key]: "" };
+        }
+        if (selection === CUSTOM_SPEC_VALUE) {
+          const preserved = options.includes(prev[key]) ? "" : prev[key];
+          return { ...prev, [key]: normalizeGlobalSpecValue(preserved) };
+        }
+        return { ...prev, [key]: normalizeGlobalSpecValue(selection) };
+      });
+    },
+    []
+  );
+
+  const handleGlobalSpecInput = useCallback((key: GlobalSpecKey, value: string) => {
+    setGlobalSpecs((prev) => ({ ...prev, [key]: normalizeGlobalSpecValue(value) }));
+  }, []);
+
+  const handleDescriptionChange = useCallback(
+    (itemIndex: number, value: string) => {
+      setItemAnswers((prev) =>
+        prev.map((item, idx) => {
+          if (idx !== itemIndex) return item;
+          return applyDescriptionValue({ ...item, description_mode: DESCRIPTION_MANUAL_MODE }, value, descriptionFieldKey);
+        })
+      );
+      setItemErrors((prev) =>
+        prev.map((errs, idx) => {
+          if (idx !== itemIndex || !errs[descriptionFieldKey]) return errs;
+          const next = { ...errs };
+          delete next[descriptionFieldKey];
+          return next;
+        })
+      );
+    },
+    [descriptionFieldKey]
+  );
+
+  const handleDescriptionModeToggle = useCallback(
+    (itemIndex: number, nextMode: typeof DESCRIPTION_AUTO_MODE | typeof DESCRIPTION_MANUAL_MODE) => {
+      setItemAnswers((prev) =>
+        prev.map((item, idx) => {
+          if (idx !== itemIndex) return item;
+          if (nextMode === DESCRIPTION_MANUAL_MODE) {
+            return { ...item, description_mode: DESCRIPTION_MANUAL_MODE };
+          }
+          const recomposed = buildOpeningDescription(extractStructuralInfo(item), normalizedGlobalSpecs);
+          return applyDescriptionValue({ ...item, description_mode: DESCRIPTION_AUTO_MODE }, recomposed, descriptionFieldKey);
+        })
+      );
+      if (nextMode === DESCRIPTION_AUTO_MODE) {
+        setItemErrors((prev) =>
+          prev.map((errs, idx) => {
+            if (idx !== itemIndex || !errs[descriptionFieldKey]) return errs;
+            const next = { ...errs };
+            delete next[descriptionFieldKey];
+            return next;
+          })
+        );
+      }
+    },
+    [normalizedGlobalSpecs, descriptionFieldKey]
+  );
+
   const addItem = () => {
     setItemAnswers((prev) => {
       const last = prev[prev.length - 1] ?? {};
@@ -353,7 +644,13 @@ export default function PublicQuestionnairePage() {
         if (measurementKeysLower.includes(lower)) return false;
         return true;
       });
-      const base = Object.fromEntries(entries);
+      let base = Object.fromEntries(entries);
+      const mode: string = typeof base.description_mode === "string" ? base.description_mode : DESCRIPTION_AUTO_MODE;
+      base.description_mode = mode;
+      if (mode !== DESCRIPTION_MANUAL_MODE) {
+        const recomposed = buildOpeningDescription(extractStructuralInfo(base), normalizedGlobalSpecs);
+        base = applyDescriptionValue(base, recomposed, descriptionFieldKey);
+      }
       return [...prev, base];
     });
     setItemErrors((prev) => [...prev, {}]);
@@ -414,6 +711,14 @@ export default function PublicQuestionnairePage() {
         if (q.required && (q.type === "file" ? (Array.isArray(fileVal) ? fileVal.length === 0 : true) : isEmptyValue(val))) {
           next[itemIdx][q.key] = "This field is required.";
           if (!firstInvalidKey) firstInvalidKey = makeFieldKey(itemIdx, q.key);
+        }
+      }
+
+      if (descriptionQuestion?.required) {
+        const descVal = getItemDescriptionValue(itemAnswers[itemIdx] ?? {});
+        if (isEmptyValue(descVal)) {
+          next[itemIdx][descriptionFieldKey] = "This field is required.";
+          if (!firstInvalidKey) firstInvalidKey = makeFieldKey(itemIdx, descriptionFieldKey);
         }
       }
     });
@@ -533,11 +838,14 @@ export default function PublicQuestionnairePage() {
         ...itemQuestionUploads.flat().map((u) => ({ filename: u.filename, mimeType: u.mimeType, base64: u.base64 })),
       ];
 
+      const answersPayload = {
+        ...contactAnswers,
+        ...globalSpecs,
+        items: itemsPayload,
+      };
+
       await postJSON(`/public/leads/${encodeURIComponent(lead.id)}/submit-questionnaire`, {
-        answers: { 
-          ...contactAnswers,  // Include contact fields at top level
-          items: itemsPayload 
-        },
+        answers: answersPayload,
         uploads: flattenedUploads,
       });
 
@@ -718,6 +1026,56 @@ export default function PublicQuestionnairePage() {
               </div>
             )}
 
+            <div className="space-y-4 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-5">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Project-wide specifications</h2>
+                <p className="text-sm text-slate-500">
+                  Set the timber, glazing, finish and hardware that apply to every opening. We&rsquo;ll auto-populate
+                  each description unless you switch an item to manual mode.
+                </p>
+              </div>
+
+              <div className="grid gap-4">
+                {GLOBAL_SPEC_FIELD_CONFIG.map((spec) => {
+                  const selectValue = getSpecSelectValue(globalSpecs[spec.key], spec.options);
+                  const showCustomInput = selectValue === CUSTOM_SPEC_VALUE;
+                  return (
+                    <div key={spec.key} className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Label htmlFor={`global-${spec.key}`} className="text-sm font-medium text-slate-700">
+                          {spec.label}
+                        </Label>
+                        <span className="text-xs text-slate-400">{spec.helper}</span>
+                      </div>
+                      <Select value={selectValue} onValueChange={(val) => handleGlobalSpecSelect(spec.key, val, spec.options)}>
+                        <SelectTrigger className="w-full rounded-2xl border border-slate-200/70 bg-white/95 px-4 py-3 text-left text-sm shadow-sm">
+                          <SelectValue placeholder="Select an option" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={UNSET_SPEC_VALUE}>Not sure yet</SelectItem>
+                          {spec.options.map((opt) => (
+                            <SelectItem key={opt} value={opt}>
+                              {opt}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={CUSTOM_SPEC_VALUE}>Custom value…</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {showCustomInput ? (
+                        <Input
+                          id={`global-${spec.key}`}
+                          className={baseInputClasses}
+                          value={valueOrEmpty(globalSpecs[spec.key])}
+                          onChange={(e) => handleGlobalSpecInput(spec.key, e.target.value)}
+                          placeholder={spec.placeholder}
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Project Details Section */}
             <div className="pt-4">
               <h2 className="text-lg font-semibold text-slate-900">Your project details</h2>
@@ -778,6 +1136,14 @@ export default function PublicQuestionnairePage() {
                             }
                           }
                         : undefined;
+                    const descriptionLabel = descriptionQuestion?.label || "Opening description";
+                    const descriptionRequired = Boolean(descriptionQuestion?.required);
+                    const descriptionMode =
+                      typeof itemData.description_mode === "string" ? itemData.description_mode : DESCRIPTION_AUTO_MODE;
+                    const isAutoMode = descriptionMode !== DESCRIPTION_MANUAL_MODE;
+                    const descriptionFieldId = makeFieldKey(itemIdx, descriptionFieldKey);
+                    const descriptionValue = getItemDescriptionValue(itemData);
+                    const descriptionError = itemErr[descriptionFieldKey];
 
                     return (
                       <div
@@ -875,6 +1241,58 @@ export default function PublicQuestionnairePage() {
                               </div>
                             );
                           })}
+                        </div>
+
+                        <div className="space-y-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-4">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-medium text-slate-800">
+                                {descriptionLabel}
+                                {descriptionRequired ? <span className="text-rose-500"> *</span> : null}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {isAutoMode
+                                  ? "Auto-updates from your project specs."
+                                  : "Locked to your wording for this item."}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-[rgb(var(--brand))] underline-offset-2 hover:underline"
+                              onClick={() =>
+                                handleDescriptionModeToggle(
+                                  itemIdx,
+                                  isAutoMode ? DESCRIPTION_MANUAL_MODE : DESCRIPTION_AUTO_MODE
+                                )
+                              }
+                            >
+                              {isAutoMode ? "Switch to manual edit" : "Revert to auto text"}
+                            </button>
+                          </div>
+                          <textarea
+                            id={descriptionFieldId}
+                            ref={registerFieldRef(descriptionFieldId)}
+                            className={`${baseInputClasses} min-h-[140px] ${isAutoMode ? "bg-slate-50" : "bg-white"}`}
+                            value={valueOrEmpty(descriptionValue)}
+                            readOnly={isAutoMode}
+                            onChange={(e) => handleDescriptionChange(itemIdx, e.target.value)}
+                            aria-invalid={descriptionError ? true : undefined}
+                            aria-describedby={descriptionError ? `${descriptionFieldId}-err` : undefined}
+                          />
+                          {isAutoMode ? (
+                            <p className="text-xs text-slate-500">
+                              Need tweaks? Switch to manual, edit the text, and we&rsquo;ll remember it for this item.
+                            </p>
+                          ) : (
+                            <p className="text-xs text-slate-500">
+                              Manual descriptions stay exactly as you type, even if the global specs change.
+                            </p>
+                          )}
+                          {descriptionError ? (
+                            <p id={`${descriptionFieldId}-err`} className="text-xs text-rose-600">
+                              {descriptionError}
+                            </p>
+                          ) : null}
                         </div>
 
                         {measurementFieldMeta ? (
@@ -1052,6 +1470,59 @@ function isEmptyValue(v: any) {
 }
 function valueOrEmpty(v: any) {
   return v == null ? "" : String(v);
+}
+
+function normalizeGlobalSpecValue(raw: any): string {
+  if (typeof raw !== "string") return "";
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  return trimmed.length > MAX_SPEC_INPUT_LENGTH ? trimmed.slice(0, MAX_SPEC_INPUT_LENGTH) : trimmed;
+}
+
+function specValueOrNull(value: string): string | null {
+  const normalized = normalizeGlobalSpecValue(value);
+  return normalized || null;
+}
+
+function getSpecSelectValue(value: string, options: string[]): string {
+  if (!value) return UNSET_SPEC_VALUE;
+  return options.includes(value) ? value : CUSTOM_SPEC_VALUE;
+}
+
+function getItemDescriptionValue(item: Record<string, any>): string {
+  if (!item || typeof item !== "object") return "";
+  for (const key of DESCRIPTION_KEY_PRIORITY) {
+    const raw = item[key as keyof typeof item];
+    if (typeof raw === "string" && raw.trim()) {
+      return raw;
+    }
+  }
+  const fallback = item.description;
+  return typeof fallback === "string" ? fallback : "";
+}
+
+function applyDescriptionValue(item: Record<string, any>, value: string, preferredKey: string): Record<string, any> {
+  const normalized = typeof value === "string" ? value : "";
+  const next = { ...item, [preferredKey]: normalized };
+  if (preferredKey !== "description") {
+    next.description = normalized;
+  }
+  return next;
+}
+
+function extractStructuralInfo(item: Record<string, any>): StructuralInfo {
+  return {
+    productType: pickFirstStringValue(item, PRODUCT_TYPE_FIELD_KEYS),
+    openingConfig: pickFirstStringValue(item, OPENING_CONFIG_FIELD_KEYS),
+    glazingStyle: pickFirstStringValue(item, GLAZING_STYLE_FIELD_KEYS),
+    glassType: pickFirstStringValue(item, GLASS_FIELD_KEYS),
+    colour: pickFirstStringValue(item, COLOUR_FIELD_KEYS),
+    color: pickFirstStringValue(item, ["color", "vision_color", "finish_color"]),
+    material: pickFirstStringValue(item, MATERIAL_FIELD_KEYS),
+    finish: pickFirstStringValue(item, FINISH_FIELD_KEYS),
+    ironmongery: pickFirstStringValue(item, IRONMONGERY_FIELD_KEYS),
+    description: getItemDescriptionValue(item),
+  };
 }
 
 /* ---------------- Shell layout ---------------- */

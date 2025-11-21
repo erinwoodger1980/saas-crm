@@ -208,6 +208,10 @@ model Lead {
   briefJson             Json?
   custom                Json?
   description           String?
+  globalTimberSpec      String   @default("")
+  globalGlassSpec       String   @default("")
+  globalIronmongerySpec String   @default("")
+  globalFinishSpec      String   @default("")
   emailIngests          EmailIngest[]
   emailMessages         EmailMessage[]
   emailThreads          EmailThread[]
