@@ -172,11 +172,7 @@ router.post("/", async (req: any, res: Response) => {
         },
       },
       // Optional fields (backward compatible - only set if present)
-      ...(req.auth?.userId && { 
-        createdByUser: { 
-          connect: { id: req.auth.userId } 
-        } 
-      }),
+      ...(req.auth?.userId && { createdByUserId: req.auth.userId }),
       ...(typeof meta === "object" && meta !== null && { meta }),
     };
 
@@ -184,7 +180,7 @@ router.post("/", async (req: any, res: Response) => {
       name: createData.name,
       supplierProfileId: createData.supplierProfileId,
       annotationCount: annotationWrites.length,
-      hasUserId: !!createData.createdByUser,
+      hasUserId: !!req.auth?.userId,
       hasMeta: !!createData.meta,
     });
 
