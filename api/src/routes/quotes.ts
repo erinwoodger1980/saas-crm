@@ -1033,14 +1033,12 @@ router.get("/source-profiles", requireAuth, async (req: any, res) => {
 
     const { quoteSourceProfiles } = await import("../lib/quoteSourceProfiles");
 
-    const staticProfiles = quoteSourceProfiles
-      .filter((p: any) => p.type === "software")
-      .map((profile: any) => ({
-        id: profile.id,
-        name: profile.displayName,
-        type: "software" as const,
-        source: "static" as const,
-      }));
+    const staticProfiles = quoteSourceProfiles.map((profile: any) => ({
+      id: profile.id,
+      name: profile.displayName,
+      type: profile.type,
+      source: "static" as const,
+    }));
 
     const dbSoftwareProfiles = await prisma.softwareProfile.findMany({
       where: { tenantId },
@@ -1055,15 +1053,21 @@ router.get("/source-profiles", requireAuth, async (req: any, res) => {
     }));
 
     const suppliers = await prisma.supplier.findMany({
-      where: { tenantId, isActive: true },
+      where: { isActive: true },
       orderBy: { name: "asc" },
+      include: {
+        tenant: {
+          select: { id: true, name: true },
+        },
+      },
     });
 
     const supplierProfiles = suppliers.map((s) => ({
       id: `sup_${s.id}`,
       name: s.name,
       type: "supplier" as const,
-      source: "tenant" as const,
+      source: s.tenantId === tenantId ? ("tenant" as const) : ("global" as const),
+      tenantName: s.tenant?.name ?? null,
     }));
 
     return res.json([...staticProfiles, ...dynamicSoftware, ...supplierProfiles]);

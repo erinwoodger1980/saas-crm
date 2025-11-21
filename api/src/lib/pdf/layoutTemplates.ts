@@ -118,7 +118,7 @@ const SUPPORTED_LABELS: Record<AnnotationLabel, boolean> = {
 
 export type RowAnnotationsMap = Record<string, LayoutTemplateAnnotation[]>;
 
-function shouldFallbackPdfTemplateQuery(err: any): boolean {
+export function shouldFallbackPdfTemplateQuery(err: any): boolean {
   if (!err) return false;
   const msg = (err?.message || String(err || "")) as string;
   if (!msg) return false;

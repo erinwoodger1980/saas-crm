@@ -139,7 +139,16 @@ export function SupplierFilesCard({
                   </SelectTrigger>
                   <SelectContent>
                     {filteredProfiles.map(profile => (
-                      <SelectItem key={profile.id} value={profile.id}>{profile.name}</SelectItem>
+                      <SelectItem key={profile.id} value={profile.id}>
+                        <span className="flex flex-col text-left">
+                          <span>{profile.name}</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {profile.source === 'tenant' && 'Your supplier'}
+                            {profile.source === 'global' && `Shared · ${profile.tenantName ?? 'Global library'}`}
+                            {profile.source === 'static' && 'Built-in template'}
+                          </span>
+                        </span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
