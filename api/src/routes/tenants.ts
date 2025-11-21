@@ -218,20 +218,60 @@ router.get("/settings", async (req, res) => {
       preparedQuestions = prepareQuestionnaireForSave(fallback);
     }
 
-    s = await prisma.tenantSettings.create({
-      data: {
+    // Robust settings creation with slug collision handling
+    const candidateSlugs = [
+      `tenant-${tenantId.slice(0, 6).toLowerCase()}`,
+      `tenant-${tenantId.slice(0, 8).toLowerCase()}`,
+      tenantId.toLowerCase(),
+      `tenant-${tenantId.slice(0, 6).toLowerCase()}-${Date.now().toString().slice(-4)}`,
+    ];
+    let created: any = null;
+    for (const cand of candidateSlugs) {
+      try {
+        created = await prisma.tenantSettings.create({
+          data: {
+            tenantId,
+            slug: cand,
+            brandName: "Your Company",
+            introHtml:
+              "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
+            links: [],
+            taskPlaybook: DEFAULT_TASK_PLAYBOOK,
+            questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
+            questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
+            questionnaire: preparedQuestions || [],
+          },
+        });
+        break; // success
+      } catch (createErr: any) {
+        // Unique violation -> try next slug; otherwise rethrow
+        if (createErr?.code === "P2002") {
+          console.warn(`[tenant/settings] slug collision for '${cand}', trying next candidate`);
+          continue;
+        } else {
+          console.error("[tenant/settings] create failed", createErr?.message || createErr);
+          throw createErr;
+        }
+      }
+    }
+    if (!created) {
+      // Last resort: return ephemeral (not persisted) minimal settings so UI can still render
+      console.error("[tenant/settings] All slug candidates exhausted; returning ephemeral settings");
+      created = {
         tenantId,
-        slug: `tenant-${tenantId.slice(0, 6).toLowerCase()}`,
+        slug: `tenant-${tenantId.slice(0, 6).toLowerCase()}-ephemeral`,
         brandName: "Your Company",
-        introHtml:
-          "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
+        introHtml: "<p>Thank you for your enquiry. Please tell us a little more below.</p>",
         links: [],
         taskPlaybook: DEFAULT_TASK_PLAYBOOK,
         questionnaireEmailSubject: DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT,
         questionnaireEmailBody: DEFAULT_QUESTIONNAIRE_EMAIL_BODY,
         questionnaire: preparedQuestions || [],
-      },
-    });
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
+    s = created;
   }
 
     // Safe parsing of all JSON fields with fallbacks to prevent crashes
