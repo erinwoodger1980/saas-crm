@@ -91,7 +91,7 @@ export interface UsePublicEstimatorReturn {
   trackInteraction: (type: string, metadata?: Record<string, any>) => Promise<void>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 export function usePublicEstimator({
   tenantSlug,
@@ -155,7 +155,7 @@ export function usePublicEstimator({
     const loadBranding = async () => {
       try {
         setIsLoadingBranding(true);
-        const response = await fetch(`${API_BASE}/api/public/tenant/${tenantSlug}/branding`);
+        const response = await fetch(`${API_BASE}/public/tenant/${tenantSlug}/branding`);
         
         if (!response.ok) {
           throw new Error(`Failed to load branding: ${response.statusText}`);
@@ -183,7 +183,7 @@ export function usePublicEstimator({
       
       try {
         setIsLoadingProject(true);
-        const response = await fetch(`${API_BASE}/api/public/projects/${projectId}`);
+        const response = await fetch(`${API_BASE}/public/projects/${projectId}`);
         
         if (!response.ok) {
           throw new Error(`Failed to load project: ${response.statusText}`);
@@ -219,7 +219,7 @@ export function usePublicEstimator({
     try {
       setIsSaving(true);
       
-      const response = await fetch(`${API_BASE}/api/public/projects`, {
+      const response = await fetch(`${API_BASE}/public/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -289,7 +289,7 @@ export function usePublicEstimator({
     try {
       setIsLoadingEstimate(true);
       
-      const response = await fetch(`${API_BASE}/api/public/estimates/preview`, {
+      const response = await fetch(`${API_BASE}/public/estimates/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -364,7 +364,7 @@ export function usePublicEstimator({
     if (!projectId || !entryContext) return;
     
     try {
-      await fetch(`${API_BASE}/api/public/interactions`, {
+      await fetch(`${API_BASE}/public/interactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
