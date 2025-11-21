@@ -25,6 +25,12 @@ import {
 } from "../lib/pdf/layoutTemplates";
 import { descriptionQualityScore } from "../lib/pdf/quality";
 import { fromDbQuoteSourceType, normalizeQuoteSourceValue, toDbQuoteSourceType } from "../lib/quoteSourceType";
+import {
+  matchRowsToQuestionnaireItems,
+  parsePdfToRows,
+  questionnaireItemsFromLeadContext,
+  type MatchedQuoteLine,
+} from "../lib/pdf/smartAssistant";
 
 const router = Router();
 
@@ -211,6 +217,40 @@ function pickLineTotal(obj: any): number | null {
     "amount",
     "ex_vat_total",
   ]);
+}
+
+function buildQuoteQuestionnaireMatchInput(
+  match: MatchedQuoteLine,
+  tenantId: string,
+  quoteId: string,
+  leadId?: string | null,
+): Prisma.QuoteQuestionnaireMatchCreateManyInput {
+  return {
+    tenantId,
+    quoteId,
+    leadId: leadId ?? null,
+    questionnaireItemId: match.questionnaireItemId,
+    questionnaireLabel: match.questionnaireLabel ?? null,
+    description: match.description,
+    matchStatus: match.match_status,
+    confidenceScore: match.confidence_score,
+    parsedRowId: match.parsedRowId ?? null,
+    rowPage: match.row_page ?? null,
+    rowBBox: match.row_bbox
+      ? (match.row_bbox as unknown as Prisma.InputJsonValue)
+      : Prisma.JsonNull,
+    imageBBox: match.image_bbox
+      ? (match.image_bbox as unknown as Prisma.InputJsonValue)
+      : Prisma.JsonNull,
+    widthMm: match.width_mm ?? null,
+    heightMm: match.height_mm ?? null,
+    thicknessMm: match.thickness_mm ?? null,
+    quantity: match.quantity ?? null,
+    unitPrice: match.unit_price ?? null,
+    lineTotal: match.line_total ?? null,
+    currency: match.currency ?? null,
+    meta: match.meta ? (match.meta as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+  };
 }
 
 function extractModelVersionId(raw: any): string | null {
@@ -1317,6 +1357,48 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
 
     await normaliseQuoteSourceTypeColumn(quoteId);
 
+    let questionnaireLeadContext: {
+      id?: string | null;
+      custom?: Record<string, any> | null;
+      globalTimberSpec?: string | null;
+      globalGlassSpec?: string | null;
+      globalIronmongerySpec?: string | null;
+      globalFinishSpec?: string | null;
+    } | null = null;
+
+    if (quote.leadId) {
+      try {
+        const leadRecord = await prisma.lead.findFirst({
+          where: { id: quote.leadId, tenantId },
+          select: {
+            id: true,
+            custom: true,
+            globalTimberSpec: true,
+            globalGlassSpec: true,
+            globalIronmongerySpec: true,
+            globalFinishSpec: true,
+          },
+        });
+        if (leadRecord) {
+          questionnaireLeadContext = {
+            id: leadRecord.id,
+            custom: (leadRecord.custom as Record<string, any> | null) ?? null,
+            globalTimberSpec: leadRecord.globalTimberSpec ?? null,
+            globalGlassSpec: leadRecord.globalGlassSpec ?? null,
+            globalIronmongerySpec: leadRecord.globalIronmongerySpec ?? null,
+            globalFinishSpec: leadRecord.globalFinishSpec ?? null,
+          };
+        }
+      } catch (err: any) {
+        console.warn(
+          `[parse] Failed to load lead context for ${quote.leadId}:`,
+          err?.message || err,
+        );
+      }
+    }
+
+    const questionnaireItems = questionnaireItemsFromLeadContext(questionnaireLeadContext);
+
     const supplierTemplates = quote.supplierProfileId
       ? await prisma.pdfLayoutTemplate.findMany({
           where: { supplierProfileId: quote.supplierProfileId },
@@ -1362,13 +1444,16 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
       String(req.query.forceFallback ?? "").toLowerCase() === "true";
 
     const doParse = async () => {
-  const created: any[] = [];
-  const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }> = [];
-  const summaries: any[] = [];
-  const warnings = new Set<string>();
-  let fallbackUsed = 0;
-  const fallbackScoreTotals = { kept: 0, discarded: 0 };
-  let sawFallbackScores = false;
+      const created: any[] = [];
+      const fails: Array<{ fileId: string; name?: string | null; status?: number; error?: any }> = [];
+      const summaries: any[] = [];
+      const warnings = new Set<string>();
+      let fallbackUsed = 0;
+      const fallbackScoreTotals = { kept: 0, discarded: 0 };
+      let sawFallbackScores = false;
+      const smartAssistantMatchMap = questionnaireItems.length
+        ? new Map<string, MatchedQuoteLine>()
+        : null;
       let aggregatedTemplateMeta: TemplateParseMeta | null = null;
       const parsedLinesForDb: Prisma.ParsedSupplierLineCreateManyInput[] = [];
 
@@ -1638,6 +1723,55 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
           safeNumber(latestMlPayload?.confidence) ??
           null;
 
+        if (questionnaireItems.length) {
+          try {
+            const templateForAssistant =
+              (info.template?.templateId &&
+                templateRecords.find((tpl) => tpl.id === info.template.templateId)) ||
+              templateRecords[0] ||
+              null;
+
+            const parsedRows = await parsePdfToRows({
+              buffer,
+              template: templateForAssistant ?? undefined,
+              supplierLines: parseResult.lines,
+              currency,
+            });
+
+            const matches = matchRowsToQuestionnaireItems(parsedRows, questionnaireItems);
+            const matchedCount = matches.filter((match) => match.match_status !== "unmatched").length;
+
+            info.smartAssistant = {
+              questionnaireItems: questionnaireItems.length,
+              parsedRowCount: parsedRows.length,
+              matchCount: matchedCount,
+              templateId: templateForAssistant?.id ?? null,
+              topMatches: matches
+                .filter((match) => match.match_status !== "unmatched")
+                .slice(0, 5)
+                .map((match) => ({
+                  questionnaireItemId: match.questionnaireItemId,
+                  parsedRowId: match.parsedRowId,
+                  confidence: match.confidence_score,
+                  status: match.match_status,
+                  description: match.description,
+                })),
+            };
+
+            if (smartAssistantMatchMap) {
+              for (const match of matches) {
+                const current = smartAssistantMatchMap.get(match.questionnaireItemId);
+                if (!current || match.confidence_score >= current.confidence_score) {
+                  smartAssistantMatchMap.set(match.questionnaireItemId, match);
+                }
+              }
+            }
+          } catch (assistantErr: any) {
+            const assistantMessage = assistantErr?.message || String(assistantErr);
+            warnings.add(`Smart assistant failed for ${f.name || f.id}: ${assistantMessage}`);
+          }
+        }
+
         // STEP: Extract images from PDF and prepare for mapping to lines
         const uploadDir = process.env.UPLOAD_DIR 
           ? (path.isAbsolute(process.env.UPLOAD_DIR) ? process.env.UPLOAD_DIR : path.join(process.cwd(), process.env.UPLOAD_DIR))
@@ -1877,6 +2011,25 @@ router.post("/:id/parse", requireAuth, async (req: any, res) => {
         } catch (err: any) {
           console.warn(
             `[parse] quote ${quote.id} failed to persist ParsedSupplierLine:`,
+            err?.message || err,
+          );
+        }
+      }
+
+      if (smartAssistantMatchMap) {
+        const matchesToPersist = Array.from(smartAssistantMatchMap.values());
+        try {
+          await prisma.quoteQuestionnaireMatch.deleteMany({ where: { tenantId, quoteId: quote.id } });
+          if (matchesToPersist.length) {
+            await prisma.quoteQuestionnaireMatch.createMany({
+              data: matchesToPersist.map((match) =>
+                buildQuoteQuestionnaireMatchInput(match, tenantId, quote.id, quote.leadId ?? null),
+              ),
+            });
+          }
+        } catch (err: any) {
+          console.warn(
+            `[parse] quote ${quote.id} failed to persist smart assistant matches:`,
             err?.message || err,
           );
         }

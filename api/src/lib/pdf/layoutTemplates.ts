@@ -1,3 +1,18 @@
+/**
+ * Layout-template parsing layer.
+ *
+ * The template workflow lets ops staff annotate a representative PDF with boxes for
+ * description/qty/price columns (plus optional image + delivery rows). At runtime we:
+ *   1. Load the saved template + annotations from Prisma.
+ *   2. Recreate positioned text via pdfjs (`extractPositionedText`).
+ *   3. For every annotated row, collect text that falls inside each labelled region
+ *      and emit a `RawRow` (with optional bbox + image flag).
+ *   4. Convert those rows into `SupplierParseResult` lines, reusing description-quality
+ *      scoring + subtotal detection so template, OCR and heuristic stages share metadata.
+ *
+ * The new smart-assistant matcher reuses `RawRow` + bbox data to anchor parsed rows back to
+ * questionnaire items and thumbnail images.
+ */
 import { prisma } from "../../db";
 import type { SupplierParseResult } from "../../types/parse";
 import { assessDescriptionQuality } from "./quality";
@@ -37,6 +52,13 @@ export interface PdfLayout {
   textBlocks: PositionedText[];
 }
 
+export interface NormalizedBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface RawRow {
   descriptionText: string;
   qtyText?: string | null;
@@ -46,6 +68,8 @@ export interface RawRow {
   rowKey: string;
   isDelivery?: boolean;
   hasImage?: boolean;
+  bbox?: NormalizedBoundingBox;
+  regions?: Partial<Record<AnnotationLabel, NormalizedBoundingBox>>;
 }
 
 export interface TemplateParseMeta {
@@ -231,6 +255,8 @@ export function extractRowsUsingTemplate(
     let totalText: string | null = null;
     let isDelivery = false;
     let hasImage = false;
+    const regions: Partial<Record<AnnotationLabel, NormalizedBoundingBox>> = {};
+    let rowBBox: NormalizedBoundingBox | undefined;
 
     for (const annotation of annotations) {
       if (!SUPPORTED_LABELS[annotation.label]) continue;
@@ -244,8 +270,16 @@ export function extractRowsUsingTemplate(
         isDelivery = true;
       }
 
-      const { text, matched } = collectTextForAnnotation(blocks, annotation);
+      const { text, matched, bbox } = collectTextForAnnotation(blocks, annotation);
       if (matched) matchedAnnotations += 1;
+      const regionBox = bbox ?? {
+        x: annotation.x,
+        y: annotation.y,
+        width: annotation.width,
+        height: annotation.height,
+      };
+      regions[annotation.label] = mergeBoundingBoxes(regions[annotation.label], regionBox) ?? regionBox;
+      rowBBox = mergeBoundingBoxes(rowBBox, regionBox);
 
       if (!text) continue;
 
@@ -284,6 +318,8 @@ export function extractRowsUsingTemplate(
       rowKey,
       isDelivery,
       hasImage,
+      bbox: rowBBox,
+      regions: Object.keys(regions).length ? regions : undefined,
     });
   }
 
@@ -435,7 +471,7 @@ export async function parsePdfWithTemplate(
   return { result: supplierResult, meta };
 }
 
-async function extractPositionedText(buffer: Buffer): Promise<PdfLayout> {
+export async function extractPositionedText(buffer: Buffer): Promise<PdfLayout> {
   const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.js");
   const loadingTask = pdfjsLib.getDocument({ data: buffer, useWorker: false });
   const doc = await loadingTask.promise;
@@ -670,10 +706,12 @@ function extractPageSizes(meta: unknown): { width: number; height: number }[] | 
   return parsed.length ? parsed : undefined;
 }
 
+type CollectedText = { text: string; matched: boolean; bbox?: NormalizedBoundingBox };
+
 function collectTextForAnnotation(
   blocks: PositionedText[],
   annotation: LayoutTemplateAnnotation,
-): { text: string; matched: boolean } {
+): CollectedText {
   const minX = annotation.x;
   const maxX = annotation.x + annotation.width;
   const minY = annotation.y;
@@ -697,7 +735,37 @@ function collectTextForAnnotation(
     });
 
   const text = matchedBlocks.map((block) => block.text).join(" ").replace(/\s+/g, " ").trim();
-  return { text, matched: matchedBlocks.length > 0 };
+  const bbox = matchedBlocks.length ? mergeBlockBounds(matchedBlocks) : undefined;
+  return { text, matched: matchedBlocks.length > 0, bbox };
+}
+
+function mergeBlockBounds(blocks: PositionedText[]): NormalizedBoundingBox | undefined {
+  if (!blocks.length) return undefined;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = 0;
+  let maxY = 0;
+  for (const block of blocks) {
+    minX = Math.min(minX, block.left);
+    minY = Math.min(minY, block.top);
+    maxX = Math.max(maxX, block.right);
+    maxY = Math.max(maxY, block.bottom);
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return undefined;
+  return { x: clamp(minX), y: clamp(minY), width: clamp(maxX - minX), height: clamp(maxY - minY) };
+}
+
+function mergeBoundingBoxes(
+  current: NormalizedBoundingBox | undefined,
+  next: NormalizedBoundingBox | undefined,
+): NormalizedBoundingBox | undefined {
+  if (!next) return current;
+  if (!current) return next;
+  const minX = Math.min(current.x, next.x);
+  const minY = Math.min(current.y, next.y);
+  const maxX = Math.max(current.x + current.width, next.x + next.width);
+  const maxY = Math.max(current.y + current.height, next.y + next.height);
+  return { x: clamp(minX), y: clamp(minY), width: clamp(maxX - minX), height: clamp(maxY - minY) };
 }
 
 function sortTextBlocks(blocks: PositionedText[]): PositionedText[] {

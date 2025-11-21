@@ -1,3 +1,16 @@
+/**
+ * Legacy structured-parser stage.
+ *
+ * Flow overview (pre-smart-matching era):
+ * 1. `extractStructuredText()` turns a PDF stream into logical rows and cells.
+ * 2. `buildSupplierParse()` walks those rows, skips headers/totals, and heuristically
+ *    identifies description + numeric columns.
+ * 3. For every viable row it infers qty/unit/line-total, accumulating delivery/subtotal hints
+ *    and preserving per-row glyph/description quality so downstream stages (OCR/LLM) can decide
+ *    whether to intervene.
+ * 4. The resulting `SupplierParseResult` feeds later fallbacks (OCR, template, LLM) and now
+ *    our smart questionnaire matcher augments it without changing this baseline behaviour.
+ */
 import type { SupplierParseResult } from "../../types/parse";
 import type { ExtractionSummary, ExtractedRow } from "./extract";
 import {
