@@ -1003,6 +1003,8 @@ function LeadCard({
           ? lead.custom.bodyText.trim()
           : undefined;
   const statusLabel = STATUS_LABELS[lead.status as LeadStatus] || "—";
+  const needsManualQuote = Boolean(lead.custom?.needsManualQuote);
+  const manualQuoteReason = typeof lead.custom?.manualQuoteReason === 'string' ? lead.custom.manualQuoteReason : undefined;
 
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-sky-100/70 bg-white/85 p-4 shadow-[0_20px_45px_-36px_rgba(30,64,175,0.55)] backdrop-blur transition-transform hover:-translate-y-0.5 hover:shadow-[0_26px_60px_-32px_rgba(30,64,175,0.55)]">
@@ -1036,6 +1038,11 @@ function LeadCard({
               {description && (
                 <div className="text-[12px] text-slate-500/90 italic line-clamp-2">{description}</div>
               )}
+              {needsManualQuote && (
+                <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-300/70 bg-amber-50/70 px-2 py-1 text-[10px] font-medium text-amber-800" title={manualQuoteReason ? `Manual quote required: ${manualQuoteReason}` : 'Manual quote required'}>
+                  <span>⚠️ Manual quote</span>
+                </div>
+              )}
             </div>
           )}
         </button>
@@ -1061,6 +1068,14 @@ function LeadCard({
           >
             {statusLabel}
           </span>
+          {needsManualQuote && (
+            <span
+              className="inline-flex items-center rounded-full border border-amber-300/80 bg-amber-100/80 px-2 py-1 text-[10px] font-semibold text-amber-800 shadow-sm"
+              title={manualQuoteReason ? `Manual quote required: ${manualQuoteReason}` : 'Manual quote required'}
+            >
+              Manual Quote
+            </span>
+          )}
         </div>
       </div>
     </div>
