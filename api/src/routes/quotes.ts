@@ -3540,7 +3540,7 @@ router.get("/:id/files/:fileId/signed", requireAuth, async (req: any, res) => {
       }
     }
     if (!quote) return res.status(404).json({ error: "not_found" });
-    const f = quote.supplierFiles.find((x) => x.id === fileId);
+    const f = quote.supplierFiles.find((x: any) => x.id === fileId);
     if (!f) return res.status(404).json({ error: "file_not_found" });
 
     const API_BASE = (
