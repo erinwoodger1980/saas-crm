@@ -1,7 +1,5 @@
 // api/src/db.ts
 import { PrismaClient } from "@prisma/client";
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
 
 // Avoid creating multiple clients in dev (hot-reload) by caching on global
 declare global {
@@ -9,14 +7,9 @@ declare global {
   var __PRISMA__: PrismaClient | undefined;
 }
 
-const connectionString = process.env.DATABASE_URL as string | undefined;
-const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool);
-
 const prismaClient =
   global.__PRISMA__ ??
   new PrismaClient({
-    adapter,
     log: ["warn", "error"], // add "query" if you want to debug SQL
   });
 

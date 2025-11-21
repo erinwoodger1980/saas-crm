@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PRISMA_CLIENT_ENGINE_TYPE: binary
 
     steps:
       - uses: actions/checkout@v4
