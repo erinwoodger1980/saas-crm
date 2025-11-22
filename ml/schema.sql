@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS ml_training_data (
     project_details JSONB,
     quoted_price DECIMAL(10,2),
     confidence DECIMAL(3,2),
+    source_type TEXT DEFAULT 'client_quote', -- 'supplier_quote' or 'client_quote' - determines if markup needed
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS ml_training_data (
 -- Index for efficient tenant-based queries
 CREATE INDEX IF NOT EXISTS idx_ml_training_data_tenant_id ON ml_training_data(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_ml_training_data_created_at ON ml_training_data(created_at);
+CREATE INDEX IF NOT EXISTS idx_ml_training_data_source_type ON ml_training_data(tenant_id, source_type);
 
 -- Table for storing model metadata and performance metrics
 CREATE TABLE IF NOT EXISTS ml_models (
