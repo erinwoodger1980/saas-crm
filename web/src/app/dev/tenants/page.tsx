@@ -22,6 +22,7 @@ type Tenant = {
 export default function TenantsListPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   async function loadTenants() {
     setLoading(true);
@@ -35,6 +36,51 @@ export default function TenantsListPage() {
     }
   }
 
+  async function deleteTestTenants() {
+    const testTenants = tenants.filter(t => 
+      t.slug.startsWith('test-tenant-') || 
+      t.slug.startsWith('dev-tenant-') ||
+      t.name.includes('Test Tenant') ||
+      t.name.includes('Dev Tenant')
+    );
+
+    if (testTenants.length === 0) {
+      alert('No test tenants found (looking for slugs starting with test-tenant- or dev-tenant-)');
+      return;
+    }
+
+    const confirmed = confirm(
+      `Delete ${testTenants.length} test tenant(s)?\n\n` +
+      testTenants.map(t => `• ${t.name} (${t.slug})`).join('\n') +
+      `\n\nThis will permanently delete all their data. Continue?`
+    );
+
+    if (!confirmed) return;
+
+    setDeleting(true);
+    let deleted = 0;
+    const errors: string[] = [];
+
+    for (const tenant of testTenants) {
+      try {
+        await apiFetch(`/dev/tenants/${tenant.id}`, { method: 'DELETE' });
+        deleted++;
+      } catch (e: any) {
+        errors.push(`${tenant.slug}: ${e?.message || 'Failed'}`);
+      }
+    }
+
+    setDeleting(false);
+    
+    if (errors.length > 0) {
+      alert(`Deleted ${deleted}/${testTenants.length} tenants.\n\nErrors:\n${errors.join('\n')}`);
+    } else {
+      alert(`Successfully deleted ${deleted} test tenant(s)`);
+    }
+
+    loadTenants();
+  }
+
   useEffect(() => {
     loadTenants();
   }, []);
@@ -46,7 +92,18 @@ export default function TenantsListPage() {
           <Database className="w-8 h-8" />
           All Tenants
         </h1>
-        <Button variant="outline" onClick={loadTenants}>Refresh</Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="destructive" 
+            onClick={deleteTestTenants}
+            disabled={deleting || loading}
+          >
+            {deleting ? 'Deleting...' : '🗑️ Delete Test Tenants'}
+          </Button>
+          <Button variant="outline" onClick={loadTenants} disabled={loading}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {loading ? (
