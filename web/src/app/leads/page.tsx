@@ -134,6 +134,8 @@ function LeadsPageContent() {
   const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Filter toggle for showing only leads flagged for manual quotes
+  const [manualOnly, setManualOnly] = useState(false);
 
   // modal
   const [open, setOpen] = useState(false);
