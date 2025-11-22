@@ -660,10 +660,10 @@ router.post("/estimates/preview", async (req, res) => {
 /** POST /public/vision/analyze-photo - AI-assisted dimension + description inference from a single image (base64) */
 router.post("/vision/analyze-photo", async (req, res) => {
   try {
-    const { imageBase64, fileName } = req.body as { imageBase64?: string; fileName?: string };
-    if (!imageBase64) return res.status(400).json({ error: "imageBase64 required" });
-    // Strip possible data URL prefix
-    const cleaned = imageBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+    const { imageBase64, imageHeadBase64, fileName, openingType, aspectRatio, exif } = req.body as any;
+    const rawB64 = imageHeadBase64 || imageBase64;
+    if (!rawB64) return res.status(400).json({ error: "imageBase64 required" });
+    const cleaned = rawB64.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
     // Heuristic pixel analysis (dimensions)
     let widthPx: number | null = null;
     let heightPx: number | null = null;
@@ -678,8 +678,8 @@ router.post("/vision/analyze-photo", async (req, res) => {
     let aiConfidence: number | null = null;
     try {
       const { send } = await import("../services/ai/openai");
-      const prompt = `You are a joinery estimator. The user uploaded an image of a door or window (${fileName || 'photo'}). Provide JSON only with keys description,width_mm,height_mm,confidence (0-1). Width/height are typical real-world external frame dimensions in millimetres based on visual cues (standard UK doors often ~1980x838mm). If unsure, best guess. Avoid additional text.`;
-      const b64Snippet = cleaned.slice(0, 5000); // keep prompt small
+      const prompt = `You are a joinery estimator. Analyze a ${openingType || 'opening'} photo (${fileName || 'photo'}). Aspect ratio: ${aspectRatio || 'n/a'}. EXIF: ${exif ? JSON.stringify(exif) : 'none'}. Provide JSON ONLY: {"description":"...","width_mm":number,"height_mm":number,"confidence":number}. Use realistic UK dimensions (external door ~1980x838mm). If uncertain, give best estimate with lowered confidence. No extra text.`;
+      const b64Snippet = cleaned.slice(0, 4000); // reduced token usage
       const messages = [
         { role: 'system', content: 'Return ONLY valid JSON.' },
         { role: 'user', content: `${prompt}\nIMAGE_BASE64_HEAD:${b64Snippet}` }
