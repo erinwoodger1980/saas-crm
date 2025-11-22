@@ -49,6 +49,7 @@ These fields are flagged with `isStandard: true` in the database.
 | `premium_hardware` | Premium Hardware | boolean | No | `premium_hardware` | Upgraded handles/locks/hinges |
 | `custom_finish` | Custom Finish | select | No | `custom_finish` | None/Paint/Stain/Lacquer |
 | `fire_rated` | Fire Rated | boolean | No | `fire_rated` | Fire door certification required |
+| `installation_required` | Installation Required | boolean | No | `installation_required` | Professional installation needed |
 
 ### Contact & Context
 
@@ -58,9 +59,10 @@ These fields are flagged with `isStandard: true` in the database.
 | `email` | Email | text | Yes | - | Contact information |
 | `phone` | Phone | text | No | - | Contact information |
 | `lead_source` | How did you hear about us? | select | No | `lead_source` | Website/Referral/Google/etc. |
-| `region` | Region | select | No | `region` | Geographic location for pricing |
+| `region` | Project Location | select | No | `region` | Geographic location for pricing |
+| `property_listed` | Listed Building | boolean | No | `property_listed` | Property is a listed building |
 | `timeframe` | Project Timeframe | select | No | - | ASAP/1-2 months/3-6 months |
-| `budget` | Budget Range | select | No | - | Under 5k/5-15k/15k+/Flexible |
+| `budget_range` | Budget Range | select | No | - | Under 5k/5-15k/15k+/Flexible |
 
 ---
 
