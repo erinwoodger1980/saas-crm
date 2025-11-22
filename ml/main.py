@@ -1841,7 +1841,8 @@ async def train(payload: TrainPayload):
                 'quoted_price': estimated_total,
                 'area_m2': None,
                 'materials_grade': None,
-                'confidence': confidence
+                'confidence': confidence,
+                'source_type': training_type  # 'supplier_quote' or 'client_quote'
             }
             training_records.append(training_record)
 
@@ -2431,7 +2432,8 @@ async def train_client_quotes(req: Request):
                         estimated_total,
                         project_type,
                         quoted_price,
-                        quote_type
+                        quote_type,
+                        source_type
                     FROM ml_training_data
                     WHERE tenant_id = %s
                     AND estimated_total > 0
@@ -2448,7 +2450,8 @@ async def train_client_quotes(req: Request):
                         estimated_total,
                         project_type,
                         quoted_price,
-                        quote_type
+                        quote_type,
+                        source_type
                     FROM ml_training_data
                     WHERE estimated_total > 0
                     AND confidence > 0.3
@@ -2527,6 +2530,14 @@ async def train_client_quotes(req: Request):
                 
                 if target_price <= 0:
                     continue
+                
+                # Apply markup to supplier quotes (30-40% markup to get selling price)
+                # Supplier quotes are cost prices, not selling prices
+                source_type = row[7] if len(row) > 7 else 'client_quote'
+                if source_type == 'supplier_quote':
+                    # Apply 35% markup (typical trade markup for windows/doors)
+                    target_price = target_price * 1.35
+                    logger.debug(f"Applied 35% markup to supplier quote: {row[5] or row[3]:.2f} -> {target_price:.2f}")
                 
                 # Estimate win probability based on confidence and price range
                 confidence = float(row[2] or 0.5)

@@ -114,8 +114,8 @@ class MLDatabaseManager:
         insert_sql = """
         INSERT INTO ml_training_data 
         (tenant_id, email_subject, email_date, attachment_name, parsed_data, 
-         project_type, quoted_price, area_m2, materials_grade, confidence)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+         project_type, quoted_price, area_m2, materials_grade, confidence, source_type)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
         try:
@@ -132,7 +132,8 @@ class MLDatabaseManager:
                             record.get('quoted_price'),
                             record.get('area_m2'),
                             record.get('materials_grade'),
-                            record.get('confidence', 0.0)
+                            record.get('confidence', 0.0),
+                            record.get('source_type', 'client_quote')
                         ) for record in training_records
                     ])
                     conn.commit()
