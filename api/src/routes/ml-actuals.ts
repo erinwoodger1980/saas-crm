@@ -30,12 +30,10 @@ router.post("/capture/:opportunityId", requireAuth, async (req: any, res) => {
       include: {
         lead: {
           include: {
-            quotes: {
+            Quote: {
               take: 1,
               orderBy: { createdAt: "desc" },
-              include: {
-                lines: true
-              }
+              include: { lines: true }
             }
           }
         }
@@ -47,7 +45,7 @@ router.post("/capture/:opportunityId", requireAuth, async (req: any, res) => {
     }
 
     // 2. Get questionnaire answers from quote meta
-    const quote = opportunity.lead?.quotes?.[0];
+    const quote = opportunity.lead?.Quote?.[0];
     const questionnaireAnswers = (quote?.meta as any)?.questionnaireAnswers || {};
     
     if (Object.keys(questionnaireAnswers).length === 0) {
@@ -214,7 +212,7 @@ router.get("/summary/:opportunityId", requireAuth, async (req: any, res) => {
       include: {
         lead: {
           include: {
-            quotes: {
+            Quote: {
               take: 1,
               orderBy: { createdAt: "desc" }
             }
@@ -227,7 +225,7 @@ router.get("/summary/:opportunityId", requireAuth, async (req: any, res) => {
       return res.status(404).json({ error: "opportunity_not_found" });
     }
 
-    const quote = opportunity.lead?.quotes?.[0];
+    const quote = opportunity.lead?.Quote?.[0];
 
     // Calculate material costs
     const purchaseOrders = await prisma.purchaseOrder.findMany({
