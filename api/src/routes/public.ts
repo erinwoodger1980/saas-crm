@@ -988,8 +988,18 @@ router.post("/supplier/rfq/:token/upload", async (req, res) => {
         title: `Supplier Quote — ${claims.email}`,
         status: "DRAFT" as any,
         quoteSourceType: null,
-      },
-      select: { id: true },
+        const limit = Math.min(500, Number(req.query.limit) || 100);
+        const since = req.query.since ? new Date(String(req.query.since)) : null;
+        const until = req.query.until ? new Date(String(req.query.until)) : null;
+        const page = Math.max(0, Number(req.query.page) || 0);
+        const pageSize = Math.min(500, Number(req.query.pageSize) || limit);
+        let persisted = await getPersistedVisionTelemetry(limit * (page + 1));
+        if (since) persisted = persisted.filter(r => r.ts >= since.getTime());
+        if (until) persisted = persisted.filter(r => r.ts <= until.getTime());
+        // Pagination slice
+        const start = page * pageSize;
+        const end = start + pageSize;
+        const paged = persisted.slice(start, end);
     });
     quoteId = q.id;
   }
@@ -1152,14 +1162,19 @@ router.post("/interactions", async (req, res) => {
 
     // At least one identifier required
     if (!projectId && !leadId) {
-      return res.status(400).json({ error: "projectId or leadId required" });
-    }
+      const limit = Math.min(1000, Number(req.query.limit) || 500);
+      const since = req.query.since ? new Date(String(req.query.since)) : null;
+      const until = req.query.until ? new Date(String(req.query.until)) : null;
+      let rows = await getPersistedVisionTelemetry(limit);
+      if (since) rows = rows.filter(r => r.ts >= since.getTime());
+      if (until) rows = rows.filter(r => r.ts <= until.getTime());
 
     // Get tenantId from project or lead
     let tenantId: string | null = null;
     if (projectId) {
       const project = await prisma.publicProject.findUnique({
         where: { id: projectId },
+      const alert = errorRate > 0.15 ? 'high_error_rate' : null;
         select: { tenantId: true },
       });
       tenantId = project?.tenantId || null;
@@ -1170,7 +1185,7 @@ router.post("/interactions", async (req, res) => {
       });
       tenantId = lead?.tenantId || null;
     }
-
+      return res.json({ ok: true, count, avgMs, totalCost: +totalCost.toFixed(4), errorRate, byModel, alert });
     if (!tenantId) {
       return res.status(404).json({ error: "tenant not found" });
     }

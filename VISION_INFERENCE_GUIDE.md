@@ -30,6 +30,7 @@ The public estimator now supports multi-layer image understanding with three sou
   - `GET /internal/vision/telemetry?limit=100` returns raw recent events.
     - Auth: header `x-admin-token: $ADMIN_API_TOKEN`.
   - `GET /internal/vision/telemetry/summary` returns aggregates `{ count, avgMs, totalCost, errorRate, byModel }`.
+  - Query params supported on both: `since` (ISO datetime), `until` (ISO), `page` (0-based), `pageSize` (<=500).
 
 ## Client Flow
 1. User uploads image.
@@ -70,6 +71,7 @@ These fields are stored transparently in the project `payload`.
 - Internal telemetry routes secured by `x-admin-token` header.
 - Internal telemetry route `/internal/vision/telemetry` returns recent persisted entries.
 - Summary route provides rollups without exposing individual request content.
+ - Error spike alert: summary returns `alert: 'high_error_rate'` if errorRate > 0.15.
 - Truncated base64 head limits token usage & exposure surface.
 - Redis TTL enforces automated expiration (24h) for vision cache entries.
 - SHA-1 key avoids storing full images; only small head retained transiently.
@@ -81,3 +83,4 @@ Run a build to verify types after changes:
 npm run build
 ```
 Trigger local inference by uploading an image via estimator UI; check Network tab for cached flag toggling on repeat uploads.
+For dashboard (Next.js page): visit `/admin/vision/telemetry` after setting `ADMIN_API_TOKEN` and `API_URL` env values.
