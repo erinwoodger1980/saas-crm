@@ -18,6 +18,10 @@ services:
         value: 8000
       - key: TEMPLATE_TENANT_NAME
         value: Demo Tenant
+      - key: PUPPETEER_SKIP_DOWNLOAD
+        value: "1"
+      - key: SKIP_PRISMA_POSTINSTALL
+        value: "1"
   
   - type: web
     name: web
@@ -68,6 +72,10 @@ services:
         value: 8000
       - key: TEMPLATE_TENANT_NAME
         value: Demo Tenant
+      - key: PUPPETEER_SKIP_DOWNLOAD
+        value: "1"
+      - key: SKIP_PRISMA_POSTINSTALL
+        value: "1"
       - key: DATABASE_URL
         sync: false  # Set to staging database in Render dashboard
   

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Skip during emergency deploys
-if (process.env.PRISMA_MIGRATE_SKIP === '1') {
-  console.log('Skipping prisma migrate deploy due to PRISMA_MIGRATE_SKIP=1');
+// Skip during emergency deploys or when disabled for build speed
+if (process.env.PRISMA_MIGRATE_SKIP === '1' || process.env.SKIP_PRISMA_POSTINSTALL === '1') {
+  console.log('[prisma-postinstall] Skipping postinstall Prisma operations');
   process.exit(0);
 }
 
@@ -69,5 +69,4 @@ await run('npx', [
   schemaPath,
 ], { ignoreFailure: true });
 
-console.log('[prisma-postinstall] Running prisma migrate deploy...');
-await run('npx', ['prisma', 'migrate', 'deploy', '--schema', schemaPath]);
+console.log('[prisma-postinstall] (Skipped migrate deploy here; handled in Render preDeployCommand)');
