@@ -1,5 +1,5 @@
 import { API_BASE } from '@/lib/api-base';
-import * as exifr from 'exifr';
+// exifr imported dynamically to avoid bundling if not needed during SSR
 
 export interface AiImageInferenceResult {
   width_mm: number | null;
@@ -82,14 +82,17 @@ async function preprocessImage(file: File): Promise<PreprocessResult> {
   }
 
   let exifSubset: Record<string, any> | null = null;
-  try {
-    const exifData: any = await exifr.parse(file, ['Orientation', 'FocalLength', 'Model']);
-    exifSubset = exifData ? {
-      orientation: exifData.Orientation || null,
-      focalLength: exifData.FocalLength || null,
-      model: exifData.Model || null,
-    } : null;
-  } catch {}
+  if (typeof window !== 'undefined') {
+    try {
+      const mod: any = await import('exifr');
+      const exifData: any = await mod.parse(file, ['Orientation', 'FocalLength', 'Model']).catch(()=>null);
+      exifSubset = exifData ? {
+        orientation: exifData.Orientation || null,
+        focalLength: exifData.FocalLength || null,
+        model: exifData.Model || null,
+      } : null;
+    } catch {}
+  }
 
   return {
     truncatedBase64: resizedDataUrl.slice(0, 12000),

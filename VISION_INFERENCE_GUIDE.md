@@ -77,6 +77,13 @@ These fields are stored transparently in the project `payload`.
 - SHA-1 key avoids storing full images; only small head retained transiently.
 - Retry with low backoff prevents excessive duplicate token spend on transient failures.
 
+## Deployment Dependencies
+Production builds require:
+- `exifr` (^7.1.3) – EXIF parsing in browser (dynamically imported).
+- `patch-package` (^8.0.0) – devDependency for lightningcss postinstall script.
+
+The web client uses dynamic import (`await import('exifr')`) gated by `typeof window !== 'undefined'` to ensure EXIF parsing only runs in the browser, avoiding SSR bundling issues and build failures.
+
 ## Updating / Testing
 Run a build to verify types after changes:
 ```bash
