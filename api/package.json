@@ -13,7 +13,7 @@
     "test": "jest",
     "self:check-parse": "node dist/scripts/self_check_parse.js",
     "start": "node dist/server.js",
-    "prisma:generate": "prisma generate",
+    "prisma:generate": "rm -rf node_modules/.prisma && prisma generate",
     "prisma:deploy": "node scripts/prisma-deploy.mjs",
     "prisma:resolve:ead": "prisma migrate resolve --rolled-back 20251021173644_early_adopter_feedback --schema ./prisma/schema.prisma",
     "seed-template": "node scripts/create-seed-template.mjs",
@@ -37,7 +37,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.926.0",
     "@octokit/rest": "^21.0.0",
-    "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
     "@sparticuz/chromium": "^133.0.0",
     "@types/nodemailer": "^7.0.3",
@@ -62,7 +61,6 @@
     "openai": "^4.104.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "4.6.82",
-    "pg": "^8.16.3",
     "playwright": "^1.56.1",
     "puppeteer": "^23.7.1",
     "sharp": "^0.34.5",
@@ -71,7 +69,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/pg": "^8.6.6",
     "@prisma/internals": "^7.0.0",
     "@types/bcrypt": "^5.0.2",
     "@types/cheerio": "^0.22.35",

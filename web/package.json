@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "eslint .",
     "postinstall": "npm rebuild lightningcss || true",
-    "prisma:web:generate": "prisma generate --config ../api/prisma.config.ts --schema ../api/prisma/schema.prisma --generator webClient && node ./scripts/link-prisma-client.mjs",
+    "prisma:web:generate": "rm -rf node_modules/.prisma && prisma generate --config ../api/prisma.config.ts --schema ../api/prisma/schema.prisma --generator webClient && node ./scripts/link-prisma-client.mjs",
     "check:no-localhost": "node -e \"const {execSync}=require('child_process'); try{ execSync('grep -R \"localhost:4000\" src && exit 1',{stdio:'inherit'}); }catch(e){}\""
   },
   "dependencies": {
@@ -18,7 +18,6 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@prisma/client": "^7.0.0",
-    "@prisma/adapter-pg": "^7.0.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-collapsible": "^1.1.12",
@@ -52,7 +51,6 @@
     "swr": "^2.3.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
-    "pg": "^8.16.3",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -65,7 +63,6 @@
     "@types/node": "^20.19.19",
     "@types/react": "^18.2.42",
     "@types/react-dom": "^18.2.18",
-    "@types/pg": "^8.6.6",
     "@typescript-eslint/parser": "^8.46.3",
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
