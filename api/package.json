@@ -13,7 +13,7 @@
     "test": "jest",
     "self:check-parse": "node dist/scripts/self_check_parse.js",
     "start": "node dist/server.js",
-    "prisma:generate": "rm -rf node_modules/.prisma && PRISMA_CLIENT_ENGINE_TYPE=binary prisma generate",
+    "prisma:generate": "rm -rf node_modules/.prisma && prisma generate",
     "prisma:deploy": "node scripts/prisma-deploy.mjs",
     "prisma:resolve:ead": "prisma migrate resolve --rolled-back 20251021173644_early_adopter_feedback --schema ./prisma/schema.prisma",
     "seed-template": "node scripts/create-seed-template.mjs",
