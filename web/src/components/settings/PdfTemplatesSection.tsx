@@ -24,6 +24,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, Trash2, FileText, Calendar, Eye } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 interface PdfTemplate {
   id: string;
@@ -53,10 +54,7 @@ export default function PdfTemplatesSection() {
   const loadTemplates = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/pdf-templates");
-      if (!response.ok) throw new Error("Failed to load templates");
-      
-      const data = await response.json();
+      const data = await apiFetch<{ items: PdfTemplate[] }>("/pdf-templates");
       setTemplates(data.items || []);
     } catch (error: any) {
       console.error("[PdfTemplatesSection] Load error:", error);
@@ -78,10 +76,7 @@ export default function PdfTemplatesSection() {
   const loadTemplateDetails = async (id: string) => {
     setIsLoadingDetails(true);
     try {
-      const response = await fetch(`/api/pdf-templates/${id}`);
-      if (!response.ok) throw new Error("Failed to load template details");
-      
-      const data = await response.json();
+      const data = await apiFetch<{ item: TemplateWithDetails }>(`/pdf-templates/${id}`);
       setViewTemplate(data.item);
     } catch (error: any) {
       console.error("[PdfTemplatesSection] Load details error:", error);
@@ -102,11 +97,9 @@ export default function PdfTemplatesSection() {
 
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/pdf-templates/${deleteId}`, {
+      await apiFetch(`/pdf-templates/${deleteId}`, {
         method: "DELETE",
       });
-
-      if (!response.ok) throw new Error("Failed to delete template");
 
       toast({
         title: "Template deleted",
