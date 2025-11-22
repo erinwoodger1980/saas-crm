@@ -354,11 +354,12 @@ export function usePublicEstimator({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenantSlug: branding.slug,
+          tenantId: branding.slug, // slug is actually the tenant ID in this context
           items: data.openingDetails.map(item => ({
-            type: item.type,
-            width: item.width,
-            height: item.height,
+            description: item.type || 'Opening',
+            widthMm: item.width,
+            heightMm: item.height,
+            openingType: item.type,
           })),
           globalSpecs: data.globalSpecs || {},
         }),
