@@ -27,63 +27,28 @@ interface SupplierGroup {
 export async function generatePurchaseOrdersFromShoppingList(
   shoppingListId: string,
   tenantId: string
-) {
-  // 1. Load shopping list with items, joined to MaterialItem and Supplier
+): Promise<Array<{ supplier: { id: string; name: string }; lines: any[] }>> {
   const shoppingList = await prisma.shoppingList.findFirst({
-    where: {
-      id: shoppingListId,
-      tenantId,
-    },
+    where: { id: shoppingListId, tenantId },
     include: {
-            quote: {
-              select: {
-                id: true,
-                leadId: true
-              }
-            },
+      quote: { select: { id: true, leadId: true } },
       items: {
         include: {
-          materialItem: {
-            include: {
-              supplier: true,
-            },
-          },
+          materialItem: { include: { supplier: true } },
         },
       },
     },
   });
+  if (!shoppingList) throw new Error(`Shopping list ${shoppingListId} not found for tenant ${tenantId}`);
+  if (shoppingList.status !== "APPROVED") throw new Error(`Shopping list ${shoppingListId} must be APPROVED before generating POs (current status: ${shoppingList.status})`);
 
-  if (!shoppingList) {
-    throw new Error(
-      `Shopping list ${shoppingListId} not found for tenant ${tenantId}`
-    );
-  }
-
-  if (shoppingList.status !== "APPROVED") {
-    throw new Error(
-      `Shopping list ${shoppingListId} must be APPROVED before generating POs (current status: ${shoppingList.status})`
-    );
-  }
-
-  // 2. Group items by supplier
   const supplierGroups = new Map<string, SupplierGroup>();
-
   for (const item of shoppingList.items) {
     const supplier = item.materialItem.supplier;
-
-    if (!supplier) {
-      console.warn(
-        `[purchase-order] Material item ${item.materialItem.code} has no supplier, skipping`
-      );
-      continue;
-    }
-
+    if (!supplier) continue;
     const supplierId = supplier.id;
     const unitPrice = item.materialItem.cost;
-    const lineTotal = new Prisma.Decimal(item.quantity.toString()).mul(
-      unitPrice.toString()
-    );
-
+    const lineTotal = new Prisma.Decimal(item.quantity.toString()).mul(unitPrice.toString());
     if (!supplierGroups.has(supplierId)) {
       supplierGroups.set(supplierId, {
         supplierId,
@@ -92,68 +57,35 @@ export async function generatePurchaseOrdersFromShoppingList(
         items: [],
       });
     }
-
-    const group = supplierGroups.get(supplierId)!;
-    group.items.push({
+    supplierGroups.get(supplierId)!.items.push({
       materialItemId: item.materialItem.id,
-      description:
-        item.descriptionOverride || item.materialItem.name,
+      description: item.descriptionOverride || item.materialItem.name,
       quantity: item.quantity,
       unit: item.unit,
       unitPrice,
       lineTotal,
     });
   }
+  if (supplierGroups.size === 0) throw new Error(`No items with suppliers found in shopping list ${shoppingListId}`);
 
-  if (supplierGroups.size === 0) {
-    throw new Error(
-      `No items with suppliers found in shopping list ${shoppingListId}`
-    );
-  }
-
-  // 3. Create PurchaseOrders in transaction
   const result = await prisma.$transaction(async (tx) => {
-        // Find opportunity if quote is linked
-        let opportunityId: string | null = null;
-        if (shoppingList.quote?.leadId) {
-          const opportunity = await tx.opportunity.findFirst({
-            where: {
-              tenantId,
-              leadId: shoppingList.quote.leadId
-            },
-            select: { id: true }
-          });
-          opportunityId = opportunity?.id || null;
-        }
-
-    const purchaseOrders = [];
-
-    for (const group of supplierGroups.values()) {
-      // Calculate total
-      const totalAmount = group.items.reduce(
-        (sum, item) => sum.add(item.lineTotal.toString()),
-        new Prisma.Decimal(0)
-            // Build notes with opportunity link for ML tracking
-            const notes = opportunityId 
-              ? `Generated from Shopping List ${shoppingListId} (Opportunity: ${opportunityId})`
-              : `Generated from Shopping List ${shoppingListId}`;
-
-      );
-
-      // Create PO
-      const po = await tx.purchaseOrder.create({
-        data: {
-          tenantId,
-          supplierId: group.supplierId,
-          status: "DRAFT",
-          currency: group.currency,
-          totalAmount,
-          notes,
-          orderDate: new Date(),
-        },
+    let opportunityId: string | null = null;
+    if (shoppingList.quote?.leadId) {
+      const opportunity = await tx.opportunity.findFirst({
+        where: { tenantId, leadId: shoppingList.quote.leadId },
+        select: { id: true },
       });
-
-      // Create PO lines
+      opportunityId = opportunity?.id || null;
+    }
+    const purchaseOrders: Array<{ supplier: { id: string; name: string }; lines: any[] }> = [];
+    for (const group of supplierGroups.values()) {
+      const totalAmount = group.items.reduce((sum, item) => sum.add(item.lineTotal.toString()), new Prisma.Decimal(0));
+      const notes = opportunityId
+        ? `Generated from Shopping List ${shoppingListId} (Opportunity: ${opportunityId})`
+        : `Generated from Shopping List ${shoppingListId}`;
+      const po = await tx.purchaseOrder.create({
+        data: { tenantId, supplierId: group.supplierId, status: "DRAFT", currency: group.currency, totalAmount, notes, orderDate: new Date() },
+      });
       const lines = await Promise.all(
         group.items.map((item) =>
           tx.purchaseOrderLine.create({
@@ -166,45 +98,16 @@ export async function generatePurchaseOrdersFromShoppingList(
               unitPrice: item.unitPrice,
               lineTotal: item.lineTotal,
             },
-            include: {
-              materialItem: {
-                select: {
-                  id: true,
-                  code: true,
-                  name: true,
-                  category: true,
-                  cost: true,
-                  unit: true,
-                },
-              },
-            },
+            include: { materialItem: { select: { id: true, code: true, name: true, category: true, cost: true, unit: true } } },
           })
         )
       );
-
-      purchaseOrders.push({
-        ...po,
-        supplier: {
-          id: group.supplierId,
-          name: group.supplierName,
-        },
-        lines,
-      });
+      purchaseOrders.push({ supplier: { id: group.supplierId, name: group.supplierName }, lines });
     }
-
-    // Update shopping list status to ORDERED
-    await tx.shoppingList.update({
-      where: { id: shoppingListId },
-      data: { status: "ORDERED" },
-    });
-
+    await tx.shoppingList.update({ where: { id: shoppingListId }, data: { status: "ORDERED" } });
     return purchaseOrders;
   });
-
-  console.log(
-    `[purchase-order] Generated ${result.length} POs from shopping list ${shoppingListId}`
-  );
-
+  console.log(`[purchase-order] Generated ${result.length} POs from shopping list ${shoppingListId}`);
   return result;
 }
 
@@ -214,13 +117,7 @@ export async function generatePurchaseOrdersFromShoppingList(
 export async function updatePurchaseOrderStatus(
   purchaseOrderId: string,
   tenantId: string,
-  status:
-    | "DRAFT"
-    | "SENT"
-    | "CONFIRMED"
-    | "PARTIALLY_RECEIVED"
-    | "RECEIVED"
-    | "CANCELLED",
+  status: "DRAFT" | "SENT" | "CONFIRMED" | "PARTIALLY_RECEIVED" | "RECEIVED" | "CANCELLED",
   orderNumber?: string
 ) {
   const updateData: any = { status };
@@ -342,29 +239,27 @@ export async function recordPurchaseOrderLineReceipt(
 
   console.log(
     `[purchase-order] Recorded receipt of ${receivedQuantity} ${result.unit} for line ${lineId}`
-  
-    // Trigger ML actuals capture if PO just became RECEIVED and has opportunityId
-    if (result.purchaseOrder.status === "RECEIVED" && result.purchaseOrder.notes?.includes("Opportunity:")) {
-      const opportunityId = result.purchaseOrder.notes.match(/Opportunity:\s*([a-zA-Z0-9_-]+)/)?.[1];
-      if (opportunityId) {
-        const API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
-        // Non-blocking call to capture actuals
-        fetch(`${API_URL}/api/ml-actuals/capture-from-po/${result.purchaseOrder.id}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        })
-          .then((r) => {
-            if (r.ok) {
-              console.log(`[ml-actuals] Triggered actuals capture for opportunity ${opportunityId} from PO ${result.purchaseOrder.id}`);
-            } else {
-              console.warn(`[ml-actuals] Failed to trigger actuals capture: ${r.status}`);
-            }
-          })
-          .catch((e) => console.warn("[ml-actuals] Error triggering actuals capture:", e?.message));
-      }
-    }
-  
   );
+  // Trigger ML actuals capture if PO just became RECEIVED and has opportunityId
+  if (result.purchaseOrder.status === "RECEIVED" && result.purchaseOrder.notes?.includes("Opportunity:")) {
+    const opportunityId = result.purchaseOrder.notes.match(/Opportunity:\s*([a-zA-Z0-9_-]+)/)?.[1];
+    if (opportunityId) {
+      const API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+      // Non-blocking call to capture actuals
+      fetch(`${API_URL}/api/ml-actuals/capture-from-po/${result.purchaseOrder.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+        .then((r) => {
+          if (r.ok) {
+            console.log(`[ml-actuals] Triggered actuals capture for opportunity ${opportunityId} from PO ${result.purchaseOrder.id}`);
+          } else {
+            console.warn(`[ml-actuals] Failed to trigger actuals capture: ${r.status}`);
+          }
+        })
+        .catch((e) => console.warn("[ml-actuals] Error triggering actuals capture:", e?.message));
+    }
+  }
   return result;
 }
 
@@ -408,13 +303,7 @@ export async function getPurchaseOrdersForTenant(
   tenantId: string,
   filters?: {
     supplierId?: string;
-    status?:
-      | "DRAFT"
-      | "SENT"
-      | "CONFIRMED"
-      | "PARTIALLY_RECEIVED"
-      | "RECEIVED"
-      | "CANCELLED";
+    status?: "DRAFT" | "SENT" | "CONFIRMED" | "PARTIALLY_RECEIVED" | "RECEIVED" | "CANCELLED";
     fromDate?: Date;
     toDate?: Date;
   }
