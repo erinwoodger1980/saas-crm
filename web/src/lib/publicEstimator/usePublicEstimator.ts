@@ -382,6 +382,17 @@ export function usePublicEstimator({
 
       const preview = await response.json();
       const augmented = { ...preview } as any;
+      // Fallback totals if API omitted aggregate fields
+      try {
+        if (Array.isArray(augmented.items) && augmented.items.length) {
+          const sumNet = augmented.items.reduce((s: number, it: any) => s + (Number(it.netGBP) || 0), 0);
+          const sumVat = augmented.items.reduce((s: number, it: any) => s + (Number(it.vatGBP) || 0), 0);
+          const sumGross = augmented.items.reduce((s: number, it: any) => s + (Number(it.totalGBP) || (Number(it.netGBP)||0)+(Number(it.vatGBP)||0)), 0);
+          if (!(augmented.totalNet > 0)) augmented.totalNet = sumNet;
+          if (!(augmented.totalVat > 0)) augmented.totalVat = sumVat;
+          if (!(augmented.totalGross > 0)) augmented.totalGross = sumGross;
+        }
+      } catch {}
       try {
         const gross = Number(preview.totalGross || preview.totalNet || 0);
         const lineCount = Array.isArray(preview.items) ? preview.items.length : 0;
