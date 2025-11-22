@@ -791,23 +791,19 @@ router.get('/ml/samples', requireDeveloper, async (req: any, res) => {
         createdAt: true,
         updatedAt: true,
         sourceType: true,
-        confidence: true,
-        estimatedTotal: true,
-        textChars: true,
-        currency: true,
-        filename: true,
+        quoteId: true,
+        fileId: true,
       }
     });
 
-    // Map to UI shape, adding placeholder nulls for fields not yet in schema
+    // Map to UI shape, adding enrichment fields (will be null until migration applied)
     const items = itemsRaw.map(i => ({
       ...i,
-      // Backward compatibility: ensure undefined fields become null for UI consistency
-      confidence: typeof i.confidence === 'number' ? i.confidence : null,
-      estimatedTotal: typeof i.estimatedTotal === 'number' ? i.estimatedTotal : null,
-      textChars: typeof i.textChars === 'number' ? i.textChars : null,
-      currency: i.currency || null,
-      filename: i.filename || null,
+      confidence: null,
+      estimatedTotal: null,
+      textChars: null,
+      currency: null,
+      filename: null,
     }));
 
     // Attach tenant slugs/names for display

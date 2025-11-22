@@ -1084,8 +1084,9 @@ router.post("/manual-upload-train", async (req: any, res) => {
       }
     }
 
-    // Persist enrichment fields if available
-    if (confidence != null || estimatedTotal != null || textChars != null || currency != null) {
+    // Persist enrichment fields if available (skip if columns don't exist yet)
+    // TODO: Remove this guard after migration adds enrichment columns
+    if (false && (confidence != null || estimatedTotal != null || textChars != null || currency != null)) {
       try {
         await prisma.mLTrainingSample.update({
           where: { id: sample.id },
