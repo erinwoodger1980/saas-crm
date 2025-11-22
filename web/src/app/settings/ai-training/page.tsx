@@ -214,7 +214,7 @@ export default function AiTrainingPage() {
     }
   }, []);
 
-  const isEA = !!user?.isEarlyAdopter;
+  const isEA = !!(user?.isEarlyAdopter || user?.isDeveloper);
 
   // ML health indicator
   useEffect(() => {

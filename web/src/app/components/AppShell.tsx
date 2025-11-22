@@ -158,7 +158,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               >
                 <Link href="/settings">Settings</Link>
               </Button>
-              {user?.isEarlyAdopter && (
+              {(user?.isEarlyAdopter || user?.isDeveloper) && (
                 <Button
                   asChild
                   size="sm"
