@@ -19,6 +19,8 @@ interface OpeningItem {
   height?: number;
   images?: string[];
   notes?: string;
+  inferenceSource?: 'heuristic' | 'ai';
+  inferenceConfidence?: number;
 }
 
 interface OpeningDetailsStepProps {
@@ -104,25 +106,25 @@ export function OpeningDetailsStep({
       handleUpdateItem(id, { images: [...images, localUrl] });
       try {
         const baseLabel = file.name.split('.')[0];
-        // Fast heuristic first (non-blocking, immediate UX)
+        // Fast heuristic first
         const heuristic = await inferFromImage(localUrl, baseLabel);
         const freshItem1 = currentItems.find(i => i.id === id);
         if (freshItem1) {
-          const hUpdates: Partial<OpeningItem> = {};
+          const hUpdates: Partial<OpeningItem> = { inferenceSource: 'heuristic', inferenceConfidence: 0.35 };
           if (!freshItem1.width && heuristic.widthMm) hUpdates.width = heuristic.widthMm;
           if (!freshItem1.height && heuristic.heightMm) hUpdates.height = heuristic.heightMm;
           if (!freshItem1.notes && heuristic.description) hUpdates.notes = heuristic.description;
-          if (Object.keys(hUpdates).length) handleUpdateItem(id, hUpdates);
+          handleUpdateItem(id, hUpdates);
         }
-        // AI refinement (may override heuristic if higher confidence)
+        // AI refinement
         const freshItem2 = currentItems.find(i => i.id === id);
         const ai = await inferOpeningFromImage(file, { openingType: freshItem2?.type });
         if (ai && freshItem2) {
-          const aiUpdates: Partial<OpeningItem> = {};
+          const aiUpdates: Partial<OpeningItem> = { inferenceSource: 'ai', inferenceConfidence: ai.confidence ?? undefined };
           if (!freshItem2.width && ai.width_mm) aiUpdates.width = ai.width_mm;
           if (!freshItem2.height && ai.height_mm) aiUpdates.height = ai.height_mm;
           if (!freshItem2.notes && ai.description) aiUpdates.notes = ai.description;
-          if (Object.keys(aiUpdates).length) handleUpdateItem(id, aiUpdates);
+          handleUpdateItem(id, aiUpdates);
         }
       } catch {}
     }
@@ -266,7 +268,7 @@ export function OpeningDetailsStep({
               />
             </div>
 
-            {/* Measurements */}
+            {/* Measurements + Confidence */}
             <div className="mb-4">
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 <Ruler className="mb-1 inline h-4 w-4" /> Approximate measurements (optional)
@@ -291,6 +293,15 @@ export function OpeningDetailsStep({
                   />
                 </div>
               </div>
+              {item.inferenceConfidence !== undefined && (
+                <div className="mt-2 text-xs inline-flex items-center gap-2">
+                  <span className={`px-2 py-1 rounded-full font-medium ${item.inferenceConfidence >= 0.7 ? 'bg-green-100 text-green-700' : item.inferenceConfidence >= 0.4 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}
+                        title={`Source: ${item.inferenceSource || 'unknown'} | ${(item.inferenceConfidence*100).toFixed(0)}% confidence`}>
+                    {(item.inferenceConfidence*100).toFixed(0)}% confidence
+                  </span>
+                  <span className="text-slate-500">{item.inferenceSource === 'ai' ? 'AI inferred' : 'Heuristic estimate'}</span>
+                </div>
+              )}
               <p className="mt-1 text-xs text-slate-500">
                 Don't worry if you're not sure - we'll measure accurately during our site visit
               </p>

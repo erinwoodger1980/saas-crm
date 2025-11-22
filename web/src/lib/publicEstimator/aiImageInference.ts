@@ -6,11 +6,17 @@ export interface AiImageInferenceResult {
   height_mm: number | null;
   description: string | null;
   confidence: number | null;
+  cached?: boolean;
 }
 
 export async function inferOpeningFromImage(file: File, ctx?: { openingType?: string }): Promise<AiImageInferenceResult | null> {
   try {
     const processed = await preprocessImage(file);
+    // Hash the truncated base64 head (mirrors server cache hash)
+    const encoder = new TextEncoder();
+    const buf = await crypto.subtle.digest('SHA-1', encoder.encode(processed.truncatedBase64));
+    const hash = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+
     const resp = await fetch(`${API_BASE}/public/vision/analyze-photo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -19,7 +25,8 @@ export async function inferOpeningFromImage(file: File, ctx?: { openingType?: st
         fileName: file.name,
         openingType: ctx?.openingType || null,
         aspectRatio: processed.aspectRatio,
-        exif: processed.exif
+        exif: processed.exif,
+        headHash: hash,
       })
     });
     if (!resp.ok) throw new Error('AI inference failed');
@@ -44,14 +51,13 @@ async function preprocessImage(file: File): Promise<PreprocessResult> {
     reader.readAsDataURL(file);
   });
 
-  // Resize to max 1600px longest side to reduce token usage
   let resizedDataUrl = base64;
+  let aspectRatio: number | null = null;
   try {
     const img = await loadImage(base64);
     const maxSide = 1600;
     const { width, height } = img;
     const scale = Math.min(1, maxSide / Math.max(width, height));
-    let aspectRatio: number | null = null;
     if (scale < 1) {
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(width * scale);
@@ -63,26 +69,25 @@ async function preprocessImage(file: File): Promise<PreprocessResult> {
     } else {
       aspectRatio = width / height;
     }
+  } catch {
+    // keep original base64, aspectRatio stays null
+  }
 
-    // Extract minimal EXIF data
-    let exifData: any = null;
-    try {
-      exifData = await exifr.parse(file, ['Orientation', 'FocalLength', 'Model']);
-    } catch {}
-    const exifSubset = exifData ? {
+  let exifSubset: Record<string, any> | null = null;
+  try {
+    const exifData: any = await exifr.parse(file, ['Orientation', 'FocalLength', 'Model']);
+    exifSubset = exifData ? {
       orientation: exifData.Orientation || null,
       focalLength: exifData.FocalLength || null,
       model: exifData.Model || null,
     } : null;
+  } catch {}
 
-    return {
-      truncatedBase64: resizedDataUrl.slice(0, 12000),
-      aspectRatio,
-      exif: exifSubset,
-    };
-  } catch {
-    return { truncatedBase64: base64.slice(0, 12000), aspectRatio: null, exif: null };
-  }
+  return {
+    truncatedBase64: resizedDataUrl.slice(0, 12000),
+    aspectRatio,
+    exif: exifSubset,
+  };
 }
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement> {
