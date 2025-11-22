@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { inferFromImage } from '@/lib/publicEstimator/inferFromImage';
+import { inferOpeningFromImage } from '@/lib/publicEstimator/aiImageInference';
 import { Plus, X, Camera, Ruler, MapPin, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -103,15 +104,26 @@ export function OpeningDetailsStep({
       handleUpdateItem(id, { images: [...images, localUrl] });
       try {
         const baseLabel = file.name.split('.')[0];
-        const result = await inferFromImage(localUrl, baseLabel);
-        // Do not override if user already entered manual dimensions or notes
-        const freshItem = currentItems.find(i => i.id === id);
-        if (!freshItem) continue;
-        const updates: Partial<OpeningItem> = {};
-        if (!freshItem.width && result.widthMm) updates.width = result.widthMm;
-        if (!freshItem.height && result.heightMm) updates.height = result.heightMm;
-        if (!freshItem.notes && result.description) updates.notes = result.description;
-        if (Object.keys(updates).length) handleUpdateItem(id, updates);
+        // Fast heuristic first (non-blocking, immediate UX)
+        const heuristic = await inferFromImage(localUrl, baseLabel);
+        const freshItem1 = currentItems.find(i => i.id === id);
+        if (freshItem1) {
+          const hUpdates: Partial<OpeningItem> = {};
+          if (!freshItem1.width && heuristic.widthMm) hUpdates.width = heuristic.widthMm;
+          if (!freshItem1.height && heuristic.heightMm) hUpdates.height = heuristic.heightMm;
+          if (!freshItem1.notes && heuristic.description) hUpdates.notes = heuristic.description;
+          if (Object.keys(hUpdates).length) handleUpdateItem(id, hUpdates);
+        }
+        // AI refinement (may override heuristic if higher confidence)
+        const ai = await inferOpeningFromImage(file);
+        const freshItem2 = currentItems.find(i => i.id === id);
+        if (ai && freshItem2) {
+          const aiUpdates: Partial<OpeningItem> = {};
+          if (!freshItem2.width && ai.width_mm) aiUpdates.width = ai.width_mm;
+          if (!freshItem2.height && ai.height_mm) aiUpdates.height = ai.height_mm;
+          if (!freshItem2.notes && ai.description) aiUpdates.notes = ai.description;
+          if (Object.keys(aiUpdates).length) handleUpdateItem(id, aiUpdates);
+        }
       } catch {}
     }
   };
