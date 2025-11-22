@@ -52,6 +52,26 @@ type InsightsResponse = {
   params: ParamRow[];
 };
 
+// Lightweight relative time formatter (minutes/hours/days)
+function formatRelative(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Invalid date';
+    const diffMs = Date.now() - d.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return `${diffSec}s ago`;
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay < 7) return `${diffDay}d ago`;
+    return d.toLocaleDateString();
+  } catch {
+    return 'Invalid date';
+  }
+}
+
 type FollowupLearningResponse = {
   optIn: boolean;
   summary?: string;
@@ -198,6 +218,9 @@ export default function AiTrainingPage() {
     error?: string;
     quoteType?: 'supplier' | 'client';
   }>>([]);
+  const [recentSamples, setRecentSamples] = useState<Array<{ id: string; messageId: string; quotedAt: string|null; status: string; confidence: number|null }>>([]);
+  const [samplesLoading, setSamplesLoading] = useState(false);
+  const [mlSummary, setMlSummary] = useState<{ sampleCount?: number; pendingCount?: number } | null>(null);
   const [dragCounter, setDragCounter] = useState(0);
   const [selectedQuoteType, setSelectedQuoteType] = useState<'supplier' | 'client'>('supplier');
 
@@ -732,28 +755,18 @@ export default function AiTrainingPage() {
         reader.readAsDataURL(upload.file);
       });
       
-      // Force correct ML service URL for testing
-      const ML_URL = 'https://new-ml-zo9l.onrender.com';
-      console.log('Using ML_URL:', ML_URL); // Debug log
-      
-      const response = await fetch(`${ML_URL}/upload-quote-training`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          filename: upload.file.name,
-          base64: base64Content,
-          quoteType: upload.quoteType || 'supplier',
-          tenantId: user?.id || 'default-tenant'
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      // Send to internal API which persists Quote + File + MLTrainingSample then forwards to ML.
+      const result = await apiFetch<{ ok: boolean; confidence?: number|null; mlError?: string|null; mlResult?: any; fileId: string; quoteId: string }>(
+        '/internal/ml/manual-upload-train',
+        {
+          method: 'POST',
+          json: {
+            filename: upload.file.name,
+            base64: base64Content,
+            quoteType: upload.quoteType || 'supplier'
+          }
+        }
+      );
 
       setUploadQueue(prev => prev.map(u => 
         u.id === upload.id ? { 
@@ -766,9 +779,12 @@ export default function AiTrainingPage() {
 
       toast({
         title: "Quote uploaded successfully",
-        description: `${upload.file.name} processed with ${(result.confidence * 100).toFixed(0)}% confidence`,
+        description: result.confidence != null ? `${upload.file.name} processed (${(result.confidence * 100).toFixed(0)}% confidence)` : `${upload.file.name} uploaded`,
         duration: 3000
       });
+
+      // Refresh samples + status
+      void refreshSamplesAndStatus();
 
     } catch (error: any) {
       setUploadQueue(prev => prev.map(u => 
@@ -786,6 +802,35 @@ export default function AiTrainingPage() {
       });
     }
   }
+
+  async function refreshSamplesAndStatus() {
+    setSamplesLoading(true);
+    try {
+      const sampleResp = await apiFetch<{ ok: boolean; count: number; items: any[] }>(`/internal/ml/samples?limit=10`);
+      if (sampleResp.ok) {
+        setRecentSamples(sampleResp.items.map(it => ({
+          id: it.id,
+          messageId: it.messageId,
+          quotedAt: it.quotedAt || null,
+          status: it.status,
+          confidence: typeof it.confidence === 'number' ? it.confidence : null,
+        })));
+      }
+      const statusResp = await apiFetch<any>('/ml-status');
+      if (statusResp && statusResp.training) {
+        const sc = statusResp.training?.sampleCount ?? statusResp.training?.recentSampleCount ?? null;
+        const pc = statusResp.training?.pendingReviewCount ?? null;
+        setMlSummary({ sampleCount: sc ?? undefined, pendingCount: pc ?? undefined });
+      }
+    } catch (e) {
+      // silent
+    } finally {
+      setSamplesLoading(false);
+    }
+  }
+
+  // Initial load of samples/status
+  useEffect(() => { refreshSamplesAndStatus(); }, []);
 
   function removeFromQueue(id: string) {
     setUploadQueue(prev => prev.filter(u => u.id !== id));
@@ -1281,6 +1326,79 @@ export default function AiTrainingPage() {
                   <strong>💡 Training tips:</strong> Upload a variety of quotes with different formats, pricing structures, 
                   and product types. The more diverse examples you provide, the better the model will become at parsing quotes accurately.
                 </p>
+              </div>
+              {/* Recent Training Samples & Summary */}
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white/80 backdrop-blur p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                      🧪 Recent Training Samples
+                      {mlSummary?.sampleCount != null && (
+                        <Badge variant="secondary" className="text-xs">
+                          {(mlSummary.sampleCount ?? 0).toLocaleString()} total
+                        </Badge>
+                      )}
+                      {mlSummary?.pendingCount != null && mlSummary.pendingCount > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          {mlSummary.pendingCount} pending
+                        </Badge>
+                      )}
+                    </h4>
+                    <p className="text-xs text-slate-500">Most recent parsed / uploaded quote samples contributing to model learning.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => void refreshSamplesAndStatus()} disabled={samplesLoading}>
+                      {samplesLoading ? 'Refreshing…' : 'Refresh'}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => window.open('/dev/ml/samples','_blank')}>
+                      View all →
+                    </Button>
+                  </div>
+                </div>
+                {/* Samples list */}
+                {samplesLoading && recentSamples.length === 0 && (
+                  <div className="mt-4 text-xs text-slate-500">Loading recent samples…</div>
+                )}
+                {!samplesLoading && recentSamples.length === 0 && (
+                  <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50/70 p-4 text-xs text-slate-500">
+                    No samples yet. Upload PDF quotes above to generate training records.
+                  </div>
+                )}
+                {recentSamples.length > 0 && (
+                  <div className="mt-4 space-y-2 max-h-72 overflow-y-auto">
+                    {recentSamples.slice(0, 25).map(s => (
+                      <div key={s.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-slate-700 truncate flex items-center gap-1">
+                            📝 <span className="truncate">{s.messageId.replace(/^uploaded:/,'')}</span>
+                            {s.confidence != null && (
+                              <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                                {(s.confidence * 100).toFixed(0)}%
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Status: {s.status} • {s.quotedAt ? formatRelative(s.quotedAt) : 'No date'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={s.status === 'accepted' ? 'secondary' : s.status === 'pending' ? 'outline' : 'destructive'} className="text-[10px]">
+                            {s.status}
+                          </Badge>
+                          <button
+                            onClick={() => {
+                              navigator?.clipboard?.writeText(s.messageId).catch(() => {});
+                            }}
+                            className="rounded bg-slate-100 hover:bg-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600"
+                            title={s.messageId}
+                          >
+                            Copy ID
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
