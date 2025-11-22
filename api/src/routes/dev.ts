@@ -822,7 +822,10 @@ router.get('/ml/samples', requireDeveloper, async (req: any, res) => {
     const tenantMap = new Map(tenants.map(t => [t.id, t]));
     
     // Generate signed URLs for manual uploads (fileId present)
-    const API_BASE = process.env.APP_URL?.replace(/\/$/, "") || process.env.API_URL?.replace(/\/$/, "") || process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "") || 'https://api.joineryai.app';
+    // IMPORTANT: Always use the API service host, not the web app host.
+    // Rely on the incoming request host (this route runs on the API service) so we don't accidentally pick the web domain.
+    const requestHost = (req.get('host') || '').replace(/\/$/, '').trim();
+    const API_BASE = requestHost ? `https://${requestHost}` : (process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "") || 'https://api.joineryai.app');
     const enriched = items.map(i => {
       let signedUrl = i.url; // Default to stored URL (for email samples)
       if (i.fileId) {
