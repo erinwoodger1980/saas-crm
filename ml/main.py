@@ -2503,6 +2503,25 @@ async def train_client_quotes(req: Request):
                     "windows"
                 )
                 
+                # Extract standard premium features from questionnaire
+                glazing_type = qa.get("glazing_type", "Standard Double Glazing")
+                has_curves = bool(qa.get("has_curves", False))
+                premium_hardware = bool(qa.get("premium_hardware", False))
+                custom_finish = qa.get("custom_finish", "None")
+                fire_rated = bool(qa.get("fire_rated", False))
+                installation_required = bool(qa.get("installation_required", False))
+                property_listed = bool(qa.get("property_listed", False))
+                
+                # Extract door/window specifics
+                door_height_mm = qa.get("door_height_mm", 2100)
+                door_width_mm = qa.get("door_width_mm", 900)
+                num_doors = qa.get("num_doors", 0)
+                num_windows = qa.get("num_windows", 0)
+                
+                # Extract context fields
+                lead_source = qa.get("lead_source", "website")
+                region = qa.get("region", "South East")
+                
                 # Use quoted_price if available, otherwise estimated_total
                 target_price = float(row[5] or row[3] or 0)
                 
@@ -2522,6 +2541,19 @@ async def train_client_quotes(req: Request):
                     "area_m2": float(area_m2),
                     "materials_grade": str(materials_grade),
                     "project_type": str(project_type),
+                    "glazing_type": str(glazing_type),
+                    "has_curves": has_curves,
+                    "premium_hardware": premium_hardware,
+                    "custom_finish": str(custom_finish),
+                    "fire_rated": fire_rated,
+                    "installation_required": installation_required,
+                    "property_listed": property_listed,
+                    "door_height_mm": float(door_height_mm) if door_height_mm else 2100.0,
+                    "door_width_mm": float(door_width_mm) if door_width_mm else 900.0,
+                    "num_doors": int(num_doors) if num_doors else 0,
+                    "num_windows": int(num_windows) if num_windows else 0,
+                    "lead_source": str(lead_source),
+                    "region": str(region),
                     "target_price": target_price,
                     "win_probability": win_prob,
                     "confidence": confidence
@@ -2554,6 +2586,16 @@ async def train_client_quotes(req: Request):
         df_encoded["project_type_windows"] = df_encoded["project_type"].str.contains("window", case=False, na=False).astype(int)
         df_encoded["project_type_doors"] = df_encoded["project_type"].str.contains("door", case=False, na=False).astype(int)
         
+        # Encode premium features (these capture expensive options like vacuum glass, curves)
+        df_encoded["glazing_vacuum"] = df_encoded["glazing_type"].str.contains("vacuum", case=False, na=False).astype(int)
+        df_encoded["glazing_triple"] = df_encoded["glazing_type"].str.contains("triple", case=False, na=False).astype(int)
+        df_encoded["has_curves_int"] = df_encoded["has_curves"].astype(int)
+        df_encoded["premium_hardware_int"] = df_encoded["premium_hardware"].astype(int)
+        df_encoded["has_custom_finish"] = (df_encoded["custom_finish"] != "None").astype(int)
+        df_encoded["fire_rated_int"] = df_encoded["fire_rated"].astype(int)
+        df_encoded["installation_int"] = df_encoded["installation_required"].astype(int)
+        df_encoded["listed_building"] = df_encoded["property_listed"].astype(int)
+        
         feature_columns = [
             "area_m2",
             "materials_grade_Premium",
@@ -2561,6 +2603,18 @@ async def train_client_quotes(req: Request):
             "materials_grade_Basic",
             "project_type_windows",
             "project_type_doors",
+            "glazing_vacuum",
+            "glazing_triple",
+            "has_curves_int",
+            "premium_hardware_int",
+            "has_custom_finish",
+            "fire_rated_int",
+            "installation_int",
+            "listed_building",
+            "door_height_mm",
+            "door_width_mm",
+            "num_doors",
+            "num_windows",
             "confidence"
         ]
         

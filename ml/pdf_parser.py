@@ -733,6 +733,48 @@ def parse_client_quote_from_text(text: str) -> Dict[str, Any]:
     elif re.search(r"joinery|timber|wood", text, re.IGNORECASE):
         questionnaire_answers["project_type"] = "joinery"
     
+        # Extract standard premium features for ML training
+    
+        # Glazing type detection
+        if re.search(r"vacuum\s+glass|vacuum\s+glazing", text, re.IGNORECASE):
+            questionnaire_answers["glazing_type"] = "Vacuum Glass"
+        elif re.search(r"triple\s+glaz", text, re.IGNORECASE):
+            questionnaire_answers["glazing_type"] = "Triple Glazing"
+        elif re.search(r"single\s+glaz", text, re.IGNORECASE):
+            questionnaire_answers["glazing_type"] = "Single Glazing"
+        elif re.search(r"double\s+glaz|glazing", text, re.IGNORECASE):
+            questionnaire_answers["glazing_type"] = "Standard Double Glazing"
+    
+        # Curved/arched design detection
+        if re.search(r"arch|curved|radius|bespoke.*curve|arched", text, re.IGNORECASE):
+            questionnaire_answers["has_curves"] = True
+    
+        # Premium hardware detection
+        if re.search(r"premium\s+hardware|upgraded\s+hardware|bespoke\s+ironmongery|high\s+quality\s+fittings", text, re.IGNORECASE):
+            questionnaire_answers["premium_hardware"] = True
+    
+        # Custom finish detection
+        if re.search(r"factory.*paint|pre.*painted|spray.*finish", text, re.IGNORECASE):
+            questionnaire_answers["custom_finish"] = "Paint"
+        elif re.search(r"stain|wood\s+stain", text, re.IGNORECASE):
+            questionnaire_answers["custom_finish"] = "Stain"
+        elif re.search(r"lacquer|varnish", text, re.IGNORECASE):
+            questionnaire_answers["custom_finish"] = "Lacquer"
+        elif re.search(r"oil|oiled\s+finish", text, re.IGNORECASE):
+            questionnaire_answers["custom_finish"] = "Oil"
+    
+        # Fire rated detection
+        if re.search(r"fire\s+door|FD30|FD60|fire\s+rated|fire\s+resistance", text, re.IGNORECASE):
+            questionnaire_answers["fire_rated"] = True
+    
+        # Installation detection
+        if re.search(r"installation\s+included|fitting\s+included|supply\s+and\s+install|supply\s+&\s+fit", text, re.IGNORECASE):
+            questionnaire_answers["installation_required"] = True
+    
+        # Listed building detection
+        if re.search(r"listed\s+building|conservation\s+area|heritage\s+approval|planning\s+consent", text, re.IGNORECASE):
+            questionnaire_answers["property_listed"] = True
+    
     # Extract materials information
     wood_types = []
     if re.search(r"ACCOYA", text, re.IGNORECASE):

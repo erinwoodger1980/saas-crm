@@ -10,6 +10,7 @@ import {
   normalizeQuestionnaire,
   prepareQuestionnaireForSave,
 } from "../lib/questionnaire";
+import { seedStandardFieldsForTenant } from "../lib/seedStandardFields";
 
 const DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT = "Questionnaire for your estimate";
 const DEFAULT_QUESTIONNAIRE_EMAIL_BODY =
@@ -200,6 +201,10 @@ router.get("/settings", async (req, res) => {
       let preparedQuestions: any[] | null = null;
       try {
         await initializeTenantWithSeedData(tenantId);
+        
+          // Seed standard ML training fields for new tenant
+          await seedStandardFieldsForTenant(tenantId);
+        
         const demoQ = await buildQuestionnaireFromLeadFieldDefs(tenantId);
         preparedQuestions = prepareQuestionnaireForSave(demoQ);
       } catch (e) {
@@ -525,6 +530,9 @@ router.post("/settings/apply-demo-questionnaire", async (req, res) => {
     }
 
     // Copy from demo template into this tenant (LeadFieldDef, tasks, rules)
+
+      // Seed standard ML training fields
+      await seedStandardFieldsForTenant(tenantId);
     await initializeTenantWithSeedData(tenantId);
 
     // Build questionnaire from the copied LeadFieldDefs
