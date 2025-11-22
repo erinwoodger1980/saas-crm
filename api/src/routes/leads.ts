@@ -1264,7 +1264,8 @@ router.patch("/:id", async (req, res) => {
     
       if (opportunity) {
         const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000").replace(/\/$/, "");
-        fetch(`${env.API_URL || "http://localhost:8001"}/api/ml-actuals/capture/${opportunity.id}`, {
+        const API_INTERNAL_BASE = (process.env.API_INTERNAL_URL || process.env.API_URL || "http://localhost:8001").replace(/\/$/, "");
+        fetch(`${API_INTERNAL_BASE}/api/ml-actuals/capture/${opportunity.id}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

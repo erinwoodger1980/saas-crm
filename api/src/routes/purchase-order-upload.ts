@@ -2,7 +2,7 @@
 // Manual Purchase Order upload + material cost learning
 import { Router } from 'express';
 import multer from 'multer';
-import csv from 'csv-parse/sync';
+// Removed external CSV parser dependency; using lightweight internal parser to avoid missing module errors.
 import { prisma } from '../prisma';
 
 const router = Router();
@@ -23,16 +23,48 @@ interface ParsedLine {
 }
 
 function parseCsv(buffer: Buffer): ParsedLine[] {
+  // Very simple CSV parser (supports quoted fields, commas, newlines)
   const text = buffer.toString('utf-8');
-  const records: any[] = csv.parse(text, { columns: true, skip_empty_lines: true, relax_column_count: true });
-  return records.map(r => ({
-    code: (r.code || r.material_code || '').trim() || undefined,
-    name: (r.name || r.material_name || '').trim() || undefined,
-    quantity: r.quantity ? Number(r.quantity) : undefined,
-    unit: (r.unit || '').trim() || undefined,
-    unitPrice: r.unitPrice ? Number(r.unitPrice) : (r.price ? Number(r.price) : undefined),
-    currency: (r.currency || 'GBP').trim()
-  })).filter(l => l.unitPrice && (l.code || l.name));
+  const rows: string[][] = [];
+  let current: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = i + 1 < text.length ? text[i + 1] : '';
+    if (ch === '"') {
+      if (inQuotes && next === '"') { field += '"'; i++; continue; }
+      inQuotes = !inQuotes; continue;
+    }
+    if (ch === ',' && !inQuotes) { current.push(field); field = ''; continue; }
+    if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && next === '\n') i++;
+      current.push(field); field=''; rows.push(current.map(f=>f.trim())); current=[]; continue;
+    }
+    field += ch;
+  }
+  if (field.length || current.length) { current.push(field); rows.push(current.map(f=>f.trim())); }
+  if (!rows.length) return [];
+  const headers = rows[0].map(h=>h.replace(/^\ufeff/, '')).map(h=>h.toLowerCase());
+  const dataRows = rows.slice(1).filter(r=>r.some(c=>c.trim().length));
+  const indexOf = (h: string) => headers.indexOf(h.toLowerCase());
+  return dataRows.map(r => {
+    const grab = (keys: string[]): string => {
+      for (const k of keys) { const idx = indexOf(k); if (idx >= 0 && idx < r.length) { const v = r[idx].trim(); if (v) return v; } }
+      return '';
+    };
+    const rawQty = grab(['quantity','qty']);
+    const rawUnitPrice = grab(['unitprice','price','cost']);
+    const out: ParsedLine = {
+      code: grab(['code','material_code']) || undefined,
+      name: grab(['name','material_name','description']) || undefined,
+      quantity: rawQty ? Number(rawQty) : undefined,
+      unit: grab(['unit','uom']) || undefined,
+      unitPrice: rawUnitPrice ? Number(rawUnitPrice) : undefined,
+      currency: grab(['currency']) || 'GBP'
+    };
+    return out;
+  }).filter(l => l.unitPrice && (l.code || l.name));
 }
 
 router.post('/', requireAuth, upload.single('file'), async (req: any, res) => {
@@ -56,11 +88,13 @@ router.post('/', requireAuth, upload.single('file'), async (req: any, res) => {
     }
 
     // Resolve supplier (create if missing)
-    const supplier = await prisma.supplier.upsert({
-      where: { tenantId_name: { tenantId, name: supplierName } },
-      update: {},
-      create: { tenantId, name: supplierName, currency: 'GBP', active: true }
-    });
+    // Find existing supplier by tenant + name (no composite unique constraint in schema)
+    let supplier = await prisma.supplier.findFirst({ where: { tenantId, name: supplierName } });
+    if (!supplier) {
+      supplier = await prisma.supplier.create({
+        data: { tenantId, name: supplierName, defaultCurrency: 'GBP', isActive: true }
+      });
+    }
 
     // Create a PurchaseOrder (status RECEIVED immediately for manual historical upload)
     const po = await prisma.purchaseOrder.create({
@@ -99,7 +133,7 @@ router.post('/', requireAuth, upload.single('file'), async (req: any, res) => {
             tenantId,
             code: code || `mat_${Date.now()}`,
             name,
-            category: 'consumable',
+            category: 'CONSUMABLE',
             cost: unitPrice,
             currency: l.currency || 'GBP',
             unit: l.unit || 'unit',
