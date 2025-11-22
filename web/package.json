@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "eslint .",
     "postinstall": "npm rebuild lightningcss || true",
-    "prisma:web:generate": "rm -rf node_modules/.prisma && prisma generate --config ../api/prisma.config.ts --schema ../api/prisma/schema.prisma --generator webClient && node ./scripts/link-prisma-client.mjs",
+    "prisma:web:generate": "rm -rf node_modules/.prisma && prisma generate --config ../api/prisma.config.ts --schema ../api/prisma/schema.prisma && node ./scripts/link-prisma-client.mjs",
     "check:no-localhost": "node -e \"const {execSync}=require('child_process'); try{ execSync('grep -R \"localhost:4000\" src && exit 1',{stdio:'inherit'}); }catch(e){}\""
   },
   "dependencies": {
