@@ -8,10 +8,10 @@ The public estimator now supports multi-layer image understanding with three sou
 
 ## Endpoints
 - `POST /public/vision/analyze-photo`
-    - Ensemble blending: heuristic aspect ratio estimate mixed with AI dimensions (weighted) to smooth outliers.
-  Payload: `{ imageHeadBase64, fileName, openingType, aspectRatio, exif, headHash? }`
-  Response: `{ width_mm, height_mm, description, confidence, cached?, cacheLayer? }`
-  Notes:
+  - Ensemble blending: heuristic aspect ratio estimate mixed with AI dimensions (weighted) to smooth outliers.
+  - Payload: `{ imageHeadBase64, fileName, openingType, aspectRatio, exif, headHash? }`
+  - Response: `{ width_mm, height_mm, description, confidence, cached?, cacheLayer? }`
+  - Notes:
     - Two-tier cache: Redis (24h TTL) then in-memory (5m TTL).
     - SHA-1 hash of truncated base64 head used as key.
     - AI call retried up to 3 attempts with incremental backoff.
@@ -19,12 +19,17 @@ The public estimator now supports multi-layer image understanding with three sou
     - Telemetry (duration, cost, tokens) recorded in memory (enable console via `VISION_TELEMETRY_LOG=1`).
 
 - `POST /public/vision/depth-analyze`
-  Payload: `{ points: [{x,y,z},...], openingType?, anchorWidthMm? }`
-  Response: `{ width_mm, height_mm, description, confidence }`
-  Notes:
+  - Payload: `{ points: [{x,y,z},...], openingType?, anchorWidthMm? }`
+  - Response: `{ width_mm, height_mm, description, confidence }`
+  - Notes:
     - Performs PCA on XY to derive oriented bounding box then scales.
     - Uses anchorWidthMm for absolute scaling if provided, otherwise heuristic normalization.
     - Confidence derives from point count + calibrated plausibility filter.
+  
+- Internal Telemetry:
+  - `GET /internal/vision/telemetry?limit=100` returns raw recent events.
+    - Auth: header `x-admin-token: $ADMIN_API_TOKEN`.
+  - `GET /internal/vision/telemetry/summary` returns aggregates `{ count, avgMs, totalCost, errorRate, byModel }`.
 
 ## Client Flow
 1. User uploads image.
@@ -62,7 +67,9 @@ These fields are stored transparently in the project `payload`.
 - Corrupt image / load error: Heuristic returns empty; user can input manually.
 
 ## Security & Cost Controls
-- Internal telemetry route `/internal/vision/telemetry` (protect behind auth) returns recent persisted entries.
+- Internal telemetry routes secured by `x-admin-token` header.
+- Internal telemetry route `/internal/vision/telemetry` returns recent persisted entries.
+- Summary route provides rollups without exposing individual request content.
 - Truncated base64 head limits token usage & exposure surface.
 - Redis TTL enforces automated expiration (24h) for vision cache entries.
 - SHA-1 key avoids storing full images; only small head retained transiently.
