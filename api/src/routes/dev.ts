@@ -893,6 +893,66 @@ router.patch('/ml/samples/:id/status', requireDeveloper, async (req: any, res) =
   }
 });
 
+// GET /dev/ml/summary - ML sample health statistics
+router.get('/ml/summary', requireDeveloper, async (req: any, res) => {
+  try {
+    const total = await prisma.mLTrainingSample.count();
+    const withEnrichment = await prisma.mLTrainingSample.count({
+      where: {
+        OR: [
+          { textChars: { not: null } },
+          { estimatedTotal: { not: null } },
+          { confidence: { not: null } },
+        ]
+      }
+    });
+    const byStatus = await prisma.mLTrainingSample.groupBy({
+      by: ['status'],
+      _count: { id: true }
+    });
+    const bySource = await prisma.mLTrainingSample.groupBy({
+      by: ['sourceType'],
+      _count: { id: true }
+    });
+    return res.json({
+      ok: true,
+      total,
+      withEnrichment,
+      enrichmentRate: total > 0 ? Math.round((withEnrichment / total) * 100) : 0,
+      byStatus: byStatus.map(g => ({ status: g.status, count: g._count.id })),
+      bySource: bySource.map(g => ({ source: g.sourceType, count: g._count.id })),
+    });
+  } catch (e: any) {
+    console.error('[dev/ml/summary] failed:', e?.message || e);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// GET /dev/ml/samples/:id/extract - local PDF extraction with line items
+router.get('/ml/samples/:id/extract', requireDeveloper, async (req: any, res) => {
+  try {
+    const id = String(req.params.id);
+    const sample = await prisma.mLTrainingSample.findUnique({
+      where: { id },
+      select: { id: true, fileId: true, tenantId: true }
+    });
+    if (!sample) return res.status(404).json({ error: 'not_found' });
+    if (!sample.fileId) return res.status(400).json({ error: 'no_file' });
+    const file = await prisma.uploadedFile.findUnique({
+      where: { id: sample.fileId },
+      select: { path: true, name: true }
+    });
+    if (!file) return res.status(404).json({ error: 'file_missing' });
+    const absPath = require('path').isAbsolute(file.path) ? file.path : require('path').join(process.cwd(), file.path);
+    const { extractQuoteFromPdf } = require('../lib/pdf/extractQuote');
+    const stats = await extractQuoteFromPdf(absPath);
+    return res.json({ ok: true, sampleId: id, filename: file.name, stats });
+  } catch (e: any) {
+    console.error('[dev/ml/samples/:id/extract] failed:', e?.message || e);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
 // ==============================
 // System Stats (Developer Only)
 // ==============================
