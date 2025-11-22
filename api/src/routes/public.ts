@@ -15,6 +15,7 @@ import { Prisma } from "@prisma/client";
 
 const router = Router();
 import fetch from "node-fetch";
+import crypto from "crypto";
 
 /**
  * Current public questionnaire surface:
@@ -664,6 +665,17 @@ router.post("/vision/analyze-photo", async (req, res) => {
     const rawB64 = imageHeadBase64 || imageBase64;
     if (!rawB64) return res.status(400).json({ error: "imageBase64 required" });
     const cleaned = rawB64.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+
+    // Cache layer (in-memory TTL). Uses SHA1 of cleaned head.
+    const hash = crypto.createHash("sha1").update(cleaned).digest("hex");
+    const now = Date.now();
+    const existing = (global as any).__visionCache?.get(hash);
+    if (existing && existing.expires > now) {
+      return res.json({ ...existing.data, cached: true });
+    }
+    if (!(global as any).__visionCache) {
+      (global as any).__visionCache = new Map<string, { data: any; expires: number }>();
+    }
     // Heuristic pixel analysis (dimensions)
     let widthPx: number | null = null;
     let heightPx: number | null = null;
@@ -677,15 +689,16 @@ router.post("/vision/analyze-photo", async (req, res) => {
     let aiHeight: number | null = null;
     let aiConfidence: number | null = null;
     try {
-      const { send } = await import("../services/ai/openai");
-      const prompt = `You are a joinery estimator. Analyze a ${openingType || 'opening'} photo (${fileName || 'photo'}). Aspect ratio: ${aspectRatio || 'n/a'}. EXIF: ${exif ? JSON.stringify(exif) : 'none'}. Provide JSON ONLY: {"description":"...","width_mm":number,"height_mm":number,"confidence":number}. Use realistic UK dimensions (external door ~1980x838mm). If uncertain, give best estimate with lowered confidence. No extra text.`;
-      const b64Snippet = cleaned.slice(0, 4000); // reduced token usage
+      if (process.env.OPENAI_API_KEY) {
+        const { send } = await import("../services/ai/openai");
+        const prompt = `You are a joinery estimator. Analyze a ${openingType || 'opening'} photo (${fileName || 'photo'}). Aspect ratio: ${aspectRatio || 'n/a'}. EXIF: ${exif ? JSON.stringify(exif) : 'none'}. Provide JSON ONLY: {"description":"...","width_mm":number,"height_mm":number,"confidence":number}. Use realistic UK dimensions (external door ~1980x838mm). If uncertain, give best estimate with lowered confidence. No extra text.`;
+        const b64Snippet = cleaned.slice(0, 4000); // reduced token usage
       const messages = [
         { role: 'system', content: 'Return ONLY valid JSON.' },
         { role: 'user', content: `${prompt}\nIMAGE_BASE64_HEAD:${b64Snippet}` }
       ] as any;
-      const result = await send(process.env.OPENAI_MODEL || 'gpt-4o-mini', messages, { temperature: 0.2, max_tokens: 400 });
-      const raw = result.text.trim();
+        const result = await send(process.env.OPENAI_MODEL || 'gpt-4o-mini', messages, { temperature: 0.2, max_tokens: 400 });
+        const raw = result.text.trim();
       const jsonStart = raw.indexOf('{');
       const jsonEnd = raw.lastIndexOf('}');
       if (jsonStart >= 0 && jsonEnd > jsonStart) {
@@ -694,6 +707,7 @@ router.post("/vision/analyze-photo", async (req, res) => {
         aiWidth = typeof parsed.width_mm === 'number' ? parsed.width_mm : null;
         aiHeight = typeof parsed.height_mm === 'number' ? parsed.height_mm : null;
         aiConfidence = typeof parsed.confidence === 'number' ? parsed.confidence : null;
+      }
       }
     } catch (e: any) {
       console.warn('[vision/analyze-photo] AI inference failed, falling back', e?.message);
@@ -706,15 +720,48 @@ router.post("/vision/analyze-photo", async (req, res) => {
       aiConfidence = aiConfidence || 0.3;
       aiText = aiText || 'Estimated external opening';
     }
-    return res.json({
+    const payload = {
       width_mm: aiWidth,
       height_mm: aiHeight,
       description: aiText,
       confidence: aiConfidence,
-    });
+    };
+    // Store in cache (5 min TTL)
+    (global as any).__visionCache.set(hash, { data: payload, expires: Date.now() + 5 * 60 * 1000 });
+    return res.json(payload);
   } catch (e: any) {
     console.error('[public vision analyze-photo] failed:', e);
     return res.status(500).json({ error: e?.message || 'vision_inference_failed' });
+  }
+});
+
+/** POST /public/vision/depth-analyze - Stub LiDAR/depth-based inference */
+router.post('/vision/depth-analyze', async (req, res) => {
+  try {
+    const { points, openingType, anchorWidthMm } = req.body as { points?: Array<{x:number;y:number;z:number}>; openingType?: string; anchorWidthMm?: number };
+    const pts = Array.isArray(points) ? points : [];
+    if (!pts.length) return res.status(400).json({ error: 'points required' });
+    // Simple planar bounding box heuristic
+    const xs = pts.map(p=>p.x); const ys = pts.map(p=>p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const spanX = maxX - minX; const spanY = maxY - minY;
+    // If anchorWidthMm provided, scale Y proportionally, else assume portrait door
+    let widthMm: number; let heightMm: number; let confidence = 0.45;
+    if (anchorWidthMm && anchorWidthMm > 400) {
+      widthMm = anchorWidthMm;
+      const ratio = spanY / (spanX || 1);
+      heightMm = Math.round(widthMm * ratio);
+    } else {
+      // Default door dims influenced by aspect
+      const ratio = spanX > 0 && spanY > 0 ? spanX / spanY : 0.5;
+      if (ratio < 0.8) { widthMm = 900; heightMm = 2000; }
+      else { widthMm = 1200; heightMm = 1400; }
+      confidence = 0.35;
+    }
+    return res.json({ width_mm: widthMm, height_mm: heightMm, description: `Depth inferred ${openingType || 'opening'}`, confidence });
+  } catch (e: any) {
+    console.error('[vision depth-analyze] failed', e);
+    return res.status(500).json({ error: e?.message || 'depth_inference_failed' });
   }
 });
 
