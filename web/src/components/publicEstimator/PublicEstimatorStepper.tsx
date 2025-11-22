@@ -360,16 +360,16 @@ export function PublicEstimatorStepper({
         {currentStep >= 3 && (
           <div className="lg:col-span-5">
             <div className="mt-6 lg:sticky lg:top-6 lg:mt-0">
-              <EstimatePreviewCard
-                estimate={estimatePreview}
-                // Treat null estimate with existing items as loading to suppress empty flash
-                isLoading={isLoadingEstimate || (!isLoadingEstimate && !estimatePreview && (data.openingDetails?.length || 0) > 0)}
-                favouriteItemIds={data.favouriteItemIds}
-                onToggleFavourite={handleToggleFavourite}
-                onShare={handleShare}
-                primaryColor={branding.primaryColor}
-                companyName={branding.name}
-              />
+                  <EstimatePreviewCard
+                    estimate={estimatePreview}
+                    // Only show loading if no estimate yet (prevent flicker during refresh)
+                    isLoading={(!estimatePreview) && isLoadingEstimate}
+                    favouriteItemIds={data.favouriteItemIds}
+                    onToggleFavourite={handleToggleFavourite}
+                    onShare={handleShare}
+                    primaryColor={branding.primaryColor}
+                    companyName={branding.name}
+                  />
               {/* Social Proof */}
               <div className="mt-4">
                 <SocialProofPanel branding={branding} primaryColor={branding.primaryColor} />
