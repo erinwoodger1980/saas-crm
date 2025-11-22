@@ -148,10 +148,12 @@ export default function MLSamplesPage() {
 
   async function previewSample(id: string) {
     try {
-      const resp = await apiFetch<{ ok: boolean; mlError?: string|null; ml?: any }>(`/internal/ml/samples/${id}/preview`);
+      const resp = await apiFetch<{ ok: boolean; mlError?: string|null; ml?: any; local?: { chars: number|null; total: number|null } }>(`/internal/ml/samples/${id}/preview`);
       if (!resp.ok) throw new Error(resp.mlError || 'Preview failed');
       const confidence = typeof resp.ml?.confidence === 'number' ? `${(resp.ml.confidence*100).toFixed(0)}%` : '—';
-      alert(`Preview confidence: ${confidence}\nLines: ${resp.ml?.lines?.length ?? 'n/a'}`);
+      const charsInfo = resp.local?.chars != null ? `${resp.local.chars} chars` : 'chars n/a';
+      const totalInfo = resp.local?.total != null ? `£${resp.local.total}` : 'total n/a';
+      alert(`Preview confidence: ${confidence}\n${charsInfo}\n${totalInfo}`);
     } catch (e: any) {
       alert('Preview failed: ' + (e?.message || 'unknown'));
     }
