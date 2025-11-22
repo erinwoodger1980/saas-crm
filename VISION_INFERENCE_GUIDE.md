@@ -9,13 +9,21 @@ The public estimator now supports multi-layer image understanding with three sou
 ## Endpoints
 - `POST /public/vision/analyze-photo`
   Payload: `{ imageHeadBase64, fileName, openingType, aspectRatio, exif, headHash? }`
-  Response: `{ width_mm, height_mm, description, confidence, cached? }`
-  Notes: In-memory 5 min cache keyed by SHA-1 hash of truncated base64 head. Falls back to heuristic if AI unavailable or missing dimensions.
+  Response: `{ width_mm, height_mm, description, confidence, cached?, cacheLayer? }`
+  Notes:
+    - Two-tier cache: Redis (24h TTL) then in-memory (5m TTL).
+    - SHA-1 hash of truncated base64 head used as key.
+    - AI call retried up to 3 attempts with incremental backoff.
+    - Confidence calibrated post-inference for plausibility (size ranges per openingType).
+    - Telemetry (duration, cost, tokens) recorded in memory (enable console via `VISION_TELEMETRY_LOG=1`).
 
 - `POST /public/vision/depth-analyze`
   Payload: `{ points: [{x,y,z},...], openingType?, anchorWidthMm? }`
   Response: `{ width_mm, height_mm, description, confidence }`
-  Notes: Stub implementation using planar bounding box; scales height via aspect. Used for future LiDAR integration.
+  Notes:
+    - Performs PCA on XY to derive oriented bounding box then scales.
+    - Uses anchorWidthMm for absolute scaling if provided, otherwise heuristic normalization.
+    - Confidence derives from point count + calibrated plausibility filter.
 
 ## Client Flow
 1. User uploads image.
@@ -32,15 +40,17 @@ The public estimator now supports multi-layer image understanding with three sou
 These fields are stored transparently in the project `payload`.
 
 ## Confidence Guidance
-- <40%: Treat as rough estimate; manual measurement recommended.
-- 40%-69%: Acceptable provisional; verify on site.
+- <40%: Rough estimate; manual measurement recommended.
+- 40%-69%: Provisional; verify on site.
 - >=70%: High confidence; expect close alignment.
+- Calibration may increase/decrease raw model score based on plausibility of dimensions.
 
 ## Extensibility Roadmap
-- Replace depth stub with true LiDAR point cloud scaling & plane fitting.
-- Add server-side durability cache (Redis) for cross-session reuse.
-- Introduce model ensemble (heuristic + AI + historical dimension priors).
-- Expand EXIF usage (exposure, ISO) to detect motion blur / request retake.
+- Integrate real LiDAR scaling (multi-plane segmentation; door leaf vs frame).
+- Persist telemetry buffer to database for trend analysis & cost optimization.
+- Ensemble scoring: blend heuristic, AI, historical priors, depth metrics.
+- Advanced EXIF & quality metrics (blur, noise) to trigger retake suggestions.
+- Confidence decay over time if dimensions edited manually post-inference.
 
 ## Failure Modes & Fallbacks
 - Missing `OPENAI_API_KEY`: AI block skipped; heuristic dims used; confidence ~0.3.
@@ -48,9 +58,10 @@ These fields are stored transparently in the project `payload`.
 - Corrupt image / load error: Heuristic returns empty; user can input manually.
 
 ## Security & Cost Controls
-- Truncating base64 reduces token usage and prevents full raw image leakage.
-- SHA-1 hash is used only for caching; do not store full image in memory beyond TTL.
-- Resize ensures consistent token footprint.
+- Truncated base64 head limits token usage & exposure surface.
+- Redis TTL enforces automated expiration (24h) for vision cache entries.
+- SHA-1 key avoids storing full images; only small head retained transiently.
+- Retry with low backoff prevents excessive duplicate token spend on transient failures.
 
 ## Updating / Testing
 Run a build to verify types after changes:

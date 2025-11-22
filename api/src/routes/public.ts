@@ -16,6 +16,9 @@ import { Prisma } from "@prisma/client";
 const router = Router();
 import fetch from "node-fetch";
 import crypto from "crypto";
+import { redisGetJSON, redisSetJSON } from '../services/redis';
+import { calibrateConfidence, combineConfidence } from '../services/vision/calibration';
+import { buildAiTelemetry } from '../services/vision/telemetry';
 
 /**
  * Current public questionnaire surface:
@@ -669,13 +672,17 @@ router.post("/vision/analyze-photo", async (req, res) => {
     // Cache layer (in-memory TTL). Uses SHA1 of cleaned head.
     const hash = crypto.createHash("sha1").update(cleaned).digest("hex");
     const now = Date.now();
-    const existing = (global as any).__visionCache?.get(hash);
-    if (existing && existing.expires > now) {
-      return res.json({ ...existing.data, cached: true });
+    // Try Redis first (24h TTL), fallback to in-memory (5m TTL)
+    const redisKey = `vision:${hash}`;
+    const redisHit = await redisGetJSON<any>(redisKey);
+    if (redisHit) {
+      return res.json({ ...redisHit, cached: true, cacheLayer: 'redis' });
     }
-    if (!(global as any).__visionCache) {
-      (global as any).__visionCache = new Map<string, { data: any; expires: number }>();
+    const existingMem = (global as any).__visionCache?.get(hash);
+    if (existingMem && existingMem.expires > now) {
+      return res.json({ ...existingMem.data, cached: true, cacheLayer: 'memory' });
     }
+    if (!(global as any).__visionCache) (global as any).__visionCache = new Map<string, { data: any; expires: number }>();
     // Heuristic pixel analysis (dimensions)
     let widthPx: number | null = null;
     let heightPx: number | null = null;
@@ -692,22 +699,37 @@ router.post("/vision/analyze-photo", async (req, res) => {
       if (process.env.OPENAI_API_KEY) {
         const { send } = await import("../services/ai/openai");
         const prompt = `You are a joinery estimator. Analyze a ${openingType || 'opening'} photo (${fileName || 'photo'}). Aspect ratio: ${aspectRatio || 'n/a'}. EXIF: ${exif ? JSON.stringify(exif) : 'none'}. Provide JSON ONLY: {"description":"...","width_mm":number,"height_mm":number,"confidence":number}. Use realistic UK dimensions (external door ~1980x838mm). If uncertain, give best estimate with lowered confidence. No extra text.`;
-        const b64Snippet = cleaned.slice(0, 4000); // reduced token usage
-      const messages = [
-        { role: 'system', content: 'Return ONLY valid JSON.' },
-        { role: 'user', content: `${prompt}\nIMAGE_BASE64_HEAD:${b64Snippet}` }
-      ] as any;
-        const result = await send(process.env.OPENAI_MODEL || 'gpt-4o-mini', messages, { temperature: 0.2, max_tokens: 400 });
-        const raw = result.text.trim();
-      const jsonStart = raw.indexOf('{');
-      const jsonEnd = raw.lastIndexOf('}');
-      if (jsonStart >= 0 && jsonEnd > jsonStart) {
-        const parsed: any = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
-        aiText = typeof parsed.description === 'string' ? parsed.description : null;
-        aiWidth = typeof parsed.width_mm === 'number' ? parsed.width_mm : null;
-        aiHeight = typeof parsed.height_mm === 'number' ? parsed.height_mm : null;
-        aiConfidence = typeof parsed.confidence === 'number' ? parsed.confidence : null;
-      }
+        const b64Snippet = cleaned.slice(0, 4000);
+        const messages = [
+          { role: 'system', content: 'Return ONLY valid JSON.' },
+          { role: 'user', content: `${prompt}\nIMAGE_BASE64_HEAD:${b64Snippet}` }
+        ] as any;
+        const startMs = Date.now();
+        let lastErr: any = null; let result: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            result = await send(process.env.OPENAI_MODEL || 'gpt-4o-mini', messages, { temperature: 0.2, max_tokens: 400 });
+            lastErr = null; break;
+          } catch (err) {
+            lastErr = err;
+            await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+          }
+        }
+        if (!lastErr && result) {
+          const raw = result.text.trim();
+          const jsonStart = raw.indexOf('{');
+          const jsonEnd = raw.lastIndexOf('}');
+          if (jsonStart >= 0 && jsonEnd > jsonStart) {
+            const parsed: any = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+            aiText = typeof parsed.description === 'string' ? parsed.description : null;
+            aiWidth = typeof parsed.width_mm === 'number' ? parsed.width_mm : null;
+            aiHeight = typeof parsed.height_mm === 'number' ? parsed.height_mm : null;
+            aiConfidence = typeof parsed.confidence === 'number' ? parsed.confidence : null;
+          }
+          buildAiTelemetry(startMs, false, result, null);
+        } else {
+          buildAiTelemetry(startMs, false, undefined, lastErr);
+        }
       }
     } catch (e: any) {
       console.warn('[vision/analyze-photo] AI inference failed, falling back', e?.message);
@@ -720,14 +742,18 @@ router.post("/vision/analyze-photo", async (req, res) => {
       aiConfidence = aiConfidence || 0.3;
       aiText = aiText || 'Estimated external opening';
     }
+    // Calibrate confidence post-size plausibility
+    const calibrated = calibrateConfidence(openingType, aiWidth, aiHeight, aiConfidence);
     const payload = {
       width_mm: aiWidth,
       height_mm: aiHeight,
       description: aiText,
-      confidence: aiConfidence,
+      confidence: calibrated,
     };
     // Store in cache (5 min TTL)
     (global as any).__visionCache.set(hash, { data: payload, expires: Date.now() + 5 * 60 * 1000 });
+    // Persist to Redis (24h TTL) if available
+    redisSetJSON(redisKey, payload, 60 * 60 * 24).catch(()=>{});
     return res.json(payload);
   } catch (e: any) {
     console.error('[public vision analyze-photo] failed:', e);
@@ -741,24 +767,56 @@ router.post('/vision/depth-analyze', async (req, res) => {
     const { points, openingType, anchorWidthMm } = req.body as { points?: Array<{x:number;y:number;z:number}>; openingType?: string; anchorWidthMm?: number };
     const pts = Array.isArray(points) ? points : [];
     if (!pts.length) return res.status(400).json({ error: 'points required' });
-    // Simple planar bounding box heuristic
-    const xs = pts.map(p=>p.x); const ys = pts.map(p=>p.y);
-    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-    const spanX = maxX - minX; const spanY = maxY - minY;
-    // If anchorWidthMm provided, scale Y proportionally, else assume portrait door
-    let widthMm: number; let heightMm: number; let confidence = 0.45;
-    if (anchorWidthMm && anchorWidthMm > 400) {
-      widthMm = anchorWidthMm;
-      const ratio = spanY / (spanX || 1);
-      heightMm = Math.round(widthMm * ratio);
-    } else {
-      // Default door dims influenced by aspect
-      const ratio = spanX > 0 && spanY > 0 ? spanX / spanY : 0.5;
-      if (ratio < 0.8) { widthMm = 900; heightMm = 2000; }
-      else { widthMm = 1200; heightMm = 1400; }
-      confidence = 0.35;
+    // PCA-based oriented bounding box in XY plane
+    const xy = pts.map(p => [p.x, p.y]);
+    const n = xy.length;
+    const meanX = xy.reduce((s,v)=>s+v[0],0)/n;
+    const meanY = xy.reduce((s,v)=>s+v[1],0)/n;
+    const covXX = xy.reduce((s,v)=>s+(v[0]-meanX)*(v[0]-meanX),0)/n;
+    const covYY = xy.reduce((s,v)=>s+(v[1]-meanY)*(v[1]-meanY),0)/n;
+    const covXY = xy.reduce((s,v)=>s+(v[0]-meanX)*(v[1]-meanY),0)/n;
+    // Eigen decomposition of 2x2 matrix [[covXX,covXY],[covXY,covYY]]
+    const trace = covXX + covYY;
+    const det = covXX*covYY - covXY*covXY;
+    const temp = Math.sqrt(Math.max(0, trace*trace/4 - det));
+    const lambda1 = trace/2 + temp;
+    const lambda2 = trace/2 - temp;
+    // Principal eigenvector for lambda1
+    let vx = 1, vy = 0;
+    if (covXY !== 0) { vx = lambda1 - covYY; vy = covXY; }
+    const norm = Math.sqrt(vx*vx + vy*vy) || 1;
+    vx /= norm; vy /= norm;
+    // Project points onto principal axes
+    let minA = Infinity, maxA = -Infinity, minB = Infinity, maxB = -Infinity;
+    for (const [x,y] of xy) {
+      const dx = x - meanX; const dy = y - meanY;
+      const a = dx*vx + dy*vy;
+      const b = -dx*vy + dy*vx; // orthogonal
+      if (a < minA) minA = a; if (a > maxA) maxA = a;
+      if (b < minB) minB = b; if (b > maxB) maxB = b;
     }
-    return res.json({ width_mm: widthMm, height_mm: heightMm, description: `Depth inferred ${openingType || 'opening'}`, confidence });
+    let spanA = maxA - minA; let spanB = maxB - minB;
+    if (spanA <= 0 || spanB <= 0) {
+      spanA = Math.abs(xy[0][0]-meanX); spanB = Math.abs(xy[0][1]-meanY);
+    }
+    // Base scaling: assume one axis is width. If portrait, width is smaller axis.
+    let widthMm: number; let heightMm: number;
+    const portrait = spanA < spanB;
+    const rawW = portrait ? spanA : spanB;
+    const rawH = portrait ? spanB : spanA;
+    if (anchorWidthMm && anchorWidthMm > 400) {
+      const scale = anchorWidthMm / rawW;
+      widthMm = anchorWidthMm;
+      heightMm = Math.round(rawH * scale);
+    } else {
+      // naive scale mapping raw units to mm ranges
+      const scale = 900 / (rawW || 1);
+      widthMm = Math.round(rawW * scale);
+      heightMm = Math.round(rawH * scale);
+    }
+    let baseConf = Math.min(0.8, 0.3 + Math.log10(n + 1)/5);
+    const calibrated = calibrateConfidence(openingType, widthMm, heightMm, baseConf);
+    return res.json({ width_mm: widthMm, height_mm: heightMm, description: `Depth inferred ${openingType || 'opening'}`, confidence: calibrated });
   } catch (e: any) {
     console.error('[vision depth-analyze] failed', e);
     return res.status(500).json({ error: e?.message || 'depth_inference_failed' });
