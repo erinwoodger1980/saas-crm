@@ -2,25 +2,20 @@
 import { Router } from "express";
 import { prisma } from "../db";
 
-// Optional: define which fields are safe to expose
+// Fields that actually exist on MLTrainingSample (avoid selecting non-existent columns)
 const SAMPLE_SELECT = {
   id: true,
   tenantId: true,
   messageId: true,
   attachmentId: true,
   url: true,
-  filename: true,
   quotedAt: true,
-  textChars: true,
-  currency: true,
-  estimatedTotal: true,
-  confidence: true,
+  sourceType: true,
+  quoteId: true,
+  fileId: true,
   status: true,
   createdAt: true,
   updatedAt: true,
-  // If you added these in your schema:
-  notes: true,
-  label: true,
 } as const;
 
 const router = Router();

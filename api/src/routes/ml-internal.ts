@@ -973,6 +973,127 @@ router.post("/save-train-from-uploaded", async (req: any, res) => {
     return res.status(500).json({ error: "internal_error" });
   }
 });
+
+// -----------------------------
+// POST /internal/ml/manual-upload-train
+// -----------------------------
+/**
+ * Body: { filename: string; base64: string; quoteType?: 'supplier' | 'client' }
+ * Persists a new Quote + UploadedFile, upserts MLTrainingSample, then forwards to ML service
+ * for parsing/training via /upload-quote-training (if available) and records outcome.
+ */
+router.post("/manual-upload-train", async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const filenameRaw = typeof req.body?.filename === "string" ? req.body.filename.trim() : "quote.pdf";
+    const filename = filenameRaw || "quote.pdf";
+    const base64 = typeof req.body?.base64 === "string" ? req.body.base64.trim() : "";
+    const quoteType = req.body?.quoteType === "client" ? "CLIENT_QUOTE" : "SUPPLIER_QUOTE"; // FileKind values
+    if (!base64) return res.status(400).json({ error: "missing_base64" });
+
+    // Decode base64 and persist to disk
+    let buffer: Buffer;
+    try { buffer = Buffer.from(base64, "base64"); } catch { return res.status(400).json({ error: "invalid_base64" }); }
+    const uploadDir = process.env.UPLOAD_DIR
+      ? (path.isAbsolute(process.env.UPLOAD_DIR) ? process.env.UPLOAD_DIR : path.join(process.cwd(), process.env.UPLOAD_DIR))
+      : path.join(process.cwd(), "uploads");
+    await fs.promises.mkdir(uploadDir, { recursive: true });
+    const fileId = crypto.randomUUID();
+    const storedName = filename.replace(/[^A-Za-z0-9._-]/g, "_");
+    const relPath = path.relative(process.cwd(), path.join(uploadDir, `${fileId}-${storedName}`));
+    await fs.promises.writeFile(path.join(process.cwd(), relPath), buffer);
+
+    // Create minimal Quote (DRAFT) so file can attach
+    const quote = await prisma.quote.create({
+      data: {
+        tenantId,
+        title: `Manual Training Quote: ${storedName}`.slice(0, 140),
+        status: "DRAFT" as any,
+        currency: "GBP",
+      },
+      select: { id: true },
+    });
+
+    const uploaded = await prisma.uploadedFile.create({
+      data: {
+        id: fileId,
+        tenantId,
+        quoteId: quote.id,
+        kind: quoteType as any,
+        name: filename,
+        path: relPath,
+        mimeType: "application/pdf",
+        sizeBytes: buffer.length,
+      },
+      select: { id: true, uploadedAt: true },
+    });
+
+    // Upsert MLTrainingSample immediately (using messageId scheme consistent with other flows)
+    const messageId = `uploaded:${uploaded.id}`;
+    const sampleJwt = jwt.sign({ t: tenantId }, env.APP_JWT_SECRET, { expiresIn: "30m" });
+    const sampleUrl = `${API_BASE}/files/${encodeURIComponent(uploaded.id)}?jwt=${encodeURIComponent(sampleJwt)}`;
+    const sample = await prisma.mLTrainingSample.upsert({
+      where: { tenantId_messageId_attachmentId: { tenantId, messageId, attachmentId: uploaded.id } },
+      create: {
+        tenantId,
+        messageId,
+        attachmentId: uploaded.id,
+        url: sampleUrl,
+        quotedAt: uploaded.uploadedAt,
+        sourceType: quoteType === "CLIENT_QUOTE" ? "client_quote" : "supplier_quote",
+        quoteId: quote.id,
+        fileId: uploaded.id,
+        status: "PENDING" as any,
+      },
+      update: {
+        quotedAt: uploaded.uploadedAt,
+        quoteId: quote.id,
+        fileId: uploaded.id,
+      },
+      select: { id: true, status: true }
+    });
+
+    // Forward to ML service (optional – ignore failure but record status if available)
+    let mlResult: any = null;
+    let mlError: string | null = null;
+    let confidence: number | null = null;
+    if (ML_URL) {
+      try {
+        const resp = await fetch(`${ML_URL}/upload-quote-training`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename, base64, quoteType: quoteType === "CLIENT_QUOTE" ? "client" : "supplier", tenantId }),
+        });
+        const txt = await resp.text();
+        try { mlResult = txt ? JSON.parse(txt) : {}; } catch { mlResult = { raw: txt }; }
+        if (!resp.ok) mlError = mlResult?.error || `ml_status_${resp.status}`;
+        confidence = typeof mlResult?.confidence === "number" ? mlResult.confidence : null;
+      } catch (e: any) {
+        mlError = e?.message || "ml_forward_failed";
+      }
+    }
+
+    // If we obtained confidence, persist it (future: add confidence column to schema if desired)
+    // For now just echo it back.
+    return res.json({
+      ok: true,
+      quoteId: quote.id,
+      fileId: uploaded.id,
+      sampleId: sample.id,
+      sampleStatus: sample.status,
+      sampleMessageId: messageId,
+      confidence,
+      mlError,
+      mlResult,
+      persisted: true,
+    });
+  } catch (e: any) {
+    console.error("[/internal/ml/manual-upload-train] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
 // -----------------------------
 // POST /internal/ml/ingest-ms365
 // -----------------------------
