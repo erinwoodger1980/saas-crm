@@ -6,6 +6,7 @@
 'use client';
 
 import { useState } from 'react';
+import { inferFromImage } from '@/lib/publicEstimator/inferFromImage';
 import { Plus, X, Camera, Ruler, MapPin, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -98,24 +99,20 @@ export function OpeningDetailsStep({
       const localUrl = URL.createObjectURL(file);
       const item = currentItems.find(i => i.id === id);
       const images = item?.images || [];
-      // Basic client-side image analysis (dimensions) for UX enrichment
+      // Perform heuristic inference (non-blocking UI)
+      handleUpdateItem(id, { images: [...images, localUrl] });
       try {
-        const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-          img.onerror = reject;
-          img.src = localUrl;
-        });
-        // Note: AI-powered dimension extraction will be added in future release
-        // For now, we record image metadata for reference
-        const autoNote = `Photo ${images.length + 1}: ${dims.w}x${dims.h}px`;
-        handleUpdateItem(id, {
-          images: [...images, localUrl],
-          notes: item?.notes ? item.notes : autoNote,
-        });
-      } catch {
-        handleUpdateItem(id, { images: [...images, localUrl] });
-      }
+        const baseLabel = file.name.split('.')[0];
+        const result = await inferFromImage(localUrl, baseLabel);
+        // Do not override if user already entered manual dimensions or notes
+        const freshItem = currentItems.find(i => i.id === id);
+        if (!freshItem) continue;
+        const updates: Partial<OpeningItem> = {};
+        if (!freshItem.width && result.widthMm) updates.width = result.widthMm;
+        if (!freshItem.height && result.heightMm) updates.height = result.heightMm;
+        if (!freshItem.notes && result.description) updates.notes = result.description;
+        if (Object.keys(updates).length) handleUpdateItem(id, updates);
+      } catch {}
     }
   };
 
