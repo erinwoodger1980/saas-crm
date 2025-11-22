@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 
 type Params = { params: { id: string } };
 
-import { API_BASE } from "@/src/lib/api-base";
+import { API_BASE } from "@/lib/api-base";
 function apiBase() { return API_BASE; }
 
 function forwardHeaders(req: NextRequest) {

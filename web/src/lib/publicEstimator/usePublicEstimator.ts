@@ -94,7 +94,7 @@ export interface UsePublicEstimatorReturn {
   trackInteraction: (type: string, metadata?: Record<string, any>) => Promise<void>;
 }
 
-import { API_BASE } from '@/src/lib/api-base';
+import { API_BASE } from '@/lib/api-base';
 
 export function usePublicEstimator({
   tenantSlug,
