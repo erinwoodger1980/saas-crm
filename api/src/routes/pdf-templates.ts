@@ -33,14 +33,27 @@ type AnnotationWrite = {
   rowId?: string | null;
 };
 
+// Allow broader synonyms from frontend / legacy tools.
 const LABEL_INPUTS: Record<string, PdfAnnotationLabel> = {
   joinery_image: PdfAnnotationLabel.JOINERY_IMAGE,
+  image: PdfAnnotationLabel.JOINERY_IMAGE,
+  photo: PdfAnnotationLabel.JOINERY_IMAGE,
+  img: PdfAnnotationLabel.JOINERY_IMAGE,
   description: PdfAnnotationLabel.DESCRIPTION,
+  desc: PdfAnnotationLabel.DESCRIPTION,
   qty: PdfAnnotationLabel.QTY,
+  quantity: PdfAnnotationLabel.QTY,
   unit_cost: PdfAnnotationLabel.UNIT_COST,
+  unit_price: PdfAnnotationLabel.UNIT_COST,
+  unit: PdfAnnotationLabel.UNIT_COST,
+  price: PdfAnnotationLabel.UNIT_COST,
   line_total: PdfAnnotationLabel.LINE_TOTAL,
+  total: PdfAnnotationLabel.LINE_TOTAL,
   delivery_row: PdfAnnotationLabel.DELIVERY_ROW,
+  delivery: PdfAnnotationLabel.DELIVERY_ROW,
+  shipping: PdfAnnotationLabel.DELIVERY_ROW,
   header_logo: PdfAnnotationLabel.HEADER_LOGO,
+  logo: PdfAnnotationLabel.HEADER_LOGO,
   ignore: PdfAnnotationLabel.IGNORE,
 };
 
@@ -151,14 +164,15 @@ router.post("/", async (req: any, res: Response) => {
 
     const annotationWrites = prepareAnnotationWrites(annotations);
     if (!annotationWrites.length) {
-      return res.status(400).json({
+      return res.status(422).json({
         ok: false,
-        error: "annotations array did not contain any valid entries",
+        error: "No valid annotations recognised (check labels)",
+        received: annotations.length,
       });
     }
 
     // Prepare data object - all fields are optional except core ones
-    const createData: Prisma.PdfLayoutTemplateCreateInput = {
+    const createDataBase: Prisma.PdfLayoutTemplateCreateInput = {
       name: name.trim(),
       description: description?.trim() || null,
       supplierProfileId: supplierProfileId.trim(),
@@ -168,10 +182,38 @@ router.post("/", async (req: any, res: Response) => {
           data: annotationWrites,
         },
       },
-      // Optional fields (backward compatible - only set if present)
-      ...(req.auth?.userId ? { createdByUserId: req.auth.userId } : {}),
       ...(typeof meta === "object" && meta !== null && { meta }),
     };
+
+    // If a template already exists for supplierProfileId, treat this POST as replace/update (upsert semantics).
+    const existing = await prisma.pdfLayoutTemplate.findUnique({ where: { supplierProfileId: supplierProfileId.trim() } });
+    if (existing) {
+      // Transaction: delete old annotations, update template core fields, insert new annotations.
+      const updated = await prisma.$transaction(async (tx) => {
+        await tx.pdfLayoutTemplate.update({
+          where: { id: existing.id },
+          data: {
+            name: createDataBase.name,
+            description: createDataBase.description,
+            pageCount: createDataBase.pageCount,
+            meta: (createDataBase as any).meta ?? existing.meta ?? undefined,
+          },
+        });
+        await tx.pdfLayoutAnnotation.deleteMany({ where: { templateId: existing.id } });
+        await tx.pdfLayoutAnnotation.createMany({
+          data: annotationWrites.map((ann) => ({ ...ann, templateId: existing.id })),
+        });
+        return tx.pdfLayoutTemplate.findUnique({ where: { id: existing.id }, select: detailSelect });
+      });
+      console.log("[POST /pdf-templates] Upsert: replaced existing template", { id: updated?.id, supplierProfileId });
+      return res.status(200).json({ ok: true, item: serializeTemplate(updated, true), upsert: true });
+    }
+
+    // Attempt create; fallback retry without createdByUserId if column missing.
+    let createData: Prisma.PdfLayoutTemplateCreateInput = { ...createDataBase };
+    if (req.auth?.userId) {
+      (createData as any).createdByUserId = req.auth.userId; // tentative; may fail in legacy schema
+    }
 
     console.log("[POST /pdf-templates] Creating template with data:", {
       name: createData.name,
@@ -181,10 +223,20 @@ router.post("/", async (req: any, res: Response) => {
       hasMeta: !!createData.meta,
     });
 
-    const template = await prisma.pdfLayoutTemplate.create({
-      data: createData,
-      select: detailSelect,
-    });
+    let template: any;
+    try {
+      template = await prisma.pdfLayoutTemplate.create({ data: createData, select: detailSelect });
+    } catch (err: any) {
+      const msg = String(err?.message || '').toLowerCase();
+      if (/createdbyuserid/.test(msg) && /unknown column|does not exist|no such column/.test(msg)) {
+        console.warn("[POST /pdf-templates] Legacy schema detected (no createdByUserId). Retrying without field.");
+        const retryData = { ...createData };
+        delete (retryData as any).createdByUserId;
+        template = await prisma.pdfLayoutTemplate.create({ data: retryData, select: detailSelect });
+      } else {
+        throw err;
+      }
+    }
 
     console.log("[POST /pdf-templates] Successfully created template:", {
       id: template.id,
@@ -203,7 +255,7 @@ router.post("/", async (req: any, res: Response) => {
     const isUnique = error?.code === "P2002";
     res.status(isUnique ? 409 : 500).json({
       ok: false,
-      error: isUnique ? "Supplier profile already has a template" : "Failed to create template",
+      error: isUnique ? "Template already exists (replaced on POST)" : "Failed to create template",
       detail: error?.message,
       code: error?.code,
     });
