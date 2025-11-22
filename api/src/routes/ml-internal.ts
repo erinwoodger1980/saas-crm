@@ -1059,6 +1059,9 @@ router.post("/manual-upload-train", async (req: any, res) => {
     let mlResult: any = null;
     let mlError: string | null = null;
     let confidence: number | null = null;
+    let estimatedTotal: number | null = null;
+    let textChars: number | null = null;
+    let currency: string | null = null;
     if (ML_URL) {
       try {
         const resp = await fetch(`${ML_URL}/upload-quote-training`, {
@@ -1070,13 +1073,32 @@ router.post("/manual-upload-train", async (req: any, res) => {
         try { mlResult = txt ? JSON.parse(txt) : {}; } catch { mlResult = { raw: txt }; }
         if (!resp.ok) mlError = mlResult?.error || `ml_status_${resp.status}`;
         confidence = typeof mlResult?.confidence === "number" ? mlResult.confidence : null;
+        estimatedTotal = typeof mlResult?.estimated_total === 'number' ? mlResult.estimated_total : null;
+        textChars = typeof mlResult?.text_chars === 'number' ? mlResult.text_chars : null;
+        currency = typeof mlResult?.currency === 'string' ? mlResult.currency : null;
       } catch (e: any) {
         mlError = e?.message || "ml_forward_failed";
       }
     }
 
-    // If we obtained confidence, persist it (future: add confidence column to schema if desired)
-    // For now just echo it back.
+    // Persist enrichment fields if available
+    if (confidence != null || estimatedTotal != null || textChars != null || currency != null) {
+      try {
+        await prisma.mLTrainingSample.update({
+          where: { id: sample.id },
+          data: {
+            confidence: confidence != null ? confidence : undefined,
+            estimatedTotal: estimatedTotal != null ? estimatedTotal : undefined,
+            textChars: textChars != null ? textChars : undefined,
+            currency: currency != null ? currency : undefined,
+            filename: filename || undefined,
+          },
+        });
+      } catch (e: any) {
+        console.warn('[manual-upload-train] enrichment persist failed (non-fatal):', e?.message || e);
+      }
+    }
+
     return res.json({
       ok: true,
       quoteId: quote.id,
@@ -1085,6 +1107,9 @@ router.post("/manual-upload-train", async (req: any, res) => {
       sampleStatus: sample.status,
       sampleMessageId: messageId,
       confidence,
+      estimatedTotal,
+      textChars,
+      currency,
       mlError,
       mlResult,
       persisted: true,

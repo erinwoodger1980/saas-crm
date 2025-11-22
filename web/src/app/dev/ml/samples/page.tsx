@@ -25,6 +25,7 @@ interface MLSample {
   notes?: string | null;
   label?: string | null;
   tenant?: { id: string; name: string; slug: string } | null;
+  sourceType?: string | null;
 }
 
 interface DevSamplesResponse { ok: boolean; count: number; items: MLSample[] }
@@ -39,6 +40,7 @@ const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 
 export default function MLSamplesPage() {
   const [samples, setSamples] = useState<MLSample[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -63,6 +65,7 @@ export default function MLSamplesPage() {
         newItems = newItems.filter(s => s.status === statusFilter);
       }
       setSamples(newItems);
+      setSelected(new Set());
     } catch (e: any) {
       setError(e?.message || "Failed to load samples");
     } finally {
@@ -102,6 +105,44 @@ export default function MLSamplesPage() {
     }
   }
 
+  async function bulkUpdate(status: 'APPROVED' | 'REJECTED' | 'PENDING') {
+    if (!selected.size) return;
+    try {
+      const ids = Array.from(selected);
+      await apiFetch('/internal/ml/samples/bulk-status', { method: 'POST', json: { ids, status } });
+      setSamples(prev => prev.map(s => selected.has(s.id) ? { ...s, status } : s));
+      setSelected(new Set());
+    } catch (e: any) {
+      alert('Bulk update failed: ' + (e?.message || 'unknown'));
+      loadSamples();
+    }
+  }
+
+  async function previewSample(id: string) {
+    try {
+      const resp = await apiFetch<{ ok: boolean; mlError?: string|null; ml?: any }>(`/internal/ml/samples/${id}/preview`);
+      if (!resp.ok) throw new Error(resp.mlError || 'Preview failed');
+      const confidence = typeof resp.ml?.confidence === 'number' ? `${(resp.ml.confidence*100).toFixed(0)}%` : '—';
+      alert(`Preview confidence: ${confidence}\nLines: ${resp.ml?.lines?.length ?? 'n/a'}`);
+    } catch (e: any) {
+      alert('Preview failed: ' + (e?.message || 'unknown'));
+    }
+  }
+
+  function toggle(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  const allSelected = selected.size && selected.size === samples.length;
+  function toggleAll() {
+    if (allSelected) { setSelected(new Set()); return; }
+    setSelected(new Set(samples.map(s => s.id)));
+  }
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -113,6 +154,14 @@ export default function MLSamplesPage() {
           <Button variant="outline" onClick={() => loadSamples()} disabled={loading}>
             <RefreshCcw className="w-4 h-4 mr-1" /> Refresh
           </Button>
+          {selected.size > 0 && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="default" onClick={() => bulkUpdate('APPROVED')}>Approve {selected.size}</Button>
+              <Button size="sm" variant="destructive" onClick={() => bulkUpdate('REJECTED')}>Reject {selected.size}</Button>
+              <Button size="sm" variant="outline" onClick={() => bulkUpdate('PENDING')}>Reset {selected.size}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -169,6 +218,9 @@ export default function MLSamplesPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-slate-100">
               <tr className="text-left">
+                <th className="px-3 py-2">
+                  <input type="checkbox" checked={!!allSelected} onChange={toggleAll} />
+                </th>
                 <th className="px-3 py-2 font-medium">ID</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Tenant</th>
@@ -178,6 +230,7 @@ export default function MLSamplesPage() {
                 <th className="px-3 py-2 font-medium">Confidence</th>
                 <th className="px-3 py-2 font-medium">Total</th>
                 <th className="px-3 py-2 font-medium">Chars</th>
+                <th className="px-3 py-2 font-medium">Source</th>
                 <th className="px-3 py-2 font-medium">Created</th>
                 <th className="px-3 py-2 font-medium">Actions</th>
               </tr>
@@ -190,6 +243,9 @@ export default function MLSamplesPage() {
               )}
               {samples.map(s => (
                 <tr key={s.id} className="border-b last:border-b-0 hover:bg-slate-50">
+                  <td className="px-3 py-2">
+                    <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggle(s.id)} />
+                  </td>
                   <td className="px-3 py-2 font-mono text-xs whitespace-nowrap max-w-[140px] truncate" title={s.id}>{s.id}</td>
                   <td className="px-3 py-2">
                     <span className={`px-2 py-1 rounded text-xs font-semibold ${s.status === 'APPROVED' ? 'bg-green-100 text-green-700' : s.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{s.status}</span>
@@ -204,12 +260,18 @@ export default function MLSamplesPage() {
                   <td className="px-3 py-2 text-xs">{s.confidence != null ? (s.confidence * 100).toFixed(1) + '%' : '—'}</td>
                   <td className="px-3 py-2 text-xs">{s.estimatedTotal != null ? `${s.currency || ''} ${s.estimatedTotal.toFixed(2)}` : '—'}</td>
                   <td className="px-3 py-2 text-xs">{s.textChars != null ? s.textChars : '—'}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {s.sourceType ? (
+                      <span className={`px-2 py-1 rounded text-[10px] font-semibold uppercase ${s.sourceType.includes('client') ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700'}`}>{s.sourceType.replace('_',' ')}</span>
+                    ) : '—'}
+                  </td>
                   <td className="px-3 py-2 text-xs whitespace-nowrap">{new Date(s.createdAt).toLocaleString()}</td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-1">
                       {s.url && (
                         <Button size="sm" variant="outline" onClick={() => window.open(s.url!, '_blank')}>View</Button>
                       )}
+                      <Button size="sm" variant="ghost" onClick={() => previewSample(s.id)}>Preview</Button>
                       {s.status !== 'APPROVED' && (
                         <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700" onClick={() => updateStatus(s.id, 'APPROVED')}>Approve</Button>
                       )}
