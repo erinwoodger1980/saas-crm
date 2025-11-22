@@ -159,6 +159,46 @@ export default function MLSamplesPage() {
     }
   }
 
+  async function testUpload() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const base64 = (ev.target?.result as string)?.split(',')[1];
+          if (!base64) { alert('Failed to read file'); return; }
+          const resp = await apiFetch<{
+            ok: boolean;
+            confidence?: number|null;
+            estimatedTotal?: number|null;
+            textChars?: number|null;
+            currency?: string|null;
+            sampleId?: string;
+            mlError?: string|null;
+          }>('/internal/ml/manual-upload-train', {
+            method: 'POST',
+            json: { filename: file.name, base64, quoteType: 'supplier' }
+          });
+          if (!resp.ok) { alert('Upload failed'); return; }
+          const conf = resp.confidence != null ? `${(resp.confidence*100).toFixed(0)}%` : 'n/a';
+          const total = resp.estimatedTotal != null ? `£${resp.estimatedTotal}` : 'n/a';
+          const chars = resp.textChars != null ? `${resp.textChars} chars` : 'n/a';
+          const cur = resp.currency || 'n/a';
+          alert(`✅ Test Upload Success!\n\nConfidence: ${conf}\nTotal: ${total}\nCurrency: ${cur}\nChars: ${chars}\nSample ID: ${resp.sampleId}\n\n${resp.mlError ? 'ML Error: ' + resp.mlError : 'ML processing successful'}`);
+          loadSamples();
+        };
+        reader.readAsDataURL(file);
+      } catch (e: any) {
+        alert('Test upload failed: ' + (e?.message || 'unknown'));
+      }
+    };
+    input.click();
+  }
+
   function toggle(id: string) {
     setSelected(prev => {
       const next = new Set(prev);
@@ -181,6 +221,9 @@ export default function MLSamplesPage() {
           ML Samples
         </h1>
         <div className="flex gap-2">
+          <Button variant="default" onClick={testUpload}>
+            Test Upload
+          </Button>
           <Button variant="outline" onClick={() => loadSamples()} disabled={loading}>
             <RefreshCcw className="w-4 h-4 mr-1" /> Refresh
           </Button>
