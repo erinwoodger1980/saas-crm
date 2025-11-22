@@ -78,7 +78,13 @@ export function SocialProofPanel({ branding, primaryColor = '#3b82f6' }: SocialP
         )}
 
         {!hasGallery && !hasTestimonials && !(reviewScore || reviewCount) && (
-          <p className="text-xs text-slate-500">More company information will appear here once configured.</p>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-medium text-slate-700 mb-2">💡 Configure social proof</p>
+            <p className="text-xs text-slate-500">
+              Add testimonials, gallery images, and review scores in Settings → Company Info tab.
+              This helps build trust with potential customers.
+            </p>
+          </div>
         )}
       </div>
     </div>

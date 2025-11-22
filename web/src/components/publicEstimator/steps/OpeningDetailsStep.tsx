@@ -48,9 +48,17 @@ export function OpeningDetailsStep({
   inspirationImages = [],
   onInspirationChange,
 }: OpeningDetailsStepProps) {
-  const [currentItems, setCurrentItems] = useState<OpeningItem[]>(
-    items.length > 0 ? items : []
-  );
+  // Initialize with one default opening if none exist
+  const [currentItems, setCurrentItems] = useState<OpeningItem[]>(() => {
+    if (items.length > 0) return items;
+    const defaultOpening: OpeningItem = {
+      id: `item-${Date.now()}`,
+      type: 'external_door',
+    };
+    // Immediately persist so estimate can start calculating
+    setTimeout(() => onChange({ openingDetails: [defaultOpening] }), 0);
+    return [defaultOpening];
+  });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -98,6 +106,8 @@ export function OpeningDetailsStep({
           img.onerror = reject;
           img.src = localUrl;
         });
+        // Note: AI-powered dimension extraction will be added in future release
+        // For now, we record image metadata for reference
         const autoNote = `Photo ${images.length + 1}: ${dims.w}x${dims.h}px`;
         handleUpdateItem(id, {
           images: [...images, localUrl],
