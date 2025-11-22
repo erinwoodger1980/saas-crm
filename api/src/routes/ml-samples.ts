@@ -1,5 +1,7 @@
 // api/src/routes/ml-samples.ts
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
 import { prisma } from "../db";
 
 // Fields that actually exist on MLTrainingSample (avoid selecting non-existent columns)

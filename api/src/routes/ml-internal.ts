@@ -1,6 +1,9 @@
 // api/src/routes/ml-internal.ts
 import { Router } from "express";
 import jwt from "jsonwebtoken";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 import { env } from "../env";
 import { getAccessTokenForTenant, fetchMessage } from "../services/gmail";
 import {

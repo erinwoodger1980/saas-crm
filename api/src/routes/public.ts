@@ -587,6 +587,35 @@ router.get("/projects/:id", async (req, res) => {
   }
 });
 
+/** GET /public/projects/by-lead/:leadId - Load latest saved project for a lead */
+router.get("/projects/by-lead/:leadId", async (req, res) => {
+  try {
+    const leadId = String(req.params.leadId);
+    if (!leadId) return res.status(400).json({ error: "leadId required" });
+    const project = await prisma.publicProject.findFirst({
+      where: { leadId },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (!project) return res.json({ ok: true, project: null });
+    return res.json({
+      ok: true,
+      project: {
+        projectId: project.id,
+        tenantId: project.tenantId,
+        leadId: project.leadId,
+        entryMode: project.entryMode,
+        sourceInfo: project.sourceInfo,
+        payload: project.payload,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+      },
+    });
+  } catch (e: any) {
+    console.error("[public projects] by-lead failed:", e);
+    return res.status(500).json({ error: e?.message || "failed to load project" });
+  }
+});
+
 /* ---------- PUBLIC: pricing preview ---------- */
 /** POST /public/estimates/preview - Get live price estimate for in-progress questionnaire */
 router.post("/estimates/preview", async (req, res) => {

@@ -1704,6 +1704,15 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   }
 
+  // Open the public estimator (lead magnet) for this lead in a new tab.
+  // For now it shares the /q/:tenant/:lead route used by the legacy questionnaire.
+  // Later we may split paths or add mode parameters; keeping simple for initial dual-mode.
+  function openEstimator() {
+    if (!lead?.id || !settings?.slug) return;
+    const url = `${window.location.origin}/q/${settings.slug}/${encodeURIComponent(lead.id)}?view=estimator`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
   async function requestSupplierPrice() {
     if (!lead?.id) return;
     // Show the supplier selection modal
@@ -2587,6 +2596,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
           <Button
             variant="outline"
+            onClick={openEstimator}
+            disabled={busyTask || saving}
+            title="Open the public estimator workflow (lead magnet view)"
+          >
+            <span aria-hidden="true">🧮</span>
+            Open Estimator
+          </Button>
+
+          <Button
+            variant="outline"
             onClick={requestSupplierPrice}
             disabled={busyTask}
             title="Ask your supplier for pricing — we’ll handle the magic behind the scenes"
@@ -2919,6 +2938,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       {fromEmail && (
                         <div>
                           <span className="text-slate-400">From:</span> {String(fromEmail)}
+
                         </div>
                       )}
                       {emailSubject && (
