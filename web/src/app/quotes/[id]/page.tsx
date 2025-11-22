@@ -107,7 +107,8 @@ export default function QuoteBuilderPage() {
   const [processDialogOpen, setProcessDialogOpen] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [pricingBreakdown, setPricingBreakdown] = useState<Record<string, any> | null>(null);
-  const [materialAlertsOpen, setMaterialAlertsOpen] = useState(true);
+  // Renamed to avoid potential duplicate identifier in CI build
+  const [showMaterialAlerts, setShowMaterialAlerts] = useState(true);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [markupPercent, setMarkupPercent] = useState<number>(20);
   const [vatPercent, setVatPercent] = useState<number>(20);
@@ -123,22 +124,8 @@ export default function QuoteBuilderPage() {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
-  const [materialAlertsOpen, setMaterialAlertsOpen] = useState(true);
 
-  // Fetch recent material cost changes (cached proxy endpoint)
-  const { data: recentMaterialCosts } = useSWR<MaterialCostEntry[]>(
-    quote ? ["recent-material-costs", quote.tenantId] : null,
-    async () => {
-      const res = await apiFetch<{ costs: MaterialCostEntry[] }>("/ml/material-costs/recent");
-      return res?.costs || [];
-    },
-    { revalidateOnFocus: false }
-  );
-
-  // Derive alerts relevant to current quote line descriptions
-  const lineMaterialAlerts = useMemo(() => {
-    return deriveLineMaterialAlerts(lines, recentMaterialCosts, { minPercent: 3 });
-  }, [lines, recentMaterialCosts]);
+  // (Removed duplicate recent material cost fetch + basic alert derivation)
 
   const questionnaireAnswers = useMemo(() => {
     if (!lead?.custom) return {};
@@ -1258,15 +1245,15 @@ export default function QuoteBuilderPage() {
                     <div className="space-y-2">
                       <button
                         type="button"
-                        onClick={() => setMaterialAlertsOpen(!materialAlertsOpen)}
+                        onClick={() => setShowMaterialAlerts(!showMaterialAlerts)}
                         className="flex w-full items-center justify-between rounded-xl border bg-muted/40 px-4 py-2 text-left text-sm"
                       >
                         <span className="font-medium text-foreground">
                           {lineMaterialAlerts.length} material cost change{lineMaterialAlerts.length !== 1 ? 's' : ''} affecting this quote
                         </span>
-                        {materialAlertsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        {showMaterialAlerts ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </button>
-                      {materialAlertsOpen && (
+                      {showMaterialAlerts && (
                         <div className="grid gap-2 md:grid-cols-2">
                           {lineMaterialAlerts.map((mc) => {
                             const pct = mc.changePercent != null ? Math.round(mc.changePercent) : null;
