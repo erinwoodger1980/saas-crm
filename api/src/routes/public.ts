@@ -640,6 +640,16 @@ router.post("/estimates/preview", async (req, res) => {
     const { estimateQuote } = await import("../services/pricing/estimateQuote");
     const estimate = await estimateQuote({ tenantId, items, globalSpecs });
 
+    // Ensure aggregate totals present (some legacy implementations omitted them)
+    if (Array.isArray((estimate as any).items)) {
+      const sumNet = (estimate as any).items.reduce((s: number, it: any) => s + (Number(it.netGBP) || 0), 0);
+      const sumVat = (estimate as any).items.reduce((s: number, it: any) => s + (Number(it.vatGBP) || 0), 0);
+      const sumGross = (estimate as any).items.reduce((s: number, it: any) => s + (Number(it.totalGBP) || (Number(it.netGBP)||0)+(Number(it.vatGBP)||0)), 0);
+      if (!((estimate as any).totalNet > 0)) (estimate as any).totalNet = sumNet;
+      if (!((estimate as any).totalVat > 0)) (estimate as any).totalVat = sumVat;
+      if (!((estimate as any).totalGross > 0)) (estimate as any).totalGross = sumGross;
+    }
+
     return res.json(estimate);
   } catch (e: any) {
     console.error("[public estimates preview] failed:", e);
