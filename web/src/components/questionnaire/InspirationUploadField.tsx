@@ -122,7 +122,13 @@ export function InspirationUploadField({
             <div className="font-medium text-slate-800">{firstFile.name}</div>
             <div className="text-xs text-slate-500">{Math.round(firstFile.size / 1024)} KB</div>
           </div>
-          <Button type="button" variant="ghost" size="icon" className="text-slate-500" onClick={handleRemoveFile}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 text-slate-500 flex items-center justify-center"
+            onClick={handleRemoveFile}
+          >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>

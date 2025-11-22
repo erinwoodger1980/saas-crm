@@ -1,6 +1,5 @@
-import type { Config } from "tailwindcss";
-
-const config: Config = {
+// Removed Tailwind type import to avoid moduleResolution type error during build
+const config = {
   darkMode: "class",
   content: [
     "./app/**/*.{js,ts,jsx,tsx}",

@@ -56,9 +56,13 @@ type Task = {
 
 export function useLeadActivity(leadId: string | null) {
   // Fetch lead data (includes communication log and status history)
+  const fetchLead = async (url: string): Promise<Lead> => {
+    const res = await apiFetch<any>(url);
+    return res?.lead ?? res;
+  };
   const { data: lead, error: leadError, mutate: mutateLead } = useSWR<Lead>(
     leadId ? `/leads/${leadId}` : null,
-    (url: string) => apiFetch<{ lead: Lead }>(url).then(res => res.lead || res)
+    fetchLead
   );
 
   // Fetch tasks

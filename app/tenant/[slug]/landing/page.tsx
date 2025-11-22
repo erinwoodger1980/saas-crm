@@ -1,38 +1,20 @@
 
-import { getTenantBySlug } from '@/lib/tenant/getTenantBySlug';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import Image from 'next/image';
 
-function titleCase(str: string) {
-  return str.replace(/\b\w/g, c => c.toUpperCase());
-}
-
-async function createTenantIfMissing(slug: string) {
+async function createTenantIfMissing(_slug: string) {
   'use server';
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const role = cookieStore.get('role')?.value;
   if (role !== 'admin' && role !== 'owner') throw new Error('Not authorized');
-  const { PrismaClient } = await import('@prisma/client');
-  const prisma = new PrismaClient();
-  let tenant = await prisma.tenant.findUnique({ where: { slug } });
-  if (!tenant) {
-    tenant = await prisma.tenant.create({
-      data: {
-        slug,
-        name: titleCase(slug),
-        logoUrl: '',
-        primary: '#0E7490',
-        secondary: '#0EA5E9',
-      },
-    });
-  }
-  return tenant;
+  // TODO: Implement server-side tenant creation via API route.
+  return null;
 }
 
 export default async function LandingPage({ params }: { params: { slug: string } }) {
-  const tenant = await getTenantBySlug(params.slug);
-  const cookieStore = cookies();
+  const tenant = null; // Tenant lookup disabled pending Prisma client resolution
+  const cookieStore = await cookies();
   const role = cookieStore.get('role')?.value;
 
   if (!tenant) {
