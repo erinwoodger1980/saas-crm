@@ -19,7 +19,7 @@ interface OpeningItem {
   height?: number;
   images?: string[];
   notes?: string;
-  inferenceSource?: 'heuristic' | 'ai';
+  inferenceSource?: 'heuristic' | 'ai' | 'depth';
   inferenceConfidence?: number;
 }
 
@@ -305,6 +305,39 @@ export function OpeningDetailsStep({
               <p className="mt-1 text-xs text-slate-500">
                 Don't worry if you're not sure - we'll measure accurately during our site visit
               </p>
+              {/* Depth / LiDAR stub trigger */}
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      // Mock planar point cloud (units arbitrary; server heuristic scales)
+                      const pts = [
+                        { x: 0, y: 0, z: 0 },
+                        { x: 1, y: 0, z: 0 },
+                        { x: 1, y: 2, z: 0 },
+                        { x: 0, y: 2, z: 0 }
+                      ];
+                      const resp = await fetch(`/api/public/vision/depth-analyze`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ points: pts, openingType: item.type })
+                      });
+                      if (resp.ok) {
+                        const d = await resp.json();
+                        handleUpdateItem(item.id, {
+                          width: item.width || d.width_mm || undefined,
+                          height: item.height || d.height_mm || undefined,
+                          notes: !item.notes ? d.description : item.notes,
+                          inferenceSource: 'depth',
+                          inferenceConfidence: d.confidence ?? item.inferenceConfidence,
+                        });
+                      }
+                    } catch {}
+                  }}
+                  className="text-xs px-3 py-1 rounded-full border border-slate-300 bg-white hover:bg-slate-50"
+                >Use Depth Stub</button>
+              </div>
             </div>
 
             {/* Photo upload */}
