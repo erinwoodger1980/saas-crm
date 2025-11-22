@@ -37,6 +37,68 @@ const API_BASE = (
   `http://localhost:${process.env.PORT || 4000}`
 ).replace(/\/$/, "");
 
+// Simple in-memory cache for recent material costs
+const materialCostsCache: { data: any; ts: number } = { data: null, ts: 0 };
+const MATERIAL_COSTS_TTL_MS = 60_000;
+
+/**
+ * GET /ml/material-costs/recent
+ * Proxy to ML service for recent material cost changes (with 60s cache)
+ */
+router.get("/material-costs/recent", async (req, res) => {
+  try {
+    const tenantId = (req.query.tenantId || (req as any).auth?.tenantId || "").toString();
+    if (!tenantId) return res.status(400).json({ error: "tenant_required" });
+
+    const now = Date.now();
+    if (materialCostsCache.data && now - materialCostsCache.ts < MATERIAL_COSTS_TTL_MS) {
+      return res.json({ ok: true, cached: true, ...materialCostsCache.data });
+    }
+
+    const url = `${ML_URL}/material-costs/recent?tenantId=${encodeURIComponent(tenantId)}&limit=100`;
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
+    const r = await fetch(url, { method: "GET", signal });
+    cleanup();
+    const text = await r.text();
+    let payload: any = {};
+    try { payload = JSON.parse(text); } catch { /* ignore */ }
+    if (!r.ok) return res.status(r.status).json({ error: "upstream_error", status: r.status });
+    materialCostsCache.data = payload;
+    materialCostsCache.ts = now;
+    return res.json({ ok: true, cached: false, ...payload });
+  } catch (e: any) {
+    return res.status(500).json({ error: "material_costs_failed", message: e?.message || String(e) });
+  }
+});
+
+// Cache for trends
+const materialTrendsCache: { data: any; ts: number } = { data: null, ts: 0 };
+const MATERIAL_TRENDS_TTL_MS = 60_000;
+
+router.get("/material-costs/trends", async (req, res) => {
+  try {
+    const tenantId = (req.query.tenantId || (req as any).auth?.tenantId || "").toString();
+    if (!tenantId) return res.status(400).json({ error: "tenant_required" });
+    const now = Date.now();
+    if (materialTrendsCache.data && now - materialTrendsCache.ts < MATERIAL_TRENDS_TTL_MS) {
+      return res.json({ ok: true, cached: true, ...materialTrendsCache.data });
+    }
+    const url = `${ML_URL}/material-costs/trends?tenantId=${encodeURIComponent(tenantId)}&window=12`;
+    const { signal, cleanup } = withTimeout(undefined, ML_TIMEOUT_MS);
+    const r = await fetch(url, { method: "GET", signal });
+    cleanup();
+    const txt = await r.text();
+    let payload: any = {};
+    try { payload = JSON.parse(txt); } catch { /* ignore */ }
+    if (!r.ok) return res.status(r.status).json({ error: "upstream_error", status: r.status });
+    materialTrendsCache.data = payload;
+    materialTrendsCache.ts = now;
+    return res.json({ ok: true, cached: false, ...payload });
+  } catch (e: any) {
+    return res.status(500).json({ error: "material_trends_failed", message: e?.message || String(e) });
+  }
+});
+
 function summariseTrainingPayload(raw: any) {
   const obj = raw && typeof raw === "object" ? raw : {};
   const meta = obj.meta && typeof obj.meta === "object" ? obj.meta : {};

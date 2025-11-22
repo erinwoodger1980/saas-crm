@@ -167,3 +167,51 @@ Quote → Shopping List → Purchase Orders → Material Receipt
    - Supplier performance analytics
    - Stock reorder alerts
    - Material cost history
+
+## Manual Purchase Order Upload & ML Cost Learning
+
+In addition to generating Purchase Orders from shopping lists, users can upload a supplier Purchase Order that was created externally.
+
+### Endpoint
+
+POST `/purchase-orders/upload`
+
+### Request Options
+- Multipart with `file` (CSV) plus fields: `supplierName`, optional `opportunityId`, optional `purchaseOrderRef`.
+- Or JSON body with `lines: [{ code, name, quantity, unit, unitPrice, currency }]`.
+
+### Behavior
+1. Resolves or creates the Supplier.
+2. Creates a `PurchaseOrder` with status `RECEIVED` (historical cost snapshot).
+3. For each line:
+    - Matches existing `MaterialItem` by `code` (fallback by `name`).
+    - Creates the item if missing (category `consumable`).
+    - Compares `unitPrice` with stored `MaterialItem.cost`; updates cost if changed.
+    - Records change in response `priceChangeAlerts` with delta %.
+4. Persists PO lines and updates PO total.
+5. Sends material cost records to ML service `/save-material-costs` for trend tracking.
+
+### ML Material Cost Table (ml_material_costs)
+Stores historical snapshots: material_code, supplier_name, unit_price, previous_unit_price, price_change_percent, purchase_order_id, captured_at.
+
+### Example CSV Headers
+`code,name,quantity,unit,unitPrice,currency`
+
+### Response Payload
+```
+{
+   ok: true,
+   purchaseOrderId: "po_...",
+   supplier: "Accoya Ltd",
+   linesUploaded: 12,
+   priceChangeAlerts: [
+      { code: "ACC123", oldCost: 4.50, newCost: 4.95, deltaPercent: 10.0 }
+   ],
+   materialCostsSaved: 12,
+   totalAmount: 1530.75
+}
+```
+
+### Use Case: Accoya Price Increase
+When a new PO shows higher Accoya unit cost, the modal can surface the change (from last stored cost) so estimators adjust markups promptly.
+

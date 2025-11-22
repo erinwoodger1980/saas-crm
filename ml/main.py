@@ -2753,6 +2753,177 @@ class ProjectActualsPayload(BaseModel):
     completedAt: str  # ISO timestamp
     notes: Optional[str] = None
 
+class MaterialCostRecord(BaseModel):
+    tenantId: str
+    materialCode: Optional[str] = None
+    materialName: Optional[str] = None
+    supplierName: Optional[str] = None
+    currency: Optional[str] = "GBP"
+    unit: Optional[str] = None
+    unitPrice: float
+    previousUnitPrice: Optional[float] = None
+    purchaseOrderId: Optional[str] = None
+    capturedAt: Optional[str] = None
+
+class MaterialCostsPayload(BaseModel):
+    tenantId: str
+    items: List[MaterialCostRecord]
+
+@app.post("/save-material-costs")
+async def save_material_costs(payload: MaterialCostsPayload):
+    """Save material cost changes from manual or uploaded purchase orders for trend tracking and ML feature enrichment."""
+    if not EMAIL_TRAINING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Material costs not available - database connection required")
+    from db_config import get_db_manager
+    db_manager = get_db_manager()
+    inserted: List[Dict[str, Any]] = []
+    try:
+        with db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                for item in payload.items:
+                    captured_at = item.capturedAt or datetime.datetime.utcnow().isoformat()
+                    price_change_percent = None
+                    if item.previousUnitPrice is not None and item.previousUnitPrice > 0:
+                        price_change_percent = ((item.unitPrice - item.previousUnitPrice) / item.previousUnitPrice) * 100.0
+                    cur.execute(
+                        """
+                        INSERT INTO ml_material_costs (
+                            tenant_id, material_code, material_name, supplier_name,
+                            currency, unit, unit_price, previous_unit_price,
+                            price_change_percent, purchase_order_id, captured_at
+                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        RETURNING id
+                        """,
+                        (
+                            payload.tenantId,
+                            item.materialCode,
+                            item.materialName,
+                            item.supplierName,
+                            item.currency,
+                            item.unit,
+                            item.unitPrice,
+                            item.previousUnitPrice,
+                            price_change_percent,
+                            item.purchaseOrderId,
+                            captured_at,
+                        ),
+                    )
+                    rid = cur.fetchone()[0]
+                    inserted.append({
+                        "id": rid,
+                        "material_code": item.materialCode,
+                        "supplier": item.supplierName,
+                        "unit_price": item.unitPrice,
+                        "previous_unit_price": item.previousUnitPrice,
+                        "price_change_percent": round(price_change_percent,3) if price_change_percent is not None else None
+                    })
+                conn.commit()
+        return {"ok": True, "count": len(inserted), "items": inserted}
+    except Exception as e:
+        logger.error(f"Failed to save material costs: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail="material_costs_save_failed")
+
+@app.get("/material-costs/recent")
+async def recent_material_costs(tenantId: str, limit: int = 50):
+    """Return recent material cost snapshots & latest change per material."""
+    if not EMAIL_TRAINING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="material_costs_unavailable")
+    from db_config import get_db_manager
+    db_manager = get_db_manager()
+    try:
+        items: List[Dict[str, Any]] = []
+        latest_map: Dict[str, Dict[str, Any]] = {}
+        with db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, material_code, material_name, supplier_name, unit_price, previous_unit_price,
+                           price_change_percent, purchase_order_id, captured_at
+                    FROM ml_material_costs
+                    WHERE tenant_id = %s
+                    ORDER BY captured_at DESC
+                    LIMIT %s
+                    """,
+                    (tenantId, limit)
+                )
+                rows = cur.fetchall()
+                for r in rows:
+                    rec = {
+                        "id": r[0],
+                        "material_code": r[1],
+                        "material_name": r[2],
+                        "supplier_name": r[3],
+                        "unit_price": float(r[4]) if r[4] is not None else None,
+                        "previous_unit_price": float(r[5]) if r[5] is not None else None,
+                        "price_change_percent": float(r[6]) if r[6] is not None else None,
+                        "purchase_order_id": r[7],
+                        "captured_at": r[8].isoformat() if r[8] else None,
+                    }
+                    items.append(rec)
+                    mc = rec["material_code"] or rec["material_name"] or "unknown"
+                    if mc not in latest_map:
+                        latest_map[mc] = rec
+        summary = [latest_map[k] for k in sorted(latest_map.keys())]
+        return {"ok": True, "count": len(items), "materials": summary, "recent": items}
+    except Exception as e:
+        logger.error(f"Failed to fetch recent material costs: {e}")
+        raise HTTPException(status_code=500, detail="material_costs_fetch_failed")
+
+@app.get("/material-costs/trends")
+async def material_cost_trends(tenantId: str, window: int = 12):
+    """Return per-material trend series (last N snapshots) with change metrics."""
+    if not EMAIL_TRAINING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="material_costs_unavailable")
+    from db_config import get_db_manager
+    db_manager = get_db_manager()
+    try:
+        with db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT material_code, material_name, supplier_name,
+                           array_agg(unit_price ORDER BY captured_at DESC) as prices,
+                           array_agg(captured_at ORDER BY captured_at DESC) as times
+                    FROM (
+                        SELECT material_code, material_name, supplier_name, unit_price, captured_at
+                        FROM ml_material_costs
+                        WHERE tenant_id = %s
+                        ORDER BY captured_at DESC
+                    ) t
+                    GROUP BY material_code, material_name, supplier_name
+                    """,
+                    (tenantId,)
+                )
+                rows = cur.fetchall()
+        trends: list[dict[str, Any]] = []
+        for r in rows:
+            code, name, supplier, prices, times = r
+            if not prices:
+                continue
+            series = list(reversed([float(p) for p in prices[:window]]))  # chronological
+            ts_series = list(reversed([t.isoformat() for t in times[:window]]))
+            first = series[0]
+            latest = series[-1]
+            pct_change = ((latest - first) / first * 100.0) if first else 0.0
+            trends.append({
+                "material_code": code,
+                "material_name": name,
+                "supplier_name": supplier,
+                "series": series,
+                "timestamps": ts_series,
+                "latest": latest,
+                "first": first,
+                "pct_change": round(pct_change, 2)
+            })
+        # Sort by absolute pct change desc
+        trends.sort(key=lambda x: abs(x["pct_change"]), reverse=True)
+        return {"ok": True, "count": len(trends), "trends": trends}
+    except Exception as e:
+        logger.error(f"Failed to fetch material cost trends: {e}")
+        raise HTTPException(status_code=500, detail="material_costs_trends_failed")
+
 @app.post("/save-project-actuals")
 async def save_project_actuals(payload: ProjectActualsPayload):
     """

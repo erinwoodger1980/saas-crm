@@ -40,6 +40,9 @@ import type {
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { deriveLineMaterialAlerts, groupAlerts, type GroupedAlert } from "@/lib/materialAlerts";
+
+// Material cost alert types imported from helper; interface here intentionally omitted.
 
 export default function QuoteBuilderPage() {
   const params = useParams();
@@ -104,6 +107,7 @@ export default function QuoteBuilderPage() {
   const [processDialogOpen, setProcessDialogOpen] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [pricingBreakdown, setPricingBreakdown] = useState<Record<string, any> | null>(null);
+  const [materialAlertsOpen, setMaterialAlertsOpen] = useState(true);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [markupPercent, setMarkupPercent] = useState<number>(20);
   const [vatPercent, setVatPercent] = useState<number>(20);
@@ -119,6 +123,22 @@ export default function QuoteBuilderPage() {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [questionnaireOpen, setQuestionnaireOpen] = useState(false);
+  const [materialAlertsOpen, setMaterialAlertsOpen] = useState(true);
+
+  // Fetch recent material cost changes (cached proxy endpoint)
+  const { data: recentMaterialCosts } = useSWR<MaterialCostEntry[]>(
+    quote ? ["recent-material-costs", quote.tenantId] : null,
+    async () => {
+      const res = await apiFetch<{ costs: MaterialCostEntry[] }>("/ml/material-costs/recent");
+      return res?.costs || [];
+    },
+    { revalidateOnFocus: false }
+  );
+
+  // Derive alerts relevant to current quote line descriptions
+  const lineMaterialAlerts = useMemo(() => {
+    return deriveLineMaterialAlerts(lines, recentMaterialCosts, { minPercent: 3 });
+  }, [lines, recentMaterialCosts]);
 
   const questionnaireAnswers = useMemo(() => {
     if (!lead?.custom) return {};
@@ -129,6 +149,24 @@ export default function QuoteBuilderPage() {
   const tenantName = quote?.tenant?.name ?? null;
   const quoteStatus = quote?.status ?? null;
   const proposalPdfUrl = (quote?.meta as any)?.proposalPdfUrl ?? quote?.proposalPdfUrl ?? null;
+
+  // Fetch recent material costs (tenant-scoped indirectly via server auth)
+  const { data: recentMaterialCosts = [] } = useSWR<any[]>(
+    quote ? ["recent-material-costs", quote.tenantId] : null,
+    async () => {
+      const res = await apiFetch<{ costs: any[] }>("/ml/material-costs/recent");
+      return res?.costs || [];
+    },
+    { revalidateOnFocus: false }
+  );
+
+  // Compute alerts (grouped) with env-config thresholds
+  const envMinPercent = typeof process.env.NEXT_PUBLIC_MATERIAL_MIN_CHANGE_PERCENT === 'string' ? Number(process.env.NEXT_PUBLIC_MATERIAL_MIN_CHANGE_PERCENT) : 3;
+  const envFuzzyThreshold = typeof process.env.NEXT_PUBLIC_MATERIAL_FUZZY_THRESHOLD === 'string' ? Number(process.env.NEXT_PUBLIC_MATERIAL_FUZZY_THRESHOLD) : 0.82;
+  const lineMaterialAlerts: GroupedAlert[] = useMemo(() => {
+    const raw = deriveLineMaterialAlerts(lines, recentMaterialCosts as any, { minPercent: envMinPercent, fuzzyThreshold: envFuzzyThreshold });
+    return groupAlerts(raw);
+  }, [lines, recentMaterialCosts, envMinPercent, envFuzzyThreshold]);
 
   useEffect(() => {
     if (!lines) return;
@@ -1216,6 +1254,80 @@ export default function QuoteBuilderPage() {
             <TabsContent value="quote-lines" className="space-y-6">
               {lines && lines.length > 0 ? (
                 <div className="rounded-2xl border bg-card p-8 shadow-sm space-y-6">
+                  {lineMaterialAlerts.length > 0 && (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => setMaterialAlertsOpen(!materialAlertsOpen)}
+                        className="flex w-full items-center justify-between rounded-xl border bg-muted/40 px-4 py-2 text-left text-sm"
+                      >
+                        <span className="font-medium text-foreground">
+                          {lineMaterialAlerts.length} material cost change{lineMaterialAlerts.length !== 1 ? 's' : ''} affecting this quote
+                        </span>
+                        {materialAlertsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </button>
+                      {materialAlertsOpen && (
+                        <div className="grid gap-2 md:grid-cols-2">
+                          {lineMaterialAlerts.map((mc) => {
+                            const pct = mc.changePercent != null ? Math.round(mc.changePercent) : null;
+                            const direction = pct != null ? (pct > 0 ? "increase" : pct < 0 ? "decrease" : "no change") : null;
+                            return (
+                              <div
+                                key={mc.id}
+                                className="rounded-lg border p-3 text-xs bg-muted/30 flex flex-col gap-1"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-foreground">
+                                    {mc.materialLabel || mc.materialCode || "Material"}
+                                  </span>
+                                  <span className={
+                                    mc.severity === 'major' ? 'rounded-md bg-rose-100 text-rose-700 px-2 py-0.5 text-[10px] font-medium' :
+                                    mc.severity === 'moderate' ? 'rounded-md bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium' :
+                                    'rounded-md bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-medium'
+                                  }>{mc.severity}</span>
+                                  {pct != null && (
+                                    <span
+                                      className={
+                                        pct > 0
+                                          ? "text-rose-600 font-medium"
+                                          : pct < 0
+                                          ? "text-green-600 font-medium"
+                                          : "text-muted-foreground"
+                                      }
+                                    >
+                                      {pct > 0 ? `↑${pct}%` : pct < 0 ? `↓${Math.abs(pct)}%` : "0%"}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-muted-foreground">
+                                  {mc.previousUnitPrice != null && mc.currentUnitPrice != null ? (
+                                    <span>
+                                      {formatCurrency(mc.previousUnitPrice, mc.currency)} → {formatCurrency(mc.currentUnitPrice, mc.currency)}
+                                    </span>
+                                  ) : (
+                                    <span>Current {formatCurrency(mc.currentUnitPrice, mc.currency)}</span>
+                                  )}
+                                </div>
+                                {direction && direction !== "no change" && (
+                                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    {direction} impacting pricing
+                                  </div>
+                                )}
+                                {(mc.matchedTokens.length > 0 || mc.matchedCode) && (
+                                  <div className="text-[10px] text-muted-foreground">
+                                    Match: {mc.matchedCode ? "code" : mc.matchedTokens.join(", ")}
+                                  </div>
+                                )}
+                                {mc.suppliers && mc.suppliers.length > 0 && (
+                                  <div className="text-[10px] text-muted-foreground">Suppliers: {mc.suppliers.join(', ')}</div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-start justify-between">
                     <div>
                       <h2 className="text-2xl font-semibold text-foreground mb-2">Quote line items</h2>

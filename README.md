@@ -28,12 +28,59 @@ This repository includes a multi-layer ML design across Gmail/MS365 ingest, quot
 - `NEXT_PUBLIC_WEB_ORIGIN`: Public web origin (e.g., `https://joineryai.app`).
 - `NEXT_PUBLIC_FOUNDERS_PROMO_CODE`: Optional promo code for early access.
 - `NEXT_PUBLIC_GA4_ID`, `NEXT_PUBLIC_META_PIXEL_ID`, `NEXT_PUBLIC_HOTJAR_ID`: Optional analytics trackers.
+- `NEXT_PUBLIC_MATERIAL_MIN_CHANGE_PERCENT`: Minimum absolute % change to surface a material cost alert (default: `3`).
+- `NEXT_PUBLIC_MATERIAL_FUZZY_THRESHOLD`: Levenshtein similarity (0–1) threshold for fuzzy material token matching (default: `0.82`). Lower to catch more OCR misspellings.
 
 ### API
 - **`DATABASE_URL`** (required): PostgreSQL connection string.
 - `ML_URL`: FastAPI ML service endpoint (default: `http://localhost:8000`).
 - `FOLLOWUPS_ENABLED`: Enable follow-up scheduling features (default: `false`).
 - Additional follow-up tuning: `FOLLOWUPS_DEFAULT_DELAY_DAYS`, `FOLLOWUPS_BUSINESS_HOURS`, `FOLLOWUPS_LOCAL_TZ`, `FOLLOWUPS_COST_PENCE`, `FOLLOWUPS_MIN_SENDS_FOR_TEST`, `FOLLOWUPS_AB_DELTA_PROMOTE`.
+
+### Material Cost Alerts Configuration
+
+The quote builder surfaces real‑time supplier material cost movements captured from purchase order uploads. Alerts are prioritized with severity bands:
+
+| Severity | Criteria |
+|----------|---------|
+| minor | <5% change (or very small code match) |
+| moderate | 5–14% change (or code match ≥5%) |
+| major | ≥15% change (or absolute change ≥20%) |
+
+Environment variables let you tune noise vs sensitivity:
+
+| Variable | Default | Effect |
+|----------|---------|-------|
+| `NEXT_PUBLIC_MATERIAL_MIN_CHANGE_PERCENT` | 3 | Suppresses small movements unless direct code match. |
+| `NEXT_PUBLIC_MATERIAL_FUZZY_THRESHOLD` | 0.82 | Controls tolerance for near‑miss tokens (e.g. OCR typos). |
+
+Tuning tips:
+- Raise `MIN_CHANGE_PERCENT` if volatile commodities flood alerts.
+- Lower `FUZZY_THRESHOLD` (e.g. 0.75) to capture more misspellings; raise (≥0.85) to reduce false positives.
+- After changes, restart `web` to apply.
+
+### Photo-Based Auto-Fill (Estimator)
+
+Users can upload a project photo (door/window/opening) on the public estimator page. The API performs vision analysis (OpenAI) to estimate dimensions and extract descriptive attributes (material, glazing, colour, ironmongery, style tags, product type) then suggests questionnaire answers for any blank matching fields.
+
+Endpoints:
+- `POST /public/estimator-ai/photo-fill` (multipart) — returns `{ measurement, suggestedAnswers, reasoning }`.
+- Existing low-level dimension route: `POST /measurements/from-photo` for raw width/height only.
+
+Client Flow:
+1. User selects an image; front-end posts the photo and current field schema.
+2. Server invokes vision model (requires `OPENAI_API_KEY`).
+3. Suggestions map some field keys (width, height, material, glazing, finish, style, description) to inferred values — only blanks are pre-filled when the user clicks “Apply Suggestions”.
+4. User reviews/edits remaining fields and submits as normal.
+
+Environment:
+- Requires `OPENAI_API_KEY` for vision; without it the endpoint returns `visionAvailable:false` and an empty suggestion set.
+
+Notes:
+- Dimensions are clamped to 300–3000mm and rounded to nearest 10 for consistency.
+- Confidence score (<0.4) indicates low reliability; dimension fields may remain unfilled.
+- Style tags are joined with commas when mapped to simple text fields.
+- Existing answers are never overwritten automatically.
 
 ---
 

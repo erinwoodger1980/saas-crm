@@ -53,6 +53,7 @@ export default function DevLayout({ children }: { children: ReactNode }) {
     { href: "/dev/tasks", label: "Tasks", icon: GitBranch },
     { href: "/dev/ml", label: "ML Status", icon: Server },
     { href: "/dev/ml/samples", label: "ML Samples", icon: Server },
+    { href: "/dev/material-costs", label: "Material Costs", icon: Server },
     { href: "/dev/developers", label: "Developers", icon: Users },
   ];
 
