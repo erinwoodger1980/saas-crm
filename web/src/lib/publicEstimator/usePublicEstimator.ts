@@ -114,6 +114,9 @@ export function usePublicEstimator({
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingEstimate, setIsLoadingEstimate] = useState(false);
+
+  // Track last estimate input signature to avoid redundant refresh & flicker
+  const lastEstimateInputRef = useRef<string>("__INIT__");
   
   // Refs for debouncing and tracking
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -343,18 +346,29 @@ export function usePublicEstimator({
   // Refresh estimate preview (debounced)
   const refreshEstimate = useCallback(async () => {
     if (!branding || !data.openingDetails?.length) {
-      setEstimatePreview(null);
+      // Only clear estimate if no items yet
+      if (!data.openingDetails?.length) setEstimatePreview(null);
       return;
     }
-    
+
+    // Build input signature
+    const signature = JSON.stringify({
+      tenant: branding.slug,
+      items: data.openingDetails.map(i => ({ id: i.id, w: i.width, h: i.height, t: i.type })),
+      specs: data.globalSpecs || {},
+    });
+
+    // Skip if signature unchanged (prevents periodic flicker)
+    if (signature === lastEstimateInputRef.current) return;
+    lastEstimateInputRef.current = signature;
+
     try {
       setIsLoadingEstimate(true);
-      
       const response = await fetch(`${API_BASE}/public/estimates/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenantId: branding.slug, // slug is actually the tenant ID in this context
+          tenantId: branding.slug,
           items: data.openingDetails.map(item => ({
             description: item.type || 'Opening',
             widthMm: item.width,
@@ -364,19 +378,13 @@ export function usePublicEstimator({
           globalSpecs: data.globalSpecs || {},
         }),
       });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load estimate: ${response.statusText}`);
-      }
-      
+      if (!response.ok) throw new Error(`Failed to load estimate: ${response.statusText}`);
+
       const preview = await response.json();
-      // Augment preview with complexity heuristics derived from recent parsed supplier quotes.
-      // Large aggregate totals or excessive line counts tend to require manual review.
       const augmented = { ...preview } as any;
       try {
         const gross = Number(preview.totalGross || preview.totalNet || 0);
         const lineCount = Array.isArray(preview.items) ? preview.items.length : 0;
-        // Heuristics (tunable): mark manual if > £250k or > 120 items.
         if (gross > 250_000 || lineCount > 120) {
           augmented.needsManualQuote = true;
           augmented.manualQuoteReason = gross > 250_000
@@ -384,9 +392,7 @@ export function usePublicEstimator({
             : 'High item complexity (120+ line items). Manual review recommended.';
           augmented.disclaimer = `${preview.disclaimer || ''}\nThis project is flagged for manual review due to scale/complexity.`.trim();
         }
-      } catch (e) {
-        // Non-fatal; keep original preview
-      }
+      } catch {}
       setEstimatePreview(augmented);
     } catch (error) {
       console.error('Failed to load estimate:', error);
@@ -394,7 +400,7 @@ export function usePublicEstimator({
     } finally {
       setIsLoadingEstimate(false);
     }
-  }, [branding, data, onError]);
+  }, [branding, data.openingDetails, data.globalSpecs, onError]);
   
   // Auto-refresh estimate with debounce when relevant data changes
   useEffect(() => {
