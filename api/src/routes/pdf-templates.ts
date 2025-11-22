@@ -44,20 +44,17 @@ const LABEL_INPUTS: Record<string, PdfAnnotationLabel> = {
   ignore: PdfAnnotationLabel.IGNORE,
 };
 
+// Keep the primary select set intentionally minimal for maximum backward compatibility.
+// Older production deployments may lack optional columns (pageCount, meta, createdByUserId).
+// We compute annotationCount lazily in serializeTemplate if available.
 const listSelect = {
   id: true,
   name: true,
   description: true,
   supplierProfileId: true,
-  pageCount: true,
   createdAt: true,
   updatedAt: true,
-  createdByUser: {
-    select: { id: true, name: true, email: true },
-  },
-  _count: {
-    select: { annotations: true },
-  },
+  // Note: pageCount & _count intentionally omitted; unsafe on older schemas.
 } as const;
 
 const annotationOrderBy: Prisma.PdfLayoutAnnotationOrderByWithRelationInput[] = [
@@ -336,59 +333,72 @@ router.delete("/:id", async (req: any, res: Response) => {
 export default router;
 
 async function fetchTemplateSummaries(): Promise<any[]> {
-  try {
-    const templates = await prisma.pdfLayoutTemplate.findMany({
-      orderBy: { createdAt: "desc" },
-      select: listSelect,
-    });
-    return templates.map((tpl) => serializeTemplate(tpl));
-  } catch (error: any) {
-    if (!shouldFallbackPdfTemplateQuery(error)) throw error;
-    console.warn("[GET /pdf-templates] Schema mismatch detected, using fallback query:", error?.message || error);
-    const rows = await prisma.$queryRawUnsafe<Array<{
-      id: string;
-      name: string;
-      description: string | null;
-      supplierProfileId: string | null;
-      pageCount: number | null;
-      createdAt: Date;
-      updatedAt: Date;
-      annotationCount: number;
-    }>>(`
-      SELECT tpl."id",
+  const forceFallback = process.env.ALWAYS_USE_PDF_TEMPLATE_FALLBACK === '1';
+  if (!forceFallback) {
+    try {
+      const templates = await prisma.pdfLayoutTemplate.findMany({
+        orderBy: { createdAt: "desc" },
+        select: listSelect,
+      });
+      return templates.map((tpl) => serializeTemplate(tpl));
+    } catch (error: any) {
+      // Broaden fallback condition: any "Unknown column" or missing relation errors.
+      const msg = String(error?.message || '').toLowerCase();
+      const canFallback =
+        forceFallback ||
+        shouldFallbackPdfTemplateQuery(error) ||
+        /unknown column|does not exist|no such column|relation .* does not exist/.test(msg);
+      if (!canFallback) {
+        throw error; // propagate genuine errors
+      }
+      console.warn("[GET /pdf-templates] Primary query failed, attempting raw fallback:", error?.message);
+    }
+  }
+
+  // Raw fallback query (works with very old schema variants)
+  const rows = await prisma.$queryRawUnsafe<Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    supplierProfileId: string | null;
+    pageCount: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+    annotationCount: number;
+  }>>(`
+    SELECT tpl."id",
+           tpl."name",
+           tpl."description",
+           tpl."supplierProfileId",
+           tpl."pageCount",
+           tpl."createdAt",
+           tpl."updatedAt",
+           COUNT(ann."id")::int AS "annotationCount"
+    FROM "PdfLayoutTemplate" tpl
+    LEFT JOIN "PdfLayoutAnnotation" ann ON ann."templateId" = tpl."id"
+    GROUP BY tpl."id",
              tpl."name",
              tpl."description",
              tpl."supplierProfileId",
              tpl."pageCount",
              tpl."createdAt",
-             tpl."updatedAt",
-             COUNT(ann."id")::int AS "annotationCount"
-      FROM "PdfLayoutTemplate" tpl
-      LEFT JOIN "PdfLayoutAnnotation" ann ON ann."templateId" = tpl."id"
-      GROUP BY tpl."id",
-               tpl."name",
-               tpl."description",
-               tpl."supplierProfileId",
-               tpl."pageCount",
-               tpl."createdAt",
-               tpl."updatedAt"
-      ORDER BY tpl."createdAt" DESC
-    `);
+             tpl."updatedAt"
+    ORDER BY tpl."createdAt" DESC
+  `);
 
-    return rows.map((row) =>
-      serializeTemplate({
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        supplierProfileId: row.supplierProfileId,
-        pageCount: row.pageCount,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        _count: { annotations: Number(row.annotationCount) || 0 },
-        createdByUser: null,
-      }),
-    );
-  }
+  return rows.map((row) =>
+    serializeTemplate({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      supplierProfileId: row.supplierProfileId,
+      pageCount: row.pageCount,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      _count: { annotations: Number(row.annotationCount) || 0 },
+      createdByUser: null,
+    }),
+  );
 }
 
 function clamp01(value: number): number {
