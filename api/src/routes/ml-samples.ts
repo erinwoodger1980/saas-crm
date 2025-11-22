@@ -126,6 +126,33 @@ router.get('/samples/:id/preview', async (req: any, res) => {
     const ML_ENDPOINT = (process.env.ML_URL || process.env.ML_API_URL || '').replace(/\/$/, '');
     let mlResp: any = null;
     let mlError: string | null = null;
+    // Local parse stats
+    let localChars: number | null = null;
+    let localTotal: number | null = null;
+    try {
+      const pdfParse = require('pdf-parse');
+      const parsed = await pdfParse(buffer).catch(() => null);
+      if (parsed && typeof parsed.text === 'string') {
+        const text = parsed.text;
+        localChars = text.length;
+        const lines = text.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
+        let candidate: number | null = null;
+        for (const line of lines) {
+          if (/total/i.test(line)) {
+            const nums = line.match(/\b\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?\b/g);
+            if (nums) {
+              for (const n of nums) {
+                const value = parseFloat(n.replace(/[,\s]/g,''));
+                if (!isNaN(value)) {
+                  if (candidate == null || value > candidate) candidate = value;
+                }
+              }
+            }
+          }
+        }
+        localTotal = candidate;
+      }
+    } catch {}
     if (ML_ENDPOINT) {
       try {
         const resp = await fetch(`${ML_ENDPOINT}/upload-quote-training`, {
@@ -140,7 +167,7 @@ router.get('/samples/:id/preview', async (req: any, res) => {
         mlError = e?.message || 'ml_forward_failed';
       }
     }
-    return res.json({ ok: true, sampleId: sample.id, messageId: sample.messageId, mlError, ml: mlResp });
+    return res.json({ ok: true, sampleId: sample.id, messageId: sample.messageId, mlError, ml: mlResp, local: { chars: localChars, total: localTotal } });
   } catch (e: any) {
     console.error('[ml-samples] preview failed:', e?.message || e);
     return res.status(500).json({ error: 'internal_error' });

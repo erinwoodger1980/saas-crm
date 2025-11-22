@@ -1065,6 +1065,40 @@ router.post("/manual-upload-train", async (req: any, res) => {
     let estimatedTotal: number | null = null;
     let textChars: number | null = null;
     let currency: string | null = null;
+    // Local fallback parse before ML call (extract text length & naive total)
+    try {
+      const absFilePath = path.isAbsolute(relPath) ? relPath : path.join(process.cwd(), relPath);
+      const pdfBuffer = await fs.promises.readFile(absFilePath);
+      // Lazy import pdf-parse (already in dependencies)
+      const pdfParse = require('pdf-parse');
+      const parsed = await pdfParse(pdfBuffer).catch(() => null);
+      if (parsed && typeof parsed.text === 'string') {
+        const rawText = parsed.text;
+        const digitsText = rawText.replace(/\r/g,'');
+        textChars = textChars ?? digitsText.length;
+        // Heuristic: find lines containing TOTAL and capture largest number
+        const lines = rawText.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
+        let candidate: number | null = null;
+        for (const line of lines) {
+          if (/total/i.test(line)) {
+            const nums = line.match(/\b\d{1,3}(?:[,\s]\d{3})*(?:\.\d{2})?\b/g);
+            if (nums) {
+              for (const n of nums) {
+                const normalized = parseFloat(n.replace(/[,\s]/g,''));
+                if (!isNaN(normalized)) {
+                  if (candidate == null || normalized > candidate) candidate = normalized;
+                }
+              }
+            }
+          }
+        }
+        if (estimatedTotal == null && candidate != null) {
+          estimatedTotal = candidate;
+        }
+      }
+    } catch (e) {
+      // Non-fatal; proceed without fallback enrichment
+    }
     if (ML_URL) {
       try {
         const resp = await fetch(`${ML_URL}/upload-quote-training`, {
