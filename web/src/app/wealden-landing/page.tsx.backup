@@ -5,7 +5,7 @@ import { useState } from "react";
 import Script from "next/script";
 
 
-import { API_BASE } from "@/src/lib/api-base";
+import { API_BASE } from "@/lib/api-base";
 const GA4_ID = process.env.NEXT_PUBLIC_GA4_ID || "";
 const META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID || "";
 const HOTJAR_ID = process.env.NEXT_PUBLIC_HOTJAR_ID || "";

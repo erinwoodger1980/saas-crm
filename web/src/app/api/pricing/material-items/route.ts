@@ -15,7 +15,7 @@ const MATERIAL_ITEM_CATEGORIES = [
   "OTHER",
 ] as const;
 
-import { API_BASE } from "@/src/lib/api-base";
+import { API_BASE } from "@/lib/api-base";
 function apiBase() { return API_BASE; }
 
 function forwardHeaders(req: NextRequest) {

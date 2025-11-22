@@ -2,7 +2,7 @@
  * API client helper with admin authentication
  */
 
-import { API_BASE } from '@/src/lib/api-base';
+import { API_BASE } from '@/lib/api-base';
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY;
 
 interface FetchOptions extends RequestInit {

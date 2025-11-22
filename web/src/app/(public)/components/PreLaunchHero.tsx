@@ -22,7 +22,7 @@ export default function PreLaunchHero({ onOpenDemo, onCtaClick }: PreLaunchHeroP
     setError("");
 
     try {
-      const { API_BASE: apiBase } = await import("@/src/lib/api-base");
+      const { API_BASE: apiBase } = await import("@/lib/api-base");
       const response = await fetch(`${apiBase}/api/interest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
