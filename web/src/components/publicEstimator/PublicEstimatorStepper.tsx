@@ -150,9 +150,10 @@ export function PublicEstimatorStepper({
       window.history.replaceState({}, '', shareUrl);
     }
 
+    const safe = (v: number | undefined | null) => Number.isFinite(v as number) ? Number(v).toFixed(2) : '0.00';
     const shareData = {
       title: `${branding.name} - Estimate`,
-      text: `My joinery estimate: £${estimatePreview.totalGross.toFixed(2)} for ${estimatePreview.items.length} items`,
+      text: `My joinery estimate: £${safe(estimatePreview.totalGross)} for ${estimatePreview.items.length} items`,
       url: shareUrl,
     };
 

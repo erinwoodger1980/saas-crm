@@ -98,6 +98,7 @@ export function EstimatePreviewCard({
     );
   }
 
+  const safe = (v: number | undefined | null) => Number.isFinite(v as number) ? Number(v).toFixed(2) : '0.00';
   const visibleItems = showAllItems ? estimate.items : estimate.items.slice(0, 3);
   const hasMoreItems = estimate.items.length > 3;
   const favouritesCount = favouriteItemIds.length;
@@ -180,17 +181,17 @@ export function EstimatePreviewCard({
                       </p>
                       <div className="mt-1 flex items-baseline gap-2">
                         <span className="text-sm text-slate-500">
-                          Net: £{item.netGBP.toFixed(2)}
+                          Net: £{safe(item.netGBP)}
                         </span>
                         <span className="text-xs text-slate-400">
-                          +VAT £{item.vatGBP.toFixed(2)}
+                          +VAT £{safe(item.vatGBP)}
                         </span>
                       </div>
                     </div>
                     
                     <div className="flex-shrink-0 text-right">
                       <p className="font-semibold text-slate-900">
-                        £{item.totalGBP.toFixed(2)}
+                        £{safe(item.totalGBP)}
                       </p>
                       <p className="text-xs text-slate-500">inc. VAT</p>
                     </div>
@@ -237,13 +238,13 @@ export function EstimatePreviewCard({
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-600">Net total</span>
                   <span className="font-medium text-slate-900">
-                    £{estimate.totalNet.toFixed(2)}
+                    £{safe(estimate.totalNet)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-600">VAT (20%)</span>
                   <span className="font-medium text-slate-900">
-                    £{estimate.totalVat.toFixed(2)}
+                    £{safe(estimate.totalVat)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between border-t border-slate-200 pt-2">
@@ -252,7 +253,7 @@ export function EstimatePreviewCard({
                     className="text-2xl font-bold"
                     style={{ color: primaryColor }}
                   >
-                    £{estimate.totalGross.toFixed(2)}
+                    £{safe(estimate.totalGross)}
                   </span>
                 </div>
               </div>
@@ -285,7 +286,7 @@ export function EstimatePreviewCard({
               className="text-xl font-bold"
               style={{ color: primaryColor }}
             >
-              £{estimate.totalGross.toFixed(2)}
+              £{safe(estimate.totalGross)}
             </span>
           </div>
         </div>
