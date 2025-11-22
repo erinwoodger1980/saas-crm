@@ -65,7 +65,9 @@ jobs:
         run: pnpm rebuild lightningcss || true
 
       - name: Build Next.js
-        run: pnpm run build
+        run: |
+          rm -rf node_modules/@prisma/client node_modules/.prisma
+          pnpm run build
 
       - name: Upload build artifact (optional)
         if: success()
