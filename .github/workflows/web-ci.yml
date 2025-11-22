@@ -66,7 +66,7 @@ jobs:
 
       - name: Build Next.js
         run: |
-          rm -rf node_modules/@prisma/client node_modules/.prisma
+          rm -rf node_modules/.prisma
           pnpm run build
 
       - name: Upload build artifact (optional)
