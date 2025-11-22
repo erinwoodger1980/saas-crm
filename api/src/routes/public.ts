@@ -852,55 +852,69 @@ router.post('/vision/depth-analyze', async (req, res) => {
     const calibrated = calibrateConfidence(openingType, widthMm, heightMm, baseConf);
     return res.json({ width_mm: widthMm, height_mm: heightMm, description: `Depth inferred ${openingType || 'opening'}`, confidence: calibrated });
   } catch (e: any) {
-    /* ---------- INTERNAL: vision telemetry ---------- */
-    router.get('/internal/vision/telemetry', async (req, res) => {
-      try {
-        const adminToken = process.env.ADMIN_API_TOKEN || '';
-        const headerToken = String(req.headers['x-admin-token'] || '');
-        if (!adminToken || headerToken !== adminToken) {
-          return res.status(401).json({ error: 'unauthorized' });
-        }
-        const limit = Math.min(500, Number(req.query.limit) || 100);
-        const persisted = await getPersistedVisionTelemetry(limit);
-        return res.json({ ok: true, persistedCount: persisted.length, persisted, note: process.env.VISION_TELEMETRY_PERSIST === '1' ? 'persistence enabled' : 'persistence disabled' });
-      } catch (e: any) {
-        return res.status(500).json({ error: e?.message || 'telemetry_fetch_failed' });
-      }
-    });
-
-    // Summary rollup (secured similarly)
-    router.get('/internal/vision/telemetry/summary', async (req, res) => {
-      try {
-        const adminToken = process.env.ADMIN_API_TOKEN || '';
-        const headerToken = String(req.headers['x-admin-token'] || '');
-        if (!adminToken || headerToken !== adminToken) {
-          return res.status(401).json({ error: 'unauthorized' });
-        }
-        const limit = Math.min(1000, Number(req.query.limit) || 500);
-        const rows = await getPersistedVisionTelemetry(limit);
-        const count = rows.length;
-        const totalMs = rows.reduce((s,r)=>s+r.ms,0);
-        const avgMs = count ? +(totalMs / count).toFixed(2) : 0;
-        const totalCost = rows.reduce((s,r)=>s+(r.costUsd||0),0);
-        const errors = rows.filter(r=>!!r.error).length;
-        const errorRate = count ? +(errors / count).toFixed(3) : 0;
-        const byModel: Record<string,{count:number;avgMs:number;cost:number}> = {};
-        for (const r of rows) {
-          const m = r.model || 'unknown';
-          if (!byModel[m]) byModel[m] = { count:0, avgMs:0, cost:0 };
-          byModel[m].count += 1; byModel[m].avgMs += r.ms; byModel[m].cost += r.costUsd||0;
-        }
-        Object.keys(byModel).forEach(k => {
-          byModel[k].avgMs = +(byModel[k].avgMs / byModel[k].count).toFixed(2);
-          byModel[k].cost = +byModel[k].cost.toFixed(4);
-        });
-        return res.json({ ok: true, count, avgMs, totalCost: +totalCost.toFixed(4), errorRate, byModel });
-      } catch (e: any) {
-        return res.status(500).json({ error: e?.message || 'telemetry_summary_failed' });
-      }
-    });
     console.error('[vision depth-analyze] failed', e);
     return res.status(500).json({ error: e?.message || 'depth_inference_failed' });
+  }
+});
+
+/* ---------- INTERNAL: vision telemetry ---------- */
+router.get('/internal/vision/telemetry', async (req, res) => {
+  try {
+    const adminToken = process.env.ADMIN_API_TOKEN || '';
+    const headerToken = String(req.headers['x-admin-token'] || '');
+    if (!adminToken || headerToken !== adminToken) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const limit = Math.min(500, Number(req.query.limit) || 100);
+    const since = req.query.since ? new Date(String(req.query.since)) : null;
+    const until = req.query.until ? new Date(String(req.query.until)) : null;
+    const page = Math.max(0, Number(req.query.page) || 0);
+    const pageSize = Math.min(500, Number(req.query.pageSize) || limit);
+    let persisted = await getPersistedVisionTelemetry(limit * (page + 1));
+    if (since) persisted = persisted.filter(r => r.ts >= since.getTime());
+    if (until) persisted = persisted.filter(r => r.ts <= until.getTime());
+    const start = page * pageSize;
+    const end = start + pageSize;
+    const paged = persisted.slice(start, end);
+    return res.json({ ok: true, persistedCount: paged.length, persisted: paged, note: process.env.VISION_TELEMETRY_PERSIST === '1' ? 'persistence enabled' : 'persistence disabled' });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message || 'telemetry_fetch_failed' });
+  }
+});
+
+router.get('/internal/vision/telemetry/summary', async (req, res) => {
+  try {
+    const adminToken = process.env.ADMIN_API_TOKEN || '';
+    const headerToken = String(req.headers['x-admin-token'] || '');
+    if (!adminToken || headerToken !== adminToken) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const limit = Math.min(1000, Number(req.query.limit) || 500);
+    const since = req.query.since ? new Date(String(req.query.since)) : null;
+    const until = req.query.until ? new Date(String(req.query.until)) : null;
+    let rows = await getPersistedVisionTelemetry(limit);
+    if (since) rows = rows.filter(r => r.ts >= since.getTime());
+    if (until) rows = rows.filter(r => r.ts <= until.getTime());
+    const count = rows.length;
+    const totalMs = rows.reduce((s,r)=>s+r.ms,0);
+    const avgMs = count ? +(totalMs / count).toFixed(2) : 0;
+    const totalCost = rows.reduce((s,r)=>s+(r.costUsd||0),0);
+    const errors = rows.filter(r=>!!r.error).length;
+    const errorRate = count ? +(errors / count).toFixed(3) : 0;
+    const byModel: Record<string,{count:number;avgMs:number;cost:number}> = {};
+    for (const r of rows) {
+      const m = r.model || 'unknown';
+      if (!byModel[m]) byModel[m] = { count:0, avgMs:0, cost:0 };
+      byModel[m].count += 1; byModel[m].avgMs += r.ms; byModel[m].cost += r.costUsd||0;
+    }
+    Object.keys(byModel).forEach(k => {
+      byModel[k].avgMs = +(byModel[k].avgMs / byModel[k].count).toFixed(2);
+      byModel[k].cost = +byModel[k].cost.toFixed(4);
+    });
+    const alert = errorRate > 0.15 ? 'high_error_rate' : null;
+    return res.json({ ok: true, count, avgMs, totalCost: +totalCost.toFixed(4), errorRate, byModel, alert });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message || 'telemetry_summary_failed' });
   }
 });
 
@@ -988,18 +1002,7 @@ router.post("/supplier/rfq/:token/upload", async (req, res) => {
         title: `Supplier Quote — ${claims.email}`,
         status: "DRAFT" as any,
         quoteSourceType: null,
-        const limit = Math.min(500, Number(req.query.limit) || 100);
-        const since = req.query.since ? new Date(String(req.query.since)) : null;
-        const until = req.query.until ? new Date(String(req.query.until)) : null;
-        const page = Math.max(0, Number(req.query.page) || 0);
-        const pageSize = Math.min(500, Number(req.query.pageSize) || limit);
-        let persisted = await getPersistedVisionTelemetry(limit * (page + 1));
-        if (since) persisted = persisted.filter(r => r.ts >= since.getTime());
-        if (until) persisted = persisted.filter(r => r.ts <= until.getTime());
-        // Pagination slice
-        const start = page * pageSize;
-        const end = start + pageSize;
-        const paged = persisted.slice(start, end);
+      },
     });
     quoteId = q.id;
   }
@@ -1162,19 +1165,14 @@ router.post("/interactions", async (req, res) => {
 
     // At least one identifier required
     if (!projectId && !leadId) {
-      const limit = Math.min(1000, Number(req.query.limit) || 500);
-      const since = req.query.since ? new Date(String(req.query.since)) : null;
-      const until = req.query.until ? new Date(String(req.query.until)) : null;
-      let rows = await getPersistedVisionTelemetry(limit);
-      if (since) rows = rows.filter(r => r.ts >= since.getTime());
-      if (until) rows = rows.filter(r => r.ts <= until.getTime());
+      return res.status(400).json({ error: "projectId or leadId required" });
+    }
 
     // Get tenantId from project or lead
     let tenantId: string | null = null;
     if (projectId) {
       const project = await prisma.publicProject.findUnique({
         where: { id: projectId },
-      const alert = errorRate > 0.15 ? 'high_error_rate' : null;
         select: { tenantId: true },
       });
       tenantId = project?.tenantId || null;
@@ -1185,7 +1183,7 @@ router.post("/interactions", async (req, res) => {
       });
       tenantId = lead?.tenantId || null;
     }
-      return res.json({ ok: true, count, avgMs, totalCost: +totalCost.toFixed(4), errorRate, byModel, alert });
+
     if (!tenantId) {
       return res.status(404).json({ error: "tenant not found" });
     }
