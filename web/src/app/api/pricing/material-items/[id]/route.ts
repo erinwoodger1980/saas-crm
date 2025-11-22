@@ -1,83 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { prisma } from "@/lib/prisma";
-import { resolveAuthContext } from "@/lib/server/auth";
-import { handleError, serialize, updateSchema, buildDataPayload } from "../utils";
-
 export const runtime = "nodejs";
 
 type Params = { params: { id: string } };
 
-async function ensureOwnedItem(id: string, tenantId: string) {
-  return prisma.materialItem.findFirst({
-    where: { id, tenantId },
-    include: { supplier: { select: { id: true, name: true } } },
-  });
+import { API_BASE } from "@/src/lib/api-base";
+function apiBase() { return API_BASE; }
+
+function forwardHeaders(req: NextRequest) {
+  const headers: Record<string, string> = {};
+  const auth = req.headers.get("authorization");
+  if (auth) headers["authorization"] = auth;
+  const cookie = req.headers.get("cookie");
+  if (cookie) headers["cookie"] = cookie;
+  return headers;
 }
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
-    const auth = resolveAuthContext(req);
-    if (!auth?.tenantId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-
-    const item = await ensureOwnedItem(params.id, auth.tenantId);
-    if (!item) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ item: serialize(item) });
-  } catch (error) {
-    return handleError(error);
+    const res = await fetch(apiBase() + `/api/pricing/material-items/${params.id}` , {
+      headers: forwardHeaders(req),
+    });
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  } catch (e) {
+    console.error("Material item proxy GET error", e);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
-    const auth = resolveAuthContext(req);
-    if (!auth?.tenantId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-
-    const item = await ensureOwnedItem(params.id, auth.tenantId);
-    if (!item) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
-
-    const payload = updateSchema.parse(await req.json());
-    if (Object.keys(payload).length === 0) {
-      return NextResponse.json({ error: "no_changes" }, { status: 400 });
-    }
-
-    const updated = await prisma.materialItem.update({
-      where: { id: item.id },
-      data: buildDataPayload(payload),
-      include: { supplier: { select: { id: true, name: true } } },
+    const body = await req.text();
+    const res = await fetch(apiBase() + `/api/pricing/material-items/${params.id}` , {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...forwardHeaders(req) },
+      body,
     });
-
-    return NextResponse.json({ item: serialize(updated) });
-  } catch (error) {
-    return handleError(error);
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  } catch (e) {
+    console.error("Material item proxy PATCH error", e);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
-    const auth = resolveAuthContext(req);
-    if (!auth?.tenantId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-
-    const item = await ensureOwnedItem(params.id, auth.tenantId);
-    if (!item) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
-
-    await prisma.materialItem.delete({ where: { id: item.id } });
-
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    return handleError(error);
+    const res = await fetch(apiBase() + `/api/pricing/material-items/${params.id}` , {
+      method: "DELETE",
+      headers: forwardHeaders(req),
+    });
+    const data = await res.json().catch(() => ({ ok: res.ok }));
+    return NextResponse.json(data, { status: res.status });
+  } catch (e) {
+    console.error("Material item proxy DELETE error", e);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }

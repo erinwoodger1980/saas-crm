@@ -1,19 +1,4 @@
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
-
-type GlobalWithPrisma = typeof globalThis & { __prisma?: PrismaClient };
-const globalForPrisma = globalThis as GlobalWithPrisma;
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-export const prisma = globalForPrisma.__prisma ?? new PrismaClient({
-  adapter,
-  log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-});
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.__prisma = prisma;
-}
-
+// Prisma removed from web workspace. This stub remains only to avoid
+// breaking lingering imports; do not instantiate any database client here.
+export const prisma = undefined as any;
 export default prisma;

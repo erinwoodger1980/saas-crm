@@ -1,7 +1,7 @@
 // Legacy backup file - unused imports prefixed with _
 "use client";
 
-const _API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+import { API_BASE as _API_BASE } from "@/src/lib/api-base";
 const _GA4_ID = process.env.NEXT_PUBLIC_GA4_ID || "";
 const _META_PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID || "";
 const _HOTJAR_ID = process.env.NEXT_PUBLIC_HOTJAR_ID || "";

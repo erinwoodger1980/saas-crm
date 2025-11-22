@@ -502,6 +502,15 @@ router.post("/projects", async (req, res) => {
               },
             },
           });
+          // Fire-and-forget internal notification (email/log). Wrap in try so save isn't blocked.
+          try {
+            await import('../services/notifyManualQuote').then(m => m.notifyManualQuote?.({
+              leadId,
+              tenantId,
+              reason: manualQuoteReason || 'unspecified',
+              scope: 'update'
+            })).catch(()=>{});
+          } catch {}
         }
       }
 
@@ -537,6 +546,14 @@ router.post("/projects", async (req, res) => {
             },
           },
         });
+        try {
+          await import('../services/notifyManualQuote').then(m => m.notifyManualQuote?.({
+            leadId,
+            tenantId,
+            reason: manualQuoteReason || 'unspecified',
+            scope: 'create'
+          })).catch(()=>{});
+        } catch {}
       }
     }
 

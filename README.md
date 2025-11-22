@@ -19,6 +19,24 @@ This repository includes a multi-layer ML design across Gmail/MS365 ingest, quot
 
 > Requires: Node 20+, npm, Postgres 14+ (or Docker), and **Prisma** (installed via `devDependencies`).
 
+---
+
+## Environment Variables
+
+### Web (Next.js)
+- **`NEXT_PUBLIC_API_BASE`** (required in production): Public API endpoint URL (e.g., `https://api.joineryai.app`). In local dev, defaults to `http://localhost:4000` if unset.
+- `NEXT_PUBLIC_WEB_ORIGIN`: Public web origin (e.g., `https://joineryai.app`).
+- `NEXT_PUBLIC_FOUNDERS_PROMO_CODE`: Optional promo code for early access.
+- `NEXT_PUBLIC_GA4_ID`, `NEXT_PUBLIC_META_PIXEL_ID`, `NEXT_PUBLIC_HOTJAR_ID`: Optional analytics trackers.
+
+### API
+- **`DATABASE_URL`** (required): PostgreSQL connection string.
+- `ML_URL`: FastAPI ML service endpoint (default: `http://localhost:8000`).
+- `FOLLOWUPS_ENABLED`: Enable follow-up scheduling features (default: `false`).
+- Additional follow-up tuning: `FOLLOWUPS_DEFAULT_DELAY_DAYS`, `FOLLOWUPS_BUSINESS_HOURS`, `FOLLOWUPS_LOCAL_TZ`, `FOLLOWUPS_COST_PENCE`, `FOLLOWUPS_MIN_SENDS_FOR_TEST`, `FOLLOWUPS_AB_DELTA_PROMOTE`.
+
+---
+
 ### 1) API
 ## ML service (FastAPI) setup
 

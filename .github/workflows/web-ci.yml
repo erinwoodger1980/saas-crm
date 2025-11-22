@@ -27,8 +27,6 @@ jobs:
       CI: "true"
       NEXT_TELEMETRY_DISABLED: "1"
       NEXT_PUBLIC_API_BASE: https://api.joineryai.app
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      PRISMA_CLIENT_ENGINE_TYPE: binary
 
     steps:
       - uses: actions/checkout@v4
@@ -50,9 +48,6 @@ jobs:
           pnpm -v
           npm -v
 
-      - name: Install API dependencies (for shared schema generation)
-        working-directory: api
-        run: pnpm install --frozen-lockfile
 
       - name: Configure pnpm store
         run: pnpm config set store-dir ~/.pnpm-store
@@ -65,9 +60,7 @@ jobs:
         run: pnpm rebuild lightningcss || true
 
       - name: Build Next.js
-        run: |
-          rm -rf node_modules/.prisma
-          pnpm run build
+        run: pnpm run build
 
       - name: Upload build artifact (optional)
         if: success()

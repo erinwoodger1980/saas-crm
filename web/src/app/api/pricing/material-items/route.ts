@@ -1,70 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MaterialItemCategory } from "@prisma/client";
 
-import { prisma } from "@/lib/prisma";
-import { resolveAuthContext } from "@/lib/server/auth";
-import {
-  buildWhere,
-  createSchema,
-  fetchMany,
-  handleError,
-  serialize,
-  buildDataPayload,
-} from "./utils";
+// Proxy-only implementation (Prisma removed from web). Categories mirrored from schema.
+const MATERIAL_ITEM_CATEGORIES = [
+  "DOOR_BLANK",
+  "LIPPING",
+  "IRONMONGERY",
+  "GLASS",
+  "TIMBER",
+  "BOARD",
+  "VENEER",
+  "FINISH",
+  "HARDWARE",
+  "CONSUMABLE",
+  "OTHER",
+] as const;
+
+import { API_BASE } from "@/src/lib/api-base";
+function apiBase() { return API_BASE; }
+
+function forwardHeaders(req: NextRequest) {
+  const headers: Record<string, string> = {};
+  const auth = req.headers.get("authorization");
+  if (auth) headers["authorization"] = auth;
+  const cookie = req.headers.get("cookie");
+  if (cookie) headers["cookie"] = cookie;
+  return headers;
+}
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = resolveAuthContext(req);
-    if (!auth?.tenantId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const url = new URL(apiBase() + "/api/pricing/material-items" + req.nextUrl.search);
+    const res = await fetch(url.toString(), {
+      headers: forwardHeaders(req),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return NextResponse.json(data, { status: res.status });
     }
-
-    const searchParams = req.nextUrl.searchParams;
-    const limitParam = Number(searchParams.get("limit"));
-    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 500) : 250;
-
-    const where = buildWhere(auth.tenantId, searchParams);
-
-    const [items, suppliers] = await Promise.all([
-      fetchMany(where, limit),
-      prisma.supplier.findMany({
-        where: { tenantId: auth.tenantId },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-    ]);
-
+    // Inject categories to retain previous shape expected by UI.
     return NextResponse.json({
-      items: items.map(serialize),
-      suppliers,
-      categories: Object.values(MaterialItemCategory),
+      ...data,
+      categories: MATERIAL_ITEM_CATEGORIES,
     });
   } catch (error) {
-    return handleError(error);
+    console.error("Material items proxy GET error", error);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = resolveAuthContext(req);
-    if (!auth?.tenantId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
-
-    const payload = createSchema.parse(await req.json());
-
-    const created = await prisma.materialItem.create({
-      data: {
-        tenantId: auth.tenantId,
-        ...buildDataPayload(payload),
-      },
-      include: { supplier: { select: { id: true, name: true } } },
+    const body = await req.text();
+    const res = await fetch(apiBase() + "/api/pricing/material-items", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...forwardHeaders(req) },
+      body,
     });
-
-    return NextResponse.json({ item: serialize(created) }, { status: 201 });
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
   } catch (error) {
-    return handleError(error);
+    console.error("Material items proxy POST error", error);
+    return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 }
+

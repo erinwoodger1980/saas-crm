@@ -1,9 +1,8 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma';
 import openai from '../ai';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Admin authentication middleware
 const requireAdmin = (req: any, res: any, next: any) => {
