@@ -2,7 +2,7 @@
  * API client helper with admin authentication
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000';
+import { API_BASE } from '@/src/lib/api-base';
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY;
 
 interface FetchOptions extends RequestInit {

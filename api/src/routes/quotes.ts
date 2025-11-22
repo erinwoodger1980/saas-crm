@@ -1169,9 +1169,9 @@ router.post("/:id/files", requireAuth, upload.array("files", 10), async (req: an
           tenantId,
           quoteId: id,
           kind: "SUPPLIER_QUOTE",
-          name: f.originalname,
+          name: (typeof f.originalname === 'string' && f.originalname.trim()) ? f.originalname.trim() : 'attachment',
           path: path.relative(process.cwd(), f.path),
-          mimeType: f.mimetype,
+          mimeType: (typeof f.mimetype === 'string' && f.mimetype.trim()) ? f.mimetype : 'application/octet-stream',
           sizeBytes: f.size,
         },
       });
@@ -1225,9 +1225,9 @@ router.post("/:id/client-quote-files", requireAuth, upload.array("files", 10), a
         quoteId: id,
   // Cast because Prisma generates $Enums.FileKind; the string value is correct
   kind: "CLIENT_QUOTE" as any,
-        name: f.originalname,
+        name: (typeof f.originalname === 'string' && f.originalname.trim()) ? f.originalname.trim() : 'attachment',
         path: path.relative(process.cwd(), f.path),
-        mimeType: f.mimetype,
+        mimeType: (typeof f.mimetype === 'string' && f.mimetype.trim()) ? f.mimetype : 'application/octet-stream',
         sizeBytes: f.size,
       },
     });

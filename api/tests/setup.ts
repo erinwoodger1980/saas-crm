@@ -1,3 +1,6 @@
+// Force Prisma engine type compatible with local testing
+process.env.PRISMA_CLIENT_ENGINE_TYPE = process.env.PRISMA_CLIENT_ENGINE_TYPE || 'binary';
+
 // Silence only console.warn during tests but keep console.error visible for debugging
 try {
   // @ts-ignore

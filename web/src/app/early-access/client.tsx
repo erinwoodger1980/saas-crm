@@ -32,7 +32,7 @@ export default function EarlyAccessPage() {
     setLoading(true);
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+      const { API_BASE: apiBase } = await import("@/src/lib/api-base");
       const response = await fetch(`${apiBase}/api/early-access/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

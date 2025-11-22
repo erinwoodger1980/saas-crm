@@ -3,11 +3,6 @@ generator client {
   engineType = "binary"
 }
 
-generator webClient {
-  provider   = "prisma-client-js"
-  output     = "../../web/node_modules/.prisma/client"
-  engineType = "binary"
-}
 
 datasource db {
   provider = "postgresql"

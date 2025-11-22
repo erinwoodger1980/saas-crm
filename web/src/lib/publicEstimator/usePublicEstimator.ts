@@ -94,7 +94,7 @@ export interface UsePublicEstimatorReturn {
   trackInteraction: (type: string, metadata?: Record<string, any>) => Promise<void>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000';
+import { API_BASE } from '@/src/lib/api-base';
 
 export function usePublicEstimator({
   tenantSlug,
