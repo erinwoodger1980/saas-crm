@@ -847,6 +847,52 @@ router.get('/ml/samples', requireDeveloper, async (req: any, res) => {
   }
 });
 
+// PATCH /dev/ml/samples/:id/status  { status: 'PENDING'|'APPROVED'|'REJECTED' }
+// Developer override for MLTrainingSample status (no tenant ownership restriction).
+router.patch('/ml/samples/:id/status', requireDeveloper, async (req: any, res) => {
+  try {
+    const id = String(req.params.id);
+    const { status } = req.body ?? {};
+    if (!status || !['PENDING','APPROVED','REJECTED'].includes(status)) {
+      return res.status(400).json({ error: 'invalid_status' });
+    }
+
+    // Ensure sample exists first
+    const existing = await prisma.mLTrainingSample.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return res.status(404).json({ error: 'not_found' });
+
+    const updated = await prisma.mLTrainingSample.update({
+      where: { id },
+      data: { status },
+      select: {
+        id: true,
+        tenantId: true,
+        messageId: true,
+        attachmentId: true,
+        url: true,
+        quotedAt: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        sourceType: true,
+        quoteId: true,
+        fileId: true,
+        confidence: true,
+        estimatedTotal: true,
+        textChars: true,
+        currency: true,
+        filename: true,
+      }
+    });
+
+    return res.json({ ok: true, sample: updated });
+  } catch (e: any) {
+    console.error('[dev/ml/samples/:id/status] failed:', e?.message || e);
+    if (e?.code === 'P2025') return res.status(404).json({ error: 'not_found' });
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
 // ==============================
 // System Stats (Developer Only)
 // ==============================
