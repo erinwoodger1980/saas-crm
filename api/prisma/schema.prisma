@@ -922,6 +922,12 @@ model MLTrainingSample {
   quoteId      String?
   fileId       String?
   status       MLSampleStatus @default(PENDING)
+  // New optional enrichment fields (added 2025-11-22)
+  confidence    Float?
+  estimatedTotal Decimal?
+  textChars      Int?
+  currency       String?
+  filename       String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 

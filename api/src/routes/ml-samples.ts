@@ -85,6 +85,66 @@ router.get("/samples", async (req: any, res) => {
   }
 });
 
+// Bulk status update: POST /internal/ml/samples/bulk-status { ids: string[]; status: 'PENDING'|'APPROVED'|'REJECTED' }
+router.post('/samples/bulk-status', async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((v: any) => typeof v === 'string') : [];
+    const status = typeof req.body?.status === 'string' ? req.body.status.trim().toUpperCase() : '';
+    if (!ids.length) return res.status(400).json({ error: 'no_ids' });
+    if (!['PENDING','APPROVED','REJECTED'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+    const updated = await prisma.mLTrainingSample.updateMany({
+      where: { id: { in: ids }, tenantId },
+      data: { status },
+    });
+    return res.json({ ok: true, updated: updated.count, status });
+  } catch (e: any) {
+    console.error('[ml-samples] bulk-status failed:', e?.message || e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// Preview (re-parse) a sample's PDF via ML service without altering status
+// GET /internal/ml/samples/:id/preview
+router.get('/samples/:id/preview', async (req: any, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+    const id = req.params.id;
+    const sample = await prisma.mLTrainingSample.findUnique({ where: { id }, select: { id: true, tenantId: true, fileId: true, messageId: true } });
+    if (!sample) return res.status(404).json({ error: 'not_found' });
+    if (sample.tenantId !== tenantId) return res.status(403).json({ error: 'forbidden' });
+    if (!sample.fileId) return res.status(400).json({ error: 'no_file' });
+    const file = await prisma.uploadedFile.findUnique({ where: { id: sample.fileId }, select: { path: true, name: true } });
+    if (!file) return res.status(404).json({ error: 'file_missing' });
+    const absPath = path.isAbsolute(file.path) ? file.path : path.join(process.cwd(), file.path);
+    const buffer = await fs.promises.readFile(absPath);
+    const base64 = buffer.toString('base64');
+    const ML_ENDPOINT = (process.env.ML_URL || process.env.ML_API_URL || '').replace(/\/$/, '');
+    let mlResp: any = null;
+    let mlError: string | null = null;
+    if (ML_ENDPOINT) {
+      try {
+        const resp = await fetch(`${ML_ENDPOINT}/upload-quote-training`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, base64, quoteType: 'client', tenantId }),
+        });
+        const txt = await resp.text();
+        try { mlResp = txt ? JSON.parse(txt) : {}; } catch { mlResp = { raw: txt }; }
+        if (!resp.ok) mlError = mlResp?.error || `ml_status_${resp.status}`;
+      } catch (e: any) {
+        mlError = e?.message || 'ml_forward_failed';
+      }
+    }
+    return res.json({ ok: true, sampleId: sample.id, messageId: sample.messageId, mlError, ml: mlResp });
+  } catch (e: any) {
+    console.error('[ml-samples] preview failed:', e?.message || e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
 /**
  * PATCH /internal/ml/samples/:id
  * Body can include a subset of { notes?: string, label?: string, status?: 'PENDING'|'APPROVED'|'REJECTED' }
