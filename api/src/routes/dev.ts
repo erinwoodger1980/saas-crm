@@ -827,7 +827,7 @@ router.get('/ml/samples', requireDeveloper, async (req: any, res) => {
       let signedUrl = i.url; // Default to stored URL (for email samples)
       if (i.fileId) {
         // Generate signed URL for manual uploads
-        const token = jwt.sign({ t: i.tenantId, f: i.fileId }, env.JWT_SECRET, { expiresIn: '24h' });
+        const token = jwt.sign({ t: i.tenantId, f: i.fileId }, env.APP_JWT_SECRET, { expiresIn: '24h' });
         signedUrl = `${API_BASE}/files/${encodeURIComponent(i.fileId)}?jwt=${encodeURIComponent(token)}`;
       }
       return {
