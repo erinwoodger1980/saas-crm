@@ -18,7 +18,7 @@ import fetch from "node-fetch";
 import crypto from "crypto";
 import { redisGetJSON, redisSetJSON } from '../services/redis';
 import { calibrateConfidence, combineConfidence } from '../services/vision/calibration';
-import { buildAiTelemetry } from '../services/vision/telemetry';
+import { buildAiTelemetry, getPersistedVisionTelemetry } from '../services/vision/telemetry';
 
 /**
  * Current public questionnaire surface:
@@ -726,9 +726,9 @@ router.post("/vision/analyze-photo", async (req, res) => {
             aiHeight = typeof parsed.height_mm === 'number' ? parsed.height_mm : null;
             aiConfidence = typeof parsed.confidence === 'number' ? parsed.confidence : null;
           }
-          buildAiTelemetry(startMs, false, result, null);
+          await buildAiTelemetry(startMs, false, result, null);
         } else {
-          buildAiTelemetry(startMs, false, undefined, lastErr);
+          await buildAiTelemetry(startMs, false, undefined, lastErr);
         }
       }
     } catch (e: any) {
@@ -742,11 +742,45 @@ router.post("/vision/analyze-photo", async (req, res) => {
       aiConfidence = aiConfidence || 0.3;
       aiText = aiText || 'Estimated external opening';
     }
+    // Ensemble blending with heuristic aspect ratio estimation
+    let heuristicWidth: number | null = null;
+    let heuristicHeight: number | null = null;
+    if (aspectRatio && aspectRatio > 0) {
+      // Simple heuristic: door-like if portrait (<0.9), else window/panel
+      if (aspectRatio < 0.9) {
+        heuristicWidth = 900;
+        heuristicHeight = Math.round(heuristicWidth / aspectRatio);
+      } else if (aspectRatio < 1.2) {
+        heuristicWidth = 900;
+        heuristicHeight = Math.round(heuristicWidth / aspectRatio);
+      } else {
+        heuristicHeight = 1300;
+        heuristicWidth = Math.round(heuristicHeight * aspectRatio);
+      }
+    }
+    let finalWidth = aiWidth;
+    let finalHeight = aiHeight;
+    let finalConfidence = aiConfidence;
+    if (heuristicWidth && heuristicHeight && aiWidth && aiHeight) {
+      const diffW = Math.abs(aiWidth - heuristicWidth) / heuristicWidth;
+      const diffH = Math.abs(aiHeight - heuristicHeight) / heuristicHeight;
+      // Blend if large divergence to temper extremes
+      if (diffW > 0.25 || diffH > 0.25) {
+        finalWidth = Math.round(aiWidth * 0.7 + heuristicWidth * 0.3);
+        finalHeight = Math.round(aiHeight * 0.7 + heuristicHeight * 0.3);
+        finalConfidence = (finalConfidence || 0.4) * 0.9; // slight reduction due to correction
+      } else {
+        // Minor divergence: gentle blend improves robustness
+        finalWidth = Math.round(aiWidth * 0.85 + heuristicWidth * 0.15);
+        finalHeight = Math.round(aiHeight * 0.85 + heuristicHeight * 0.15);
+        finalConfidence = Math.min(0.95, (finalConfidence || 0.4) + 0.05);
+      }
+    }
     // Calibrate confidence post-size plausibility
-    const calibrated = calibrateConfidence(openingType, aiWidth, aiHeight, aiConfidence);
+    const calibrated = calibrateConfidence(openingType, finalWidth, finalHeight, finalConfidence);
     const payload = {
-      width_mm: aiWidth,
-      height_mm: aiHeight,
+      width_mm: finalWidth,
+      height_mm: finalHeight,
       description: aiText,
       confidence: calibrated,
     };
@@ -818,6 +852,16 @@ router.post('/vision/depth-analyze', async (req, res) => {
     const calibrated = calibrateConfidence(openingType, widthMm, heightMm, baseConf);
     return res.json({ width_mm: widthMm, height_mm: heightMm, description: `Depth inferred ${openingType || 'opening'}`, confidence: calibrated });
   } catch (e: any) {
+    /* ---------- INTERNAL: vision telemetry ---------- */
+    router.get('/internal/vision/telemetry', async (req, res) => {
+      try {
+        const limit = Math.min(500, Number(req.query.limit) || 100);
+        const persisted = await getPersistedVisionTelemetry(limit);
+        return res.json({ ok: true, persistedCount: persisted.length, persisted, note: process.env.VISION_TELEMETRY_PERSIST === '1' ? 'persistence enabled' : 'persistence disabled' });
+      } catch (e: any) {
+        return res.status(500).json({ error: e?.message || 'telemetry_fetch_failed' });
+      }
+    });
     console.error('[vision depth-analyze] failed', e);
     return res.status(500).json({ error: e?.message || 'depth_inference_failed' });
   }

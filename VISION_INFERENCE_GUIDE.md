@@ -8,6 +8,7 @@ The public estimator now supports multi-layer image understanding with three sou
 
 ## Endpoints
 - `POST /public/vision/analyze-photo`
+    - Ensemble blending: heuristic aspect ratio estimate mixed with AI dimensions (weighted) to smooth outliers.
   Payload: `{ imageHeadBase64, fileName, openingType, aspectRatio, exif, headHash? }`
   Response: `{ width_mm, height_mm, description, confidence, cached?, cacheLayer? }`
   Notes:
@@ -30,7 +31,8 @@ The public estimator now supports multi-layer image understanding with three sou
 2. Heuristic inference runs immediately (`inferFromImage`).
 3. AI inference (`inferOpeningFromImage`) preprocesses: resize (max 1600px), extract minimal EXIF (Orientation, FocalLength, Model), truncate head (~12KB), hash for cache.
 4. Client-side cache checks hash before network; server also caches.
-5. UI displays confidence badge with color scale (>=70% green, >=40% amber, else red) and source label.
+5. Ensemble dimensions applied (heuristic + AI) then calibrated confidence.
+6. UI displays confidence badge with color scale (>=70% green, >=40% amber, else red) and source label.
 6. Optional depth stub button triggers `/public/vision/depth-analyze` with mock points.
 
 ## Persistence
@@ -46,6 +48,8 @@ These fields are stored transparently in the project `payload`.
 - Calibration may increase/decrease raw model score based on plausibility of dimensions.
 
 ## Extensibility Roadmap
+- Add route-based auth & filtering for telemetry export.
+- Confidence Bayesian update using historical measurement corrections.
 - Integrate real LiDAR scaling (multi-plane segmentation; door leaf vs frame).
 - Persist telemetry buffer to database for trend analysis & cost optimization.
 - Ensemble scoring: blend heuristic, AI, historical priors, depth metrics.
@@ -58,6 +62,7 @@ These fields are stored transparently in the project `payload`.
 - Corrupt image / load error: Heuristic returns empty; user can input manually.
 
 ## Security & Cost Controls
+- Internal telemetry route `/internal/vision/telemetry` (protect behind auth) returns recent persisted entries.
 - Truncated base64 head limits token usage & exposure surface.
 - Redis TTL enforces automated expiration (24h) for vision cache entries.
 - SHA-1 key avoids storing full images; only small head retained transiently.
