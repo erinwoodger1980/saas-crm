@@ -1,5 +1,7 @@
 import { Router } from "express";
+import jwt from "jsonwebtoken";
 import { prisma } from "../prisma";
+import { env } from "../env";
 import dayjs from "dayjs";
 
 const router = Router();
@@ -818,10 +820,22 @@ router.get('/ml/samples', requireDeveloper, async (req: any, res) => {
       select: { id: true, name: true, slug: true }
     }) : [];
     const tenantMap = new Map(tenants.map(t => [t.id, t]));
-    const enriched = items.map(i => ({
-      ...i,
-      tenant: tenantMap.get(i.tenantId) || null
-    }));
+    
+    // Generate signed URLs for manual uploads (fileId present)
+    const API_BASE = process.env.APP_URL?.replace(/\/$/, "") || process.env.API_URL?.replace(/\/$/, "") || process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "") || 'https://api.joineryai.app';
+    const enriched = items.map(i => {
+      let signedUrl = i.url; // Default to stored URL (for email samples)
+      if (i.fileId) {
+        // Generate signed URL for manual uploads
+        const token = jwt.sign({ t: i.tenantId, f: i.fileId }, env.JWT_SECRET, { expiresIn: '24h' });
+        signedUrl = `${API_BASE}/files/${encodeURIComponent(i.fileId)}?jwt=${encodeURIComponent(token)}`;
+      }
+      return {
+        ...i,
+        url: signedUrl,
+        tenant: tenantMap.get(i.tenantId) || null
+      };
+    });
 
     res.json({ ok: true, count: enriched.length, items: enriched });
   } catch (e: any) {
