@@ -369,7 +369,24 @@ export function usePublicEstimator({
       }
       
       const preview = await response.json();
-      setEstimatePreview(preview);
+      // Augment preview with complexity heuristics derived from recent parsed supplier quotes.
+      // Large aggregate totals or excessive line counts tend to require manual review.
+      const augmented = { ...preview } as any;
+      try {
+        const gross = Number(preview.totalGross || preview.totalNet || 0);
+        const lineCount = Array.isArray(preview.items) ? preview.items.length : 0;
+        // Heuristics (tunable): mark manual if > £250k or > 120 items.
+        if (gross > 250_000 || lineCount > 120) {
+          augmented.needsManualQuote = true;
+          augmented.manualQuoteReason = gross > 250_000
+            ? 'Estimate exceeds automated threshold (£250k+). Manual review recommended.'
+            : 'High item complexity (120+ line items). Manual review recommended.';
+          augmented.disclaimer = `${preview.disclaimer || ''}\nThis project is flagged for manual review due to scale/complexity.`.trim();
+        }
+      } catch (e) {
+        // Non-fatal; keep original preview
+      }
+      setEstimatePreview(augmented);
     } catch (error) {
       console.error('Failed to load estimate:', error);
       onError?.(error as Error);
