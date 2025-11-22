@@ -1255,6 +1255,33 @@ router.patch("/:id", async (req, res) => {
     }
   } catch (e) {
     console.warn("[leads] estimate outcome sync failed:", (e as any)?.message || e);
+    // Capture ML project actuals when opportunity is marked as WON (non-blocking)
+    if (nextUi === "WON") {
+      const opportunity = await prisma.opportunity.findFirst({
+        where: { leadId: id },
+        select: { id: true },
+      }).catch(() => null);
+    
+      if (opportunity) {
+        const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000").replace(/\/$/, "");
+        fetch(`${env.API_URL || "http://localhost:8001"}/api/ml-actuals/capture/${opportunity.id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": req.headers.authorization || "",
+          },
+        })
+          .then((r) => {
+            if (r.ok) {
+              console.log(`[ml-actuals] Captured actuals for opportunity ${opportunity.id}`);
+            } else {
+              console.warn(`[ml-actuals] Failed to capture actuals: ${r.status} ${r.statusText}`);
+            }
+          })
+          .catch((e) => console.warn("[ml-actuals] Error capturing actuals:", e?.message || e));
+      }
+    }
+
   }
 
   res.json({ ok: true, lead: serializeLeadRow(updated) });

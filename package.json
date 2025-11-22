@@ -9,7 +9,8 @@
     "check:no-localhost": "node -e \"const {execSync}=require('child_process'); try{ execSync('grep -R \"localhost:4000\" src && exit 1',{stdio:'inherit'}); }catch(e){}\"",
     "start": "next start",
     "lint": "eslint",
-    "test:opening-description": "tsx src/lib/buildOpeningDescription.test.ts"
+    "test:opening-description": "tsx src/lib/buildOpeningDescription.test.ts",
+    "test:material-alerts": "tsx web/src/lib/materialAlerts.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

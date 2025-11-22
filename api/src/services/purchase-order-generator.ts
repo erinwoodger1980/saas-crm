@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { Prisma } from "@prisma/client";
+import fetch from "node-fetch";
 
 interface SupplierGroup {
   supplierId: string;
@@ -34,6 +35,12 @@ export async function generatePurchaseOrdersFromShoppingList(
       tenantId,
     },
     include: {
+            quote: {
+              select: {
+                id: true,
+                leadId: true
+              }
+            },
       items: {
         include: {
           materialItem: {
@@ -106,6 +113,19 @@ export async function generatePurchaseOrdersFromShoppingList(
 
   // 3. Create PurchaseOrders in transaction
   const result = await prisma.$transaction(async (tx) => {
+        // Find opportunity if quote is linked
+        let opportunityId: string | null = null;
+        if (shoppingList.quote?.leadId) {
+          const opportunity = await tx.opportunity.findFirst({
+            where: {
+              tenantId,
+              leadId: shoppingList.quote.leadId
+            },
+            select: { id: true }
+          });
+          opportunityId = opportunity?.id || null;
+        }
+
     const purchaseOrders = [];
 
     for (const group of supplierGroups.values()) {
@@ -113,6 +133,11 @@ export async function generatePurchaseOrdersFromShoppingList(
       const totalAmount = group.items.reduce(
         (sum, item) => sum.add(item.lineTotal.toString()),
         new Prisma.Decimal(0)
+            // Build notes with opportunity link for ML tracking
+            const notes = opportunityId 
+              ? `Generated from Shopping List ${shoppingListId} (Opportunity: ${opportunityId})`
+              : `Generated from Shopping List ${shoppingListId}`;
+
       );
 
       // Create PO
@@ -123,7 +148,7 @@ export async function generatePurchaseOrdersFromShoppingList(
           status: "DRAFT",
           currency: group.currency,
           totalAmount,
-          notes: `Generated from Shopping List ${shoppingListId}`,
+          notes,
           orderDate: new Date(),
         },
       });
@@ -317,6 +342,28 @@ export async function recordPurchaseOrderLineReceipt(
 
   console.log(
     `[purchase-order] Recorded receipt of ${receivedQuantity} ${result.unit} for line ${lineId}`
+  
+    // Trigger ML actuals capture if PO just became RECEIVED and has opportunityId
+    if (result.purchaseOrder.status === "RECEIVED" && result.purchaseOrder.notes?.includes("Opportunity:")) {
+      const opportunityId = result.purchaseOrder.notes.match(/Opportunity:\s*([a-zA-Z0-9_-]+)/)?.[1];
+      if (opportunityId) {
+        const API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+        // Non-blocking call to capture actuals
+        fetch(`${API_URL}/api/ml-actuals/capture-from-po/${result.purchaseOrder.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+          .then((r) => {
+            if (r.ok) {
+              console.log(`[ml-actuals] Triggered actuals capture for opportunity ${opportunityId} from PO ${result.purchaseOrder.id}`);
+            } else {
+              console.warn(`[ml-actuals] Failed to trigger actuals capture: ${r.status}`);
+            }
+          })
+          .catch((e) => console.warn("[ml-actuals] Error triggering actuals capture:", e?.message));
+      }
+    }
+  
   );
   return result;
 }

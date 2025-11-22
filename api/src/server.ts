@@ -95,6 +95,10 @@ import makeMeAdminRouter from "./routes/make-me-admin";
 import codexRunRouter from "./routes/codexRun";
 import aiLoopRouter from "./routes/ai/loop";
 import devRouter from "./routes/dev";
+import mlActualsRouter from "./routes/ml-actuals";
+import purchaseOrderUploadRouter from "./routes/purchase-order-upload";
+import estimatorAiRouter from "./routes/estimator-ai";
+
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -242,6 +246,8 @@ app.use("/public", publicRouter);
 if (publicSignupRouter) {
   app.use("/public", publicSignupRouter);
 }
+/** Public estimator AI assistant */
+app.use("/public/estimator-ai", estimatorAiRouter);
 /** Public landing tenant APIs for SEO pages */
 app.use("/api/landing-tenants", landingTenantsPublicRouter);
 app.use("/api/aggregate-reviews", aggregateReviewsRouter);
@@ -590,6 +596,8 @@ app.use("/internal/ml", requireAuth, mlOpsRouter);
 // This avoids accidental 401s for public ML health/proxy endpoints like /ml/health and /ml/parse-quote.
 app.use("/ml/insights", requireAuth, mlInsightsRouter);
 app.use("/ml/status", requireAuth, mlStatusRouter);
+app.use("/ml-actuals", requireAuth, mlActualsRouter);
+app.use("/purchase-orders/upload", requireAuth, purchaseOrderUploadRouter);
 app.use("/feature-flags", featureFlagsRouter);
 app.use("/feedback", feedbackRouter);
 app.use("/files", filesRouter);

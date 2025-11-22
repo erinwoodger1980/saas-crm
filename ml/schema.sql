@@ -101,3 +101,23 @@ CREATE TABLE IF NOT EXISTS ml_project_actuals (
 CREATE INDEX IF NOT EXISTS idx_project_actuals_tenant ON ml_project_actuals(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_project_actuals_quote ON ml_project_actuals(quote_id);
 CREATE INDEX IF NOT EXISTS idx_project_actuals_completed ON ml_project_actuals(completed_at);
+
+-- Table for tracking material cost history from uploaded/manual purchase orders
+CREATE TABLE IF NOT EXISTS ml_material_costs (
+    id SERIAL PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    material_code TEXT,
+    material_name TEXT,
+    supplier_name TEXT,
+    currency TEXT DEFAULT 'GBP',
+    unit TEXT,
+    unit_price DECIMAL(12,4) NOT NULL,
+    previous_unit_price DECIMAL(12,4),
+    price_change_percent DECIMAL(7,3),
+    purchase_order_id TEXT, -- optional external reference
+    captured_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_material_costs_tenant_material ON ml_material_costs(tenant_id, material_code);
+CREATE INDEX IF NOT EXISTS idx_material_costs_supplier ON ml_material_costs(tenant_id, supplier_name);
