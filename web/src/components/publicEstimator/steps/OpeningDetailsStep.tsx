@@ -115,8 +115,8 @@ export function OpeningDetailsStep({
           if (Object.keys(hUpdates).length) handleUpdateItem(id, hUpdates);
         }
         // AI refinement (may override heuristic if higher confidence)
-        const ai = await inferOpeningFromImage(file);
         const freshItem2 = currentItems.find(i => i.id === id);
+        const ai = await inferOpeningFromImage(file, { openingType: freshItem2?.type });
         if (ai && freshItem2) {
           const aiUpdates: Partial<OpeningItem> = {};
           if (!freshItem2.width && ai.width_mm) aiUpdates.width = ai.width_mm;
