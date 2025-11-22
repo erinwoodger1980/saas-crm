@@ -24,7 +24,7 @@
     "seed:laj-materials": "tsx prisma/seedMaterialsLaj.ts",
     "seed:cmgt7e": "tsx src/scripts/seedTenantCmgt7e.ts",
     "audit:ml-samples": "tsx src/scripts/auditMLSamples.ts",
-    "postinstall": "node scripts/prisma-postinstall.mjs && npx puppeteer browsers install chrome",
+    "postinstall": "node scripts/prisma-postinstall.mjs && if [ \"$PUPPETEER_SKIP_DOWNLOAD\" != \"1\" ]; then npx puppeteer browsers install chrome; else echo 'Skipping puppeteer browser download'; fi",
     "test:supplier": "ts-node-dev --transpile-only scripts/test-supplier-parse.ts",
     "audit:prod": "ts-node --transpile-only scripts/prod_ml_audit.ts",
     "ttl:ml": "ts-node --transpile-only scripts/ttl-ml-telemetry.ts",
