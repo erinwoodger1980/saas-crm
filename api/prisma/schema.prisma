@@ -1851,6 +1851,9 @@ model QuestionnaireField {
   // Flag to indicate the field is required for costing calculations (future use)
   requiredForCosting Boolean                @default(false)
   costingInputKey    String? // Maps to costing engine input (e.g., "door_height_mm")
+  // Standard fields are system-defined for ML training consistency
+  isStandard         Boolean                @default(false) // True for ML training fields (cannot be deleted)
+  isHidden           Boolean                @default(false) // Allow hiding standard fields if not relevant
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
@@ -1863,6 +1866,8 @@ model QuestionnaireField {
   @@unique([tenantId, key], name: "tenantId_key")
   @@index([tenantId, questionnaireId])
   @@index([tenantId, costingInputKey])
+  @@index([isStandard, isActive])
+  @@index([tenantId, isStandard])
 }
 
 // Questionnaire response (filled form instance)
