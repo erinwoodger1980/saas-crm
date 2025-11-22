@@ -855,11 +855,48 @@ router.post('/vision/depth-analyze', async (req, res) => {
     /* ---------- INTERNAL: vision telemetry ---------- */
     router.get('/internal/vision/telemetry', async (req, res) => {
       try {
+        const adminToken = process.env.ADMIN_API_TOKEN || '';
+        const headerToken = String(req.headers['x-admin-token'] || '');
+        if (!adminToken || headerToken !== adminToken) {
+          return res.status(401).json({ error: 'unauthorized' });
+        }
         const limit = Math.min(500, Number(req.query.limit) || 100);
         const persisted = await getPersistedVisionTelemetry(limit);
         return res.json({ ok: true, persistedCount: persisted.length, persisted, note: process.env.VISION_TELEMETRY_PERSIST === '1' ? 'persistence enabled' : 'persistence disabled' });
       } catch (e: any) {
         return res.status(500).json({ error: e?.message || 'telemetry_fetch_failed' });
+      }
+    });
+
+    // Summary rollup (secured similarly)
+    router.get('/internal/vision/telemetry/summary', async (req, res) => {
+      try {
+        const adminToken = process.env.ADMIN_API_TOKEN || '';
+        const headerToken = String(req.headers['x-admin-token'] || '');
+        if (!adminToken || headerToken !== adminToken) {
+          return res.status(401).json({ error: 'unauthorized' });
+        }
+        const limit = Math.min(1000, Number(req.query.limit) || 500);
+        const rows = await getPersistedVisionTelemetry(limit);
+        const count = rows.length;
+        const totalMs = rows.reduce((s,r)=>s+r.ms,0);
+        const avgMs = count ? +(totalMs / count).toFixed(2) : 0;
+        const totalCost = rows.reduce((s,r)=>s+(r.costUsd||0),0);
+        const errors = rows.filter(r=>!!r.error).length;
+        const errorRate = count ? +(errors / count).toFixed(3) : 0;
+        const byModel: Record<string,{count:number;avgMs:number;cost:number}> = {};
+        for (const r of rows) {
+          const m = r.model || 'unknown';
+          if (!byModel[m]) byModel[m] = { count:0, avgMs:0, cost:0 };
+          byModel[m].count += 1; byModel[m].avgMs += r.ms; byModel[m].cost += r.costUsd||0;
+        }
+        Object.keys(byModel).forEach(k => {
+          byModel[k].avgMs = +(byModel[k].avgMs / byModel[k].count).toFixed(2);
+          byModel[k].cost = +byModel[k].cost.toFixed(4);
+        });
+        return res.json({ ok: true, count, avgMs, totalCost: +totalCost.toFixed(4), errorRate, byModel });
+      } catch (e: any) {
+        return res.status(500).json({ error: e?.message || 'telemetry_summary_failed' });
       }
     });
     console.error('[vision depth-analyze] failed', e);
