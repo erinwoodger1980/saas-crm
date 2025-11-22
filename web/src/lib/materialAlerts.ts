@@ -100,7 +100,7 @@ export function deriveLineMaterialAlerts(
   const lineTokenSets = lines.map(l => descriptionTokens(l.description || ""));
   const lineDescriptions = lines.map(l => (l.description || "").toLowerCase());
 
-  return recentCosts
+  const derived = recentCosts
     .map(cost => {
       const code = (cost.materialCode || "").toLowerCase();
       const label = (cost.materialLabel || cost.materialCode || "").toLowerCase();
@@ -151,8 +151,9 @@ export function deriveLineMaterialAlerts(
       // Code match with tiny change still minor
       return { ...cost, matchedTokens: allTokens, matchedCode, significant, severity } as DerivedAlert;
     })
-    .filter(Boolean) as DerivedAlert[]
-    .sort((a, b) => {
+    .filter(Boolean) as DerivedAlert[];
+
+  return derived.sort((a, b) => {
       const rank = (s: 'minor' | 'moderate' | 'major') => (s === 'major' ? 3 : s === 'moderate' ? 2 : 1);
       const rDiff = rank(b.severity) - rank(a.severity);
       if (rDiff !== 0) return rDiff;
