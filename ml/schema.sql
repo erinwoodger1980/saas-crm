@@ -72,3 +72,32 @@ CREATE TABLE IF NOT EXISTS ml_email_configs (
 
 -- Index for email config lookups
 CREATE INDEX IF NOT EXISTS idx_ml_email_configs_tenant ON ml_email_configs(tenant_id) WHERE is_active = TRUE;
+
+-- Table for completed project actuals (real costs vs estimates)
+CREATE TABLE IF NOT EXISTS ml_project_actuals (
+    id SERIAL PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    quote_id TEXT,
+    lead_id TEXT,
+    questionnaire_answers JSONB NOT NULL,
+    supplier_quote_cost DECIMAL(10,2),
+    client_estimate DECIMAL(10,2),
+    client_order_value DECIMAL(10,2) NOT NULL,
+    material_cost_actual DECIMAL(10,2),
+    labor_hours_actual DECIMAL(8,2),
+    labor_cost_actual DECIMAL(10,2),
+    other_costs_actual DECIMAL(10,2),
+    total_cost_actual DECIMAL(10,2),
+    gross_profit_actual DECIMAL(10,2),
+    gp_percent_actual DECIMAL(5,2),
+    estimate_variance DECIMAL(10,2),
+    cost_variance DECIMAL(10,2),
+    completed_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    notes TEXT,
+    CONSTRAINT check_gp_target CHECK (gp_percent_actual >= 0 AND gp_percent_actual <= 100)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_actuals_tenant ON ml_project_actuals(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_project_actuals_quote ON ml_project_actuals(quote_id);
+CREATE INDEX IF NOT EXISTS idx_project_actuals_completed ON ml_project_actuals(completed_at);

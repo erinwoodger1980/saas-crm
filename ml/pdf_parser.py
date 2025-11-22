@@ -763,10 +763,6 @@ def parse_client_quote_from_text(text: str) -> Dict[str, Any]:
         elif re.search(r"oil|oiled\s+finish", text, re.IGNORECASE):
             questionnaire_answers["custom_finish"] = "Oil"
     
-        # Fire rated detection
-        if re.search(r"fire\s+door|FD30|FD60|fire\s+rated|fire\s+resistance", text, re.IGNORECASE):
-            questionnaire_answers["fire_rated"] = True
-    
         # Installation detection
         if re.search(r"installation\s+included|fitting\s+included|supply\s+and\s+install|supply\s+&\s+fit", text, re.IGNORECASE):
             questionnaire_answers["installation_required"] = True

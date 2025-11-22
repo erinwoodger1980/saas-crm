@@ -972,6 +972,41 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
       },
     });
 
+    // Auto-save to ML training data when user applies markup
+    // This captures both supplier cost and client estimate for learning
+    if (markupPercent && created > 0) {
+      try {
+        const ML_URL = process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000";
+        
+        // Get questionnaire answers from quote
+        const questionnaireAnswers = (quote.meta as any)?.questionnaireAnswers || {};
+        
+        // Calculate supplier total (reverse the markup to get supplier cost)
+        const supplierTotal = grandTotal / (1 + (markupPercent / 100));
+        
+        // Save to ml_training_data via ML service
+        await fetch(`${ML_URL}/save-quote-markup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId,
+            quoteId: quote.id,
+            questionnaireAnswers,
+            supplierCost: supplierTotal,
+            clientEstimate: grandTotal,
+            markupPercent,
+            currency,
+            source: "quote_builder_markup"
+          }),
+        }).catch((err) => {
+          console.warn("[save-processed] Failed to save to ML training:", err);
+          // Don't fail the request if ML save fails
+        });
+      } catch (mlErr) {
+        console.warn("[save-processed] ML training save error:", mlErr);
+      }
+    }
+
     return res.json({ ok: true, created, totalGBP: grandTotal, currency });
   } catch (e: any) {
     console.error("[/quotes/:id/lines/save-processed] failed:", e?.message || e);

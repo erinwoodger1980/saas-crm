@@ -2511,7 +2511,6 @@ async def train_client_quotes(req: Request):
                 has_curves = bool(qa.get("has_curves", False))
                 premium_hardware = bool(qa.get("premium_hardware", False))
                 custom_finish = qa.get("custom_finish", "None")
-                fire_rated = bool(qa.get("fire_rated", False))
                 installation_required = bool(qa.get("installation_required", False))
                 property_listed = bool(qa.get("property_listed", False))
                 
@@ -2556,7 +2555,6 @@ async def train_client_quotes(req: Request):
                     "has_curves": has_curves,
                     "premium_hardware": premium_hardware,
                     "custom_finish": str(custom_finish),
-                    "fire_rated": fire_rated,
                     "installation_required": installation_required,
                     "property_listed": property_listed,
                     "door_height_mm": float(door_height_mm) if door_height_mm else 2100.0,
@@ -2603,7 +2601,6 @@ async def train_client_quotes(req: Request):
         df_encoded["has_curves_int"] = df_encoded["has_curves"].astype(int)
         df_encoded["premium_hardware_int"] = df_encoded["premium_hardware"].astype(int)
         df_encoded["has_custom_finish"] = (df_encoded["custom_finish"] != "None").astype(int)
-        df_encoded["fire_rated_int"] = df_encoded["fire_rated"].astype(int)
         df_encoded["installation_int"] = df_encoded["installation_required"].astype(int)
         df_encoded["listed_building"] = df_encoded["property_listed"].astype(int)
         
@@ -2619,7 +2616,6 @@ async def train_client_quotes(req: Request):
             "has_curves_int",
             "premium_hardware_int",
             "has_custom_finish",
-            "fire_rated_int",
             "installation_int",
             "listed_building",
             "door_height_mm",
@@ -2736,6 +2732,176 @@ async def train_client_quotes(req: Request):
         import traceback
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Model training failed: {str(e)}")
+
+# ============================================================================
+# Project Actuals Feedback (Real Costs vs Estimates)
+# ============================================================================
+
+class ProjectActualsPayload(BaseModel):
+    """Capture completed project data with real costs for ML learning"""
+    tenantId: str
+    quoteId: Optional[str] = None
+    leadId: Optional[str] = None
+    questionnaireAnswers: Dict[str, Any]
+    supplierQuoteCost: Optional[float] = None  # What supplier charged
+    clientEstimate: Optional[float] = None  # Our initial quote
+    clientOrderValue: float  # Final agreed price (the truth)
+    materialCostActual: Optional[float] = None  # Real PO costs
+    laborHoursActual: Optional[float] = None  # Real hours from timesheets
+    laborCostActual: Optional[float] = None  # Real labor costs
+    otherCostsActual: Optional[float] = None  # Transport, subcontractors
+    completedAt: str  # ISO timestamp
+    notes: Optional[str] = None
+
+@app.post("/save-project-actuals")
+async def save_project_actuals(payload: ProjectActualsPayload):
+    """
+    Save completed project actuals for ML to learn from real-world results.
+    This is the gold standard training data - what actually happened vs what we estimated.
+    """
+    if not EMAIL_TRAINING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Project actuals not available - database connection required")
+    
+    try:
+        from db_config import get_db_manager
+        import json
+        
+        db_manager = get_db_manager()
+        
+        # Calculate derived metrics
+        total_cost = (payload.materialCostActual or 0) + (payload.laborCostActual or 0) + (payload.otherCostsActual or 0)
+        gross_profit = payload.clientOrderValue - total_cost
+        gp_percent = (gross_profit / payload.clientOrderValue * 100) if payload.clientOrderValue > 0 else 0
+        
+        estimate_variance = (payload.clientOrderValue - payload.clientEstimate) if payload.clientEstimate else None
+        cost_variance = (payload.materialCostActual - payload.supplierQuoteCost) if (payload.materialCostActual and payload.supplierQuoteCost) else None
+        
+        # Insert into ml_project_actuals
+        insert_sql = """
+            INSERT INTO ml_project_actuals (
+                tenant_id, quote_id, lead_id, questionnaire_answers,
+                supplier_quote_cost, client_estimate, client_order_value,
+                material_cost_actual, labor_hours_actual, labor_cost_actual, other_costs_actual,
+                total_cost_actual, gross_profit_actual, gp_percent_actual,
+                estimate_variance, cost_variance, completed_at, notes
+            ) VALUES (
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s, %s
+            ) RETURNING id
+        """
+        
+        with db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(insert_sql, (
+                    payload.tenantId,
+                    payload.quoteId,
+                    payload.leadId,
+                    json.dumps(payload.questionnaireAnswers),
+                    payload.supplierQuoteCost,
+                    payload.clientEstimate,
+                    payload.clientOrderValue,
+                    payload.materialCostActual,
+                    payload.laborHoursActual,
+                    payload.laborCostActual,
+                    payload.otherCostsActual,
+                    total_cost,
+                    gross_profit,
+                    gp_percent,
+                    estimate_variance,
+                    cost_variance,
+                    payload.completedAt,
+                    payload.notes
+                ))
+                result = cur.fetchone()
+                project_actual_id = result[0] if result else None
+                conn.commit()
+        
+        logger.info(f"Saved project actuals for tenant {payload.tenantId}: GP={gp_percent:.1f}%, Variance={estimate_variance}")
+        
+        return {
+            "ok": True,
+            "id": project_actual_id,
+            "metrics": {
+                "total_cost_actual": round(total_cost, 2),
+                "gross_profit_actual": round(gross_profit, 2),
+                "gp_percent_actual": round(gp_percent, 1),
+                "estimate_variance": round(estimate_variance, 2) if estimate_variance else None,
+                "cost_variance": round(cost_variance, 2) if cost_variance else None,
+                "hit_target": gp_percent >= 40.0
+            },
+            "message": f"Project actuals saved. GP: {gp_percent:.1f}% {'✅' if gp_percent >= 40 else '⚠️'}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to save project actuals: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to save project actuals: {str(e)}")
+
+class QuoteMarkupPayload(BaseModel):
+    """Capture quote builder markup application for ML learning"""
+    tenantId: str
+    quoteId: str
+    questionnaireAnswers: Dict[str, Any]
+    supplierCost: float
+    clientEstimate: float
+    markupPercent: float
+    currency: str
+    source: str = "quote_builder_markup"
+
+@app.post("/save-quote-markup")
+async def save_quote_markup(payload: QuoteMarkupPayload):
+    """
+    Auto-save quote builder markup applications to ML training data.
+    Captures supplier cost + client estimate to learn pricing patterns.
+    """
+    if not EMAIL_TRAINING_AVAILABLE:
+        return {"ok": False, "message": "ML training not available"}
+    
+    try:
+        from db_config import get_db_manager
+        import json
+        import datetime
+        
+        db_manager = get_db_manager()
+        
+        # Create training record
+        training_record = {
+            'tenant_id': payload.tenantId,
+            'email_subject': f"Quote Builder Markup - {payload.quoteId}",
+            'email_date': datetime.datetime.utcnow(),
+            'attachment_name': f"quote_{payload.quoteId}.pdf",
+            'parsed_data': json.dumps({
+                'questionnaire_answers': payload.questionnaireAnswers,
+                'supplier_cost': payload.supplierCost,
+                'client_estimate': payload.clientEstimate,
+                'markup_percent': payload.markupPercent,
+                'source': payload.source
+            }),
+            'project_type': 'quote_builder',
+            'quoted_price': payload.clientEstimate,
+            'area_m2': payload.questionnaireAnswers.get('area_m2'),
+            'materials_grade': payload.questionnaireAnswers.get('materials_grade'),
+            'confidence': 0.95,  # High confidence - user manually applied markup
+            'source_type': 'client_quote'  # This is the final client price
+        }
+        
+        saved = db_manager.save_training_data([training_record])
+        
+        logger.info(f"Saved quote markup to training: {payload.quoteId}, £{payload.supplierCost:.0f} -> £{payload.clientEstimate:.0f} ({payload.markupPercent}%)")
+        
+        return {
+            "ok": True,
+            "saved": saved,
+            "message": f"Quote markup saved to ML training ({payload.markupPercent}% markup)"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to save quote markup: {e}")
+        return {"ok": False, "error": str(e)}
 
 # ============================================================================
 # Lead Classifier Training Endpoints
