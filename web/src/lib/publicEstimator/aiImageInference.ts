@@ -17,6 +17,12 @@ export async function inferOpeningFromImage(file: File, ctx?: { openingType?: st
     const buf = await crypto.subtle.digest('SHA-1', encoder.encode(processed.truncatedBase64));
     const hash = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 
+    // Client-side cache (in-memory for session). Avoid network if already resolved.
+    const g: any = globalThis as any;
+    if (!g.__clientVisionCache) g.__clientVisionCache = new Map<string, AiImageInferenceResult>();
+    const existing = g.__clientVisionCache.get(hash);
+    if (existing) return existing;
+
     const resp = await fetch(`${API_BASE}/public/vision/analyze-photo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -30,7 +36,9 @@ export async function inferOpeningFromImage(file: File, ctx?: { openingType?: st
       })
     });
     if (!resp.ok) throw new Error('AI inference failed');
-    return await resp.json();
+    const json = await resp.json();
+    g.__clientVisionCache.set(hash, json);
+    return json;
   } catch (e) {
     console.warn('[inferOpeningFromImage] failed', (e as any)?.message);
     return null;

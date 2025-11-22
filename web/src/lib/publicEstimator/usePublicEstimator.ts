@@ -15,6 +15,8 @@ export interface PublicProjectPayload {
     height?: number;
     images?: string[];
     notes?: string;
+    inferenceSource?: 'heuristic' | 'ai';
+    inferenceConfidence?: number;
   }>;
   inspirationImages?: string[]; // user-selected inspiration / style preference images
   globalSpecs?: {
