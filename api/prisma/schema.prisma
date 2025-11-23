@@ -1895,9 +1895,10 @@ model QuestionnaireField {
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
-  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  questionnaire Questionnaire         @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
-  answers       QuestionnaireAnswer[]
+  tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  questionnaire       Questionnaire                 @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  answers             QuestionnaireAnswer[]
+  examplePhotoAnswers ExamplePhotoFieldAnswer[]     // Example photos tagged with this field
 
   @@unique([questionnaireId, key])
   // Added composite unique used by questionnaire-fields route lookups
@@ -2383,13 +2384,33 @@ model ExamplePhoto {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  uploadedBy User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  tenant     Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedBy User?                     @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  answers    ExamplePhotoFieldAnswer[] // Linked questionnaire field answers
 
   @@index([tenantId, isActive])
   @@index([tenantId, tags])
   @@index([tenantId, productType])
   @@index([displayOrder])
+}
+
+// Stores questionnaire field answers for example photos
+// Allows tagging photos with answers to ALL standard questions
+model ExamplePhotoFieldAnswer {
+  id              String   @id @default(cuid())
+  examplePhotoId  String
+  fieldId         String // QuestionnaireField.id
+  fieldKey        String // For quick lookup (denormalized)
+  value           String // Stored as string, cast based on field type
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  examplePhoto ExamplePhoto        @relation(fields: [examplePhotoId], references: [id], onDelete: Cascade)
+  field        QuestionnaireField  @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([examplePhotoId, fieldId])
+  @@index([examplePhotoId])
+  @@index([fieldKey])
 }
 
 // ---- Materials Integration ----

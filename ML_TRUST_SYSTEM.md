@@ -92,14 +92,21 @@ node scripts/extract-questionnaire-from-pdfs.js <tenantId>
 
 **Purpose:** Allow customers to browse real examples with specifications and pricing to improve estimate accuracy and provide visual reference points.
 
-**Database Model:** `ExamplePhoto`
+**Database Models:**
+
+`ExamplePhoto`:
 - Image storage: `imageUrl`, `thumbnailUrl` (400x300px auto-generated)
 - Metadata: `title`, `description`, `tags[]`
 - Classification: `productType` (door type, etc.)
-- Dimensions: `widthMm`, `heightMm`, `thicknessMm`
-- Specifications: `timberSpecies`, `timberGrade`, `glassType`, `finishType`, `fireRating`
+- Legacy fields: `widthMm`, `heightMm`, `thicknessMm`, `timberSpecies`, `glassType`, `finishType`, `fireRating`
 - Pricing: `priceGBP`, `priceDate`, `supplierName`
 - Analytics: `viewCount`, `selectionCount`, `displayOrder`
+
+`ExamplePhotoFieldAnswer`:
+- Links `ExamplePhoto` to `QuestionnaireField` answers
+- Stores complete answers to ALL standard questionnaire fields
+- Enables precise matching and filtering
+- Fields: `examplePhotoId`, `fieldId`, `fieldKey`, `value`
 
 **API Endpoints:**
 
@@ -118,10 +125,11 @@ node scripts/extract-questionnaire-from-pdfs.js <tenantId>
 
 **Admin UI:** `/admin/example-photos`
 - Upload form with metadata entry (title, description, tags, dimensions, specs, price)
+- **Complete questionnaire field answers** (all 30+ standard fields)
 - Photo grid with thumbnails
 - View/selection analytics dashboard
 - Edit/delete management
-- Drag-to-reorder (coming soon)
+- Field answer viewer per photo
 
 **Public Gallery Component:** `ExamplePhotoGallery`
 - Swipeable interface with arrow navigation
@@ -136,10 +144,34 @@ node scripts/extract-questionnaire-from-pdfs.js <tenantId>
 2. Gallery shows tagged examples matching that type
 3. Customer swipes through options
 4. Clicking "Use This Example" calls `/select` endpoint
-5. API returns specifications object
-6. Questionnaire form auto-fills with: dimensions, timber species, glass type, finish, etc.
-7. ML estimate uses these pre-filled values
+5. API returns specifications object including:
+   - Legacy fields (widthMm, heightMm, timberSpecies, etc.)
+   - **Complete questionnaire answers** (all 30+ fields if tagged)
+6. Questionnaire form auto-fills ALL matching fields
+7. ML estimate uses complete, accurate pre-filled values
 8. Analytics track which examples customers prefer
+
+**Example Selection Response:**
+```json
+{
+  "specifications": {
+    "widthMm": 900,
+    "heightMm": 2100,
+    "timberSpecies": "Oak",
+    "questionnaireAnswers": {
+      "area_m2": { "value": "2.5", "label": "Project Area (m²)", "type": "NUMBER" },
+      "materials_grade": { "value": "Premium", "label": "Materials Grade", "type": "SELECT" },
+      "project_type": { "value": "Doors", "label": "Project Type", "type": "SELECT" },
+      "door_type": { "value": "External Front Door", "label": "Door Type", "type": "SELECT" },
+      "door_height_mm": { "value": "2100", "label": "Door Height (mm)", "type": "NUMBER" },
+      "door_width_mm": { "value": "900", "label": "Door Width (mm)", "type": "NUMBER" },
+      "glazing_type": { "value": "Double Glazed", "label": "Glazing Type", "type": "SELECT" },
+      "premium_hardware": { "value": "true", "label": "Premium Hardware", "type": "BOOLEAN" },
+      // ... all other standard fields
+    }
+  }
+}
+```
 
 **Benefits:**
 - Visual reference reduces uncertainty
