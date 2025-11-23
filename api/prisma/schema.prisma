@@ -177,6 +177,7 @@ model User {
   timesheets                Timesheet[]                @relation("TimesheetUser")
   signedOffTimesheets       Timesheet[]                @relation("TimesheetSignedOffBy")
   PdfLayoutTemplate         PdfLayoutTemplate[]
+  approvedQuotes            Quote[]                    @relation("QuoteApprovedBy")
 }
 
 model SignupToken {
@@ -698,10 +699,22 @@ model Quote {
   // Global PDF layout / parser profile key (e.g. "brio_v1", "joinerysoft_a")
   supplierProfileId     String?
   pdfLayoutTemplate     PdfLayoutTemplate?     @relation(fields: [supplierProfileId], references: [supplierProfileId])
+  // ML trust and approval workflow
+  mlEstimatedPrice      Decimal?               // ML's predicted price
+  mlConfidence          Decimal?               // ML confidence score (0-1)
+  mlModelVersion        String?                // Which ML model version generated this
+  approvalStatus        String                 @default("pending") // pending, approved, rejected, needs_review
+  approvedPrice         Decimal?               // Final approved price after human review
+  approvedById          String?                // User who approved/reviewed the price
+  approvedAt            DateTime?              // When price was approved
+  priceVariancePercent  Decimal?               // (approved - ml) / ml * 100
+  isTrainingExample     Boolean                @default(false) // Use for ML training
+  trainingNotes         String?                // Notes about this training example
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   lead                  Lead?                  @relation(fields: [leadId], references: [id])
   tenant                Tenant                 @relation(fields: [tenantId], references: [id])
+  approvedBy            User?                  @relation("QuoteApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   lines                 QuoteLine[]
   supplierFiles         UploadedFile[]
   followUpEvents        FollowUpEvent[]
@@ -711,6 +724,9 @@ model Quote {
 
   @@index([tenantId, leadId])
   @@index([supplierProfileId])
+  @@index([approvalStatus])
+  @@index([isTrainingExample])
+  @@index([tenantId, approvalStatus])
 }
 
 model QuoteLine {
@@ -893,6 +909,27 @@ model TrainingRun {
 
   @@index([model, createdAt])
   @@index([tenantId, createdAt])
+}
+
+/// *
+///  * ============== ML Accuracy Tracking ==============
+model MLAccuracyMetric {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  modelVersion          String
+  periodStart           DateTime
+  periodEnd             DateTime
+  totalQuotes           Int      @default(0)
+  accurateWithin10Pct   Int      @default(0)
+  accurateWithin20Pct   Int      @default(0)
+  averageVariancePct    Decimal?
+  medianVariancePct     Decimal?
+  confidenceAvg         Decimal?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, periodStart])
 }
 
 /// *
