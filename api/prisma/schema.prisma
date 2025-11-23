@@ -97,6 +97,7 @@ model Tenant {
   fireCertificationRules     FireCertificationRule[]
   leafSizingRules            LeafSizingRule[]
   weightLookups              WeightLookup[]
+  examplePhotos              ExamplePhoto[]
 }
 
 /// ==============================
@@ -178,6 +179,7 @@ model User {
   signedOffTimesheets       Timesheet[]                @relation("TimesheetSignedOffBy")
   PdfLayoutTemplate         PdfLayoutTemplate[]
   approvedQuotes            Quote[]                    @relation("QuoteApprovedBy")
+  examplePhotos             ExamplePhoto[]
 }
 
 model SignupToken {
@@ -2346,6 +2348,48 @@ model WeightLookup {
 
   @@unique([tenantId, component, specification])
   @@index([tenantId, component])
+}
+
+// ---- Example Photo Gallery ----
+model ExamplePhoto {
+  id              String   @id @default(cuid())
+  tenantId        String
+  imageUrl        String // URL to stored image
+  thumbnailUrl    String? // Optimized thumbnail
+  title           String
+  description     String?
+  tags            String[] @default([]) // entrance, internal, french, bifold, etc.
+  // Specifications that help ML estimation
+  productType     String? // door, window, frame, etc.
+  widthMm         Int?
+  heightMm        Int?
+  thicknessMm     Int?
+  timberSpecies   String? // Oak, Pine, Ash, etc.
+  timberGrade     String?
+  glassType       String?
+  finishType      String?
+  fireRating      String? // FD30, FD60, etc.
+  // Pricing information
+  priceGBP        Decimal?
+  priceDate       DateTime? // When this price was valid
+  supplierName    String?
+  // Display settings
+  isActive        Boolean  @default(true)
+  displayOrder    Int      @default(0)
+  viewCount       Int      @default(0)
+  selectionCount  Int      @default(0) // How many times customers selected this
+  // Metadata
+  uploadedById    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedBy User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, tags])
+  @@index([tenantId, productType])
+  @@index([displayOrder])
 }
 
 // ---- Materials Integration ----

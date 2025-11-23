@@ -88,7 +88,67 @@ node scripts/extract-questionnaire-from-pdfs.js <tenantId>
 - `unit_price_gbp` - From unitPrice/costUnit
 - `line_total_gbp` - From lineTotal
 
-### 4. ML Training Interface
+### 4. Example Photo Gallery System
+
+**Purpose:** Allow customers to browse real examples with specifications and pricing to improve estimate accuracy and provide visual reference points.
+
+**Database Model:** `ExamplePhoto`
+- Image storage: `imageUrl`, `thumbnailUrl` (400x300px auto-generated)
+- Metadata: `title`, `description`, `tags[]`
+- Classification: `productType` (door type, etc.)
+- Dimensions: `widthMm`, `heightMm`, `thicknessMm`
+- Specifications: `timberSpecies`, `timberGrade`, `glassType`, `finishType`, `fireRating`
+- Pricing: `priceGBP`, `priceDate`, `supplierName`
+- Analytics: `viewCount`, `selectionCount`, `displayOrder`
+
+**API Endpoints:**
+
+*Public (no auth):*
+- `GET /example-photos/public/:tenantId` - Browse examples by tags/productType
+- `POST /example-photos/public/:photoId/view` - Track view
+- `POST /example-photos/public/:photoId/select` - Track selection, return specs to pre-fill questionnaire
+
+*Admin (auth required):*
+- `GET /example-photos/:tenantId` - List all examples
+- `POST /example-photos/:tenantId/upload` - Upload new example with metadata
+- `PATCH /example-photos/:photoId` - Update example
+- `DELETE /example-photos/:photoId` - Delete example
+- `POST /example-photos/reorder` - Update display order
+- `GET /example-photos/:tenantId/analytics` - View/selection analytics
+
+**Admin UI:** `/admin/example-photos`
+- Upload form with metadata entry (title, description, tags, dimensions, specs, price)
+- Photo grid with thumbnails
+- View/selection analytics dashboard
+- Edit/delete management
+- Drag-to-reorder (coming soon)
+
+**Public Gallery Component:** `ExamplePhotoGallery`
+- Swipeable interface with arrow navigation
+- Filter by tags/productType
+- Photo counter (1 / 10)
+- Info overlay with full specs
+- "Use This Example" button → pre-fills questionnaire fields
+- Tracks views automatically, selections on use
+
+**Integration with Questionnaire:**
+1. Customer selects product type (e.g., "entrance door")
+2. Gallery shows tagged examples matching that type
+3. Customer swipes through options
+4. Clicking "Use This Example" calls `/select` endpoint
+5. API returns specifications object
+6. Questionnaire form auto-fills with: dimensions, timber species, glass type, finish, etc.
+7. ML estimate uses these pre-filled values
+8. Analytics track which examples customers prefer
+
+**Benefits:**
+- Visual reference reduces uncertainty
+- Real pricing data improves ML accuracy
+- Customer engagement increases (browsing examples)
+- Tenant insights: which styles/specs are most popular
+- Pre-filling reduces customer effort and errors
+
+### 5. ML Training Interface
 
 **Page:** `/ml-training`
 
