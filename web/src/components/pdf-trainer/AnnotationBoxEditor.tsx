@@ -77,8 +77,8 @@ export function AnnotationBoxEditor({
         <h3 className="text-sm font-semibold">Edit Annotation</h3>
         <Button
           variant="ghost"
-          size="icon"
-          className="h-6 w-6"
+          size="sm"
+          className="h-6 w-6 p-0"
           onClick={onCancel}
         >
           <X className="h-4 w-4" />

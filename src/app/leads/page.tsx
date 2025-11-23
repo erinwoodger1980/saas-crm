@@ -268,7 +268,7 @@ export default function LeadsPage() {
 
     if (from !== to) {
       try {
-        await apiFetch(`/leads/${activeId}`, { method: "PATCH", body: { status: to } });
+        await apiFetch(`/leads/${activeId}`, { method: "PATCH", headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: to }) });
       } catch {
         setGrouped(prev); // rollback
       }
@@ -298,7 +298,8 @@ export default function LeadsPage() {
     try {
       await apiFetch("/leads/ai/feedback", {
         method: "POST",
-        body: {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           provider,
           messageId,
           leadId: lead.id,
@@ -308,7 +309,7 @@ export default function LeadsPage() {
             summary: lead.custom?.summary ?? null,
             emailOnCard: lead.email ?? null,
           },
-        },
+        }),
       });
     } catch (e) {
       console.error("feedback failed:", e);
@@ -366,7 +367,7 @@ export default function LeadsPage() {
         return next;
       });
 
-      await apiFetch(`/leads/${targetId}`, { method: "PATCH", body: payload });
+      await apiFetch(`/leads/${targetId}`, { method: "PATCH", headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 
       setDetails((d) => (d ? ({ ...d, ...payload } as Lead) : d));
       setPreviewLead((p) => (p ? ({ ...p, ...payload } as Lead) : p));

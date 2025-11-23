@@ -374,8 +374,9 @@ export default function QuoteBuilderPage() {
         }
         
         // Parse without transformations
-        const res = await apiFetch(`/quotes/${encodeURIComponent(quoteId)}/process-supplier`, {
+        const res = await apiFetch<{ lines?: ParsedLineDto[]; count?: number }>(`/quotes/${encodeURIComponent(quoteId)}/process-supplier`, {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             convertCurrency: false,
             distributeDelivery: false,

@@ -92,7 +92,8 @@ export default function FeedbackWidget() {
       }
       await apiFetch("/feedback", {
         method: "POST",
-        body: payload,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
       setSuccess(true);
       setComment("");

@@ -13,6 +13,9 @@ export type CurrentUser = {
   firstName?: string | null;
   lastName?: string | null;
   isEarlyAdopter?: boolean | null;
+  isDeveloper?: boolean | null;
+  // Allow accessing additional flags without type errors
+  [key: string]: any;
 };
 
 const fetcher = (path: string) => apiFetch<CurrentUser>(path);

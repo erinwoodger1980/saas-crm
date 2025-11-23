@@ -136,7 +136,7 @@ function OptionsEditor({ field, onChange }: { field: QuestionnaireFieldRow; onCh
 }
 
 export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "" }) => {
-  const listUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields";
+  const listUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields?includeStandard=true";
   const { data, mutate, isLoading } = useSWR<QuestionnaireFieldRow[]>(listUrl, fetcher);
   const [rows, setRows] = useState<QuestionnaireFieldRow[]>([]);
   const [creating, setCreating] = useState(false);
