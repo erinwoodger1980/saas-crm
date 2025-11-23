@@ -485,6 +485,91 @@ router.get("/:photoId/field-answers", async (req: Request, res: Response) => {
   }
 });
 
+// ADMIN: AI-enhance a photo
+router.post("/:photoId/enhance", async (req: Request, res: Response) => {
+  try {
+    const { photoId } = req.params;
+    const { type = "professional", removeBackground = false } = req.body;
+
+    const photo = await prisma.examplePhoto.findUnique({
+      where: { id: photoId },
+      select: { imageUrl: true, thumbnailUrl: true },
+    });
+
+    if (!photo) {
+      return res.status(404).json({ error: "Photo not found" });
+    }
+
+    // Import enhancement functions
+    const { enhancePhoto, basicEnhancement, isAIEnhancementAvailable } = await import("../lib/photo-enhancement");
+
+    const imagePath = path.join(process.cwd(), photo.imageUrl.replace(/^\//, ""));
+    
+    let enhancedPath: string;
+    let usingAI = false;
+
+    // Try AI enhancement if available
+    if (isAIEnhancementAvailable()) {
+      try {
+        enhancedPath = await enhancePhoto(imagePath, { 
+          type: type as any,
+          removeBackground,
+          scale: 2,
+        });
+        usingAI = true;
+      } catch (aiError) {
+        console.error("AI enhancement failed, falling back to basic:", aiError);
+        enhancedPath = await basicEnhancement(imagePath);
+      }
+    } else {
+      // Fallback to basic Sharp enhancement
+      enhancedPath = await basicEnhancement(imagePath);
+    }
+
+    // Generate new thumbnail from enhanced image
+    const thumbnailPath = enhancedPath + "_thumb.jpg";
+    await sharp(enhancedPath)
+      .resize(400, 300, { fit: "cover", position: "center" })
+      .jpeg({ quality: 85 })
+      .toFile(thumbnailPath);
+
+    // Update database with new URLs
+    const enhancedUrl = `/uploads/examples/${path.basename(enhancedPath)}`;
+    const thumbnailUrl = `/uploads/examples/${path.basename(thumbnailPath)}`;
+
+    // Archive old images (rename with _old suffix)
+    try {
+      const oldImagePath = path.join(process.cwd(), photo.imageUrl.replace(/^\//, ""));
+      await fs.rename(oldImagePath, oldImagePath + "_old");
+      
+      if (photo.thumbnailUrl) {
+        const oldThumbPath = path.join(process.cwd(), photo.thumbnailUrl.replace(/^\//, ""));
+        await fs.rename(oldThumbPath, oldThumbPath + "_old");
+      }
+    } catch (archiveErr) {
+      console.error("Failed to archive old images:", archiveErr);
+    }
+
+    const updated = await prisma.examplePhoto.update({
+      where: { id: photoId },
+      data: {
+        imageUrl: enhancedUrl,
+        thumbnailUrl: thumbnailUrl,
+      },
+    });
+
+    res.json({ 
+      success: true, 
+      photo: updated,
+      enhanced: true,
+      method: usingAI ? "AI" : "basic",
+    });
+  } catch (err: any) {
+    console.error("Failed to enhance photo:", err);
+    res.status(500).json({ error: "Failed to enhance photo", details: err.message });
+  }
+});
+
 // ADMIN: Get analytics
 router.get("/:tenantId/analytics", async (req: Request, res: Response) => {
   try {

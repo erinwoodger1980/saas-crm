@@ -21,6 +21,8 @@ import {
   Tag,
   Save,
   X,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 
 interface ExamplePhoto {
@@ -51,6 +53,7 @@ export default function ExamplePhotosAdminPage() {
   const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [enhancing, setEnhancing] = useState<string | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -207,6 +210,35 @@ export default function ExamplePhotosAdminPage() {
     } catch (err) {
       console.error("Delete failed:", err);
       alert("Failed to delete");
+    }
+  }
+
+  async function enhancePhoto(id: string) {
+    if (!confirm("Enhance this photo with AI? This will replace the current image.")) return;
+
+    setEnhancing(id);
+    try {
+      const resp = await fetch(`${apiBase}/example-photos/${id}/enhance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          type: "professional",
+          removeBackground: false,
+        }),
+      });
+
+      if (!resp.ok) throw new Error("Enhancement failed");
+
+      const result = await resp.json();
+      
+      await loadPhotos();
+      
+      alert(`Photo enhanced successfully using ${result.method === "AI" ? "AI enhancement" : "basic enhancement"}!`);
+    } catch (err) {
+      console.error("Enhancement failed:", err);
+      alert("Failed to enhance photo");
+    } finally {
+      setEnhancing(null);
     }
   }
 
@@ -538,11 +570,29 @@ export default function ExamplePhotosAdminPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => setEditingId(photo.id)}
+                        onClick={() => enhancePhoto(photo.id)}
+                        disabled={enhancing === photo.id}
                         className="flex-1"
+                        title="AI enhance photo"
                       >
-                        <Edit className="h-3 w-3 mr-1" />
-                        Edit
+                        {enhancing === photo.id ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Enhancing...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            Enhance
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditingId(photo.id)}
+                      >
+                        <Edit className="h-3 w-3" />
                       </Button>
                       <Button
                         size="sm"
