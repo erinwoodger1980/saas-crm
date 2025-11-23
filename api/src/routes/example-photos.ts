@@ -1,0 +1,376 @@
+/**
+ * Example Photos API
+ * Admin interface for uploading and managing example photos
+ * Public interface for browsing and selecting examples
+ */
+
+import express, { Request, Response } from "express";
+import { prisma } from "../db";
+import multer from "multer";
+import path from "path";
+import sharp from "sharp";
+import fs from "fs/promises";
+import { z } from "zod";
+
+const router = express.Router();
+
+// Configure multer for image uploads
+const upload = multer({
+  dest: path.join(process.cwd(), "uploads/examples"),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|webp/;
+    const ext = path.extname(file.originalname).toLowerCase().slice(1);
+    if (allowed.test(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files allowed"));
+    }
+  },
+});
+
+// Validation schemas
+const createPhotoSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional(),
+  tags: z.array(z.string()).default([]),
+  productType: z.string().optional(),
+  widthMm: z.number().int().positive().optional(),
+  heightMm: z.number().int().positive().optional(),
+  thicknessMm: z.number().int().positive().optional(),
+  timberSpecies: z.string().optional(),
+  timberGrade: z.string().optional(),
+  glassType: z.string().optional(),
+  finishType: z.string().optional(),
+  fireRating: z.string().optional(),
+  priceGBP: z.number().positive().optional(),
+  priceDate: z.string().optional(),
+  supplierName: z.string().optional(),
+  displayOrder: z.number().int().default(0),
+});
+
+// PUBLIC: Get example photos by tags/filters
+router.get("/public/:tenantId", async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.params;
+    const { tags, productType, limit = "50" } = req.query;
+
+    const where: any = {
+      tenantId,
+      isActive: true,
+    };
+
+    if (tags) {
+      const tagArray = (tags as string).split(",").map((t) => t.trim());
+      where.tags = { hasSome: tagArray };
+    }
+
+    if (productType) {
+      where.productType = productType as string;
+    }
+
+    const photos = await prisma.examplePhoto.findMany({
+      where,
+      orderBy: [{ displayOrder: "asc" }, { selectionCount: "desc" }, { createdAt: "desc" }],
+      take: parseInt(limit as string),
+      select: {
+        id: true,
+        imageUrl: true,
+        thumbnailUrl: true,
+        title: true,
+        description: true,
+        tags: true,
+        productType: true,
+        widthMm: true,
+        heightMm: true,
+        thicknessMm: true,
+        timberSpecies: true,
+        glassType: true,
+        finishType: true,
+        fireRating: true,
+        priceGBP: true,
+        viewCount: true,
+      },
+    });
+
+    res.json(photos);
+  } catch (err: any) {
+    console.error("Failed to fetch example photos:", err);
+    res.status(500).json({ error: "Failed to fetch examples" });
+  }
+});
+
+// PUBLIC: Record photo view
+router.post("/public/:photoId/view", async (req: Request, res: Response) => {
+  try {
+    const { photoId } = req.params;
+
+    await prisma.examplePhoto.update({
+      where: { id: photoId },
+      data: { viewCount: { increment: 1 } },
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Failed to record view:", err);
+    res.status(500).json({ error: "Failed to record view" });
+  }
+});
+
+// PUBLIC: Record photo selection (when user picks an example)
+router.post("/public/:photoId/select", async (req: Request, res: Response) => {
+  try {
+    const { photoId } = req.params;
+
+    const photo = await prisma.examplePhoto.update({
+      where: { id: photoId },
+      data: { 
+        selectionCount: { increment: 1 },
+        viewCount: { increment: 1 },
+      },
+      select: {
+        widthMm: true,
+        heightMm: true,
+        thicknessMm: true,
+        timberSpecies: true,
+        glassType: true,
+        finishType: true,
+        fireRating: true,
+        productType: true,
+        tags: true,
+      },
+    });
+
+    // Return the specifications to pre-fill questionnaire
+    res.json({ success: true, specifications: photo });
+  } catch (err: any) {
+    console.error("Failed to record selection:", err);
+    res.status(500).json({ error: "Failed to record selection" });
+  }
+});
+
+// ADMIN: Get all example photos for tenant
+router.get("/:tenantId", async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.params;
+    const { includeInactive = "false" } = req.query;
+
+    const where: any = { tenantId };
+    if (includeInactive !== "true") {
+      where.isActive = true;
+    }
+
+    const photos = await prisma.examplePhoto.findMany({
+      where,
+      orderBy: [{ displayOrder: "asc" }, { createdAt: "desc" }],
+      include: {
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.json(photos);
+  } catch (err: any) {
+    console.error("Failed to fetch example photos:", err);
+    res.status(500).json({ error: "Failed to fetch examples" });
+  }
+});
+
+// ADMIN: Upload new example photo
+router.post("/:tenantId/upload", upload.single("image"), async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.params;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: "No image file provided" });
+    }
+
+    // Parse and validate metadata
+    const metadata = JSON.parse(req.body.metadata || "{}");
+    const validated = createPhotoSchema.parse(metadata);
+
+    // Generate thumbnail
+    const thumbnailPath = file.path + "_thumb.jpg";
+    await sharp(file.path)
+      .resize(400, 300, { fit: "cover", position: "center" })
+      .jpeg({ quality: 85 })
+      .toFile(thumbnailPath);
+
+    // In production, upload to S3/CloudStorage
+    // For now, store local paths
+    const imageUrl = `/uploads/examples/${path.basename(file.path)}`;
+    const thumbnailUrl = `/uploads/examples/${path.basename(thumbnailPath)}`;
+
+    // Get userId from auth (TODO: proper auth)
+    const userId = (req as any).auth?.userId;
+
+    const photo = await prisma.examplePhoto.create({
+      data: {
+        tenantId,
+        imageUrl,
+        thumbnailUrl,
+        uploadedById: userId,
+        ...validated,
+        priceDate: validated.priceDate ? new Date(validated.priceDate) : undefined,
+      },
+      include: {
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.json(photo);
+  } catch (err: any) {
+    console.error("Failed to upload example photo:", err);
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid metadata", details: err.errors });
+    }
+    res.status(500).json({ error: "Failed to upload photo" });
+  }
+});
+
+// ADMIN: Update example photo
+router.patch("/:photoId", async (req: Request, res: Response) => {
+  try {
+    const { photoId } = req.params;
+    const updates = createPhotoSchema.partial().parse(req.body);
+
+    const photo = await prisma.examplePhoto.update({
+      where: { id: photoId },
+      data: {
+        ...updates,
+        priceDate: updates.priceDate ? new Date(updates.priceDate as any) : undefined,
+      },
+    });
+
+    res.json(photo);
+  } catch (err: any) {
+    console.error("Failed to update example photo:", err);
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid data", details: err.errors });
+    }
+    res.status(500).json({ error: "Failed to update photo" });
+  }
+});
+
+// ADMIN: Delete example photo
+router.delete("/:photoId", async (req: Request, res: Response) => {
+  try {
+    const { photoId } = req.params;
+
+    const photo = await prisma.examplePhoto.findUnique({
+      where: { id: photoId },
+      select: { imageUrl: true, thumbnailUrl: true },
+    });
+
+    if (photo) {
+      // Delete files
+      try {
+        const imagePath = path.join(process.cwd(), photo.imageUrl.replace(/^\//, ""));
+        await fs.unlink(imagePath);
+        if (photo.thumbnailUrl) {
+          const thumbPath = path.join(process.cwd(), photo.thumbnailUrl.replace(/^\//, ""));
+          await fs.unlink(thumbPath);
+        }
+      } catch (fileErr) {
+        console.warn("Failed to delete image files:", fileErr);
+      }
+    }
+
+    await prisma.examplePhoto.delete({
+      where: { id: photoId },
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Failed to delete example photo:", err);
+    res.status(500).json({ error: "Failed to delete photo" });
+  }
+});
+
+// ADMIN: Reorder photos
+router.post("/reorder", async (req: Request, res: Response) => {
+  try {
+    const { photoIds } = req.body;
+
+    if (!Array.isArray(photoIds)) {
+      return res.status(400).json({ error: "photoIds must be an array" });
+    }
+
+    // Update display order for each photo
+    await Promise.all(
+      photoIds.map((id, index) =>
+        prisma.examplePhoto.update({
+          where: { id },
+          data: { displayOrder: index },
+        })
+      )
+    );
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Failed to reorder photos:", err);
+    res.status(500).json({ error: "Failed to reorder" });
+  }
+});
+
+// ADMIN: Get analytics
+router.get("/:tenantId/analytics", async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.params;
+
+    const photos = await prisma.examplePhoto.findMany({
+      where: { tenantId, isActive: true },
+      select: {
+        id: true,
+        title: true,
+        tags: true,
+        viewCount: true,
+        selectionCount: true,
+      },
+      orderBy: { selectionCount: "desc" },
+    });
+
+    const totalViews = photos.reduce((sum, p) => sum + p.viewCount, 0);
+    const totalSelections = photos.reduce((sum, p) => sum + p.selectionCount, 0);
+
+    const tagStats: Record<string, { views: number; selections: number }> = {};
+    photos.forEach((p) => {
+      p.tags.forEach((tag) => {
+        if (!tagStats[tag]) {
+          tagStats[tag] = { views: 0, selections: 0 };
+        }
+        tagStats[tag].views += p.viewCount;
+        tagStats[tag].selections += p.selectionCount;
+      });
+    });
+
+    res.json({
+      totalPhotos: photos.length,
+      totalViews,
+      totalSelections,
+      averageViewsPerPhoto: photos.length > 0 ? totalViews / photos.length : 0,
+      conversionRate: totalViews > 0 ? (totalSelections / totalViews) * 100 : 0,
+      topPhotos: photos.slice(0, 10),
+      tagStats,
+    });
+  } catch (err: any) {
+    console.error("Failed to get analytics:", err);
+    res.status(500).json({ error: "Failed to get analytics" });
+  }
+});
+
+export default router;

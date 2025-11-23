@@ -117,7 +117,7 @@ router.post(
             data: {
               responseId: response.id,
               fieldId,
-              value,
+              value: String(value),
             },
           });
         }

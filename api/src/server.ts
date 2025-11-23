@@ -100,6 +100,7 @@ import purchaseOrderUploadRouter from "./routes/purchase-order-upload";
 import estimatorAiRouter from "./routes/estimator-ai";
 import quoteApprovalRouter from "./routes/quote-approval";
 import mlTrainingRouter from "./routes/ml-training";
+import examplePhotosRouter from "./routes/example-photos";
 
 
 type BillingModule = typeof import("./routes/billing");
@@ -621,6 +622,8 @@ app.use("/auth", makeMeAdminRouter);
 // ML trust and approval workflows
 app.use("/quote-approval", requireAuth, quoteApprovalRouter);
 app.use("/ml", mlTrainingRouter);
+// Example photos (public browsing + admin management)
+app.use("/example-photos", examplePhotosRouter);
 // Developer Console routes
 app.use("/dev", requireAuth, devRouter);
 app.use("/ai/codex", codexRunRouter);

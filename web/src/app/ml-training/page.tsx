@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Upload, 
   FileText, 
@@ -293,10 +292,14 @@ export default function MLTrainingPage() {
       )}
 
       {message && (
-        <Alert variant={message.type === "error" ? "destructive" : "default"}>
-          {message.type === "success" ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-          <AlertDescription>{message.text}</AlertDescription>
-        </Alert>
+        <Card className={message.type === "error" ? "border-red-500" : "border-green-500"}>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              {message.type === "success" ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <AlertCircle className="h-4 w-4 text-red-500" />}
+              <p>{message.text}</p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
