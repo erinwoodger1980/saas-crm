@@ -68,7 +68,11 @@ export default function ExamplePhotosAdminPage() {
     fireRating: "",
     priceGBP: "",
     supplierName: "",
+    fieldAnswers: {} as Record<string, any>, // Questionnaire field answers
   });
+  
+  // Available questionnaire fields
+  const [questionnaireFields, setQuestionnaireFields] = useState<any[]>([]);
   
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
   const tenantId = "demo-tenant-id"; // TODO: Get from auth
@@ -76,6 +80,7 @@ export default function ExamplePhotosAdminPage() {
   useEffect(() => {
     loadPhotos();
     loadAnalytics();
+    loadQuestionnaireFields();
   }, []);
 
   async function loadPhotos() {
@@ -99,6 +104,19 @@ export default function ExamplePhotosAdminPage() {
       setAnalytics(data);
     } catch (err) {
       console.error("Failed to load analytics:", err);
+    }
+  }
+
+  async function loadQuestionnaireFields() {
+    try {
+      const resp = await fetch(`${apiBase}/fields`);
+      if (!resp.ok) throw new Error("Failed to load fields");
+      const data = await resp.json();
+      // Group by standard fields
+      const standardFields = data.filter((f: any) => f.isStandard && f.isActive);
+      setQuestionnaireFields(standardFields);
+    } catch (err) {
+      console.error("Failed to load questionnaire fields:", err);
     }
   }
 
@@ -169,6 +187,7 @@ export default function ExamplePhotosAdminPage() {
         fireRating: "",
         priceGBP: "",
         supplierName: "",
+        fieldAnswers: {},
       });
     } catch (err) {
       console.error("Upload failed:", err);
@@ -353,7 +372,83 @@ export default function ExamplePhotosAdminPage() {
               />
             </div>
 
-            <div className="space-y-2">
+            {/* All Standard Questionnaire Fields */}
+            {questionnaireFields.length > 0 && (
+              <div className="space-y-3 pt-4 border-t">
+                <div className="flex items-center gap-2">
+                  <Label className="text-base font-semibold">Complete Questionnaire Answers</Label>
+                  <Badge variant="secondary">Optional</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Tag this photo with answers to all standard questions for better matching
+                </p>
+                
+                <div className="grid gap-3 max-h-64 overflow-y-auto pr-2">
+                  {questionnaireFields.map((field: any) => (
+                    <div key={field.id} className="space-y-1">
+                      <Label htmlFor={`field_${field.key}`} className="text-xs">
+                        {field.label}
+                      </Label>
+                      {field.type === "SELECT" && field.options ? (
+                        <select
+                          id={`field_${field.key}`}
+                          className="w-full px-2 py-1 text-sm border rounded"
+                          value={formData.fieldAnswers[field.key] || ""}
+                          onChange={e => setFormData(prev => ({
+                            ...prev,
+                            fieldAnswers: { ...prev.fieldAnswers, [field.key]: e.target.value }
+                          }))}
+                        >
+                          <option value="">-- Select --</option>
+                          {(JSON.parse(field.options as any) as string[]).map((opt: string) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : field.type === "NUMBER" ? (
+                        <Input
+                          id={`field_${field.key}`}
+                          type="number"
+                          className="text-sm"
+                          value={formData.fieldAnswers[field.key] || ""}
+                          onChange={e => setFormData(prev => ({
+                            ...prev,
+                            fieldAnswers: { ...prev.fieldAnswers, [field.key]: e.target.value }
+                          }))}
+                          placeholder={field.placeholder || ""}
+                        />
+                      ) : field.type === "BOOLEAN" ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            id={`field_${field.key}`}
+                            type="checkbox"
+                            checked={formData.fieldAnswers[field.key] === "true"}
+                            onChange={e => setFormData(prev => ({
+                              ...prev,
+                              fieldAnswers: { ...prev.fieldAnswers, [field.key]: e.target.checked ? "true" : "false" }
+                            }))}
+                          />
+                          <label htmlFor={`field_${field.key}`} className="text-xs">Yes</label>
+                        </div>
+                      ) : (
+                        <Input
+                          id={`field_${field.key}`}
+                          type="text"
+                          className="text-sm"
+                          value={formData.fieldAnswers[field.key] || ""}
+                          onChange={e => setFormData(prev => ({
+                            ...prev,
+                            fieldAnswers: { ...prev.fieldAnswers, [field.key]: e.target.value }
+                          }))}
+                          placeholder={field.placeholder || ""}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 pt-4">
               <Label htmlFor="image">Photo *</Label>
               <Input
                 id="image"

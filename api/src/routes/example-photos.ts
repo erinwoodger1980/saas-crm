@@ -143,8 +143,45 @@ router.post("/public/:photoId/select", async (req: Request, res: Response) => {
       },
     });
 
+    // Get all questionnaire field answers for this photo
+    const fieldAnswers = await prisma.examplePhotoFieldAnswer.findMany({
+      where: { examplePhotoId: photoId },
+      include: {
+        field: {
+          select: {
+            key: true,
+            label: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    // Build specifications object with legacy fields + all questionnaire answers
+    const specifications: any = {
+      // Legacy direct fields
+      widthMm: photo.widthMm,
+      heightMm: photo.heightMm,
+      thicknessMm: photo.thicknessMm,
+      timberSpecies: photo.timberSpecies,
+      glassType: photo.glassType,
+      finishType: photo.finishType,
+      fireRating: photo.fireRating,
+      productType: photo.productType,
+      tags: photo.tags,
+      // All questionnaire field answers
+      questionnaireAnswers: fieldAnswers.reduce((acc, answer) => {
+        acc[answer.fieldKey] = {
+          value: answer.value,
+          label: answer.field.label,
+          type: answer.field.type,
+        };
+        return acc;
+      }, {} as Record<string, any>),
+    };
+
     // Return the specifications to pre-fill questionnaire
-    res.json({ success: true, specifications: photo });
+    res.json({ success: true, specifications });
   } catch (err: any) {
     console.error("Failed to record selection:", err);
     res.status(500).json({ error: "Failed to record selection" });
@@ -196,6 +233,9 @@ router.post("/:tenantId/upload", upload.single("image"), async (req: Request, re
     // Parse and validate metadata
     const metadata = JSON.parse(req.body.metadata || "{}");
     const validated = createPhotoSchema.parse(metadata);
+    
+    // Parse questionnaire field answers if provided
+    const fieldAnswers = metadata.fieldAnswers || {};
 
     // Generate thumbnail
     const thumbnailPath = file.path + "_thumb.jpg";
@@ -232,6 +272,38 @@ router.post("/:tenantId/upload", upload.single("image"), async (req: Request, re
       },
     });
 
+    // Save questionnaire field answers if provided
+    if (Object.keys(fieldAnswers).length > 0) {
+      // Get field IDs for the provided keys
+      const fieldKeys = Object.keys(fieldAnswers);
+      const fields = await prisma.questionnaireField.findMany({
+        where: {
+          tenantId,
+          key: { in: fieldKeys },
+        },
+        select: { id: true, key: true },
+      });
+
+      const fieldMap = new Map(fields.map(f => [f.key, f.id]));
+
+      // Create answer records
+      const answerData = fieldKeys
+        .filter(key => fieldMap.has(key) && fieldAnswers[key] != null)
+        .map(key => ({
+          examplePhotoId: photo.id,
+          fieldId: fieldMap.get(key)!,
+          fieldKey: key,
+          value: String(fieldAnswers[key]),
+        }));
+
+      if (answerData.length > 0) {
+        await prisma.examplePhotoFieldAnswer.createMany({
+          data: answerData,
+          skipDuplicates: true,
+        });
+      }
+    }
+
     res.json(photo);
   } catch (err: any) {
     console.error("Failed to upload example photo:", err);
@@ -246,7 +318,8 @@ router.post("/:tenantId/upload", upload.single("image"), async (req: Request, re
 router.patch("/:photoId", async (req: Request, res: Response) => {
   try {
     const { photoId } = req.params;
-    const updates = createPhotoSchema.partial().parse(req.body);
+    const { fieldAnswers, ...metadata } = req.body;
+    const updates = createPhotoSchema.partial().parse(metadata);
 
     const photo = await prisma.examplePhoto.update({
       where: { id: photoId },
@@ -255,6 +328,51 @@ router.patch("/:photoId", async (req: Request, res: Response) => {
         priceDate: updates.priceDate ? new Date(updates.priceDate as any) : undefined,
       },
     });
+
+    // Update field answers if provided
+    if (fieldAnswers && typeof fieldAnswers === 'object') {
+      const photoData = await prisma.examplePhoto.findUnique({
+        where: { id: photoId },
+        select: { tenantId: true },
+      });
+
+      if (photoData) {
+        // Delete existing answers
+        await prisma.examplePhotoFieldAnswer.deleteMany({
+          where: { examplePhotoId: photoId },
+        });
+
+        // Create new answers
+        const fieldKeys = Object.keys(fieldAnswers).filter(k => fieldAnswers[k] != null);
+        
+        if (fieldKeys.length > 0) {
+          const fields = await prisma.questionnaireField.findMany({
+            where: {
+              tenantId: photoData.tenantId,
+              key: { in: fieldKeys },
+            },
+            select: { id: true, key: true },
+          });
+
+          const fieldMap = new Map(fields.map(f => [f.key, f.id]));
+
+          const answerData = fieldKeys
+            .filter(key => fieldMap.has(key))
+            .map(key => ({
+              examplePhotoId: photo.id,
+              fieldId: fieldMap.get(key)!,
+              fieldKey: key,
+              value: String(fieldAnswers[key]),
+            }));
+
+          if (answerData.length > 0) {
+            await prisma.examplePhotoFieldAnswer.createMany({
+              data: answerData,
+            });
+          }
+        }
+      }
+    }
 
     res.json(photo);
   } catch (err: any) {
@@ -324,6 +442,46 @@ router.post("/reorder", async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error("Failed to reorder photos:", err);
     res.status(500).json({ error: "Failed to reorder" });
+  }
+});
+
+// ADMIN: Get field answers for a photo
+router.get("/:photoId/field-answers", async (req: Request, res: Response) => {
+  try {
+    const { photoId } = req.params;
+
+    const answers = await prisma.examplePhotoFieldAnswer.findMany({
+      where: { examplePhotoId: photoId },
+      include: {
+        field: {
+          select: {
+            key: true,
+            label: true,
+            type: true,
+            options: true,
+            group: true,
+          },
+        },
+      },
+      orderBy: {
+        field: {
+          sortOrder: "asc",
+        },
+      },
+    });
+
+    const formattedAnswers = answers.reduce((acc, answer) => {
+      acc[answer.fieldKey] = {
+        value: answer.value,
+        field: answer.field,
+      };
+      return acc;
+    }, {} as Record<string, any>);
+
+    res.json(formattedAnswers);
+  } catch (err: any) {
+    console.error("Failed to get field answers:", err);
+    res.status(500).json({ error: "Failed to get field answers" });
   }
 });
 
