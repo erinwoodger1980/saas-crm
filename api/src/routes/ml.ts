@@ -62,11 +62,16 @@ router.get("/material-costs/recent", async (req, res) => {
     const text = await r.text();
     let payload: any = {};
     try { payload = JSON.parse(text); } catch { /* ignore */ }
-    if (!r.ok) return res.status(r.status).json({ error: "upstream_error", status: r.status });
+    if (!r.ok) {
+      // Surface upstream body to assist debugging rather than opaque 500
+      console.error(`[material-costs/recent] upstream ${r.status} response:`, text.slice(0, 500));
+      return res.status(r.status).json({ error: "upstream_error", status: r.status, detail: payload || text });
+    }
     materialCostsCache.data = payload;
     materialCostsCache.ts = now;
     return res.json({ ok: true, cached: false, ...payload });
   } catch (e: any) {
+    console.error("[material-costs/recent] failed:", e?.message || e);
     return res.status(500).json({ error: "material_costs_failed", message: e?.message || String(e) });
   }
 });
@@ -90,11 +95,15 @@ router.get("/material-costs/trends", async (req, res) => {
     const txt = await r.text();
     let payload: any = {};
     try { payload = JSON.parse(txt); } catch { /* ignore */ }
-    if (!r.ok) return res.status(r.status).json({ error: "upstream_error", status: r.status });
+    if (!r.ok) {
+      console.error(`[material-costs/trends] upstream ${r.status} response:`, txt.slice(0, 500));
+      return res.status(r.status).json({ error: "upstream_error", status: r.status, detail: payload || txt });
+    }
     materialTrendsCache.data = payload;
     materialTrendsCache.ts = now;
     return res.json({ ok: true, cached: false, ...payload });
   } catch (e: any) {
+    console.error("[material-costs/trends] failed:", e?.message || e);
     return res.status(500).json({ error: "material_trends_failed", message: e?.message || String(e) });
   }
 });
