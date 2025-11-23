@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
+import { STANDARD_FIELDS } from "../lib/standardQuestionnaireFields";
 import { Prisma } from "@prisma/client";
 
 const router = Router();
@@ -65,6 +66,63 @@ router.get("/", requireAuth, async (req: any, res) => {
     const tenantId = req.auth.tenantId as string;
     const questionnaireId = req.query.questionnaireId as string | undefined;
 
+    // Auto-upsert standard fields (idempotent). Ensures they appear across UIs without running seed script.
+    // Skip when explicit ?skipEnsureStandard=1 passed (escape hatch for bulk operations)
+    const skipEnsure = String(req.query.skipEnsureStandard || "").toLowerCase() === "1";
+    if (!skipEnsure) {
+      // Find active questionnaire (create if missing)
+      let questionnaire = await prisma.questionnaire.findFirst({
+        where: { tenantId, isActive: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!questionnaire) {
+        questionnaire = await prisma.questionnaire.create({
+          data: {
+            tenantId,
+            name: "Default Questionnaire",
+            description: "Auto-created for standard ML fields",
+            isActive: true,
+          },
+        });
+      }
+
+      const existing = await prisma.questionnaireField.findMany({
+        where: { tenantId, isStandard: true },
+        select: { key: true },
+      });
+      const existingKeys = new Set(existing.map((f) => f.key));
+      const toCreate = STANDARD_FIELDS.filter((f) => !existingKeys.has(f.key));
+      if (toCreate.length) {
+        for (const f of toCreate) {
+          try {
+            await prisma.questionnaireField.create({
+              data: {
+                tenantId,
+                questionnaireId: questionnaire.id,
+                key: f.key,
+                label: f.label,
+                type: f.type,
+                options: f.options ? f.options : undefined,
+                required: f.required,
+                sortOrder: f.sortOrder,
+                order: f.sortOrder,
+                costingInputKey: f.costingInputKey || null,
+                helpText: f.helpText || null,
+                placeholder: f.placeholder || null,
+                isStandard: true,
+                isHidden: false,
+                requiredForCosting: !!f.costingInputKey,
+              },
+            });
+          } catch (e: any) {
+            if (e?.code !== "P2002") {
+              console.warn("[fields] create standard field failed", f.key, e?.message || e);
+            }
+          }
+        }
+      }
+    }
+
     const fields = await prisma.questionnaireField.findMany({
       where: {
         tenantId,
@@ -85,7 +143,6 @@ router.get("/", requireAuth, async (req: any, res) => {
         },
       },
     });
-
     return res.json(fields);
   } catch (error) {
     console.error("[GET /fields] Error:", error);
