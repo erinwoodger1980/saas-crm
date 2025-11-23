@@ -63,8 +63,11 @@ router.get("/material-costs/recent", async (req, res) => {
     let payload: any = {};
     try { payload = JSON.parse(text); } catch { /* ignore */ }
     if (!r.ok) {
-      // Surface upstream body to assist debugging rather than opaque 500
       console.error(`[material-costs/recent] upstream ${r.status} response:`, text.slice(0, 500));
+      // Graceful fallback for 404/501: return empty dataset instead of hard error so UI renders
+      if (r.status === 404 || r.status === 501) {
+        return res.json({ ok: true, cached: false, items: [], message: "ml_upstream_missing" });
+      }
       return res.status(r.status).json({ error: "upstream_error", status: r.status, detail: payload || text });
     }
     materialCostsCache.data = payload;
@@ -97,6 +100,9 @@ router.get("/material-costs/trends", async (req, res) => {
     try { payload = JSON.parse(txt); } catch { /* ignore */ }
     if (!r.ok) {
       console.error(`[material-costs/trends] upstream ${r.status} response:`, txt.slice(0, 500));
+      if (r.status === 404 || r.status === 501) {
+        return res.json({ ok: true, cached: false, points: [], message: "ml_upstream_missing" });
+      }
       return res.status(r.status).json({ error: "upstream_error", status: r.status, detail: payload || txt });
     }
     materialTrendsCache.data = payload;
