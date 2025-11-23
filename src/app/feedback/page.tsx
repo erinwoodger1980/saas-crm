@@ -142,7 +142,8 @@ export default function FeedbackPage() {
     try {
       const response = await apiFetch<{ ok: boolean; feedback: FeedbackItem }>(`/feedback/${item.id}`, {
         method: "PATCH",
-        body: { status: nextStatus },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
       });
       setItems((prev) =>
         prev.map((row) => (row.id === item.id ? { ...row, ...response.feedback } : row)),

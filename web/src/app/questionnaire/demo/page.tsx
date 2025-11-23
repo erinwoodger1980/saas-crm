@@ -27,7 +27,7 @@ export default function QuestionnaireDemoPage() {
       setLoading(true);
       setError(null);
       try {
-        const resp = await fetch(apiBase.replace(/\/$/, "") + "/questionnaire-fields");
+        const resp = await fetch(apiBase.replace(/\/$/, "") + "/questionnaire-fields?includeStandard=true");
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const json = await resp.json();
         const mapped: QuestionnaireField[] = json
@@ -165,6 +165,36 @@ export default function QuestionnaireDemoPage() {
       return `You have answered ${requiredAnswered}/${totalRequired} required questions (${progressPct}%).`;
     }
     return 'Focus on required fields first; ask about a specific field name for tailored guidance.';
+  }
+
+  // Minimal renderer for combined demo fields (matches basic types expected)
+  function renderCombinedField(field: QuestionnaireField, value: any, onChange: (v: any) => void) {
+    const commonProps = {
+      className: 'w-full rounded-md border bg-white p-2 text-xs outline-none focus:ring-2',
+      value: value ?? '',
+      onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => onChange(e.target.value),
+    };
+    if (field.type === 'select' && Array.isArray(field.options) && field.options.length) {
+      return (
+        <select {...commonProps}>
+          <option value="" />
+          {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      );
+    }
+    if (field.type === 'number') {
+      return <input type="number" {...commonProps} />;
+    }
+    if (field.type === 'boolean') {
+      return (
+        <select {...commonProps}>
+          <option value="" />
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      );
+    }
+    return <input type="text" {...commonProps} />;
   }
 
   return (

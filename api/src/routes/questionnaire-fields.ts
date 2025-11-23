@@ -17,16 +17,34 @@ router.get("/", requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
     const includeInactive = req.query.includeInactive === "true";
+    const includeStandard = req.query.includeStandard === "true";
 
-    const fields = await prisma.questionnaireField.findMany({
-      where: {
-        tenantId,
-        ...(includeInactive ? {} : { isActive: true }),
-      },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    });
-
-    return res.json(fields);
+    let where: any = { tenantId };
+    if (!includeInactive) {
+      where.isActive = true;
+    }
+    // If includeStandard, fetch all standard fields for tenant (active or hidden)
+    if (includeStandard) {
+      // Get all standard fields for tenant, regardless of isActive/isHidden
+      const standardFields = await prisma.questionnaireField.findMany({
+        where: { tenantId, isStandard: true },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      });
+      // Get all non-standard fields (respect isActive)
+      const customFields = await prisma.questionnaireField.findMany({
+        where,
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      });
+      // Merge, dedupe by id
+      const allFields = [...standardFields, ...customFields].filter((v, i, arr) => arr.findIndex(x => x.id === v.id) === i);
+      return res.json(allFields);
+    } else {
+      const fields = await prisma.questionnaireField.findMany({
+        where,
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      });
+      return res.json(fields);
+    }
   } catch (e: any) {
     console.error("[GET /questionnaire-fields] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });

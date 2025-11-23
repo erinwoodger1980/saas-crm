@@ -10,6 +10,7 @@ async function ensureDemoTenantAndUsers() {
   if (!tenant) {
     tenant = await prisma.tenant.create({
       data: {
+        slug: "demo", // added slug to satisfy schema requirement
         name: "Demo Tenant",
         seatsOffice: 5,
         seatsWorkshop: 10,
