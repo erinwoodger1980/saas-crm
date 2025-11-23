@@ -74,8 +74,60 @@ export default function QuoteBuilderPage() {
   const {
     data: questionnaireFields = [],
   } = useSWR<QuestionnaireField[]>(quote ? ["tenant-questionnaire", quote.tenantId] : null, async () => {
+    // Load legacy settings-based questionnaire config
     const settings = await apiFetch<any>("/tenant/settings");
-    return normalizeQuestionnaireFields(settings?.questionnaire);
+    const settingsFields = normalizeQuestionnaireFields(settings?.questionnaire);
+
+    // Load DB-backed standard + custom fields (auto-upsert happens in /fields route)
+    let dbFieldsRaw: any[] = [];
+    try {
+      dbFieldsRaw = await apiFetch<any>("/fields");
+    } catch (e) {
+      // Non-fatal: keep using settings-only if /fields unavailable
+      console.warn("[quote-builder] /fields fetch failed", (e as any)?.message || e);
+    }
+
+    const dbFields: QuestionnaireField[] = Array.isArray(dbFieldsRaw)
+      ? dbFieldsRaw.map((f: any) => {
+          const key = typeof f?.key === "string" ? f.key : null;
+          if (!key) return null;
+          return {
+            key,
+            label: typeof f?.label === "string" && f.label ? f.label : key,
+            type: String(f?.type || "text").toLowerCase(),
+            group: typeof f?.group === "string" && f.group ? f.group : null,
+            description: typeof f?.helpText === "string" ? f.helpText : null,
+            options: Array.isArray(f?.options)
+              ? f.options.map((o: any) => String(o || "").trim()).filter(Boolean)
+              : undefined,
+            askInQuestionnaire: f?.isHidden !== true, // hide if explicitly hidden
+            internalOnly: f?.isHidden === true, // treat hidden as internal-only for legacy UI filters
+            required: f?.required === true,
+          } as QuestionnaireField;
+        }).filter(Boolean as any)
+      : [];
+
+    // Merge by key; prefer settings metadata (so legacy grouping/ordering persists)
+    const mergedMap = new Map<string, QuestionnaireField>();
+    for (const sf of settingsFields) mergedMap.set(sf.key, sf);
+    for (const df of dbFields) {
+      if (!mergedMap.has(df.key)) mergedMap.set(df.key, df);
+    }
+    const merged = Array.from(mergedMap.values());
+
+    // Sort: first by required, then by original appearance (settings order preserved), then fallback alphabetical
+    merged.sort((a, b) => {
+      if (a.required && !b.required) return -1;
+      if (b.required && !a.required) return 1;
+      const ai = settingsFields.findIndex((f) => f.key === a.key);
+      const bi = settingsFields.findIndex((f) => f.key === b.key);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.key.localeCompare(b.key);
+    });
+
+    return merged;
   });
 
   const leadId = quote?.leadId ?? null;
