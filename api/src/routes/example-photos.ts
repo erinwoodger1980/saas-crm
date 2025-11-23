@@ -459,7 +459,6 @@ router.get("/:photoId/field-answers", async (req: Request, res: Response) => {
             label: true,
             type: true,
             options: true,
-            group: true,
           },
         },
       },
@@ -470,7 +469,7 @@ router.get("/:photoId/field-answers", async (req: Request, res: Response) => {
       },
     });
 
-    const formattedAnswers = answers.reduce((acc, answer) => {
+    const formattedAnswers = answers.reduce((acc: Record<string, any>, answer: any) => {
       acc[answer.fieldKey] = {
         value: answer.value,
         field: answer.field,
