@@ -5,56 +5,31 @@ import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { 
-  Save, ArrowLeft, FileText, Download, Send, 
-  Plus, Trash2, Copy, Upload
+  Save, ArrowLeft, Download, Send, 
+  Plus, Upload
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
+import { FireDoorGrid } from "./fire-door-grid";
+import { RfiDialog } from "@/components/rfi-dialog";
 
 interface FireDoorLineItem {
   id?: string;
   rowIndex: number;
-  // Core
-  itemType?: string;
-  code?: string;
-  quantity?: number;
-  // Door identification
-  doorRef?: string;
-  location?: string;
-  doorSetType?: string;
-  fireRating?: string;
-  acousticRatingDb?: number;
-  handing?: string;
-  // Colors
-  internalColour?: string;
-  externalColour?: string;
-  frameFinish?: string;
-  // Geometry
-  leafHeight?: number;
-  masterLeafWidth?: number;
-  slaveLeafWidth?: number;
-  leafThickness?: number;
-  leafConfiguration?: string;
-  // Finishes
-  doorFinishSide1?: string;
-  doorFinishSide2?: string;
-  doorFacing?: string;
-  lippingFinish?: string;
-  // Vision panels
-  visionQtyLeaf1?: number;
-  vp1WidthLeaf1?: number;
-  vp1HeightLeaf1?: number;
-  // Ironmongery
-  ironmongeryPackRef?: string;
-  closerOrFloorSpring?: string;
-  // Pricing
-  unitValue?: number;
-  lineTotal?: number;
   [key: string]: any;
+}
+
+interface RfiRecord {
+  id: string;
+  rowId: string | null;
+  columnKey: string;
+  title?: string | null;
+  message: string;
+  status: string;
+  visibleToClient: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface FireDoorQuote {
@@ -82,6 +57,11 @@ export default function FireDoorQuoteBuilderPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [rfis, setRfis] = useState<RfiRecord[]>([]);
+  const [rfiDialogOpen, setRfiDialogOpen] = useState(false);
+  const [currentRfi, setCurrentRfi] = useState<RfiRecord | null>(null);
+  const [rfiContext, setRfiContext] = useState<{ rowId: string | null; columnKey: string; columnName?: string }>({ rowId: null, columnKey: "" });
+  const [rfiMode, setRfiMode] = useState<"create" | "edit" | "view">("create");
   
   const [quote, setQuote] = useState<FireDoorQuote>({
     title: "New Fire Door Quote",
@@ -99,8 +79,6 @@ export default function FireDoorQuoteBuilderPage() {
     notes: "",
   });
 
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-
   useEffect(() => {
     if (params?.id && params.id !== "new") {
       loadQuote(params.id as string);
@@ -115,6 +93,7 @@ export default function FireDoorQuoteBuilderPage() {
     try {
       const data = await apiFetch<FireDoorQuote>(`/fire-door-quotes/${id}`);
       setQuote(data);
+      await loadRfis(id);
     } catch (error) {
       console.error("Error loading quote:", error);
       toast({
@@ -124,6 +103,15 @@ export default function FireDoorQuoteBuilderPage() {
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadRfis(projectId: string) {
+    try {
+      const data = await apiFetch<RfiRecord[]>(`/rfis?projectId=${projectId}`);
+      setRfis(data || []);
+    } catch (error) {
+      console.error("Error loading RFIs:", error);
     }
   }
 
@@ -163,13 +151,13 @@ export default function FireDoorQuoteBuilderPage() {
   function addLineItem() {
     const newItem: FireDoorLineItem = {
       rowIndex: quote.lineItems.length,
-      itemType: "Product",
-      quantity: 1,
       doorRef: `DOOR-${quote.lineItems.length + 1}`,
-      fireRating: "FD30",
-      leafHeight: 2040,
-      masterLeafWidth: 826,
-      leafThickness: 44,
+      location: "",
+      quantity: 1,
+      rating: "FD30",
+      doorHeight: 2040,
+      masterWidth: 826,
+      unitValue: 0,
     };
     
     setQuote({
@@ -178,59 +166,62 @@ export default function FireDoorQuoteBuilderPage() {
     });
   }
 
-  function removeLineItem(index: number) {
-    const updated = [...quote.lineItems];
-    updated.splice(index, 1);
-    // Re-index remaining items
-    updated.forEach((item, idx) => {
-      item.rowIndex = idx;
-    });
-    setQuote({ ...quote, lineItems: updated });
-  }
-
-  function duplicateLineItem(index: number) {
-    const original = quote.lineItems[index];
-    const duplicate: FireDoorLineItem = {
-      ...original,
-      id: undefined, // New item, no ID
-      rowIndex: quote.lineItems.length,
-      doorRef: `${original.doorRef}-COPY`,
-    };
+  function handleLineItemsChange(items: FireDoorLineItem[]) {
+    // Re-index items
+    const indexed = items.map((item, idx) => ({ ...item, rowIndex: idx }));
+    
+    // Calculate total
+    const total = indexed.reduce((sum, item: any) => sum + ((item.quantity || 0) * (item.unitValue || 0)), 0);
     
     setQuote({
       ...quote,
-      lineItems: [...quote.lineItems, duplicate],
+      lineItems: indexed,
+      totalValue: total,
     });
   }
 
-  function updateLineItem(index: number, field: string, value: any) {
-    const updated = [...quote.lineItems];
-    updated[index] = { ...updated[index], [field]: value };
-    
-    // Auto-calculate lineTotal if quantity or unitValue changes
-    if (field === "quantity" || field === "unitValue") {
-      const qty = field === "quantity" ? value : updated[index].quantity || 0;
-      const unit = field === "unitValue" ? value : updated[index].unitValue || 0;
-      updated[index].lineTotal = qty * unit;
-    }
-    
-    setQuote({ ...quote, lineItems: updated });
-    calculateTotal(updated);
+  function handleAddRfi(rowId: string | null, columnKey: string) {
+    setRfiContext({ rowId, columnKey });
+    setCurrentRfi(null);
+    setRfiMode("create");
+    setRfiDialogOpen(true);
   }
 
-  function calculateTotal(items: FireDoorLineItem[]) {
-    const total = items.reduce((sum, item) => sum + (item.lineTotal || 0), 0);
-    setQuote(prev => ({ ...prev, totalValue: total }));
+  function handleSelectRfi(rfi: RfiRecord) {
+    setCurrentRfi(rfi);
+    setRfiContext({ rowId: rfi.rowId, columnKey: rfi.columnKey });
+    setRfiMode("edit");
+    setRfiDialogOpen(true);
   }
 
-  function toggleRowExpanded(index: number) {
-    const newExpanded = new Set(expandedRows);
-    if (newExpanded.has(index)) {
-      newExpanded.delete(index);
-    } else {
-      newExpanded.add(index);
+  async function handleSaveRfi(rfiData: Partial<RfiRecord>) {
+    try {
+      const endpoint = rfiData.id ? `/rfis/${rfiData.id}` : "/rfis";
+      const method = rfiData.id ? "PUT" : "POST";
+      
+      const payload = {
+        ...rfiData,
+        projectId: quote.id,
+      };
+
+      await apiFetch(endpoint, {
+        method,
+        body: JSON.stringify(payload),
+      });
+
+      toast({
+        title: "Success",
+        description: `RFI ${rfiData.id ? 'updated' : 'created'} successfully`,
+      });
+
+      // Reload RFIs
+      if (quote.id) {
+        await loadRfis(quote.id);
+      }
+    } catch (error) {
+      console.error("Error saving RFI:", error);
+      throw error;
     }
-    setExpandedRows(newExpanded);
   }
 
   if (loading) {
@@ -258,10 +249,10 @@ export default function FireDoorQuoteBuilderPage() {
               </Button>
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  Fire Door Quote Builder
+                  Fire Door Quote Builder - AG Grid (144 Columns)
                 </h1>
                 <p className="text-sm text-slate-600 mt-1">
-                  Spreadsheet-style editor • {quote.lineItems.length} doors
+                  Excel-style editor with 144 columns • {quote.lineItems.length} doors • Range selection • Copy/Paste • Fill-down
                 </p>
               </div>
             </div>
@@ -363,10 +354,15 @@ export default function FireDoorQuoteBuilderPage() {
           </div>
         </div>
 
-        {/* Spreadsheet Table */}
+        {/* AG Grid Spreadsheet */}
         <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50">
-            <h2 className="text-lg font-semibold text-slate-900">Door Specifications</h2>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Door Specifications (144 Columns)</h2>
+              <p className="text-xs text-slate-600 mt-1">
+                ✓ Excel-like editing • ✓ Range selection • ✓ Copy/Paste • ✓ Fill-down • ✓ Column groups • ✓ Right-click for RFIs
+              </p>
+            </div>
             <Button
               onClick={addLineItem}
               size="sm"
@@ -377,622 +373,15 @@ export default function FireDoorQuoteBuilderPage() {
             </Button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-600 sticky top-0">
-                <tr>
-                  <th className="px-2 py-3 text-left w-10">#</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Door Ref</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Location</th>
-                  <th className="px-2 py-3 text-left w-16">Qty</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Fire Rating</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Door Set Type</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Handing</th>
-                  <th className="px-2 py-3 text-left w-24">Height (mm)</th>
-                  <th className="px-2 py-3 text-left w-24">Width (mm)</th>
-                  <th className="px-2 py-3 text-left w-24">Thickness</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Internal Colour</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">External Colour</th>
-                  <th className="px-2 py-3 text-left w-20">Acoustic dB</th>
-                  <th className="px-2 py-3 text-left w-24">Slave Width</th>
-                  <th className="px-2 py-3 text-left min-w-[140px]">Leaf Config</th>
-                  <th className="px-2 py-3 text-left min-w-[140px]">Door Finish Side 1</th>
-                  <th className="px-2 py-3 text-left min-w-[140px]">Door Finish Side 2</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Door Facing</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Frame Finish</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Lipping Finish</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Edge Prot Type</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Edge Prot Pos</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Door Undercut</th>
-                  <th className="px-2 py-3 text-left w-24">Undercut mm</th>
-                  <th className="px-2 py-3 text-left w-20">VP Qty L1</th>
-                  <th className="px-2 py-3 text-left w-24">VP1 W L1</th>
-                  <th className="px-2 py-3 text-left w-24">VP1 H L1</th>
-                  <th className="px-2 py-3 text-left w-24">VP2 W L1</th>
-                  <th className="px-2 py-3 text-left w-24">VP2 H L1</th>
-                  <th className="px-2 py-3 text-left w-20">VP Qty L2</th>
-                  <th className="px-2 py-3 text-left w-24">VP1 W L2</th>
-                  <th className="px-2 py-3 text-left w-24">VP1 H L2</th>
-                  <th className="px-2 py-3 text-left w-24">VP2 W L2</th>
-                  <th className="px-2 py-3 text-left w-24">VP2 H L2</th>
-                  <th className="px-2 py-3 text-left w-28">Total Glz Area</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Fanlight/Side Glz</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Glazing Tape</th>
-                  <th className="px-2 py-3 text-left min-w-[140px]">Ironmongery Pack</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Closer/Floor Spring</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Spindle Face Prep</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Cylinder Face Prep</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Flush Bolt Supply</th>
-                  <th className="px-2 py-3 text-left w-20">Flush Bolt Qty</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Finger Protection</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Fire Signage</th>
-                  <th className="px-2 py-3 text-left w-20">Fire Sign Qty</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Factory Fit Sign</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Fire ID Disc</th>
-                  <th className="px-2 py-3 text-left w-20">Fire ID Qty</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Door Viewer</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Viewer Position</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Viewer Prep Size</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Door Chain</th>
-                  <th className="px-2 py-3 text-left w-20">Viewer Qty</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Factory Fit Chain</th>
-                  <th className="px-2 py-3 text-left min-w-[100px]">Factory Fit Viewer</th>
-                  <th className="px-2 py-3 text-left min-w-[120px]">Addition Note 1</th>
-                  <th className="px-2 py-3 text-left w-20">Add Note 1 Qty</th>
-                  <th className="px-2 py-3 text-left w-28">Labour Cost (£)</th>
-                  <th className="px-2 py-3 text-left w-28">Material Cost (£)</th>
-                  <th className="px-2 py-3 text-left w-28">Unit Price (£)</th>
-                  <th className="px-2 py-3 text-left w-28">Line Total (£)</th>
-                  <th className="px-2 py-3 text-center w-24">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {quote.lineItems.map((item, index) => (
-                  <tr
-                    key={index}
-                    className="border-b border-slate-100 hover:bg-blue-50/50 transition-colors"
-                  >
-                    <td className="px-2 py-2 text-slate-600 font-medium">{index + 1}</td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorRef || ""}
-                        onChange={(e) => updateLineItem(index, "doorRef", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="DOOR-1"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.location || ""}
-                        onChange={(e) => updateLineItem(index, "location", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Ground floor"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.quantity || ""}
-                        onChange={(e) => updateLineItem(index, "quantity", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                        min="1"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Select
-                        value={item.fireRating || ""}
-                        onValueChange={(val) => updateLineItem(index, "fireRating", val)}
-                      >
-                        <SelectTrigger className="h-8 text-xs bg-white">
-                          <SelectValue placeholder="Select" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="FD30">FD30</SelectItem>
-                          <SelectItem value="FD60">FD60</SelectItem>
-                          <SelectItem value="FD90">FD90</SelectItem>
-                          <SelectItem value="FD120">FD120</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-2 py-2">
-                      <Select
-                        value={item.doorSetType || ""}
-                        onValueChange={(val) => updateLineItem(index, "doorSetType", val)}
-                      >
-                        <SelectTrigger className="h-8 text-xs bg-white">
-                          <SelectValue placeholder="Select" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="SINGLE">Single</SelectItem>
-                          <SelectItem value="DOUBLE">Double</SelectItem>
-                          <SelectItem value="DOUBLE_UNEQUAL">Double Unequal</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-2 py-2">
-                      <Select
-                        value={item.handing || ""}
-                        onValueChange={(val) => updateLineItem(index, "handing", val)}
-                      >
-                        <SelectTrigger className="h-8 text-xs bg-white">
-                          <SelectValue placeholder="Select" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="LH">Left Hand</SelectItem>
-                          <SelectItem value="RH">Right Hand</SelectItem>
-                          <SelectItem value="LH_RISING">LH Rising</SelectItem>
-                          <SelectItem value="RH_RISING">RH Rising</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.leafHeight || ""}
-                        onChange={(e) => updateLineItem(index, "leafHeight", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.masterLeafWidth || ""}
-                        onChange={(e) => updateLineItem(index, "masterLeafWidth", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.leafThickness || ""}
-                        onChange={(e) => updateLineItem(index, "leafThickness", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.internalColour || ""}
-                        onChange={(e) => updateLineItem(index, "internalColour", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="RAL 9016"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.externalColour || ""}
-                        onChange={(e) => updateLineItem(index, "externalColour", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="RAL 9016"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.acousticRatingDb || ""}
-                        onChange={(e) => updateLineItem(index, "acousticRatingDb", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="29"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.slaveLeafWidth || ""}
-                        onChange={(e) => updateLineItem(index, "slaveLeafWidth", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.leafConfiguration || ""}
-                        onChange={(e) => updateLineItem(index, "leafConfiguration", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Single leaf"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorFinishSide1 || ""}
-                        onChange={(e) => updateLineItem(index, "doorFinishSide1", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Painted"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorFinishSide2 || ""}
-                        onChange={(e) => updateLineItem(index, "doorFinishSide2", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Painted"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorFacing || ""}
-                        onChange={(e) => updateLineItem(index, "doorFacing", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="MDF"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.frameFinish || ""}
-                        onChange={(e) => updateLineItem(index, "frameFinish", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Painted"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.lippingFinish || ""}
-                        onChange={(e) => updateLineItem(index, "lippingFinish", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Hardwood"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorEdgeProtType || ""}
-                        onChange={(e) => updateLineItem(index, "doorEdgeProtType", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Armor plate"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorEdgeProtPos || ""}
-                        onChange={(e) => updateLineItem(index, "doorEdgeProtPos", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Leading edge"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorUndercut || ""}
-                        onChange={(e) => updateLineItem(index, "doorUndercut", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Yes/No"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={item.doorUndercutMm || ""}
-                        onChange={(e) => updateLineItem(index, "doorUndercutMm", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.visionQtyLeaf1 || ""}
-                        onChange={(e) => updateLineItem(index, "visionQtyLeaf1", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={item.vp1WidthLeaf1 || ""}
-                        onChange={(e) => updateLineItem(index, "vp1WidthLeaf1", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={item.vp1HeightLeaf1 || ""}
-                        onChange={(e) => updateLineItem(index, "vp1HeightLeaf1", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={item.vp2WidthLeaf1 || ""}
-                        onChange={(e) => updateLineItem(index, "vp2WidthLeaf1", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={item.vp2HeightLeaf1 || ""}
-                        onChange={(e) => updateLineItem(index, "vp2HeightLeaf1", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.visionQtyLeaf2 || ""}
-                        onChange={(e) => updateLineItem(index, "visionQtyLeaf2", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={item.vp1WidthLeaf2 || ""}
-                        onChange={(e) => updateLineItem(index, "vp1WidthLeaf2", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={item.vp1HeightLeaf2 || ""}
-                        onChange={(e) => updateLineItem(index, "vp1HeightLeaf2", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={item.vp2WidthLeaf2 || ""}
-                        onChange={(e) => updateLineItem(index, "vp2WidthLeaf2", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={item.vp2HeightLeaf2 || ""}
-                        onChange={(e) => updateLineItem(index, "vp2HeightLeaf2", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={item.totalGlazedAreaMaster || ""}
-                        onChange={(e) => updateLineItem(index, "totalGlazedAreaMaster", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.fanlightSidelightGlz || ""}
-                        onChange={(e) => updateLineItem(index, "fanlightSidelightGlz", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.glazingTape || ""}
-                        onChange={(e) => updateLineItem(index, "glazingTape", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.ironmongeryPackRef || ""}
-                        onChange={(e) => updateLineItem(index, "ironmongeryPackRef", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                        placeholder="Pack A"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.closerOrFloorSpring || ""}
-                        onChange={(e) => updateLineItem(index, "closerOrFloorSpring", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.spindleFacePrep || ""}
-                        onChange={(e) => updateLineItem(index, "spindleFacePrep", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.cylinderFacePrep || ""}
-                        onChange={(e) => updateLineItem(index, "cylinderFacePrep", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.flushBoltSupplyPrep || ""}
-                        onChange={(e) => updateLineItem(index, "flushBoltSupplyPrep", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.flushBoltQty || ""}
-                        onChange={(e) => updateLineItem(index, "flushBoltQty", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.fingerProtection || ""}
-                        onChange={(e) => updateLineItem(index, "fingerProtection", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.fireSignage || ""}
-                        onChange={(e) => updateLineItem(index, "fireSignage", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.fireSignageQty || ""}
-                        onChange={(e) => updateLineItem(index, "fireSignageQty", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.fireSignageFactoryFit || ""}
-                        onChange={(e) => updateLineItem(index, "fireSignageFactoryFit", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.fireIdDisc || ""}
-                        onChange={(e) => updateLineItem(index, "fireIdDisc", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.fireIdDiscQty || ""}
-                        onChange={(e) => updateLineItem(index, "fireIdDiscQty", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorViewer || ""}
-                        onChange={(e) => updateLineItem(index, "doorViewer", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorViewerPosition || ""}
-                        onChange={(e) => updateLineItem(index, "doorViewerPosition", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorViewerPrepSize || ""}
-                        onChange={(e) => updateLineItem(index, "doorViewerPrepSize", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorChain || ""}
-                        onChange={(e) => updateLineItem(index, "doorChain", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.doorViewersQty || ""}
-                        onChange={(e) => updateLineItem(index, "doorViewersQty", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorChainFactoryFit || ""}
-                        onChange={(e) => updateLineItem(index, "doorChainFactoryFit", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.doorViewersFactoryFit || ""}
-                        onChange={(e) => updateLineItem(index, "doorViewersFactoryFit", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        value={item.additionNote1 || ""}
-                        onChange={(e) => updateLineItem(index, "additionNote1", e.target.value)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        value={item.additionNote1Qty || ""}
-                        onChange={(e) => updateLineItem(index, "additionNote1Qty", parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={item.labourCost || ""}
-                        onChange={(e) => updateLineItem(index, "labourCost", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white font-mono"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={item.materialCost || ""}
-                        onChange={(e) => updateLineItem(index, "materialCost", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white font-mono"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={item.unitValue || ""}
-                        onChange={(e) => updateLineItem(index, "unitValue", parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs bg-white font-mono"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <div className="font-mono text-sm font-semibold text-slate-900">
-                        £{(item.lineTotal || 0).toFixed(2)}
-                      </div>
-                    </td>
-                    <td className="px-2 py-2">
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => duplicateLineItem(index)}
-                          className="h-7 w-7 p-0"
-                          title="Duplicate"
-                        >
-                          <Copy className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeLineItem(index)}
-                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="p-4">
+            <FireDoorGrid 
+              lineItems={quote.lineItems}
+              rfis={rfis}
+              onLineItemsChange={handleLineItemsChange}
+              onAddRfi={handleAddRfi}
+              onSelectRfi={handleSelectRfi}
+            />
           </div>
-
-          {quote.lineItems.length === 0 && (
-            <div className="text-center py-12 text-slate-500">
-              <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-              <p className="text-sm">No doors added yet. Click "Add Door" to start building your quote.</p>
-            </div>
-          )}
         </div>
 
         {/* Summary */}
@@ -1000,7 +389,9 @@ export default function FireDoorQuoteBuilderPage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Quote Summary</h3>
-              <p className="text-sm text-slate-600">{quote.lineItems.length} doors • {quote.lineItems.reduce((sum, item) => sum + (item.quantity || 0), 0)} total units</p>
+              <p className="text-sm text-slate-600">
+                {quote.lineItems.length} doors • {quote.lineItems.reduce((sum, item) => sum + (item.quantity || 0), 0)} total units
+              </p>
             </div>
             <div className="text-right">
               <p className="text-sm text-slate-600">Total Value</p>
@@ -1022,6 +413,18 @@ export default function FireDoorQuoteBuilderPage() {
           </div>
         </div>
       </div>
+
+      {/* RFI Dialog */}
+      <RfiDialog
+        open={rfiDialogOpen}
+        onOpenChange={setRfiDialogOpen}
+        rfi={currentRfi}
+        rowId={rfiContext.rowId}
+        columnKey={rfiContext.columnKey}
+        columnName={rfiContext.columnName}
+        onSave={handleSaveRfi}
+        mode={rfiMode}
+      />
     </div>
   );
 }
