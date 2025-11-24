@@ -165,6 +165,7 @@ export default function FireDoorQuoteBuilderPage() {
       doorHeight: 2040,
       masterWidth: 826,
       unitValue: 0,
+      lineTotal: 0, // API expects this field
     };
     
     setQuote({
@@ -174,11 +175,20 @@ export default function FireDoorQuoteBuilderPage() {
   }
 
   function handleLineItemsChange(items: FireDoorLineItem[]) {
-    // Re-index items
-    const indexed = items.map((item, idx) => ({ ...item, rowIndex: idx }));
+    // Re-index items and calculate line totals
+    const indexed = items.map((item, idx) => {
+      const qty = item.quantity || 0;
+      const unitVal = item.unitValue || 0;
+      const lineTotal = qty * unitVal;
+      return { 
+        ...item, 
+        rowIndex: idx,
+        lineTotal // API expects this field
+      };
+    });
     
     // Calculate total
-    const total = indexed.reduce((sum, item: any) => sum + ((item.quantity || 0) * (item.unitValue || 0)), 0);
+    const total = indexed.reduce((sum, item: any) => sum + (item.lineTotal || 0), 0);
     
     setQuote({
       ...quote,
