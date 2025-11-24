@@ -14,6 +14,7 @@ import {
   Sparkles,
   Package,
   Flame,
+  Calendar,
 } from "lucide-react";
 
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -227,30 +228,57 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 
                 {/* Fire Door Calculator - only for fire door manufacturers */}
                 {isFireDoorManufacturer && (
-                  <Link
-                    href="/fire-door-calculator"
-                    className={clsx(
-                      "group relative flex items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm transition-all",
-                      pathname === "/fire-door-calculator" || pathname?.startsWith("/fire-door-calculator/")
-                        ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
-                        : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
-                    )}
-                  >
-                    <span
+                  <>
+                    <Link
+                      href="/fire-door-calculator"
                       className={clsx(
-                        "flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors",
+                        "group relative flex items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm transition-all",
                         pathname === "/fire-door-calculator" || pathname?.startsWith("/fire-door-calculator/")
-                          ? "bg-white/20 text-white"
-                          : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
+                          ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
+                          : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
                       )}
                     >
-                      <Flame className="h-4 w-4" />
-                    </span>
-                    <span className="flex flex-col leading-tight">
-                      <span className="font-semibold">Fire Door Calculator</span>
-                      <span className="text-xs text-slate-400">Pricing tool</span>
-                    </span>
-                  </Link>
+                      <span
+                        className={clsx(
+                          "flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          pathname === "/fire-door-calculator" || pathname?.startsWith("/fire-door-calculator/")
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
+                        )}
+                      >
+                        <Flame className="h-4 w-4" />
+                      </span>
+                      <span className="flex flex-col leading-tight">
+                        <span className="font-semibold">Fire Door Calculator</span>
+                        <span className="text-xs text-slate-400">Pricing tool</span>
+                      </span>
+                    </Link>
+                    
+                    <Link
+                      href="/fire-door-schedule"
+                      className={clsx(
+                        "group relative flex items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm transition-all",
+                        pathname === "/fire-door-schedule" || pathname?.startsWith("/fire-door-schedule/")
+                          ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
+                          : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          "flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          pathname === "/fire-door-schedule" || pathname?.startsWith("/fire-door-schedule/")
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
+                        )}
+                      >
+                        <Calendar className="h-4 w-4" />
+                      </span>
+                      <span className="flex flex-col leading-tight">
+                        <span className="font-semibold">Fire Door Schedule</span>
+                        <span className="text-xs text-slate-400">Project tracking</span>
+                      </span>
+                    </Link>
+                  </>
                 )}
               </nav>
             </div>

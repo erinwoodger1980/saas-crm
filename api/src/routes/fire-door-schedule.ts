@@ -24,6 +24,16 @@ router.get("/", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
+    // Check if tenant is a fire door manufacturer
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
+    }
+
     // Optional filters
     const {
       jobLocation,

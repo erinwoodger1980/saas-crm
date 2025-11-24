@@ -1190,6 +1190,37 @@ router.patch("/:id", async (req, res) => {
             update: {}, // Don't update if already exists
           });
         }
+        
+        // Auto-create Fire Door Schedule project for fire door manufacturers
+        const tenantSettings = await tx.tenantSettings.findUnique({
+          where: { tenantId },
+          select: { isFireDoorManufacturer: true },
+        });
+        
+        if (tenantSettings?.isFireDoorManufacturer) {
+          // Check if fire door schedule project already exists for this opportunity
+          const existingSchedule = await tx.fireDoorScheduleProject.findFirst({
+            where: { tenantId, projectId: opportunity.id },
+          });
+          
+          if (!existingSchedule) {
+            await tx.fireDoorScheduleProject.create({
+              data: {
+                tenantId,
+                projectId: opportunity.id,
+                jobName: title,
+                clientName: updated.contactName || undefined,
+                dateReceived: new Date(),
+                dateRequired: deliveryDate ? new Date(deliveryDate) : undefined,
+                jobLocation: "IN PROGRESS",
+                signOffStatus: "AWAITING SCHEDULE",
+                orderingStatus: "NOT IN BOM",
+                lastUpdatedBy: (req as any).user?.id,
+                lastUpdatedAt: new Date(),
+              },
+            });
+          }
+        }
       });
     }
   } catch (e) {
