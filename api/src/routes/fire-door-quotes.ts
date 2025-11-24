@@ -73,7 +73,7 @@ router.post('/', requireAuth, async (req: any, res) => {
       const quote = await tx.quote.create({
         data: {
           tenantId,
-          leadId: lead.id,
+          leadId: lead!.id,
           title: title || 'Fire Door Quote',
           status: 'DRAFT',
           totalGBP: totalValue,
@@ -98,12 +98,11 @@ router.post('/', requireAuth, async (req: any, res) => {
       for (const item of lineItems) {
         await tx.quoteLine.create({
           data: {
-            tenantId,
             quoteId: quote.id,
-            itemDescription: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
-            quantity: item.quantity || 1,
-            unitCostGBP: item.unitValue || 0,
-            totalCostGBP: item.lineTotal || 0,
+            description: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
+            qty: item.quantity || 1,
+            unitPrice: item.unitValue || 0,
+            lineTotalGBP: item.lineTotal || 0,
             meta: item, // Store full fire door specification
           },
         });
@@ -141,7 +140,7 @@ router.post('/', requireAuth, async (req: any, res) => {
         });
       }
 
-      return { quote, lead };
+      return { quote, lead: lead! };
     });
 
     return res.json({
@@ -172,9 +171,7 @@ router.get('/:id', requireAuth, async (req: any, res) => {
         tenantId,
       },
       include: {
-        lines: {
-          orderBy: { createdAt: 'asc' },
-        },
+        lines: true,
         lead: {
           select: {
             id: true,
@@ -192,6 +189,7 @@ router.get('/:id', requireAuth, async (req: any, res) => {
 
     const quoteMeta = (quote.meta as any) || {};
     const leadCustom = (quote.lead?.custom as any) || {};
+    const quoteWithLines = quote as typeof quote & { lines: any[] };
 
     // Transform to fire door quote format
     const fireDoorQuote = {
@@ -209,13 +207,13 @@ router.get('/:id', requireAuth, async (req: any, res) => {
       status: quote.status,
       totalValue: Number(quote.totalGBP || 0),
       notes: quote.notes,
-      lineItems: quote.lines.map((item: any, index: number) => ({
+      lineItems: quoteWithLines.lines.map((item: any, index: number) => ({
         id: item.id,
         rowIndex: index,
         ...(item.meta || {}),
-        quantity: item.quantity,
-        unitValue: Number(item.unitCostGBP || 0),
-        lineTotal: Number(item.totalCostGBP || 0),
+        quantity: item.qty,
+        unitValue: Number(item.unitPrice || 0),
+        lineTotal: Number(item.lineTotalGBP || 0),
       })),
       createdAt: quote.createdAt,
       updatedAt: quote.updatedAt,
@@ -261,7 +259,7 @@ router.put('/:id', requireAuth, async (req: any, res) => {
       // Get existing quote
       const existing = await tx.quote.findFirst({
         where: { id: quoteId, tenantId },
-        include: { lineItems: true },
+        include: { lines: true },
       });
 
       if (!existing) {
@@ -299,12 +297,11 @@ router.put('/:id', requireAuth, async (req: any, res) => {
       for (const item of lineItems) {
         await tx.quoteLine.create({
           data: {
-            tenantId,
             quoteId,
-            itemDescription: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
-            quantity: item.quantity || 1,
-            unitCostGBP: item.unitValue || 0,
-            totalCostGBP: item.lineTotal || 0,
+            description: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
+            qty: item.quantity || 1,
+            unitPrice: item.unitValue || 0,
+            lineTotalGBP: item.lineTotal || 0,
             meta: item,
           },
         });
@@ -406,12 +403,11 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
       for (const item of importRecord.lineItems) {
         await tx.quoteLine.create({
           data: {
-            tenantId,
             quoteId: quote.id,
-            itemDescription: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
-            quantity: item.quantity || 1,
-            unitCostGBP: item.unitValue || 0,
-            totalCostGBP: item.lineTotal || 0,
+            description: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
+            qty: item.quantity || 1,
+            unitPrice: item.unitValue || 0,
+            lineTotalGBP: item.lineTotal || 0,
             meta: item,
           },
         });
