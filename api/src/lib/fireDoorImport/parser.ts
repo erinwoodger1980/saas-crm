@@ -174,7 +174,8 @@ export function validateCSVHeaders(csvContent: string | Buffer): { valid: boolea
     return { valid: false, missingHeaders: ['No data rows found'] };
   }
 
-  const headers = Object.keys(records[0]);
+  const firstRecord = records[0] as Record<string, any>;
+  const headers = Object.keys(firstRecord);
   const requiredHeaders = ['Item', 'Code', 'Door Ref', 'Location', 'Fire Rating', 'Value'];
   const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
 

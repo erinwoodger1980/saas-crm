@@ -102,6 +102,7 @@ import quoteApprovalRouter from "./routes/quote-approval";
 import mlTrainingRouter from "./routes/ml-training";
 import examplePhotosRouter from "./routes/example-photos";
 import fireDoorsRouter from "./routes/fire-doors";
+import materialDebugRouter from "./routes/material-debug";
 
 
 type BillingModule = typeof import("./routes/billing");
@@ -627,6 +628,8 @@ app.use("/ml", mlTrainingRouter);
 app.use("/example-photos", examplePhotosRouter);
 // Fire door import system (requires fire door manufacturer access)
 app.use("/fire-doors", requireAuth, fireDoorsRouter);
+// Material cost debug routes (internal debugging tool)
+app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
 app.use("/dev", requireAuth, devRouter);
 app.use("/ai/codex", codexRunRouter);

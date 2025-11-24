@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
+import FireDoorImportSection from "@/components/FireDoorImport";
 
 // Minimal local UI primitives fallback if shadcn components are absent
 // (If your design system differs, replace imports above accordingly.)
@@ -128,6 +129,13 @@ export default function FireDoorCalculatorPage() {
         <h1 className="text-3xl font-bold tracking-tight">Fire Door Calculator</h1>
         <p className="mt-1 text-sm text-muted-foreground">Quickly price a fire door and save to a quote.</p>
       </div>
+
+      {/* Fire Door Import Section - for manufacturers to upload CSV spreadsheets */}
+      <div className="mb-8">
+        <FireDoorImportSection />
+      </div>
+
+      <Separator className="my-8" />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
         <div className="space-y-4">
