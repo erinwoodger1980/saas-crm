@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
-import { FireDoorGrid } from "./fire-door-grid";
+import { FireDoorGrid } from "./fire-door-grid-new";
 import { RfiDialog } from "@/components/rfi-dialog";
 
 interface FireDoorLineItem {

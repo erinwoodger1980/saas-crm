@@ -1,24 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
-import { AgGridReact } from "ag-grid-react";
-import {
-  ColDef,
-  ColGroupDef,
-  GridApi,
-  GridReadyEvent,
-  CellValueChangedEvent,
-  GetContextMenuItemsParams,
-  MenuItemDef,
-  ModuleRegistry,
-} from "ag-grid-community";
-import { AllCommunityModule } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
+import DataGrid, { Column, RenderEditCellProps } from "react-data-grid";
+import "react-data-grid/lib/styles.css";
 import { apiFetch } from "@/lib/api";
-
-// Register AG Grid Community modules
-ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface FireDoorLineItem {
   id?: string;
