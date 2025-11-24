@@ -6,6 +6,7 @@ import { getAccessTokenForTenant, gmailSend } from "../services/gmail";
 import { env } from "../env";
 import fetch from "node-fetch";
 import { FOLLOWUPS_ENABLED } from "../lib/followups-feature";
+import { linkOpportunityToClientAccount } from "../lib/clientAccount";
 
 const router = Router();
 
@@ -782,7 +783,7 @@ router.post("/ensure-for-lead/:leadId", async (req: any, res: any) => {
       },
     });
     // Link opportunity to ClientAccount
-    linkOpportunityToClientAccount(opportunity.id).catch((err) => 
+    linkOpportunityToClientAccount(opportunity.id).catch((err: any) => 
       console.warn("[opportunities] Failed to link to ClientAccount:", err)
     );
   }

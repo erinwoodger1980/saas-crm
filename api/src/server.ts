@@ -104,6 +104,7 @@ import mlTrainingRouter from "./routes/ml-training";
 import examplePhotosRouter from "./routes/example-photos";
 import fireDoorsRouter from "./routes/fire-doors";
 import fireDoorScheduleRouter from "./routes/fire-door-schedule";
+import publicFireDoorsRouter from "./routes/public-fire-doors";
 import materialDebugRouter from "./routes/material-debug";
 
 
@@ -555,6 +556,9 @@ app.post("/auth/dev-login", async (req, res) => {
     res.status(500).json({ error: err?.message || "dev-login failed" });
   }
 });
+
+/* ---------------- Public Fire Door Portal ---------------- */
+app.use("/public/fire-doors", publicFireDoorsRouter);
 
 /* ---------------- Protected Routers ---------------- */
 app.use("/auth", authRouter);
