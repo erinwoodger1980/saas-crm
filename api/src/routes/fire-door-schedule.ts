@@ -17,7 +17,7 @@ const prisma = new PrismaClient();
 // GET /fire-door-schedule
 // List all fire door schedule projects for the current tenant
 // ============================================================================
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", async (req: any, res: Response) => {
   try {
     const tenantId = req.user?.tenantId;
     if (!tenantId) {
@@ -84,7 +84,7 @@ router.get("/", async (req: Request, res: Response) => {
 // GET /fire-door-schedule/:id
 // Get a single project by ID
 // ============================================================================
-router.get("/:id", async (req: Request, res: Response) => {
+router.get("/:id", async (req: any, res: Response) => {
   try {
     const tenantId = req.user?.tenantId;
     const { id } = req.params;
@@ -112,7 +112,7 @@ router.get("/:id", async (req: Request, res: Response) => {
 // POST /fire-door-schedule
 // Create a new fire door schedule project
 // ============================================================================
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", async (req: any, res: Response) => {
   try {
     const tenantId = req.user?.tenantId;
     const userId = req.user?.id;
@@ -143,7 +143,7 @@ router.post("/", async (req: Request, res: Response) => {
 // PATCH /fire-door-schedule/:id
 // Update an existing project (partial update)
 // ============================================================================
-router.patch("/:id", async (req: Request, res: Response) => {
+router.patch("/:id", async (req: any, res: Response) => {
   try {
     const tenantId = req.user?.tenantId;
     const userId = req.user?.id;
@@ -189,7 +189,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
 // DELETE /fire-door-schedule/:id
 // Delete a project
 // ============================================================================
-router.delete("/:id", async (req: Request, res: Response) => {
+router.delete("/:id", async (req: any, res: Response) => {
   try {
     const tenantId = req.user?.tenantId;
     const { id } = req.params;
@@ -220,7 +220,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
 // GET /fire-door-schedule/stats/summary
 // Get summary statistics for dashboard
 // ============================================================================
-router.get("/stats/summary", async (req: Request, res: Response) => {
+router.get("/stats/summary", async (req: any, res: Response) => {
   try {
     const tenantId = req.user?.tenantId;
 
