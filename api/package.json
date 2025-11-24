@@ -50,6 +50,7 @@
     "csv-parse": "^6.1.0",
     "dayjs": "^1.11.18",
     "dotenv": "^16.6.1",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "fast-levenshtein": "^3.0.0",
     "google-ads-api": "^21.0.1",
