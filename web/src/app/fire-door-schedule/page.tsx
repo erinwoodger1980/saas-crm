@@ -49,8 +49,8 @@ export default function FireDoorSchedulePage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  // Workflow tab (paperwork, bom, manufacturing, complete)
-  const [workflowTab, setWorkflowTab] = useState<string>("ALL");
+  // Active tab (phase-based tabs)
+  const [activeTab, setActiveTab] = useState<string>("PROJECT_OVERVIEW");
   // Location filter (cards trigger this: RED FOLDER / IN PROGRESS / COMPLETE / ALL)
   const [locationFilter, setLocationFilter] = useState<string>("ALL");
   const [showTable, setShowTable] = useState<boolean>(true); // consolidated table view toggle
@@ -62,12 +62,12 @@ export default function FireDoorSchedulePage() {
     // Load persisted UI prefs
     try {
       const savedView = localStorage.getItem("fds:view");
-      const savedWorkflow = localStorage.getItem("fds:workflow");
+      const savedActiveTab = localStorage.getItem("fds:activeTab");
       const savedLocation = localStorage.getItem("fds:location");
       const savedSortF = localStorage.getItem("fds:sortField");
       const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
       if (savedView) setShowTable(savedView === "table");
-      if (savedWorkflow) setWorkflowTab(savedWorkflow);
+      if (savedActiveTab) setActiveTab(savedActiveTab);
       if (savedLocation) setLocationFilter(savedLocation);
       if (savedSortF) setSortField(savedSortF);
       if (savedSortD === "asc" || savedSortD === "desc") setSortDir(savedSortD);
@@ -79,8 +79,8 @@ export default function FireDoorSchedulePage() {
     try { localStorage.setItem("fds:view", showTable ? "table" : "cards"); } catch {}
   }, [showTable]);
   useEffect(() => {
-    try { localStorage.setItem("fds:workflow", workflowTab); } catch {}
-  }, [workflowTab]);
+    try { localStorage.setItem("fds:activeTab", activeTab); } catch {}
+  }, [activeTab]);
   useEffect(() => {
     try { localStorage.setItem("fds:location", locationFilter); } catch {}
   }, [locationFilter]);
@@ -111,25 +111,6 @@ export default function FireDoorSchedulePage() {
       const loc = (project.jobLocation || "").toUpperCase();
       if (locationFilter === "ALL") return true;
       return loc === locationFilter;
-    })
-    // Workflow tab filter
-    .filter(project => {
-      const sign = (project.signOffStatus || "").toUpperCase();
-      const order = (project.orderingStatus || "").toUpperCase();
-      const progress = project.overallProgress || 0;
-      switch (workflowTab) {
-        case "PAPERWORK":
-          return ["NOT LOOKED AT", "AWAITING SCHEDULE", "WORKING ON SCHEDULE"].includes(sign);
-        case "BOM":
-          return ["NOT IN BOM", "IN BOM"].includes(order);
-        case "MANUFACTURING":
-          return progress > 0 && progress < 100;
-        case "COMPLETE":
-          return progress >= 100 || (project.jobLocation || "") === "COMPLETE";
-        case "ALL":
-        default:
-          return true;
-      }
     })
     .filter((project) => {
       const searchLower = searchTerm.toLowerCase();
@@ -181,6 +162,74 @@ export default function FireDoorSchedulePage() {
     return "bg-slate-100 text-slate-600";
   }
 
+  // Tab definitions with labels and column sets
+  const TAB_DEFINITIONS = {
+    PROJECT_OVERVIEW: {
+      label: 'Project Overview',
+      columns: ['mjsNumber', 'jobName', 'clientName', 'poNumber', 'dateReceived', 'dateRequired', 'jobLocation', 'overallProgress']
+    },
+    DESIGN_SIGN_OFF: {
+      label: 'Design & Sign Off',
+      columns: ['mjsNumber', 'jobName', 'signOffStatus', 'scheduledBy', 'signOffDate', 'leadTimeWeeks', 'approxDeliveryDate']
+    },
+    BOM_MATERIALS: {
+      label: 'BOM & Materials',
+      columns: ['mjsNumber', 'jobName', 'orderingStatus', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'ironmongeryStatus']
+    },
+    PRODUCTION_PROCESS: {
+      label: 'Production Process',
+      columns: ['mjsNumber', 'jobName', 'blanksCutPercent', 'edgebandPercent', 'calibratePercent', 'facingsPercent', 'sprayPercent', 'buildPercent', 'overallProgress']
+    },
+    DELIVERY_INSTALLATION: {
+      label: 'Delivery & Installation',
+      columns: ['mjsNumber', 'jobName', 'transportStatus', 'deliveryDate', 'installStart', 'installEnd', 'snaggingStatus', 'snaggingComplete']
+    },
+    NOTES_COMMUNICATION: {
+      label: 'Notes & Communication',
+      columns: ['mjsNumber', 'jobName', 'clientName', 'communicationNotes', 'internalNotes', 'paperworkComments', 'lastUpdatedBy', 'lastUpdatedAt']
+    }
+  };
+
+  // Column field labels
+  const COLUMN_LABELS: Record<string, string> = {
+    mjsNumber: 'MJS#',
+    jobName: 'Job Name',
+    clientName: 'Client',
+    poNumber: 'PO',
+    dateReceived: 'Received',
+    dateRequired: 'Required',
+    jobLocation: 'Location',
+    overallProgress: 'Progress',
+    signOffStatus: 'Sign Off',
+    scheduledBy: 'Scheduled By',
+    signOffDate: 'Signed Off',
+    leadTimeWeeks: 'Lead Time (wks)',
+    approxDeliveryDate: 'Approx Delivery',
+    orderingStatus: 'Ordering',
+    blanksStatus: 'Blanks',
+    lippingsStatus: 'Lippings',
+    facingsStatus: 'Facings',
+    glassStatus: 'Glass',
+    ironmongeryStatus: 'Ironmongery',
+    blanksCutPercent: 'Blanks Cut %',
+    edgebandPercent: 'Edgeband %',
+    calibratePercent: 'Calibrate %',
+    facingsPercent: 'Facings %',
+    sprayPercent: 'Spray %',
+    buildPercent: 'Build %',
+    transportStatus: 'Transport',
+    deliveryDate: 'Delivery',
+    installStart: 'Install Start',
+    installEnd: 'Install End',
+    snaggingStatus: 'Snagging',
+    snaggingComplete: 'Snagging Done',
+    communicationNotes: 'Communication',
+    internalNotes: 'Internal Notes',
+    paperworkComments: 'Paperwork Notes',
+    lastUpdatedBy: 'Updated By',
+    lastUpdatedAt: 'Updated At'
+  };
+
   async function updateProject(projectId: string, patch: Partial<FireDoorProject>) {
     try {
       // Optimistic UI update
@@ -197,8 +246,143 @@ export default function FireDoorSchedulePage() {
   }
 
   const jobLocationOptions = ["RED FOLDER", "IN PROGRESS", "COMPLETE"];
-  const signOffOptions = ["NOT LOOKED AT", "AWAITING SCHEDULE", "WORKING ON SCHEDULE", "SCHEDULE SIGNED OFF"];
-  const orderingOptions = ["NOT IN BOM", "IN BOM", "ORDERED", "DELIVERED"];
+  const signOffOptions = ["NOT LOOKED AT", "AWAITING SCHEDULE", "WORKING ON SCHEDULE", "SCHEDULE SENT FOR SIGN OFF", "SCHEDULE SIGNED OFF"];
+  const orderingOptions = ["NOT IN BOM", "IN BOM TBC", "IN BOM", "STOCK", "ORDERED", "RECEIVED", "ORDERED CALL OFF", "MAKE IN HOUSE", "N/A"];
+  const statusOptions = ["STOCK", "ORDERED", "RECEIVED", "N/A", "URGENT"];
+
+  // Render cell based on field type
+  function renderCell(project: FireDoorProject, field: string) {
+    const value = project[field];
+
+    // Date fields
+    if (field.includes('date') || field.includes('Date')) {
+      return (
+        <input
+          type="date"
+          className="bg-transparent outline-none text-sm"
+          value={value ? new Date(value).toISOString().slice(0, 10) : ''}
+          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+        />
+      );
+    }
+
+    // Progress/percentage fields
+    if (field.includes('Percent') || field === 'overallProgress') {
+      return (
+        <div className="flex items-center gap-2">
+          <div className="w-20 h-2 bg-slate-100 rounded overflow-hidden">
+            <div
+              className={`h-full bg-gradient-to-r ${getProgressColor(value as number)}`}
+              style={{ width: `${value || 0}%` }}
+            />
+          </div>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={value || 0}
+            onChange={(e) => updateProject(project.id, { [field]: parseInt(e.target.value) || 0 })}
+            className="w-14 bg-white/60 rounded px-1 py-0.5 text-xs border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+      );
+    }
+
+    // Boolean fields
+    if (field.includes('Checked') || field.includes('Complete') || field === 'snaggingComplete') {
+      return (
+        <input
+          type="checkbox"
+          checked={!!value}
+          onChange={(e) => updateProject(project.id, { [field]: e.target.checked })}
+          className="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-300"
+        />
+      );
+    }
+
+    // Status dropdowns
+    if (field === 'jobLocation') {
+      return (
+        <select
+          value={value || ''}
+          onChange={(e) => updateProject(project.id, { jobLocation: e.target.value })}
+          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${getStatusColor(value).replace('px-3 py-1', '')}`}
+        >
+          <option value="">--</option>
+          {jobLocationOptions.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      );
+    }
+
+    if (field === 'signOffStatus') {
+      return (
+        <select
+          value={value || ''}
+          onChange={(e) => updateProject(project.id, { signOffStatus: e.target.value })}
+          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${getStatusColor(value).replace('px-3 py-1', '')}`}
+        >
+          <option value="">--</option>
+          {signOffOptions.map(o => <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>)}
+        </select>
+      );
+    }
+
+    if (field === 'orderingStatus' || field.includes('Status')) {
+      const options = field === 'orderingStatus' ? orderingOptions : statusOptions;
+      return (
+        <select
+          value={value || ''}
+          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <option value="">--</option>
+          {options.map(o => <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>)}
+        </select>
+      );
+    }
+
+    if (field === 'scheduledBy') {
+      return (
+        <select
+          value={value || ''}
+          onChange={(e) => updateProject(project.id, { scheduledBy: e.target.value })}
+          className="text-sm px-2 py-1 rounded border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <option value="">--</option>
+          {['DARREN', 'DAVE', 'STEVE', 'PAUL', 'DAN'].map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      );
+    }
+
+    // Number fields (non-percentage)
+    if (field === 'leadTimeWeeks') {
+      return (
+        <input
+          type="number"
+          min={0}
+          value={value || ''}
+          placeholder="—"
+          onChange={(e) => updateProject(project.id, { [field]: parseInt(e.target.value) || null })}
+          className="bg-transparent outline-none w-20 text-sm border-b border-dashed border-slate-300 focus:border-blue-500"
+        />
+      );
+    }
+
+    // Read-only timestamp
+    if (field === 'lastUpdatedAt') {
+      return <span className="text-xs text-slate-500">{value ? new Date(value).toLocaleString() : '—'}</span>;
+    }
+
+    // Text fields (default)
+    return (
+      <input
+        className="bg-transparent outline-none w-full text-sm"
+        value={value || ''}
+        placeholder="—"
+        onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 w-full">
@@ -333,27 +517,23 @@ export default function FireDoorSchedulePage() {
           </div>
           {/* Tabs */}
           <div className="mt-4 flex flex-wrap gap-2">
-            {['ALL','PAPERWORK','BOM','MANUFACTURING','COMPLETE'].map(tab => {
-              const isActive = workflowTab === tab;
+            {Object.entries(TAB_DEFINITIONS).map(([tabKey, tabDef]) => {
+              const isActive = activeTab === tabKey;
               return (
                 <Button
-                  key={tab}
+                  key={tabKey}
                   variant={isActive ? 'default' : 'outline'}
                   className={`text-sm ${isActive ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent' : 'bg-white/50'} backdrop-blur-sm`}
-                  onClick={() => setWorkflowTab(tab)}
+                  onClick={() => setActiveTab(tabKey)}
                 >
-                  {tab === 'ALL' && 'All'}
-                  {tab === 'PAPERWORK' && 'Paperwork'}
-                  {tab === 'BOM' && 'BOM'}
-                  {tab === 'MANUFACTURING' && 'Manufacturing'}
-                  {tab === 'COMPLETE' && 'Complete'}
+                  {tabDef.label}
                 </Button>
               );
             })}
           </div>
           <div className="mt-2 text-xs text-slate-500 flex flex-wrap gap-4">
             <span>Location Filter: <strong>{locationFilter}</strong></span>
-            <span>Workflow Tab: <strong>{workflowTab}</strong></span>
+            <span>Active Tab: <strong>{TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS]?.label || activeTab}</strong></span>
           </div>
         </div>
         {/* Projects Listing (Table or Cards) */}
@@ -373,26 +553,15 @@ export default function FireDoorSchedulePage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
-                    {[
-                      { label: 'Job Name', field: 'jobName' },
-                      { label: 'MJS#', field: 'mjsNumber' },
-                      { label: 'Client', field: 'clientName' },
-                      { label: 'Location', field: 'jobLocation' },
-                      { label: 'Sign Off', field: 'signOffStatus' },
-                      { label: 'Ordering', field: 'orderingStatus' },
-                      { label: 'PO', field: 'poNumber' },
-                      { label: 'Received', field: 'dateReceived' },
-                      { label: 'Required', field: 'dateRequired' },
-                      { label: 'Progress', field: 'overallProgress' },
-                    ].map(col => (
+                    {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => (
                       <th
-                        key={col.field}
-                        onClick={() => toggleSort(col.field)}
+                        key={field}
+                        onClick={() => toggleSort(field)}
                         className="px-4 py-3 text-left cursor-pointer group"
                       >
                         <span className="inline-flex items-center gap-1">
-                          {col.label}
-                          {sortField === col.field ? (
+                          {COLUMN_LABELS[field] || field}
+                          {sortField === field ? (
                             sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
                           ) : (
                             <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
@@ -409,105 +578,15 @@ export default function FireDoorSchedulePage() {
                       onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                       className="cursor-pointer group hover:bg-blue-50/40 transition-colors"
                     >
-                      <td className="px-4 py-3 font-medium text-slate-900 group-hover:text-blue-700" onClick={(e)=>e.stopPropagation()}>
-                        <input
-                          className="bg-transparent outline-none w-full text-sm"
-                          value={project.jobName || ''}
-                          placeholder="Untitled Project"
-                          onChange={(e)=>updateProject(project.id,{ jobName: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
-                        <input
-                          className="bg-transparent outline-none w-24 text-sm"
-                          value={project.mjsNumber || ''}
-                          placeholder="—"
-                          onChange={(e)=>updateProject(project.id,{ mjsNumber: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
-                        <input
-                          className="bg-transparent outline-none w-full text-sm"
-                          value={project.clientName || ''}
-                          placeholder="—"
-                          onChange={(e)=>updateProject(project.id,{ clientName: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <select
-                          value={project.jobLocation || ''}
-                          onChange={(e) => updateProject(project.id, { jobLocation: e.target.value })}
-                          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${getStatusColor(project.jobLocation).replace('px-3 py-1','')}`}
+                      {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => (
+                        <td
+                          key={field}
+                          className="px-4 py-3 text-slate-600"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <option value="">--</option>
-                          {jobLocationOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <select
-                          value={project.signOffStatus || ''}
-                          onChange={(e) => updateProject(project.id, { signOffStatus: e.target.value })}
-                          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${getStatusColor(project.signOffStatus).replace('px-3 py-1','')}`}
-                        >
-                          <option value="">--</option>
-                          {signOffOptions.map(o => <option key={o} value={o}>{o.replace(/_/g,' ')}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600" onClick={(e) => e.stopPropagation()}>
-                        <select
-                          value={project.orderingStatus || ''}
-                          onChange={(e) => updateProject(project.id, { orderingStatus: e.target.value })}
-                          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        >
-                          <option value="">--</option>
-                          {orderingOptions.map(o => <option key={o} value={o}>{o.replace(/_/g,' ')}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
-                        <input
-                          className="bg-transparent outline-none w-24 text-sm"
-                          value={project.poNumber || ''}
-                          placeholder="—"
-                          onChange={(e)=>updateProject(project.id,{ poNumber: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
-                        <input
-                          type="date"
-                          className="bg-transparent outline-none text-sm"
-                          value={project.dateReceived ? new Date(project.dateReceived).toISOString().slice(0,10) : ''}
-                          onChange={(e)=>updateProject(project.id,{ dateReceived: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
-                        <input
-                          type="date"
-                          className="bg-transparent outline-none text-sm"
-                          value={project.dateRequired ? new Date(project.dateRequired).toISOString().slice(0,10) : ''}
-                          onChange={(e)=>updateProject(project.id,{ dateRequired: e.target.value })}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-24 flex items-center gap-2">
-                            <div className="w-20 h-2 bg-slate-100 rounded overflow-hidden">
-                              <div
-                                className={`h-full bg-gradient-to-r ${getProgressColor(project.overallProgress)}`}
-                                style={{ width: `${project.overallProgress || 0}%` }}
-                              />
-                            </div>
-                            <input
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={project.overallProgress || 0}
-                              onClick={(e)=>e.stopPropagation()}
-                              onChange={(e)=>updateProject(project.id,{ overallProgress: parseInt(e.target.value)||0 })}
-                              className="w-14 bg-white/60 rounded px-1 py-0.5 text-xs border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                            />
-                          </div>
-                        </div>
-                      </td>
+                          {renderCell(project, field)}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
