@@ -73,6 +73,7 @@ import workshopRouter from "./routes/workshop";
 import workshopProcessesRouter from "./routes/workshop-processes";
 import timesheetsRouter from "./routes/timesheets";
 import questionnaireResponsesRouter from "./routes/questionnaire-responses";
+import questionnairePhotosRouter from "./routes/questionnaire-photos";
 import fieldsRouter from "./routes/fields";
 
 /** ML proxy (→ forwards to FastAPI) */
@@ -583,6 +584,7 @@ app.use("/quotes", quotePricingRouter);
 // Deprecation: questionnaire-fields now aliases /fields for backwards compatibility
 app.use("/questionnaire-fields", requireAuth, fieldsRouter);
 app.use("/questionnaire-responses", questionnaireResponsesRouter);
+app.use("/questionnaire-photos", requireAuth, questionnairePhotosRouter);
 app.use("/fields", requireAuth, fieldsRouter);
 app.use("/auth/setup", authSetupRouter);
 app.use("/suppliers", requireAuth, suppliersRouter);
