@@ -393,6 +393,14 @@ export default function FireDoorQuoteBuilderPage() {
                   <th className="px-2 py-3 text-left w-24">Thickness</th>
                   <th className="px-2 py-3 text-left min-w-[120px]">Internal Colour</th>
                   <th className="px-2 py-3 text-left min-w-[120px]">External Colour</th>
+                  <th className="px-2 py-3 text-left w-20">Acoustic dB</th>
+                  <th className="px-2 py-3 text-left w-24">Slave Width</th>
+                  <th className="px-2 py-3 text-left min-w-[140px]">Leaf Config</th>
+                  <th className="px-2 py-3 text-left min-w-[140px]">Door Finish Side 1</th>
+                  <th className="px-2 py-3 text-left min-w-[140px]">Door Finish Side 2</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Door Facing</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Frame Finish</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Lipping Finish</th>
                   <th className="px-2 py-3 text-left min-w-[140px]">Ironmongery Pack</th>
                   <th className="px-2 py-3 text-left w-28">Unit Price (£)</th>
                   <th className="px-2 py-3 text-left w-28">Line Total (£)</th>
@@ -516,6 +524,71 @@ export default function FireDoorQuoteBuilderPage() {
                         onChange={(e) => updateLineItem(index, "externalColour", e.target.value)}
                         className="h-8 text-xs bg-white"
                         placeholder="RAL 9016"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        value={item.acousticRatingDb || ""}
+                        onChange={(e) => updateLineItem(index, "acousticRatingDb", parseInt(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="29"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        value={item.slaveLeafWidth || ""}
+                        onChange={(e) => updateLineItem(index, "slaveLeafWidth", parseInt(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.leafConfiguration || ""}
+                        onChange={(e) => updateLineItem(index, "leafConfiguration", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="Single leaf"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorFinishSide1 || ""}
+                        onChange={(e) => updateLineItem(index, "doorFinishSide1", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="Painted"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorFinishSide2 || ""}
+                        onChange={(e) => updateLineItem(index, "doorFinishSide2", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="Painted"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorFacing || ""}
+                        onChange={(e) => updateLineItem(index, "doorFacing", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="MDF"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.frameFinish || ""}
+                        onChange={(e) => updateLineItem(index, "frameFinish", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="Painted"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.lippingFinish || ""}
+                        onChange={(e) => updateLineItem(index, "lippingFinish", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="Hardwood"
                       />
                     </td>
                     <td className="px-2 py-2">
