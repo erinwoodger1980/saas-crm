@@ -6,6 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import useSWR from "swr";
 import InlineEditableCell from "./InlineEditableCell";
 import CreateQuestionnaireFieldModal, { NewFieldPayload } from "./CreateQuestionnaireFieldModal";
+import { VisualOptionsEditor } from "./VisualOptionsEditor";
 
 export interface QuestionnaireFieldRow {
   id: string;
@@ -16,9 +17,11 @@ export interface QuestionnaireFieldRow {
   order: number; // local ordering (maps to backend sortOrder or order)
   options?: string[] | null;
   isStandard?: boolean; // true for built-in fields
+  scope?: "client" | "item" | "internal"; // where field is used
 }
 
 const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
+const SCOPE_OPTIONS = ["client", "item", "internal"];
 
 const fetcher = (url: string) => fetch(url, { credentials: 'include' }).then((r) => r.json());
 
@@ -31,115 +34,99 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
     background: isDragging ? "#f8fafc" : undefined,
   };
   const isStandard = field.isStandard;
+  const [showOptionsEditor, setShowOptionsEditor] = useState(false);
+  
   return (
-    <tr ref={setNodeRef} style={style} className={`text-xs border-b last:border-b-0 ${isStandard ? 'bg-slate-50/50' : ''}`}>
-      <td className="w-6 text-slate-400 select-none" {...attributes} {...listeners} title="Drag to reorder">
-        ⠿
-      </td>
-      <td className="min-w-[160px]">
-        <InlineEditableCell
-          value={field.label}
-          onSave={async (next) => onChange({ label: next })}
-        />
-      </td>
-      <td className="w-32">
-        <InlineEditableCell
-          value={field.type}
-          type="select"
-          selectOptions={FIELD_TYPES}
-          onSave={async (next) => onChange({ type: next })}
-        />
-      </td>
-      <td className="w-20 text-center">
-        <input
-          type="checkbox"
+    <>
+      <tr ref={setNodeRef} style={style} className={`text-xs border-b last:border-b-0 ${isStandard ? 'bg-slate-50/50' : ''}`}>
+        <td className="w-6 text-slate-400 select-none" {...attributes} {...listeners} title="Drag to reorder">
+          ⠿
+        </td>
+        <td className="min-w-[160px]">
+          <InlineEditableCell
+            value={field.label}
+            onSave={async (next) => onChange({ label: next })}
+          />
+        </td>
+        <td className="w-32">
+          <InlineEditableCell
+            value={field.type}
+            type="select"
+            selectOptions={FIELD_TYPES}
+            onSave={async (next) => onChange({ type: next })}
+          />
+        </td>
+        <td className="w-24">
+          <InlineEditableCell
+            value={field.scope || "item"}
+            type="select"
+            selectOptions={SCOPE_OPTIONS}
+            onSave={async (next) => onChange({ scope: next as any })}
+          />
+        </td>
+        <td className="w-20 text-center">
+          <input
+            type="checkbox"
             className="h-4 w-4"
-          checked={field.required}
-          onChange={(e) => onChange({ required: e.target.checked })}
-          title="Toggle required"
-        />
-      </td>
-      <td className="min-w-[140px]">
-        <InlineEditableCell
-          value={field.costingInputKey || ""}
-          onSave={async (next) => onChange({ costingInputKey: next || null })}
-        />
-      </td>
-      <td className="w-40">
-        {field.type === "select" ? (
-          <OptionsEditor field={field} onChange={onChange} />
-        ) : (
-          <span className="text-slate-400">—</span>
-        )}
-      </td>
-      <td className="w-20 text-right pr-2">
-        {!isStandard ? (
-          <button
-            onClick={onDelete}
-            className="px-2 py-1 rounded text-[11px] bg-red-50 text-red-600 hover:bg-red-100"
-            title="Delete field"
-          >
-            Delete
-          </button>
-        ) : (
-          <span className="text-[10px] text-slate-400">Standard</span>
-        )}
-      </td>
-    </tr>
+            checked={field.required}
+            onChange={(e) => onChange({ required: e.target.checked })}
+            title="Toggle required"
+          />
+        </td>
+        <td className="min-w-[140px]">
+          <InlineEditableCell
+            value={field.costingInputKey || ""}
+            onSave={async (next) => onChange({ costingInputKey: next || null })}
+          />
+        </td>
+        <td className="w-32">
+          {field.type === "select" ? (
+            <button
+              onClick={() => setShowOptionsEditor(!showOptionsEditor)}
+              className="px-3 py-1 rounded text-[11px] bg-blue-50 text-blue-600 hover:bg-blue-100"
+              title="Edit options"
+            >
+              {field.options?.length || 0} options
+            </button>
+          ) : (
+            <span className="text-slate-400">—</span>
+          )}
+        </td>
+        <td className="w-20 text-right pr-2">
+          {!isStandard ? (
+            <button
+              onClick={onDelete}
+              className="px-2 py-1 rounded text-[11px] bg-red-50 text-red-600 hover:bg-red-100"
+              title="Delete field"
+            >
+              Delete
+            </button>
+          ) : (
+            <span className="text-[10px] text-slate-400">Standard</span>
+          )}
+        </td>
+      </tr>
+      {showOptionsEditor && field.type === "select" && (
+        <tr>
+          <td colSpan={8} className="p-4 bg-slate-50">
+            <div className="max-w-2xl">
+              <h4 className="text-sm font-semibold mb-3 text-slate-700">Edit Options for "{field.label}"</h4>
+              <VisualOptionsEditor
+                options={field.options || []}
+                onChange={(newOptions) => {
+                  onChange({ options: newOptions });
+                  setShowOptionsEditor(false);
+                }}
+              />
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
-function OptionsEditor({ field, onChange }: { field: QuestionnaireFieldRow; onChange: (f: Partial<QuestionnaireFieldRow>) => void }) {
-  const [draftText, setDraftText] = useState(() => JSON.stringify(field.options || [], null, 0));
-  const [dirty, setDirty] = useState(false);
-  useEffect(() => {
-    if (!dirty) setDraftText(JSON.stringify(field.options || [], null, 0));
-  }, [field.options, dirty]);
-  function save() {
-    try {
-      const parsed = JSON.parse(draftText || "[]");
-      if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === "string")) throw new Error("Options must be string array");
-      onChange({ options: parsed });
-      setDirty(false);
-    } catch (e: any) {
-      alert(e.message);
-    }
-  }
-  return (
-    <div className="flex flex-col gap-1">
-      <textarea
-        className="rounded border px-2 py-1 text-[11px] font-mono h-16 resize-none"
-        value={draftText}
-        onChange={(e) => {
-          setDraftText(e.target.value);
-          setDirty(true);
-        }}
-        title='JSON array of options e.g. ["Oak", "Pine"]'
-      />
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={!dirty}
-          onClick={save}
-          className="px-2 py-1 rounded text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-40"
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          disabled={!dirty}
-          onClick={() => {
-            setDraftText(JSON.stringify(field.options || [], null, 0));
-            setDirty(false);
-          }}
-          className="px-2 py-1 rounded text-[10px] bg-slate-50 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-        >
-          Reset
-        </button>
-      </div>
-    </div>
-  );
-}
+
 
 export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "" }) => {
   const listUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields?includeStandard=true";
@@ -162,6 +149,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
         order: f.order ?? f.sortOrder ?? 0,
         options: f.options || (Array.isArray(f.config?.options) ? f.config.options : null),
         isStandard: f.isStandard || false,
+        scope: f.scope || "item",
       })) as QuestionnaireFieldRow[];
       normalized.sort((a, b) => a.order - b.order);
       setRows(normalized);
@@ -305,6 +293,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
                         <th className="w-6"></th>
                         <th className="text-left font-medium py-2 px-2">Label</th>
                         <th className="text-left font-medium">Type</th>
+                        <th className="text-left font-medium">Scope</th>
                         <th className="text-center font-medium">Required</th>
                         <th className="text-left font-medium">Costing Key</th>
                         <th className="text-left font-medium">Options</th>
@@ -344,6 +333,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
                         <th className="w-6"></th>
                         <th className="text-left font-medium py-2 px-2">Label</th>
                         <th className="text-left font-medium">Type</th>
+                        <th className="text-left font-medium">Scope</th>
                         <th className="text-center font-medium">Required</th>
                         <th className="text-left font-medium">Costing Key</th>
                         <th className="text-left font-medium">Options</th>

@@ -1910,6 +1910,8 @@ model QuestionnaireField {
   // Standard fields are system-defined for ML training consistency
   isStandard         Boolean                @default(false) // True for ML training fields (cannot be deleted)
   isHidden           Boolean                @default(false) // Allow hiding standard fields if not relevant
+  // Scope determines where field is shown: 'client' (lead-level), 'item' (line-item level), 'internal' (auto-calculated, hidden from forms)
+  scope              String?                @default("item") // 'client', 'item', or 'internal'
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
