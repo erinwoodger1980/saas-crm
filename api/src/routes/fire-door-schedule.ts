@@ -18,7 +18,7 @@ const router = express.Router();
 // ============================================================================
 router.get("/", async (req: any, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
+    const tenantId = req.auth?.tenantId;
     if (!tenantId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
@@ -85,7 +85,7 @@ router.get("/", async (req: any, res: Response) => {
 // ============================================================================
 router.get("/:id", async (req: any, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
+    const tenantId = req.auth?.tenantId;
     const { id } = req.params;
 
     if (!tenantId) {
@@ -113,8 +113,8 @@ router.get("/:id", async (req: any, res: Response) => {
 // ============================================================================
 router.post("/", async (req: any, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    const userId = req.user?.id;
+    const tenantId = req.auth?.tenantId;
+    const userId = req.auth?.id;
 
     if (!tenantId) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -144,8 +144,8 @@ router.post("/", async (req: any, res: Response) => {
 // ============================================================================
 router.patch("/:id", async (req: any, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    const userId = req.user?.id;
+    const tenantId = req.auth?.tenantId;
+    const userId = req.auth?.id;
     const { id } = req.params;
 
     if (!tenantId) {
@@ -190,7 +190,7 @@ router.patch("/:id", async (req: any, res: Response) => {
 // ============================================================================
 router.delete("/:id", async (req: any, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
+    const tenantId = req.auth?.tenantId;
     const { id } = req.params;
 
     if (!tenantId) {
@@ -221,7 +221,7 @@ router.delete("/:id", async (req: any, res: Response) => {
 // ============================================================================
 router.get("/stats/summary", async (req: any, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
+    const tenantId = req.auth?.tenantId;
 
     if (!tenantId) {
       return res.status(401).json({ error: "Unauthorized" });
