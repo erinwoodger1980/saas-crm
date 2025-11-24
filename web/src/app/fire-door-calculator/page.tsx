@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import FireDoorImportSection from "@/components/FireDoorImport";
+import FireDoorSpreadsheet from "@/components/FireDoorSpreadsheet";
+import { useRouter } from "next/navigation";
 
 // Minimal local UI primitives fallback if shadcn components are absent
 // (If your design system differs, replace imports above accordingly.)
@@ -24,8 +26,11 @@ const LEAF_CONFIGS = [
 type LeafConfiguration = typeof LEAF_CONFIGS[number];
 
 export default function FireDoorCalculatorPage() {
+  const router = useRouter();
   const [authed, setAuthed] = useState(false);
   const [quoteId, setQuoteId] = useState("");
+  const [importId, setImportId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"single" | "spreadsheet">("single");
 
   // Inputs (keep minimal but compatible with backend pricing engine)
   const [quantity, setQuantity] = useState(1);
@@ -132,10 +137,52 @@ export default function FireDoorCalculatorPage() {
 
       {/* Fire Door Import Section - for manufacturers to upload CSV spreadsheets */}
       <div className="mb-8">
-        <FireDoorImportSection />
+        <FireDoorImportSection 
+          onImportComplete={(data: any) => {
+            setImportId(data.import.id);
+            setViewMode("spreadsheet");
+          }}
+        />
       </div>
 
-      <Separator className="my-8" />
+      {/* View Mode Toggle */}
+      {importId && (
+        <div className="mb-6 flex items-center gap-4 bg-white p-4 rounded-lg shadow">
+          <span className="text-sm font-medium">View:</span>
+          <div className="flex gap-2">
+            <Button
+              variant={viewMode === "single" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("single")}
+            >
+              Single Door Calculator
+            </Button>
+            <Button
+              variant={viewMode === "spreadsheet" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("spreadsheet")}
+            >
+              Spreadsheet View ({importId ? "Imported Doors" : "No Import"})
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Spreadsheet View */}
+      {viewMode === "spreadsheet" && importId && (
+        <div className="mb-8">
+          <FireDoorSpreadsheet 
+            importId={importId}
+            onQuoteCreated={(qId) => {
+              router.push(`/quotes/${qId}`);
+            }}
+          />
+        </div>
+      )}
+
+      {viewMode === "single" && (
+        <>
+          <Separator className="my-8" />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
         <div className="space-y-4">
@@ -339,6 +386,8 @@ export default function FireDoorCalculatorPage() {
           </Card>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

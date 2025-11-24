@@ -43,7 +43,11 @@ interface ImportListItem {
   createdAt: string;
 }
 
-export default function FireDoorImportSection() {
+interface FireDoorImportSectionProps {
+  onImportComplete?: (data: FireDoorImportResponse) => void;
+}
+
+export default function FireDoorImportSection({ onImportComplete }: FireDoorImportSectionProps = {}) {
   const [uploading, setUploading] = useState(false);
   const [lastImport, setLastImport] = useState<FireDoorImportResponse | null>(null);
   const [previousImports, setPreviousImports] = useState<ImportListItem[]>([]);
@@ -85,6 +89,9 @@ export default function FireDoorImportSection() {
 
       const data: FireDoorImportResponse = await response.json();
       setLastImport(data);
+      
+      // Callback to parent component
+      onImportComplete?.(data);
 
       // Refresh previous imports list
       if (showPreviousImports) {
