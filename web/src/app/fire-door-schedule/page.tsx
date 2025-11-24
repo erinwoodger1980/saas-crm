@@ -3,13 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Filter } from "lucide-react";
+import { 
+  Plus, Search, Filter, TrendingUp, Clock, CheckCircle2, 
+  AlertCircle, Calendar, Package, Wrench, Truck, FileText,
+  BarChart3, ArrowUpRight, Download
+} from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 interface FireDoorProject {
@@ -25,7 +24,6 @@ interface FireDoorProject {
   scheduledBy?: string;
   orderingStatus?: string;
   overallProgress?: number;
-  // ... all other fields
   [key: string]: any;
 }
 
@@ -51,26 +49,18 @@ export default function FireDoorSchedulePage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [jobLocationFilter, setJobLocationFilter] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
     loadData();
-  }, [jobLocationFilter]);
+  }, []);
 
   async function loadData() {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (jobLocationFilter !== "all") {
-        params.append("jobLocation", jobLocationFilter);
-      }
-
       const [projectsData, statsData] = await Promise.all([
-        apiFetch<{ projects: FireDoorProject[] }>(`/fire-door-schedule?${params.toString()}`),
+        apiFetch<{ projects: FireDoorProject[] }>("/fire-door-schedule"),
         apiFetch<Stats>("/fire-door-schedule/stats/summary"),
       ]);
-
       setProjects(projectsData.projects);
       setStats(statsData);
     } catch (error) {
@@ -91,457 +81,230 @@ export default function FireDoorSchedulePage() {
     );
   });
 
-  function getStatusBadgeVariant(status?: string): "default" | "secondary" | "destructive" | "outline" {
-    if (!status) return "outline";
-    if (status.includes("COMPLETE") || status.includes("SIGNED OFF")) return "default";
-    if (status.includes("PROGRESS") || status.includes("WORKING")) return "secondary";
-    if (status.includes("AWAITING") || status.includes("RED FOLDER")) return "outline";
-    return "outline";
+  function getProgressColor(progress?: number): string {
+    if (!progress) return "from-gray-400 to-gray-500";
+    if (progress < 30) return "from-red-400 to-red-500";
+    if (progress < 60) return "from-orange-400 to-orange-500";
+    if (progress < 90) return "from-blue-400 to-blue-500";
+    return "from-green-400 to-green-500";
   }
 
-  function formatDate(dateStr?: string): string {
-    if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString();
+  function getStatusColor(status?: string): string {
+    if (!status) return "bg-slate-100 text-slate-600";
+    if (status.includes("COMPLETE") || status.includes("SIGNED OFF")) return "bg-green-100 text-green-700";
+    if (status.includes("PROGRESS") || status.includes("WORKING")) return "bg-blue-100 text-blue-700";
+    if (status.includes("AWAITING") || status.includes("RED FOLDER")) return "bg-orange-100 text-orange-700";
+    return "bg-slate-100 text-slate-600";
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-8">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Fire Door Schedule</h1>
-          <p className="text-muted-foreground">
-            Track projects from enquiry to completion
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50">
+      <div className="container mx-auto py-8 space-y-6">
+        {/* Glassmorphism Header */}
+        <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-xl p-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                Fire Door Schedule
+              </h1>
+              <p className="text-slate-600 mt-2">
+                Manufacturing hub • Track from enquiry to delivery
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                className="backdrop-blur-sm bg-white/50"
+                onClick={() => router.push("/fire-doors/imports")}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Import CSV
+              </Button>
+              <Button 
+                onClick={() => router.push("/fire-door-schedule/new")}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg hover:shadow-xl transition-all"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Project
+              </Button>
+            </div>
+          </div>
         </div>
-        <Button onClick={() => router.push("/fire-door-schedule/new")}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Project
-        </Button>
-      </div>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Projects</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalProjects}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Red Folder</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.byLocation.redFolder}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">In Progress</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.byLocation.inProgress}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Complete</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.byLocation.complete}</div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+        {/* Beautiful Stats Cards */}
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total Projects */}
+            <div className="group backdrop-blur-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-blue-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 mb-1">Total Projects</p>
+                  <h3 className="text-4xl font-bold text-slate-900">{stats.totalProjects}</h3>
+                  <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" />
+                    All fire door projects
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-blue-500/20 group-hover:bg-blue-500/30 transition-colors">
+                  <BarChart3 className="w-6 h-6 text-blue-600" />
+                </div>
+              </div>
+            </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
+            {/* Red Folder */}
+            <div className="group backdrop-blur-xl bg-gradient-to-br from-orange-500/10 via-red-500/10 to-orange-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 mb-1">Red Folder</p>
+                  <h3 className="text-4xl font-bold text-slate-900">{stats.byLocation.redFolder}</h3>
+                  <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    Awaiting sign-off
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-orange-500/20 group-hover:bg-orange-500/30 transition-colors">
+                  <FileText className="w-6 h-6 text-orange-600" />
+                </div>
+              </div>
+            </div>
+
+            {/* In Progress */}
+            <div className="group backdrop-blur-xl bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-cyan-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 mb-1">In Progress</p>
+                  <h3 className="text-4xl font-bold text-slate-900">{stats.byLocation.inProgress}</h3>
+                  <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                    <Wrench className="w-3 h-3" />
+                    Active production
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-cyan-500/20 group-hover:bg-cyan-500/30 transition-colors">
+                  <Package className="w-6 h-6 text-cyan-600" />
+                </div>
+              </div>
+            </div>
+
+            {/* Complete */}
+            <div className="group backdrop-blur-xl bg-gradient-to-br from-green-500/10 via-emerald-500/10 to-green-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 mb-1">Complete</p>
+                  <h3 className="text-4xl font-bold text-slate-900">{stats.byLocation.complete}</h3>
+                  <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Ready for delivery
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-green-500/20 group-hover:bg-green-500/30 transition-colors">
+                  <Truck className="w-6 h-6 text-green-600" />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Search and Filters */}
+        <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg p-4">
           <div className="flex gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
               <Input
                 placeholder="Search by job name, MJS#, client, PO..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-11 h-12 bg-white/50 border-slate-200 focus:bg-white transition-colors"
               />
             </div>
-            <Select value={jobLocationFilter} onValueChange={setJobLocationFilter}>
-              <SelectTrigger className="w-[200px]">
-                <Filter className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Projects</SelectItem>
-                <SelectItem value="RED FOLDER">Red Folder</SelectItem>
-                <SelectItem value="IN PROGRESS">In Progress</SelectItem>
-                <SelectItem value="COMPLETE">Complete</SelectItem>
-              </SelectContent>
-            </Select>
+            <Button variant="outline" className="h-12 bg-white/50">
+              <Filter className="w-4 h-4 mr-2" />
+              Filters
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Tabbed View */}
-      <Card>
-        <CardHeader>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-7">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="design">Design & Sign-Off</TabsTrigger>
-              <TabsTrigger value="bom">BOM & Ordering</TabsTrigger>
-              <TabsTrigger value="production">Production & QA</TabsTrigger>
-              <TabsTrigger value="paperwork">Paperwork</TabsTrigger>
-              <TabsTrigger value="delivery">Delivery</TabsTrigger>
-              <TabsTrigger value="notes">Notes</TabsTrigger>
-            </TabsList>
+        {/* Projects Grid */}
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          </div>
+        ) : filteredProjects.length === 0 ? (
+          <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg p-20 text-center">
+            <Package className="w-16 h-16 mx-auto text-slate-300 mb-4" />
+            <h3 className="text-xl font-semibold text-slate-700 mb-2">No projects found</h3>
+            <p className="text-slate-500">Create your first fire door project to get started</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filteredProjects.map((project) => (
+              <div
+                key={project.id}
+                onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
+                className="group backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg hover:shadow-2xl transition-all cursor-pointer overflow-hidden"
+              >
+                {/* Progress Bar Header */}
+                <div className="relative h-2 bg-slate-100">
+                  <div
+                    className={`h-full bg-gradient-to-r ${getProgressColor(project.overallProgress)} transition-all`}
+                    style={{ width: `${project.overallProgress || 0}%` }}
+                  />
+                </div>
 
-            {/* Tab: Overview */}
-            <TabsContent value="overview" className="space-y-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>MJS#</TableHead>
-                      <TableHead>Job Name</TableHead>
-                      <TableHead>Client</TableHead>
-                      <TableHead>Date Received</TableHead>
-                      <TableHead>Date Required</TableHead>
-                      <TableHead>PO Number</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Sign Off</TableHead>
-                      <TableHead>Scheduled By</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
-                          Loading...
-                        </TableCell>
-                      </TableRow>
-                    ) : filteredProjects.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
-                          No projects found
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredProjects.map((project) => (
-                        <TableRow
-                          key={project.id}
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
-                        >
-                          <TableCell className="font-medium">{project.mjsNumber || "-"}</TableCell>
-                          <TableCell>{project.jobName || "-"}</TableCell>
-                          <TableCell>{project.clientName || "-"}</TableCell>
-                          <TableCell>{formatDate(project.dateReceived)}</TableCell>
-                          <TableCell>{formatDate(project.dateRequired)}</TableCell>
-                          <TableCell>{project.poNumber || "-"}</TableCell>
-                          <TableCell>
-                            <Badge variant={getStatusBadgeVariant(project.jobLocation)}>
-                              {project.jobLocation || "Unknown"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={getStatusBadgeVariant(project.signOffStatus)}>
-                              {project.signOffStatus || "Unknown"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{project.scheduledBy || "-"}</TableCell>
-                        </TableRow>
-                      ))
+                <div className="p-6">
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="font-bold text-lg text-slate-900 group-hover:text-blue-600 transition-colors">
+                        {project.jobName || "Untitled Project"}
+                      </h3>
+                      <p className="text-sm text-slate-500">MJS# {project.mjsNumber || "—"}</p>
+                    </div>
+                    <ArrowUpRight className="w-5 h-5 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 group-hover:-translate-y-1 transition-all" />
+                  </div>
+
+                  {/* Status Badges */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(project.jobLocation)}`}>
+                      {project.jobLocation || "Unknown"}
+                    </span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(project.signOffStatus)}`}>
+                      {project.signOffStatus?.replace(/_/g, " ") || "No Status"}
+                    </span>
+                  </div>
+
+                  {/* Project Details */}
+                  <div className="space-y-2 mb-4 text-sm">
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                      <span>Due: {project.dateRequired ? new Date(project.dateRequired).toLocaleDateString() : "Not set"}</span>
+                    </div>
+                    {project.clientName && (
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <span className="text-slate-400">•</span>
+                        <span>{project.clientName}</span>
+                      </div>
                     )}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
+                    {project.poNumber && (
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <span className="text-slate-400">PO:</span>
+                        <span>{project.poNumber}</span>
+                      </div>
+                    )}
+                  </div>
 
-            {/* Tab: Design & Sign-Off */}
-            <TabsContent value="design" className="space-y-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>MJS#</TableHead>
-                      <TableHead>Job Name</TableHead>
-                      <TableHead>Sign Off Status</TableHead>
-                      <TableHead>Sign Off Date</TableHead>
-                      <TableHead>Scheduled By</TableHead>
-                      <TableHead>Lead Time (weeks)</TableHead>
-                      <TableHead>Approx Delivery</TableHead>
-                      <TableHead>Days Remaining</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredProjects.map((project) => (
-                      <TableRow
-                        key={project.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
-                      >
-                        <TableCell className="font-medium">{project.mjsNumber || "-"}</TableCell>
-                        <TableCell>{project.jobName || "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusBadgeVariant(project.signOffStatus)}>
-                            {project.signOffStatus || "-"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{formatDate(project.signOffDate)}</TableCell>
-                        <TableCell>{project.scheduledBy || "-"}</TableCell>
-                        <TableCell>{project.leadTimeWeeks || "-"}</TableCell>
-                        <TableCell>{formatDate(project.approxDeliveryDate)}</TableCell>
-                        <TableCell>
-                          {project.workingDaysRemaining !== null && project.workingDaysRemaining !== undefined
-                            ? `${project.workingDaysRemaining} days`
-                            : "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                  {/* Progress */}
+                  <div className="pt-4 border-t border-slate-100">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600">Production Progress</span>
+                      <span className="font-bold text-slate-900">{project.overallProgress || 0}%</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </TabsContent>
-
-            {/* Tab: BOM & Ordering */}
-            <TabsContent value="bom" className="space-y-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>MJS#</TableHead>
-                      <TableHead>Job Name</TableHead>
-                      <TableHead>Ordering Status</TableHead>
-                      <TableHead>Blanks</TableHead>
-                      <TableHead>Lippings</TableHead>
-                      <TableHead>Facings</TableHead>
-                      <TableHead>Glass</TableHead>
-                      <TableHead>Ironmongery</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredProjects.map((project) => (
-                      <TableRow
-                        key={project.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
-                      >
-                        <TableCell className="font-medium">{project.mjsNumber || "-"}</TableCell>
-                        <TableCell>{project.jobName || "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusBadgeVariant(project.orderingStatus)}>
-                            {project.orderingStatus || "-"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {project.blanksStatus || "-"}
-                          {project.blanksChecked && <span className="ml-1">✓</span>}
-                        </TableCell>
-                        <TableCell>
-                          {project.lippingsStatus || "-"}
-                          {project.lippingsChecked && <span className="ml-1">✓</span>}
-                        </TableCell>
-                        <TableCell>
-                          {project.facingsStatus || "-"}
-                          {project.facingsChecked && <span className="ml-1">✓</span>}
-                        </TableCell>
-                        <TableCell>
-                          {project.glassStatus || "-"}
-                          {project.glassChecked && <span className="ml-1">✓</span>}
-                        </TableCell>
-                        <TableCell>
-                          {project.ironmongeryStatus || "-"}
-                          {project.ironmongeryChecked && <span className="ml-1">✓</span>}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-
-            {/* Tab: Production & QA */}
-            <TabsContent value="production" className="space-y-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>MJS#</TableHead>
-                      <TableHead>Job Name</TableHead>
-                      <TableHead>Overall Progress</TableHead>
-                      <TableHead>Blanks Cut</TableHead>
-                      <TableHead>Edgeband</TableHead>
-                      <TableHead>Facings</TableHead>
-                      <TableHead>Final CNC</TableHead>
-                      <TableHead>Spray</TableHead>
-                      <TableHead>Build</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredProjects.map((project) => (
-                      <TableRow
-                        key={project.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
-                      >
-                        <TableCell className="font-medium">{project.mjsNumber || "-"}</TableCell>
-                        <TableCell>{project.jobName || "-"}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-primary transition-all"
-                                style={{ width: `${project.overallProgress || 0}%` }}
-                              />
-                            </div>
-                            <span className="text-sm font-medium">{project.overallProgress || 0}%</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{project.blanksCutPercent || 0}%</TableCell>
-                        <TableCell>{project.edgebandPercent || 0}%</TableCell>
-                        <TableCell>{project.facingsPercent || 0}%</TableCell>
-                        <TableCell>{project.finalCncPercent || 0}%</TableCell>
-                        <TableCell>{project.sprayPercent || 0}%</TableCell>
-                        <TableCell>{project.buildPercent || 0}%</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-
-            {/* Tab: Paperwork */}
-            <TabsContent value="paperwork" className="space-y-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>MJS#</TableHead>
-                      <TableHead>Job Name</TableHead>
-                      <TableHead>Paperwork Status</TableHead>
-                      <TableHead>Door Paperwork</TableHead>
-                      <TableHead>Final CNC Sheet</TableHead>
-                      <TableHead>Delivery Checklist</TableHead>
-                      <TableHead>Certification</TableHead>
-                      <TableHead>FSC</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredProjects.map((project) => (
-                      <TableRow
-                        key={project.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
-                      >
-                        <TableCell className="font-medium">{project.mjsNumber || "-"}</TableCell>
-                        <TableCell>{project.jobName || "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusBadgeVariant(project.paperworkStatus)}>
-                            {project.paperworkStatus || "-"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{project.doorPaperworkStatus || "-"}</TableCell>
-                        <TableCell>{project.finalCncSheetStatus || "-"}</TableCell>
-                        <TableCell>{project.deliveryChecklistStatus || "-"}</TableCell>
-                        <TableCell>{project.certificationRequired || "-"}</TableCell>
-                        <TableCell>{project.fscRequired ? "Yes" : "No"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-
-            {/* Tab: Delivery */}
-            <TabsContent value="delivery" className="space-y-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>MJS#</TableHead>
-                      <TableHead>Job Name</TableHead>
-                      <TableHead>Transport Status</TableHead>
-                      <TableHead>Delivery Date</TableHead>
-                      <TableHead>Install Start</TableHead>
-                      <TableHead>Install End</TableHead>
-                      <TableHead>Snagging</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredProjects.map((project) => (
-                      <TableRow
-                        key={project.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
-                      >
-                        <TableCell className="font-medium">{project.mjsNumber || "-"}</TableCell>
-                        <TableCell>{project.jobName || "-"}</TableCell>
-                        <TableCell>{project.transportStatus || "-"}</TableCell>
-                        <TableCell>{formatDate(project.deliveryDate)}</TableCell>
-                        <TableCell>{formatDate(project.installStart)}</TableCell>
-                        <TableCell>{formatDate(project.installEnd)}</TableCell>
-                        <TableCell>
-                          {project.snaggingComplete ? (
-                            <Badge variant="default">Complete</Badge>
-                          ) : project.snaggingStatus ? (
-                            <Badge variant="secondary">{project.snaggingStatus}</Badge>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-
-            {/* Tab: Notes */}
-            <TabsContent value="notes" className="space-y-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>MJS#</TableHead>
-                      <TableHead>Job Name</TableHead>
-                      <TableHead>Communication Notes</TableHead>
-                      <TableHead>Internal Notes</TableHead>
-                      <TableHead>Last Updated</TableHead>
-                      <TableHead>Updated By</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredProjects.map((project) => (
-                      <TableRow
-                        key={project.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
-                      >
-                        <TableCell className="font-medium">{project.mjsNumber || "-"}</TableCell>
-                        <TableCell>{project.jobName || "-"}</TableCell>
-                        <TableCell className="max-w-xs truncate">
-                          {project.communicationNotes || "-"}
-                        </TableCell>
-                        <TableCell className="max-w-xs truncate">
-                          {project.internalNotes || "-"}
-                        </TableCell>
-                        <TableCell>{formatDate(project.lastUpdatedAt)}</TableCell>
-                        <TableCell>{project.lastUpdatedBy || "-"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardHeader>
-      </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
