@@ -333,7 +333,7 @@ function toIsoOrUndefined(localValue: string): string | undefined {
 
 /* ----------------------------- Component ----------------------------- */
 
-type Stage = 'client' | 'quote' | 'communication' | 'order' | 'tasks' | 'activity';
+type Stage = 'client' | 'quote' | 'questionnaire' | 'communication' | 'order' | 'tasks' | 'activity';
 
 export default function LeadModal({
   open,
@@ -501,9 +501,15 @@ export default function LeadModal({
       description: 'Questionnaire and quote information'
     },
     {
+      id: 'questionnaire' as const,
+      title: 'Questionnaire',
+      icon: '📋',
+      description: 'Client questionnaire answers and photos'
+    },
+    {
       id: 'activity' as const,
       title: 'Activity',
-      icon: '📋',
+      icon: '📅',
       description: 'Unified timeline: communication, tasks & follow-ups'
     },
     {
@@ -3403,6 +3409,90 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </a>
                       </div>
                     )}
+                  </section>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* QUESTIONNAIRE STAGE */}
+          {currentStage === "questionnaire" && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-indigo-50/60 min-h-[60vh]">
+              <div className="max-w-4xl mx-auto space-y-6">
+                <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <span aria-hidden="true">📋</span>
+                      Questionnaire Responses
+                    </div>
+                    {questionnaireSubmittedAt && (
+                      <span className="text-xs text-slate-500">
+                        Submitted {new Date(questionnaireSubmittedAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {questionnaireResponses.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-sm text-slate-500">No questionnaire responses yet</p>
+                      <p className="text-xs text-slate-400 mt-2">
+                        Send the client a questionnaire to collect their project details
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {questionnaireResponses.map(({ field, value }, idx) => {
+                        const k = field.key || field.id || String(idx);
+                        return (
+                          <div
+                            key={k}
+                            className="rounded-xl border border-slate-200/70 bg-white/70 p-4"
+                          >
+                            <dt className="text-sm font-semibold text-slate-700 mb-2">
+                              {field.label || field.key || field.id}
+                              {field.required && <span className="text-rose-500 ml-1">*</span>}
+                            </dt>
+                            <dd className="text-sm text-slate-600 whitespace-pre-wrap">
+                              {value != null ? String(value) : <span className="text-slate-400 italic">No answer</span>}
+                            </dd>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* Vision inferences / measurements */}
+                {visionGroups.length > 0 && (
+                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                      <span aria-hidden="true">📐</span>
+                      Uploaded Measurements & Photos
+                    </div>
+                    <div className="space-y-3">
+                      {visionGroups.map((group) => (
+                        <div key={group.key} className="border border-slate-200 rounded-lg p-3">
+                          <div className="text-xs font-semibold text-slate-500 mb-2">
+                            {group.itemNumber != null ? `Item #${group.itemNumber}` : "Unlabeled"}
+                          </div>
+                          {group.measurement && (
+                            <div className="text-sm text-slate-700">
+                              <strong>Dimensions:</strong> {group.measurement.widthMm}mm × {group.measurement.heightMm}mm
+                              {group.measurement.confidence != null && (
+                                <span className="text-xs text-slate-500 ml-2">
+                                  ({(group.measurement.confidence * 100).toFixed(0)}% confidence)
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {group.inspiration && (
+                            <div className="text-sm text-slate-600 mt-1">
+                              <strong>Inspiration:</strong> {group.inspiration.description || "Photo provided"}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </section>
                 )}
               </div>

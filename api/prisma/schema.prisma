@@ -81,6 +81,7 @@ model Tenant {
   questionnaires             Questionnaire[]
   questionnaireFields        QuestionnaireField[]
   questionnaireResponses     QuestionnaireResponse[]
+  questionnairePhotos        QuestionnairePhoto[]
   // Software profile relations
   softwareProfiles           SoftwareProfile[]           @relation("SoftwareProfiles")
   // Joinery costing engine relations
@@ -700,7 +701,8 @@ model Quote {
   quoteSourceType       QuoteSourceType?
   // Global PDF layout / parser profile key (e.g. "brio_v1", "joinerysoft_a")
   supplierProfileId     String?
-  pdfLayoutTemplate     PdfLayoutTemplate?     @relation(fields: [supplierProfileId], references: [supplierProfileId])
+  // TODO: Re-enable this relation once all existing quotes have valid supplierProfileIds
+  // pdfLayoutTemplate     PdfLayoutTemplate?     @relation(fields: [supplierProfileId], references: [supplierProfileId], onDelete: SetNull)
   // ML trust and approval workflow
   mlEstimatedPrice      Decimal?               // ML's predicted price
   mlConfidence          Decimal?               // ML confidence score (0-1)
@@ -1743,7 +1745,8 @@ model PdfLayoutTemplate {
   pageCount         Int?
   meta              Json?
   annotations       PdfLayoutAnnotation[]
-  Quote             Quote[]
+  // TODO: Re-enable Quote relation once foreign key is working
+  // Quote             Quote[]
 
   @@index([name])
 }
@@ -1938,10 +1941,33 @@ model QuestionnaireAnswer {
 
   response QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
   field    QuestionnaireField    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  photos   QuestionnairePhoto[]  // Photos attached to this answer
 
   @@unique([responseId, fieldId])
   @@index([responseId])
   @@index([fieldId])
+}
+
+// Photos uploaded with questionnaire answers
+model QuestionnairePhoto {
+  id          String   @id @default(cuid())
+  tenantId    String
+  answerId    String
+  filename    String   // Original filename
+  storagePath String   // Path in file system or S3
+  mimeType    String   // image/jpeg, image/png, etc.
+  sizeBytes   Int      // File size
+  caption     String?  // Optional user caption
+  metadata    Json?    // EXIF data, dimensions, etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  answer QuestionnaireAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([answerId])
+  @@index([createdAt])
 }
 
 /// ===============================
