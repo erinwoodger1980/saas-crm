@@ -15,6 +15,7 @@ export interface QuestionnaireFieldRow {
   costingInputKey?: string | null;
   order: number; // local ordering (maps to backend sortOrder or order)
   options?: string[] | null;
+  isStandard?: boolean; // true for built-in fields
 }
 
 const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
@@ -29,8 +30,9 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
     opacity: isDragging ? 0.4 : 1,
     background: isDragging ? "#f8fafc" : undefined,
   };
+  const isStandard = field.isStandard;
   return (
-    <tr ref={setNodeRef} style={style} className="text-xs border-b last:border-b-0">
+    <tr ref={setNodeRef} style={style} className={`text-xs border-b last:border-b-0 ${isStandard ? 'bg-slate-50/50' : ''}`}>
       <td className="w-6 text-slate-400 select-none" {...attributes} {...listeners} title="Drag to reorder">
         ⠿
       </td>
@@ -71,13 +73,17 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
         )}
       </td>
       <td className="w-20 text-right pr-2">
-        <button
-          onClick={onDelete}
-          className="px-2 py-1 rounded text-[11px] bg-red-50 text-red-600 hover:bg-red-100"
-          title="Delete field"
-        >
-          Delete
-        </button>
+        {!isStandard ? (
+          <button
+            onClick={onDelete}
+            className="px-2 py-1 rounded text-[11px] bg-red-50 text-red-600 hover:bg-red-100"
+            title="Delete field"
+          >
+            Delete
+          </button>
+        ) : (
+          <span className="text-[10px] text-slate-400">Standard</span>
+        )}
       </td>
     </tr>
   );
@@ -154,6 +160,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
         costingInputKey: f.costingInputKey ?? null,
         order: f.order ?? f.sortOrder ?? 0,
         options: f.options || (Array.isArray(f.config?.options) ? f.config.options : null),
+        isStandard: f.isStandard || false,
       })) as QuestionnaireFieldRow[];
       normalized.sort((a, b) => a.order - b.order);
       setRows(normalized);
@@ -245,33 +252,86 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
   const content = useMemo(() => {
     if (isLoading) return <div className="p-4 text-xs text-slate-500">Loading fields…</div>;
     if (!rows.length) return <div className="p-4 text-xs text-slate-500">No fields yet. Create one!</div>;
+    
+    const standardFields = rows.filter(r => r.isStandard);
+    const customFields = rows.filter(r => !r.isStandard);
+    
     return (
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={rows.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-          <table className="w-full border text-xs">
-            <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="w-6"></th>
-                <th className="text-left font-medium">Label</th>
-                <th className="text-left font-medium">Type</th>
-                <th className="text-center font-medium">Required</th>
-                <th className="text-left font-medium">Costing Key</th>
-                <th className="text-left font-medium">Options</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <SortableRow
-                  key={r.id}
-                  field={r}
-                  onChange={(patch) => updateField(r.id, patch)}
-                  onDelete={() => deleteField(r.id)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </SortableContext>
+        <div className="space-y-6">
+          {/* Standard Fields Section */}
+          {standardFields.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-slate-700 mb-2 px-1">Standard Fields</h3>
+              <div className="rounded border bg-white shadow-sm overflow-hidden">
+                <SortableContext items={standardFields.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="w-6"></th>
+                        <th className="text-left font-medium py-2 px-2">Label</th>
+                        <th className="text-left font-medium">Type</th>
+                        <th className="text-center font-medium">Required</th>
+                        <th className="text-left font-medium">Costing Key</th>
+                        <th className="text-left font-medium">Options</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {standardFields.map((r) => (
+                        <SortableRow
+                          key={r.id}
+                          field={r}
+                          onChange={(patch) => updateField(r.id, patch)}
+                          onDelete={() => deleteField(r.id)}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </SortableContext>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1 px-1">Standard fields can be edited but not deleted. Customize options and settings as needed.</p>
+            </div>
+          )}
+          
+          {/* Custom Fields Section */}
+          <div>
+            <h3 className="text-xs font-semibold text-slate-700 mb-2 px-1">Custom Fields</h3>
+            {customFields.length === 0 ? (
+              <div className="rounded border bg-white shadow-sm p-4 text-xs text-slate-500">
+                No custom fields yet. Click "New Field" to create one.
+              </div>
+            ) : (
+              <div className="rounded border bg-white shadow-sm overflow-hidden">
+                <SortableContext items={customFields.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="w-6"></th>
+                        <th className="text-left font-medium py-2 px-2">Label</th>
+                        <th className="text-left font-medium">Type</th>
+                        <th className="text-center font-medium">Required</th>
+                        <th className="text-left font-medium">Costing Key</th>
+                        <th className="text-left font-medium">Options</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customFields.map((r) => (
+                        <SortableRow
+                          key={r.id}
+                          field={r}
+                          onChange={(patch) => updateField(r.id, patch)}
+                          onDelete={() => deleteField(r.id)}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </SortableContext>
+              </div>
+            )}
+          </div>
+        </div>
       </DndContext>
     );
   }, [isLoading, rows]);
@@ -291,7 +351,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
           </button>
         </div>
       </div>
-      <div className="rounded border bg-white shadow-sm overflow-hidden">{content}</div>
+      {content}
       <CreateQuestionnaireFieldModal
         open={creating}
         onClose={() => setCreating(false)}
