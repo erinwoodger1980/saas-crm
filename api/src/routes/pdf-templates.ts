@@ -238,6 +238,25 @@ router.post("/", async (req: any, res: Response) => {
     let template: any;
     try {
       template = await prisma.pdfLayoutTemplate.create({ data: createData, select: detailSelect });
+      
+      // VERIFY PERSISTENCE: Immediately query back the saved template
+      const verifyQuery = await prisma.pdfLayoutTemplate.findUnique({
+        where: { id: template.id },
+        include: { annotations: true }
+      });
+      
+      console.log("[POST /pdf-templates] PERSISTENCE VERIFICATION:", {
+        templateCreated: !!template,
+        templateId: template.id,
+        verifyQuerySuccess: !!verifyQuery,
+        annotationsCreated: template.annotations?.length || 0,
+        annotationsVerified: verifyQuery?.annotations?.length || 0,
+        persistenceConfirmed: !!verifyQuery && verifyQuery.annotations.length === template.annotations?.length
+      });
+      
+      if (!verifyQuery) {
+        throw new Error("Template created but not found in verification query - possible transaction issue");
+      }
     } catch (err: any) {
       const msg = String(err?.message || '').toLowerCase();
       if (/createdbyuserid/.test(msg) && /unknown column|does not exist|no such column/.test(msg)) {

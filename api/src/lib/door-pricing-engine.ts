@@ -137,6 +137,17 @@ export interface PricedMaterialRequirement extends MaterialRequirement {
 
   /** Total line sell (sellPerUnit × quantity). */
   lineSell: number;
+  
+  /** Full material item details for transparency and debugging. */
+  materialItem?: {
+    id: string;
+    code: string;
+    name: string;
+    cost: number;
+    currency: string;
+    unit: string;
+    category: string;
+  } | null;
 }
 
 /**
@@ -459,6 +470,16 @@ export async function priceMaterialRequirementsForTenant(
       sellPerUnit,
       lineCost,
       lineSell,
+      // Include full material details for transparency
+      materialItem: materialItem ? {
+        id: materialItem.id,
+        code: materialItem.code,
+        name: materialItem.name,
+        cost: Number(materialItem.cost),
+        currency: materialItem.currency || 'GBP',
+        unit: materialItem.unit || 'each',
+        category: materialItem.category
+      } : null,
     });
   }
 
