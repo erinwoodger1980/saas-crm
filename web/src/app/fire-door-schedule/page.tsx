@@ -411,14 +411,12 @@ export default function FireDoorSchedulePage() {
                 variant="outline"
                 className="bg-white/50 border-2 border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:border-blue-500/50"
                 onClick={() => {
-                  // Find the first project and open its order/quote view
+                  // Navigate to the 144-column AG Grid page
                   if (projects.length > 0) {
                     const firstProject = projects[0];
-                    // Use projectId if available (links to quote), otherwise use project id
-                    const quoteId = firstProject.projectId || firstProject.id;
-                    router.push(`/fire-door-quotes/${quoteId}`);
+                    router.push(`/fire-door-quotes/${firstProject.id}`);
                   } else {
-                    router.push("/fire-door-schedule/new");
+                    router.push("/fire-door-quotes/new");
                   }
                 }}
               >
@@ -604,16 +602,9 @@ export default function FireDoorSchedulePage() {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            // Use projectId if available (it links to the quote/project)
-                            if (project.projectId) {
-                              router.push(`/fire-door-quotes/${project.projectId}`);
-                            } else {
-                              // If no projectId, this schedule entry doesn't have a quote yet
-                              alert('No quote associated with this project yet');
-                            }
+                            router.push(`/fire-door-quotes/${project.id}`);
                           }}
-                          disabled={!project.projectId}
-                          className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500"
                         >
                           <FileText className="w-3 h-3 mr-1" />
                           View Order
