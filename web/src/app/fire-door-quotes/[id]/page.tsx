@@ -94,13 +94,20 @@ export default function FireDoorQuoteBuilderPage() {
       const data = await apiFetch<FireDoorQuote>(`/fire-door-quotes/${id}`);
       setQuote(data);
       await loadRfis(id);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading quote:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load quote",
-        variant: "destructive",
-      });
+      
+      // If quote not found (404), treat as new quote
+      if (error?.status === 404 || error?.message?.includes('not found')) {
+        console.log('Quote not found, starting new quote');
+        addLineItem();
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to load quote",
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
