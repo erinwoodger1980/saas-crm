@@ -10,7 +10,7 @@ import {
   Calendar, DollarSign, ArrowRight, Package
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 
 interface FireDoorImport {
   id: string;
