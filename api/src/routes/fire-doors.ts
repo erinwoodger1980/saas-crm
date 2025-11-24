@@ -152,7 +152,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
               doorsetType: row.doorSetType,
               rating: row.fireRating,
               acousticRatingDb: row.acousticRatingDb,
-              handing: row.handing,
+              // handing: row.handing, // TODO: Map to handingFinish or handingFinal
 
               // Colors & finishes
               internalColour: row.internalColour,
