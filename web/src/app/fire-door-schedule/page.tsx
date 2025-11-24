@@ -236,7 +236,7 @@ export default function FireDoorSchedulePage() {
       setProjects((prev) => prev.map(p => p.id === projectId ? { ...p, ...patch } : p));
       await apiFetch(`/fire-door-schedule/${projectId}`, {
         method: 'PATCH',
-        body: JSON.stringify(patch),
+        json: patch,
       });
     } catch (e) {
       console.error('Failed to update project', e);

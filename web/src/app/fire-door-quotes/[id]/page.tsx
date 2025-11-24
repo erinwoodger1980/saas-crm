@@ -130,7 +130,7 @@ export default function FireDoorQuoteBuilderPage() {
       
       const savedQuote = await apiFetch<FireDoorQuote>(endpoint, {
         method,
-        body: JSON.stringify(quote),
+        json: quote,
       });
 
       setQuote(savedQuote);
@@ -223,7 +223,7 @@ export default function FireDoorQuoteBuilderPage() {
 
       await apiFetch(endpoint, {
         method,
-        body: JSON.stringify(payload),
+        json: payload,
       });
 
       toast({
