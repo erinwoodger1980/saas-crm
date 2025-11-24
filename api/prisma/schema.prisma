@@ -101,6 +101,9 @@ model Tenant {
   examplePhotos              ExamplePhoto[]
   // Fire door schedule (project tracking)
   fireDoorScheduleProjects   FireDoorScheduleProject[]
+  // Fire door client portal
+  clientAccounts             ClientAccount[]
+  clientJobs                 FireDoorClientJob[]
 }
 
 /// ==============================
@@ -2817,4 +2820,289 @@ model FireDoorScheduleProject {
   @@index([tenantId, signOffStatus])
   @@index([tenantId, dateRequired])
   @@index([projectId])
+}
+
+// ============================================================================
+// FIRE DOOR CLIENT PORTAL MODELS
+// Public-facing system for clients to submit door schedules and track orders
+// Replaces Google Sheet: "LAJ & Lloyd Worrall Import Sheet (Master).csv"
+// ============================================================================
+
+model ClientAccount {
+  id        String   @id @default(cuid())
+  tenantId  String   // Fire door manufacturer this client belongs to
+  
+  // Company Information
+  companyName     String
+  accountNumber   String?  // Internal reference
+  primaryContact  String?
+  email           String
+  phone           String?
+  address         String?
+  city            String?
+  postcode        String?
+  country         String?   @default("UK")
+  
+  // Account Settings
+  isActive        Boolean   @default(true)
+  notes           String?
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users           ClientUser[]
+  jobs            FireDoorClientJob[]
+  
+  @@index([tenantId])
+  @@index([tenantId, email])
+  @@index([tenantId, companyName])
+}
+
+model ClientUser {
+  id                String   @id @default(cuid())
+  clientAccountId   String
+  
+  // User Information
+  email             String
+  passwordHash      String
+  firstName         String
+  lastName          String
+  phone             String?
+  jobTitle          String?
+  
+  // Account Status
+  isActive          Boolean   @default(true)
+  emailVerified     Boolean   @default(false)
+  lastLoginAt       DateTime?
+  
+  // Password Reset
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  clientAccount     ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  
+  @@unique([email])
+  @@index([clientAccountId])
+  @@index([email])
+}
+
+model FireDoorClientJob {
+  id                String   @id @default(cuid())
+  tenantId          String   // Fire door manufacturer
+  clientAccountId   String   // Client who submitted
+  submittedBy       String?  // ClientUser ID who submitted
+  
+  // Job Details (top section of import sheet)
+  jobName           String
+  projectReference  String?
+  siteAddress       String?
+  deliveryAddress   String?
+  contactPerson     String?
+  contactEmail      String?
+  contactPhone      String?
+  
+  // Order Information
+  poNumber          String?
+  quoteReference    String?
+  dateRequired      DateTime?
+  
+  // Status & Progress
+  status            String    @default("PENDING_REVIEW")  
+  // PENDING_REVIEW | PRICING_IN_PROGRESS | PRICED | AWAITING_APPROVAL | 
+  // APPROVED | IN_PRODUCTION | READY_FOR_DELIVERY | DELIVERED | COMPLETE
+  
+  // Pricing
+  totalPrice        Decimal?
+  pricePerUnit      Json?     // Breakdown by door item
+  pricedAt          DateTime?
+  pricedBy          String?   // User ID who priced
+  
+  // Production Tracking
+  productionStarted DateTime?
+  estimatedCompletion DateTime?
+  actualCompletion  DateTime?
+  
+  // Notes & Communication
+  clientNotes       String?   // Notes from client at submission
+  internalNotes     String?   // Internal manufacturer notes
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  submittedAt       DateTime  @default(now())
+  
+  // Relations
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientAccount     ClientAccount       @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  doorItems         FireDoorClientDoorItem[]
+  rfis              FireDoorClientRFI[]
+  
+  @@index([tenantId])
+  @@index([clientAccountId])
+  @@index([tenantId, status])
+  @@index([tenantId, dateRequired])
+  @@index([submittedAt])
+}
+
+model FireDoorClientDoorItem {
+  id                      String   @id @default(cuid())
+  tenantId                String
+  fireDoorClientJobId     String
+  
+  // Row metadata
+  rowNumber               Int?     // Sequence in the grid
+  
+  // Door Schedule Fields (from LW Import Sheet CSV - 70 columns)
+  // Basic Information
+  sequence                String?
+  doorRef                 String?
+  location                String?
+  quantity                Int?
+  type                    String?
+  coreType                String?
+  fireRating              String?
+  acousticRating          String?
+  thresholdSealType       String?
+  doorsetLeafFrame        String?
+  configuration           String?
+  
+  // Dimensions
+  masterLeafWidth         Decimal?
+  soH                     String?
+  soW                     String?
+  ofH                     String?
+  ofW                     String?
+  sOWallThickness         Decimal?
+  
+  // Frame Specifications
+  frameMaterial           String?
+  frameFinish             String?
+  frameType               String?
+  antiBarricadeEmergencyStops String?
+  
+  // Architrave
+  architraveMaterialFinish String?
+  arcWidth                Decimal?
+  arcDepth                Decimal?
+  
+  // Door Specifications
+  doorFacing              String?
+  doorFinish              String?
+  doorColour              String?
+  lippingMaterial         String?
+  doorAction              String?
+  doorUndercut            String?
+  
+  // Aperture (Vision Panel)
+  aperture                String?
+  apertureWidth           Decimal?
+  apertureHeight          Decimal?
+  vistamaticSupplyType    String?
+  vistmaticHardwareSide1  String?
+  vistamaticHardwareSide2 String?
+  beadType                String?
+  beadMaterial            String?
+  lwGlassType             String?
+  
+  // Hinges
+  hingeSupplyType         String?
+  hingeFitting            String?
+  hingeType               String?
+  hingeConfiguration      String?
+  handing                 String?
+  
+  // Locks
+  lockSupplyPrep          Boolean?
+  lockFitting             String?
+  lockType1               String?
+  lockHeightToSpindle1    Decimal?
+  spindlePrep             Boolean?
+  cylinderPrep            Boolean?
+  lockType2               String?
+  lockHeightToSpindle2    Decimal?
+  
+  // Hardware
+  closersFloorSprings     String?
+  flushBoltSupplyPrep     Boolean?
+  
+  // Special Requirements
+  specials                String?
+  leadLiningCode          String?
+  overpanelDetails        String?
+  screenDetails           String?
+  
+  // Air Transfer Grille
+  airTransferGrilleRequirement String?
+  airTransferGrilleSize   Decimal?
+  airTransferGrillePosition String?
+  
+  // Protection
+  doorEdgeProtectionType  Boolean?
+  doorEdgeProtectionPosition Boolean?
+  kickPlates              String?
+  pvcFaceProtection       Boolean?
+  
+  // Wiring & ID
+  wiringPrep              Boolean?
+  freeIssueCableLoopPrep  Boolean?
+  fireIdDisc              String?
+  ironmongeryPackRef      String?
+  comments                String?
+  
+  // Pricing (calculated per door)
+  unitPrice               Decimal?
+  lineTotal               Decimal?
+  
+  // Raw data preservation
+  rawRowJson              Json?    // Store complete row as JSON for audit
+  
+  // Timestamps
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  
+  // Relations
+  job                     FireDoorClientJob @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
+  
+  @@index([fireDoorClientJobId])
+  @@index([tenantId])
+  @@index([doorRef])
+}
+
+model FireDoorClientRFI {
+  id                      String   @id @default(cuid())
+  tenantId                String
+  fireDoorClientJobId     String
+  
+  // RFI Details
+  subject                 String
+  question                String
+  doorItemRef             String?  // Reference to specific door if applicable
+  
+  // Response
+  response                String?
+  respondedBy             String?  // User ID
+  respondedAt             DateTime?
+  
+  // Status
+  status                  String   @default("OPEN")  // OPEN | ANSWERED | CLOSED
+  priority                String   @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  
+  // Timestamps
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  
+  // Relations
+  job                     FireDoorClientJob @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
+  
+  @@index([fireDoorClientJobId])
+  @@index([tenantId])
+  @@index([status])
 }
