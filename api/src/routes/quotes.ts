@@ -1053,6 +1053,48 @@ router.post("/", requireAuth, async (req: any, res) => {
   res.json(mapQuoteSourceForResponse(q));
 });
 
+/** POST /quotes/:id/lines - Add a line item to a quote */
+router.post("/:id/lines", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = await getTenantId(req);
+    const quoteId = String(req.params.id);
+    const { description, quantity, unitPrice, notes } = req.body || {};
+
+    if (!description) {
+      return res.status(400).json({ error: "description_required" });
+    }
+
+    // Verify quote exists and belongs to tenant
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, tenantId },
+    });
+
+    if (!quote) {
+      return res.status(404).json({ error: "quote_not_found" });
+    }
+
+    // Create line item
+    const line = await prisma.quoteLine.create({
+      data: {
+        quoteId,
+        description: String(description),
+        qty: Number(quantity) || 1,
+        unitPrice: new Prisma.Decimal(Number(unitPrice) || 0),
+        currency: "GBP",
+        lineTotalGBP: new Prisma.Decimal((Number(quantity) || 1) * (Number(unitPrice) || 0)),
+        deliveryShareGBP: new Prisma.Decimal(0),
+        supplier: null as any,
+        meta: notes ? { notes } : {},
+      },
+    });
+
+    return res.json({ ok: true, line });
+  } catch (e: any) {
+    console.error("[POST /quotes/:id/lines] Error:", e);
+    return res.status(500).json({ error: "internal_error", detail: e?.message });
+  }
+});
+
 /** GET /quotes/:id */
 /**
  * GET /quotes/source-profiles
