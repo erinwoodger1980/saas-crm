@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   ColDef,
@@ -13,6 +13,7 @@ import {
 } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
+import { apiFetch } from "@/lib/api";
 
 interface FireDoorLineItem {
   id?: string;
@@ -202,6 +203,25 @@ interface FireDoorGridProps {
 export function FireDoorGrid({ lineItems, rfis, onLineItemsChange, onAddRfi, onSelectRfi }: FireDoorGridProps) {
   const gridRef = useRef<AgGridReact>(null);
   const [gridApi, setGridApi] = useState<GridApi | null>(null);
+  const [doorCores, setDoorCores] = useState<any[]>([]);
+  const [ironmongeryItems, setIronmongeryItems] = useState<any[]>([]);
+
+  // Fetch lookup data
+  useEffect(() => {
+    async function fetchLookups() {
+      try {
+        const [coresData, ironmongeryData] = await Promise.all([
+          apiFetch('/door-cores').catch(() => []),
+          apiFetch('/ironmongery-items').catch(() => [])
+        ]);
+        setDoorCores(Array.isArray(coresData) ? coresData : []);
+        setIronmongeryItems(Array.isArray(ironmongeryData) ? ironmongeryData : []);
+      } catch (error) {
+        console.error('Error fetching lookups:', error);
+      }
+    }
+    fetchLookups();
+  }, []);
 
   const onGridReady = useCallback((params: GridReadyEvent) => {
     setGridApi(params.api);
@@ -279,6 +299,41 @@ export function FireDoorGrid({ lineItems, rfis, onLineItemsChange, onAddRfi, onS
     return [...custom, ...(params.defaultItems || [])];
   }, [onAddRfi]);
 
+  // Build dropdown options
+  const coreOptions = useMemo(() => 
+    doorCores.map(c => c.code || c.name).filter(Boolean),
+    [doorCores]
+  );
+
+  const coreTypeOptions = useMemo(() => 
+    [...new Set(doorCores.map(c => c.coreType).filter(Boolean))],
+    [doorCores]
+  );
+
+  const materialOptions = useMemo(() => 
+    [...new Set(doorCores.map(c => c.material).filter(Boolean))],
+    [doorCores]
+  );
+
+  const ratingOptions = ['FD30', 'FD60', 'FD90', 'FD120'];
+
+  const doorsetTypeOptions = ['Single', 'Double', 'Single with sidelight', 'Double with sidelight'];
+
+  const hingeTypeOptions = useMemo(() =>
+    [...new Set(ironmongeryItems.filter(i => i.category === 'hinge').map(i => i.name))],
+    [ironmongeryItems]
+  );
+
+  const lockTypeOptions = useMemo(() =>
+    [...new Set(ironmongeryItems.filter(i => i.category === 'lock').map(i => i.name))],
+    [ironmongeryItems]
+  );
+
+  const handleTypeOptions = useMemo(() =>
+    [...new Set(ironmongeryItems.filter(i => i.category === 'handle').map(i => i.name))],
+    [ironmongeryItems]
+  );
+
   // Build RFI lookup maps
   const columnRfiMap = useMemo(() => {
     const map: Record<string, RfiRecord[]> = {};
@@ -339,14 +394,45 @@ export function FireDoorGrid({ lineItems, rfis, onLineItemsChange, onAddRfi, onS
       headerClass: 'ag-header-group-blue',
       children: [
         { field: 'certification', headerName: 'Certification', width: 130, editable: true, headerClass: columnRfiMap['certification'] ? 'ag-header-has-rfi' : '' },
-        { field: 'doorsetType', headerName: 'Doorset Type', width: 130, editable: true, headerClass: columnRfiMap['doorsetType'] ? 'ag-header-has-rfi' : '' },
+        { 
+          field: 'doorsetType', 
+          headerName: 'Doorset Type', 
+          width: 130, 
+          editable: true, 
+          cellEditor: 'agSelectCellEditor',
+          cellEditorParams: { values: doorsetTypeOptions },
+          headerClass: columnRfiMap['doorsetType'] ? 'ag-header-has-rfi' : '' 
+        },
         { field: 'lajRef', headerName: 'LAJ Ref', width: 110, editable: true },
         { field: 'masterWidth', headerName: 'Master Width (mm)', width: 140, editable: true, type: 'numericColumn', headerClass: columnRfiMap['masterWidth'] ? 'ag-header-has-rfi' : '' },
         { field: 'slaveWidth', headerName: 'Slave Width (mm)', width: 140, editable: true, type: 'numericColumn' },
         { field: 'doorHeight', headerName: 'Door Height (mm)', width: 140, editable: true, type: 'numericColumn' },
-        { field: 'core', headerName: 'Core', width: 120, editable: true },
-        { field: 'rating', headerName: 'Rating', width: 100, editable: true, headerClass: columnRfiMap['rating'] ? 'ag-header-has-rfi' : '' },
-        { field: 'coreType', headerName: 'Core Type', width: 120, editable: true, headerClass: columnRfiMap['coreType'] ? 'ag-header-has-rfi' : '' },
+        { 
+          field: 'core', 
+          headerName: 'Core', 
+          width: 120, 
+          editable: true,
+          cellEditor: 'agSelectCellEditor',
+          cellEditorParams: { values: coreOptions }
+        },
+        { 
+          field: 'rating', 
+          headerName: 'Rating', 
+          width: 100, 
+          editable: true, 
+          cellEditor: 'agSelectCellEditor',
+          cellEditorParams: { values: ratingOptions },
+          headerClass: columnRfiMap['rating'] ? 'ag-header-has-rfi' : '' 
+        },
+        { 
+          field: 'coreType', 
+          headerName: 'Core Type', 
+          width: 120, 
+          editable: true,
+          cellEditor: 'agSelectCellEditor',
+          cellEditorParams: { values: coreTypeOptions },
+          headerClass: columnRfiMap['coreType'] ? 'ag-header-has-rfi' : '' 
+        },
       ],
     },
 
@@ -443,7 +529,14 @@ export function FireDoorGrid({ lineItems, rfis, onLineItemsChange, onAddRfi, onS
         { field: 'coreLipping', headerName: 'Core', width: 120, editable: true },
         { field: 'ratingLipping', headerName: 'Rating', width: 100, editable: true },
         { field: 'coreTypeLipping', headerName: 'Core Type', width: 120, editable: true },
-        { field: 'material', headerName: 'Material', width: 130, editable: true },
+        { 
+          field: 'material', 
+          headerName: 'Material', 
+          width: 130, 
+          editable: true,
+          cellEditor: 'agSelectCellEditor',
+          cellEditorParams: { values: materialOptions }
+        },
         { field: 'topLipping', headerName: 'Top', width: 100, editable: true, type: 'numericColumn' },
         { field: 'btmLipping', headerName: 'Bottom', width: 100, editable: true, type: 'numericColumn' },
         { field: 'hingeLipping', headerName: 'Hinge', width: 100, editable: true, type: 'numericColumn' },
@@ -529,8 +622,22 @@ export function FireDoorGrid({ lineItems, rfis, onLineItemsChange, onAddRfi, onS
         { field: 'smokeStrip', headerName: 'Smoke Strip', width: 120, editable: true },
         { field: 'dropSeal', headerName: 'Drop Seal', width: 120, editable: true },
         { field: 'hingeQty', headerName: 'Hinge Qty', width: 110, editable: true, type: 'numericColumn' },
-        { field: 'hingeType', headerName: 'Hinge Type', width: 130, editable: true },
-        { field: 'lockType', headerName: 'Lock Type', width: 130, editable: true },
+        { 
+          field: 'hingeType', 
+          headerName: 'Hinge Type', 
+          width: 130, 
+          editable: true,
+          cellEditor: 'agSelectCellEditor',
+          cellEditorParams: { values: hingeTypeOptions }
+        },
+        { 
+          field: 'lockType', 
+          headerName: 'Lock Type', 
+          width: 130, 
+          editable: true,
+          cellEditor: 'agSelectCellEditor',
+          cellEditorParams: { values: lockTypeOptions }
+        },
         { field: 'latchType', headerName: 'Latch Type', width: 130, editable: true },
         { field: 'cylinderType', headerName: 'Cylinder Type', width: 130, editable: true },
         { field: 'keeperType', headerName: 'Keeper Type', width: 130, editable: true },
@@ -542,7 +649,14 @@ export function FireDoorGrid({ lineItems, rfis, onLineItemsChange, onAddRfi, onS
       headerName: 'Section 9: Secondary Ironmongery',
       headerClass: 'ag-header-group-red',
       children: [
-        { field: 'handleType', headerName: 'Handle Type', width: 130, editable: true },
+        { 
+          field: 'handleType', 
+          headerName: 'Handle Type', 
+          width: 130, 
+          editable: true,
+          cellEditor: 'agSelectCellEditor',
+          cellEditorParams: { values: handleTypeOptions }
+        },
         { field: 'pullHandleType', headerName: 'Pull Handle Type', width: 150, editable: true },
         { field: 'pullHandleQty', headerName: 'Pull Handle Qty', width: 140, editable: true, type: 'numericColumn' },
         { field: 'flushBoltType', headerName: 'Flush Bolt Type', width: 140, editable: true },
@@ -629,7 +743,7 @@ export function FireDoorGrid({ lineItems, rfis, onLineItemsChange, onAddRfi, onS
         },
       ],
     },
-  ], [cellRfiMap, columnRfiMap]);
+  ], [cellRfiMap, columnRfiMap, coreOptions, coreTypeOptions, materialOptions, doorsetTypeOptions, hingeTypeOptions, lockTypeOptions, handleTypeOptions]);
 
   const defaultColDef = useMemo<ColDef>(() => ({
     sortable: true,
