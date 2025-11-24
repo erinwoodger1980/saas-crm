@@ -2599,6 +2599,7 @@ model PurchaseOrderLine {
 
 /// ===============================
 /// Fire Door Spreadsheet Import System
+/// (Using existing DoorCore, IronmongeryItem, GlazingItem models)
 /// ===============================
 
 model FireDoorImport {
@@ -2629,48 +2630,218 @@ model FireDoorLineItem {
   tenantId         String
   rowIndex         Int // Original row number from CSV
 
-  // Core identification fields
-  itemType String? // from `Item`
-  code     String? // from `Code`
-  quantity Int?
+  // ============================================================================
+  // SECTION 1: CERTIFICATION & INITIAL SPEC (Columns A-J)
+  // ============================================================================
+  certification String? // A: CERTIFICATION
+  doorsetType   String? // B: DOORSET TYPE
+  lajRef        String? // C: LAJ REF
+  doorRef       String? // D: DOOR REF
+  masterWidth   Float? // E: MASTER WIDTH
+  slaveWidth    Float? // F: SLAVE WIDTH
+  doorHeight    Float? // G: DOOR HEIGHT
+  core          String? // H: CORE
+  rating        String? // I: RATING (fire rating)
+  coreType      String? // J: CORE TYPE
 
-  // Door identification / metadata
-  doorRef      String? // `Door Ref`
-  location     String? // `Location`
-  doorSetType  String? // `Doorset / Leaf / Frame`
-  fireRating   String? // `Fire Rating` (e.g. FD30S, NFR)
-  acousticRatingDb Int? // `Acoustic Rating dB`
-  handing      String? // `Handing`
+  // ============================================================================
+  // SECTION 2: EDGE DIMENSIONS & ADJUSTMENTS (Columns K-S)
+  // ============================================================================
+  top          Float? // K: TOP
+  btm          Float? // L: BTM
+  hinge        Float? // M: HINGE
+  me           Float? // N: M/E
+  daExposed    Float? // O: D/A EXPOSED
+  trim         Float? // P: TRIM
+  safeHinge    Float? // Q: SAFE HINGE
+  pf           Float? // R: P/F
+  extra        Float? // S: EXTRA
 
-  // Colors & finishes
-  internalColour String? // `Internal Colour`
-  externalColour String? // `External Colour`
-  frameFinish    String? // `Frame Finish`
+  // ============================================================================
+  // SECTION 3: REDUCED DIMENSIONS (Calculated) (Columns T-W)
+  // ============================================================================
+  masterReduced     Float? // T: MASTER (R) - Calculated
+  slaveWidthReduced Float? // U: SLAVE WIDTH (R) - Calculated
+  doorHeightReduced Float? // V: DOOR HEIGHT (R) - Calculated
+  coreReduced       String? // W: CORE
 
-  // Leaf geometry / configuration
+  // ============================================================================
+  // SECTION 4: NOTES (Columns X-Y)
+  // ============================================================================
+  notes1 String? // X: NOTES 1
+  notes2 String? // Y: NOTES 2
+
+  // ============================================================================
+  // SECTION 5: LIPPING SECTION (Columns Z-AO)
+  // ============================================================================
+  lajRefLipping       String? // Z: LAJ REF
+  doorRefLipping      String? // AA: DOOR REF
+  masterWidthLipping  Float? // AB: MASTER WIDTH
+  slaveWidthLipping   Float? // AC: SLAVE WIDTH
+  doorHeightLipping   Float? // AD: DOOR HEIGHT
+  coreLipping         String? // AE: CORE
+  ratingLipping       String? // AF: RATING
+  coreTypeLipping     String? // AG: CORE TYPE
+  material            String? // AH: MATERIAL
+  topLipping          Float? // AI: TOP
+  btmLipping          Float? // AJ: BTM
+  hingeLipping        Float? // AK: HINGE
+  meLipping           Float? // AL: M/E
+  daExposedLipping    Float? // AM: D/A EXPOSED
+  lippingDetail       String? // AN: Lipping Detail
+  masterWidthLipping2 Float? // AO: MASTER WIDTH
+
+  // ============================================================================
+  // SECTION 6: EDGING / 2T SECTION (Columns AP-AY)
+  // ============================================================================
+  slaveWidthEdging    Float? // AP: SLAVE WIDTH
+  doorHeightEdging    Float? // AQ: DOOR HEIGHT
+  coreEdging          String? // AR: CORE
+  masterWidth2T       Float? // AS: MASTER WIDTH (2T)
+  slaveWidth2T        Float? // AT: SLAVE WIDTH (2T)
+  doorHeight2T        Float? // AU: DOOR HEIGHT (2T)
+  core2T              String? // AV: CORE
+  doorType            String? // AW: DOOR TYPE
+  note1Edge           String? // AX: NOTE 1 (Edge)
+  note2Edge           String? // AY: NOTE 2 (Edge)
+
+  // ============================================================================
+  // SECTION 7: FACING / CALIBRATION SECTION (Columns AZ-BS)
+  // ============================================================================
+  lajRefFacing         String? // AZ: LAJ REF
+  doorRefFacing        String? // BA: DOOR REF
+  masterWidthFacing    Float? // BB: MASTER WIDTH
+  slaveWidthFacing     Float? // BC: SLAVE WIDTH
+  doorHeightFacing     Float? // BD: DOOR HEIGHT
+  coreFacing           String? // BE: CORE
+  coreTypeFacing       String? // BF: CORE TYPE
+  materialFacing       String? // BG: MATERIAL
+  topFacing            Float? // BH: TOP
+  btmFacing            Float? // BI: BTM
+  hingeFacing          Float? // BJ: HINGE
+  meFacing             Float? // BK: M/E
+  daExposedFacing      Float? // BL: D/A EXPOSED
+  calibratedSize       String? // BM: CALIBRATED SIZE
+  masterDoor           String? // BN: MASTER DOOR
+  slaveDoor            String? // BO: SLAVE DOOR
+  bookMatching         String? // BP: BOOK MATCHING
+  chamferRequired      String? // BQ: CHAMFER REQUIRED
+  notes1Cal            String? // BR: NOTES 1 (Cal)
+  note2Cal             String? // BS: NOTE 2 (Cal)
+
+  // ============================================================================
+  // SECTION 8: FINISH / IRONMONGERY SECTION (Columns BT-CX)
+  // ============================================================================
+  lajRefFinish             String? // BT: LAJ REF
+  doorRefFinish            String? // BU: DOOR REF
+  masterWidthFinish        Float? // BV: MASTER WIDTH
+  slaveWidthFinish         Float? // BW: SLAVE WIDTH
+  doorHeightFinish         Float? // BX: DOOR HEIGHT
+  coreFinish               String? // BY: CORE
+  coreTypeFinish           String? // BZ: CORE TYPE
+  doorFinish               String? // CA: DOOR FINISH
+  fireRatingFinish         String? // CB: FIRE RATING
+  handingFinish            String? // CC: HANDING
+  position                 String? // CD: POSITION
+  qtyOfHinges              Int? // CE: QTY OF HINGES
+  hingeType                String? // CF: HINGE TYPE
+  groovesForMe             String? // CG: GROOVES FOR M/E
+  lockType                 String? // CH: LOCK TYPE
+  spindlePrep              String? // CI: SPINDLE PREP
+  cylinderPrep             String? // CJ: CYLINDER PREP
+  lockHeight               Float? // CK: LOCK HEIGHT
+  flushBolt                String? // CL: FLUSH BOLT
+  uc                       String? // CM: U/C
+  hingeInt                 String? // CN: HINGE (Int)
+  lockInt                  String? // CO: LOCK (Int)
+  flushboltInt             String? // CP: FLUSHBOLT (Int)
+  vpType                   String? // CQ: VP TYPE
+  visionPanelMaster        String? // CR: VISION PANEL MASTER
+  visionPanelSlave         String? // CS: VISION PANEL SLAVE
+  beadType                 String? // CT: BEAD TYPE
+  vpPosition               String? // CU: VP POSITION
+  dropseal                 String? // CV: DROPSEAL
+  additionalIronmongery1   String? // CW: ADDITIONAL IRONMONGERY
+  additionalIronmongery2   String? // CX: ADDITIONAL IRONMONGERY
+
+  // ============================================================================
+  // SECTION 9: SECONDARY IRONMONGERY (Columns CZ-DN)
+  // ============================================================================
+  doorRefSecondary       String? // CZ: DOOR REF
+  lockType2              String? // DA: LOCK TYPE 2
+  spindlePrep2           String? // DB: SPINDLE PREP 2
+  cylinderPrep2          String? // DC: CYLINDER PREP 2
+  lockHeight2            Float? // DD: LOCK HEIGHT 2
+  concealedDoorCloser    String? // DE: CONCEALED DOOR CLOSER
+  atgSize                String? // DF: ATG SIZE
+  atgPosition            String? // DG: ATG POSITION
+  safehingSureclose      String? // DH: SAFEHINGE SURECLOSE
+  safehingeStandardPivot String? // DI: SAFEHINGE STANDARD PIVOT
+  safehingeRhinoBolts    String? // DJ: SAFEHINGE RHINO BOLTS
+  doorViewer             String? // DK: DOOR VIEWER
+  letterbox              String? // DL: LETTERBOX
+  flushPulls             String? // DM: FLUSH PULLS
+  cableway               String? // DN: CABLEWAY
+
+  // ============================================================================
+  // SECTION 10: FINAL SPEC & FRAME (Columns DR-EN)
+  // ============================================================================
+  lajRefFinal                 String? // DR: LAJ REF
+  doorRefFinal                String? // DS: DOOR REF
+  master                      Float? // DT: MASTER
+  slave                       Float? // DU: SLAVE
+  height                      Float? // DV: HEIGHT
+  coreFinal                   String? // DW: CORE
+  fireRatingFinal             String? // DX: FIRE RATING
+  doorFinishFinal             String? // DY: DOOR FINISH
+  fireSealsInMe               String? // DZ: FIRE SEALS IN M/E
+  glazingSystem               String? // EA: GLAZING SYSTEM
+  vpSize                      String? // EB: VP SIZE
+  glassType                   String? // EC: GLASS TYPE
+  cassetteType                String? // ED: CASSETTE TYPE
+  dropSeal                    String? // EE: DROP SEAL
+  hinges                      String? // EF: HINGES
+  handingFinal                String? // EG: HANDING
+  lock                        String? // EH: LOCK
+  lockHeightOnDoor            Float? // EI: LOCK HEIGHT ON DOOR
+  keep                        String? // EJ: KEEP
+  flushBolts                  String? // EK: FLUSH BOLTS
+  fittedInFrame               String? // EL: FITTED IN FRAME
+  hingeLockFlushboltIntum     String? // EM: HINGE / LOCK / FLUSHBOLT INTUMESCENT
+  qMarkPlug                   String? // EN: Q-MARK PLUG
+
+  // ============================================================================
+  // LEGACY FIELDS (for backward compatibility with existing imports)
+  // ============================================================================
+  itemType          String? // from `Item`
+  code              String? // from `Code`
+  quantity          Int?
+  location          String? // `Location`
+  acousticRatingDb  Int? // `Acoustic Rating dB`
+  internalColour    String? // `Internal Colour`
+  externalColour    String? // `External Colour`
+  frameFinish       String? // `Frame Finish`
   leafHeight        Float? // `Leaf Height`
   masterLeafWidth   Float? // `M Leaf Width`
   slaveLeafWidth    Float? // `S Leaf Width`
   leafThickness     Float? // `Leaf Thickness`
   leafConfiguration String? // `Leaf Configuration`
   ifSplitMasterSize String? // `If Split, Master Leaf Size`
-
-  // Finishes & edges
-  doorFinishSide1     String? // `Door Finish - Side 1 (Push)`
-  doorFinishSide2     String? // `Door Finish - Side 2 (Pull)`
-  doorFacing          String? // `Door Facing`
-  lippingFinish       String? // `Lipping Finish`
-  doorEdgeProtType    String? // `Door Edge Protection Type`
-  doorEdgeProtPos     String? // `Door Edge Protection Position`
-  doorUndercut        String? // `Door Undercut`
-  doorUndercutMm      Float? // `Door Undercut (mm)`
+  doorFinishSide1   String? // `Door Finish - Side 1 (Push)`
+  doorFinishSide2   String? // `Door Finish - Side 2 (Pull)`
+  doorFacing        String? // `Door Facing`
+  lippingFinish     String? // `Lipping Finish`
+  doorEdgeProtType  String? // `Door Edge Protection Type`
+  doorEdgeProtPos   String? // `Door Edge Protection Position`
+  doorUndercut      String? // `Door Undercut`
+  doorUndercutMm    Float? // `Door Undercut (mm)`
 
   // Vision panels / glazing (Leaf 1)
-  visionQtyLeaf1  Int? // `Vision Panel Qty, Leaf 1`
-  vp1WidthLeaf1   Float? // `Leaf 1 Aperture 1 Width (See Size Detail)`
-  vp1HeightLeaf1  Float? // `Leaf 1 Aperture 1 Height (See Size Detail)`
-  vp2WidthLeaf1   Float? // `Leaf 1 Aperture 2 Width (See Size Detail)`
-  vp2HeightLeaf1  Float? // `Leaf 1 Aperture 2 Height (See Size Detail)`
+  visionQtyLeaf1 Int? // `Vision Panel Qty, Leaf 1`
+  vp1WidthLeaf1  Float? // `Leaf 1 Aperture 1 Width (See Size Detail)`
+  vp1HeightLeaf1 Float? // `Leaf 1 Aperture 1 Height (See Size Detail)`
+  vp2WidthLeaf1  Float? // `Leaf 1 Aperture 2 Width (See Size Detail)`
+  vp2HeightLeaf1 Float? // `Leaf 1 Aperture 2 Height (See Size Detail)`
 
   // Vision panels / glazing (Leaf 2)
   visionQtyLeaf2 Int? // `Vision Panel Qty, Leaf 2`
@@ -2684,7 +2855,7 @@ model FireDoorLineItem {
   fanlightSidelightGlz  String? // `Fanlight/Sidelight Glazing`
   glazingTape           String? // `Glazing Tape`
 
-  // Ironmongery & accessories
+  // Ironmongery & accessories (legacy CSV imports)
   ironmongeryPackRef    String? // `Ironmongery Pack Ref`
   closerOrFloorSpring   String? // `Closers / Floor Springs`
   spindleFacePrep       String? // `Spindle Face Prep`
@@ -2697,17 +2868,14 @@ model FireDoorLineItem {
   fireSignageFactoryFit String? // `Factory Fit Fire Signage`
   fireIdDisc            String? // `Fire ID Disc`
   fireIdDiscQty         Int? // `Fire ID Disc Qty`
-  doorViewer            String? // `Door Viewer`
   doorViewerPosition    String? // `Door Viewer Position`
   doorViewerPrepSize    String? // `Door Viewer Prep Size`
   doorChain             String? // `Door Chain`
   doorViewersQty        Int? // `Door Viewers Qty`
   doorChainFactoryFit   String? // `Factory Fit Door Chain`
   doorViewersFactoryFit String? // `Factory Fit Door Viewers`
-
-  // Additional notes
-  additionNote1    String? // `Addition 1 / Note 1`
-  additionNote1Qty Int? // `Addition 1 Qty`
+  additionNote1         String? // `Addition 1 / Note 1`
+  additionNote1Qty      Int? // `Addition 1 Qty`
 
   // Pricing
   unitValue    Decimal? // parsed from `Value` per door
@@ -2724,7 +2892,7 @@ model FireDoorLineItem {
   import FireDoorImport @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, fireDoorImportId])
-  @@index([tenantId, fireRating])
+  @@index([tenantId, rating])
   @@index([fireDoorImportId, rowIndex])
 }
 
