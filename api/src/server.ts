@@ -105,6 +105,8 @@ import examplePhotosRouter from "./routes/example-photos";
 import fireDoorsRouter from "./routes/fire-doors";
 import fireDoorScheduleRouter from "./routes/fire-door-schedule";
 import publicFireDoorsRouter from "./routes/public-fire-doors";
+import customerAuthRouter from "./routes/customer-auth";
+import customerPortalRouter from "./routes/customer-portal";
 import materialDebugRouter from "./routes/material-debug";
 
 
@@ -559,6 +561,10 @@ app.post("/auth/dev-login", async (req, res) => {
 
 /* ---------------- Public Fire Door Portal ---------------- */
 app.use("/public/fire-doors", publicFireDoorsRouter);
+
+/* ---------------- Customer Portal (Public Auth + Authenticated Routes) ---------------- */
+app.use("/customer-auth", customerAuthRouter);
+app.use("/customer-portal", customerPortalRouter);
 
 /* ---------------- Protected Routers ---------------- */
 app.use("/auth", authRouter);

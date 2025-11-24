@@ -696,6 +696,7 @@ model Quote {
   id                    String                 @id @default(cuid())
   tenantId              String
   leadId                String?
+  clientAccountId       String?                // Link to customer account for portal access
   title                 String
   status                QuoteStatus            @default(DRAFT)
   currency              String                 @default("GBP")
@@ -737,8 +738,10 @@ model Quote {
   questionnaireResponse QuestionnaireResponse?
   shoppingLists         ShoppingList[]
   questionnaireMatches  QuoteQuestionnaireMatch[]
+  clientAccount         ClientAccount?         @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, leadId])
+  @@index([clientAccountId])
   @@index([supplierProfileId])
   @@index([approvalStatus])
   @@index([isTrainingExample])
@@ -2864,6 +2867,7 @@ model ClientAccount {
   jobs            FireDoorClientJob[]
   leads           Lead[]              // Leads linked to this customer
   opportunities   Opportunity[]       // Opportunities linked to this customer
+  quotes          Quote[]             // Quotes for this customer
   
   @@index([tenantId])
   @@index([tenantId, email])
