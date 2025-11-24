@@ -3,14 +3,20 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Save, Trash2 } from "lucide-react";
+import { 
+  ArrowLeft, 
+  Save, 
+  Trash2, 
+  Sparkles,
+  CheckCircle2,
+  FileCheck,
+  Truck,
+  Wrench
+} from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
@@ -18,6 +24,106 @@ import { Toaster } from "@/components/ui/toaster";
 interface FireDoorProject {
   id: string;
   [key: string]: any;
+}
+
+// Progress bar component with gradient
+function ProgressBar({ value, className = "" }: { value: number; className?: string }) {
+  const percentage = Math.min(100, Math.max(0, value || 0));
+  const getColor = (val: number) => {
+    if (val === 0) return "bg-gray-200";
+    if (val < 30) return "bg-gradient-to-r from-red-400 to-red-500";
+    if (val < 60) return "bg-gradient-to-r from-orange-400 to-orange-500";
+    if (val < 90) return "bg-gradient-to-r from-blue-400 to-blue-500";
+    return "bg-gradient-to-r from-green-400 to-green-500";
+  };
+
+  return (
+    <div className={`relative h-8 bg-gray-100 rounded-lg overflow-hidden ${className}`}>
+      <div
+        className={`h-full ${getColor(percentage)} transition-all duration-500 flex items-center justify-end pr-2`}
+        style={{ width: `${percentage}%` }}
+      >
+        {percentage > 0 && (
+          <span className="text-xs font-semibold text-white drop-shadow">{percentage}%</span>
+        )}
+      </div>
+      {percentage === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-xs text-gray-400">0%</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Inline editable cell component
+function EditableCell({ 
+  value, 
+  onChange, 
+  type = "text",
+  placeholder = "",
+  className = "",
+  min,
+  max
+}: { 
+  value: any; 
+  onChange: (val: any) => void;
+  type?: "text" | "number" | "date" | "textarea";
+  placeholder?: string;
+  className?: string;
+  min?: number;
+  max?: number;
+}) {
+  const [draft, setDraft] = useState(value || "");
+
+  useEffect(() => {
+    setDraft(value || "");
+  }, [value]);
+
+  const save = () => {
+    onChange(draft);
+  };
+
+  if (type === "textarea") {
+    return (
+      <Textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        placeholder={placeholder}
+        className={`min-h-[60px] ${className}`}
+        rows={2}
+      />
+    );
+  }
+
+  if (type === "date") {
+    return (
+      <Input
+        type="date"
+        value={value ? new Date(value).toISOString().split("T")[0] : ""}
+        onChange={(e) => onChange(e.target.value ? new Date(e.target.value) : null)}
+        className={className}
+      />
+    );
+  }
+
+  return (
+    <Input
+      type={type}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") save();
+        if (e.key === "Escape") setDraft(value || "");
+      }}
+      placeholder={placeholder}
+      className={`h-9 ${className}`}
+      min={min}
+      max={max}
+    />
+  );
 }
 
 export default function FireDoorScheduleDetailPage() {
@@ -30,6 +136,7 @@ export default function FireDoorScheduleDetailPage() {
   const [project, setProject] = useState<FireDoorProject | null>(null);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [autoSaveTimeout, setAutoSaveTimeout] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!isNew && id) {
@@ -49,6 +156,7 @@ export default function FireDoorScheduleDetailPage() {
         ironmongeryChecked: false,
         fscRequired: false,
         snaggingComplete: false,
+        overallProgress: 0,
       });
     }
   }, [id, isNew]);
@@ -83,7 +191,7 @@ export default function FireDoorScheduleDetailPage() {
           method: "PATCH",
           json: project,
         });
-        toast({ title: "Success", description: "Project updated successfully" });
+        toast({ title: "Saved", description: "Changes saved automatically" });
       }
     } catch (error) {
       console.error("Error saving project:", error);
@@ -95,7 +203,6 @@ export default function FireDoorScheduleDetailPage() {
 
   async function deleteProject() {
     if (isNew || !id) return;
-
     if (!confirm("Are you sure you want to delete this project?")) return;
 
     try {
@@ -109,497 +216,482 @@ export default function FireDoorScheduleDetailPage() {
   }
 
   function updateField(field: string, value: any) {
-    setProject((prev) => (prev ? { ...prev, [field]: value } : null));
+    setProject((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, [field]: value };
+      
+      // Auto-calculate overall progress
+      if (field.includes("Percent") || field.includes("Checked") || field.includes("Status")) {
+        const progressFields = [
+          "blanksCutPercent", "edgebandPercent", "calibratePercent", 
+          "facingsPercent", "finalCncPercent", "finishPercent",
+          "sandPercent", "sprayPercent", "cutPercent", "cncPercent", "buildPercent"
+        ];
+        const total = progressFields.reduce((sum, f) => sum + (updated[f] || 0), 0);
+        updated.overallProgress = Math.round(total / progressFields.length);
+      }
+      
+      return updated;
+    });
+
+    // Auto-save after 1 second of inactivity
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+    setAutoSaveTimeout(setTimeout(() => {
+      if (!isNew) saveProject();
+    }, 1000));
   }
 
   if (loading) {
     return (
-      <div className="container mx-auto py-8">
-        <p>Loading...</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-600">Loading project...</p>
+        </div>
       </div>
     );
   }
 
   if (!project) {
     return (
-      <div className="container mx-auto py-8">
-        <p>Project not found</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <p className="text-slate-600">Project not found</p>
       </div>
     );
   }
 
+  const overallProgress = project.overallProgress || 0;
+
   return (
-    <div className="container mx-auto py-8 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/fire-door-schedule")}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">
-              {isNew ? "New Project" : project.jobName || "Fire Door Project"}
-            </h1>
-            <p className="text-muted-foreground">
-              {isNew ? "Create a new fire door project" : `MJS# ${project.mjsNumber || "N/A"}`}
-            </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50">
+      {/* Floating header with glassmorphism */}
+      <div className="sticky top-0 z-50 backdrop-blur-xl bg-white/80 border-b border-white/20 shadow-lg">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button 
+                variant="ghost" 
+                onClick={() => router.push("/fire-door-schedule")}
+                className="hover:bg-white/50 px-3"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  {isNew ? "New Fire Door Project" : project.jobName || "Fire Door Project"}
+                </h1>
+                <div className="flex items-center gap-4 mt-1">
+                  <p className="text-sm text-slate-600">
+                    MJS# {project.mjsNumber || "N/A"}
+                  </p>
+                  {!isNew && (
+                    <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full">
+                      <Sparkles className="w-3 h-3 text-white" />
+                      <span className="text-xs font-semibold text-white">
+                        {overallProgress}% Complete
+                      </span>
+                    </div>
+                  )}
+                  {saving && (
+                    <span className="text-xs text-blue-600 animate-pulse">Saving...</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {!isNew && (
+                <Button variant="outline" onClick={deleteProject} className="border-red-200 text-red-600 hover:bg-red-50">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </Button>
+              )}
+              <Button onClick={saveProject} disabled={saving} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">
+                <Save className="w-4 h-4 mr-2" />
+                {saving ? "Saving..." : "Save Now"}
+              </Button>
+            </div>
           </div>
-        </div>
-        <div className="flex gap-2">
+
+          {/* Overall progress bar */}
           {!isNew && (
-            <Button variant="destructive" onClick={deleteProject}>
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete
-            </Button>
+            <div className="mt-4">
+              <ProgressBar value={overallProgress} className="h-3" />
+            </div>
           )}
-          <Button onClick={saveProject} disabled={saving}>
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? "Saving..." : "Save"}
-          </Button>
         </div>
       </div>
 
-      {/* Form Tabs */}
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="design">Design & Sign-Off</TabsTrigger>
-          <TabsTrigger value="bom">BOM & Ordering</TabsTrigger>
-          <TabsTrigger value="production">Production</TabsTrigger>
-          <TabsTrigger value="paperwork">Paperwork</TabsTrigger>
-          <TabsTrigger value="delivery">Delivery</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
-        </TabsList>
+      <div className="container mx-auto px-6 py-8 space-y-6">
+        {/* Project Overview Section */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+              <FileCheck className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">Project Overview</h2>
+          </div>
+          
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">MJS Number</label>
+              <EditableCell
+                value={project.mjsNumber}
+                onChange={(v) => updateField("mjsNumber", v)}
+                placeholder="e.g. 1234"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Job Name</label>
+              <EditableCell
+                value={project.jobName}
+                onChange={(v) => updateField("jobName", v)}
+                placeholder="Project name"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Client Name</label>
+              <EditableCell
+                value={project.clientName}
+                onChange={(v) => updateField("clientName", v)}
+                placeholder="Company name"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">PO Number</label>
+              <EditableCell
+                value={project.poNumber}
+                onChange={(v) => updateField("poNumber", v)}
+                placeholder="Purchase order"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">LAQ Number</label>
+              <EditableCell
+                value={project.laqNumber}
+                onChange={(v) => updateField("laqNumber", v)}
+                placeholder="LAQ reference"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Date Received</label>
+              <EditableCell
+                type="date"
+                value={project.dateReceived}
+                onChange={(v) => updateField("dateReceived", v)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Date Required</label>
+              <EditableCell
+                type="date"
+                value={project.dateRequired}
+                onChange={(v) => updateField("dateRequired", v)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Job Location</label>
+              <Select value={project.jobLocation || ""} onValueChange={(v) => updateField("jobLocation", v)}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="RED FOLDER">🔴 Red Folder</SelectItem>
+                  <SelectItem value="IN PROGRESS">⚙️ In Progress</SelectItem>
+                  <SelectItem value="COMPLETE">✅ Complete</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
 
-        {/* Overview Tab */}
-        <TabsContent value="overview">
-          <Card>
-            <CardHeader>
-              <CardTitle>Project Overview</CardTitle>
-              <CardDescription>Basic project information and client details</CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>MJS Number</Label>
-                <Input
-                  value={project.mjsNumber || ""}
-                  onChange={(e) => updateField("mjsNumber", e.target.value)}
-                  placeholder="e.g. mjs1936"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Job Name</Label>
-                <Input
-                  value={project.jobName || ""}
-                  onChange={(e) => updateField("jobName", e.target.value)}
-                  placeholder="Project name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Client Name</Label>
-                <Input
-                  value={project.clientName || ""}
-                  onChange={(e) => updateField("clientName", e.target.value)}
-                  placeholder="Company name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>PO Number</Label>
-                <Input
-                  value={project.poNumber || ""}
-                  onChange={(e) => updateField("poNumber", e.target.value)}
-                  placeholder="Purchase order number"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>LAQ Number</Label>
-                <Input
-                  value={project.laqNumber || ""}
-                  onChange={(e) => updateField("laqNumber", e.target.value)}
-                  placeholder="LAQ reference"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Date Received</Label>
-                <Input
-                  type="date"
-                  value={project.dateReceived ? new Date(project.dateReceived).toISOString().split("T")[0] : ""}
-                  onChange={(e) => updateField("dateReceived", e.target.value ? new Date(e.target.value) : null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Date Required</Label>
-                <Input
-                  type="date"
-                  value={project.dateRequired ? new Date(project.dateRequired).toISOString().split("T")[0] : ""}
-                  onChange={(e) => updateField("dateRequired", e.target.value ? new Date(e.target.value) : null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Job Location</Label>
-                <Select value={project.jobLocation || ""} onValueChange={(v) => updateField("jobLocation", v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="RED FOLDER">Red Folder</SelectItem>
-                    <SelectItem value="IN PROGRESS">In Progress</SelectItem>
-                    <SelectItem value="COMPLETE">Complete</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {/* Design & Sign-Off Section */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+              <CheckCircle2 className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">Design & Sign-Off</h2>
+          </div>
+          
+          <div className="grid grid-cols-4 gap-4">
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Sign Off Status</label>
+              <Select value={project.signOffStatus || ""} onValueChange={(v) => updateField("signOffStatus", v)}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AWAITING SCHEDULE">⏳ Awaiting Schedule</SelectItem>
+                  <SelectItem value="NOT LOOKED AT">❌ Not Looked At</SelectItem>
+                  <SelectItem value="WORKING ON SCHEDULE">🔨 Working on Schedule</SelectItem>
+                  <SelectItem value="SCHEDULE SENT FOR SIGN OFF">📤 Sent for Sign Off</SelectItem>
+                  <SelectItem value="SCHEDULE SIGNED OFF">✅ Signed Off</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Sign Off Date</label>
+              <EditableCell
+                type="date"
+                value={project.signOffDate}
+                onChange={(v) => updateField("signOffDate", v)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Scheduled By</label>
+              <Select value={project.scheduledBy || ""} onValueChange={(v) => updateField("scheduledBy", v)}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DARREN">Darren</SelectItem>
+                  <SelectItem value="DAVE">Dave</SelectItem>
+                  <SelectItem value="STEVE">Steve</SelectItem>
+                  <SelectItem value="PAUL">Paul</SelectItem>
+                  <SelectItem value="DAN">Dan</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Lead Time (weeks)</label>
+              <EditableCell
+                type="number"
+                value={project.leadTimeWeeks}
+                onChange={(v) => updateField("leadTimeWeeks", v ? parseInt(v) : null)}
+                min={0}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Delivery Date</label>
+              <EditableCell
+                type="date"
+                value={project.approxDeliveryDate}
+                onChange={(v) => updateField("approxDeliveryDate", v)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Working Days Left</label>
+              <EditableCell
+                type="number"
+                value={project.workingDaysRemaining}
+                onChange={(v) => updateField("workingDaysRemaining", v ? parseInt(v) : null)}
+                min={0}
+              />
+            </div>
+          </div>
+        </div>
 
-        {/* Design & Sign-Off Tab */}
-        <TabsContent value="design">
-          <Card>
-            <CardHeader>
-              <CardTitle>Design & Sign-Off</CardTitle>
-              <CardDescription>Schedule approval and design workflow</CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>Sign Off Status</Label>
-                <Select value={project.signOffStatus || ""} onValueChange={(v) => updateField("signOffStatus", v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="AWAITING SCHEDULE">Awaiting Schedule</SelectItem>
-                    <SelectItem value="NOT LOOKED AT">Not Looked At</SelectItem>
-                    <SelectItem value="WORKING ON SCHEDULE">Working on Schedule</SelectItem>
-                    <SelectItem value="SCHEDULE SENT FOR SIGN OFF">Schedule Sent for Sign Off</SelectItem>
-                    <SelectItem value="SCHEDULE SIGNED OFF">Schedule Signed Off</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Sign Off Date</Label>
-                <Input
-                  type="date"
-                  value={project.signOffDate ? new Date(project.signOffDate).toISOString().split("T")[0] : ""}
-                  onChange={(e) => updateField("signOffDate", e.target.value ? new Date(e.target.value) : null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Scheduled By</Label>
-                <Select value={project.scheduledBy || ""} onValueChange={(v) => updateField("scheduledBy", v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DARREN">Darren</SelectItem>
-                    <SelectItem value="DAVE">Dave</SelectItem>
-                    <SelectItem value="STEVE">Steve</SelectItem>
-                    <SelectItem value="PAUL">Paul</SelectItem>
-                    <SelectItem value="DAN">Dan</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Lead Time (weeks)</Label>
-                <Input
-                  type="number"
-                  value={project.leadTimeWeeks || ""}
-                  onChange={(e) => updateField("leadTimeWeeks", e.target.value ? parseInt(e.target.value) : null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Approx Delivery Date</Label>
-                <Input
-                  type="date"
-                  value={project.approxDeliveryDate ? new Date(project.approxDeliveryDate).toISOString().split("T")[0] : ""}
-                  onChange={(e) => updateField("approxDeliveryDate", e.target.value ? new Date(e.target.value) : null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Working Days Remaining</Label>
-                <Input
-                  type="number"
-                  value={project.workingDaysRemaining || ""}
-                  onChange={(e) => updateField("workingDaysRemaining", e.target.value ? parseInt(e.target.value) : null)}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {/* BOM & Materials Section */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+              <FileCheck className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">BOM & Materials</h2>
+          </div>
+          
+          <div className="mb-4">
+            <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Ordering Status</label>
+            <Select value={project.orderingStatus || ""} onValueChange={(v) => updateField("orderingStatus", v)}>
+              <SelectTrigger className="h-9 max-w-md">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NOT IN BOM">❌ Not in BOM</SelectItem>
+                <SelectItem value="IN BOM TBC">⚠️ In BOM TBC</SelectItem>
+                <SelectItem value="IN BOM">📋 In BOM</SelectItem>
+                <SelectItem value="STOCK">📦 Stock</SelectItem>
+                <SelectItem value="ORDERED">🛒 Ordered</SelectItem>
+                <SelectItem value="RECEIVED">✅ Received</SelectItem>
+                <SelectItem value="ORDERED CALL OFF">📞 Call Off</SelectItem>
+                <SelectItem value="MAKE IN HOUSE">🏭 Make In House</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* BOM & Ordering Tab */}
-        <TabsContent value="bom">
-          <Card>
-            <CardHeader>
-              <CardTitle>BOM & Ordering</CardTitle>
-              <CardDescription>Materials procurement and BOM verification</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label>Ordering Status</Label>
-                <Select value={project.orderingStatus || ""} onValueChange={(v) => updateField("orderingStatus", v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NOT IN BOM">Not in BOM</SelectItem>
-                    <SelectItem value="IN BOM TBC">In BOM TBC</SelectItem>
-                    <SelectItem value="IN BOM">In BOM</SelectItem>
-                    <SelectItem value="STOCK">Stock</SelectItem>
-                    <SelectItem value="ORDERED">Ordered</SelectItem>
-                    <SelectItem value="RECEIVED">Received</SelectItem>
-                    <SelectItem value="ORDERED CALL OFF">Ordered Call Off</SelectItem>
-                    <SelectItem value="MAKE IN HOUSE">Make In House</SelectItem>
-                    <SelectItem value="N/A">N/A</SelectItem>
-                  </SelectContent>
-                </Select>
+          <div className="grid grid-cols-4 gap-4 mt-6">
+            {[
+              { key: "blanks", label: "Blanks", icon: "🪵" },
+              { key: "lippings", label: "Lippings", icon: "📏" },
+              { key: "facings", label: "Facings", icon: "🎨" },
+              { key: "glass", label: "Glass", icon: "🪟" },
+              { key: "cassettes", label: "Cassettes", icon: "📦" },
+              { key: "timbers", label: "Timbers", icon: "🌳" },
+              { key: "ironmongery", label: "Ironmongery", icon: "🔩" },
+            ].map(({ key, label, icon }) => (
+              <div key={key} className="p-4 bg-gradient-to-br from-white to-slate-50 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xl">{icon}</span>
+                  <h3 className="font-semibold text-sm text-slate-700">{label}</h3>
+                </div>
+                <EditableCell
+                  value={project[`${key}Status`]}
+                  onChange={(v) => updateField(`${key}Status`, v)}
+                  placeholder="Status"
+                  className="mb-2 text-xs"
+                />
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id={`${key}Checked`}
+                    checked={project[`${key}Checked`] || false}
+                    onCheckedChange={(checked) => updateField(`${key}Checked`, checked)}
+                    className="border-slate-300"
+                  />
+                  <label htmlFor={`${key}Checked`} className="text-xs text-slate-600 cursor-pointer">
+                    BOM Checked
+                  </label>
+                </div>
               </div>
+            ))}
+          </div>
+        </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                {["blanks", "lippings", "facings", "glass", "cassettes", "timbers", "ironmongery"].map((material) => (
-                  <div key={material} className="space-y-3 p-4 border rounded-lg">
-                    <Label className="capitalize">{material}</Label>
-                    <Input
-                      placeholder="Status"
-                      value={project[`${material}Status`] || ""}
-                      onChange={(e) => updateField(`${material}Status`, e.target.value)}
-                    />
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id={`${material}Checked`}
-                        checked={project[`${material}Checked`] || false}
-                        onCheckedChange={(checked) => updateField(`${material}Checked`, checked)}
-                      />
-                      <Label htmlFor={`${material}Checked`} className="text-sm font-normal">
-                        BOM Checked
-                      </Label>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Production Tab */}
-        <TabsContent value="production">
-          <Card>
-            <CardHeader>
-              <CardTitle>Production & QA</CardTitle>
-              <CardDescription>Manufacturing progress tracking</CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-3 gap-6">
-              {[
-                "blanksCutPercent",
-                "edgebandPercent",
-                "calibratePercent",
-                "facingsPercent",
-                "finalCncPercent",
-                "finishPercent",
-                "sandPercent",
-                "sprayPercent",
-                "cutPercent",
-                "cncPercent",
-                "buildPercent",
-                "overallProgress",
-              ].map((field) => (
-                <div key={field} className="space-y-2">
-                  <Label className="capitalize">{field.replace("Percent", "").replace(/([A-Z])/g, " $1").trim()} (%)</Label>
-                  <Input
+        {/* Production Progress Section */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <Wrench className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">Production Progress</h2>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-6">
+            {[
+              { key: "blanksCutPercent", label: "Blanks Cut", icon: "✂️" },
+              { key: "edgebandPercent", label: "Edgeband", icon: "📏" },
+              { key: "calibratePercent", label: "Calibrate", icon: "⚖️" },
+              { key: "facingsPercent", label: "Facings", icon: "🎨" },
+              { key: "finalCncPercent", label: "Final CNC", icon: "🤖" },
+              { key: "finishPercent", label: "Finish", icon: "✨" },
+              { key: "sandPercent", label: "Sand", icon: "🪵" },
+              { key: "sprayPercent", label: "Spray", icon: "💨" },
+              { key: "cutPercent", label: "Cut", icon: "🔪" },
+              { key: "cncPercent", label: "CNC", icon: "⚙️" },
+              { key: "buildPercent", label: "Build", icon: "🔨" },
+            ].map(({ key, label, icon }) => (
+              <div key={key} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                    <span>{icon}</span>
+                    {label}
+                  </label>
+                  <span className="text-xs font-bold text-slate-700">{project[key] || 0}%</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ProgressBar value={project[key] || 0} className="flex-1" />
+                  <input
                     type="number"
                     min="0"
                     max="100"
-                    value={project[field] || ""}
-                    onChange={(e) => updateField(field, e.target.value ? parseInt(e.target.value) : null)}
+                    value={project[key] || ""}
+                    onChange={(e) => updateField(key, e.target.value ? parseInt(e.target.value) : 0)}
+                    className="w-16 h-8 px-2 text-xs text-center border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </div>
+            ))}
+          </div>
+        </div>
 
-        {/* Paperwork Tab */}
-        <TabsContent value="paperwork">
-          <Card>
-            <CardHeader>
-              <CardTitle>Paperwork & Certification</CardTitle>
-              <CardDescription>Documentation and compliance tracking</CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>Paperwork Status</Label>
-                <Select value={project.paperworkStatus || ""} onValueChange={(v) => updateField("paperworkStatus", v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="N/A">N/A</SelectItem>
-                    <SelectItem value="WORKING ON SCHEDULE">Working on Schedule</SelectItem>
-                    <SelectItem value="READY TO PRINT IN OFFICE">Ready to Print</SelectItem>
-                    <SelectItem value="PRINTED IN OFFICE">Printed in Office</SelectItem>
-                    <SelectItem value="TAKEN OUT TO FACTORY">Taken to Factory</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Door Paperwork</Label>
-                <Input
-                  value={project.doorPaperworkStatus || ""}
-                  onChange={(e) => updateField("doorPaperworkStatus", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Final CNC Sheet</Label>
-                <Input
-                  value={project.finalCncSheetStatus || ""}
-                  onChange={(e) => updateField("finalCncSheetStatus", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Final Checks Sheet</Label>
-                <Input
-                  value={project.finalChecksSheetStatus || ""}
-                  onChange={(e) => updateField("finalChecksSheetStatus", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Delivery Checklist</Label>
-                <Input
-                  value={project.deliveryChecklistStatus || ""}
-                  onChange={(e) => updateField("deliveryChecklistStatus", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Frames Paperwork</Label>
-                <Input
-                  value={project.framesPaperworkStatus || ""}
-                  onChange={(e) => updateField("framesPaperworkStatus", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Certification Required</Label>
-                <Input
-                  value={project.certificationRequired || ""}
-                  onChange={(e) => updateField("certificationRequired", e.target.value)}
-                  placeholder="e.g. Q Mark"
-                />
-              </div>
-              <div className="space-y-2 flex items-center gap-2 pt-8">
-                <Checkbox
-                  id="fscRequired"
-                  checked={project.fscRequired || false}
-                  onCheckedChange={(checked) => updateField("fscRequired", checked)}
-                />
-                <Label htmlFor="fscRequired">FSC Certification Required</Label>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Delivery Tab */}
-        <TabsContent value="delivery">
-          <Card>
-            <CardHeader>
-              <CardTitle>Delivery & Installation</CardTitle>
-              <CardDescription>Logistics and site work tracking</CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>Transport Status</Label>
-                <Input
-                  value={project.transportStatus || ""}
-                  onChange={(e) => updateField("transportStatus", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Delivery Date</Label>
-                <Input
-                  type="date"
-                  value={project.deliveryDate ? new Date(project.deliveryDate).toISOString().split("T")[0] : ""}
-                  onChange={(e) => updateField("deliveryDate", e.target.value ? new Date(e.target.value) : null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Install Start</Label>
-                <Input
-                  type="date"
-                  value={project.installStart ? new Date(project.installStart).toISOString().split("T")[0] : ""}
-                  onChange={(e) => updateField("installStart", e.target.value ? new Date(e.target.value) : null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Install End</Label>
-                <Input
-                  type="date"
-                  value={project.installEnd ? new Date(project.installEnd).toISOString().split("T")[0] : ""}
-                  onChange={(e) => updateField("installEnd", e.target.value ? new Date(e.target.value) : null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Snagging Status</Label>
-                <Input
-                  value={project.snaggingStatus || ""}
-                  onChange={(e) => updateField("snaggingStatus", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2 flex items-center gap-2 pt-8">
+        {/* Delivery & Installation Section */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+              <Truck className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">Delivery & Installation</h2>
+          </div>
+          
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Transport Status</label>
+              <EditableCell
+                value={project.transportStatus}
+                onChange={(v) => updateField("transportStatus", v)}
+                placeholder="e.g. Booked"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Delivery Date</label>
+              <EditableCell
+                type="date"
+                value={project.deliveryDate}
+                onChange={(v) => updateField("deliveryDate", v)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Install Start</label>
+              <EditableCell
+                type="date"
+                value={project.installStart}
+                onChange={(v) => updateField("installStart", v)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Install End</label>
+              <EditableCell
+                type="date"
+                value={project.installEnd}
+                onChange={(v) => updateField("installEnd", v)}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Snagging Status</label>
+              <EditableCell
+                value={project.snaggingStatus}
+                onChange={(v) => updateField("snaggingStatus", v)}
+                placeholder="e.g. In Progress"
+              />
+            </div>
+            <div className="col-span-2 flex items-end">
+              <div className="flex items-center gap-2 h-9">
                 <Checkbox
                   id="snaggingComplete"
                   checked={project.snaggingComplete || false}
                   onCheckedChange={(checked) => updateField("snaggingComplete", checked)}
                 />
-                <Label htmlFor="snaggingComplete">Snagging Complete</Label>
+                <label htmlFor="snaggingComplete" className="text-sm font-medium text-slate-700 cursor-pointer">
+                  ✅ Snagging Complete
+                </label>
               </div>
-              <div className="space-y-2 col-span-2">
-                <Label>Snagging Notes</Label>
-                <Textarea
-                  value={project.snaggingNotes || ""}
-                  onChange={(e) => updateField("snaggingNotes", e.target.value)}
-                  rows={4}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+          </div>
+        </div>
 
-        {/* Notes Tab */}
-        <TabsContent value="notes">
-          <Card>
-            <CardHeader>
-              <CardTitle>Communication & Notes</CardTitle>
-              <CardDescription>Internal and external communication notes</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label>Communication Notes</Label>
-                <Textarea
-                  value={project.communicationNotes || ""}
-                  onChange={(e) => updateField("communicationNotes", e.target.value)}
-                  rows={4}
-                  placeholder="External communication notes"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Internal Notes</Label>
-                <Textarea
-                  value={project.internalNotes || ""}
-                  onChange={(e) => updateField("internalNotes", e.target.value)}
-                  rows={4}
-                  placeholder="Internal team notes"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Paperwork Comments</Label>
-                <Textarea
-                  value={project.paperworkComments || ""}
-                  onChange={(e) => updateField("paperworkComments", e.target.value)}
-                  rows={4}
-                  placeholder="Notes about paperwork"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        {/* Notes Section */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-500 to-slate-600 flex items-center justify-center">
+              <FileCheck className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">Notes & Communication</h2>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">📢 Communication Notes</label>
+              <EditableCell
+                type="textarea"
+                value={project.communicationNotes}
+                onChange={(v) => updateField("communicationNotes", v)}
+                placeholder="External communication notes..."
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">🔒 Internal Notes</label>
+              <EditableCell
+                type="textarea"
+                value={project.internalNotes}
+                onChange={(v) => updateField("internalNotes", v)}
+                placeholder="Internal team notes..."
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <Toaster />
     </div>
   );

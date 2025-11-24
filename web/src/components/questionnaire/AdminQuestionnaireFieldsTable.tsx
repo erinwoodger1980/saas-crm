@@ -20,7 +20,7 @@ export interface QuestionnaireFieldRow {
 
 const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+const fetcher = (url: string) => fetch(url, { credentials: 'include' }).then((r) => r.json());
 
 function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldRow; onChange: (f: Partial<QuestionnaireFieldRow>) => void; onDelete: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
@@ -199,6 +199,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
       await fetch(listUrl + "/" + id, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify(body),
       });
       mutate();
@@ -210,7 +211,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
   async function deleteField(id: string) {
     if (!confirm("Delete this field?")) return;
     setRows((prev) => prev.filter((r) => r.id !== id));
-    await fetch(listUrl + "/" + id, { method: "DELETE" });
+    await fetch(listUrl + "/" + id, { method: "DELETE", credentials: 'include' });
     mutate();
   }
 
@@ -228,6 +229,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
       const resp = await fetch(listUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify(body),
       });
       if (!resp.ok) {
@@ -258,6 +260,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
       await fetch(listUrl + "/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify({ fields: newRows.map((r) => ({ id: r.id, sortOrder: r.order })) }),
       });
       mutate();
