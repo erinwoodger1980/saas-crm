@@ -53,17 +53,17 @@ router.post('/', requireAuth, async (req: any, res) => {
         lead = await tx.lead.create({
           data: {
             tenantId,
+            createdById: userId,
             contactName: clientName || 'Fire Door Customer',
             email: contactEmail,
-            phone: contactPhone,
-            source: 'Fire Door Import',
-            status: 'NEW_ENQUIRY',
+            status: 'NEW',
             capturedAt: new Date(),
             custom: {
               projectReference,
               siteAddress,
               deliveryAddress,
               dateRequired,
+              contactPhone,
             },
           },
         });
@@ -78,8 +78,8 @@ router.post('/', requireAuth, async (req: any, res) => {
           status: 'DRAFT',
           totalGBP: totalValue,
           currency: 'GBP',
-          validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-          custom: {
+          notes,
+          meta: {
             type: 'FIRE_DOOR',
             clientName,
             projectReference,
@@ -89,7 +89,6 @@ router.post('/', requireAuth, async (req: any, res) => {
             contactPhone,
             poNumber,
             dateRequired,
-            notes,
             fireDoorImportId,
           },
         },
@@ -97,15 +96,15 @@ router.post('/', requireAuth, async (req: any, res) => {
 
       // Create line items in quotes table
       for (const item of lineItems) {
-        await tx.quoteLineItem.create({
+        await tx.quoteLine.create({
           data: {
             tenantId,
             quoteId: quote.id,
-            description: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
+            itemDescription: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
             quantity: item.quantity || 1,
-            unitPrice: item.unitValue || 0,
-            totalPrice: item.lineTotal || 0,
-            custom: item, // Store full fire door specification
+            unitCostGBP: item.unitValue || 0,
+            totalCostGBP: item.lineTotal || 0,
+            meta: item, // Store full fire door specification
           },
         });
       }
@@ -173,7 +172,7 @@ router.get('/:id', requireAuth, async (req: any, res) => {
         tenantId,
       },
       include: {
-        lineItems: {
+        lines: {
           orderBy: { createdAt: 'asc' },
         },
         lead: {
@@ -181,7 +180,7 @@ router.get('/:id', requireAuth, async (req: any, res) => {
             id: true,
             contactName: true,
             email: true,
-            phone: true,
+            custom: true,
           },
         },
       },
@@ -191,31 +190,32 @@ router.get('/:id', requireAuth, async (req: any, res) => {
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    const custom = quote.custom as any || {};
+    const quoteMeta = (quote.meta as any) || {};
+    const leadCustom = (quote.lead?.custom as any) || {};
 
     // Transform to fire door quote format
     const fireDoorQuote = {
       id: quote.id,
       leadId: quote.leadId,
       title: quote.title,
-      clientName: custom.clientName || quote.lead?.contactName,
-      projectReference: custom.projectReference,
-      siteAddress: custom.siteAddress,
-      deliveryAddress: custom.deliveryAddress,
-      contactEmail: custom.contactEmail || quote.lead?.email,
-      contactPhone: custom.contactPhone || quote.lead?.phone,
-      poNumber: custom.poNumber,
-      dateRequired: custom.dateRequired,
+      clientName: quoteMeta.clientName || quote.lead?.contactName,
+      projectReference: quoteMeta.projectReference,
+      siteAddress: quoteMeta.siteAddress,
+      deliveryAddress: quoteMeta.deliveryAddress,
+      contactEmail: quoteMeta.contactEmail || quote.lead?.email,
+      contactPhone: quoteMeta.contactPhone || leadCustom.contactPhone,
+      poNumber: quoteMeta.poNumber,
+      dateRequired: quoteMeta.dateRequired,
       status: quote.status,
       totalValue: Number(quote.totalGBP || 0),
-      notes: custom.notes,
-      lineItems: quote.lineItems.map((item: any, index: number) => ({
+      notes: quote.notes,
+      lineItems: quote.lines.map((item: any, index: number) => ({
         id: item.id,
         rowIndex: index,
-        ...(item.custom || {}),
+        ...(item.meta || {}),
         quantity: item.quantity,
-        unitValue: Number(item.unitPrice || 0),
-        lineTotal: Number(item.totalPrice || 0),
+        unitValue: Number(item.unitCostGBP || 0),
+        lineTotal: Number(item.totalCostGBP || 0),
       })),
       createdAt: quote.createdAt,
       updatedAt: quote.updatedAt,
@@ -275,7 +275,8 @@ router.put('/:id', requireAuth, async (req: any, res) => {
           title,
           totalGBP: totalValue,
           status: status || existing.status,
-          custom: {
+          notes,
+          meta: {
             type: 'FIRE_DOOR',
             clientName,
             projectReference,
@@ -285,27 +286,26 @@ router.put('/:id', requireAuth, async (req: any, res) => {
             contactPhone,
             poNumber,
             dateRequired,
-            notes,
           },
         },
       });
 
       // Delete old line items
-      await tx.quoteLineItem.deleteMany({
+      await tx.quoteLine.deleteMany({
         where: { quoteId },
       });
 
       // Create new line items
       for (const item of lineItems) {
-        await tx.quoteLineItem.create({
+        await tx.quoteLine.create({
           data: {
             tenantId,
             quoteId,
-            description: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
+            itemDescription: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
             quantity: item.quantity || 1,
-            unitPrice: item.unitValue || 0,
-            totalPrice: item.lineTotal || 0,
-            custom: item,
+            unitCostGBP: item.unitValue || 0,
+            totalCostGBP: item.lineTotal || 0,
+            meta: item,
           },
         });
       }
@@ -369,15 +369,15 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
       const lead = await tx.lead.create({
         data: {
           tenantId,
+          createdById: userId,
           contactName: clientName || 'Fire Door Customer',
           email: contactEmail,
-          phone: contactPhone,
-          source: 'Fire Door CSV Import',
-          status: 'NEW_ENQUIRY',
+          status: 'NEW',
           capturedAt: new Date(),
           custom: {
             importId,
             sourceName: importRecord.sourceName,
+            contactPhone,
           },
         },
       });
@@ -391,8 +391,7 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
           status: 'DRAFT',
           totalGBP: importRecord.totalValue,
           currency: importRecord.currency,
-          validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          custom: {
+          meta: {
             type: 'FIRE_DOOR',
             clientName,
             contactEmail,
@@ -405,15 +404,15 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
 
       // Create line items from import
       for (const item of importRecord.lineItems) {
-        await tx.quoteLineItem.create({
+        await tx.quoteLine.create({
           data: {
             tenantId,
             quoteId: quote.id,
-            description: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
+            itemDescription: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
             quantity: item.quantity || 1,
-            unitPrice: item.unitValue || 0,
-            totalPrice: item.lineTotal || 0,
-            custom: item,
+            unitCostGBP: item.unitValue || 0,
+            totalCostGBP: item.lineTotal || 0,
+            meta: item,
           },
         });
       }
@@ -472,7 +471,7 @@ router.get('/', requireAuth, async (req: any, res) => {
     const quotes = await prisma.quote.findMany({
       where: {
         tenantId,
-        custom: {
+        meta: {
           path: ['type'],
           equals: 'FIRE_DOOR',
         },
@@ -486,24 +485,24 @@ router.get('/', requireAuth, async (req: any, res) => {
           },
         },
         _count: {
-          select: { lineItems: true },
+          select: { lines: true },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     const result = quotes.map((quote: any) => {
-      const custom = quote.custom || {};
+      const quoteMeta = (quote.meta as any) || {};
       return {
         id: quote.id,
         title: quote.title,
-        clientName: custom.clientName || quote.lead?.contactName,
-        projectReference: custom.projectReference,
+        clientName: quoteMeta.clientName || quote.lead?.contactName,
+        projectReference: quoteMeta.projectReference,
         totalValue: Number(quote.totalGBP || 0),
         status: quote.status,
         leadId: quote.leadId,
         leadStatus: quote.lead?.status,
-        lineItemCount: quote._count.lineItems,
+        lineItemCount: quote._count.lines,
         createdAt: quote.createdAt,
         updatedAt: quote.updatedAt,
       };
