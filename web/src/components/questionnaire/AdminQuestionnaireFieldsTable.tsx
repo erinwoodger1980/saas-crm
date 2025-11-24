@@ -147,6 +147,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
   const [rows, setRows] = useState<QuestionnaireFieldRow[]>([]);
   const [creating, setCreating] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   // Sync local rows with fetched data
   useEffect(() => {
@@ -166,6 +167,24 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
       setRows(normalized);
     }
   }, [data]);
+
+  // Auto-seed standard fields if none exist
+  async function seedStandardFields() {
+    setSeeding(true);
+    try {
+      const response = await fetch(listUrl.split('?')[0] + '/seed-standard', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (response.ok) {
+        await mutate();
+      }
+    } catch (e) {
+      console.error('Failed to seed standard fields:', e);
+    } finally {
+      setSeeding(false);
+    }
+  }
 
   async function updateField(id: string, patch: Partial<QuestionnaireFieldRow>) {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -250,8 +269,20 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
   }
 
   const content = useMemo(() => {
-    if (isLoading) return <div className="p-4 text-xs text-slate-500">Loading fields…</div>;
-    if (!rows.length) return <div className="p-4 text-xs text-slate-500">No fields yet. Create one!</div>;
+    if (isLoading || seeding) return <div className="p-4 text-xs text-slate-500">{seeding ? 'Setting up standard fields…' : 'Loading fields…'}</div>;
+    if (!rows.length) {
+      return (
+        <div className="p-4 text-center">
+          <div className="text-xs text-slate-500 mb-3">No questionnaire fields found.</div>
+          <button
+            onClick={seedStandardFields}
+            className="rounded bg-blue-600 text-white text-xs px-4 py-2 hover:bg-blue-500"
+          >
+            Set Up Standard Fields
+          </button>
+        </div>
+      );
+    }
     
     const standardFields = rows.filter(r => r.isStandard);
     const customFields = rows.filter(r => !r.isStandard);

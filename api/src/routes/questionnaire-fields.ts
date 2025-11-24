@@ -1,6 +1,7 @@
 // api/src/routes/questionnaire-fields.ts
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { seedStandardFieldsForTenant } from "../lib/seedStandardFields";
 
 const router = Router();
 
@@ -276,6 +277,27 @@ router.post("/reorder", requireAuth, async (req: any, res) => {
   } catch (e: any) {
     console.error("[POST /questionnaire-fields/reorder] failed:", e?.message || e);
     return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * POST /questionnaire-fields/seed-standard
+ * Seed standard questionnaire fields for the current tenant
+ * This is useful for existing tenants that were created before standard fields were added
+ */
+router.post("/seed-standard", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+    
+    const result = await seedStandardFieldsForTenant(tenantId);
+    
+    return res.json({
+      ok: true,
+      ...result,
+    });
+  } catch (e: any) {
+    console.error("[POST /questionnaire-fields/seed-standard] failed:", e?.message || e);
+    return res.status(500).json({ error: "internal_error", detail: e?.message });
   }
 });
 
