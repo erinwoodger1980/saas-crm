@@ -1,0 +1,425 @@
+{
+  "totalColumns": 70,
+  "fieldMappings": [
+    {
+      "csvHeader": "\ufeffSequence",
+      "fieldName": "sequence",
+      "prismaType": "String",
+      "columnIndex": 0
+    },
+    {
+      "csvHeader": "Door Ref",
+      "fieldName": "doorRef",
+      "prismaType": "String",
+      "columnIndex": 1
+    },
+    {
+      "csvHeader": "Location",
+      "fieldName": "location",
+      "prismaType": "String",
+      "columnIndex": 2
+    },
+    {
+      "csvHeader": "Quantity",
+      "fieldName": "quantity",
+      "prismaType": "Int",
+      "columnIndex": 3
+    },
+    {
+      "csvHeader": "Type",
+      "fieldName": "type",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 4
+    },
+    {
+      "csvHeader": "Core Type",
+      "fieldName": "coreType",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 5
+    },
+    {
+      "csvHeader": "Fire Rating",
+      "fieldName": "fireRating",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 6
+    },
+    {
+      "csvHeader": "Acoustic Rating",
+      "fieldName": "acousticRating",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 7
+    },
+    {
+      "csvHeader": "Threshold Seal Type",
+      "fieldName": "thresholdSealType",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 8
+    },
+    {
+      "csvHeader": "Doorset / Leaf / Frame",
+      "fieldName": "doorsetLeafFrame",
+      "prismaType": "String",
+      "columnIndex": 9
+    },
+    {
+      "csvHeader": "Configuration",
+      "fieldName": "configuration",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 10
+    },
+    {
+      "csvHeader": "Master Leaf Width",
+      "fieldName": "masterLeafWidth",
+      "prismaType": "Decimal",
+      "columnIndex": 11
+    },
+    {
+      "csvHeader": "SO H",
+      "fieldName": "soH",
+      "prismaType": "String",
+      "columnIndex": 12
+    },
+    {
+      "csvHeader": "SO W",
+      "fieldName": "soW",
+      "prismaType": "String",
+      "columnIndex": 13
+    },
+    {
+      "csvHeader": "OF H",
+      "fieldName": "ofH",
+      "prismaType": "String",
+      "columnIndex": 14
+    },
+    {
+      "csvHeader": "OF W",
+      "fieldName": "ofW",
+      "prismaType": "String",
+      "columnIndex": 15
+    },
+    {
+      "csvHeader": "S/O Wall Thickness",
+      "fieldName": "sOWallThickness",
+      "prismaType": "Decimal",
+      "columnIndex": 16
+    },
+    {
+      "csvHeader": "Frame Material",
+      "fieldName": "frameMaterial",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 17
+    },
+    {
+      "csvHeader": "Frame Finish",
+      "fieldName": "frameFinish",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 18
+    },
+    {
+      "csvHeader": "Frame Type",
+      "fieldName": "frameType",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 19
+    },
+    {
+      "csvHeader": "Anti Barricade / Emergency Stops",
+      "fieldName": "antiBarricadeEmergencyStops",
+      "prismaType": "String",
+      "columnIndex": 20
+    },
+    {
+      "csvHeader": "Architrave Material/Finish",
+      "fieldName": "architraveMaterialFinish",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 21
+    },
+    {
+      "csvHeader": "Arc Width",
+      "fieldName": "arcWidth",
+      "prismaType": "Decimal",
+      "columnIndex": 22
+    },
+    {
+      "csvHeader": "Arc Depth",
+      "fieldName": "arcDepth",
+      "prismaType": "Decimal",
+      "columnIndex": 23
+    },
+    {
+      "csvHeader": "Door Facing",
+      "fieldName": "doorFacing",
+      "prismaType": "String",
+      "columnIndex": 24
+    },
+    {
+      "csvHeader": "Door Finish",
+      "fieldName": "doorFinish",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 25
+    },
+    {
+      "csvHeader": "Door Colour",
+      "fieldName": "doorColour",
+      "prismaType": "String",
+      "columnIndex": 26
+    },
+    {
+      "csvHeader": "Lipping Material",
+      "fieldName": "lippingMaterial",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 27
+    },
+    {
+      "csvHeader": "Door Action",
+      "fieldName": "doorAction",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 28
+    },
+    {
+      "csvHeader": "Door Undercut",
+      "fieldName": "doorUndercut",
+      "prismaType": "String",
+      "columnIndex": 29
+    },
+    {
+      "csvHeader": "Aperture",
+      "fieldName": "aperture",
+      "prismaType": "String",
+      "columnIndex": 30
+    },
+    {
+      "csvHeader": "Aperture Width",
+      "fieldName": "apertureWidth",
+      "prismaType": "Decimal",
+      "columnIndex": 31
+    },
+    {
+      "csvHeader": "Aperture Height",
+      "fieldName": "apertureHeight",
+      "prismaType": "Decimal",
+      "columnIndex": 32
+    },
+    {
+      "csvHeader": "Vistamatic Supply Type",
+      "fieldName": "vistamaticSupplyType",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 33
+    },
+    {
+      "csvHeader": "Vistmatic Hardware Side 1",
+      "fieldName": "vistmaticHardwareSide1",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 34
+    },
+    {
+      "csvHeader": "Vistamatic Hardware Side 2",
+      "fieldName": "vistamaticHardwareSide2",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 35
+    },
+    {
+      "csvHeader": "Bead Type",
+      "fieldName": "beadType",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 36
+    },
+    {
+      "csvHeader": "Bead Material",
+      "fieldName": "beadMaterial",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 37
+    },
+    {
+      "csvHeader": "LW Glass Type",
+      "fieldName": "lwGlassType",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 38
+    },
+    {
+      "csvHeader": "Hinge Supply Type",
+      "fieldName": "hingeSupplyType",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 39
+    },
+    {
+      "csvHeader": "Hinge Fitting",
+      "fieldName": "hingeFitting",
+      "prismaType": "String",
+      "columnIndex": 40
+    },
+    {
+      "csvHeader": "Hinge Type",
+      "fieldName": "hingeType",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 41
+    },
+    {
+      "csvHeader": "Hinge Configuration",
+      "fieldName": "hingeConfiguration",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 42
+    },
+    {
+      "csvHeader": "Handing",
+      "fieldName": "handing",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 43
+    },
+    {
+      "csvHeader": "Lock Supply / Prep",
+      "fieldName": "lockSupplyPrep",
+      "prismaType": "Boolean",
+      "columnIndex": 44
+    },
+    {
+      "csvHeader": "Lock Fitting",
+      "fieldName": "lockFitting",
+      "prismaType": "String",
+      "columnIndex": 45
+    },
+    {
+      "csvHeader": "Lock Type 1",
+      "fieldName": "lockType1",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 46
+    },
+    {
+      "csvHeader": "Lock Height to Spindle 1",
+      "fieldName": "lockHeightToSpindle1",
+      "prismaType": "Decimal",
+      "columnIndex": 47
+    },
+    {
+      "csvHeader": "Spindle Prep",
+      "fieldName": "spindlePrep",
+      "prismaType": "Boolean",
+      "columnIndex": 48
+    },
+    {
+      "csvHeader": "Cylinder Prep",
+      "fieldName": "cylinderPrep",
+      "prismaType": "Boolean",
+      "columnIndex": 49
+    },
+    {
+      "csvHeader": "Lock Type 2",
+      "fieldName": "lockType2",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 50
+    },
+    {
+      "csvHeader": "Lock Height to Spindle 2",
+      "fieldName": "lockHeightToSpindle2",
+      "prismaType": "Decimal",
+      "columnIndex": 51
+    },
+    {
+      "csvHeader": "Closers / Floor Springs",
+      "fieldName": "closersFloorSprings",
+      "prismaType": "String",
+      "columnIndex": 52
+    },
+    {
+      "csvHeader": "Flush Bolt Supply/Prep",
+      "fieldName": "flushBoltSupplyPrep",
+      "prismaType": "Boolean",
+      "columnIndex": 53
+    },
+    {
+      "csvHeader": "Specials",
+      "fieldName": "specials",
+      "prismaType": "String",
+      "columnIndex": 54
+    },
+    {
+      "csvHeader": "Lead Lining Code",
+      "fieldName": "leadLiningCode",
+      "prismaType": "String",
+      "columnIndex": 55
+    },
+    {
+      "csvHeader": "Overpanel Details",
+      "fieldName": "overpanelDetails",
+      "prismaType": "String",
+      "columnIndex": 56
+    },
+    {
+      "csvHeader": "Screen Details",
+      "fieldName": "screenDetails",
+      "prismaType": "String",
+      "columnIndex": 57
+    },
+    {
+      "csvHeader": "Air Transfer Grille Requirement",
+      "fieldName": "airTransferGrilleRequirement",
+      "prismaType": "String",
+      "columnIndex": 58
+    },
+    {
+      "csvHeader": "Air Transfer Grille Size",
+      "fieldName": "airTransferGrilleSize",
+      "prismaType": "Decimal",
+      "columnIndex": 59
+    },
+    {
+      "csvHeader": "Air Transfer Grille Position",
+      "fieldName": "airTransferGrillePosition",
+      "prismaType": "String  // Consider enum",
+      "columnIndex": 60
+    },
+    {
+      "csvHeader": "Door Edge Protection Type",
+      "fieldName": "doorEdgeProtectionType",
+      "prismaType": "Boolean",
+      "columnIndex": 61
+    },
+    {
+      "csvHeader": "Door Edge Protection Position",
+      "fieldName": "doorEdgeProtectionPosition",
+      "prismaType": "Boolean",
+      "columnIndex": 62
+    },
+    {
+      "csvHeader": "Kick Plates",
+      "fieldName": "kickPlates",
+      "prismaType": "String",
+      "columnIndex": 63
+    },
+    {
+      "csvHeader": "PVC Face Protection",
+      "fieldName": "pvcFaceProtection",
+      "prismaType": "Boolean",
+      "columnIndex": 64
+    },
+    {
+      "csvHeader": "Wiring Prep",
+      "fieldName": "wiringPrep",
+      "prismaType": "Boolean",
+      "columnIndex": 65
+    },
+    {
+      "csvHeader": "Free Issue Cable Loop Prep",
+      "fieldName": "freeIssueCableLoopPrep",
+      "prismaType": "Boolean",
+      "columnIndex": 66
+    },
+    {
+      "csvHeader": "Fire ID Disc",
+      "fieldName": "fireIdDisc",
+      "prismaType": "String",
+      "columnIndex": 67
+    },
+    {
+      "csvHeader": "Ironmongery Pack Ref",
+      "fieldName": "ironmongeryPackRef",
+      "prismaType": "String",
+      "columnIndex": 68
+    },
+    {
+      "csvHeader": "Comments",
+      "fieldName": "comments",
+      "prismaType": "String",
+      "columnIndex": 69
+    }
+  ]
+}
