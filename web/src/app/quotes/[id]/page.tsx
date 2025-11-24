@@ -817,10 +817,15 @@ export default function QuoteBuilderPage() {
 
   const rawSummaries = parseMeta?.summaries ?? [];
 
-  // Extract key questionnaire fields for summary (first 5-8 fields)
-  const keyQuestionnaireFields = questionnaireFields
-    .filter(f => f.askInQuestionnaire !== false && !f.internalOnly)
-    .slice(0, 6);
+  // Grouped questionnaire fields (client-level vs item-level)
+  const clientProfileFields = questionnaireFields.filter(
+    (f) => f.group === "Client Profile" && f.askInQuestionnaire !== false && !f.internalOnly,
+  );
+  const itemSpecificationFields = questionnaireFields.filter(
+    (f) => f.group === "Item Specification" && f.askInQuestionnaire !== false && !f.internalOnly,
+  );
+  // Short key summary for top section: prioritize selected client profile essentials
+  const keyQuestionnaireFields = clientProfileFields.slice(0, 6);
 
   return (
     <div className="mx-auto w-full max-w-[1400px] px-4 py-6 lg:px-6 lg:py-8">
@@ -913,16 +918,42 @@ export default function QuoteBuilderPage() {
                   questionnaireAnswers={questionnaireAnswers}
                 />
 
-                {/* Questionnaire summary */}
+                {/* Client Profile summary */}
                 {keyQuestionnaireFields.length > 0 && (
                   <div className="space-y-3">
                     <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                      Key project details
+                      Client profile summary
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {keyQuestionnaireFields.map((field) => {
                         const value = questionnaireAnswers[field.key];
-                        if (!value) return null;
+                        if (value == null || value === "") return null;
+                        return (
+                          <div key={field.key} className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">{field.label}</div>
+                            <div className="text-sm text-foreground">
+                              {Array.isArray(value) ? value.join(", ") : String(value)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Item specification snapshot (per-item attributes) */}
+                {itemSpecificationFields.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                      Item specification (global defaults)
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      These attributes apply to generated / estimated items unless overridden on individual line items.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {itemSpecificationFields.slice(0, 6).map((field) => {
+                        const value = questionnaireAnswers[field.key];
+                        if (value == null || value === "") return null;
                         return (
                           <div key={field.key} className="space-y-1">
                             <div className="text-xs font-medium text-muted-foreground">{field.label}</div>

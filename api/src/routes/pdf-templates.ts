@@ -46,12 +46,20 @@ const LABEL_INPUTS: Record<string, PdfAnnotationLabel> = {
   unit_cost: PdfAnnotationLabel.UNIT_COST,
   unit_price: PdfAnnotationLabel.UNIT_COST,
   unit: PdfAnnotationLabel.UNIT_COST,
+  unit_cost_gbp: PdfAnnotationLabel.UNIT_COST,
+  unit_price_gbp: PdfAnnotationLabel.UNIT_COST,
+  price_each: PdfAnnotationLabel.UNIT_COST,
   price: PdfAnnotationLabel.UNIT_COST,
   line_total: PdfAnnotationLabel.LINE_TOTAL,
   total: PdfAnnotationLabel.LINE_TOTAL,
+  total_gbp: PdfAnnotationLabel.LINE_TOTAL,
+  line_total_gbp: PdfAnnotationLabel.LINE_TOTAL,
+  amount: PdfAnnotationLabel.LINE_TOTAL,
   delivery_row: PdfAnnotationLabel.DELIVERY_ROW,
   delivery: PdfAnnotationLabel.DELIVERY_ROW,
   shipping: PdfAnnotationLabel.DELIVERY_ROW,
+  freight: PdfAnnotationLabel.DELIVERY_ROW,
+  carriage: PdfAnnotationLabel.DELIVERY_ROW,
   header_logo: PdfAnnotationLabel.HEADER_LOGO,
   logo: PdfAnnotationLabel.HEADER_LOGO,
   ignore: PdfAnnotationLabel.IGNORE,
@@ -215,12 +223,16 @@ router.post("/", async (req: any, res: Response) => {
       (createData as any).createdByUserId = req.auth.userId; // tentative; may fail in legacy schema
     }
 
+    const recognisedLabels = new Set(annotationWrites.map(a => a.label));
     console.log("[POST /pdf-templates] Creating template with data:", {
       name: createData.name,
       supplierProfileId: createData.supplierProfileId,
       annotationCount: annotationWrites.length,
+      recognisedLabelCount: recognisedLabels.size,
+      recognisedLabels: Array.from(recognisedLabels),
       hasUserId: !!req.auth?.userId,
       hasMeta: !!createData.meta,
+      pageCount: createData.pageCount,
     });
 
     let template: any;
@@ -232,6 +244,16 @@ router.post("/", async (req: any, res: Response) => {
         console.warn("[POST /pdf-templates] Legacy schema detected (no createdByUserId). Retrying without field.");
         const retryData = { ...createData };
         delete (retryData as any).createdByUserId;
+        template = await prisma.pdfLayoutTemplate.create({ data: retryData, select: detailSelect });
+      } else if (/pagecount/.test(msg) && /unknown column|does not exist|no such column/.test(msg)) {
+        console.warn("[POST /pdf-templates] Legacy schema detected (no pageCount). Retrying without field.");
+        const retryData = { ...createData };
+        delete (retryData as any).pageCount;
+        template = await prisma.pdfLayoutTemplate.create({ data: retryData, select: detailSelect });
+      } else if (/meta/.test(msg) && /unknown column|does not exist|no such column/.test(msg)) {
+        console.warn("[POST /pdf-templates] Legacy schema detected (no meta). Retrying without field.");
+        const retryData = { ...createData };
+        delete (retryData as any).meta;
         template = await prisma.pdfLayoutTemplate.create({ data: retryData, select: detailSelect });
       } else {
         throw err;
@@ -251,13 +273,22 @@ router.post("/", async (req: any, res: Response) => {
       code: error?.code,
       meta: error?.meta,
       stack: error?.stack?.split('\n').slice(0, 3).join('\n'),
+      receivedAnnotationCount: Array.isArray(req.body?.annotations) ? req.body.annotations.length : null,
+      firstAnnotation: Array.isArray(req.body?.annotations) && req.body.annotations.length ? req.body.annotations[0] : null,
     });
     const isUnique = error?.code === "P2002";
+    const msg = String(error?.message || '').toLowerCase();
+    const missingTable = /relation .* does not exist|no such table|unknown table/.test(msg);
     res.status(isUnique ? 409 : 500).json({
       ok: false,
-      error: isUnique ? "Template already exists (replaced on POST)" : "Failed to create template",
+      error: isUnique
+        ? "Template already exists (replaced on POST)"
+        : missingTable
+          ? "PDF template table missing - run migrations"
+          : "Failed to create template",
       detail: error?.message,
       code: error?.code,
+      hint: missingTable ? "Run: prisma migrate deploy (server)" : undefined,
     });
   }
 });

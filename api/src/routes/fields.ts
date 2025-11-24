@@ -121,6 +121,51 @@ router.get("/", requireAuth, async (req: any, res) => {
           }
         }
       }
+
+      // Hide & neutralize deprecated legacy standard fields (retain answers, remove from UI & costing)
+      const DEPRECATED_KEYS = [
+        "window_style",
+        "num_windows",
+        "num_doors",
+        "premium_hardware",
+        "custom_finish",
+      ];
+      if (DEPRECATED_KEYS.length) {
+        await prisma.questionnaireField.updateMany({
+          where: { tenantId, key: { in: DEPRECATED_KEYS } },
+          data: { isHidden: true, costingInputKey: null },
+        });
+      }
+
+      // Ensure new unified quantity field exists (was num_windows / num_doors previously)
+      // If both old quantity fields existed without new one, create or unhide the new one
+      const quantityField = await prisma.questionnaireField.findFirst({
+        where: { tenantId, key: "quantity" },
+      });
+      if (!quantityField) {
+        try {
+          await prisma.questionnaireField.create({
+            data: {
+              tenantId,
+              questionnaireId: questionnaire.id,
+              key: "quantity",
+              label: "Quantity",
+              type: "NUMBER",
+              required: false,
+              sortOrder: 205,
+              order: 205,
+              costingInputKey: "quantity",
+              isStandard: true,
+              isHidden: false,
+              requiredForCosting: true,
+            },
+          });
+        } catch (e: any) {
+          if (e?.code !== "P2002") {
+            console.warn("[fields] create quantity field failed", e?.message || e);
+          }
+        }
+      }
     }
 
     const fields = await prisma.questionnaireField.findMany({
