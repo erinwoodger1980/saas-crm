@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useEffect } from "react";
-import DataGrid, { Column, RenderEditCellProps, SelectColumn } from "react-data-grid";
+import { DataGrid, Column, RenderEditCellProps, SelectColumn } from "react-data-grid";
 import "react-data-grid/lib/styles.css";
 import { apiFetch } from "@/lib/api";
 
@@ -102,7 +102,7 @@ export function FireDoorGrid({
   onSelectRfi,
 }: FireDoorGridProps) {
   const [rows, setRows] = useState<FireDoorLineItem[]>(lineItems);
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [doorCores, setDoorCores] = useState<any[]>([]);
   const [ironmongeryItems, setIronmongeryItems] = useState<any[]>([]);
 
@@ -180,6 +180,59 @@ export function FireDoorGrid({
     return map;
   }, [rfis]);
 
+  // Cell click handler for RFI
+  const handleCellClick = useCallback((args: { row: FireDoorLineItem; column: Column<FireDoorLineItem> }) => {
+    if (!onSelectRfi) return;
+    const rowId = args.row.id || `row-${args.row.rowIndex}`;
+    const cellKey = `${rowId}:${args.column.key}`;
+    const cellRfis = cellRfiMap[cellKey];
+    if (cellRfis && cellRfis.length > 0) {
+      onSelectRfi(cellRfis[0]);
+    }
+  }, [cellRfiMap, onSelectRfi]);
+
+  // Context menu handler for RFI
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!onAddRfi) return;
+    
+    e.preventDefault();
+    const target = e.target as HTMLElement;
+    const cell = target.closest('.rdg-cell');
+    if (!cell) return;
+
+    const columnKey = cell.getAttribute('data-column-key');
+    const rowIdx = cell.getAttribute('data-row-idx');
+    
+    if (!columnKey) return;
+
+    const rowId = rowIdx ? rows[parseInt(rowIdx)]?.id || `row-${rowIdx}` : null;
+    
+    const menu = document.createElement('div');
+    menu.className = 'absolute bg-white border border-gray-300 shadow-lg rounded-md z-50';
+    menu.style.left = `${e.pageX}px`;
+    menu.style.top = `${e.pageY}px`;
+    
+    const cellOption = document.createElement('button');
+    cellOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm';
+    cellOption.textContent = rowId ? 'Add RFI for this cell' : 'Add RFI for this column';
+    cellOption.onclick = () => {
+      onAddRfi(rowId, columnKey);
+      document.body.removeChild(menu);
+    };
+    
+    menu.appendChild(cellOption);
+    document.body.appendChild(menu);
+    
+    const closeMenu = () => {
+      if (document.body.contains(menu)) {
+        document.body.removeChild(menu);
+      }
+      document.removeEventListener('click', closeMenu);
+    };
+    
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  }, [onAddRfi, rows]);
+
   // Column definitions
   const columns = useMemo<Column<FireDoorLineItem>[]>(() => [
     SelectColumn,
@@ -196,6 +249,11 @@ export function FireDoorGrid({
       width: 140,
       frozen: true,
       editable: true,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        const hasRfi = cellRfiMap[`${rowId}:doorRef`];
+        return hasRfi ? 'bg-orange-50 border-l-4 border-l-orange-400' : '';
+      },
     },
     {
       key: 'location',
@@ -206,24 +264,68 @@ export function FireDoorGrid({
     },
     
     // SECTION 1: Certification & Initial Spec
-    { key: 'certification', name: 'Certification', width: 130, editable: true },
+    { 
+      key: 'certification', 
+      name: 'Certification', 
+      width: 130, 
+      editable: true,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:certification`] ? 'bg-orange-50' : '';
+      },
+    },
     { 
       key: 'doorsetType', 
       name: 'Doorset Type', 
       width: 150, 
       editable: true,
       renderEditCell: (props) => <SelectEditor {...props} options={doorsetTypeOptions} />,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:doorsetType`] ? 'bg-orange-50' : '';
+      },
     },
     { key: 'lajRef', name: 'LAJ Ref', width: 110, editable: true },
-    { key: 'masterWidth', name: 'Master Width (mm)', width: 150, editable: true },
-    { key: 'slaveWidth', name: 'Slave Width (mm)', width: 150, editable: true },
-    { key: 'doorHeight', name: 'Door Height (mm)', width: 150, editable: true },
+    { 
+      key: 'masterWidth', 
+      name: 'Master Width (mm)', 
+      width: 150, 
+      editable: true,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:masterWidth`] ? 'bg-orange-50' : '';
+      },
+    },
+    { 
+      key: 'slaveWidth', 
+      name: 'Slave Width (mm)', 
+      width: 150, 
+      editable: true,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:slaveWidth`] ? 'bg-orange-50' : '';
+      },
+    },
+    { 
+      key: 'doorHeight', 
+      name: 'Door Height (mm)', 
+      width: 150, 
+      editable: true,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:doorHeight`] ? 'bg-orange-50' : '';
+      },
+    },
     { 
       key: 'core', 
       name: 'Core', 
       width: 150, 
       editable: true,
       renderEditCell: (props) => <SelectEditor {...props} options={coreOptions} />,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:core`] ? 'bg-orange-50' : '';
+      },
     },
     { 
       key: 'rating', 
@@ -231,8 +333,21 @@ export function FireDoorGrid({
       width: 100, 
       editable: true,
       renderEditCell: (props) => <SelectEditor {...props} options={ratingOptions} />,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:rating`] ? 'bg-orange-50' : '';
+      },
     },
-    { key: 'coreType', name: 'Core Type', width: 120, editable: true },
+    { 
+      key: 'coreType', 
+      name: 'Core Type', 
+      width: 120, 
+      editable: true,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:coreType`] ? 'bg-orange-50' : '';
+      },
+    },
     
     // SECTION 2: Edge Dimensions
     { key: 'top', name: 'Top', width: 80, editable: true },
@@ -269,8 +384,26 @@ export function FireDoorGrid({
     },
     
     // SECTION 4: Notes
-    { key: 'notes1', name: 'Notes 1', width: 200, editable: true },
-    { key: 'notes2', name: 'Notes 2', width: 200, editable: true },
+    { 
+      key: 'notes1', 
+      name: 'Notes 1', 
+      width: 200, 
+      editable: true,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:notes1`] ? 'bg-orange-50' : '';
+      },
+    },
+    { 
+      key: 'notes2', 
+      name: 'Notes 2', 
+      width: 200, 
+      editable: true,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:notes2`] ? 'bg-orange-50' : '';
+      },
+    },
     
     // PRICING (pinned right)
     { 
@@ -279,6 +412,10 @@ export function FireDoorGrid({
       width: 80, 
       editable: true,
       frozen: true,
+      cellClass: (row) => {
+        const rowId = row.id || `row-${row.rowIndex}`;
+        return cellRfiMap[`${rowId}:quantity`] ? 'bg-orange-50' : '';
+      },
     },
     { 
       key: 'unitValue', 
@@ -300,14 +437,15 @@ export function FireDoorGrid({
   ], [coreOptions, doorsetTypeOptions, ratingOptions]);
 
   return (
-    <div className="h-[600px] w-full">
+    <div className="h-[600px] w-full" onContextMenu={handleContextMenu}>
       <DataGrid
         columns={columns}
         rows={rows}
         onRowsChange={handleRowsChange}
-        rowKeyGetter={(row) => row.id || `row-${row.rowIndex}`}
+        rowKeyGetter={(row: FireDoorLineItem) => row.id || `row-${row.rowIndex}`}
         selectedRows={selectedRows}
         onSelectedRowsChange={setSelectedRows}
+        onCellClick={handleCellClick}
         className="rdg-light fill-grid"
         style={{ height: '100%' }}
         enableVirtualization
@@ -345,6 +483,16 @@ export function FireDoorGrid({
         }
         .bg-blue-50 {
           background: #eff6ff !important;
+        }
+        .bg-orange-50 {
+          background: #fff7ed !important;
+          border-left: 3px solid #fb923c !important;
+        }
+        .border-l-4 {
+          border-left-width: 4px !important;
+        }
+        .border-l-orange-400 {
+          border-left-color: #fb923c !important;
         }
         .font-semibold {
           font-weight: 600;
