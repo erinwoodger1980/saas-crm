@@ -2553,3 +2553,134 @@ model PurchaseOrderLine {
   @@index([purchaseOrderId])
   @@index([materialItemId])
 }
+
+/// ===============================
+/// Fire Door Spreadsheet Import System
+/// ===============================
+
+model FireDoorImport {
+  id          String   @id @default(cuid())
+  tenantId    String
+  createdById String
+  sourceName  String // Original filename
+  status      String   @default("DRAFT") // DRAFT, PROCESSING, COMPLETED, ERROR
+  totalValue  Decimal  @default(0)
+  currency    String   @default("GBP")
+  rowCount    Int      @default(0) // Number of line items imported
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Optional linkage to existing project/order entities
+  projectId String?
+  orderId   String?
+
+  lineItems FireDoorLineItem[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+model FireDoorLineItem {
+  id               String   @id @default(cuid())
+  fireDoorImportId String
+  tenantId         String
+  rowIndex         Int // Original row number from CSV
+
+  // Core identification fields
+  itemType String? // from `Item`
+  code     String? // from `Code`
+  quantity Int?
+
+  // Door identification / metadata
+  doorRef      String? // `Door Ref`
+  location     String? // `Location`
+  doorSetType  String? // `Doorset / Leaf / Frame`
+  fireRating   String? // `Fire Rating` (e.g. FD30S, NFR)
+  acousticRatingDb Int? // `Acoustic Rating dB`
+  handing      String? // `Handing`
+
+  // Colors & finishes
+  internalColour String? // `Internal Colour`
+  externalColour String? // `External Colour`
+  frameFinish    String? // `Frame Finish`
+
+  // Leaf geometry / configuration
+  leafHeight        Float? // `Leaf Height`
+  masterLeafWidth   Float? // `M Leaf Width`
+  slaveLeafWidth    Float? // `S Leaf Width`
+  leafThickness     Float? // `Leaf Thickness`
+  leafConfiguration String? // `Leaf Configuration`
+  ifSplitMasterSize String? // `If Split, Master Leaf Size`
+
+  // Finishes & edges
+  doorFinishSide1     String? // `Door Finish - Side 1 (Push)`
+  doorFinishSide2     String? // `Door Finish - Side 2 (Pull)`
+  doorFacing          String? // `Door Facing`
+  lippingFinish       String? // `Lipping Finish`
+  doorEdgeProtType    String? // `Door Edge Protection Type`
+  doorEdgeProtPos     String? // `Door Edge Protection Position`
+  doorUndercut        String? // `Door Undercut`
+  doorUndercutMm      Float? // `Door Undercut (mm)`
+
+  // Vision panels / glazing (Leaf 1)
+  visionQtyLeaf1  Int? // `Vision Panel Qty, Leaf 1`
+  vp1WidthLeaf1   Float? // `Leaf 1 Aperture 1 Width (See Size Detail)`
+  vp1HeightLeaf1  Float? // `Leaf 1 Aperture 1 Height (See Size Detail)`
+  vp2WidthLeaf1   Float? // `Leaf 1 Aperture 2 Width (See Size Detail)`
+  vp2HeightLeaf1  Float? // `Leaf 1 Aperture 2 Height (See Size Detail)`
+
+  // Vision panels / glazing (Leaf 2)
+  visionQtyLeaf2 Int? // `Vision Panel Qty, Leaf 2`
+  vp1WidthLeaf2  Float? // `Leaf 2 Cut Out Aperture 1 Width`
+  vp1HeightLeaf2 Float? // `Leaf 2 Cut Out Aperture 1 Height`
+  vp2WidthLeaf2  Float? // `Leaf 2 Cut Out Aperture 2 Width`
+  vp2HeightLeaf2 Float? // `Leaf 2 Cut Out Aperture 2 Height`
+
+  // Total glazing
+  totalGlazedAreaMaster Float? // `Total Glazed Area Master Leaf (msq)`
+  fanlightSidelightGlz  String? // `Fanlight/Sidelight Glazing`
+  glazingTape           String? // `Glazing Tape`
+
+  // Ironmongery & accessories
+  ironmongeryPackRef    String? // `Ironmongery Pack Ref`
+  closerOrFloorSpring   String? // `Closers / Floor Springs`
+  spindleFacePrep       String? // `Spindle Face Prep`
+  cylinderFacePrep      String? // `Cylinder Face Prep`
+  flushBoltSupplyPrep   String? // `Flush Bolt Supply/Prep`
+  flushBoltQty          Int? // `Flush Bolt Qty`
+  fingerProtection      String? // `Finger Protection`
+  fireSignage           String? // `Fire Signage`
+  fireSignageQty        Int? // `Fire Signage Qty`
+  fireSignageFactoryFit String? // `Factory Fit Fire Signage`
+  fireIdDisc            String? // `Fire ID Disc`
+  fireIdDiscQty         Int? // `Fire ID Disc Qty`
+  doorViewer            String? // `Door Viewer`
+  doorViewerPosition    String? // `Door Viewer Position`
+  doorViewerPrepSize    String? // `Door Viewer Prep Size`
+  doorChain             String? // `Door Chain`
+  doorViewersQty        Int? // `Door Viewers Qty`
+  doorChainFactoryFit   String? // `Factory Fit Door Chain`
+  doorViewersFactoryFit String? // `Factory Fit Door Viewers`
+
+  // Additional notes
+  additionNote1    String? // `Addition 1 / Note 1`
+  additionNote1Qty Int? // `Addition 1 Qty`
+
+  // Pricing
+  unitValue    Decimal? // parsed from `Value` per door
+  labourCost   Decimal? // parsed from `Cost of Labour`
+  materialCost Decimal? // parsed from `Cost of Materials`
+  lineTotal    Decimal? // use `unitValue * quantity` or `unitValue` if qty is 1+
+
+  // Traceability: store entire original CSV row as JSON
+  rawRowJson Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  import FireDoorImport @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, fireDoorImportId])
+  @@index([tenantId, fireRating])
+  @@index([fireDoorImportId, rowIndex])
+}
