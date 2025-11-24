@@ -115,7 +115,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Top header */}
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-6 px-6 py-4">
+        <div className="mx-auto flex w-full items-center justify-between gap-6 px-6 py-4">
           <div className="flex items-center gap-6">
             <div className="relative">
               <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-[36px] border border-slate-200/80 bg-white shadow-[0_30px_60px_-36px_rgba(15,23,42,0.65)]">
@@ -191,7 +191,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       {/* Main grid */}
-      <div className={`relative mx-auto grid max-w-screen-2xl gap-8 px-6 py-10 transition-all duration-300 ${sidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[280px_minmax(0,1fr)]'}`}>
+      <div className={`relative mx-auto grid w-full gap-8 px-6 py-10 transition-all duration-300 ${sidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[280px_minmax(0,1fr)]'}`}>
         <aside className="md:sticky md:top-[160px] md:self-start relative">
           {/* Toggle button */}
           <Button

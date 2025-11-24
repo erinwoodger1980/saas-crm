@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { 
   Plus, Search, Filter, TrendingUp, Clock, CheckCircle2, 
   AlertCircle, Calendar, Package, Wrench, Truck, FileText,
-  BarChart3, ArrowUpRight, Download
+  BarChart3, ArrowUpRight, Download, ArrowUpDown, ChevronUp, ChevronDown
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
@@ -50,11 +50,35 @@ export default function FireDoorSchedulePage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<string>("ALL");
-  const [showTable, setShowTable] = useState<boolean>(true); // show consolidated table by default
+  const [showTable, setShowTable] = useState<boolean>(true); // consolidated table view toggle
+  const [sortField, setSortField] = useState<string>("dateRequired");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   useEffect(() => {
     loadData();
+    // Load persisted UI prefs
+    try {
+      const savedView = localStorage.getItem("fds:view");
+      const savedTab = localStorage.getItem("fds:tab");
+      const savedSortF = localStorage.getItem("fds:sortField");
+      const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
+      if (savedView) setShowTable(savedView === "table");
+      if (savedTab) setActiveTab(savedTab);
+      if (savedSortF) setSortField(savedSortF);
+      if (savedSortD === "asc" || savedSortD === "desc") setSortDir(savedSortD);
+    } catch {}
   }, []);
+
+  // Persist view + tab + sort
+  useEffect(() => {
+    try { localStorage.setItem("fds:view", showTable ? "table" : "cards"); } catch {}
+  }, [showTable]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:tab", activeTab); } catch {}
+  }, [activeTab]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
+  }, [sortField, sortDir]);
 
   async function loadData() {
     setLoading(true);
@@ -93,7 +117,30 @@ export default function FireDoorSchedulePage() {
         project.clientName?.toLowerCase().includes(searchLower) ||
         project.poNumber?.toLowerCase().includes(searchLower)
       );
+    })
+    .sort((a, b) => {
+      const dir = sortDir === 'asc' ? 1 : -1;
+      let av: any = (a as any)[sortField];
+      let bv: any = (b as any)[sortField];
+      // Date parsing
+      if (sortField.includes('date')) {
+        av = av ? new Date(av).getTime() : 0;
+        bv = bv ? new Date(bv).getTime() : 0;
+      }
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av === bv) return 0;
+      return av > bv ? dir : -dir;
     });
+
+  function toggleSort(field: string) {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  }
 
   function getProgressColor(progress?: number): string {
     if (!progress) return "from-gray-400 to-gray-500";
@@ -111,9 +158,28 @@ export default function FireDoorSchedulePage() {
     return "bg-slate-100 text-slate-600";
   }
 
+  async function updateProject(projectId: string, patch: Partial<FireDoorProject>) {
+    try {
+      // Optimistic UI update
+      setProjects((prev) => prev.map(p => p.id === projectId ? { ...p, ...patch } : p));
+      await apiFetch(`/fire-door-schedule/${projectId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+    } catch (e) {
+      console.error('Failed to update project', e);
+      // Reload to re-sync if failed
+      loadData();
+    }
+  }
+
+  const jobLocationOptions = ["RED FOLDER", "IN PROGRESS", "COMPLETE"];
+  const signOffOptions = ["NOT LOOKED AT", "AWAITING SCHEDULE", "WORKING ON SCHEDULE", "SCHEDULE SIGNED OFF"];
+  const orderingOptions = ["NOT IN BOM", "IN BOM", "ORDERED", "DELIVERED"];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50">
-      <div className="container mx-auto py-8 space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 w-full">
+      <div className="mx-auto w-full px-6 py-8 space-y-6">
         {/* Glassmorphism Header */}
         <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-xl p-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -278,17 +344,34 @@ export default function FireDoorSchedulePage() {
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider">
-                    <th className="px-4 py-3 text-left">Job Name</th>
-                    <th className="px-4 py-3 text-left">MJS#</th>
-                    <th className="px-4 py-3 text-left">Client</th>
-                    <th className="px-4 py-3 text-left">Location</th>
-                    <th className="px-4 py-3 text-left">Sign Off</th>
-                    <th className="px-4 py-3 text-left">Ordering</th>
-                    <th className="px-4 py-3 text-left">PO</th>
-                    <th className="px-4 py-3 text-left">Received</th>
-                    <th className="px-4 py-3 text-left">Required</th>
-                    <th className="px-4 py-3 text-left">Progress</th>
+                  <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
+                    {[
+                      { label: 'Job Name', field: 'jobName' },
+                      { label: 'MJS#', field: 'mjsNumber' },
+                      { label: 'Client', field: 'clientName' },
+                      { label: 'Location', field: 'jobLocation' },
+                      { label: 'Sign Off', field: 'signOffStatus' },
+                      { label: 'Ordering', field: 'orderingStatus' },
+                      { label: 'PO', field: 'poNumber' },
+                      { label: 'Received', field: 'dateReceived' },
+                      { label: 'Required', field: 'dateRequired' },
+                      { label: 'Progress', field: 'overallProgress' },
+                    ].map(col => (
+                      <th
+                        key={col.field}
+                        onClick={() => toggleSort(col.field)}
+                        className="px-4 py-3 text-left cursor-pointer group"
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {sortField === col.field ? (
+                            sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
+                          )}
+                        </span>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -301,13 +384,36 @@ export default function FireDoorSchedulePage() {
                       <td className="px-4 py-3 font-medium text-slate-900 group-hover:text-blue-700">{project.jobName || 'Untitled Project'}</td>
                       <td className="px-4 py-3 text-slate-600">{project.mjsNumber || '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{project.clientName || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-[11px] font-medium ${getStatusColor(project.jobLocation)}`}>{project.jobLocation || 'Unknown'}</span>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={project.jobLocation || ''}
+                          onChange={(e) => updateProject(project.id, { jobLocation: e.target.value })}
+                          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${getStatusColor(project.jobLocation).replace('px-3 py-1','')}`}
+                        >
+                          <option value="">--</option>
+                          {jobLocationOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
                       </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-[11px] font-medium ${getStatusColor(project.signOffStatus)}`}>{project.signOffStatus?.replace(/_/g,' ') || '—'}</span>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={project.signOffStatus || ''}
+                          onChange={(e) => updateProject(project.id, { signOffStatus: e.target.value })}
+                          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${getStatusColor(project.signOffStatus).replace('px-3 py-1','')}`}
+                        >
+                          <option value="">--</option>
+                          {signOffOptions.map(o => <option key={o} value={o}>{o.replace(/_/g,' ')}</option>)}
+                        </select>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{project.orderingStatus?.replace(/_/g,' ') || '—'}</td>
+                      <td className="px-4 py-3 text-slate-600" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={project.orderingStatus || ''}
+                          onChange={(e) => updateProject(project.id, { orderingStatus: e.target.value })}
+                          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        >
+                          <option value="">--</option>
+                          {orderingOptions.map(o => <option key={o} value={o}>{o.replace(/_/g,' ')}</option>)}
+                        </select>
+                      </td>
                       <td className="px-4 py-3 text-slate-600">{project.poNumber || '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{project.dateReceived ? new Date(project.dateReceived).toLocaleDateString() : '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{project.dateRequired ? new Date(project.dateRequired).toLocaleDateString() : '—'}</td>
