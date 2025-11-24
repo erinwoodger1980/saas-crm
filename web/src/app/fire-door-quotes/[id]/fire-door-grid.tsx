@@ -10,10 +10,15 @@ import {
   CellValueChangedEvent,
   GetContextMenuItemsParams,
   MenuItemDef,
+  ModuleRegistry,
 } from "ag-grid-community";
+import { AllCommunityModule } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import { apiFetch } from "@/lib/api";
+
+// Register AG Grid Community modules
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface FireDoorLineItem {
   id?: string;
