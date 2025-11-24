@@ -781,6 +781,10 @@ router.post("/ensure-for-lead/:leadId", async (req: any, res: any) => {
         // Leave start/delivery/value null by default
       },
     });
+    // Link opportunity to ClientAccount
+    linkOpportunityToClientAccount(opportunity.id).catch((err) => 
+      console.warn("[opportunities] Failed to link to ClientAccount:", err)
+    );
   }
 
   res.json({ ok: true, opportunity });

@@ -203,6 +203,7 @@ model Lead {
   id                    String                 @id @default(cuid())
   tenantId              String
   createdById           String
+  clientAccountId       String?                // Link to customer account
   contactName           String
   email                 String?
   status                LeadStatus             @default(NEW)
@@ -232,6 +233,9 @@ model Lead {
   visionInferences      LeadVisionInference[]
   interactions          LeadInteraction[]
   publicProjects        PublicProject[]
+  clientAccount         ClientAccount?         @relation(fields: [clientAccountId], references: [id])
+
+  @@index([clientAccountId])
 }
 
 enum LeadInteractionType {
@@ -295,6 +299,7 @@ model Opportunity {
   id                       String                     @id @default(cuid())
   tenantId                 String
   leadId                   String                     @unique
+  clientAccountId          String?                    // Link to customer account
   title                    String
   startDate                DateTime?
   deliveryDate             DateTime?
@@ -324,6 +329,7 @@ model Opportunity {
   emailThreads             EmailThread[]
   lead                     Lead                       @relation(fields: [leadId], references: [id])
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id])
+  clientAccount            ClientAccount?             @relation(fields: [clientAccountId], references: [id])
   // Workshop relations
   processPlans             ProcessPlan[]
   projectProcesses         ProjectProcessAssignment[]
@@ -331,6 +337,7 @@ model Opportunity {
   supplierQuoteRequests    SupplierQuoteRequest[]
 
   @@index([tenantId, stage])
+  @@index([clientAccountId])
 }
 
 model EmailIngest {
@@ -2855,6 +2862,8 @@ model ClientAccount {
   tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   users           ClientUser[]
   jobs            FireDoorClientJob[]
+  leads           Lead[]              // Leads linked to this customer
+  opportunities   Opportunity[]       // Opportunities linked to this customer
   
   @@index([tenantId])
   @@index([tenantId, email])

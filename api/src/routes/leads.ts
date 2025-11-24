@@ -17,6 +17,7 @@ import {
   toISODate,
 } from "../lib/leads/fieldMap";
 import { extractGlobalSpecsFromAnswers, specsToPrismaData } from "../lib/globalSpecs";
+import { linkLeadToClientAccount, linkOpportunityToClientAccount } from "../lib/clientAccount";
 
 const router = Router();
 
@@ -825,13 +826,20 @@ router.post("/", async (req, res) => {
     },
   });
 
+  // Link to ClientAccount for customer data reuse
+  if (email) {
+    linkLeadToClientAccount(lead.id).catch((err) => 
+      console.warn("[leads] Failed to link ClientAccount:", err)
+    );
+  }
+
   // Proactive first task
   await handleStatusTransition({ tenantId, leadId: lead.id, prevUi: null, nextUi: uiStatus, actorId: userId, playbook });
 
   // If created with WON status, ensure opportunity exists
   if (uiStatus === "WON") {
     try {
-      await prisma.opportunity.create({
+      const opp = await prisma.opportunity.create({
         data: {
           tenantId,
           leadId: lead.id,
@@ -840,6 +848,10 @@ router.post("/", async (req, res) => {
           wonAt: now,
         },
       });
+      // Link opportunity to ClientAccount
+      linkOpportunityToClientAccount(opp.id).catch((err) => 
+        console.warn("[leads] Failed to link Opportunity to ClientAccount:", err)
+      );
     } catch (e) {
       // May already exist if handleStatusTransition created it
       console.warn("[leads] ensure opportunity on new WON lead failed:", (e as any)?.message || e);
