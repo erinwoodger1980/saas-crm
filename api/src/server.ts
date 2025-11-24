@@ -111,6 +111,7 @@ import customerPortalRouter from "./routes/customer-portal";
 import materialDebugRouter from "./routes/material-debug";
 import doorCoresRouter from "./routes/door-cores";
 import ironmongeryItemsRouter from "./routes/ironmongery-items";
+import rfisRouter from "./routes/rfis";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -650,6 +651,7 @@ app.use("/fire-door-quotes", requireAuth, fireDoorQuotesRouter);
 // Fire door lookup tables (door cores, ironmongery)
 app.use("/door-cores", requireAuth, doorCoresRouter);
 app.use("/ironmongery-items", requireAuth, ironmongeryItemsRouter);
+app.use("/rfis", requireAuth, rfisRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
