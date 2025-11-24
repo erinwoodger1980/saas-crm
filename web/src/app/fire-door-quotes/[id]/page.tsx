@@ -401,7 +401,46 @@ export default function FireDoorQuoteBuilderPage() {
                   <th className="px-2 py-3 text-left min-w-[120px]">Door Facing</th>
                   <th className="px-2 py-3 text-left min-w-[120px]">Frame Finish</th>
                   <th className="px-2 py-3 text-left min-w-[120px]">Lipping Finish</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Edge Prot Type</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Edge Prot Pos</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Door Undercut</th>
+                  <th className="px-2 py-3 text-left w-24">Undercut mm</th>
+                  <th className="px-2 py-3 text-left w-20">VP Qty L1</th>
+                  <th className="px-2 py-3 text-left w-24">VP1 W L1</th>
+                  <th className="px-2 py-3 text-left w-24">VP1 H L1</th>
+                  <th className="px-2 py-3 text-left w-24">VP2 W L1</th>
+                  <th className="px-2 py-3 text-left w-24">VP2 H L1</th>
+                  <th className="px-2 py-3 text-left w-20">VP Qty L2</th>
+                  <th className="px-2 py-3 text-left w-24">VP1 W L2</th>
+                  <th className="px-2 py-3 text-left w-24">VP1 H L2</th>
+                  <th className="px-2 py-3 text-left w-24">VP2 W L2</th>
+                  <th className="px-2 py-3 text-left w-24">VP2 H L2</th>
+                  <th className="px-2 py-3 text-left w-28">Total Glz Area</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Fanlight/Side Glz</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Glazing Tape</th>
                   <th className="px-2 py-3 text-left min-w-[140px]">Ironmongery Pack</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Closer/Floor Spring</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Spindle Face Prep</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Cylinder Face Prep</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Flush Bolt Supply</th>
+                  <th className="px-2 py-3 text-left w-20">Flush Bolt Qty</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Finger Protection</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Fire Signage</th>
+                  <th className="px-2 py-3 text-left w-20">Fire Sign Qty</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Factory Fit Sign</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Fire ID Disc</th>
+                  <th className="px-2 py-3 text-left w-20">Fire ID Qty</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Door Viewer</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Viewer Position</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Viewer Prep Size</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Door Chain</th>
+                  <th className="px-2 py-3 text-left w-20">Viewer Qty</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Factory Fit Chain</th>
+                  <th className="px-2 py-3 text-left min-w-[100px]">Factory Fit Viewer</th>
+                  <th className="px-2 py-3 text-left min-w-[120px]">Addition Note 1</th>
+                  <th className="px-2 py-3 text-left w-20">Add Note 1 Qty</th>
+                  <th className="px-2 py-3 text-left w-28">Labour Cost (£)</th>
+                  <th className="px-2 py-3 text-left w-28">Material Cost (£)</th>
                   <th className="px-2 py-3 text-left w-28">Unit Price (£)</th>
                   <th className="px-2 py-3 text-left w-28">Line Total (£)</th>
                   <th className="px-2 py-3 text-center w-24">Actions</th>
@@ -593,10 +632,317 @@ export default function FireDoorQuoteBuilderPage() {
                     </td>
                     <td className="px-2 py-2">
                       <Input
+                        value={item.doorEdgeProtType || ""}
+                        onChange={(e) => updateLineItem(index, "doorEdgeProtType", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="Armor plate"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorEdgeProtPos || ""}
+                        onChange={(e) => updateLineItem(index, "doorEdgeProtPos", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="Leading edge"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorUndercut || ""}
+                        onChange={(e) => updateLineItem(index, "doorUndercut", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                        placeholder="Yes/No"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={item.doorUndercutMm || ""}
+                        onChange={(e) => updateLineItem(index, "doorUndercutMm", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        value={item.visionQtyLeaf1 || ""}
+                        onChange={(e) => updateLineItem(index, "visionQtyLeaf1", parseInt(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={item.vp1WidthLeaf1 || ""}
+                        onChange={(e) => updateLineItem(index, "vp1WidthLeaf1", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={item.vp1HeightLeaf1 || ""}
+                        onChange={(e) => updateLineItem(index, "vp1HeightLeaf1", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={item.vp2WidthLeaf1 || ""}
+                        onChange={(e) => updateLineItem(index, "vp2WidthLeaf1", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={item.vp2HeightLeaf1 || ""}
+                        onChange={(e) => updateLineItem(index, "vp2HeightLeaf1", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        value={item.visionQtyLeaf2 || ""}
+                        onChange={(e) => updateLineItem(index, "visionQtyLeaf2", parseInt(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={item.vp1WidthLeaf2 || ""}
+                        onChange={(e) => updateLineItem(index, "vp1WidthLeaf2", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={item.vp1HeightLeaf2 || ""}
+                        onChange={(e) => updateLineItem(index, "vp1HeightLeaf2", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={item.vp2WidthLeaf2 || ""}
+                        onChange={(e) => updateLineItem(index, "vp2WidthLeaf2", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={item.vp2HeightLeaf2 || ""}
+                        onChange={(e) => updateLineItem(index, "vp2HeightLeaf2", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={item.totalGlazedAreaMaster || ""}
+                        onChange={(e) => updateLineItem(index, "totalGlazedAreaMaster", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.fanlightSidelightGlz || ""}
+                        onChange={(e) => updateLineItem(index, "fanlightSidelightGlz", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.glazingTape || ""}
+                        onChange={(e) => updateLineItem(index, "glazingTape", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
                         value={item.ironmongeryPackRef || ""}
                         onChange={(e) => updateLineItem(index, "ironmongeryPackRef", e.target.value)}
                         className="h-8 text-xs bg-white"
                         placeholder="Pack A"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.closerOrFloorSpring || ""}
+                        onChange={(e) => updateLineItem(index, "closerOrFloorSpring", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.spindleFacePrep || ""}
+                        onChange={(e) => updateLineItem(index, "spindleFacePrep", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.cylinderFacePrep || ""}
+                        onChange={(e) => updateLineItem(index, "cylinderFacePrep", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.flushBoltSupplyPrep || ""}
+                        onChange={(e) => updateLineItem(index, "flushBoltSupplyPrep", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        value={item.flushBoltQty || ""}
+                        onChange={(e) => updateLineItem(index, "flushBoltQty", parseInt(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.fingerProtection || ""}
+                        onChange={(e) => updateLineItem(index, "fingerProtection", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.fireSignage || ""}
+                        onChange={(e) => updateLineItem(index, "fireSignage", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        value={item.fireSignageQty || ""}
+                        onChange={(e) => updateLineItem(index, "fireSignageQty", parseInt(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.fireSignageFactoryFit || ""}
+                        onChange={(e) => updateLineItem(index, "fireSignageFactoryFit", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.fireIdDisc || ""}
+                        onChange={(e) => updateLineItem(index, "fireIdDisc", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        value={item.fireIdDiscQty || ""}
+                        onChange={(e) => updateLineItem(index, "fireIdDiscQty", parseInt(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorViewer || ""}
+                        onChange={(e) => updateLineItem(index, "doorViewer", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorViewerPosition || ""}
+                        onChange={(e) => updateLineItem(index, "doorViewerPosition", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorViewerPrepSize || ""}
+                        onChange={(e) => updateLineItem(index, "doorViewerPrepSize", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorChain || ""}
+                        onChange={(e) => updateLineItem(index, "doorChain", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        value={item.doorViewersQty || ""}
+                        onChange={(e) => updateLineItem(index, "doorViewersQty", parseInt(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorChainFactoryFit || ""}
+                        onChange={(e) => updateLineItem(index, "doorChainFactoryFit", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.doorViewersFactoryFit || ""}
+                        onChange={(e) => updateLineItem(index, "doorViewersFactoryFit", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        value={item.additionNote1 || ""}
+                        onChange={(e) => updateLineItem(index, "additionNote1", e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        value={item.additionNote1Qty || ""}
+                        onChange={(e) => updateLineItem(index, "additionNote1Qty", parseInt(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={item.labourCost || ""}
+                        onChange={(e) => updateLineItem(index, "labourCost", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white font-mono"
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={item.materialCost || ""}
+                        onChange={(e) => updateLineItem(index, "materialCost", parseFloat(e.target.value) || 0)}
+                        className="h-8 text-xs bg-white font-mono"
                       />
                     </td>
                     <td className="px-2 py-2">
