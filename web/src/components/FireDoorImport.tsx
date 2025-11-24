@@ -47,7 +47,7 @@ interface FireDoorImportSectionProps {
   onImportComplete?: (data: FireDoorImportResponse) => void;
 }
 
-export default function FireDoorImportSection({ onImportComplete }: FireDoorImportSectionProps = {}) {
+export default function FireDoorImportSection({ onImportComplete }: FireDoorImportSectionProps) {
   const [uploading, setUploading] = useState(false);
   const [lastImport, setLastImport] = useState<FireDoorImportResponse | null>(null);
   const [previousImports, setPreviousImports] = useState<ImportListItem[]>([]);
