@@ -775,30 +775,10 @@ export function FireDoorGrid({ lineItems, rfis, onLineItemsChange, onAddRfi, onS
         onGridReady={onGridReady}
         onCellValueChanged={onCellValueChanged}
         getContextMenuItems={getContextMenuItems}
-        enableRangeSelection={true}
-        enableFillHandle={true}
         undoRedoCellEditing={true}
         undoRedoCellEditingLimit={20}
         suppressRowClickSelection={false}
         rowSelection="multiple"
-        sideBar={{
-          toolPanels: [
-            {
-              id: 'columns',
-              labelDefault: 'Columns',
-              labelKey: 'columns',
-              iconKey: 'columns',
-              toolPanel: 'agColumnsToolPanel',
-              toolPanelParams: {
-                suppressRowGroups: true,
-                suppressValues: true,
-                suppressPivots: true,
-                suppressPivotMode: true,
-              },
-            },
-          ],
-          defaultToolPanel: '',
-        }}
         animateRows={true}
         pagination={false}
         onCellClicked={(e) => {
