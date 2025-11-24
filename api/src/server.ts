@@ -103,6 +103,7 @@ import quoteApprovalRouter from "./routes/quote-approval";
 import mlTrainingRouter from "./routes/ml-training";
 import examplePhotosRouter from "./routes/example-photos";
 import fireDoorsRouter from "./routes/fire-doors";
+import fireDoorScheduleRouter from "./routes/fire-door-schedule";
 import materialDebugRouter from "./routes/material-debug";
 
 
@@ -630,6 +631,8 @@ app.use("/ml", mlTrainingRouter);
 app.use("/example-photos", examplePhotosRouter);
 // Fire door import system (requires fire door manufacturer access)
 app.use("/fire-doors", requireAuth, fireDoorsRouter);
+// Fire door schedule (unified project tracking for fire door manufacturers)
+app.use("/fire-door-schedule", requireAuth, fireDoorScheduleRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
