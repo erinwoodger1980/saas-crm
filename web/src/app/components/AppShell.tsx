@@ -15,6 +15,8 @@ import {
   Package,
   Flame,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -40,6 +42,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const { brandName, shortName, logoUrl, initials, ownerFirstName, ownerLastName } = useTenantBrand();
   const { user } = useCurrentUser();
   const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Load sidebar state from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("sidebar-collapsed");
+    if (saved) setSidebarCollapsed(saved === "true");
+  }, []);
+
+  // Toggle sidebar and save state
+  const toggleSidebar = () => {
+    const newState = !sidebarCollapsed;
+    setSidebarCollapsed(newState);
+    localStorage.setItem("sidebar-collapsed", String(newState));
+  };
 
   // Fetch fire door manufacturer flag
   useEffect(() => {
@@ -175,24 +191,37 @@ export default function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       {/* Main grid */}
-      <div className="relative mx-auto grid max-w-screen-2xl gap-8 px-6 py-10 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="md:sticky md:top-[160px] md:self-start">
+      <div className={`relative mx-auto grid max-w-screen-2xl gap-8 px-6 py-10 transition-all duration-300 ${sidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[280px_minmax(0,1fr)]'}`}>
+        <aside className="md:sticky md:top-[160px] md:self-start relative">
+          {/* Toggle button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleSidebar}
+            className="absolute -right-3 top-6 z-20 h-7 w-7 rounded-full border border-slate-200 bg-white shadow-lg p-0 hover:bg-slate-50 hover:shadow-xl transition-all"
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </Button>
+
           <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 shadow-[0_30px_80px_-48px_rgba(15,23,42,0.45)]">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute -top-32 left-1/2 h-48 w-[160%] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_70%)]"
             />
-            <div className="relative p-6">
-              <div className="mb-6 flex items-center justify-center rounded-2xl border border-slate-200/80 bg-white/70 p-6 shadow-sm">
-                <Image
-                  src="/logo-full.png"
-                  alt={`${brandName} full logo`}
-                  width={480}
-                  height={128}
-                  className="h-32 w-auto"
-                  priority
-                />
-              </div>
+            <div className={`relative transition-all duration-300 ${sidebarCollapsed ? 'p-3' : 'p-6'}`}>
+              {!sidebarCollapsed && (
+                <div className="mb-6 flex items-center justify-center rounded-2xl border border-slate-200/80 bg-white/70 p-6 shadow-sm">
+                  <Image
+                    src="/logo-full.png"
+                    alt={`${brandName} full logo`}
+                    width={480}
+                    height={128}
+                    className="h-32 w-auto"
+                    priority
+                  />
+                </div>
+              )}
 
               <nav className="space-y-1.5">
                 {navItems.map((item) => {
@@ -201,8 +230,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     <Link
                       key={item.href}
                       href={item.href}
+                      title={sidebarCollapsed ? `${item.label} - ${item.description}` : undefined}
                       className={clsx(
-                        "group relative flex items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm transition-all",
+                        "group relative flex items-center overflow-hidden rounded-2xl text-sm transition-all",
+                        sidebarCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
                         active
                           ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
                           : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
@@ -210,7 +241,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     >
                       <span
                         className={clsx(
-                          "flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          "flex items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          sidebarCollapsed ? "h-8 w-8" : "h-9 w-9",
                           active
                             ? "bg-white/20 text-white"
                             : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
@@ -218,10 +250,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       >
                         <item.icon className="h-4 w-4" />
                       </span>
-                      <span className="flex flex-col leading-tight">
-                        <span className="font-semibold">{item.label}</span>
-                        <span className="text-xs text-slate-400">{item.description}</span>
-                      </span>
+                      {!sidebarCollapsed && (
+                        <span className="flex flex-col leading-tight">
+                          <span className="font-semibold">{item.label}</span>
+                          <span className="text-xs text-slate-400">{item.description}</span>
+                        </span>
+                      )}
                     </Link>
                   );
                 })}
@@ -231,8 +265,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   <>
                     <Link
                       href="/fire-door-calculator"
+                      title={sidebarCollapsed ? "Fire Door Calculator - Pricing tool" : undefined}
                       className={clsx(
-                        "group relative flex items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm transition-all",
+                        "group relative flex items-center overflow-hidden rounded-2xl text-sm transition-all",
+                        sidebarCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
                         pathname === "/fire-door-calculator" || pathname?.startsWith("/fire-door-calculator/")
                           ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
                           : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
@@ -240,7 +276,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     >
                       <span
                         className={clsx(
-                          "flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          "flex items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          sidebarCollapsed ? "h-8 w-8" : "h-9 w-9",
                           pathname === "/fire-door-calculator" || pathname?.startsWith("/fire-door-calculator/")
                             ? "bg-white/20 text-white"
                             : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
@@ -248,16 +285,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       >
                         <Flame className="h-4 w-4" />
                       </span>
-                      <span className="flex flex-col leading-tight">
-                        <span className="font-semibold">Fire Door Calculator</span>
-                        <span className="text-xs text-slate-400">Pricing tool</span>
-                      </span>
+                      {!sidebarCollapsed && (
+                        <span className="flex flex-col leading-tight">
+                          <span className="font-semibold">Fire Door Calculator</span>
+                          <span className="text-xs text-slate-400">Pricing tool</span>
+                        </span>
+                      )}
                     </Link>
                     
                     <Link
                       href="/fire-door-schedule"
+                      title={sidebarCollapsed ? "Fire Door Schedule - Project tracking" : undefined}
                       className={clsx(
-                        "group relative flex items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm transition-all",
+                        "group relative flex items-center overflow-hidden rounded-2xl text-sm transition-all",
+                        sidebarCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
                         pathname === "/fire-door-schedule" || pathname?.startsWith("/fire-door-schedule/")
                           ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
                           : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
@@ -265,7 +306,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     >
                       <span
                         className={clsx(
-                          "flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          "flex items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          sidebarCollapsed ? "h-8 w-8" : "h-9 w-9",
                           pathname === "/fire-door-schedule" || pathname?.startsWith("/fire-door-schedule/")
                             ? "bg-white/20 text-white"
                             : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
@@ -273,10 +315,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       >
                         <Calendar className="h-4 w-4" />
                       </span>
-                      <span className="flex flex-col leading-tight">
-                        <span className="font-semibold">Fire Door Schedule</span>
-                        <span className="text-xs text-slate-400">Project tracking</span>
-                      </span>
+                      {!sidebarCollapsed && (
+                        <span className="flex flex-col leading-tight">
+                          <span className="font-semibold">Fire Door Schedule</span>
+                          <span className="text-xs text-slate-400">Project tracking</span>
+                        </span>
+                      )}
                     </Link>
                   </>
                 )}
