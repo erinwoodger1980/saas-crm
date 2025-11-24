@@ -7,11 +7,10 @@
  * One row per WON project - tracks from enquiry to completion.
  */
 
-import express, { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import express, { Response } from "express";
+import { prisma } from "../prisma";
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // ============================================================================
 // GET /fire-door-schedule
