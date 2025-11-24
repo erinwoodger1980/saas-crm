@@ -43,6 +43,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const { brandName, shortName, logoUrl, initials, ownerFirstName, ownerLastName } = useTenantBrand();
   const { user } = useCurrentUser();
   const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
+  const [tenantSlug, setTenantSlug] = useState<string>("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Load sidebar state from localStorage
@@ -58,12 +59,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
     localStorage.setItem("sidebar-collapsed", String(newState));
   };
 
-  // Fetch fire door manufacturer flag
+  // Fetch fire door manufacturer flag and tenant slug
   useEffect(() => {
-    apiFetch<{ isFireDoorManufacturer?: boolean }>("/tenant/settings")
+    apiFetch<{ isFireDoorManufacturer?: boolean; slug?: string }>("/tenant/settings")
       .then((data) => {
         console.log("[AppShell] Fire door flag from API:", data?.isFireDoorManufacturer);
         setIsFireDoorManufacturer(Boolean(data?.isFireDoorManufacturer));
+        setTenantSlug(data?.slug || "");
       })
       .catch((error) => {
         console.error("[AppShell] Failed to fetch settings:", error);
@@ -324,24 +326,28 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       )}
                     </Link>
                     
-                    <Link
-                      href="/fire-door-portal"
-                      title={sidebarCollapsed ? "Client Portal - View customer submission form" : undefined}
+                    <a
+                      href={tenantSlug ? `/public/fire-doors/${tenantSlug}/new-job` : "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={sidebarCollapsed ? "Client Portal - Open customer submission form" : undefined}
                       className={clsx(
                         "group relative flex items-center overflow-hidden rounded-2xl text-sm transition-all",
                         sidebarCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
-                        pathname === "/fire-door-portal"
-                          ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
-                          : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
+                        "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300",
+                        !tenantSlug && "opacity-50 cursor-not-allowed"
                       )}
+                      onClick={(e) => {
+                        if (!tenantSlug) {
+                          e.preventDefault();
+                        }
+                      }}
                     >
                       <span
                         className={clsx(
                           "flex items-center justify-center rounded-xl text-slate-500 transition-colors",
                           sidebarCollapsed ? "h-8 w-8" : "h-9 w-9",
-                          pathname === "/fire-door-portal"
-                            ? "bg-white/20 text-white"
-                            : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
+                          "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
                         )}
                       >
                         <Users className="h-4 w-4" />
@@ -352,7 +358,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                           <span className="text-xs text-slate-400">Customer quote form</span>
                         </span>
                       )}
-                    </Link>
+                    </a>
                   </>
                 )}
               </nav>

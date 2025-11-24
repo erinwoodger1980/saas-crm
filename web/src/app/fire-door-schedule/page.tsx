@@ -571,6 +571,9 @@ export default function FireDoorSchedulePage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
+                    <th className="px-4 py-3 text-left">
+                      <span className="text-xs uppercase tracking-wider">Actions</span>
+                    </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => (
                       <th
                         key={field}
@@ -587,9 +590,6 @@ export default function FireDoorSchedulePage() {
                         </span>
                       </th>
                     ))}
-                    <th className="px-4 py-3 text-left">
-                      <span className="text-xs uppercase tracking-wider">Actions</span>
-                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -598,6 +598,27 @@ export default function FireDoorSchedulePage() {
                       key={project.id}
                       className="group hover:bg-blue-50/40 transition-colors"
                     >
+                      <td className="px-4 py-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Use projectId if available (it links to the quote/project)
+                            if (project.projectId) {
+                              router.push(`/fire-door-quotes/${project.projectId}`);
+                            } else {
+                              // If no projectId, this schedule entry doesn't have a quote yet
+                              alert('No quote associated with this project yet');
+                            }
+                          }}
+                          disabled={!project.projectId}
+                          className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <FileText className="w-3 h-3 mr-1" />
+                          View Order
+                        </Button>
+                      </td>
                       {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => (
                         <td
                           key={field}
@@ -609,21 +630,6 @@ export default function FireDoorSchedulePage() {
                           </div>
                         </td>
                       ))}
-                      <td className="px-4 py-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const quoteId = project.projectId || project.id;
-                            router.push(`/fire-door-quotes/${quoteId}`);
-                          }}
-                          className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500"
-                        >
-                          <FileText className="w-3 h-3 mr-1" />
-                          View Order
-                        </Button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>

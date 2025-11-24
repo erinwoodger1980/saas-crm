@@ -404,7 +404,7 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
         await tx.quoteLine.create({
           data: {
             quoteId: quote.id,
-            description: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.fireRating || ''}`,
+            description: `${item.doorRef || 'Door'} - ${item.location || ''} - ${item.rating || ''}`,
             qty: item.quantity || 1,
             unitPrice: item.unitValue || 0,
             lineTotalGBP: item.lineTotal || 0,
