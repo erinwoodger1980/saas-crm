@@ -96,8 +96,8 @@ importers:
         specifier: 18.2.0
         version: 18.2.0
       react-data-grid:
-        specifier: 7.0.0-beta.58
-        version: 7.0.0-beta.58(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+        specifier: 7.0.0-beta.46
+        version: 7.0.0-beta.46(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       react-diff-viewer:
         specifier: ^3.1.1
         version: 3.1.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
@@ -3050,11 +3050,11 @@ packages:
   queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
 
-  react-data-grid@7.0.0-beta.58:
-    resolution: {integrity: sha512-ND7BsMOJRF/KHUeKU465AmmofoKruQFTe+3GaACiHja1ytd9+lh4ODn0oXPgm/deJgmAXJVORv+fMSXlk4OVTQ==}
+  react-data-grid@7.0.0-beta.46:
+    resolution: {integrity: sha512-tU6sYNgbMw3mQphPyLN5jtG2TD84I0XcebPQQ2apCZuDX9Nqu7MCkTTIluXBnIzIW3LLS8XEp+Ml7OhEQoFKRA==}
     peerDependencies:
-      react: ^19.2
-      react-dom: ^19.2
+      react: ^18.0 || ^19.0
+      react-dom: ^18.0 || ^19.0
 
   react-diff-viewer-continued@3.4.0:
     resolution: {integrity: sha512-kMZmUyb3Pv5L9vUtCfIGYsdOHs8mUojblGy1U1Sm0D7FhAOEsH9QhnngEIRo5hXWIPNGupNRJls1TJ6Eqx84eg==}
@@ -6653,8 +6653,9 @@ snapshots:
 
   queue-microtask@1.2.3: {}
 
-  react-data-grid@7.0.0-beta.58(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
+  react-data-grid@7.0.0-beta.46(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
+      clsx: 2.1.1
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
