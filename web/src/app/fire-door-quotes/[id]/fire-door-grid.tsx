@@ -181,13 +181,25 @@ interface FireDoorLineItem {
   [key: string]: any;
 }
 
-interface FireDoorGridProps {
-  lineItems: FireDoorLineItem[];
-  onLineItemsChange: (items: FireDoorLineItem[]) => void;
-  onAddRfi?: (rowId: string | null, columnKey: string) => void;
+interface RfiRecord {
+  id: string;
+  rowId: string | null;
+  columnKey: string;
+  title?: string | null;
+  message: string;
+  status: string;
+  visibleToClient: boolean;
 }
 
-export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoorGridProps) {
+interface FireDoorGridProps {
+  lineItems: FireDoorLineItem[];
+  rfis: RfiRecord[];
+  onLineItemsChange: (items: FireDoorLineItem[]) => void;
+  onAddRfi?: (rowId: string | null, columnKey: string) => void;
+  onSelectRfi?: (rfi: RfiRecord) => void;
+}
+
+export function FireDoorGrid({ lineItems, rfis, onLineItemsChange, onAddRfi, onSelectRfi }: FireDoorGridProps) {
   const gridRef = useRef<AgGridReact>(null);
   const [gridApi, setGridApi] = useState<GridApi | null>(null);
 
@@ -196,7 +208,7 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
   }, []);
 
   const onCellValueChanged = useCallback((event: CellValueChangedEvent) => {
-    const updatedData = event.api.getModel().getRowNode(String(event.node.rowIndex))?.data;
+    const updatedData = event.node.data as FireDoorLineItem | undefined;
     if (!updatedData) return;
 
     // Auto-calculate reduced dimensions when edge dimensions change
@@ -243,44 +255,49 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
     onLineItemsChange(allRowData);
   }, [gridApi, onLineItemsChange]);
 
-  const getContextMenuItems = useCallback((params: GetContextMenuItemsParams): (string | MenuItemDef)[] => {
-    const result: (string | MenuItemDef)[] = [
-      'copy',
-      'copyWithHeaders',
-      'paste',
-      'separator',
-    ];
-
-    // Add RFI menu items
-    if (onAddRfi) {
-      if (params.column) {
-        result.push({
-          name: 'Add RFI for this column',
-          icon: '<span class="ag-icon ag-icon-pin"></span>',
-          action: () => {
-            onAddRfi(null, params.column!.getColId());
-          },
-        });
-      }
-
-      if (params.node) {
-        result.push({
-          name: 'Add RFI for this cell',
-          icon: '<span class="ag-icon ag-icon-pin"></span>',
-          action: () => {
-            const rowId = params.node!.data?.id || `row-${params.node!.rowIndex}`;
-            onAddRfi(rowId, params.column!.getColId());
-          },
-        });
-      }
-
-      result.push('separator');
+  const getContextMenuItems = useCallback((params: GetContextMenuItemsParams) => {
+    const custom: MenuItemDef[] = [];
+    if (onAddRfi && params.column) {
+      custom.push({
+        name: 'Add RFI for this column',
+        action: () => onAddRfi(null, params.column!.getColId()),
+      });
     }
-
-    result.push('export');
-    
-    return result;
+    if (onAddRfi && params.node && params.column) {
+      custom.push({
+        name: 'Add RFI for this cell',
+        action: () => {
+          const rowId = params.node!.data?.id || `row-${params.node!.rowIndex}`;
+          onAddRfi(rowId, params.column!.getColId());
+        },
+      });
+    }
+    if (custom.length) {
+      custom.push({ name: '---' });
+    }
+    // Combine with default items provided by grid
+    return [...custom, ...(params.defaultItems || [])];
   }, [onAddRfi]);
+
+  // Build RFI lookup maps
+  const columnRfiMap = useMemo(() => {
+    const map: Record<string, RfiRecord[]> = {};
+    rfis.filter(r => !r.rowId).forEach(r => {
+      map[r.columnKey] = map[r.columnKey] || [];
+      map[r.columnKey].push(r);
+    });
+    return map;
+  }, [rfis]);
+
+  const cellRfiMap = useMemo(() => {
+    const map: Record<string, RfiRecord[]> = {};
+    rfis.filter(r => r.rowId).forEach(r => {
+      const key = `${r.rowId}:${r.columnKey}`;
+      map[key] = map[key] || [];
+      map[key].push(r);
+    });
+    return map;
+  }, [rfis]);
 
   // Column definitions organized by sections
   const columnDefs = useMemo<(ColDef | ColGroupDef)[]>(() => [
@@ -291,8 +308,8 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
       pinned: 'left',
       width: 60,
       editable: false,
-      cellStyle: { backgroundColor: '#f8fafc', fontWeight: '600' },
-      valueGetter: (params) => params.node?.rowIndex !== undefined ? params.node.rowIndex + 1 : '',
+      cellStyle: { backgroundColor: '#f8fafc' },
+      valueGetter: (params) => (params.node && params.node.rowIndex != null ? params.node.rowIndex + 1 : ''),
     },
     {
       headerName: 'Door Ref',
@@ -300,7 +317,12 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
       pinned: 'left',
       width: 140,
       editable: true,
-      cellStyle: { backgroundColor: '#f8fafc' },
+      cellStyle: params => {
+        const rowId = params.data?.id || `row-${params.node.rowIndex}`;
+        const hasCellRfi = !!cellRfiMap[`${rowId}:doorRef`];
+        return { backgroundColor: hasCellRfi ? '#fff7ed' : '#f8fafc' };
+      },
+      headerClass: columnRfiMap['doorRef'] ? 'ag-header-has-rfi' : '',
     },
     {
       headerName: 'Location',
@@ -316,15 +338,15 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
       headerName: 'Section 1: Certification & Initial Spec',
       headerClass: 'ag-header-group-blue',
       children: [
-        { field: 'certification', headerName: 'Certification', width: 130, editable: true },
-        { field: 'doorsetType', headerName: 'Doorset Type', width: 130, editable: true },
+        { field: 'certification', headerName: 'Certification', width: 130, editable: true, headerClass: columnRfiMap['certification'] ? 'ag-header-has-rfi' : '' },
+        { field: 'doorsetType', headerName: 'Doorset Type', width: 130, editable: true, headerClass: columnRfiMap['doorsetType'] ? 'ag-header-has-rfi' : '' },
         { field: 'lajRef', headerName: 'LAJ Ref', width: 110, editable: true },
-        { field: 'masterWidth', headerName: 'Master Width (mm)', width: 140, editable: true, type: 'numericColumn' },
+        { field: 'masterWidth', headerName: 'Master Width (mm)', width: 140, editable: true, type: 'numericColumn', headerClass: columnRfiMap['masterWidth'] ? 'ag-header-has-rfi' : '' },
         { field: 'slaveWidth', headerName: 'Slave Width (mm)', width: 140, editable: true, type: 'numericColumn' },
         { field: 'doorHeight', headerName: 'Door Height (mm)', width: 140, editable: true, type: 'numericColumn' },
         { field: 'core', headerName: 'Core', width: 120, editable: true },
-        { field: 'rating', headerName: 'Rating', width: 100, editable: true },
-        { field: 'coreType', headerName: 'Core Type', width: 120, editable: true },
+        { field: 'rating', headerName: 'Rating', width: 100, editable: true, headerClass: columnRfiMap['rating'] ? 'ag-header-has-rfi' : '' },
+        { field: 'coreType', headerName: 'Core Type', width: 120, editable: true, headerClass: columnRfiMap['coreType'] ? 'ag-header-has-rfi' : '' },
       ],
     },
 
@@ -333,9 +355,9 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
       headerName: 'Section 2: Edge Dimensions & Adjustments',
       headerClass: 'ag-header-group-green',
       children: [
-        { field: 'top', headerName: 'Top', width: 100, editable: true, type: 'numericColumn' },
-        { field: 'btm', headerName: 'Bottom', width: 100, editable: true, type: 'numericColumn' },
-        { field: 'hinge', headerName: 'Hinge', width: 100, editable: true, type: 'numericColumn' },
+        { field: 'top', headerName: 'Top', width: 100, editable: true, type: 'numericColumn', headerClass: columnRfiMap['top'] ? 'ag-header-has-rfi' : '' },
+        { field: 'btm', headerName: 'Bottom', width: 100, editable: true, type: 'numericColumn', headerClass: columnRfiMap['btm'] ? 'ag-header-has-rfi' : '' },
+        { field: 'hinge', headerName: 'Hinge', width: 100, editable: true, type: 'numericColumn', headerClass: columnRfiMap['hinge'] ? 'ag-header-has-rfi' : '' },
         { field: 'me', headerName: 'M/E', width: 100, editable: true, type: 'numericColumn' },
         { field: 'daExposed', headerName: 'D/A Exposed', width: 120, editable: true, type: 'numericColumn' },
         { field: 'trim', headerName: 'Trim', width: 100, editable: true, type: 'numericColumn' },
@@ -356,7 +378,7 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
           width: 130, 
           editable: false,
           type: 'numericColumn',
-          cellStyle: { backgroundColor: '#fef3c7', fontWeight: '600' },
+          cellStyle: { backgroundColor: '#fef3c7' },
           valueGetter: (params) => {
             const data = params.data;
             if (!data) return null;
@@ -371,7 +393,7 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
           width: 140, 
           editable: false,
           type: 'numericColumn',
-          cellStyle: { backgroundColor: '#fef3c7', fontWeight: '600' },
+          cellStyle: { backgroundColor: '#fef3c7' },
           valueGetter: (params) => {
             const data = params.data;
             if (!data || !data.slaveWidth) return null;
@@ -386,7 +408,7 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
           width: 140, 
           editable: false,
           type: 'numericColumn',
-          cellStyle: { backgroundColor: '#fef3c7', fontWeight: '600' },
+          cellStyle: { backgroundColor: '#fef3c7' },
           valueGetter: (params) => {
             const data = params.data;
             if (!data) return null;
@@ -403,8 +425,8 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
       headerName: 'Section 4: Notes',
       headerClass: 'ag-header-group-gray',
       children: [
-        { field: 'notes1', headerName: 'Notes 1', width: 200, editable: true },
-        { field: 'notes2', headerName: 'Notes 2', width: 200, editable: true },
+        { field: 'notes1', headerName: 'Notes 1', width: 200, editable: true, headerClass: columnRfiMap['notes1'] ? 'ag-header-has-rfi' : '' },
+        { field: 'notes2', headerName: 'Notes 2', width: 200, editable: true, headerClass: columnRfiMap['notes2'] ? 'ag-header-has-rfi' : '' },
       ],
     },
 
@@ -597,7 +619,7 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
           editable: false, 
           type: 'numericColumn',
           pinned: 'right',
-          cellStyle: { backgroundColor: '#dbeafe', fontWeight: '600' },
+          cellStyle: { backgroundColor: '#dbeafe' },
           valueGetter: (params) => {
             const data = params.data;
             if (!data) return 0;
@@ -607,7 +629,7 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
         },
       ],
     },
-  ], []);
+  ], [cellRfiMap, columnRfiMap]);
 
   const defaultColDef = useMemo<ColDef>(() => ({
     sortable: true,
@@ -615,7 +637,14 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
     resizable: true,
     editable: true,
     minWidth: 100,
-  }), []);
+    cellClass: params => {
+      if (!params.colDef.field) return '';
+      const rowId = params.data?.id || `row-${params.node.rowIndex}`;
+      const key = `${rowId}:${params.colDef.field}`;
+      if (cellRfiMap[key]) return 'ag-cell-has-rfi';
+      return '';
+    }
+  }), [cellRfiMap]);
 
   return (
     <div className="ag-theme-alpine" style={{ height: '600px', width: '100%' }}>
@@ -631,7 +660,6 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
         enableFillHandle={true}
         undoRedoCellEditing={true}
         undoRedoCellEditingLimit={20}
-        enableCellChangeFlash={true}
         suppressRowClickSelection={false}
         rowSelection="multiple"
         sideBar={{
@@ -654,6 +682,17 @@ export function FireDoorGrid({ lineItems, onLineItemsChange, onAddRfi }: FireDoo
         }}
         animateRows={true}
         pagination={false}
+        onCellClicked={(e) => {
+          if (!onSelectRfi) return;
+          const field = e.colDef.field;
+          if (!field) return;
+          const rowId = e.data?.id || `row-${e.node.rowIndex}`;
+          const cellKey = `${rowId}:${field}`;
+          const cellRf = cellRfiMap[cellKey];
+          if (cellRf && cellRf.length) {
+            onSelectRfi(cellRf[0]);
+          }
+        }}
       />
     </div>
   );

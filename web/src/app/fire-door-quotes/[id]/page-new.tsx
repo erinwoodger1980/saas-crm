@@ -12,11 +12,24 @@ import {
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { FireDoorGrid } from "./fire-door-grid";
+import { RfiDialog } from "@/components/rfi-dialog";
 
 interface FireDoorLineItem {
   id?: string;
   rowIndex: number;
   [key: string]: any;
+}
+
+interface RfiRecord {
+  id: string;
+  rowId: string | null;
+  columnKey: string;
+  title?: string | null;
+  message: string;
+  status: string;
+  visibleToClient: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface FireDoorQuote {
@@ -44,6 +57,11 @@ export default function FireDoorQuoteBuilderPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [rfis, setRfis] = useState<RfiRecord[]>([]);
+  const [rfiDialogOpen, setRfiDialogOpen] = useState(false);
+  const [currentRfi, setCurrentRfi] = useState<RfiRecord | null>(null);
+  const [rfiContext, setRfiContext] = useState<{ rowId: string | null; columnKey: string; columnName?: string }>({ rowId: null, columnKey: "" });
+  const [rfiMode, setRfiMode] = useState<"create" | "edit" | "view">("create");
   
   const [quote, setQuote] = useState<FireDoorQuote>({
     title: "New Fire Door Quote",
@@ -75,6 +93,7 @@ export default function FireDoorQuoteBuilderPage() {
     try {
       const data = await apiFetch<FireDoorQuote>(`/fire-door-quotes/${id}`);
       setQuote(data);
+      await loadRfis(id);
     } catch (error) {
       console.error("Error loading quote:", error);
       toast({
@@ -84,6 +103,15 @@ export default function FireDoorQuoteBuilderPage() {
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadRfis(projectId: string) {
+    try {
+      const data = await apiFetch<RfiRecord[]>(`/rfis?projectId=${projectId}`);
+      setRfis(data || []);
+    } catch (error) {
+      console.error("Error loading RFIs:", error);
     }
   }
 
@@ -143,7 +171,7 @@ export default function FireDoorQuoteBuilderPage() {
     const indexed = items.map((item, idx) => ({ ...item, rowIndex: idx }));
     
     // Calculate total
-    const total = indexed.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitValue || 0)), 0);
+    const total = indexed.reduce((sum, item: any) => sum + ((item.quantity || 0) * (item.unitValue || 0)), 0);
     
     setQuote({
       ...quote,
@@ -153,12 +181,47 @@ export default function FireDoorQuoteBuilderPage() {
   }
 
   function handleAddRfi(rowId: string | null, columnKey: string) {
-    // TODO: Open RFI modal
-    console.log('Add RFI', { rowId, columnKey });
-    toast({
-      title: "RFI Feature",
-      description: `RFI for ${rowId ? 'cell' : 'column'}: ${columnKey}`,
-    });
+    setRfiContext({ rowId, columnKey });
+    setCurrentRfi(null);
+    setRfiMode("create");
+    setRfiDialogOpen(true);
+  }
+
+  function handleSelectRfi(rfi: RfiRecord) {
+    setCurrentRfi(rfi);
+    setRfiContext({ rowId: rfi.rowId, columnKey: rfi.columnKey });
+    setRfiMode("edit");
+    setRfiDialogOpen(true);
+  }
+
+  async function handleSaveRfi(rfiData: Partial<RfiRecord>) {
+    try {
+      const endpoint = rfiData.id ? `/rfis/${rfiData.id}` : "/rfis";
+      const method = rfiData.id ? "PUT" : "POST";
+      
+      const payload = {
+        ...rfiData,
+        projectId: quote.id,
+      };
+
+      await apiFetch(endpoint, {
+        method,
+        body: JSON.stringify(payload),
+      });
+
+      toast({
+        title: "Success",
+        description: `RFI ${rfiData.id ? 'updated' : 'created'} successfully`,
+      });
+
+      // Reload RFIs
+      if (quote.id) {
+        await loadRfis(quote.id);
+      }
+    } catch (error) {
+      console.error("Error saving RFI:", error);
+      throw error;
+    }
   }
 
   if (loading) {
@@ -313,8 +376,10 @@ export default function FireDoorQuoteBuilderPage() {
           <div className="p-4">
             <FireDoorGrid 
               lineItems={quote.lineItems}
+              rfis={rfis}
               onLineItemsChange={handleLineItemsChange}
               onAddRfi={handleAddRfi}
+              onSelectRfi={handleSelectRfi}
             />
           </div>
         </div>
@@ -348,6 +413,18 @@ export default function FireDoorQuoteBuilderPage() {
           </div>
         </div>
       </div>
+
+      {/* RFI Dialog */}
+      <RfiDialog
+        open={rfiDialogOpen}
+        onOpenChange={setRfiDialogOpen}
+        rfi={currentRfi}
+        rowId={rfiContext.rowId}
+        columnKey={rfiContext.columnKey}
+        columnName={rfiContext.columnName}
+        onSave={handleSaveRfi}
+        mode={rfiMode}
+      />
     </div>
   );
 }
