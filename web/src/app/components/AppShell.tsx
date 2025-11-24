@@ -17,6 +17,7 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  Users,
 } from "lucide-react";
 
 import { useTenantBrand } from "@/lib/use-tenant-brand";
@@ -319,6 +320,36 @@ export default function AppShell({ children }: { children: ReactNode }) {
                         <span className="flex flex-col leading-tight">
                           <span className="font-semibold">Fire Door Schedule</span>
                           <span className="text-xs text-slate-400">Project tracking</span>
+                        </span>
+                      )}
+                    </Link>
+                    
+                    <Link
+                      href="/fire-door-portal"
+                      title={sidebarCollapsed ? "Client Portal - View customer submission form" : undefined}
+                      className={clsx(
+                        "group relative flex items-center overflow-hidden rounded-2xl text-sm transition-all",
+                        sidebarCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
+                        pathname === "/fire-door-portal"
+                          ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
+                          : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          "flex items-center justify-center rounded-xl text-slate-500 transition-colors",
+                          sidebarCollapsed ? "h-8 w-8" : "h-9 w-9",
+                          pathname === "/fire-door-portal"
+                            ? "bg-white/20 text-white"
+                            : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
+                        )}
+                      >
+                        <Users className="h-4 w-4" />
+                      </span>
+                      {!sidebarCollapsed && (
+                        <span className="flex flex-col leading-tight">
+                          <span className="font-semibold">Client Portal</span>
+                          <span className="text-xs text-slate-400">Customer quote form</span>
                         </span>
                       )}
                     </Link>
