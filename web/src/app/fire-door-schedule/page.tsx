@@ -401,11 +401,29 @@ export default function FireDoorSchedulePage() {
             <div className="flex gap-3">
               <Button 
                 variant="outline" 
-                className="backdrop-blur-sm bg-white/50"
+                className="bg-white/50 border-slate-200 hover:bg-white"
                 onClick={() => router.push("/fire-doors/imports")}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Import CSV
+              </Button>
+              <Button
+                variant="outline"
+                className="bg-white/50 border-2 border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:border-blue-500/50"
+                onClick={() => {
+                  // Find the first project and open its order/quote view
+                  if (projects.length > 0) {
+                    const firstProject = projects[0];
+                    // Use projectId if available (links to quote), otherwise use project id
+                    const quoteId = firstProject.projectId || firstProject.id;
+                    router.push(`/fire-door-quotes/${quoteId}`);
+                  } else {
+                    router.push("/fire-door-schedule/new");
+                  }
+                }}
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                View Order
               </Button>
               <Button 
                 onClick={() => router.push("/fire-door-schedule/new")}
