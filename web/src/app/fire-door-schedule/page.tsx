@@ -587,24 +587,43 @@ export default function FireDoorSchedulePage() {
                         </span>
                       </th>
                     ))}
+                    <th className="px-4 py-3 text-left">
+                      <span className="text-xs uppercase tracking-wider">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredProjects.map((project) => (
                     <tr
                       key={project.id}
-                      onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
-                      className="cursor-pointer group hover:bg-blue-50/40 transition-colors"
+                      className="group hover:bg-blue-50/40 transition-colors"
                     >
                       {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => (
                         <td
                           key={field}
-                          className="px-4 py-3 text-slate-600"
-                          onClick={(e) => e.stopPropagation()}
+                          className="px-4 py-3 text-slate-600 cursor-pointer"
+                          onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
-                          {renderCell(project, field)}
+                          <div onClick={(e) => e.stopPropagation()}>
+                            {renderCell(project, field)}
+                          </div>
                         </td>
                       ))}
+                      <td className="px-4 py-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const quoteId = project.projectId || project.id;
+                            router.push(`/fire-door-quotes/${quoteId}`);
+                          }}
+                          className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500"
+                        >
+                          <FileText className="w-3 h-3 mr-1" />
+                          View Order
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
