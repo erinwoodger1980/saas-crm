@@ -111,9 +111,6 @@ import customerPortalRouter from "./routes/customer-portal";
 import materialDebugRouter from "./routes/material-debug";
 import doorCoresRouter from "./routes/door-cores";
 import ironmongeryItemsRouter from "./routes/ironmongery-items";
-import doorCoresRouter from "./routes/door-cores";
-import ironmongeryItemsRouter from "./routes/ironmongery-items";
-
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
