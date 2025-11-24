@@ -80,6 +80,7 @@ After creating the demo account, you can log in at:
 3. Set the environment variables in Render Dashboard
 4. Create a demo account using one of the methods above
 5. Test the deployment by logging in
+6. Run pending Prisma migrations on API (see Schema Migrations section below)
 
 ## Health Check URLs
 - API: `https://joinery-ai.onrender.com/health`
@@ -90,3 +91,20 @@ After creating the demo account, you can log in at:
 - If you can't log in, make sure the demo account was created successfully
 - If API calls fail, check that `NEXT_PUBLIC_API_BASE` is set correctly
 - If authentication doesn't work, verify the API and Web services can communicate
+
+## Schema Migrations
+If supplier PDF template saving fails with missing column errors (pageCount/meta/createdByUserId) run:
+
+```bash
+cd api
+DATABASE_URL="<prod_db_url>" npx prisma migrate deploy
+```
+
+Included idempotent migration: `20251124183000_add_pdf_template_optional_columns` adds any missing optional columns and index.
+
+To verify columns:
+```sql
+SELECT column_name FROM information_schema.columns WHERE table_name='PdfLayoutTemplate';
+```
+
+If still failing, tail logs and confirm new POST /pdf-templates diagnostic lines, then re-run deploy.
