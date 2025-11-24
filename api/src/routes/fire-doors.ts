@@ -149,8 +149,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
               // Door identification
               doorRef: row.doorRef,
               location: row.location,
-              doorSetType: row.doorSetType,
-              fireRating: row.fireRating,
+              doorsetType: row.doorSetType,
+              rating: row.fireRating,
               acousticRatingDb: row.acousticRatingDb,
               handing: row.handing,
 
@@ -242,7 +242,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
       id: item.id,
       doorRef: item.doorRef,
       location: item.location,
-      fireRating: item.fireRating,
+      fireRating: item.rating,
       quantity: item.quantity,
       lineTotal: item.lineTotal ? Number(item.lineTotal) : null,
     }));

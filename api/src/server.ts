@@ -109,6 +109,10 @@ import publicFireDoorsRouter from "./routes/public-fire-doors";
 import customerAuthRouter from "./routes/customer-auth";
 import customerPortalRouter from "./routes/customer-portal";
 import materialDebugRouter from "./routes/material-debug";
+import doorCoresRouter from "./routes/door-cores";
+import ironmongeryItemsRouter from "./routes/ironmongery-items";
+import doorCoresRouter from "./routes/door-cores";
+import ironmongeryItemsRouter from "./routes/ironmongery-items";
 
 
 type BillingModule = typeof import("./routes/billing");
@@ -646,6 +650,9 @@ app.use("/fire-doors", requireAuth, fireDoorsRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorScheduleRouter);
 // Fire door quotes (dedicated quote builder for fire doors)
 app.use("/fire-door-quotes", requireAuth, fireDoorQuotesRouter);
+// Fire door lookup tables (door cores, ironmongery)
+app.use("/door-cores", requireAuth, doorCoresRouter);
+app.use("/ironmongery-items", requireAuth, ironmongeryItemsRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
