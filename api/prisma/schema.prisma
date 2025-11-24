@@ -99,6 +99,8 @@ model Tenant {
   leafSizingRules            LeafSizingRule[]
   weightLookups              WeightLookup[]
   examplePhotos              ExamplePhoto[]
+  // Fire door schedule (project tracking)
+  fireDoorScheduleProjects   FireDoorScheduleProject[]
 }
 
 /// ==============================
@@ -2709,4 +2711,110 @@ model FireDoorLineItem {
   @@index([tenantId, fireDoorImportId])
   @@index([tenantId, fireRating])
   @@index([fireDoorImportId, rowIndex])
+}
+
+// ============================================================================
+// FIRE DOOR SCHEDULE - Unified project tracking system
+// Replaces: 2026 TEST SYSTEM.xlsx + NEW 2023 BOM CHECK.xlsx
+// One row per WON project - tracks from enquiry to completion
+// ============================================================================
+
+model FireDoorScheduleProject {
+  id        String   @id @default(cuid())
+  tenantId  String
+  projectId String? // Optional link to existing Project/Quote
+
+  // 1. OVERVIEW & IDENTIFICATION
+  mjsNumber       String? // MJS No. from LAJ MASTER
+  jobName         String? // Job Name
+  clientName      String? // Company Name / CUSTOMER
+  dateReceived    DateTime? // Date Received / DATE RECEIVED IN RED FOLDER
+  dateRequired    DateTime? // Date Required (client deadline)
+  poNumber        String? // P/O No.
+  laqNumber       String? // LAQ No.
+  compOrderNumber String? // Comp Order No.
+
+  // 2. DESIGN & SIGN-OFF
+  jobLocation            String? // RED FOLDER | IN PROGRESS | COMPLETE
+  signOffStatus          String? // AWAITING SCHEDULE | NOT LOOKED AT | WORKING ON SCHEDULE | SCHEDULE SENT FOR SIGN OFF | SCHEDULE SIGNED OFF
+  signOffDate            DateTime? // DATE SIGNED OFF
+  scheduledBy            String? // DARREN | DAVE | STEVE | PAUL | DAN
+  leadTimeWeeks          Int? // LEAD TIME IN WEEKS
+  approxDeliveryDate     DateTime? // APPROX DATE (AUTO ADDS LEAD TIME)
+  workingDaysRemaining   Int? // APPROX WORKING DAYS REMAINING
+
+  // 3. BOM & ORDERING
+  orderingStatus String? // NOT IN BOM | IN BOM TBC | IN BOM | STOCK | ORDERED | RECEIVED | ORDERED CALL OFF | MAKE IN HOUSE | N/A
+
+  // BOM Component Tracking (status + checked flag)
+  blanksStatus    String? // STOCK | ORDERED | RECEIVED | N/A | URGENT
+  blanksChecked   Boolean @default(false)
+  lippingsStatus  String?
+  lippingsChecked Boolean @default(false)
+  facingsStatus   String?
+  facingsChecked  Boolean @default(false)
+  glassStatus     String?
+  glassChecked    Boolean @default(false)
+  cassettesStatus String?
+  cassettesChecked Boolean @default(false)
+  timbersStatus   String?
+  timbersChecked  Boolean @default(false)
+
+  ironmongeryStatus  String? // FROM TGS | RECEIVED FROM TGS | FROM CUSTOMER | RECEIVED FROM CUSTOMER | OTHER | NOT ORDERED | ORDERED | N/A
+  ironmongeryChecked Boolean @default(false)
+
+  // 4. PRODUCTION & CAPACITY (all percentages 0-100)
+  blanksCutPercent Int? // BLANKS CUT %
+  edgebandPercent  Int? // EDGEBAND %
+  calibratePercent Int? // CALIBRATE %
+  facingsPercent   Int? // FACINGS %
+  finalCncPercent  Int? // FINAL CNC %
+  finishPercent    Int? // FINISH %
+  sandPercent      Int? // SAND %
+  sprayPercent     Int? // SPRAY %
+  cutPercent       Int? // CUT %
+  cncPercent       Int? // CNC %
+  buildPercent     Int? // BUILD %
+  overallProgress  Int? // PROGRESS (overall %)
+
+  hiddenStatus String? // HIDDEN field from BOM CHECK
+
+  // 5. PAPERWORK & CERTIFICATION
+  paperworkStatus           String? // N/A | WORKING ON SCHEDULE | READY TO PRINT IN OFFICE | PRINTED IN OFFICE | TAKEN OUT TO FACTORY
+  doorPaperworkStatus       String? // DOOR PAPERWORK
+  finalCncSheetStatus       String? // FINAL CNC SHEET
+  finalChecksSheetStatus    String? // FINAL CHECKS SHEET
+  deliveryChecklistStatus   String? // DELIVERY CHECKLIST
+  framesPaperworkStatus     String? // FRAMES PAPERWORK
+  paperworkComments         String? // PAPERWORK COMMENTS
+
+  certificationRequired String? // Q Mark, etc. (from LAJ MASTER: Certification)
+  fscRequired           Boolean @default(false) // FSC from LAJ MASTER
+  invoiceStatus         String? // Inv Y / N
+
+  // 6. DELIVERY & INSTALLATION
+  transportStatus   String? // TRANSPORT status
+  deliveryDate      DateTime? // Actual delivery date
+  installStart      DateTime? // Installation start
+  installEnd        DateTime? // Installation completion
+  snaggingStatus    String? // Snagging list status
+  snaggingComplete  Boolean   @default(false)
+  snaggingNotes     String? // Snagging notes
+
+  // 7. COMMUNICATION & NOTES
+  communicationNotes String? // Communication column from BOM CHECK
+  internalNotes      String? // Internal team notes
+  lastUpdatedBy      String? // Who last modified
+  lastUpdatedAt      DateTime @default(now()) // When last modified
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, jobLocation])
+  @@index([tenantId, signOffStatus])
+  @@index([tenantId, dateRequired])
+  @@index([projectId])
 }
