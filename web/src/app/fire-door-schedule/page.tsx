@@ -49,7 +49,10 @@ export default function FireDoorSchedulePage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<string>("ALL");
+  // Workflow tab (paperwork, bom, manufacturing, complete)
+  const [workflowTab, setWorkflowTab] = useState<string>("ALL");
+  // Location filter (cards trigger this: RED FOLDER / IN PROGRESS / COMPLETE / ALL)
+  const [locationFilter, setLocationFilter] = useState<string>("ALL");
   const [showTable, setShowTable] = useState<boolean>(true); // consolidated table view toggle
   const [sortField, setSortField] = useState<string>("dateRequired");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -59,11 +62,13 @@ export default function FireDoorSchedulePage() {
     // Load persisted UI prefs
     try {
       const savedView = localStorage.getItem("fds:view");
-      const savedTab = localStorage.getItem("fds:tab");
+      const savedWorkflow = localStorage.getItem("fds:workflow");
+      const savedLocation = localStorage.getItem("fds:location");
       const savedSortF = localStorage.getItem("fds:sortField");
       const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
       if (savedView) setShowTable(savedView === "table");
-      if (savedTab) setActiveTab(savedTab);
+      if (savedWorkflow) setWorkflowTab(savedWorkflow);
+      if (savedLocation) setLocationFilter(savedLocation);
       if (savedSortF) setSortField(savedSortF);
       if (savedSortD === "asc" || savedSortD === "desc") setSortDir(savedSortD);
     } catch {}
@@ -74,8 +79,11 @@ export default function FireDoorSchedulePage() {
     try { localStorage.setItem("fds:view", showTable ? "table" : "cards"); } catch {}
   }, [showTable]);
   useEffect(() => {
-    try { localStorage.setItem("fds:tab", activeTab); } catch {}
-  }, [activeTab]);
+    try { localStorage.setItem("fds:workflow", workflowTab); } catch {}
+  }, [workflowTab]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:location", locationFilter); } catch {}
+  }, [locationFilter]);
   useEffect(() => {
     try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
   }, [sortField, sortDir]);
@@ -98,15 +106,30 @@ export default function FireDoorSchedulePage() {
 
   // Apply search + tab filters
   const filteredProjects = projects
-    .filter((project) => {
-      // Tab filter by jobLocation (normalised)
+    // Location filter from stats cards
+    .filter(project => {
       const loc = (project.jobLocation || "").toUpperCase();
-      if (activeTab !== "ALL") {
-        if (activeTab === "RED FOLDER" && loc !== "RED FOLDER") return false;
-        if (activeTab === "IN PROGRESS" && loc !== "IN PROGRESS") return false;
-        if (activeTab === "COMPLETE" && loc !== "COMPLETE") return false;
+      if (locationFilter === "ALL") return true;
+      return loc === locationFilter;
+    })
+    // Workflow tab filter
+    .filter(project => {
+      const sign = (project.signOffStatus || "").toUpperCase();
+      const order = (project.orderingStatus || "").toUpperCase();
+      const progress = project.overallProgress || 0;
+      switch (workflowTab) {
+        case "PAPERWORK":
+          return ["NOT LOOKED AT", "AWAITING SCHEDULE", "WORKING ON SCHEDULE"].includes(sign);
+        case "BOM":
+          return ["NOT IN BOM", "IN BOM"].includes(order);
+        case "MANUFACTURING":
+          return progress > 0 && progress < 100;
+        case "COMPLETE":
+          return progress >= 100 || (project.jobLocation || "") === "COMPLETE";
+        case "ALL":
+        default:
+          return true;
       }
-      return true;
     })
     .filter((project) => {
       const searchLower = searchTerm.toLowerCase();
@@ -215,7 +238,7 @@ export default function FireDoorSchedulePage() {
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total Projects */}
-            <div className="group backdrop-blur-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-blue-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            <div onClick={() => setLocationFilter('ALL')} className="group backdrop-blur-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-blue-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">Total Projects</p>
@@ -232,7 +255,7 @@ export default function FireDoorSchedulePage() {
             </div>
 
             {/* Red Folder */}
-            <div className="group backdrop-blur-xl bg-gradient-to-br from-orange-500/10 via-red-500/10 to-orange-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            <div onClick={() => setLocationFilter('RED FOLDER')} className="group backdrop-blur-xl bg-gradient-to-br from-orange-500/10 via-red-500/10 to-orange-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">Red Folder</p>
@@ -249,7 +272,7 @@ export default function FireDoorSchedulePage() {
             </div>
 
             {/* In Progress */}
-            <div className="group backdrop-blur-xl bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-cyan-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            <div onClick={() => setLocationFilter('IN PROGRESS')} className="group backdrop-blur-xl bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-cyan-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">In Progress</p>
@@ -266,7 +289,7 @@ export default function FireDoorSchedulePage() {
             </div>
 
             {/* Complete */}
-            <div className="group backdrop-blur-xl bg-gradient-to-br from-green-500/10 via-emerald-500/10 to-green-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            <div onClick={() => setLocationFilter('COMPLETE')} className="group backdrop-blur-xl bg-gradient-to-br from-green-500/10 via-emerald-500/10 to-green-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">Complete</p>
@@ -310,22 +333,27 @@ export default function FireDoorSchedulePage() {
           </div>
           {/* Tabs */}
           <div className="mt-4 flex flex-wrap gap-2">
-            {['ALL', 'RED FOLDER', 'IN PROGRESS', 'COMPLETE'].map((tab) => {
-              const isActive = activeTab === tab;
+            {['ALL','PAPERWORK','BOM','MANUFACTURING','COMPLETE'].map(tab => {
+              const isActive = workflowTab === tab;
               return (
                 <Button
                   key={tab}
                   variant={isActive ? 'default' : 'outline'}
                   className={`text-sm ${isActive ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent' : 'bg-white/50'} backdrop-blur-sm`}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => setWorkflowTab(tab)}
                 >
-                  {tab === 'ALL' && 'All Projects'}
-                  {tab === 'RED FOLDER' && 'Red Folder'}
-                  {tab === 'IN PROGRESS' && 'In Progress'}
+                  {tab === 'ALL' && 'All'}
+                  {tab === 'PAPERWORK' && 'Paperwork'}
+                  {tab === 'BOM' && 'BOM'}
+                  {tab === 'MANUFACTURING' && 'Manufacturing'}
                   {tab === 'COMPLETE' && 'Complete'}
                 </Button>
               );
             })}
+          </div>
+          <div className="mt-2 text-xs text-slate-500 flex flex-wrap gap-4">
+            <span>Location Filter: <strong>{locationFilter}</strong></span>
+            <span>Workflow Tab: <strong>{workflowTab}</strong></span>
           </div>
         </div>
         {/* Projects Listing (Table or Cards) */}
@@ -381,9 +409,30 @@ export default function FireDoorSchedulePage() {
                       onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                       className="cursor-pointer group hover:bg-blue-50/40 transition-colors"
                     >
-                      <td className="px-4 py-3 font-medium text-slate-900 group-hover:text-blue-700">{project.jobName || 'Untitled Project'}</td>
-                      <td className="px-4 py-3 text-slate-600">{project.mjsNumber || '—'}</td>
-                      <td className="px-4 py-3 text-slate-600">{project.clientName || '—'}</td>
+                      <td className="px-4 py-3 font-medium text-slate-900 group-hover:text-blue-700" onClick={(e)=>e.stopPropagation()}>
+                        <input
+                          className="bg-transparent outline-none w-full text-sm"
+                          value={project.jobName || ''}
+                          placeholder="Untitled Project"
+                          onChange={(e)=>updateProject(project.id,{ jobName: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
+                        <input
+                          className="bg-transparent outline-none w-24 text-sm"
+                          value={project.mjsNumber || ''}
+                          placeholder="—"
+                          onChange={(e)=>updateProject(project.id,{ mjsNumber: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
+                        <input
+                          className="bg-transparent outline-none w-full text-sm"
+                          value={project.clientName || ''}
+                          placeholder="—"
+                          onChange={(e)=>updateProject(project.id,{ clientName: e.target.value })}
+                        />
+                      </td>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <select
                           value={project.jobLocation || ''}
@@ -414,18 +463,49 @@ export default function FireDoorSchedulePage() {
                           {orderingOptions.map(o => <option key={o} value={o}>{o.replace(/_/g,' ')}</option>)}
                         </select>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{project.poNumber || '—'}</td>
-                      <td className="px-4 py-3 text-slate-600">{project.dateReceived ? new Date(project.dateReceived).toLocaleDateString() : '—'}</td>
-                      <td className="px-4 py-3 text-slate-600">{project.dateRequired ? new Date(project.dateRequired).toLocaleDateString() : '—'}</td>
+                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
+                        <input
+                          className="bg-transparent outline-none w-24 text-sm"
+                          value={project.poNumber || ''}
+                          placeholder="—"
+                          onChange={(e)=>updateProject(project.id,{ poNumber: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
+                        <input
+                          type="date"
+                          className="bg-transparent outline-none text-sm"
+                          value={project.dateReceived ? new Date(project.dateReceived).toISOString().slice(0,10) : ''}
+                          onChange={(e)=>updateProject(project.id,{ dateReceived: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-slate-600" onClick={(e)=>e.stopPropagation()}>
+                        <input
+                          type="date"
+                          className="bg-transparent outline-none text-sm"
+                          value={project.dateRequired ? new Date(project.dateRequired).toISOString().slice(0,10) : ''}
+                          onChange={(e)=>updateProject(project.id,{ dateRequired: e.target.value })}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <div className="w-20 h-2 bg-slate-100 rounded overflow-hidden">
-                            <div
-                              className={`h-full bg-gradient-to-r ${getProgressColor(project.overallProgress)}`}
-                              style={{ width: `${project.overallProgress || 0}%` }}
+                          <div className="w-24 flex items-center gap-2">
+                            <div className="w-20 h-2 bg-slate-100 rounded overflow-hidden">
+                              <div
+                                className={`h-full bg-gradient-to-r ${getProgressColor(project.overallProgress)}`}
+                                style={{ width: `${project.overallProgress || 0}%` }}
+                              />
+                            </div>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={project.overallProgress || 0}
+                              onClick={(e)=>e.stopPropagation()}
+                              onChange={(e)=>updateProject(project.id,{ overallProgress: parseInt(e.target.value)||0 })}
+                              className="w-14 bg-white/60 rounded px-1 py-0.5 text-xs border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
                             />
                           </div>
-                          <span className="text-slate-700 font-medium">{project.overallProgress || 0}%</span>
                         </div>
                       </td>
                     </tr>
