@@ -101,6 +101,7 @@ import estimatorAiRouter from "./routes/estimator-ai";
 import quoteApprovalRouter from "./routes/quote-approval";
 import mlTrainingRouter from "./routes/ml-training";
 import examplePhotosRouter from "./routes/example-photos";
+import fireDoorsRouter from "./routes/fire-doors";
 
 
 type BillingModule = typeof import("./routes/billing");
@@ -624,6 +625,8 @@ app.use("/quote-approval", requireAuth, quoteApprovalRouter);
 app.use("/ml", mlTrainingRouter);
 // Example photos (public browsing + admin management)
 app.use("/example-photos", examplePhotosRouter);
+// Fire door import system (requires fire door manufacturer access)
+app.use("/fire-doors", requireAuth, fireDoorsRouter);
 // Developer Console routes
 app.use("/dev", requireAuth, devRouter);
 app.use("/ai/codex", codexRunRouter);
