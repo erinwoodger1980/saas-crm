@@ -49,6 +49,8 @@ export default function FireDoorSchedulePage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState<string>("ALL");
+  const [showTable, setShowTable] = useState<boolean>(true); // show consolidated table by default
 
   useEffect(() => {
     loadData();
@@ -70,16 +72,28 @@ export default function FireDoorSchedulePage() {
     }
   }
 
-  const filteredProjects = projects.filter((project) => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      !searchTerm ||
-      project.mjsNumber?.toLowerCase().includes(searchLower) ||
-      project.jobName?.toLowerCase().includes(searchLower) ||
-      project.clientName?.toLowerCase().includes(searchLower) ||
-      project.poNumber?.toLowerCase().includes(searchLower)
-    );
-  });
+  // Apply search + tab filters
+  const filteredProjects = projects
+    .filter((project) => {
+      // Tab filter by jobLocation (normalised)
+      const loc = (project.jobLocation || "").toUpperCase();
+      if (activeTab !== "ALL") {
+        if (activeTab === "RED FOLDER" && loc !== "RED FOLDER") return false;
+        if (activeTab === "IN PROGRESS" && loc !== "IN PROGRESS") return false;
+        if (activeTab === "COMPLETE" && loc !== "COMPLETE") return false;
+      }
+      return true;
+    })
+    .filter((project) => {
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        !searchTerm ||
+        project.mjsNumber?.toLowerCase().includes(searchLower) ||
+        project.jobName?.toLowerCase().includes(searchLower) ||
+        project.clientName?.toLowerCase().includes(searchLower) ||
+        project.poNumber?.toLowerCase().includes(searchLower)
+      );
+    });
 
   function getProgressColor(progress?: number): string {
     if (!progress) return "from-gray-400 to-gray-500";
@@ -220,10 +234,35 @@ export default function FireDoorSchedulePage() {
               <Filter className="w-4 h-4 mr-2" />
               Filters
             </Button>
+            <Button
+              variant="outline"
+              className="h-12 bg-white/50"
+              onClick={() => setShowTable((v) => !v)}
+            >
+              {showTable ? "Card View" : "Table View"}
+            </Button>
+          </div>
+          {/* Tabs */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {['ALL', 'RED FOLDER', 'IN PROGRESS', 'COMPLETE'].map((tab) => {
+              const isActive = activeTab === tab;
+              return (
+                <Button
+                  key={tab}
+                  variant={isActive ? 'default' : 'outline'}
+                  className={`text-sm ${isActive ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent' : 'bg-white/50'} backdrop-blur-sm`}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab === 'ALL' && 'All Projects'}
+                  {tab === 'RED FOLDER' && 'Red Folder'}
+                  {tab === 'IN PROGRESS' && 'In Progress'}
+                  {tab === 'COMPLETE' && 'Complete'}
+                </Button>
+              );
+            })}
           </div>
         </div>
-
-        {/* Projects Grid */}
+        {/* Projects Listing (Table or Cards) */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -234,6 +273,61 @@ export default function FireDoorSchedulePage() {
             <h3 className="text-xl font-semibold text-slate-700 mb-2">No projects found</h3>
             <p className="text-slate-500">Create your first fire door project to get started</p>
           </div>
+        ) : showTable ? (
+          <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left">Job Name</th>
+                    <th className="px-4 py-3 text-left">MJS#</th>
+                    <th className="px-4 py-3 text-left">Client</th>
+                    <th className="px-4 py-3 text-left">Location</th>
+                    <th className="px-4 py-3 text-left">Sign Off</th>
+                    <th className="px-4 py-3 text-left">Ordering</th>
+                    <th className="px-4 py-3 text-left">PO</th>
+                    <th className="px-4 py-3 text-left">Received</th>
+                    <th className="px-4 py-3 text-left">Required</th>
+                    <th className="px-4 py-3 text-left">Progress</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProjects.map((project) => (
+                    <tr
+                      key={project.id}
+                      onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
+                      className="cursor-pointer group hover:bg-blue-50/40 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-medium text-slate-900 group-hover:text-blue-700">{project.jobName || 'Untitled Project'}</td>
+                      <td className="px-4 py-3 text-slate-600">{project.mjsNumber || '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{project.clientName || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded-full text-[11px] font-medium ${getStatusColor(project.jobLocation)}`}>{project.jobLocation || 'Unknown'}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded-full text-[11px] font-medium ${getStatusColor(project.signOffStatus)}`}>{project.signOffStatus?.replace(/_/g,' ') || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{project.orderingStatus?.replace(/_/g,' ') || '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{project.poNumber || '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{project.dateReceived ? new Date(project.dateReceived).toLocaleDateString() : '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{project.dateRequired ? new Date(project.dateRequired).toLocaleDateString() : '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-2 bg-slate-100 rounded overflow-hidden">
+                            <div
+                              className={`h-full bg-gradient-to-r ${getProgressColor(project.overallProgress)}`}
+                              style={{ width: `${project.overallProgress || 0}%` }}
+                            />
+                          </div>
+                          <span className="text-slate-700 font-medium">{project.overallProgress || 0}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredProjects.map((project) => (
@@ -242,16 +336,13 @@ export default function FireDoorSchedulePage() {
                 onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                 className="group backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg hover:shadow-2xl transition-all cursor-pointer overflow-hidden"
               >
-                {/* Progress Bar Header */}
                 <div className="relative h-2 bg-slate-100">
                   <div
                     className={`h-full bg-gradient-to-r ${getProgressColor(project.overallProgress)} transition-all`}
                     style={{ width: `${project.overallProgress || 0}%` }}
                   />
                 </div>
-
                 <div className="p-6">
-                  {/* Header */}
                   <div className="flex items-start justify-between mb-4">
                     <div>
                       <h3 className="font-bold text-lg text-slate-900 group-hover:text-blue-600 transition-colors">
@@ -261,8 +352,6 @@ export default function FireDoorSchedulePage() {
                     </div>
                     <ArrowUpRight className="w-5 h-5 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 group-hover:-translate-y-1 transition-all" />
                   </div>
-
-                  {/* Status Badges */}
                   <div className="flex flex-wrap gap-2 mb-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(project.jobLocation)}`}>
                       {project.jobLocation || "Unknown"}
@@ -271,8 +360,6 @@ export default function FireDoorSchedulePage() {
                       {project.signOffStatus?.replace(/_/g, " ") || "No Status"}
                     </span>
                   </div>
-
-                  {/* Project Details */}
                   <div className="space-y-2 mb-4 text-sm">
                     <div className="flex items-center gap-2 text-slate-600">
                       <Calendar className="w-4 h-4 text-slate-400" />
@@ -291,8 +378,6 @@ export default function FireDoorSchedulePage() {
                       </div>
                     )}
                   </div>
-
-                  {/* Progress */}
                   <div className="pt-4 border-t border-slate-100">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-600">Production Progress</span>
