@@ -79,5 +79,11 @@
   },
   "optionalDependencies": {
     "lightningcss-linux-x64-gnu": "^1.30.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "react": "18.2.0",
+      "react-dom": "18.2.0"
+    }
   }
 }
