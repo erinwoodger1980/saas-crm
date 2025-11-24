@@ -119,6 +119,8 @@ router.post("/", requireAuth, async (req: any, res) => {
       return res.status(409).json({ error: "field with this key already exists" });
     }
 
+    const { scope } = req.body;
+
     const field = await prisma.questionnaireField.create({
       data: {
         tenantId,
@@ -132,6 +134,7 @@ router.post("/", requireAuth, async (req: any, res) => {
         config: config || undefined,
         sortOrder: Number(sortOrder) || 0,
         costingInputKey: costingInputKey || null,
+        scope: scope || "item",
         isActive,
       },
     });
@@ -169,6 +172,7 @@ router.put("/:id", requireAuth, async (req: any, res) => {
       sortOrder,
       costingInputKey,
       isActive,
+      scope,
       questionnaireId: newQuestionnaireId,
     } = req.body;
 
@@ -201,6 +205,7 @@ router.put("/:id", requireAuth, async (req: any, res) => {
         ...(config !== undefined && { config }),
         ...(sortOrder !== undefined && { sortOrder: Number(sortOrder) }),
         ...(costingInputKey !== undefined && { costingInputKey }),
+        ...(scope !== undefined && { scope }),
         ...(isActive !== undefined && { isActive }),
         ...questionnaireUpdate,
       },

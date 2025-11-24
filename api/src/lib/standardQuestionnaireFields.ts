@@ -16,6 +16,7 @@ export type StandardFieldDefinition = {
   placeholder?: string;
   sortOrder: number;
   group?: string;
+  scope: "client" | "item" | "internal"; // 'client' = lead-level, 'item' = line-item level, 'internal' = auto-calculated/hidden
   isStandard: true;
 };
 
@@ -35,6 +36,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     placeholder: "",
     sortOrder: 0,
     group: "Internal",
+    scope: "internal",
     isStandard: true,
   },
   {
@@ -47,6 +49,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Set by tenant – internal classification",
     sortOrder: 1,
     group: "Internal",
+    scope: "internal",
     isStandard: true,
   },
 
@@ -60,6 +63,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     placeholder: "John Smith",
     sortOrder: 100,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
   {
@@ -71,6 +75,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     placeholder: "john@example.com",
     sortOrder: 101,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
   {
@@ -82,6 +87,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     placeholder: "07700 900000",
     sortOrder: 102,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
   {
@@ -94,6 +100,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Marketing attribution",
     sortOrder: 110,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
   {
@@ -106,6 +113,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Location affects logistics",
     sortOrder: 111,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
   {
@@ -117,6 +125,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Special considerations if listed",
     sortOrder: 112,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
   {
@@ -128,6 +137,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "When do you need completion?",
     sortOrder: 113,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
   {
@@ -139,6 +149,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Approximate spend guideline",
     sortOrder: 114,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
   {
@@ -150,6 +161,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Professional installation needed?",
     sortOrder: 115,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
   {
@@ -161,6 +173,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     placeholder: "Specific requirements, existing issues…",
     sortOrder: 120,
     group: "Client Profile",
+    scope: "client",
     isStandard: true,
   },
 
@@ -175,6 +188,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Quality tier of materials",
     sortOrder: 200,
     group: "Item Specification",
+    scope: "item",
     isStandard: true,
   },
   {
@@ -187,6 +201,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Glass specification",
     sortOrder: 201,
     group: "Item Specification",
+    scope: "item",
     isStandard: true,
   },
   {
@@ -198,6 +213,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Includes curved or arched elements",
     sortOrder: 202,
     group: "Item Specification",
+    scope: "item",
     isStandard: true,
   },
   {
@@ -210,6 +226,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Quality / complexity of ironmongery",
     sortOrder: 203,
     group: "Item Specification",
+    scope: "item",
     isStandard: true,
   },
   {
@@ -222,6 +239,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Primary item type",
     sortOrder: 204,
     group: "Item Specification",
+    scope: "item",
     isStandard: true,
   },
   {
@@ -234,6 +252,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     placeholder: "e.g., 2",
     sortOrder: 205,
     group: "Item Specification",
+    scope: "item",
     isStandard: true,
   },
   {
@@ -246,6 +265,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     placeholder: "e.g., 900",
     sortOrder: 206,
     group: "Item Specification",
+    scope: "item",
     isStandard: true,
   },
   {
@@ -258,6 +278,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     placeholder: "e.g., 2100",
     sortOrder: 207,
     group: "Item Specification",
+    scope: "item",
     isStandard: true,
   },
 ];

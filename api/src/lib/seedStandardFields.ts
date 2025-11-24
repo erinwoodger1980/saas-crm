@@ -67,8 +67,10 @@ export async function seedStandardFieldsForTenant(tenantId: string): Promise<{
           helpText: field.helpText || null,
           placeholder: field.placeholder || null,
           sortOrder: field.sortOrder,
+          scope: field.scope,
           isStandard: true,
           isActive: true,
+          isHidden: field.scope === "internal", // Hide internal fields from forms
           requiredForCosting: !!field.costingInputKey,
         },
       });
