@@ -68,10 +68,16 @@ export default function MLTrainingPage() {
 
   async function loadFields() {
     try {
-      const resp = await fetch(`${apiBase}/questionnaire-fields?includeStandard=true`);
-      if (!resp.ok) throw new Error("Failed to load fields");
+      const resp = await fetch(`${apiBase}/questionnaire-fields?includeStandard=true`, {
+        credentials: 'include'
+      });
+      if (!resp.ok) throw new Error(`Failed to load fields (${resp.status})`);
       const json = await resp.json();
-      setFields(json.filter((f: any) => f.isStandard && f.isActive));
+      // Normalise type casing for UI rendering logic
+      const standardActive = json
+        .filter((f: any) => f.isStandard && f.isActive)
+        .map((f: any) => ({ ...f, type: typeof f.type === 'string' ? f.type.toLowerCase() : f.type }));
+      setFields(standardActive);
     } catch (err: any) {
       console.error("Failed to load fields:", err);
       setMessage({ type: "error", text: "Failed to load questionnaire fields" });

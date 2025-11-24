@@ -53,6 +53,24 @@ export async function buildCostingInputs(
 
   applyMeasurementFallbacks(inputs);
 
+  // Auto-compute project/item area (m²) if dimensions & quantity present and area missing
+  if (inputs.area_m2 == null) {
+    const height = toNumber(inputs.door_height_mm);
+    const width = toNumber(inputs.door_width_mm);
+    const qty = toNumber(inputs.quantity) || 1;
+    if (height != null && width != null && height > 0 && width > 0) {
+      const areaSquareMm = height * width * qty;
+      const areaM2 = areaSquareMm / 1_000_000; // mm² → m²
+      // Round to 3 decimals for stability
+      inputs.area_m2 = Math.round(areaM2 * 1000) / 1000;
+    }
+  }
+
+  // Normalize ironmongery level input (store canonical lowercase)
+  if (typeof inputs.ironmongery_level === "string") {
+    inputs.ironmongery_level = inputs.ironmongery_level.toLowerCase();
+  }
+
   return inputs;
 }
 
@@ -208,18 +226,34 @@ export async function calculateCost(
     };
   }
 
-  // Example calculation: £500 base + £0.001 per mm² × quantity
+  // Compute area (mm²) & m²
   const areaSquareMm = height * width;
-  const basePrice = 500;
-  const areaPrice = areaSquareMm * 0.001;
-  const totalPerUnit = basePrice + areaPrice;
+  const areaM2 = areaSquareMm / 1_000_000;
+
+  // Base pricing components (placeholder logic)
+  const basePrice = 500; // fixed engineering + handling baseline
+  const areaPrice = areaSquareMm * 0.001; // dimensional scaling factor
+
+  // Ironmongery level multiplier (affects complexity & fitting time)
+  const iron = String(inputs.ironmongery_level || "").toLowerCase();
+  const ironFactor = iron === "heritage" ? 1.2 : iron === "enhanced" ? 1.12 : 1.0;
+
+  // Materials grade lightweight multiplier (optional future extension)
+  const grade = String(inputs.materials_grade || "").toLowerCase();
+  const gradeFactor = grade === "premium" ? 1.15 : grade === "basic" ? 0.92 : 1.0;
+
+  const totalPerUnitRaw = basePrice + areaPrice;
+  const totalPerUnit = totalPerUnitRaw * ironFactor * gradeFactor;
   const estimatedCost = totalPerUnit * quantity;
 
   return {
     estimatedCost: Math.round(estimatedCost * 100) / 100,
     breakdown: {
-      base: basePrice * quantity,
-      area: areaPrice * quantity,
+      base: Math.round(basePrice * quantity * 100) / 100,
+      area_component_mm2: Math.round(areaPrice * quantity * 100) / 100,
+      area_m2: Math.round(areaM2 * quantity * 1000) / 1000,
+      ironmongery_factor: ironFactor,
+      materials_grade_factor: gradeFactor,
     },
     confidence: 0.85,
   };
