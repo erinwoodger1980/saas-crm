@@ -108,3 +108,30 @@ body.workshop-display-mode [class*="AppShell"] main {
   left: 0 !important;
   right: 0 !important;
 }
+
+/* RFI visual indicators for AG Grid */
+.ag-header-has-rfi {
+  position: relative;
+}
+.ag-header-has-rfi::after {
+  content: '!';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #f97316;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ag-cell-has-rfi {
+  background-color: #fff7ed !important;
+  border-left: 2px solid #f97316 !important;
+}
