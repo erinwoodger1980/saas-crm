@@ -3289,3 +3289,27 @@ model FireDoorClientRFI {
   @@index([tenantId])
   @@index([status])
 }
+
+// ============================================================================
+// Generic RFI model for Fire Door Schedule / Quote Grid (column & cell level)
+// Supports attaching an RFI to an entire column (rowId = null) or a specific
+// cell (rowId + columnKey). Designed to be lightweight and tenant scoped.
+// ============================================================================
+model Rfi {
+  id              String   @id @default(cuid())
+  tenantId        String
+  projectId       String    // Links to a FireDoorScheduleProject id or quote/project reference
+  rowId           String?   // Null for column-level RFI, otherwise row identifier
+  columnKey       String    // Matches AG Grid column field (e.g. "masterWidth", "hingeQty")
+  title           String?   // Optional short summary
+  message         String    // Full question / request for information
+  status          String    @default("open") // open | answered | closed
+  visibleToClient Boolean   @default(true)    // Whether client portal should display it
+  createdById     String    // User id who created the RFI
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tenantId, projectId])
+  @@index([tenantId, projectId, columnKey])
+  @@index([tenantId, status])
+}
