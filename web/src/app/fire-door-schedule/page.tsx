@@ -696,11 +696,17 @@ export default function FireDoorSchedulePage() {
                       type="color"
                       className="w-8 h-7 border rounded cursor-pointer"
                       onChange={(e) => {
-                        const hex = e.target.value;
-                        if (editingConfigField === 'jobLocation') {
-                          JOB_LOCATION_COLORS[opt] = `bg-[${hex}] text-white`;
-                        } else {
-                          SIGN_OFF_COLORS[opt] = `bg-[${hex}] text-white`;
+                        try {
+                          const hex = e.target.value;
+                          const bg = `bg-[${hex}]`;
+                          const classes = `${bg} text-white`;
+                          if (editingConfigField === 'jobLocation') {
+                            JOB_LOCATION_COLORS[opt] = classes;
+                          } else {
+                            SIGN_OFF_COLORS[opt] = classes;
+                          }
+                        } catch (err) {
+                          console.error('Failed to apply colour override', err);
                         }
                       }}
                     />
