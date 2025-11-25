@@ -5,6 +5,7 @@
  * Replaces: 2026 TEST SYSTEM.xlsx + NEW 2023 BOM CHECK.xlsx
  * 
  * One row per WON project - tracks from enquiry to completion.
+ * Migration: 20251124095123_add_fire_door_schedule
  */
 
 import express, { Response } from "express";
