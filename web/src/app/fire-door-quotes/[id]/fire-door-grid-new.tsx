@@ -189,32 +189,32 @@ interface FireDoorGridProps {
   onSelectRfi?: (rfi: RfiRecord) => void;
 }
 
-// Dropdown editor component
-function SelectEditor<TRow>({ 
-  row, 
-  column, 
-  onRowChange, 
-  onClose
-}: RenderEditCellProps<TRow>) {
-  const options = (column as any).editorOptions?.options || [];
-  
-  return (
-    <select
-      className="w-full h-full border-0 outline-none px-2 bg-white"
-      autoFocus
-      value={row[column.key as keyof TRow] as string || ''}
-      onChange={(e) => {
-        onRowChange({ ...row, [column.key]: e.target.value }, true);
-        onClose(true);
-      }}
-      onBlur={() => onClose(false)}
-    >
-      <option value="">--</option>
-      {options.map((opt: string) => (
-        <option key={opt} value={opt}>{opt}</option>
-      ))}
-    </select>
-  );
+// Dropdown editor factory - creates an editor component for a set of options
+function createSelectEditor(options: string[]) {
+  return function SelectEditor<TRow>({ 
+    row, 
+    column, 
+    onRowChange, 
+    onClose
+  }: RenderEditCellProps<TRow>) {
+    return (
+      <select
+        className="w-full h-full border-0 outline-none px-2 bg-white"
+        autoFocus
+        value={row[column.key as keyof TRow] as string || ''}
+        onChange={(e) => {
+          onRowChange({ ...row, [column.key]: e.target.value }, true);
+          onClose(true);
+        }}
+        onBlur={() => onClose(false)}
+      >
+        <option value="">--</option>
+        {options.map((opt: string) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    );
+  };
 }
 
 export function FireDoorGrid({
@@ -385,8 +385,7 @@ export function FireDoorGrid({
       name: 'Doorset Type', 
       width: 150, 
       editable: true,
-      renderEditCell: SelectEditor,
-      editorOptions: { options: doorsetTypeOptions },
+      renderEditCell: createSelectEditor(doorsetTypeOptions),
       cellClass: (row) => {
         const rowId = row.id || `row-${row.rowIndex}`;
         return cellRfiMap[`${rowId}:doorsetType`] ? 'bg-orange-50' : '';
@@ -428,8 +427,7 @@ export function FireDoorGrid({
       name: 'Core', 
       width: 150, 
       editable: true,
-      renderEditCell: SelectEditor,
-      editorOptions: { options: coreOptions },
+      renderEditCell: createSelectEditor(coreOptions),
       cellClass: (row) => {
         const rowId = row.id || `row-${row.rowIndex}`;
         return cellRfiMap[`${rowId}:core`] ? 'bg-orange-50' : '';
@@ -440,8 +438,7 @@ export function FireDoorGrid({
       name: 'Rating', 
       width: 100, 
       editable: true,
-      renderEditCell: SelectEditor,
-      editorOptions: { options: ratingOptions },
+      renderEditCell: createSelectEditor(ratingOptions),
       cellClass: (row) => {
         const rowId = row.id || `row-${row.rowIndex}`;
         return cellRfiMap[`${rowId}:rating`] ? 'bg-orange-50' : '';
@@ -520,10 +517,10 @@ export function FireDoorGrid({
     { key: 'masterWidthLipping', name: 'Master Width (Lipping)', width: 160, editable: true },
     { key: 'slaveWidthLipping', name: 'Slave Width (Lipping)', width: 160, editable: true },
     { key: 'doorHeightLipping', name: 'Door Height (Lipping)', width: 160, editable: true },
-    { key: 'coreLipping', name: 'Core (Lipping)', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: coreOptions } },
-    { key: 'ratingLipping', name: 'Rating (Lipping)', width: 120, editable: true, renderEditCell: SelectEditor, editorOptions: { options: ratingOptions } },
-    { key: 'coreTypeLipping', name: 'Core Type (Lipping)', width: 150, editable: true, renderEditCell: SelectEditor, editorOptions: { options: coreTypeOptions } },
-    { key: 'material', name: 'Material', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: materialOptions } },
+    { key: 'coreLipping', name: 'Core (Lipping)', width: 130, editable: true, renderEditCell: createSelectEditor(coreOptions) },
+    { key: 'ratingLipping', name: 'Rating (Lipping)', width: 120, editable: true, renderEditCell: createSelectEditor(ratingOptions) },
+    { key: 'coreTypeLipping', name: 'Core Type (Lipping)', width: 150, editable: true, renderEditCell: createSelectEditor(coreTypeOptions) },
+    { key: 'material', name: 'Material', width: 130, editable: true, renderEditCell: createSelectEditor(materialOptions) },
     { key: 'topLipping', name: 'Top (Lipping)', width: 110, editable: true },
     { key: 'btmLipping', name: 'Bottom (Lipping)', width: 120, editable: true },
     { key: 'hingeLipping', name: 'Hinge (Lipping)', width: 120, editable: true },
@@ -591,14 +588,14 @@ export function FireDoorGrid({
     { key: 'smokeStrip', name: 'Smoke Strip', width: 120, editable: true },
     { key: 'dropSeal', name: 'Drop Seal', width: 120, editable: true },
     { key: 'hingeQty', name: 'Hinge Qty', width: 100, editable: true },
-    { key: 'hingeType', name: 'Hinge Type', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: hingeTypeOptions } },
-    { key: 'lockType', name: 'Lock Type', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: lockTypeOptions } },
+    { key: 'hingeType', name: 'Hinge Type', width: 130, editable: true, renderEditCell: createSelectEditor(hingeTypeOptions) },
+    { key: 'lockType', name: 'Lock Type', width: 130, editable: true, renderEditCell: createSelectEditor(lockTypeOptions) },
     { key: 'latchType', name: 'Latch Type', width: 130, editable: true },
     { key: 'cylinderType', name: 'Cylinder Type', width: 130, editable: true },
     { key: 'keeperType', name: 'Keeper Type', width: 130, editable: true },
     
     // SECTION 9: SECONDARY IRONMONGERY (16 fields)
-    { key: 'handleType', name: 'Handle Type', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: handleTypeOptions } },
+    { key: 'handleType', name: 'Handle Type', width: 130, editable: true, renderEditCell: createSelectEditor(handleTypeOptions) },
     { key: 'pullHandleType', name: 'Pull Handle Type', width: 150, editable: true },
     { key: 'pullHandleQty', name: 'Pull Handle Qty', width: 140, editable: true },
     { key: 'flushBoltType', name: 'Flush Bolt Type', width: 140, editable: true },

@@ -220,8 +220,11 @@ export default function FireDoorQuoteBuilderPage() {
       
       // Save quote first if it doesn't have an ID yet
       if (!quoteId) {
+        console.log('No quote ID, saving quote first...');
         const savedQuote = await saveQuote();
-        quoteId = savedQuote.id;
+        quoteId = savedQuote?.id;
+        
+        console.log('Quote saved, ID:', quoteId);
         
         if (!quoteId) {
           throw new Error("Failed to create quote before saving RFI");
@@ -236,6 +239,8 @@ export default function FireDoorQuoteBuilderPage() {
         projectId: quoteId,
       };
 
+      console.log('Saving RFI with payload:', payload);
+
       await apiFetch(endpoint, {
         method,
         json: payload,
@@ -248,8 +253,14 @@ export default function FireDoorQuoteBuilderPage() {
 
       // Reload RFIs
       await loadRfis(quoteId);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving RFI:", error);
+      const errorMsg = error?.message || error?.toString() || 'Unknown error';
+      toast({
+        title: "Error",
+        description: `Failed to save RFI: ${errorMsg}`,
+        variant: "destructive",
+      });
       throw error;
     }
   }
