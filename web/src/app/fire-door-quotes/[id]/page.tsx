@@ -234,17 +234,34 @@ export default function FireDoorQuoteBuilderPage() {
       const endpoint = rfiData.id ? `/rfis/${rfiData.id}` : "/rfis";
       const method = rfiData.id ? "PUT" : "POST";
       
+      // Validate required fields
+      if (!rfiData.message || !rfiData.message.trim()) {
+        toast({
+          title: "Validation Error",
+          description: "RFI message is required",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const payload = {
-        ...rfiData,
         projectId: quoteId,
+        rowId: rfiData.rowId || null,
+        columnKey: rfiData.columnKey,
+        title: rfiData.title?.trim() || null,
+        message: rfiData.message.trim(),
+        status: rfiData.status || "open",
+        visibleToClient: rfiData.visibleToClient !== undefined ? rfiData.visibleToClient : false,
       };
 
-      console.log('Saving RFI with payload:', payload);
+      console.log('Saving RFI with payload:', JSON.stringify(payload, null, 2));
 
-      await apiFetch(endpoint, {
+      const result = await apiFetch(endpoint, {
         method,
         json: payload,
       });
+
+      console.log('RFI save result:', result);
 
       toast({
         title: "Success",
@@ -252,9 +269,12 @@ export default function FireDoorQuoteBuilderPage() {
       });
 
       // Reload RFIs
-      await loadRfis(quoteId);
+      if (quoteId) {
+        await loadRfis(quoteId);
+      }
     } catch (error: any) {
       console.error("Error saving RFI:", error);
+      console.error("Error stack:", error?.stack);
       const errorMsg = error?.message || error?.toString() || 'Unknown error';
       toast({
         title: "Error",
