@@ -120,14 +120,24 @@ export default function FireDoorSchedulePage() {
     setLoading(true);
     try {
       const now = new Date();
-      const [projectsData, statsData, monthlyData] = await Promise.all([
+      
+      // Load projects and stats (critical)
+      const [projectsData, statsData] = await Promise.all([
         apiFetch<{ projects: FireDoorProject[] }>("/fire-door-schedule"),
         apiFetch<Stats>("/fire-door-schedule/stats/summary"),
-        apiFetch<any>(`/fire-door-production/stats/monthly-value?year=${now.getFullYear()}&month=${now.getMonth() + 1}`),
       ]);
+      
       setProjects(projectsData.projects);
       setStats(statsData);
-      setMonthlyValue(monthlyData);
+      
+      // Load monthly value (optional - don't fail if it errors)
+      try {
+        const monthlyData = await apiFetch<any>(`/fire-door-production/stats/monthly-value?year=${now.getFullYear()}&month=${now.getMonth() + 1}`);
+        setMonthlyValue(monthlyData);
+      } catch (monthlyError) {
+        console.warn("Failed to load monthly value (non-critical):", monthlyError);
+        setMonthlyValue({ totalManufacturingValue: '0', logCount: 0, projectCount: 0 });
+      }
     } catch (error) {
       console.error("Error loading fire door schedule:", error);
     } finally {
