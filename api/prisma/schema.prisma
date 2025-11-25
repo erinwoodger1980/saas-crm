@@ -2927,24 +2927,50 @@ model FireDoorScheduleProject {
   workingDaysRemaining   Int? // APPROX WORKING DAYS REMAINING
 
   // 3. BOM & ORDERING
-  orderingStatus String? // NOT IN BOM | IN BOM TBC | IN BOM | STOCK | ORDERED | RECEIVED | ORDERED CALL OFF | MAKE IN HOUSE | N/A
+  // BOM Component Tracking (status + dates + checked flag)
+  // Status options: Not in BOM | In BOM TBC | Ordered Call Off | In BOM | Stock | Ordered | N/A | Received
+  // IronMongery adds: Received from TBS | Received from Customer
+  blanksStatus      String?
+  blanksDateOrdered DateTime?
+  blanksDateExpected DateTime?
+  blanksDateReceived DateTime?
+  blanksChecked     Boolean @default(false)
+  
+  lippingsStatus      String?
+  lippingsDateOrdered DateTime?
+  lippingsDateExpected DateTime?
+  lippingsDateReceived DateTime?
+  lippingsChecked     Boolean @default(false)
+  
+  facingsStatus      String?
+  facingsDateOrdered DateTime?
+  facingsDateExpected DateTime?
+  facingsDateReceived DateTime?
+  facingsChecked     Boolean @default(false)
+  
+  glassStatus      String?
+  glassDateOrdered DateTime?
+  glassDateExpected DateTime?
+  glassDateReceived DateTime?
+  glassChecked     Boolean @default(false)
+  
+  cassettesStatus      String?
+  cassettesDateOrdered DateTime?
+  cassettesDateExpected DateTime?
+  cassettesDateReceived DateTime?
+  cassettesChecked     Boolean @default(false)
+  
+  timbersStatus      String?
+  timbersDateOrdered DateTime?
+  timbersDateExpected DateTime?
+  timbersDateReceived DateTime?
+  timbersChecked     Boolean @default(false)
 
-  // BOM Component Tracking (status + checked flag)
-  blanksStatus    String? // STOCK | ORDERED | RECEIVED | N/A | URGENT
-  blanksChecked   Boolean @default(false)
-  lippingsStatus  String?
-  lippingsChecked Boolean @default(false)
-  facingsStatus   String?
-  facingsChecked  Boolean @default(false)
-  glassStatus     String?
-  glassChecked    Boolean @default(false)
-  cassettesStatus String?
-  cassettesChecked Boolean @default(false)
-  timbersStatus   String?
-  timbersChecked  Boolean @default(false)
-
-  ironmongeryStatus  String? // FROM TGS | RECEIVED FROM TGS | FROM CUSTOMER | RECEIVED FROM CUSTOMER | OTHER | NOT ORDERED | ORDERED | N/A
-  ironmongeryChecked Boolean @default(false)
+  ironmongeryStatus      String? // Has extra options: Received from TBS | Received from Customer
+  ironmongeryDateOrdered DateTime?
+  ironmongeryDateExpected DateTime?
+  ironmongeryDateReceived DateTime?
+  ironmongeryChecked     Boolean @default(false)
 
   // 4. PRODUCTION & CAPACITY (all percentages 0-100)
   blanksCutPercent Int? // BLANKS CUT %
@@ -2963,7 +2989,7 @@ model FireDoorScheduleProject {
   hiddenStatus String? // HIDDEN field from BOM CHECK
 
   // 5. PAPERWORK & CERTIFICATION
-  paperworkStatus           String? // N/A | WORKING ON SCHEDULE | READY TO PRINT IN OFFICE | PRINTED IN OFFICE | TAKEN OUT TO FACTORY
+  // Paperwork status options: Not Started | Part Complete | Printed in Office | In Factory | N/A
   doorPaperworkStatus       String? // DOOR PAPERWORK
   finalCncSheetStatus       String? // FINAL CNC SHEET
   finalChecksSheetStatus    String? // FINAL CHECKS SHEET
@@ -2976,7 +3002,10 @@ model FireDoorScheduleProject {
   invoiceStatus         String? // Inv Y / N
 
   // 6. DELIVERY & INSTALLATION
-  transportStatus   String? // TRANSPORT status
+  transportStatus   String? // TBC | By Customer | By LAJ | Collect | Not Booked | Booked
+  doorSets          Int? // Number of door sets
+  leaves            Int? // Number of leaves
+  deliveryNotes     String? // Delivery notes
   deliveryDate      DateTime? // Actual delivery date
   installStart      DateTime? // Installation start
   installEnd        DateTime? // Installation completion

@@ -205,25 +205,131 @@ export default function FireDoorSchedulePage() {
         'workingDaysRemaining',
       ]
     },
-    DESIGN_SIGN_OFF: {
-      label: 'Design & Sign Off',
-      columns: ['mjsNumber', 'jobName', 'signOffStatus', 'scheduledBy', 'signOffDate', 'leadTimeWeeks', 'approxDeliveryDate']
-    },
     BOM_MATERIALS: {
       label: 'BOM & Materials',
-      columns: ['mjsNumber', 'jobName', 'orderingStatus', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'ironmongeryStatus']
+      columns: [
+        'mjsNumber',
+        'jobName',
+        'blanksStatus',
+        'blanksDateOrdered',
+        'blanksDateExpected',
+        'blanksDateReceived',
+        'lippingsStatus',
+        'lippingsDateOrdered',
+        'lippingsDateExpected',
+        'lippingsDateReceived',
+        'facingsStatus',
+        'facingsDateOrdered',
+        'facingsDateExpected',
+        'facingsDateReceived',
+        'glassStatus',
+        'glassDateOrdered',
+        'glassDateExpected',
+        'glassDateReceived',
+        'cassettesStatus',
+        'cassettesDateOrdered',
+        'cassettesDateExpected',
+        'cassettesDateReceived',
+        'timbersStatus',
+        'timbersDateOrdered',
+        'timbersDateExpected',
+        'timbersDateReceived',
+        'ironmongeryStatus',
+        'ironmongeryDateOrdered',
+        'ironmongeryDateExpected',
+        'ironmongeryDateReceived'
+      ]
     },
-    PRODUCTION_PROCESS: {
-      label: 'Production Process',
-      columns: ['mjsNumber', 'jobName', 'blanksCutPercent', 'edgebandPercent', 'calibratePercent', 'facingsPercent', 'sprayPercent', 'buildPercent', 'overallProgress']
+    PAPERWORK: {
+      label: 'Paperwork',
+      columns: [
+        'mjsNumber',
+        'jobName',
+        'doorPaperworkStatus',
+        'finalCncSheetStatus',
+        'finalChecksSheetStatus',
+        'deliveryChecklistStatus',
+        'framesPaperworkStatus',
+        'paperworkComments'
+      ]
     },
-    DELIVERY_INSTALLATION: {
-      label: 'Delivery & Installation',
-      columns: ['mjsNumber', 'jobName', 'transportStatus', 'deliveryDate', 'installStart', 'installEnd', 'snaggingStatus', 'snaggingComplete']
+    PRODUCTION: {
+      label: 'Production',
+      columns: [
+        'mjsNumber',
+        'jobName',
+        'blanksCutPercent',
+        'edgebandPercent',
+        'calibratePercent',
+        'facingsPercent',
+        'sprayPercent',
+        'buildPercent',
+        'overallProgress',
+        'transportStatus',
+        'doorSets',
+        'leaves',
+        'deliveryNotes'
+      ]
     },
-    NOTES_COMMUNICATION: {
-      label: 'Notes & Communication',
-      columns: ['mjsNumber', 'jobName', 'clientName', 'communicationNotes', 'internalNotes', 'paperworkComments', 'lastUpdatedBy', 'lastUpdatedAt']
+    ALL: {
+      label: 'All',
+      columns: [
+        'mjsNumber',
+        'clientName',
+        'jobName',
+        'dateReceived',
+        'jobLocation',
+        'signOffStatus',
+        'scheduledBy',
+        'signOffDate',
+        'leadTimeWeeks',
+        'workingDaysRemaining',
+        'blanksStatus',
+        'blanksDateOrdered',
+        'blanksDateExpected',
+        'blanksDateReceived',
+        'lippingsStatus',
+        'lippingsDateOrdered',
+        'lippingsDateExpected',
+        'lippingsDateReceived',
+        'facingsStatus',
+        'facingsDateOrdered',
+        'facingsDateExpected',
+        'facingsDateReceived',
+        'glassStatus',
+        'glassDateOrdered',
+        'glassDateExpected',
+        'glassDateReceived',
+        'cassettesStatus',
+        'cassettesDateOrdered',
+        'cassettesDateExpected',
+        'cassettesDateReceived',
+        'timbersStatus',
+        'timbersDateOrdered',
+        'timbersDateExpected',
+        'timbersDateReceived',
+        'ironmongeryStatus',
+        'ironmongeryDateOrdered',
+        'ironmongeryDateExpected',
+        'ironmongeryDateReceived',
+        'doorPaperworkStatus',
+        'finalCncSheetStatus',
+        'finalChecksSheetStatus',
+        'deliveryChecklistStatus',
+        'framesPaperworkStatus',
+        'paperworkComments',
+        'blanksCutPercent',
+        'edgebandPercent',
+        'calibratePercent',
+        'facingsPercent',
+        'sprayPercent',
+        'buildPercent',
+        'overallProgress',
+        'transportStatus',
+        'doorSets',
+        'leaves',
+        'deliveryNotes'
+      ]
     }
   };
 
@@ -243,12 +349,40 @@ export default function FireDoorSchedulePage() {
     leadTimeWeeks: 'Lead Time in Weeks',
     approxDeliveryDate: 'Approx Delivery',
     workingDaysRemaining: 'Approx Working Days Remaining',
-    orderingStatus: 'Ordering',
-    blanksStatus: 'Blanks',
-    lippingsStatus: 'Lippings',
-    facingsStatus: 'Facings',
-    glassStatus: 'Glass',
-    ironmongeryStatus: 'Ironmongery',
+    blanksStatus: 'Blanks Status',
+    blanksDateOrdered: 'Blanks Date Ordered',
+    blanksDateExpected: 'Blanks Date Expected',
+    blanksDateReceived: 'Blanks Date Received',
+    lippingsStatus: 'Lippings Status',
+    lippingsDateOrdered: 'Lippings Date Ordered',
+    lippingsDateExpected: 'Lippings Date Expected',
+    lippingsDateReceived: 'Lippings Date Received',
+    facingsStatus: 'Facings Status',
+    facingsDateOrdered: 'Facings Date Ordered',
+    facingsDateExpected: 'Facings Date Expected',
+    facingsDateReceived: 'Facings Date Received',
+    glassStatus: 'Glass Status',
+    glassDateOrdered: 'Glass Date Ordered',
+    glassDateExpected: 'Glass Date Expected',
+    glassDateReceived: 'Glass Date Received',
+    cassettesStatus: 'Cassettes Status',
+    cassettesDateOrdered: 'Cassettes Date Ordered',
+    cassettesDateExpected: 'Cassettes Date Expected',
+    cassettesDateReceived: 'Cassettes Date Received',
+    timbersStatus: 'Timbers Status',
+    timbersDateOrdered: 'Timbers Date Ordered',
+    timbersDateExpected: 'Timbers Date Expected',
+    timbersDateReceived: 'Timbers Date Received',
+    ironmongeryStatus: 'Ironmongery Status',
+    ironmongeryDateOrdered: 'Ironmongery Date Ordered',
+    ironmongeryDateExpected: 'Ironmongery Date Expected',
+    ironmongeryDateReceived: 'Ironmongery Date Received',
+    doorPaperworkStatus: 'Door Paperwork',
+    finalCncSheetStatus: 'Final CNC Sheet',
+    finalChecksSheetStatus: 'Final Checks Sheet',
+    deliveryChecklistStatus: 'Delivery Checklist',
+    framesPaperworkStatus: 'Frames Paperwork',
+    paperworkComments: 'Paperwork Comments',
     blanksCutPercent: 'Blanks Cut %',
     edgebandPercent: 'Edgeband %',
     calibratePercent: 'Calibrate %',
@@ -256,6 +390,9 @@ export default function FireDoorSchedulePage() {
     sprayPercent: 'Spray %',
     buildPercent: 'Build %',
     transportStatus: 'Transport',
+    doorSets: 'Door Sets',
+    leaves: 'Leaves',
+    deliveryNotes: 'Delivery Notes',
     deliveryDate: 'Delivery',
     installStart: 'Install Start',
     installEnd: 'Install End',
@@ -263,7 +400,6 @@ export default function FireDoorSchedulePage() {
     snaggingComplete: 'Snagging Done',
     communicationNotes: 'Communication',
     internalNotes: 'Internal Notes',
-    paperworkComments: 'Paperwork Notes',
     lastUpdatedBy: 'Updated By',
     lastUpdatedAt: 'Updated At'
   };
@@ -302,8 +438,10 @@ export default function FireDoorSchedulePage() {
     "SCHEDULE SIGNED OFF",
     "NOT LOOKED AT",
   ]);
-  const orderingOptions = ["NOT IN BOM", "IN BOM TBC", "IN BOM", "STOCK", "ORDERED", "RECEIVED", "ORDERED CALL OFF", "MAKE IN HOUSE", "N/A"];
-  const statusOptions = ["STOCK", "ORDERED", "RECEIVED", "N/A", "URGENT"];
+  const materialStatusOptions = ["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received"];
+  const ironmongeryStatusOptions = [...materialStatusOptions, "Received from TBS", "Received from Customer"];
+  const paperworkStatusOptions = ["Not Started", "Part Complete", "Printed in Office", "In Factory", "N/A"];
+  const transportOptions = ["TBC", "By Customer", "By LAJ", "Collect", "Not Booked", "Booked"];
 
   // Render cell based on field type
   function renderCell(project: FireDoorProject, field: string) {
@@ -423,8 +561,8 @@ export default function FireDoorSchedulePage() {
       );
     }
 
-    if (field === 'orderingStatus' || field.includes('Status')) {
-      const options = field === 'orderingStatus' ? orderingOptions : statusOptions;
+    // Material status fields
+    if (field === 'ironmongeryStatus') {
       return (
         <select
           value={value || ''}
@@ -432,7 +570,48 @@ export default function FireDoorSchedulePage() {
           className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
         >
           <option value="">--</option>
-          {options.map(o => <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>)}
+          {ironmongeryStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      );
+    }
+
+    if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus'].includes(field)) {
+      return (
+        <select
+          value={value || ''}
+          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <option value="">--</option>
+          {materialStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      );
+    }
+
+    // Paperwork status fields
+    if (['doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus'].includes(field)) {
+      return (
+        <select
+          value={value || ''}
+          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <option value="">--</option>
+          {paperworkStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      );
+    }
+
+    // Transport status
+    if (field === 'transportStatus') {
+      return (
+        <select
+          value={value || ''}
+          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <option value="">--</option>
+          {transportOptions.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       );
     }
@@ -482,6 +661,33 @@ export default function FireDoorSchedulePage() {
 
     if (field === 'workingDaysRemaining') {
       return <span className="text-sm">{value ?? '—'}</span>;
+    }
+
+    // Number fields for door sets and leaves
+    if (field === 'doorSets' || field === 'leaves') {
+      return (
+        <input
+          type="number"
+          min={0}
+          value={value || ''}
+          placeholder="—"
+          onChange={(e) => updateProject(project.id, { [field]: parseInt(e.target.value) || null })}
+          className="bg-transparent outline-none w-20 text-sm border-b border-dashed border-slate-300 focus:border-blue-500"
+        />
+      );
+    }
+
+    // Textarea for comments/notes
+    if (field === 'paperworkComments' || field === 'deliveryNotes') {
+      return (
+        <textarea
+          className="bg-transparent outline-none w-full text-sm border border-slate-200 rounded px-2 py-1 focus:border-blue-500 resize-none"
+          rows={2}
+          value={value || ''}
+          placeholder="—"
+          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+        />
+      );
     }
 
     // Read-only timestamp
