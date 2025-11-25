@@ -225,7 +225,8 @@ export default function FireDoorQuoteBuilderPage() {
 
   async function handleSaveRfi(rfiData: Partial<RfiRecord>) {
     try {
-      let quoteId = quote.id;
+      // Use URL param ID if available, otherwise use quote.id
+      let quoteId = (params?.id && params.id !== "new") ? params.id as string : quote.id;
       
       // Save quote first if it doesn't have an ID yet
       if (!quoteId) {
