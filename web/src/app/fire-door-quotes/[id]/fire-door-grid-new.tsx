@@ -526,10 +526,18 @@ export function FireDoorGrid({
     const rowIdx = parseInt(rowIndex) - 2; // Subtract header rows
     const colIdx = parseInt(colIndex) - 1;
     
-    if (colIdx < 0 || colIdx >= columns.length) return;
+    // Use visibleColumns (which reflects what's actually displayed) instead of all columns
+    if (colIdx < 0 || colIdx >= visibleColumns.length) return;
     
-    const column = columns[colIdx];
+    const column = visibleColumns[colIdx];
     if (!column || !column.key) return;
+    
+    console.log('Context menu opened for column:', { 
+      colIdx, 
+      columnKey: column.key, 
+      columnName: column.name,
+      totalVisibleColumns: visibleColumns.length 
+    });
     
     // Determine if this is a valid data row or header
     const isDataRow = rowIdx >= 0 && rowIdx < rows.length;
@@ -626,7 +634,7 @@ export function FireDoorGrid({
     };
     
     setTimeout(() => document.addEventListener('click', closeMenu), 0);
-  }, [onAddRfi, rows, columns, setFillDownMode, toggleColumnVisibility]);
+  }, [onAddRfi, rows, visibleColumns, setFillDownMode, toggleColumnVisibility]);
 
   return (
     <div className="space-y-2">
