@@ -19,14 +19,21 @@ router.post("/enable-manufacturer", async (req: any, res: Response) => {
 
     console.log(`Enabling fire door manufacturer flag for tenant ${tenantId}...`);
 
-    // Upsert tenant settings
-    const settings = await prisma.tenantSettings.upsert({
+    // Check if settings exist
+    const existingSettings = await prisma.tenantSettings.findUnique({
       where: { tenantId },
-      create: {
-        tenantId,
-        isFireDoorManufacturer: true,
-      },
-      update: {
+    });
+
+    if (!existingSettings) {
+      return res.status(400).json({ 
+        error: "Tenant settings not found. Please contact support to enable this feature." 
+      });
+    }
+
+    // Update the flag
+    const settings = await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: {
         isFireDoorManufacturer: true,
       },
     });
