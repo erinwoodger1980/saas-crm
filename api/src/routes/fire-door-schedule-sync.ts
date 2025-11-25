@@ -14,7 +14,9 @@ const router = express.Router();
 router.post("/sync-to-opportunities", async (req: any, res: Response) => {
   try {
     const tenantId = req.auth?.tenantId;
-    if (!tenantId) {
+    const userId = req.auth?.id;
+    
+    if (!tenantId || !userId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
@@ -39,7 +41,6 @@ router.post("/sync-to-opportunities", async (req: any, res: Response) => {
                 id: project.projectId,
                 tenantId,
               },
-              include: { lead: true },
             })
           : null;
 
@@ -50,7 +51,7 @@ router.post("/sync-to-opportunities", async (req: any, res: Response) => {
           let lead = await prisma.lead.findFirst({
             where: {
               tenantId,
-              companyName: project.clientName || undefined,
+              contactName: project.clientName || undefined,
             },
           });
 
@@ -59,10 +60,9 @@ router.post("/sync-to-opportunities", async (req: any, res: Response) => {
             lead = await prisma.lead.create({
               data: {
                 tenantId,
-                companyName: project.clientName,
-                name: project.clientName,
-                source: 'Fire Door Schedule Import',
-                createdAt: project.dateReceived || new Date(),
+                createdById: userId,
+                contactName: project.clientName,
+                capturedAt: project.dateReceived || new Date(),
               },
             });
             console.log(`  Created lead for ${project.clientName} (${lead.id})`);
@@ -80,7 +80,7 @@ router.post("/sync-to-opportunities", async (req: any, res: Response) => {
           }
 
           // Create the opportunity
-          opportunity = await prisma.opportunity.create({
+          const newOpportunity = await prisma.opportunity.create({
             data: {
               tenantId,
               leadId: lead.id,
@@ -97,15 +97,15 @@ router.post("/sync-to-opportunities", async (req: any, res: Response) => {
           // Link the fire door project to the opportunity
           await prisma.fireDoorScheduleProject.update({
             where: { id: project.id },
-            data: { projectId: opportunity.id },
+            data: { projectId: newOpportunity.id },
           });
 
-          console.log(`  ✅ Created opportunity ${opportunity.id} for ${project.mjsNumber || project.jobName}`);
+          console.log(`  ✅ Created opportunity ${newOpportunity.id} for ${project.mjsNumber || project.jobName}`);
           created++;
           results.push({
             project: project.mjsNumber || project.jobName,
             status: 'created',
-            opportunityId: opportunity.id,
+            opportunityId: newOpportunity.id,
           });
         } else {
           // Update existing opportunity

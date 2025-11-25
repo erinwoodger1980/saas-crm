@@ -133,13 +133,13 @@ router.post("/", async (req: any, res: Response) => {
     });
 
     // Automatically create a won opportunity if client name exists
-    if (project.clientName) {
+    if (project.clientName && userId) {
       try {
         // Find or create lead
         let lead = await prisma.lead.findFirst({
           where: {
             tenantId,
-            companyName: project.clientName,
+            contactName: project.clientName,
           },
         });
 
@@ -147,10 +147,9 @@ router.post("/", async (req: any, res: Response) => {
           lead = await prisma.lead.create({
             data: {
               tenantId,
-              companyName: project.clientName,
-              name: project.clientName,
-              source: 'Fire Door Schedule',
-              createdAt: project.dateReceived || new Date(),
+              createdById: userId,
+              contactName: project.clientName,
+              capturedAt: project.dateReceived || new Date(),
             },
           });
         }
