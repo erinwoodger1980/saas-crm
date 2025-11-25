@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState, useEffect, useRef } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import DataGrid, { Column, RenderEditCellProps, SelectColumn } from "react-data-grid";
 import "react-data-grid/lib/styles.css";
 import { apiFetch } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Eye, EyeOff } from "lucide-react";
 
 interface FireDoorLineItem {
   id?: string;
@@ -228,6 +230,10 @@ export function FireDoorGrid({
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [doorCores, setDoorCores] = useState<any[]>([]);
   const [ironmongeryItems, setIronmongeryItems] = useState<any[]>([]);
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  const [highlightedColumn, setHighlightedColumn] = useState<string | null>(null);
+  const [fillDownMode, setFillDownMode] = useState<{ columnKey: string; sourceRowIdx: number } | null>(null);
+  const [showColumnManager, setShowColumnManager] = useState(false);
 
   // Sync with parent
   useEffect(() => {
@@ -285,6 +291,17 @@ export function FireDoorGrid({
   const doorsetTypeOptions = ['Single', 'Double', 'Single with sidelight', 'Double with sidelight'];
   const ratingOptions = ['FD30', 'FD60', 'FD90', 'FD120'];
 
+  // Build RFI maps for highlighting (must be before columns definition)
+  const cellRfiMap = useMemo(() => {
+    const map: Record<string, RfiRecord[]> = {};
+    rfis.filter(r => r.rowId).forEach(r => {
+      const key = `${r.rowId}:${r.columnKey}`;
+      map[key] = map[key] || [];
+      map[key].push(r);
+    });
+    return map;
+  }, [rfis]);
+
   // Handle row updates with auto-calculations
   const handleRowsChange = useCallback((newRows: FireDoorLineItem[]) => {
     // Auto-calculate reduced dimensions and line totals
@@ -297,47 +314,28 @@ export function FireDoorGrid({
       }
       
       if (row.slaveWidth !== undefined) {
-        row.slaveWidthReduced = (row.slaveWidth || 0) - (row.top || 0) - (row.btm || 0) 
-          - (row.hinge || 0) - (row.safeHinge || 0) - (row.pf || 0) 
+        row.slaveReduced = (row.slaveWidth || 0) - (row.top || 0) - (row.btm || 0) 
+          - (row.safe || 0) - (row.pf || 0) 
           + (row.trim || 0) + (row.extra || 0);
       }
       
       if (row.doorHeight !== undefined) {
-        row.doorHeightReduced = (row.doorHeight || 0) - (row.top || 0) - (row.btm || 0) 
-          - (row.pf || 0) + (row.trim || 0) + (row.extra || 0);
+        row.heightReduced = (row.doorHeight || 0) - (row.head || 0) - (row.sill || 0);
       }
-
-      // Calculate line total
-      row.lineTotal = (row.quantity || 0) * (row.unitValue || 0);
+      
+      // Calculate line total if all pricing fields exist
+      if (row.doorCost !== undefined && row.frameLabourCost !== undefined && 
+          row.otherCost !== undefined && row.lippingCost !== undefined) {
+        row.lineTotal = (row.doorCost || 0) + (row.frameLabourCost || 0) + 
+                        (row.otherCost || 0) + (row.lippingCost || 0);
+      }
       
       return row;
     });
-
+    
     setRows(updatedRows);
     onLineItemsChange(updatedRows);
   }, [onLineItemsChange]);
-
-  // Build RFI maps for highlighting
-  const cellRfiMap = useMemo(() => {
-    const map: Record<string, RfiRecord[]> = {};
-    rfis.filter(r => r.rowId).forEach(r => {
-      const key = `${r.rowId}:${r.columnKey}`;
-      map[key] = map[key] || [];
-      map[key].push(r);
-    });
-    return map;
-  }, [rfis]);
-
-  // Cell click handler for RFI
-  const handleCellClick = useCallback((args: { row: FireDoorLineItem; column: Column<FireDoorLineItem> }) => {
-    if (!onSelectRfi) return;
-    const rowId = args.row.id || `row-${args.row.rowIndex}`;
-    const cellKey = `${rowId}:${args.column.key}`;
-    const cellRfis = cellRfiMap[cellKey];
-    if (cellRfis && cellRfis.length > 0) {
-      onSelectRfi(cellRfis[0]);
-    }
-  }, [cellRfiMap, onSelectRfi]);
 
   // Column definitions
   const columns = useMemo<Column<FireDoorLineItem>[]>(() => [
@@ -664,6 +662,95 @@ export function FireDoorGrid({
     },
   ], [coreOptions, doorsetTypeOptions, ratingOptions, coreTypeOptions, materialOptions, hingeTypeOptions, lockTypeOptions, handleTypeOptions, cellRfiMap]);
 
+  // Cell click handler for RFI
+  const handleCellClick = useCallback((args: { row: FireDoorLineItem; column: Column<FireDoorLineItem> }) => {
+    if (!onSelectRfi) return;
+    const rowId = args.row.id || `row-${args.row.rowIndex}`;
+    const cellKey = `${rowId}:${args.column.key}`;
+    const cellRfis = cellRfiMap[cellKey];
+    if (cellRfis && cellRfis.length > 0) {
+      onSelectRfi(cellRfis[0]);
+    }
+  }, [cellRfiMap, onSelectRfi]);
+
+  // Filter columns based on hidden columns and add highlighting
+  const visibleColumns = useMemo(
+    () => columns
+      .filter(col => !hiddenColumns.has(col.key as string))
+      .map(col => ({
+        ...col,
+        headerCellClass: highlightedColumn === col.key ? 'bg-blue-100 font-bold' : col.headerCellClass,
+        cellClass: (row: FireDoorLineItem) => {
+          const baseClass = typeof col.cellClass === 'function' ? col.cellClass(row) : col.cellClass || '';
+          const highlightClass = highlightedColumn === col.key ? 'bg-blue-50' : '';
+          return [baseClass, highlightClass].filter(Boolean).join(' ');
+        },
+      })),
+    [columns, hiddenColumns, highlightedColumn]
+  );
+
+  // Handle header click for column highlighting
+  const handleHeaderClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const headerCell = target.closest('[role="columnheader"]');
+    if (!headerCell) return;
+    
+    const colIndex = headerCell.getAttribute('aria-colindex');
+    if (!colIndex) return;
+    
+    const colIdx = parseInt(colIndex) - 1;
+    if (colIdx < 0 || colIdx >= visibleColumns.length) return;
+    
+    const column = visibleColumns[colIdx];
+    if (!column || !column.key) return;
+    
+    setHighlightedColumn(prev => prev === column.key ? null : column.key as string);
+  }, [visibleColumns]);
+
+  // Toggle column visibility
+  const toggleColumnVisibility = useCallback((columnKey: string) => {
+    setHiddenColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(columnKey)) {
+        next.delete(columnKey);
+      } else {
+        next.add(columnKey);
+      }
+      return next;
+    });
+  }, []);
+
+  // Fill down handler
+  const handleFillDown = useCallback(() => {
+    if (!fillDownMode) return;
+    
+    const { columnKey, sourceRowIdx } = fillDownMode;
+    const sourceValue = rows[sourceRowIdx][columnKey as keyof FireDoorLineItem];
+    
+    const updatedRows = rows.map((row, idx) => {
+      if (idx > sourceRowIdx) {
+        return { ...row, [columnKey]: sourceValue };
+      }
+      return row;
+    });
+    
+    handleRowsChange(updatedRows);
+    setFillDownMode(null);
+  }, [fillDownMode, rows, handleRowsChange]);
+
+  // Keyboard handler for fill-down (Cmd+D / Ctrl+D)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+        e.preventDefault();
+        handleFillDown();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleFillDown]);
+
   // Context menu handler for RFI
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     if (!onAddRfi) return;
@@ -723,6 +810,32 @@ export function FireDoorGrid({
       }
     };
     menu.appendChild(columnOption);
+
+    // Option for fill-down (only for data rows)
+    if (isDataRow) {
+      const fillDownOption = document.createElement('button');
+      fillDownOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm rounded whitespace-nowrap border-t border-gray-200 mt-1 pt-2';
+      fillDownOption.textContent = `Fill down "${column.name}"`;
+      fillDownOption.onclick = () => {
+        setFillDownMode({ columnKey: column.key as string, sourceRowIdx: rowIdx });
+        if (document.body.contains(menu)) {
+          document.body.removeChild(menu);
+        }
+      };
+      menu.appendChild(fillDownOption);
+    }
+
+    // Option for hiding column
+    const hideColumnOption = document.createElement('button');
+    hideColumnOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm rounded whitespace-nowrap border-t border-gray-200 mt-1 pt-2';
+    hideColumnOption.textContent = `Hide column "${column.name}"`;
+    hideColumnOption.onclick = () => {
+      toggleColumnVisibility(column.key as string);
+      if (document.body.contains(menu)) {
+        document.body.removeChild(menu);
+      }
+    };
+    menu.appendChild(hideColumnOption);
     
     document.body.appendChild(menu);
     
@@ -736,24 +849,79 @@ export function FireDoorGrid({
     };
     
     setTimeout(() => document.addEventListener('click', closeMenu), 0);
-  }, [onAddRfi, rows, columns]);
+  }, [onAddRfi, rows, columns, setFillDownMode, toggleColumnVisibility]);
 
   return (
-    <div className="h-[600px] w-full" onContextMenu={handleContextMenu}>
-      <DataGrid
-        columns={columns}
-        rows={rows}
-        onRowsChange={handleRowsChange}
-        rowKeyGetter={(row: FireDoorLineItem) => row.id || `row-${row.rowIndex}`}
-        selectedRows={selectedRows}
-        onSelectedRowsChange={setSelectedRows}
-        onCellClick={handleCellClick}
-        className="rdg-light fill-grid"
-        style={{ height: '100%' }}
-        enableVirtualization
-        rowHeight={35}
-        headerRowHeight={40}
-      />
+    <div className="space-y-2">
+      {/* Column Management Toolbar */}
+      <div className="flex items-center gap-2 pb-2 border-b">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowColumnManager(!showColumnManager)}
+          className="flex items-center gap-2"
+        >
+          <Eye className="h-4 w-4" />
+          Manage Columns
+        </Button>
+        {fillDownMode && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-blue-600 font-medium">
+              Fill-down mode active for column "{fillDownMode.columnKey}"
+            </span>
+            <Button
+              size="sm"
+              onClick={handleFillDown}
+            >
+              Apply Fill Down
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFillDownMode(null)}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Column Visibility Manager */}
+      {showColumnManager && (
+        <div className="bg-white border rounded-lg p-4 max-h-[300px] overflow-y-auto">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {columns.filter(col => col.key !== 'select-row' && col.key !== 'rowIndex').map(col => (
+              <label key={col.key} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                <input
+                  type="checkbox"
+                  checked={!hiddenColumns.has(col.key as string)}
+                  onChange={() => toggleColumnVisibility(col.key as string)}
+                  className="rounded"
+                />
+                <span className="text-sm">{col.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Grid Container */}
+      <div className="h-[600px] w-full" onContextMenu={handleContextMenu} onClick={handleHeaderClick}>
+        <DataGrid
+          columns={visibleColumns}
+          rows={rows}
+          onRowsChange={handleRowsChange}
+          rowKeyGetter={(row: FireDoorLineItem) => row.id || `row-${row.rowIndex}`}
+          selectedRows={selectedRows}
+          onSelectedRowsChange={setSelectedRows}
+          onCellClick={handleCellClick}
+          className="rdg-light fill-grid"
+          style={{ height: '100%' }}
+          enableVirtualization
+          rowHeight={35}
+          headerRowHeight={40}
+        />
+      </div>
       
       <style jsx global>{`
         .rdg {
