@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState, useEffect } from "react";
-import { DataGrid, Column, RenderEditCellProps, SelectColumn } from "react-data-grid";
+import DataGrid, { Column, RenderEditCellProps, SelectColumn } from "react-data-grid";
 import "react-data-grid/lib/styles.css";
 import { apiFetch } from "@/lib/api";
 
