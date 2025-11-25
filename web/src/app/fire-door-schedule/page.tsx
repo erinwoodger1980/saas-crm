@@ -98,6 +98,14 @@ export default function FireDoorSchedulePage() {
     try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
   }, [sortField, sortDir]);
 
+  // Initialize selectedLocations when component mounts (exclude COMPLETE & DELIVERED by default)
+  useEffect(() => {
+    if (selectedLocations.length === 0) {
+      const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
+      setSelectedLocations(defaultLocations);
+    }
+  }, []);
+
   async function loadData() {
     setLoading(true);
     try {
@@ -509,15 +517,6 @@ export default function FireDoorSchedulePage() {
     "NO JOB ASSIGNED",
     "JOB IN DISPUTE/ISSUES",
     "CANCELLED",
-
-    // Initialize selectedLocations when component mounts (exclude COMPLETE & DELIVERED)
-    useEffect(() => {
-      if (selectedLocations.length === 0) {
-        const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
-        setSelectedLocations(defaultLocations);
-      }
-    }, []);
-
   ]);
   const [signOffOptions, setSignOffOptions] = useState<string[]>([
     "AWAITING SCHEDULE",
