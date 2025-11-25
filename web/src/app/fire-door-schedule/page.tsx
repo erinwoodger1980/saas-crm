@@ -22,9 +22,9 @@ interface FireDoorProject {
   jobLocation?: string;
   signOffStatus?: string;
   scheduledBy?: string; // LAJ Scheduler
-  dateSignedOff?: string;
+  signOffDate?: string; // Backend field name
   leadTimeWeeks?: number;
-  approxWorkingDaysRemaining?: number;
+  workingDaysRemaining?: number; // Backend field name
   orderingStatus?: string;
   overallProgress?: number;
   approxDeliveryDate?: string;
@@ -200,9 +200,9 @@ export default function FireDoorSchedulePage() {
         'jobLocation',
         'signOffStatus',
         'scheduledBy',
-        'dateSignedOff',
+        'signOffDate',
         'leadTimeWeeks',
-        'approxWorkingDaysRemaining',
+        'workingDaysRemaining',
       ]
     },
     DESIGN_SIGN_OFF: {
@@ -239,10 +239,10 @@ export default function FireDoorSchedulePage() {
     overallProgress: 'Progress',
     signOffStatus: 'Sign Off Status',
     scheduledBy: 'LAJ Scheduler',
-    dateSignedOff: 'Date Signed Off',
+    signOffDate: 'Date Signed Off',
     leadTimeWeeks: 'Lead Time in Weeks',
     approxDeliveryDate: 'Approx Delivery',
-    approxWorkingDaysRemaining: 'Approx Working Days Remaining',
+    workingDaysRemaining: 'Approx Working Days Remaining',
     orderingStatus: 'Ordering',
     blanksStatus: 'Blanks',
     lippingsStatus: 'Lippings',
@@ -310,13 +310,13 @@ export default function FireDoorSchedulePage() {
     const value = project[field];
 
     // Date fields
-    if (field === 'dateSignedOff') {
+    if (field === 'signOffDate') {
       return (
         <input
           type="date"
           className="bg-transparent outline-none text-sm"
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
-          onChange={(e) => updateProject(project.id, { dateSignedOff: e.target.value })}
+          onChange={(e) => updateProject(project.id, { signOffDate: e.target.value })}
         />
       );
     }
@@ -331,7 +331,7 @@ export default function FireDoorSchedulePage() {
             const newDate = e.target.value;
             const leadWeeks = project.leadTimeWeeks || 0;
             let approxDeliveryDate: string | undefined = project.approxDeliveryDate;
-            let approxWorkingDaysRemaining: number | undefined = project.approxWorkingDaysRemaining;
+            let workingDaysRemaining: number | undefined = project.workingDaysRemaining;
             if (newDate && leadWeeks > 0) {
               const base = new Date(newDate);
               base.setDate(base.getDate() + leadWeeks * 7);
@@ -341,9 +341,9 @@ export default function FireDoorSchedulePage() {
               const diffDays = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
               const fullWeeks = Math.floor(diffDays / 7);
               const remainder = diffDays % 7;
-              approxWorkingDaysRemaining = fullWeeks * 5 + Math.min(5, remainder);
+              workingDaysRemaining = fullWeeks * 5 + Math.min(5, remainder);
             }
-            updateProject(project.id, { dateReceived: newDate, approxDeliveryDate, approxWorkingDaysRemaining });
+            updateProject(project.id, { dateReceived: newDate, approxDeliveryDate, workingDaysRemaining });
           }}
         />
       );
@@ -461,7 +461,7 @@ export default function FireDoorSchedulePage() {
           onChange={(e) => {
             const newWeeks = parseInt(e.target.value) || 0;
             let approxDeliveryDate: string | undefined = project.approxDeliveryDate;
-            let approxWorkingDaysRemaining: number | undefined = project.approxWorkingDaysRemaining;
+            let workingDaysRemaining: number | undefined = project.workingDaysRemaining;
             if (project.dateReceived && newWeeks > 0) {
               const base = new Date(project.dateReceived);
               base.setDate(base.getDate() + newWeeks * 7);
@@ -471,16 +471,16 @@ export default function FireDoorSchedulePage() {
               const diffDays = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
               const fullWeeks = Math.floor(diffDays / 7);
               const remainder = diffDays % 7;
-              approxWorkingDaysRemaining = fullWeeks * 5 + Math.min(5, remainder);
+              workingDaysRemaining = fullWeeks * 5 + Math.min(5, remainder);
             }
-            updateProject(project.id, { leadTimeWeeks: newWeeks || null, approxDeliveryDate, approxWorkingDaysRemaining });
+            updateProject(project.id, { leadTimeWeeks: newWeeks || null, approxDeliveryDate, workingDaysRemaining });
           }}
           className="bg-transparent outline-none w-20 text-sm border-b border-dashed border-slate-300 focus:border-blue-500"
         />
       );
     }
 
-    if (field === 'approxWorkingDaysRemaining') {
+    if (field === 'workingDaysRemaining') {
       return <span className="text-sm">{value ?? '—'}</span>;
     }
 
