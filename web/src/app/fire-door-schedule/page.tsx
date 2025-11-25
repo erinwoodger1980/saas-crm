@@ -16,14 +16,18 @@ interface FireDoorProject {
   mjsNumber?: string;
   jobName?: string;
   clientName?: string;
-  dateReceived?: string;
+  dateReceived?: string; // Date Received in Red Folder
   dateRequired?: string;
   poNumber?: string;
   jobLocation?: string;
   signOffStatus?: string;
-  scheduledBy?: string;
+  scheduledBy?: string; // LAJ Scheduler
+  dateSignedOff?: string;
+  leadTimeWeeks?: number;
+  approxWorkingDaysRemaining?: number;
   orderingStatus?: string;
   overallProgress?: number;
+  approxDeliveryDate?: string;
   [key: string]: any;
 }
 
@@ -166,7 +170,18 @@ export default function FireDoorSchedulePage() {
   const TAB_DEFINITIONS = {
     PROJECT_OVERVIEW: {
       label: 'Project Overview',
-      columns: ['mjsNumber', 'jobName', 'clientName', 'poNumber', 'dateReceived', 'dateRequired', 'jobLocation', 'overallProgress']
+      columns: [
+        'mjsNumber',
+        'clientName',
+        'jobName',
+        'dateReceived',
+        'jobLocation',
+        'signOffStatus',
+        'scheduledBy',
+        'dateSignedOff',
+        'leadTimeWeeks',
+        'approxWorkingDaysRemaining',
+      ]
     },
     DESIGN_SIGN_OFF: {
       label: 'Design & Sign Off',
@@ -192,19 +207,20 @@ export default function FireDoorSchedulePage() {
 
   // Column field labels
   const COLUMN_LABELS: Record<string, string> = {
-    mjsNumber: 'MJS#',
-    jobName: 'Job Name',
-    clientName: 'Client',
+    mjsNumber: 'MJS',
+    jobName: 'Job Description',
+    clientName: 'Customer',
     poNumber: 'PO',
-    dateReceived: 'Received',
+    dateReceived: 'Date Received in Red Folder',
     dateRequired: 'Required',
-    jobLocation: 'Location',
+    jobLocation: 'Job Location',
     overallProgress: 'Progress',
-    signOffStatus: 'Sign Off',
-    scheduledBy: 'Scheduled By',
-    signOffDate: 'Signed Off',
-    leadTimeWeeks: 'Lead Time (wks)',
+    signOffStatus: 'Sign Off Status',
+    scheduledBy: 'LAJ Scheduler',
+    dateSignedOff: 'Date Signed Off',
+    leadTimeWeeks: 'Lead Time in Weeks',
     approxDeliveryDate: 'Approx Delivery',
+    approxWorkingDaysRemaining: 'Approx Working Days Remaining',
     orderingStatus: 'Ordering',
     blanksStatus: 'Blanks',
     lippingsStatus: 'Lippings',
@@ -245,8 +261,25 @@ export default function FireDoorSchedulePage() {
     }
   }
 
-  const jobLocationOptions = ["RED FOLDER", "IN PROGRESS", "COMPLETE"];
-  const signOffOptions = ["NOT LOOKED AT", "AWAITING SCHEDULE", "WORKING ON SCHEDULE", "SCHEDULE SENT FOR SIGN OFF", "SCHEDULE SIGNED OFF"];
+  const jobLocationOptions = [
+    "ASSIGNED MJS",
+    "RED FOLDER",
+    "IN PROGRESS",
+    "COMPLETE IN FACTORY",
+    "COMPLETE & DELIVERED",
+    "N/A",
+    "NOT LOOKED AT",
+    "NO JOB ASSIGNED",
+    "JOB IN DISPUTE/ISSUES",
+    "CANCELLED",
+  ];
+  const signOffOptions = [
+    "AWAITING SCHEDULE",
+    "WORKING ON SCHEDULE",
+    "SCHEDULE SENT FOR SIGN OFF",
+    "SCHEDULE SIGNED OFF",
+    "NOT LOOKED AT",
+  ];
   const orderingOptions = ["NOT IN BOM", "IN BOM TBC", "IN BOM", "STOCK", "ORDERED", "RECEIVED", "ORDERED CALL OFF", "MAKE IN HOUSE", "N/A"];
   const statusOptions = ["STOCK", "ORDERED", "RECEIVED", "N/A", "URGENT"];
 
@@ -255,6 +288,45 @@ export default function FireDoorSchedulePage() {
     const value = project[field];
 
     // Date fields
+    if (field === 'dateSignedOff') {
+      return (
+        <input
+          type="date"
+          className="bg-transparent outline-none text-sm"
+          value={value ? new Date(value).toISOString().slice(0, 10) : ''}
+          onChange={(e) => updateProject(project.id, { dateSignedOff: e.target.value })}
+        />
+      );
+    }
+
+    if (field === 'dateReceived') {
+      return (
+        <input
+          type="date"
+          className="bg-transparent outline-none text-sm"
+          value={value ? new Date(value).toISOString().slice(0, 10) : ''}
+          onChange={(e) => {
+            const newDate = e.target.value;
+            const leadWeeks = project.leadTimeWeeks || 0;
+            let approxDeliveryDate: string | undefined = project.approxDeliveryDate;
+            let approxWorkingDaysRemaining: number | undefined = project.approxWorkingDaysRemaining;
+            if (newDate && leadWeeks > 0) {
+              const base = new Date(newDate);
+              base.setDate(base.getDate() + leadWeeks * 7);
+              approxDeliveryDate = base.toISOString();
+              const today = new Date();
+              const diffMs = base.getTime() - today.getTime();
+              const diffDays = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+              const fullWeeks = Math.floor(diffDays / 7);
+              const remainder = diffDays % 7;
+              approxWorkingDaysRemaining = fullWeeks * 5 + Math.min(5, remainder);
+            }
+            updateProject(project.id, { dateReceived: newDate, approxDeliveryDate, approxWorkingDaysRemaining });
+          }}
+        />
+      );
+    }
+
     if (field.includes('date') || field.includes('Date')) {
       return (
         <input
@@ -362,10 +434,30 @@ export default function FireDoorSchedulePage() {
           min={0}
           value={value || ''}
           placeholder="—"
-          onChange={(e) => updateProject(project.id, { [field]: parseInt(e.target.value) || null })}
+          onChange={(e) => {
+            const newWeeks = parseInt(e.target.value) || 0;
+            let approxDeliveryDate: string | undefined = project.approxDeliveryDate;
+            let approxWorkingDaysRemaining: number | undefined = project.approxWorkingDaysRemaining;
+            if (project.dateReceived && newWeeks > 0) {
+              const base = new Date(project.dateReceived);
+              base.setDate(base.getDate() + newWeeks * 7);
+              approxDeliveryDate = base.toISOString();
+              const today = new Date();
+              const diffMs = base.getTime() - today.getTime();
+              const diffDays = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+              const fullWeeks = Math.floor(diffDays / 7);
+              const remainder = diffDays % 7;
+              approxWorkingDaysRemaining = fullWeeks * 5 + Math.min(5, remainder);
+            }
+            updateProject(project.id, { leadTimeWeeks: newWeeks || null, approxDeliveryDate, approxWorkingDaysRemaining });
+          }}
           className="bg-transparent outline-none w-20 text-sm border-b border-dashed border-slate-300 focus:border-blue-500"
         />
       );
+    }
+
+    if (field === 'approxWorkingDaysRemaining') {
+      return <span className="text-sm">{value ?? '—'}</span>;
     }
 
     // Read-only timestamp
