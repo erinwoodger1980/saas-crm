@@ -117,9 +117,11 @@ export default function FireDoorQuoteBuilderPage() {
 
   async function loadRfis(projectId: string) {
     try {
-      const data = await apiFetch<RfiRecord[]>(`/rfis?projectId=${projectId}`);
-      // Ensure data is always an array
-      setRfis(Array.isArray(data) ? data : []);
+      const data = await apiFetch<{ ok: boolean; items: RfiRecord[] }>(`/rfis?projectId=${projectId}`);
+      // Extract items from response
+      const items = data?.items || [];
+      console.log(`Loaded ${items.length} RFIs for project ${projectId}`);
+      setRfis(Array.isArray(items) ? items : []);
     } catch (error) {
       console.error("Error loading RFIs:", error);
       setRfis([]); // Reset to empty array on error
@@ -211,8 +213,9 @@ export default function FireDoorQuoteBuilderPage() {
     });
   }
 
-  function handleAddRfi(rowId: string | null, columnKey: string) {
-    setRfiContext({ rowId, columnKey });
+  function handleAddRfi(rowId: string | null, columnKey: string, columnName?: string) {
+    console.log('Adding RFI:', { rowId, columnKey, columnName });
+    setRfiContext({ rowId, columnKey, columnName });
     setCurrentRfi(null);
     setRfiMode("create");
     setRfiDialogOpen(true);

@@ -188,7 +188,7 @@ interface FireDoorGridProps {
   lineItems: FireDoorLineItem[];
   onLineItemsChange: (items: FireDoorLineItem[]) => void;
   rfis?: RfiRecord[];
-  onAddRfi?: (rowId: string | null, columnKey: string) => void;
+  onAddRfi?: (rowId: string | null, columnKey: string, columnName?: string) => void;
   onSelectRfi?: (rfi: RfiRecord) => void;
 }
 
@@ -408,11 +408,13 @@ export function FireDoorGrid({
           const highlightClass = highlightedColumn === col.key ? 'bg-blue-50' : '';
           
           // Check if this cell has an RFI
-          const hasRfi = rfis.some(rfi => 
-            rfi.columnKey === col.key && 
-            (rfi.rowId === null || rfi.rowId === row.id?.toString() || rfi.rowId === row.rowIndex?.toString()) &&
-            rfi.status !== 'closed'
-          );
+          const rowId = row.id || `row-${row.rowIndex}`;
+          const hasRfi = rfis.some(rfi => {
+            const columnMatch = rfi.columnKey === col.key;
+            const rowMatch = rfi.rowId === null || rfi.rowId === rowId || rfi.rowId === row.id?.toString() || rfi.rowId === row.rowIndex?.toString();
+            const notClosed = rfi.status !== 'closed';
+            return columnMatch && rowMatch && notClosed;
+          });
           const rfiClass = hasRfi ? 'bg-yellow-100 border-2 border-yellow-400 rfi-cell' : '';
           
           return [baseClass, highlightClass, rfiClass].filter(Boolean).join(' ');
@@ -422,11 +424,13 @@ export function FireDoorGrid({
           const value = row[column.key as keyof FireDoorLineItem];
           
           // Check if this cell has an RFI
-          const hasRfi = rfis.some(rfi => 
-            rfi.columnKey === column.key && 
-            (rfi.rowId === null || rfi.rowId === row.id?.toString() || rfi.rowId === row.rowIndex?.toString()) &&
-            rfi.status !== 'closed'
-          );
+          const rowId = row.id || `row-${row.rowIndex}`;
+          const hasRfi = rfis.some(rfi => {
+            const columnMatch = rfi.columnKey === column.key;
+            const rowMatch = rfi.rowId === null || rfi.rowId === rowId || rfi.rowId === row.id?.toString() || rfi.rowId === row.rowIndex?.toString();
+            const notClosed = rfi.status !== 'closed';
+            return columnMatch && rowMatch && notClosed;
+          });
           
           return (
             <div className="flex items-center justify-between w-full" title={hasRfi ? "Click to view RFI" : undefined}>
@@ -564,7 +568,7 @@ export function FireDoorGrid({
       cellOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm rounded whitespace-nowrap';
       cellOption.textContent = 'Add RFI for this cell';
       cellOption.onclick = () => {
-        onAddRfi(rowId, column.key as string);
+        onAddRfi(rowId, column.key as string, column.name as string);
         if (document.body.contains(menu)) {
           document.body.removeChild(menu);
         }
@@ -577,7 +581,7 @@ export function FireDoorGrid({
     columnOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm rounded whitespace-nowrap';
     columnOption.textContent = `Add RFI for column "${column.name}"`;
     columnOption.onclick = () => {
-      onAddRfi(null, column.key as string);
+      onAddRfi(null, column.key as string, column.name as string);
       if (document.body.contains(menu)) {
         document.body.removeChild(menu);
       }
