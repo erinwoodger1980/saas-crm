@@ -104,6 +104,7 @@ import mlTrainingRouter from "./routes/ml-training";
 import examplePhotosRouter from "./routes/example-photos";
 import fireDoorsRouter from "./routes/fire-doors";
 import fireDoorScheduleRouter from "./routes/fire-door-schedule";
+import fireDoorScheduleSyncRouter from "./routes/fire-door-schedule-sync";
 import fireDoorProductionRouter from "./routes/fire-door-production";
 import fireDoorQuotesRouter from "./routes/fire-door-quotes";
 import publicFireDoorsRouter from "./routes/public-fire-doors";
@@ -647,6 +648,7 @@ app.use("/example-photos", examplePhotosRouter);
 app.use("/fire-doors", requireAuth, fireDoorsRouter);
 // Fire door schedule (unified project tracking for fire door manufacturers)
 app.use("/fire-door-schedule", requireAuth, fireDoorScheduleRouter);
+app.use("/fire-door-schedule", requireAuth, fireDoorScheduleSyncRouter);
 app.use("/fire-door-production", requireAuth, fireDoorProductionRouter);
 // Fire door quotes (dedicated quote builder for fire doors)
 app.use("/fire-door-quotes", requireAuth, fireDoorQuotesRouter);
