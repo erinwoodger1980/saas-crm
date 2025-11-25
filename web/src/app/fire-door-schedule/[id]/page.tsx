@@ -491,27 +491,8 @@ export default function FireDoorScheduleDetailPage() {
             </div>
             <h2 className="text-xl font-bold text-slate-800">BOM & Materials</h2>
           </div>
-          
-          <div className="mb-4">
-            <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Ordering Status</label>
-            <Select value={project.orderingStatus || ""} onValueChange={(v) => updateField("orderingStatus", v)}>
-              <SelectTrigger className="h-9 max-w-md">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="NOT IN BOM">❌ Not in BOM</SelectItem>
-                <SelectItem value="IN BOM TBC">⚠️ In BOM TBC</SelectItem>
-                <SelectItem value="IN BOM">📋 In BOM</SelectItem>
-                <SelectItem value="STOCK">📦 Stock</SelectItem>
-                <SelectItem value="ORDERED">🛒 Ordered</SelectItem>
-                <SelectItem value="RECEIVED">✅ Received</SelectItem>
-                <SelectItem value="ORDERED CALL OFF">📞 Call Off</SelectItem>
-                <SelectItem value="MAKE IN HOUSE">🏭 Make In House</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
-          <div className="grid grid-cols-4 gap-4 mt-6">
+          <div className="grid grid-cols-1 gap-6">
             {[
               { key: "blanks", label: "Blanks", icon: "🪵" },
               { key: "lippings", label: "Lippings", icon: "📏" },
@@ -524,27 +505,121 @@ export default function FireDoorScheduleDetailPage() {
               <div key={key} className="p-4 bg-gradient-to-br from-white to-slate-50 rounded-xl border border-slate-200 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-xl">{icon}</span>
-                  <h3 className="font-semibold text-sm text-slate-700">{label}</h3>
+                  <h3 className="font-semibold text-base text-slate-700">{label}</h3>
                 </div>
-                <EditableCell
-                  value={project[`${key}Status`]}
-                  onChange={(v) => updateField(`${key}Status`, v)}
-                  placeholder="Status"
-                  className="mb-2 text-xs"
-                />
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id={`${key}Checked`}
-                    checked={project[`${key}Checked`] || false}
-                    onCheckedChange={(checked) => updateField(`${key}Checked`, checked)}
-                    className="border-slate-300"
-                  />
-                  <label htmlFor={`${key}Checked`} className="text-xs text-slate-600 cursor-pointer">
-                    BOM Checked
-                  </label>
+                <div className="grid grid-cols-5 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Status</label>
+                    <Select value={project[`${key}Status`] || ""} onValueChange={(v) => updateField(`${key}Status`, v)}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="--" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Not in BOM">Not in BOM</SelectItem>
+                        <SelectItem value="In BOM TBC">In BOM TBC</SelectItem>
+                        <SelectItem value="Ordered Call Off">Ordered Call Off</SelectItem>
+                        <SelectItem value="In BOM">In BOM</SelectItem>
+                        <SelectItem value="Stock">Stock</SelectItem>
+                        <SelectItem value="Ordered">Ordered</SelectItem>
+                        <SelectItem value="N/A">N/A</SelectItem>
+                        <SelectItem value="Received">Received</SelectItem>
+                        {key === "ironmongery" && (
+                          <>
+                            <SelectItem value="Received from TBS">Received from TBS</SelectItem>
+                            <SelectItem value="Received from Customer">Received from Customer</SelectItem>
+                          </>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Date Ordered</label>
+                    <EditableCell
+                      type="date"
+                      value={project[`${key}DateOrdered`]}
+                      onChange={(v) => updateField(`${key}DateOrdered`, v)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Date Expected</label>
+                    <EditableCell
+                      type="date"
+                      value={project[`${key}DateExpected`]}
+                      onChange={(v) => updateField(`${key}DateExpected`, v)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Date Received</label>
+                    <EditableCell
+                      type="date"
+                      value={project[`${key}DateReceived`]}
+                      onChange={(v) => updateField(`${key}DateReceived`, v)}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <div className="flex items-center gap-2 h-9">
+                      <Checkbox
+                        id={`${key}Checked`}
+                        checked={project[`${key}Checked`] || false}
+                        onCheckedChange={(checked) => updateField(`${key}Checked`, checked)}
+                        className="border-slate-300"
+                      />
+                      <label htmlFor={`${key}Checked`} className="text-xs text-slate-600 cursor-pointer">
+                        Checked
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Paperwork Section */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+              <FileCheck className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">Paperwork</h2>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { key: "doorPaperworkStatus", label: "Door Paperwork", icon: "🚪" },
+              { key: "finalCncSheetStatus", label: "Final CNC Sheet", icon: "🤖" },
+              { key: "finalChecksSheetStatus", label: "Final Checks Sheet", icon: "✅" },
+              { key: "deliveryChecklistStatus", label: "Delivery Checklist", icon: "📋" },
+              { key: "framesPaperworkStatus", label: "Frames Paperwork", icon: "🖼️" },
+            ].map(({ key, label, icon }) => (
+              <div key={key}>
+                <label className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5 block">
+                  <span>{icon}</span>
+                  {label}
+                </label>
+                <Select value={project[key] || ""} onValueChange={(v) => updateField(key, v)}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="--" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Not Started">Not Started</SelectItem>
+                    <SelectItem value="Part Complete">Part Complete</SelectItem>
+                    <SelectItem value="Printed in Office">Printed in Office</SelectItem>
+                    <SelectItem value="In Factory">In Factory</SelectItem>
+                    <SelectItem value="N/A">N/A</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+            <div className="col-span-3">
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">📝 Paperwork Comments</label>
+              <EditableCell
+                type="textarea"
+                value={project.paperworkComments}
+                onChange={(v) => updateField("paperworkComments", v)}
+                placeholder="Additional notes..."
+              />
+            </div>
           </div>
         </div>
 
@@ -595,22 +670,50 @@ export default function FireDoorScheduleDetailPage() {
           </div>
         </div>
 
-        {/* Delivery & Installation Section */}
+        {/* Production Details Section */}
         <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
           <div className="flex items-center gap-2 mb-6">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
               <Truck className="w-5 h-5 text-white" />
             </div>
-            <h2 className="text-xl font-bold text-slate-800">Delivery & Installation</h2>
+            <h2 className="text-xl font-bold text-slate-800">Production Details</h2>
           </div>
           
           <div className="grid grid-cols-4 gap-4">
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Transport Status</label>
+              <Select value={project.transportStatus || ""} onValueChange={(v) => updateField("transportStatus", v)}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="--" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TBC">TBC</SelectItem>
+                  <SelectItem value="By Customer">By Customer</SelectItem>
+                  <SelectItem value="By LAJ">By LAJ</SelectItem>
+                  <SelectItem value="Collect">Collect</SelectItem>
+                  <SelectItem value="Not Booked">Not Booked</SelectItem>
+                  <SelectItem value="Booked">Booked</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Door Sets</label>
               <EditableCell
-                value={project.transportStatus}
-                onChange={(v) => updateField("transportStatus", v)}
-                placeholder="e.g. Booked"
+                type="number"
+                value={project.doorSets}
+                onChange={(v) => updateField("doorSets", v ? parseInt(v) : null)}
+                placeholder="0"
+                min={0}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Leaves</label>
+              <EditableCell
+                type="number"
+                value={project.leaves}
+                onChange={(v) => updateField("leaves", v ? parseInt(v) : null)}
+                placeholder="0"
+                min={0}
               />
             </div>
             <div>
@@ -621,6 +724,28 @@ export default function FireDoorScheduleDetailPage() {
                 onChange={(v) => updateField("deliveryDate", v)}
               />
             </div>
+            <div className="col-span-4">
+              <label className="text-xs font-semibold text-slate-600 mb-1.5 block">🚚 Delivery Notes</label>
+              <EditableCell
+                type="textarea"
+                value={project.deliveryNotes}
+                onChange={(v) => updateField("deliveryNotes", v)}
+                placeholder="Delivery instructions and notes..."
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Delivery & Installation Section */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+              <Wrench className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">Installation & Snagging</h2>
+          </div>
+          
+          <div className="grid grid-cols-4 gap-4">
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Install Start</label>
               <EditableCell
@@ -645,8 +770,8 @@ export default function FireDoorScheduleDetailPage() {
                 placeholder="e.g. In Progress"
               />
             </div>
-            <div className="col-span-2 flex items-end">
-              <div className="flex items-center gap-2 h-9">
+            <div className="col-span-4 flex items-center">
+              <div className="flex items-center gap-2">
                 <Checkbox
                   id="snaggingComplete"
                   checked={project.snaggingComplete || false}

@@ -973,17 +973,24 @@ export default function FireDoorSchedulePage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
-                    <th className="px-4 py-3 text-left">
+                    <th className={`px-4 py-3 text-left ${activeTab === 'ALL' ? 'sticky left-0 bg-gradient-to-r from-slate-100 to-slate-50 z-10' : ''}`}>
                       <span className="text-xs uppercase tracking-wider">Actions</span>
                     </th>
-                    {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => (
+                    {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
+                      const isSticky = activeTab === 'ALL' && index < 3; // Freeze first 3 columns (mjsNumber, clientName, jobName) in ALL tab
+                      return (
                       <th
                         key={field}
-                        className="px-4 py-3 text-left group"
+                        className={`px-4 py-3 text-left group ${isSticky ? 'sticky bg-gradient-to-r from-slate-100 to-slate-50 z-10' : ''}`}
+                        style={isSticky ? { left: index === 0 ? '80px' : index === 1 ? '180px' : '350px' } : undefined}
                       >
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1 text-left"
+                          className={`inline-flex items-center gap-1 text-left ${
+                            (field === 'jobLocation' || field === 'signOffStatus') 
+                              ? 'px-3 py-1.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 font-semibold shadow-sm transition-colors' 
+                              : 'hover:text-blue-600'
+                          }`}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (field === 'jobLocation' || field === 'signOffStatus') {
@@ -994,6 +1001,7 @@ export default function FireDoorSchedulePage() {
                           }}
                         >
                           {COLUMN_LABELS[field] || field}
+                          {(field === 'jobLocation' || field === 'signOffStatus') && <Filter className="w-3 h-3 ml-1" />}
                           {sortField === field ? (
                             sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
                           ) : (
@@ -1001,7 +1009,7 @@ export default function FireDoorSchedulePage() {
                           )}
                         </button>
                       </th>
-                    ))}
+                    )})}
                   </tr>
                 </thead>
                 <tbody>
@@ -1010,7 +1018,7 @@ export default function FireDoorSchedulePage() {
                       key={project.id}
                       className="group hover:bg-blue-50/40 transition-colors"
                     >
-                      <td className="px-4 py-3">
+                      <td className={`px-4 py-3 ${activeTab === 'ALL' ? 'sticky left-0 bg-white z-10' : ''}`}>
                         <Button
                           variant="outline"
                           size="sm"
@@ -1024,17 +1032,20 @@ export default function FireDoorSchedulePage() {
                           View Order
                         </Button>
                       </td>
-                      {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => (
+                      {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
+                        const isSticky = activeTab === 'ALL' && index < 3;
+                        return (
                         <td
                           key={field}
-                          className="px-4 py-3 text-slate-600 cursor-pointer"
+                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isSticky ? 'sticky bg-white z-10' : ''}`}
+                          style={isSticky ? { left: index === 0 ? '80px' : index === 1 ? '180px' : '350px' } : undefined}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
                           <div onClick={(e) => e.stopPropagation()}>
                             {renderCell(project, field)}
                           </div>
                         </td>
-                      ))}
+                      )})}
                     </tr>
                   ))}
                 </tbody>
