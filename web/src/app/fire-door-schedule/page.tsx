@@ -1029,7 +1029,7 @@ export default function FireDoorSchedulePage() {
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Total Projects */}
-            <div onClick={() => setLocationFilter('ALL')} className="group backdrop-blur-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-blue-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            <div onClick={() => setSelectedLocations(jobLocationOptions)} className="group backdrop-blur-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-blue-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">Total Projects</p>
@@ -1046,7 +1046,7 @@ export default function FireDoorSchedulePage() {
             </div>
 
             {/* Red Folder */}
-            <div onClick={() => setLocationFilter('RED FOLDER')} className="group backdrop-blur-xl bg-gradient-to-br from-orange-500/10 via-red-500/10 to-orange-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            <div onClick={() => setSelectedLocations(['RED FOLDER'])} className="group backdrop-blur-xl bg-gradient-to-br from-orange-500/10 via-red-500/10 to-orange-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">Red Folder</p>
@@ -1063,7 +1063,7 @@ export default function FireDoorSchedulePage() {
             </div>
 
             {/* In Progress */}
-            <div onClick={() => setLocationFilter('IN PROGRESS')} className="group backdrop-blur-xl bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-cyan-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            <div onClick={() => setSelectedLocations(['IN PROGRESS'])} className="group backdrop-blur-xl bg-gradient-to-br from-cyan-500/10 via-blue-500/10 to-cyan-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">In Progress</p>
@@ -1080,7 +1080,7 @@ export default function FireDoorSchedulePage() {
             </div>
 
             {/* Complete */}
-            <div onClick={() => setLocationFilter('COMPLETE')} className="group backdrop-blur-xl bg-gradient-to-br from-green-500/10 via-emerald-500/10 to-green-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
+            <div onClick={() => setSelectedLocations(['COMPLETE IN FACTORY', 'COMPLETE & DELIVERED'])} className="group backdrop-blur-xl bg-gradient-to-br from-green-500/10 via-emerald-500/10 to-green-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-600 mb-1">Complete</p>
@@ -1325,7 +1325,7 @@ export default function FireDoorSchedulePage() {
             </div>
           )}
           <div className="mt-2 text-xs text-slate-500 flex flex-wrap gap-4">
-            <span>Location Filter: <strong>{locationFilter}</strong></span>
+            <span>Location Filter: <strong>{selectedLocations.length === 0 ? 'None' : selectedLocations.length === jobLocationOptions.length ? 'All' : selectedLocations.join(', ')}</strong></span>
             <span>Active Tab: <strong>{TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS]?.label || activeTab}</strong></span>
           </div>
         </div>
