@@ -74,11 +74,29 @@ export default function FireDoorSchedulePage() {
       const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
       if (savedView) setShowTable(savedView === "table");
       if (savedActiveTab) setActiveTab(savedActiveTab);
+      
+      // Initialize selectedLocations with defaults if not saved or empty
       if (savedLocations) {
         try {
-          setSelectedLocations(JSON.parse(savedLocations));
-        } catch {}
+          const parsed = JSON.parse(savedLocations);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSelectedLocations(parsed);
+          } else {
+            // If saved but empty, use defaults
+            const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
+            setSelectedLocations(defaultLocations);
+          }
+        } catch {
+          // If parse fails, use defaults
+          const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
+          setSelectedLocations(defaultLocations);
+        }
+      } else {
+        // If not saved at all, use defaults
+        const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
+        setSelectedLocations(defaultLocations);
       }
+      
       if (savedSortF) setSortField(savedSortF);
       if (savedSortD === "asc" || savedSortD === "desc") setSortDir(savedSortD);
     } catch {}
@@ -97,14 +115,6 @@ export default function FireDoorSchedulePage() {
   useEffect(() => {
     try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
   }, [sortField, sortDir]);
-
-  // Initialize selectedLocations when component mounts (exclude COMPLETE & DELIVERED by default)
-  useEffect(() => {
-    if (selectedLocations.length === 0) {
-      const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
-      setSelectedLocations(defaultLocations);
-    }
-  }, []);
 
   async function loadData() {
     setLoading(true);
