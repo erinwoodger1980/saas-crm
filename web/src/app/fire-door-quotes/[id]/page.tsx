@@ -143,6 +143,8 @@ export default function FireDoorQuoteBuilderPage() {
       if (!quote.id) {
         router.push(`/fire-door-quotes/${savedQuote.id}`);
       }
+      
+      return savedQuote;
     } catch (error) {
       console.error("Error saving quote:", error);
       toast({
@@ -150,6 +152,7 @@ export default function FireDoorQuoteBuilderPage() {
         description: "Failed to save quote",
         variant: "destructive",
       });
+      throw error;
     } finally {
       setSaving(false);
     }
@@ -213,12 +216,24 @@ export default function FireDoorQuoteBuilderPage() {
 
   async function handleSaveRfi(rfiData: Partial<RfiRecord>) {
     try {
+      let quoteId = quote.id;
+      
+      // Save quote first if it doesn't have an ID yet
+      if (!quoteId) {
+        const savedQuote = await saveQuote();
+        quoteId = savedQuote.id;
+        
+        if (!quoteId) {
+          throw new Error("Failed to create quote before saving RFI");
+        }
+      }
+
       const endpoint = rfiData.id ? `/rfis/${rfiData.id}` : "/rfis";
       const method = rfiData.id ? "PUT" : "POST";
       
       const payload = {
         ...rfiData,
-        projectId: quote.id,
+        projectId: quoteId,
       };
 
       await apiFetch(endpoint, {
@@ -232,9 +247,7 @@ export default function FireDoorQuoteBuilderPage() {
       });
 
       // Reload RFIs
-      if (quote.id) {
-        await loadRfis(quote.id);
-      }
+      await loadRfis(quoteId);
     } catch (error) {
       console.error("Error saving RFI:", error);
       throw error;
