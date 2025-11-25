@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { 
   Plus, Search, Filter, TrendingUp, Clock, CheckCircle2, 
   AlertCircle, Calendar, Package, Wrench, Truck, FileText,
-  BarChart3, ArrowUpRight, Download, ArrowUpDown, ChevronUp, ChevronDown
+  BarChart3, ArrowUpRight, Download, ArrowUpDown, ChevronUp, ChevronDown, DollarSign
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import ProductionLogModal from "@/components/ProductionLogModal";
 
 interface FireDoorProject {
   id: string;
@@ -96,12 +97,15 @@ export default function FireDoorSchedulePage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [projectsData, statsData] = await Promise.all([
+      const now = new Date();
+      const [projectsData, statsData, monthlyData] = await Promise.all([
         apiFetch<{ projects: FireDoorProject[] }>("/fire-door-schedule"),
         apiFetch<Stats>("/fire-door-schedule/stats/summary"),
+        apiFetch<any>(`/fire-door-production/stats/monthly-value?year=${now.getFullYear()}&month=${now.getMonth() + 1}`),
       ]);
       setProjects(projectsData.projects);
       setStats(statsData);
+      setMonthlyValue(monthlyData);
     } catch (error) {
       console.error("Error loading fire door schedule:", error);
     } finally {
@@ -259,6 +263,7 @@ export default function FireDoorSchedulePage() {
         'mjsNumber',
         'clientName',
         'jobName',
+        'netValue',
         'dateReceived',
         'jobLocation',
         'signOffStatus',
@@ -401,6 +406,7 @@ export default function FireDoorSchedulePage() {
     mjsNumber: 'MJS',
     jobName: 'Job Description',
     clientName: 'Customer',
+    netValue: 'Net Value',
     poNumber: 'PO',
     dateReceived: 'Date Received in Red Folder',
     dateRequired: 'Required',
@@ -510,6 +516,21 @@ export default function FireDoorSchedulePage() {
   const [paperworkStatusOptions, setPaperworkStatusOptions] = useState<string[]>(["Not Started", "Working On", "Ready to Print", "Part Complete", "Printed in Office", "In Factory", "N/A"]);
   const [transportOptions, setTransportOptions] = useState<string[]>(["TBC", "By Customer", "By LAJ", "Collect", "Not Booked", "Booked"]);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
+  
+  // Production logging state
+  const [productionModal, setProductionModal] = useState<{
+    show: boolean;
+    projectId: string;
+    projectName: string;
+    process: string;
+    processLabel: string;
+    currentPercent: number;
+  } | null>(null);
+  const [monthlyValue, setMonthlyValue] = useState<{
+    totalManufacturingValue: string;
+    logCount: number;
+    projectCount: number;
+  } | null>(null);
 
   // Render cell based on field type
   function renderCell(project: FireDoorProject, field: string) {
@@ -573,8 +594,56 @@ export default function FireDoorSchedulePage() {
       );
     }
 
-    // Progress/percentage fields
-    if (field.includes('Percent') || field === 'overallProgress') {
+    // Progress/percentage fields with production logging
+    if (field.includes('Percent') && field !== 'overallProgress') {
+      const processMap: Record<string, string> = {
+        blanksCutPercent: 'blanksCut',
+        edgebandPercent: 'edgeband',
+        calibratePercent: 'calibrate',
+        facingsPercent: 'facings',
+        finalCncPercent: 'finalCnc',
+        finishPercent: 'finish',
+        sandPercent: 'sand',
+        sprayPercent: 'spray',
+        cutPercent: 'cut',
+        cncPercent: 'cnc',
+        buildPercent: 'build',
+      };
+      const processKey = processMap[field];
+      
+      return (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (processKey) {
+                setProductionModal({
+                  show: true,
+                  projectId: project.id,
+                  projectName: project.jobName || `MJS ${project.mjsNumber}`,
+                  process: processKey,
+                  processLabel: COLUMN_LABELS[field] || field,
+                  currentPercent: (value as number) || 0,
+                });
+              }
+            }}
+            className="relative group"
+          >
+            <div className="w-20 h-2 bg-slate-100 rounded overflow-hidden cursor-pointer group-hover:ring-2 group-hover:ring-blue-400 transition-all">
+              <div
+                className={`h-full bg-gradient-to-r ${getProgressColor(value as number)} group-hover:opacity-80 transition-all`}
+                style={{ width: `${value || 0}%` }}
+              />
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <Plus className="w-3 h-3 text-blue-600 drop-shadow-lg" />
+            </div>
+          </button>
+          <span className="text-xs font-semibold text-slate-700 w-10">{value || 0}%</span>
+        </div>
+      );
+    }
+
+    if (field === 'overallProgress') {
       return (
         <div className="flex items-center gap-2">
           <div className="w-20 h-2 bg-slate-100 rounded overflow-hidden">
@@ -590,6 +659,24 @@ export default function FireDoorSchedulePage() {
             value={value || 0}
             onChange={(e) => updateProject(project.id, { [field]: parseInt(e.target.value) || 0 })}
             className="w-14 bg-white/60 rounded px-1 py-0.5 text-xs border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          />
+        </div>
+      );
+    }
+
+    // Net value field
+    if (field === 'netValue') {
+      return (
+        <div className="flex items-center gap-1">
+          <span className="text-slate-500">£</span>
+          <input
+            type="number"
+            min={0}
+            step={0.01}
+            value={value || ''}
+            placeholder="0.00"
+            onChange={(e) => updateProject(project.id, { netValue: parseFloat(e.target.value) || null })}
+            className="w-24 bg-white border border-slate-200 rounded px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           />
         </div>
       );
@@ -925,7 +1012,7 @@ export default function FireDoorSchedulePage() {
 
         {/* Beautiful Stats Cards */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Total Projects */}
             <div onClick={() => setLocationFilter('ALL')} className="group backdrop-blur-xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-blue-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6 cursor-pointer">
               <div className="flex items-start justify-between">
@@ -993,6 +1080,27 @@ export default function FireDoorSchedulePage() {
                 </div>
               </div>
             </div>
+
+            {/* Monthly Manufacturing Value */}
+            {monthlyValue && (
+              <div className="group backdrop-blur-xl bg-gradient-to-br from-emerald-500/10 via-green-500/10 to-emerald-500/10 rounded-2xl border border-white/20 shadow-lg hover:shadow-xl transition-all p-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600 mb-1">Monthly Value</p>
+                    <h3 className="text-3xl font-bold text-slate-900">
+                      £{parseFloat(monthlyValue.totalManufacturingValue).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                      <DollarSign className="w-3 h-3" />
+                      {monthlyValue.projectCount} projects, {monthlyValue.logCount} logs
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-emerald-500/20 group-hover:bg-emerald-500/30 transition-colors">
+                    <TrendingUp className="w-6 h-6 text-emerald-600" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1335,6 +1443,22 @@ export default function FireDoorSchedulePage() {
           </div>
         )}
       </div>
+
+      {/* Production Log Modal */}
+      {productionModal && (
+        <ProductionLogModal
+          projectId={productionModal.projectId}
+          projectName={productionModal.projectName}
+          process={productionModal.process}
+          processLabel={productionModal.processLabel}
+          currentPercent={productionModal.currentPercent}
+          onClose={() => setProductionModal(null)}
+          onSuccess={() => {
+            loadData();
+            setProductionModal(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -101,6 +101,7 @@ model Tenant {
   examplePhotos              ExamplePhoto[]
   // Fire door schedule (project tracking)
   fireDoorScheduleProjects   FireDoorScheduleProject[]
+  fireDoorProductionLogs     FireDoorProductionLog[]
   // Fire door client portal
   clientAccounts             ClientAccount[]
   clientJobs                 FireDoorClientJob[]
@@ -3019,16 +3020,42 @@ model FireDoorScheduleProject {
   lastUpdatedBy      String? // Who last modified
   lastUpdatedAt      DateTime @default(now()) // When last modified
 
+  // 8. VALUE TRACKING
+  netValue Decimal? // Net project value for manufacturing value calculation
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productionLogs FireDoorProductionLog[]
 
   @@index([tenantId])
   @@index([tenantId, jobLocation])
   @@index([tenantId, signOffStatus])
   @@index([tenantId, dateRequired])
   @@index([projectId])
+}
+
+model FireDoorProductionLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  projectId String
+  
+  process         String  // Which production process: blanksCut, edgeband, calibrate, facings, finalCnc, finish, sand, spray, cut, cnc, build
+  previousPercent Int     // Percentage before this log entry
+  addedPercent    Int     // Percentage added in this log entry
+  newPercent      Int     // New total percentage after this entry
+  
+  loggedBy   String   // User who logged this entry
+  loggedAt   DateTime @default(now())
+  notes      String?  // Optional notes about this production update
+  
+  tenant  Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project FireDoorScheduleProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, projectId])
+  @@index([tenantId, loggedAt])
+  @@index([projectId, process])
 }
 
 // ============================================================================
