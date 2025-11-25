@@ -782,8 +782,29 @@ export function FireDoorGrid({
     
     const menu = document.createElement('div');
     menu.className = 'fixed bg-white border border-gray-300 shadow-lg rounded-md z-[9999] p-1';
-    menu.style.left = `${e.pageX}px`;
-    menu.style.top = `${e.pageY}px`;
+    
+    // Position menu near cursor with boundary checks
+    const menuWidth = 250; // estimated menu width
+    const menuHeight = 200; // estimated menu height
+    let left = e.clientX;
+    let top = e.clientY;
+    
+    // Check right boundary
+    if (left + menuWidth > window.innerWidth) {
+      left = window.innerWidth - menuWidth - 10;
+    }
+    
+    // Check bottom boundary
+    if (top + menuHeight > window.innerHeight) {
+      top = window.innerHeight - menuHeight - 10;
+    }
+    
+    // Ensure minimum position
+    left = Math.max(10, left);
+    top = Math.max(10, top);
+    
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
     
     // Option for cell-specific RFI
     if (isDataRow) {
