@@ -2986,6 +2986,11 @@ model FireDoorScheduleProject {
   cncPercent       Int? // CNC %
   buildPercent     Int? // BUILD %
   overallProgress  Int? // PROGRESS (overall %)
+  
+  // Calculated progress percentages
+  bomPercent        Int? // BOM Progress (% of materials received)
+  paperworkPercent  Int? // Paperwork Progress (% of paperwork completed)
+  productionPercent Int? // Production Progress (average of all production processes)
 
   hiddenStatus String? // HIDDEN field from BOM CHECK
 
