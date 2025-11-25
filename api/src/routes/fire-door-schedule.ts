@@ -13,6 +13,59 @@ import { prisma } from "../prisma";
 
 const router = express.Router();
 
+// Helper function to calculate all progress percentages
+function calculateProgressPercentages(project: any) {
+  // 1. BOM Progress: % of 7 materials received
+  const bomItems = [
+    project.blanksStatus,
+    project.lippingsStatus,
+    project.facingsStatus,
+    project.glassStatus,
+    project.cassettesStatus,
+    project.timbersStatus,
+    project.ironmongeryStatus
+  ];
+  const receivedCount = bomItems.filter((status: string) => 
+    status === 'Received' || 
+    status === 'Received from TBS' || 
+    status === 'Received from Customer'
+  ).length;
+  const bomPercent = Math.round((receivedCount / bomItems.length) * 100);
+
+  // 2. Paperwork Progress: % of 5 paperwork items completed
+  const paperworkItems = [
+    project.doorPaperworkStatus,
+    project.finalCncSheetStatus,
+    project.finalChecksSheetStatus,
+    project.deliveryChecklistStatus,
+    project.framesPaperworkStatus
+  ];
+  const completedCount = paperworkItems.filter((status: string) => 
+    status === 'In Factory' || 
+    status === 'Printed in Office'
+  ).length;
+  const paperworkPercent = Math.round((completedCount / paperworkItems.length) * 100);
+
+  // 3. Production Progress: average of 11 production processes
+  const productionProcesses = [
+    project.blanksCutPercent,
+    project.edgebandPercent,
+    project.calibratePercent,
+    project.facingsPercent,
+    project.finalCncPercent,
+    project.finishPercent,
+    project.sandPercent,
+    project.sprayPercent,
+    project.cutPercent,
+    project.cncPercent,
+    project.buildPercent
+  ];
+  const totalProductionPercent = productionProcesses.reduce((sum: number, val: number) => sum + (val || 0), 0);
+  const productionPercent = Math.round(totalProductionPercent / productionProcesses.length);
+
+  return { bomPercent, paperworkPercent, productionPercent };
+}
+
 // ============================================================================
 // GET /fire-door-schedule
 // List all fire door schedule projects for the current tenant
@@ -222,6 +275,15 @@ router.put("/:id", async (req: any, res: Response) => {
     delete updateData.id;
     delete updateData.tenantId;
     delete updateData.createdAt;
+
+    // Calculate progress percentages based on updated data
+    const mergedData = { ...existing, ...updateData };
+    const { bomPercent, paperworkPercent, productionPercent } = calculateProgressPercentages(mergedData);
+    
+    updateData.bomPercent = bomPercent;
+    updateData.paperworkPercent = paperworkPercent;
+    updateData.productionPercent = productionPercent;
+    updateData.overallProgress = productionPercent; // Keep overallProgress for backwards compatibility
 
     const project = await prisma.fireDoorScheduleProject.update({
       where: { id },

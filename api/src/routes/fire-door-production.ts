@@ -5,6 +5,59 @@ import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
+// Helper function to calculate all progress percentages
+function calculateProgressPercentages(project: any) {
+  // 1. BOM Progress: % of 7 materials received
+  const bomItems = [
+    project.blanksStatus,
+    project.lippingsStatus,
+    project.facingsStatus,
+    project.glassStatus,
+    project.cassettesStatus,
+    project.timbersStatus,
+    project.ironmongeryStatus
+  ];
+  const receivedCount = bomItems.filter(status => 
+    status === 'Received' || 
+    status === 'Received from TBS' || 
+    status === 'Received from Customer'
+  ).length;
+  const bomPercent = Math.round((receivedCount / bomItems.length) * 100);
+
+  // 2. Paperwork Progress: % of 5 paperwork items completed
+  const paperworkItems = [
+    project.doorPaperworkStatus,
+    project.finalCncSheetStatus,
+    project.finalChecksSheetStatus,
+    project.deliveryChecklistStatus,
+    project.framesPaperworkStatus
+  ];
+  const completedCount = paperworkItems.filter(status => 
+    status === 'In Factory' || 
+    status === 'Printed in Office'
+  ).length;
+  const paperworkPercent = Math.round((completedCount / paperworkItems.length) * 100);
+
+  // 3. Production Progress: average of 11 production processes
+  const productionProcesses = [
+    project.blanksCutPercent,
+    project.edgebandPercent,
+    project.calibratePercent,
+    project.facingsPercent,
+    project.finalCncPercent,
+    project.finishPercent,
+    project.sandPercent,
+    project.sprayPercent,
+    project.cutPercent,
+    project.cncPercent,
+    project.buildPercent
+  ];
+  const totalProductionPercent = productionProcesses.reduce((sum, val) => sum + (val || 0), 0);
+  const productionPercent = Math.round(totalProductionPercent / productionProcesses.length);
+
+  return { bomPercent, paperworkPercent, productionPercent };
+}
+
 // Get production logs for a project
 router.get('/:projectId/logs', requireAuth, async (req: any, res) => {
   try {
@@ -89,35 +142,25 @@ router.post('/:projectId/logs', requireAuth, async (req: any, res) => {
       },
     });
 
-    // Calculate overall progress (average of all 11 production processes)
-    const productionProcesses = [
-      'blanksCutPercent', 'edgebandPercent', 'calibratePercent', 'facingsPercent',
-      'finalCncPercent', 'finishPercent', 'sandPercent', 'sprayPercent',
-      'cutPercent', 'cncPercent', 'buildPercent'
-    ];
-    
-    let totalPercent = 0;
-    let updatedProject = { ...project, [fieldName]: newPercent };
-    
-    productionProcesses.forEach(proc => {
-      const value = proc === fieldName ? newPercent : ((updatedProject as any)[proc] || 0);
-      totalPercent += value;
-    });
-    
-    const overallProgress = Math.round(totalPercent / productionProcesses.length);
+    // Calculate all progress percentages
+    const updatedProject = { ...project, [fieldName]: newPercent };
+    const { bomPercent, paperworkPercent, productionPercent } = calculateProgressPercentages(updatedProject);
 
-    // Update project with new percentage and overall progress
+    // Update project with new percentage and all calculated progress
     await prisma.fireDoorScheduleProject.update({
       where: { id: projectId },
       data: {
         [fieldName]: newPercent,
-        overallProgress,
+        overallProgress: productionPercent, // Keep overallProgress for backwards compatibility
+        bomPercent,
+        paperworkPercent,
+        productionPercent,
         lastUpdatedBy: loggedBy,
         lastUpdatedAt: new Date(),
       },
     });
 
-    res.json({ log, newPercent, overallProgress });
+    res.json({ log, newPercent, bomPercent, paperworkPercent, productionPercent });
   } catch (error) {
     console.error('Error logging production:', error);
     res.status(500).json({ error: 'Failed to log production' });
