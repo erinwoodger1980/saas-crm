@@ -56,8 +56,8 @@ export default function FireDoorSchedulePage() {
   const [searchTerm, setSearchTerm] = useState("");
   // Active tab (phase-based tabs)
   const [activeTab, setActiveTab] = useState<string>("PROJECT_OVERVIEW");
-  // Location filter (cards trigger this: RED FOLDER / IN PROGRESS / COMPLETE / ALL)
-  const [locationFilter, setLocationFilter] = useState<string>("ALL");
+  // Location filter (multi-select checkboxes) - exclude COMPLETE & DELIVERED by default
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [showTable, setShowTable] = useState<boolean>(true); // consolidated table view toggle
   const [sortField, setSortField] = useState<string>("dateRequired");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -69,12 +69,16 @@ export default function FireDoorSchedulePage() {
     try {
       const savedView = localStorage.getItem("fds:view");
       const savedActiveTab = localStorage.getItem("fds:activeTab");
-      const savedLocation = localStorage.getItem("fds:location");
+      const savedLocations = localStorage.getItem("fds:selectedLocations");
       const savedSortF = localStorage.getItem("fds:sortField");
       const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
       if (savedView) setShowTable(savedView === "table");
       if (savedActiveTab) setActiveTab(savedActiveTab);
-      if (savedLocation) setLocationFilter(savedLocation);
+      if (savedLocations) {
+        try {
+          setSelectedLocations(JSON.parse(savedLocations));
+        } catch {}
+      }
       if (savedSortF) setSortField(savedSortF);
       if (savedSortD === "asc" || savedSortD === "desc") setSortDir(savedSortD);
     } catch {}
@@ -88,8 +92,8 @@ export default function FireDoorSchedulePage() {
     try { localStorage.setItem("fds:activeTab", activeTab); } catch {}
   }, [activeTab]);
   useEffect(() => {
-    try { localStorage.setItem("fds:location", locationFilter); } catch {}
-  }, [locationFilter]);
+    try { localStorage.setItem("fds:selectedLocations", JSON.stringify(selectedLocations)); } catch {}
+  }, [selectedLocations]);
   useEffect(() => {
     try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
   }, [sortField, sortDir]);
@@ -117,7 +121,6 @@ export default function FireDoorSchedulePage() {
   const filteredProjects = projects
     .filter((project) => {
       const searchLower = searchTerm.toLowerCase();
-      const hasSearchTerm = !!searchTerm;
       const isSearchMatch = (
         project.mjsNumber?.toLowerCase().includes(searchLower) ||
         project.jobName?.toLowerCase().includes(searchLower) ||
@@ -125,15 +128,19 @@ export default function FireDoorSchedulePage() {
         project.poNumber?.toLowerCase().includes(searchLower)
       );
       
-      const loc = (project.jobLocation || "").toUpperCase();
-      
-      // If no search term, exclude COMPLETE & DELIVERED projects by default
-      if (!hasSearchTerm) {
-        return loc !== "COMPLETE & DELIVERED";
+      // Apply search filter
+      if (searchTerm && !isSearchMatch) {
+        return false;
       }
       
-      // If searching (especially MJS search), include all projects including COMPLETE & DELIVERED
-      return isSearchMatch;
+      // Apply location filter if any locations are selected
+      if (selectedLocations.length > 0) {
+        const loc = (project.jobLocation || "").toUpperCase();
+        return selectedLocations.includes(loc);
+      }
+      
+      // If no locations selected, show all
+      return true;
     })
     .sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1;
@@ -502,6 +509,15 @@ export default function FireDoorSchedulePage() {
     "NO JOB ASSIGNED",
     "JOB IN DISPUTE/ISSUES",
     "CANCELLED",
+
+    // Initialize selectedLocations when component mounts (exclude COMPLETE & DELIVERED)
+    useEffect(() => {
+      if (selectedLocations.length === 0) {
+        const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
+        setSelectedLocations(defaultLocations);
+      }
+    }, []);
+
   ]);
   const [signOffOptions, setSignOffOptions] = useState<string[]>([
     "AWAITING SCHEDULE",
@@ -1159,28 +1175,61 @@ export default function FireDoorSchedulePage() {
                   Close
                 </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+              <div className="space-y-4 text-sm">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Job Location</label>
-                  <select 
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"
-                    value={locationFilter}
-                    onChange={(e) => setLocationFilter(e.target.value)}
-                  >
-                    <option value="ALL">All Projects</option>
-                    {jobLocationOptions.map(opt => <option key={opt} value={opt.toUpperCase()}>{opt}</option>)}
-                  </select>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto p-2 border border-slate-200 rounded-md bg-slate-50">
+                    {jobLocationOptions.map(opt => {
+                      const isChecked = selectedLocations.includes(opt);
+                      return (
+                        <label key={opt} className="flex items-center gap-2 cursor-pointer hover:bg-white p-2 rounded">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedLocations([...selectedLocations, opt]);
+                              } else {
+                                setSelectedLocations(selectedLocations.filter(l => l !== opt));
+                              }
+                            }}
+                            className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                          />
+                          <span className="text-xs">{opt}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="flex items-end">
+                <div className="flex gap-2">
                   <Button 
                     variant="outline" 
                     size="sm"
                     onClick={() => {
-                      setLocationFilter("ALL");
+                      setSelectedLocations(jobLocationOptions);
+                    }}
+                  >
+                    Select All
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      setSelectedLocations([]);
+                    }}
+                  >
+                    Clear All
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
+                      setSelectedLocations(defaultLocations);
                       setSearchTerm("");
                     }}
                   >
-                    Clear All Filters
+                    Reset to Default
                   </Button>
                 </div>
               </div>
