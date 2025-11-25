@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import DataGrid, { Column, RenderEditCellProps, SelectColumn } from "react-data-grid";
 import "react-data-grid/lib/styles.css";
 import { apiFetch } from "@/lib/api";
@@ -194,12 +194,13 @@ function SelectEditor<TRow>({
   row, 
   column, 
   onRowChange, 
-  onClose,
-  options 
-}: RenderEditCellProps<TRow> & { options: string[] }) {
+  onClose
+}: RenderEditCellProps<TRow>) {
+  const options = (column as any).editorOptions?.options || [];
+  
   return (
     <select
-      className="w-full h-full border-0 outline-none px-2"
+      className="w-full h-full border-0 outline-none px-2 bg-white"
       autoFocus
       value={row[column.key as keyof TRow] as string || ''}
       onChange={(e) => {
@@ -209,7 +210,7 @@ function SelectEditor<TRow>({
       onBlur={() => onClose(false)}
     >
       <option value="">--</option>
-      {options.map(opt => (
+      {options.map((opt: string) => (
         <option key={opt} value={opt}>{opt}</option>
       ))}
     </select>
@@ -338,48 +339,6 @@ export function FireDoorGrid({
     }
   }, [cellRfiMap, onSelectRfi]);
 
-  // Context menu handler for RFI
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    if (!onAddRfi) return;
-    
-    e.preventDefault();
-    const target = e.target as HTMLElement;
-    const cell = target.closest('.rdg-cell');
-    if (!cell) return;
-
-    const columnKey = cell.getAttribute('data-column-key');
-    const rowIdx = cell.getAttribute('data-row-idx');
-    
-    if (!columnKey) return;
-
-    const rowId = rowIdx ? rows[parseInt(rowIdx)]?.id || `row-${rowIdx}` : null;
-    
-    const menu = document.createElement('div');
-    menu.className = 'absolute bg-white border border-gray-300 shadow-lg rounded-md z-50';
-    menu.style.left = `${e.pageX}px`;
-    menu.style.top = `${e.pageY}px`;
-    
-    const cellOption = document.createElement('button');
-    cellOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm';
-    cellOption.textContent = rowId ? 'Add RFI for this cell' : 'Add RFI for this column';
-    cellOption.onclick = () => {
-      onAddRfi(rowId, columnKey);
-      document.body.removeChild(menu);
-    };
-    
-    menu.appendChild(cellOption);
-    document.body.appendChild(menu);
-    
-    const closeMenu = () => {
-      if (document.body.contains(menu)) {
-        document.body.removeChild(menu);
-      }
-      document.removeEventListener('click', closeMenu);
-    };
-    
-    setTimeout(() => document.addEventListener('click', closeMenu), 0);
-  }, [onAddRfi, rows]);
-
   // Column definitions
   const columns = useMemo<Column<FireDoorLineItem>[]>(() => [
     SelectColumn,
@@ -426,7 +385,8 @@ export function FireDoorGrid({
       name: 'Doorset Type', 
       width: 150, 
       editable: true,
-      renderEditCell: (props) => <SelectEditor {...props} options={doorsetTypeOptions} />,
+      renderEditCell: SelectEditor,
+      editorOptions: { options: doorsetTypeOptions },
       cellClass: (row) => {
         const rowId = row.id || `row-${row.rowIndex}`;
         return cellRfiMap[`${rowId}:doorsetType`] ? 'bg-orange-50' : '';
@@ -468,7 +428,8 @@ export function FireDoorGrid({
       name: 'Core', 
       width: 150, 
       editable: true,
-      renderEditCell: (props) => <SelectEditor {...props} options={coreOptions} />,
+      renderEditCell: SelectEditor,
+      editorOptions: { options: coreOptions },
       cellClass: (row) => {
         const rowId = row.id || `row-${row.rowIndex}`;
         return cellRfiMap[`${rowId}:core`] ? 'bg-orange-50' : '';
@@ -479,7 +440,8 @@ export function FireDoorGrid({
       name: 'Rating', 
       width: 100, 
       editable: true,
-      renderEditCell: (props) => <SelectEditor {...props} options={ratingOptions} />,
+      renderEditCell: SelectEditor,
+      editorOptions: { options: ratingOptions },
       cellClass: (row) => {
         const rowId = row.id || `row-${row.rowIndex}`;
         return cellRfiMap[`${rowId}:rating`] ? 'bg-orange-50' : '';
@@ -558,10 +520,10 @@ export function FireDoorGrid({
     { key: 'masterWidthLipping', name: 'Master Width (Lipping)', width: 160, editable: true },
     { key: 'slaveWidthLipping', name: 'Slave Width (Lipping)', width: 160, editable: true },
     { key: 'doorHeightLipping', name: 'Door Height (Lipping)', width: 160, editable: true },
-    { key: 'coreLipping', name: 'Core (Lipping)', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={coreOptions} /> },
-    { key: 'ratingLipping', name: 'Rating (Lipping)', width: 120, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={ratingOptions} /> },
-    { key: 'coreTypeLipping', name: 'Core Type (Lipping)', width: 150, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={coreTypeOptions} /> },
-    { key: 'material', name: 'Material', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={materialOptions} /> },
+    { key: 'coreLipping', name: 'Core (Lipping)', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: coreOptions } },
+    { key: 'ratingLipping', name: 'Rating (Lipping)', width: 120, editable: true, renderEditCell: SelectEditor, editorOptions: { options: ratingOptions } },
+    { key: 'coreTypeLipping', name: 'Core Type (Lipping)', width: 150, editable: true, renderEditCell: SelectEditor, editorOptions: { options: coreTypeOptions } },
+    { key: 'material', name: 'Material', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: materialOptions } },
     { key: 'topLipping', name: 'Top (Lipping)', width: 110, editable: true },
     { key: 'btmLipping', name: 'Bottom (Lipping)', width: 120, editable: true },
     { key: 'hingeLipping', name: 'Hinge (Lipping)', width: 120, editable: true },
@@ -629,14 +591,14 @@ export function FireDoorGrid({
     { key: 'smokeStrip', name: 'Smoke Strip', width: 120, editable: true },
     { key: 'dropSeal', name: 'Drop Seal', width: 120, editable: true },
     { key: 'hingeQty', name: 'Hinge Qty', width: 100, editable: true },
-    { key: 'hingeType', name: 'Hinge Type', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={hingeTypeOptions} /> },
-    { key: 'lockType', name: 'Lock Type', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={lockTypeOptions} /> },
+    { key: 'hingeType', name: 'Hinge Type', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: hingeTypeOptions } },
+    { key: 'lockType', name: 'Lock Type', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: lockTypeOptions } },
     { key: 'latchType', name: 'Latch Type', width: 130, editable: true },
     { key: 'cylinderType', name: 'Cylinder Type', width: 130, editable: true },
     { key: 'keeperType', name: 'Keeper Type', width: 130, editable: true },
     
     // SECTION 9: SECONDARY IRONMONGERY (16 fields)
-    { key: 'handleType', name: 'Handle Type', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={handleTypeOptions} /> },
+    { key: 'handleType', name: 'Handle Type', width: 130, editable: true, renderEditCell: SelectEditor, editorOptions: { options: handleTypeOptions } },
     { key: 'pullHandleType', name: 'Pull Handle Type', width: 150, editable: true },
     { key: 'pullHandleQty', name: 'Pull Handle Qty', width: 140, editable: true },
     { key: 'flushBoltType', name: 'Flush Bolt Type', width: 140, editable: true },
@@ -704,6 +666,64 @@ export function FireDoorGrid({
       renderCell: ({ row }) => `£${(row.lineTotal || 0).toFixed(2)}`,
     },
   ], [coreOptions, doorsetTypeOptions, ratingOptions, coreTypeOptions, materialOptions, hingeTypeOptions, lockTypeOptions, handleTypeOptions, cellRfiMap]);
+
+  // Context menu handler for RFI
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!onAddRfi) return;
+    
+    e.preventDefault();
+    const target = e.target as HTMLElement;
+    const cell = target.closest('[role="gridcell"]');
+    if (!cell) return;
+
+    // Extract aria-colindex and row index from DOM
+    const colIndex = cell.getAttribute('aria-colindex');
+    const rowElement = cell.closest('[role="row"]');
+    const rowIndex = rowElement?.getAttribute('aria-rowindex');
+    
+    if (!colIndex || !rowIndex) return;
+
+    const rowIdx = parseInt(rowIndex) - 2; // Subtract header rows
+    const colIdx = parseInt(colIndex) - 1;
+    
+    if (rowIdx < 0 || colIdx < 0 || rowIdx >= rows.length) return;
+    
+    const row = rows[rowIdx];
+    const column = columns[colIdx];
+    
+    if (!column || !column.key) return;
+    
+    const rowId = row.id || `row-${rowIdx}`;
+    
+    const menu = document.createElement('div');
+    menu.className = 'fixed bg-white border border-gray-300 shadow-lg rounded-md z-[9999] p-1';
+    menu.style.left = `${e.pageX}px`;
+    menu.style.top = `${e.pageY}px`;
+    
+    const cellOption = document.createElement('button');
+    cellOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm rounded whitespace-nowrap';
+    cellOption.textContent = 'Add RFI for this cell';
+    cellOption.onclick = () => {
+      onAddRfi(rowId, column.key as string);
+      if (document.body.contains(menu)) {
+        document.body.removeChild(menu);
+      }
+    };
+    
+    menu.appendChild(cellOption);
+    document.body.appendChild(menu);
+    
+    const closeMenu = (event: MouseEvent) => {
+      if (!menu.contains(event.target as Node)) {
+        if (document.body.contains(menu)) {
+          document.body.removeChild(menu);
+        }
+        document.removeEventListener('click', closeMenu);
+      }
+    };
+    
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  }, [onAddRfi, rows, columns]);
 
   return (
     <div className="h-[600px] w-full" onContextMenu={handleContextMenu}>
