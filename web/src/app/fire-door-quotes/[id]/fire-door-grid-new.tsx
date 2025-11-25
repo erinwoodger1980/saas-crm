@@ -43,6 +43,128 @@ interface FireDoorLineItem {
   notes1?: string;
   notes2?: string;
   
+  // SECTION 5: LIPPING
+  lajRefLipping?: string;
+  doorRefLipping?: string;
+  masterWidthLipping?: number;
+  slaveWidthLipping?: number;
+  doorHeightLipping?: number;
+  coreLipping?: string;
+  ratingLipping?: string;
+  coreTypeLipping?: string;
+  material?: string;
+  topLipping?: number;
+  btmLipping?: number;
+  hingeLipping?: number;
+  meLipping?: number;
+  daExposedLipping?: number;
+  lippingDetail?: string;
+  masterWidthLipping2?: number;
+  
+  // SECTION 6: EDGING / 2T
+  slaveWidthEdging?: number;
+  doorHeightEdging?: number;
+  coreEdging?: string;
+  masterWidth2T?: number;
+  slaveWidth2T?: number;
+  doorHeight2T?: number;
+  core2T?: string;
+  doorType?: string;
+  note1Edge?: string;
+  note2Edge?: string;
+  
+  // SECTION 7: FACING / CALIBRATION
+  lajRefFacing?: string;
+  doorRefFacing?: string;
+  masterWidthFacing?: number;
+  slaveWidthFacing?: number;
+  doorHeightFacing?: number;
+  coreFacing?: string;
+  coreTypeFacing?: string;
+  materialFacing?: string;
+  topFacing?: number;
+  btmFacing?: number;
+  hingeFacing?: number;
+  meFacing?: number;
+  daExposedFacing?: number;
+  calibratedSize?: string;
+  masterDoor?: string;
+  slaveDoor?: string;
+  bookMatching?: string;
+  topFinal?: number;
+  btmFinal?: number;
+  hingeFinal?: number;
+  
+  // SECTION 8: FINISH / IRONMONGERY
+  finishFacing?: string;
+  materialFinish?: string;
+  topFinish?: number;
+  btmFinish?: number;
+  hingeFinish?: number;
+  meFinish?: number;
+  daExposedFinish?: number;
+  masterWidthFinish?: number;
+  slaveWidthFinish?: number;
+  doorHeightFinish?: number;
+  coreFinish?: string;
+  handingFinish?: string;
+  lippingFinish?: string;
+  doorFinish?: string;
+  beadType?: string;
+  glassType?: string;
+  vpType?: string;
+  vpWidth?: number;
+  vpHeight?: number;
+  cassetteType?: string;
+  intumescentStrip?: string;
+  smokeStrip?: string;
+  dropSeal?: string;
+  hingeQty?: number;
+  hingeType?: string;
+  lockType?: string;
+  latchType?: string;
+  cylinderType?: string;
+  keeperType?: string;
+  
+  // SECTION 9: SECONDARY IRONMONGERY
+  handleType?: string;
+  pullHandleType?: string;
+  pullHandleQty?: number;
+  flushBoltType?: string;
+  flushBoltQty?: number;
+  coordinatorType?: string;
+  selectorType?: string;
+  letterPlateType?: string;
+  numeralType?: string;
+  knockerType?: string;
+  spyholeType?: string;
+  chainType?: string;
+  closerType?: string;
+  closerQty?: number;
+  floorSpringType?: string;
+  pivotType?: string;
+  
+  // SECTION 10: FINAL SPEC & FRAME
+  masterLeafFinal?: number;
+  slaveLeafFinal?: number;
+  leafHeightFinal?: number;
+  masterFrameWidth?: number;
+  slaveFrameWidth?: number;
+  frameHeight?: number;
+  frameDepth?: number;
+  sillType?: string;
+  thresholdType?: string;
+  weatherSeal?: string;
+  architraveType?: string;
+  architraveWidth?: number;
+  wallType?: string;
+  fixingType?: string;
+  handingFinal?: string;
+  frameFinish?: string;
+  frameColour?: string;
+  plugType?: string;
+  qMarkPlug?: string;
+  
   // Pricing
   quantity?: number;
   unitValue?: number;
@@ -132,6 +254,31 @@ export function FireDoorGrid({
   const coreOptions = useMemo(() => 
     doorCores.map(c => c.code || c.name).filter(Boolean),
     [doorCores]
+  );
+
+  const coreTypeOptions = useMemo(() => 
+    [...new Set(doorCores.map(c => c.coreType).filter(Boolean))],
+    [doorCores]
+  );
+
+  const materialOptions = useMemo(() => 
+    [...new Set(doorCores.map(c => c.material).filter(Boolean))],
+    [doorCores]
+  );
+
+  const hingeTypeOptions = useMemo(() =>
+    [...new Set(ironmongeryItems.filter(i => i.category === 'hinge').map(i => i.name))],
+    [ironmongeryItems]
+  );
+
+  const lockTypeOptions = useMemo(() =>
+    [...new Set(ironmongeryItems.filter(i => i.category === 'lock').map(i => i.name))],
+    [ironmongeryItems]
+  );
+
+  const handleTypeOptions = useMemo(() =>
+    [...new Set(ironmongeryItems.filter(i => i.category === 'handle').map(i => i.name))],
+    [ironmongeryItems]
   );
 
   const doorsetTypeOptions = ['Single', 'Double', 'Single with sidelight', 'Double with sidelight'];
@@ -405,6 +552,128 @@ export function FireDoorGrid({
       },
     },
     
+    // SECTION 5: LIPPING (16 fields)
+    { key: 'lajRefLipping', name: 'LAJ Ref (Lipping)', width: 130, editable: true },
+    { key: 'doorRefLipping', name: 'Door Ref (Lipping)', width: 140, editable: true },
+    { key: 'masterWidthLipping', name: 'Master Width (Lipping)', width: 160, editable: true },
+    { key: 'slaveWidthLipping', name: 'Slave Width (Lipping)', width: 160, editable: true },
+    { key: 'doorHeightLipping', name: 'Door Height (Lipping)', width: 160, editable: true },
+    { key: 'coreLipping', name: 'Core (Lipping)', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={coreOptions} /> },
+    { key: 'ratingLipping', name: 'Rating (Lipping)', width: 120, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={ratingOptions} /> },
+    { key: 'coreTypeLipping', name: 'Core Type (Lipping)', width: 150, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={coreTypeOptions} /> },
+    { key: 'material', name: 'Material', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={materialOptions} /> },
+    { key: 'topLipping', name: 'Top (Lipping)', width: 110, editable: true },
+    { key: 'btmLipping', name: 'Bottom (Lipping)', width: 120, editable: true },
+    { key: 'hingeLipping', name: 'Hinge (Lipping)', width: 120, editable: true },
+    { key: 'meLipping', name: 'M/E (Lipping)', width: 110, editable: true },
+    { key: 'daExposedLipping', name: 'D/A Exposed (Lipping)', width: 150, editable: true },
+    { key: 'lippingDetail', name: 'Lipping Detail', width: 150, editable: true },
+    { key: 'masterWidthLipping2', name: 'Master Width 2 (Lipping)', width: 170, editable: true },
+    
+    // SECTION 6: EDGING / 2T (10 fields)
+    { key: 'slaveWidthEdging', name: 'Slave Width (Edging)', width: 150, editable: true },
+    { key: 'doorHeightEdging', name: 'Door Height (Edging)', width: 150, editable: true },
+    { key: 'coreEdging', name: 'Core (Edging)', width: 130, editable: true },
+    { key: 'masterWidth2T', name: 'Master Width (2T)', width: 140, editable: true },
+    { key: 'slaveWidth2T', name: 'Slave Width (2T)', width: 140, editable: true },
+    { key: 'doorHeight2T', name: 'Door Height (2T)', width: 140, editable: true },
+    { key: 'core2T', name: 'Core (2T)', width: 120, editable: true },
+    { key: 'doorType', name: 'Door Type', width: 130, editable: true },
+    { key: 'note1Edge', name: 'Note 1 (Edge)', width: 150, editable: true },
+    { key: 'note2Edge', name: 'Note 2 (Edge)', width: 150, editable: true },
+    
+    // SECTION 7: FACING / CALIBRATION (20 fields)
+    { key: 'lajRefFacing', name: 'LAJ Ref (Facing)', width: 140, editable: true },
+    { key: 'doorRefFacing', name: 'Door Ref (Facing)', width: 140, editable: true },
+    { key: 'masterWidthFacing', name: 'Master Width (Facing)', width: 160, editable: true },
+    { key: 'slaveWidthFacing', name: 'Slave Width (Facing)', width: 160, editable: true },
+    { key: 'doorHeightFacing', name: 'Door Height (Facing)', width: 160, editable: true },
+    { key: 'coreFacing', name: 'Core (Facing)', width: 130, editable: true },
+    { key: 'coreTypeFacing', name: 'Core Type (Facing)', width: 140, editable: true },
+    { key: 'materialFacing', name: 'Material (Facing)', width: 140, editable: true },
+    { key: 'topFacing', name: 'Top (Facing)', width: 110, editable: true },
+    { key: 'btmFacing', name: 'Bottom (Facing)', width: 120, editable: true },
+    { key: 'hingeFacing', name: 'Hinge (Facing)', width: 120, editable: true },
+    { key: 'meFacing', name: 'M/E (Facing)', width: 110, editable: true },
+    { key: 'daExposedFacing', name: 'D/A Exposed (Facing)', width: 150, editable: true },
+    { key: 'calibratedSize', name: 'Calibrated Size', width: 140, editable: true },
+    { key: 'masterDoor', name: 'Master Door', width: 130, editable: true },
+    { key: 'slaveDoor', name: 'Slave Door', width: 130, editable: true },
+    { key: 'bookMatching', name: 'Book Matching', width: 130, editable: true },
+    { key: 'topFinal', name: 'Top (Final)', width: 110, editable: true },
+    { key: 'btmFinal', name: 'Bottom (Final)', width: 120, editable: true },
+    { key: 'hingeFinal', name: 'Hinge (Final)', width: 120, editable: true },
+    
+    // SECTION 8: FINISH / IRONMONGERY (29 fields)
+    { key: 'finishFacing', name: 'Finish Facing', width: 140, editable: true },
+    { key: 'materialFinish', name: 'Material (Finish)', width: 140, editable: true },
+    { key: 'topFinish', name: 'Top (Finish)', width: 110, editable: true },
+    { key: 'btmFinish', name: 'Bottom (Finish)', width: 120, editable: true },
+    { key: 'hingeFinish', name: 'Hinge (Finish)', width: 120, editable: true },
+    { key: 'meFinish', name: 'M/E (Finish)', width: 110, editable: true },
+    { key: 'daExposedFinish', name: 'D/A Exposed (Finish)', width: 150, editable: true },
+    { key: 'masterWidthFinish', name: 'Master Width (Finish)', width: 160, editable: true },
+    { key: 'slaveWidthFinish', name: 'Slave Width (Finish)', width: 160, editable: true },
+    { key: 'doorHeightFinish', name: 'Door Height (Finish)', width: 160, editable: true },
+    { key: 'coreFinish', name: 'Core (Finish)', width: 130, editable: true },
+    { key: 'handingFinish', name: 'Handing (Finish)', width: 130, editable: true },
+    { key: 'lippingFinish', name: 'Lipping Finish', width: 140, editable: true },
+    { key: 'doorFinish', name: 'Door Finish', width: 130, editable: true },
+    { key: 'beadType', name: 'Bead Type', width: 120, editable: true },
+    { key: 'glassType', name: 'Glass Type', width: 120, editable: true },
+    { key: 'vpType', name: 'VP Type', width: 120, editable: true },
+    { key: 'vpWidth', name: 'VP Width', width: 110, editable: true },
+    { key: 'vpHeight', name: 'VP Height', width: 110, editable: true },
+    { key: 'cassetteType', name: 'Cassette Type', width: 130, editable: true },
+    { key: 'intumescentStrip', name: 'Intumescent Strip', width: 150, editable: true },
+    { key: 'smokeStrip', name: 'Smoke Strip', width: 120, editable: true },
+    { key: 'dropSeal', name: 'Drop Seal', width: 120, editable: true },
+    { key: 'hingeQty', name: 'Hinge Qty', width: 100, editable: true },
+    { key: 'hingeType', name: 'Hinge Type', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={hingeTypeOptions} /> },
+    { key: 'lockType', name: 'Lock Type', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={lockTypeOptions} /> },
+    { key: 'latchType', name: 'Latch Type', width: 130, editable: true },
+    { key: 'cylinderType', name: 'Cylinder Type', width: 130, editable: true },
+    { key: 'keeperType', name: 'Keeper Type', width: 130, editable: true },
+    
+    // SECTION 9: SECONDARY IRONMONGERY (16 fields)
+    { key: 'handleType', name: 'Handle Type', width: 130, editable: true, renderEditCell: (props) => <SelectEditor {...props} options={handleTypeOptions} /> },
+    { key: 'pullHandleType', name: 'Pull Handle Type', width: 150, editable: true },
+    { key: 'pullHandleQty', name: 'Pull Handle Qty', width: 140, editable: true },
+    { key: 'flushBoltType', name: 'Flush Bolt Type', width: 140, editable: true },
+    { key: 'flushBoltQty', name: 'Flush Bolt Qty', width: 130, editable: true },
+    { key: 'coordinatorType', name: 'Coordinator Type', width: 150, editable: true },
+    { key: 'selectorType', name: 'Selector Type', width: 130, editable: true },
+    { key: 'letterPlateType', name: 'Letter Plate Type', width: 150, editable: true },
+    { key: 'numeralType', name: 'Numeral Type', width: 130, editable: true },
+    { key: 'knockerType', name: 'Knocker Type', width: 130, editable: true },
+    { key: 'spyholeType', name: 'Spyhole Type', width: 130, editable: true },
+    { key: 'chainType', name: 'Chain Type', width: 120, editable: true },
+    { key: 'closerType', name: 'Closer Type', width: 130, editable: true },
+    { key: 'closerQty', name: 'Closer Qty', width: 120, editable: true },
+    { key: 'floorSpringType', name: 'Floor Spring Type', width: 150, editable: true },
+    { key: 'pivotType', name: 'Pivot Type', width: 120, editable: true },
+    
+    // SECTION 10: FINAL SPEC & FRAME (19 fields)
+    { key: 'masterLeafFinal', name: 'Master Leaf (Final)', width: 150, editable: true },
+    { key: 'slaveLeafFinal', name: 'Slave Leaf (Final)', width: 150, editable: true },
+    { key: 'leafHeightFinal', name: 'Leaf Height (Final)', width: 150, editable: true },
+    { key: 'masterFrameWidth', name: 'Master Frame Width', width: 160, editable: true },
+    { key: 'slaveFrameWidth', name: 'Slave Frame Width', width: 160, editable: true },
+    { key: 'frameHeight', name: 'Frame Height', width: 130, editable: true },
+    { key: 'frameDepth', name: 'Frame Depth', width: 130, editable: true },
+    { key: 'sillType', name: 'Sill Type', width: 120, editable: true },
+    { key: 'thresholdType', name: 'Threshold Type', width: 140, editable: true },
+    { key: 'weatherSeal', name: 'Weather Seal', width: 130, editable: true },
+    { key: 'architraveType', name: 'Architrave Type', width: 140, editable: true },
+    { key: 'architraveWidth', name: 'Architrave Width', width: 140, editable: true },
+    { key: 'wallType', name: 'Wall Type', width: 120, editable: true },
+    { key: 'fixingType', name: 'Fixing Type', width: 130, editable: true },
+    { key: 'handingFinal', name: 'Handing (Final)', width: 140, editable: true },
+    { key: 'frameFinish', name: 'Frame Finish', width: 130, editable: true },
+    { key: 'frameColour', name: 'Frame Colour', width: 130, editable: true },
+    { key: 'plugType', name: 'Plug Type', width: 120, editable: true },
+    { key: 'qMarkPlug', name: 'Q-Mark Plug', width: 130, editable: true },
+    
     // PRICING (pinned right)
     { 
       key: 'quantity', 
@@ -434,7 +703,7 @@ export function FireDoorGrid({
       cellClass: 'bg-blue-50 font-semibold',
       renderCell: ({ row }) => `£${(row.lineTotal || 0).toFixed(2)}`,
     },
-  ], [coreOptions, doorsetTypeOptions, ratingOptions]);
+  ], [coreOptions, doorsetTypeOptions, ratingOptions, coreTypeOptions, materialOptions, hingeTypeOptions, lockTypeOptions, handleTypeOptions, cellRfiMap]);
 
   return (
     <div className="h-[600px] w-full" onContextMenu={handleContextMenu}>
