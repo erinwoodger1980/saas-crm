@@ -119,13 +119,22 @@ export default function FireDoorSchedulePage() {
     })
     .filter((project) => {
       const searchLower = searchTerm.toLowerCase();
-      return (
-        !searchTerm ||
+      const hasSearchTerm = !!searchTerm;
+      const isSearchMatch = (
         project.mjsNumber?.toLowerCase().includes(searchLower) ||
         project.jobName?.toLowerCase().includes(searchLower) ||
         project.clientName?.toLowerCase().includes(searchLower) ||
         project.poNumber?.toLowerCase().includes(searchLower)
       );
+      
+      // If no search term, exclude COMPLETE & DELIVERED projects by default
+      if (!hasSearchTerm) {
+        const loc = (project.jobLocation || "").toUpperCase();
+        return loc !== "COMPLETE & DELIVERED";
+      }
+      
+      // If searching (especially MJS search), include all projects including COMPLETE & DELIVERED
+      return isSearchMatch;
     })
     .sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1;
