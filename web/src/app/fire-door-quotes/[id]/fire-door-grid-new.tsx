@@ -624,25 +624,6 @@ export function FireDoorGrid({
     setTimeout(() => document.addEventListener('click', closeMenu), 0);
   }, [onAddRfi, rows, columns, setFillDownMode, toggleColumnVisibility]);
 
-  // Cell click handler to show RFI info
-  const handleCellClick = useCallback((args: any) => {
-    if (!onSelectRfi) return;
-    
-    const { row, column } = args;
-    const columnKey = column.key;
-    const rowId = row.id || `row-${row.rowIndex}`;
-    
-    // Find RFI for this cell
-    const cellRfi = rfis.find(rfi => 
-      rfi.columnKey === columnKey && 
-      (rfi.rowId === rowId || rfi.rowId === row.rowIndex?.toString())
-    );
-    
-    if (cellRfi) {
-      onSelectRfi(cellRfi);
-    }
-  }, [rfis, onSelectRfi]);
-
   return (
     <div className="space-y-2">
       {/* Column Management Toolbar */}
