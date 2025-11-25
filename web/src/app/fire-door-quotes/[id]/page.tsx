@@ -305,7 +305,7 @@ export default function FireDoorQuoteBuilderPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50">
-      <div className="container mx-auto py-6 space-y-6">
+      <div className="w-full px-6 py-6 space-y-6">
         {/* Header */}
         <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-xl p-6">
           <div className="flex items-center justify-between">

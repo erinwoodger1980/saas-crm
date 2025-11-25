@@ -384,6 +384,7 @@ export function FireDoorGrid({
       width: 150, 
       editable: true,
       renderEditCell: createSelectEditor(doorsetTypeOptions),
+      renderEditCell: createSelectEditor(doorsetTypeOptions),
       cellClass: (row) => {
         const rowId = row.id || `row-${row.rowIndex}`;
         return cellRfiMap[`${rowId}:doorsetType`] ? 'bg-orange-50' : '';
