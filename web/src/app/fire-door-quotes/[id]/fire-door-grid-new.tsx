@@ -532,12 +532,17 @@ export function FireDoorGrid({
     const column = visibleColumns[colIdx];
     if (!column || !column.key) return;
     
-    console.log('Context menu opened for column:', { 
-      colIdx, 
-      columnKey: column.key, 
-      columnName: column.name,
-      totalVisibleColumns: visibleColumns.length 
+    console.log('=== RFI Context Menu DEBUG ===');
+    console.log('aria-colindex from DOM:', colIndex);
+    console.log('Calculated colIdx (aria - 1):', colIdx);
+    console.log('Total visibleColumns:', visibleColumns.length);
+    console.log('Selected column:', {
+      key: column.key,
+      name: column.name,
+      index: colIdx
     });
+    console.log('All visible column keys:', visibleColumns.map((c, i) => `[${i}] ${c.key} = "${c.name}"`).join('\n'));
+    console.log('===========================');
     
     // Determine if this is a valid data row or header
     const isDataRow = rowIdx >= 0 && rowIdx < rows.length;
