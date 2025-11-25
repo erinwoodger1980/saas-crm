@@ -137,7 +137,11 @@ export default function FireDoorSchedulePage() {
     try { localStorage.setItem("fds:activeTab", activeTab); } catch {}
   }, [activeTab]);
   useEffect(() => {
-    try { localStorage.setItem("fds:selectedLocations", JSON.stringify(selectedLocations)); } catch {}
+    try { 
+      // Always filter out "COMPLETE & DELIVERED" before saving
+      const filtered = selectedLocations.filter(loc => loc !== "COMPLETE & DELIVERED");
+      localStorage.setItem("fds:selectedLocations", JSON.stringify(filtered)); 
+    } catch {}
   }, [selectedLocations]);
   useEffect(() => {
     try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
@@ -1236,7 +1240,10 @@ export default function FireDoorSchedulePage() {
                             checked={isChecked}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedLocations([...selectedLocations, opt]);
+                                // Don't allow adding "COMPLETE & DELIVERED"
+                                if (opt !== "COMPLETE & DELIVERED") {
+                                  setSelectedLocations([...selectedLocations, opt]);
+                                }
                               } else {
                                 setSelectedLocations(selectedLocations.filter(l => l !== opt));
                               }
@@ -1254,7 +1261,7 @@ export default function FireDoorSchedulePage() {
                     variant="outline" 
                     size="sm"
                     onClick={() => {
-                      setSelectedLocations(jobLocationOptions);
+                      setSelectedLocations(jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED"));
                     }}
                   >
                     Select All
