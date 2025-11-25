@@ -92,8 +92,16 @@ export default function FireDoorSchedulePage() {
       if (savedLocations) {
         try {
           const parsed = JSON.parse(savedLocations);
+          // Validate that parsed is a valid array with recognized locations
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setSelectedLocations(parsed);
+            // Check if the saved selection includes only "COMPLETE & DELIVERED" (broken state)
+            if (parsed.length === 1 && parsed[0] === "COMPLETE & DELIVERED") {
+              console.log("Clearing broken filter state - only COMPLETE & DELIVERED was selected");
+              localStorage.removeItem("fds:selectedLocations");
+              setSelectedLocations(defaultLocations);
+            } else {
+              setSelectedLocations(parsed);
+            }
           } else {
             // If saved but empty, use defaults
             setSelectedLocations(defaultLocations);
