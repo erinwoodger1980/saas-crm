@@ -76,6 +76,19 @@ export default function FireDoorSchedulePage() {
       if (savedActiveTab) setActiveTab(savedActiveTab);
       
       // Initialize selectedLocations with defaults if not saved or empty
+      // Default: all locations except "COMPLETE & DELIVERED"
+      const defaultLocations = [
+        "ASSIGNED MJS",
+        "RED FOLDER",
+        "IN PROGRESS",
+        "COMPLETE IN FACTORY",
+        "N/A",
+        "NOT LOOKED AT",
+        "NO JOB ASSIGNED",
+        "JOB IN DISPUTE / ISSUES",
+        "CANCELLED",
+      ];
+      
       if (savedLocations) {
         try {
           const parsed = JSON.parse(savedLocations);
@@ -83,17 +96,14 @@ export default function FireDoorSchedulePage() {
             setSelectedLocations(parsed);
           } else {
             // If saved but empty, use defaults
-            const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
             setSelectedLocations(defaultLocations);
           }
         } catch {
           // If parse fails, use defaults
-          const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
           setSelectedLocations(defaultLocations);
         }
       } else {
         // If not saved at all, use defaults
-        const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
         setSelectedLocations(defaultLocations);
       }
       
