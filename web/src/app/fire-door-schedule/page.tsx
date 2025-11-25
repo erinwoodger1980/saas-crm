@@ -452,9 +452,12 @@ export default function FireDoorSchedulePage() {
       return (
         <input
           type="date"
-          className="bg-transparent outline-none text-sm"
+          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
-          onChange={(e) => updateProject(project.id, { signOffDate: e.target.value })}
+          onChange={(e) => {
+            const dateValue = e.target.value ? new Date(e.target.value).toISOString() : null;
+            updateProject(project.id, { signOffDate: dateValue });
+          }}
         />
       );
     }
@@ -463,10 +466,11 @@ export default function FireDoorSchedulePage() {
       return (
         <input
           type="date"
-          className="bg-transparent outline-none text-sm"
+          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
           onChange={(e) => {
             const newDate = e.target.value;
+            const dateValue = newDate ? new Date(newDate).toISOString() : null;
             const leadWeeks = project.leadTimeWeeks || 0;
             let approxDeliveryDate: string | undefined = project.approxDeliveryDate;
             let workingDaysRemaining: number | undefined = project.workingDaysRemaining;
@@ -481,7 +485,7 @@ export default function FireDoorSchedulePage() {
               const remainder = diffDays % 7;
               workingDaysRemaining = fullWeeks * 5 + Math.min(5, remainder);
             }
-            updateProject(project.id, { dateReceived: newDate, approxDeliveryDate, workingDaysRemaining });
+            updateProject(project.id, { dateReceived: dateValue, approxDeliveryDate, workingDaysRemaining });
           }}
         />
       );
@@ -491,9 +495,12 @@ export default function FireDoorSchedulePage() {
       return (
         <input
           type="date"
-          className="bg-transparent outline-none text-sm"
+          className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
-          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+          onChange={(e) => {
+            const dateValue = e.target.value ? new Date(e.target.value).toISOString() : null;
+            updateProject(project.id, { [field]: dateValue });
+          }}
         />
       );
     }
@@ -567,7 +574,7 @@ export default function FireDoorSchedulePage() {
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
         >
           <option value="">--</option>
           {ironmongeryStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -580,7 +587,7 @@ export default function FireDoorSchedulePage() {
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
         >
           <option value="">--</option>
           {materialStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -594,7 +601,7 @@ export default function FireDoorSchedulePage() {
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
         >
           <option value="">--</option>
           {paperworkStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -608,7 +615,7 @@ export default function FireDoorSchedulePage() {
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className="text-[11px] font-medium px-2 py-1 rounded-full border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
         >
           <option value="">--</option>
           {transportOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -621,7 +628,7 @@ export default function FireDoorSchedulePage() {
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { scheduledBy: e.target.value })}
-          className="text-sm px-2 py-1 rounded border bg-white/70 backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="text-sm px-3 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
         >
           <option value="">--</option>
           {['DARREN', 'DAVE', 'STEVE', 'PAUL', 'DAN'].map(o => <option key={o} value={o}>{o}</option>)}
@@ -651,10 +658,13 @@ export default function FireDoorSchedulePage() {
               const fullWeeks = Math.floor(diffDays / 7);
               const remainder = diffDays % 7;
               workingDaysRemaining = fullWeeks * 5 + Math.min(5, remainder);
+            } else if (newWeeks === 0) {
+              approxDeliveryDate = undefined;
+              workingDaysRemaining = undefined;
             }
             updateProject(project.id, { leadTimeWeeks: newWeeks || null, approxDeliveryDate, workingDaysRemaining });
           }}
-          className="bg-transparent outline-none w-20 text-sm border-b border-dashed border-slate-300 focus:border-blue-500"
+          className="bg-white border border-slate-200 rounded px-2 py-1 w-20 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
         />
       );
     }
