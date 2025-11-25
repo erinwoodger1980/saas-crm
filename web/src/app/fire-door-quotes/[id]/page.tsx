@@ -118,9 +118,11 @@ export default function FireDoorQuoteBuilderPage() {
   async function loadRfis(projectId: string) {
     try {
       const data = await apiFetch<RfiRecord[]>(`/rfis?projectId=${projectId}`);
-      setRfis(data || []);
+      // Ensure data is always an array
+      setRfis(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error loading RFIs:", error);
+      setRfis([]); // Reset to empty array on error
     }
   }
 
