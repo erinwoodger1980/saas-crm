@@ -9,7 +9,11 @@ const router = Router();
 router.get('/:projectId/logs', requireAuth, async (req: any, res) => {
   try {
     const { projectId } = req.params;
-    const tenantId = req.user!.tenantId;
+    const tenantId = req.auth?.tenantId;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     const logs = await prisma.fireDoorProductionLog.findMany({
       where: {
@@ -33,8 +37,12 @@ router.post('/:projectId/logs', requireAuth, async (req: any, res) => {
   try {
     const { projectId } = req.params;
     const { process, addedPercent, notes } = req.body;
-    const tenantId = req.user!.tenantId;
-    const loggedBy = req.user!.email || req.user!.id;
+    const tenantId = req.auth?.tenantId;
+    const loggedBy = req.auth?.email || req.auth?.userId;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     // Get current project to find previous percent
     const project = await prisma.fireDoorScheduleProject.findFirst({
@@ -101,8 +109,12 @@ router.post('/:projectId/logs', requireAuth, async (req: any, res) => {
 // Get monthly manufacturing value
 router.get('/stats/monthly-value', requireAuth, async (req: any, res) => {
   try {
-    const tenantId = req.user!.tenantId;
+    const tenantId = req.auth?.tenantId;
     const { year, month } = req.query;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     const now = new Date();
     const targetYear = year ? parseInt(year as string) : now.getFullYear();

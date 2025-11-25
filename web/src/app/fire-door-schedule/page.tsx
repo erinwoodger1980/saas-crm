@@ -163,8 +163,10 @@ export default function FireDoorSchedulePage() {
       
       // Apply location filter if any locations are selected
       if (selectedLocations.length > 0) {
-        const loc = (project.jobLocation || "").toUpperCase();
-        return selectedLocations.includes(loc);
+        const loc = (project.jobLocation || "").trim().toUpperCase();
+        // Convert selected locations to uppercase for comparison
+        const upperSelectedLocations = selectedLocations.map(l => l.toUpperCase());
+        return upperSelectedLocations.includes(loc);
       }
       
       // If no locations selected, show all
