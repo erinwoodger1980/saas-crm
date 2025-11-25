@@ -537,7 +537,7 @@ export default function FireDoorSchedulePage() {
     "N/A",
     "NOT LOOKED AT",
     "NO JOB ASSIGNED",
-    "JOB IN DISPUTE/ISSUES",
+    "JOB IN DISPUTE / ISSUES",
     "CANCELLED",
   ]);
   const [signOffOptions, setSignOffOptions] = useState<string[]>([
