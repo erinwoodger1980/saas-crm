@@ -1,9 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import * as fs from 'fs';
 import * as path from 'path';
 import { parse } from 'csv-parse/sync';
-
-const prisma = new PrismaClient();
 
 interface CSVRow {
   DATE?: string;
@@ -84,23 +84,30 @@ function parseInt(str?: string): number | null {
 
 async function importBOM(csvPath: string, tenantId: string) {
   console.log('Reading CSV file:', csvPath);
+  console.log('Connecting to database...');
   
-  const fileContent = fs.readFileSync(csvPath, 'utf-8');
+  // Initialize Prisma client
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg(pool);
+  const prisma = new PrismaClient({ adapter });
   
-  // Parse CSV, skipping first row (it's a header row with Column1, Column2, etc.)
-  const records = parse(fileContent, {
-    columns: true,
-    skip_empty_lines: true,
-    from_line: 2, // Start from line 2 (skip the first header row)
-    relax_quotes: true,
-    relax_column_count: true,
-  }) as CSVRow[];
-  
-  console.log(`Found ${records.length} rows to import`);
-  
-  let imported = 0;
-  let skipped = 0;
-  let errors = 0;
+  try {
+    const fileContent = fs.readFileSync(csvPath, 'utf-8');
+    
+    // Parse CSV, skipping first row (it's a header row with Column1, Column2, etc.)
+    const records = parse(fileContent, {
+      columns: true,
+      skip_empty_lines: true,
+      from_line: 2, // Start from line 2 (skip the first header row)
+      relax_quotes: true,
+      relax_column_count: true,
+    }) as CSVRow[];
+    
+    console.log(`Found ${records.length} rows to import`);
+    
+    let imported = 0;
+    let skipped = 0;
+    let errors = 0;
   
   for (const row of records) {
     try {
@@ -229,11 +236,17 @@ async function importBOM(csvPath: string, tenantId: string) {
     }
   }
   
-  console.log(`\n=== Import Summary ===`);
-  console.log(`Imported: ${imported}`);
-  console.log(`Skipped: ${skipped}`);
-  console.log(`Errors: ${errors}`);
-  console.log(`Total: ${records.length}`);
+    console.log(`\n=== Import Summary ===`);
+    console.log(`Imported: ${imported}`);
+    console.log(`Skipped: ${skipped}`);
+    console.log(`Errors: ${errors}`);
+    console.log(`Total: ${records.length}`);
+    
+    return { imported, skipped, errors };
+  } finally {
+    await prisma.$disconnect();
+    await pool.end();
+  }
 }
 
 // Main execution
@@ -247,12 +260,11 @@ if (!tenantId) {
 }
 
 importBOM(csvPath, tenantId)
-  .then(() => {
+  .then((result) => {
     console.log('Import complete!');
     process.exit(0);
   })
   .catch((error) => {
     console.error('Import failed:', error);
     process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+  });
