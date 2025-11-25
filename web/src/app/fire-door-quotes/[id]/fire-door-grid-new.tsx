@@ -686,31 +686,47 @@ export function FireDoorGrid({
     const rowIdx = parseInt(rowIndex) - 2; // Subtract header rows
     const colIdx = parseInt(colIndex) - 1;
     
-    if (rowIdx < 0 || colIdx < 0 || rowIdx >= rows.length) return;
+    if (colIdx < 0 || colIdx >= columns.length) return;
     
-    const row = rows[rowIdx];
     const column = columns[colIdx];
-    
     if (!column || !column.key) return;
     
-    const rowId = row.id || `row-${rowIdx}`;
+    // Determine if this is a valid data row or header
+    const isDataRow = rowIdx >= 0 && rowIdx < rows.length;
+    const row = isDataRow ? rows[rowIdx] : null;
+    const rowId = row ? (row.id || `row-${rowIdx}`) : null;
     
     const menu = document.createElement('div');
     menu.className = 'fixed bg-white border border-gray-300 shadow-lg rounded-md z-[9999] p-1';
     menu.style.left = `${e.pageX}px`;
     menu.style.top = `${e.pageY}px`;
     
-    const cellOption = document.createElement('button');
-    cellOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm rounded whitespace-nowrap';
-    cellOption.textContent = 'Add RFI for this cell';
-    cellOption.onclick = () => {
-      onAddRfi(rowId, column.key as string);
+    // Option for cell-specific RFI
+    if (isDataRow) {
+      const cellOption = document.createElement('button');
+      cellOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm rounded whitespace-nowrap';
+      cellOption.textContent = 'Add RFI for this cell';
+      cellOption.onclick = () => {
+        onAddRfi(rowId, column.key as string);
+        if (document.body.contains(menu)) {
+          document.body.removeChild(menu);
+        }
+      };
+      menu.appendChild(cellOption);
+    }
+    
+    // Option for column-wide RFI
+    const columnOption = document.createElement('button');
+    columnOption.className = 'block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm rounded whitespace-nowrap';
+    columnOption.textContent = `Add RFI for column "${column.name}"`;
+    columnOption.onclick = () => {
+      onAddRfi(null, column.key as string);
       if (document.body.contains(menu)) {
         document.body.removeChild(menu);
       }
     };
+    menu.appendChild(columnOption);
     
-    menu.appendChild(cellOption);
     document.body.appendChild(menu);
     
     const closeMenu = (event: MouseEvent) => {
