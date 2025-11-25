@@ -92,7 +92,7 @@ router.get("/", async (req: any, res: Response) => {
       jobLocation,
       signOffStatus,
       scheduledBy,
-      limit = "100",
+      limit = "1000",
       offset = "0",
       sortBy = "dateRequired",
       sortOrder = "asc",
