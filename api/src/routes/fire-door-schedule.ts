@@ -114,7 +114,7 @@ router.get("/:id", async (req: any, res: Response) => {
 router.post("/", async (req: any, res: Response) => {
   try {
     const tenantId = req.auth?.tenantId;
-    const userId = req.auth?.id;
+    const userId = req.auth?.userId || req.auth?.id;
 
     if (!tenantId) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -193,10 +193,10 @@ router.post("/", async (req: any, res: Response) => {
 // PATCH /fire-door-schedule/:id
 // Update an existing project (partial update)
 // ============================================================================
-router.patch("/:id", async (req: any, res: Response) => {
+router.put("/:id", async (req: any, res: Response) => {
   try {
     const tenantId = req.auth?.tenantId;
-    const userId = req.auth?.id;
+    const userId = req.auth?.userId || req.auth?.id;
     const { id } = req.params;
 
     if (!tenantId) {

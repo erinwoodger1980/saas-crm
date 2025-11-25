@@ -14,9 +14,9 @@ const router = express.Router();
 router.post("/sync-to-opportunities", async (req: any, res: Response) => {
   try {
     const tenantId = req.auth?.tenantId;
-    const userId = req.auth?.id;
+    const userId = req.auth?.userId || req.auth?.id;
     
-    if (!tenantId || !userId) {
+    if (!tenantId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
