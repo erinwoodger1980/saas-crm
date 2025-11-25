@@ -62,6 +62,7 @@ export default function FireDoorSchedulePage() {
   const [sortField, setSortField] = useState<string>("dateRequired");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingConfigField, setEditingConfigField] = useState<string | null>(null);
+  const [customColors, setCustomColors] = useState<Record<string, {bg: string, text: string}>>({});
 
   useEffect(() => {
     loadData();
@@ -72,8 +73,14 @@ export default function FireDoorSchedulePage() {
       const savedLocations = localStorage.getItem("fds:selectedLocations");
       const savedSortF = localStorage.getItem("fds:sortField");
       const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
+      const savedCustomColors = localStorage.getItem("fds:customColors");
       if (savedView) setShowTable(savedView === "table");
       if (savedActiveTab) setActiveTab(savedActiveTab);
+      if (savedCustomColors) {
+        try {
+          setCustomColors(JSON.parse(savedCustomColors));
+        } catch {}
+      }
       
       // Initialize selectedLocations with defaults if not saved or empty
       // Default: all locations except "COMPLETE & DELIVERED"
@@ -146,6 +153,9 @@ export default function FireDoorSchedulePage() {
   useEffect(() => {
     try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
   }, [sortField, sortDir]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:customColors", JSON.stringify(customColors)); } catch {}
+  }, [customColors]);
 
   async function loadData() {
     setLoading(true);
@@ -262,6 +272,26 @@ export default function FireDoorSchedulePage() {
     if (status.includes("PROGRESS") || status.includes("WORKING")) return "bg-blue-100 text-blue-700";
     if (status.includes("AWAITING") || status.includes("RED FOLDER")) return "bg-orange-100 text-orange-700";
     return "bg-slate-100 text-slate-600";
+  }
+
+  // Helper to get hex color from Tailwind class
+  function getColorHex(colorClass: string): string {
+    const colorMap: Record<string, string> = {
+      'blue-100': '3b82f6', 'orange-100': 'f97316', 'cyan-100': '06b6d4',
+      'emerald-100': '10b981', 'green-100': '22c55e', 'red-100': 'ef4444',
+      'slate-100': '64748b'
+    };
+    const match = colorClass.match(/bg-(\w+-\d+)/);
+    return match ? (colorMap[match[1]] || '3b82f6') : '3b82f6';
+  }
+
+  // Helper to calculate brightness of hex color
+  function getBrightness(hex: string): number {
+    const rgb = parseInt(hex.slice(1), 16);
+    const r = (rgb >> 16) & 0xff;
+    const g = (rgb >>  8) & 0xff;
+    const b = (rgb >>  0) & 0xff;
+    return (r * 299 + g * 587 + b * 114) / 1000;
   }
 
   // Calculate BOM completion percentage
@@ -840,12 +870,14 @@ export default function FireDoorSchedulePage() {
 
     // Status dropdowns
     if (field === 'jobLocation') {
-      const colorClasses = JOB_LOCATION_COLORS[value as string] ?? "bg-slate-100 text-slate-600";
+      const customColor = customColors[value as string];
+      const colorClasses = customColor ? '' : (JOB_LOCATION_COLORS[value as string] ?? "bg-slate-100 text-slate-600");
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { jobLocation: e.target.value })}
           className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
+          style={customColor ? { backgroundColor: customColor.bg, color: customColor.text } : undefined}
         >
           <option value="">--</option>
           {jobLocationOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -854,12 +886,14 @@ export default function FireDoorSchedulePage() {
     }
 
     if (field === 'signOffStatus') {
-      const colorClasses = SIGN_OFF_COLORS[value as string] ?? "bg-slate-100 text-slate-600";
+      const customColor = customColors[value as string];
+      const colorClasses = customColor ? '' : (SIGN_OFF_COLORS[value as string] ?? "bg-slate-100 text-slate-600");
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { signOffStatus: e.target.value })}
           className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
+          style={customColor ? { backgroundColor: customColor.bg, color: customColor.text } : undefined}
         >
           <option value="">--</option>
           {signOffOptions.map(o => <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>)}
@@ -1335,19 +1369,16 @@ export default function FireDoorSchedulePage() {
                         <input
                           type="color"
                           className="w-8 h-7 border rounded cursor-pointer"
+                          value={customColors[opt]?.bg || '#3b82f6'}
                           onChange={(e) => {
-                            try {
-                              const hex = e.target.value;
-                              const bg = `bg-[${hex}]`;
-                              const classes = `${bg} text-white`;
-                              if (editingConfigField === 'jobLocation') {
-                                JOB_LOCATION_COLORS[opt] = classes;
-                              } else {
-                                SIGN_OFF_COLORS[opt] = classes;
-                              }
-                            } catch (err) {
-                              console.error('Failed to apply colour override', err);
-                            }
+                            const hex = e.target.value;
+                            const brightness = getBrightness(hex);
+                            const textColor = brightness > 128 ? '#1f2937' : '#ffffff';
+                            
+                            setCustomColors({
+                              ...customColors,
+                              [opt]: { bg: hex, text: textColor }
+                            });
                           }}
                         />
                       )}
