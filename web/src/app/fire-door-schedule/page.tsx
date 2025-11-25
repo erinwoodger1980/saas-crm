@@ -111,12 +111,6 @@ export default function FireDoorSchedulePage() {
 
   // Apply search + tab filters
   const filteredProjects = projects
-    // Location filter from stats cards
-    .filter(project => {
-      const loc = (project.jobLocation || "").toUpperCase();
-      if (locationFilter === "ALL") return true;
-      return loc === locationFilter;
-    })
     .filter((project) => {
       const searchLower = searchTerm.toLowerCase();
       const hasSearchTerm = !!searchTerm;
@@ -127,9 +121,10 @@ export default function FireDoorSchedulePage() {
         project.poNumber?.toLowerCase().includes(searchLower)
       );
       
+      const loc = (project.jobLocation || "").toUpperCase();
+      
       // If no search term, exclude COMPLETE & DELIVERED projects by default
       if (!hasSearchTerm) {
-        const loc = (project.jobLocation || "").toUpperCase();
         return loc !== "COMPLETE & DELIVERED";
       }
       
@@ -197,8 +192,67 @@ export default function FireDoorSchedulePage() {
     return "bg-slate-100 text-slate-600";
   }
 
+  // Calculate BOM completion percentage
+  function calculateBOMPercent(project: FireDoorProject): number {
+    const statuses = [
+      project.blanksStatus,
+      project.lippingsStatus,
+      project.facingsStatus,
+      project.glassStatus,
+      project.cassettesStatus,
+      project.timbersStatus,
+      project.ironmongeryStatus
+    ];
+    const completed = statuses.filter(s => s === 'Received' || s === 'N/A' || s === 'Stock').length;
+    return Math.round((completed / statuses.length) * 100);
+  }
+
+  // Calculate Paperwork completion percentage
+  function calculatePaperworkPercent(project: FireDoorProject): number {
+    const statuses = [
+      project.doorPaperworkStatus,
+      project.finalCncSheetStatus,
+      project.finalChecksSheetStatus,
+      project.deliveryChecklistStatus,
+      project.framesPaperworkStatus
+    ];
+    const completed = statuses.filter(s => s === 'Printed in Office' || s === 'In Factory' || s === 'N/A').length;
+    return Math.round((completed / statuses.length) * 100);
+  }
+
+  // Calculate Production completion percentage
+  function calculateProductionPercent(project: FireDoorProject): number {
+    const percentages = [
+      project.blanksCutPercent || 0,
+      project.edgebandPercent || 0,
+      project.calibratePercent || 0,
+      project.facingsPercent || 0,
+      project.sprayPercent || 0,
+      project.buildPercent || 0
+    ];
+    const avg = percentages.reduce((a, b) => a + b, 0) / percentages.length;
+    return Math.round(avg);
+  }
+
   // Tab definitions with labels and column sets
   const TAB_DEFINITIONS = {
+    PROGRESS: {
+      label: 'Progress',
+      columns: [
+        'mjsNumber',
+        'clientName',
+        'jobName',
+        'dateReceived',
+        'jobLocation',
+        'signOffStatus',
+        'scheduledBy',
+        'signOffDate',
+        'workingDaysRemaining',
+        'bomPercent',
+        'paperworkPercent',
+        'productionPercent'
+      ]
+    },
     PROJECT_OVERVIEW: {
       label: 'Project Overview',
       columns: [
@@ -358,6 +412,9 @@ export default function FireDoorSchedulePage() {
     leadTimeWeeks: 'Lead Time in Weeks',
     approxDeliveryDate: 'Approx Delivery',
     workingDaysRemaining: 'Approx Working Days Remaining',
+    bomPercent: 'BOM Progress',
+    paperworkPercent: 'Paperwork Progress',
+    productionPercent: 'Production Progress',
     blanksStatus: 'Blanks Status',
     blanksDateOrdered: 'Blanks Date Ordered',
     blanksDateExpected: 'Blanks Date Expected',
@@ -447,10 +504,12 @@ export default function FireDoorSchedulePage() {
     "SCHEDULE SIGNED OFF",
     "NOT LOOKED AT",
   ]);
-  const materialStatusOptions = ["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received"];
-  const ironmongeryStatusOptions = [...materialStatusOptions, "Received from TBS", "Received from Customer"];
-  const paperworkStatusOptions = ["Not Started", "Part Complete", "Printed in Office", "In Factory", "N/A"];
-  const transportOptions = ["TBC", "By Customer", "By LAJ", "Collect", "Not Booked", "Booked"];
+  const [scheduledByOptions, setScheduledByOptions] = useState<string[]>(["DAVE", "DARREN", "OFFICE"]);
+  const [materialStatusOptions, setMaterialStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received"]);
+  const [ironmongeryStatusOptions, setIronmongeryStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received", "Received from TBS", "Received from Customer"]);
+  const [paperworkStatusOptions, setPaperworkStatusOptions] = useState<string[]>(["Not Started", "Working On", "Ready to Print", "Part Complete", "Printed in Office", "In Factory", "N/A"]);
+  const [transportOptions, setTransportOptions] = useState<string[]>(["TBC", "By Customer", "By LAJ", "Collect", "Not Booked", "Booked"]);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   // Render cell based on field type
   function renderCell(project: FireDoorProject, field: string) {
@@ -548,6 +607,82 @@ export default function FireDoorSchedulePage() {
       );
     }
 
+    // Calculated percentage dials for Progress tab
+    if (field === 'bomPercent') {
+      const percent = calculateBOMPercent(project);
+      return (
+        <div className="flex items-center justify-center">
+          <div className="relative w-16 h-16">
+            <svg className="w-16 h-16 transform -rotate-90">
+              <circle cx="32" cy="32" r="28" stroke="#e2e8f0" strokeWidth="6" fill="none" />
+              <circle 
+                cx="32" 
+                cy="32" 
+                r="28" 
+                stroke={percent === 100 ? '#10b981' : percent >= 50 ? '#3b82f6' : '#f59e0b'} 
+                strokeWidth="6" 
+                fill="none"
+                strokeDasharray={`${2 * Math.PI * 28}`}
+                strokeDashoffset={`${2 * Math.PI * 28 * (1 - percent / 100)}`}
+                className="transition-all duration-300"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center text-xs font-bold">{percent}%</div>
+          </div>
+        </div>
+      );
+    }
+
+    if (field === 'paperworkPercent') {
+      const percent = calculatePaperworkPercent(project);
+      return (
+        <div className="flex items-center justify-center">
+          <div className="relative w-16 h-16">
+            <svg className="w-16 h-16 transform -rotate-90">
+              <circle cx="32" cy="32" r="28" stroke="#e2e8f0" strokeWidth="6" fill="none" />
+              <circle 
+                cx="32" 
+                cy="32" 
+                r="28" 
+                stroke={percent === 100 ? '#10b981' : percent >= 50 ? '#3b82f6' : '#f59e0b'} 
+                strokeWidth="6" 
+                fill="none"
+                strokeDasharray={`${2 * Math.PI * 28}`}
+                strokeDashoffset={`${2 * Math.PI * 28 * (1 - percent / 100)}`}
+                className="transition-all duration-300"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center text-xs font-bold">{percent}%</div>
+          </div>
+        </div>
+      );
+    }
+
+    if (field === 'productionPercent') {
+      const percent = calculateProductionPercent(project);
+      return (
+        <div className="flex items-center justify-center">
+          <div className="relative w-16 h-16">
+            <svg className="w-16 h-16 transform -rotate-90">
+              <circle cx="32" cy="32" r="28" stroke="#e2e8f0" strokeWidth="6" fill="none" />
+              <circle 
+                cx="32" 
+                cy="32" 
+                r="28" 
+                stroke={percent === 100 ? '#10b981' : percent >= 50 ? '#3b82f6' : '#f59e0b'} 
+                strokeWidth="6" 
+                fill="none"
+                strokeDasharray={`${2 * Math.PI * 28}`}
+                strokeDashoffset={`${2 * Math.PI * 28 * (1 - percent / 100)}`}
+                className="transition-all duration-300"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center text-xs font-bold">{percent}%</div>
+          </div>
+        </div>
+      );
+    }
+
     // Status dropdowns
     if (field === 'jobLocation') {
       const colorClasses = JOB_LOCATION_COLORS[value as string] ?? "bg-slate-100 text-slate-600";
@@ -573,6 +708,19 @@ export default function FireDoorSchedulePage() {
         >
           <option value="">--</option>
           {signOffOptions.map(o => <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>)}
+        </select>
+      );
+    }
+
+    if (field === 'scheduledBy') {
+      return (
+        <select
+          value={value || ''}
+          onChange={(e) => updateProject(project.id, { scheduledBy: e.target.value })}
+          className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
+        >
+          <option value="">--</option>
+          {scheduledByOptions.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       );
     }
@@ -860,7 +1008,11 @@ export default function FireDoorSchedulePage() {
                 className="pl-11 h-12 bg-white/50 border-slate-200 focus:bg-white transition-colors"
               />
             </div>
-            <Button variant="outline" className="h-12 bg-white/50">
+            <Button 
+              variant="outline" 
+              className="h-12 bg-white/50"
+              onClick={() => setShowFiltersModal(!showFiltersModal)}
+            >
               <Filter className="w-4 h-4 mr-2" />
               Filters
             </Button>
@@ -888,6 +1040,44 @@ export default function FireDoorSchedulePage() {
               );
             })}
           </div>
+          {showFiltersModal && (
+            <div className="mt-4 p-4 rounded-xl border border-slate-300 bg-white shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-semibold text-slate-700">Filters</h3>
+                <button
+                  onClick={() => setShowFiltersModal(false)}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Job Location</label>
+                  <select 
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                  >
+                    <option value="ALL">All Projects</option>
+                    {jobLocationOptions.map(opt => <option key={opt} value={opt.toUpperCase()}>{opt}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      setLocationFilter("ALL");
+                      setSearchTerm("");
+                    }}
+                  >
+                    Clear All Filters
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           {editingConfigField && (
             <div className="mt-4 p-3 rounded-xl border border-dashed border-slate-300 bg-white/70">
               <div className="flex justify-between items-center mb-2">
@@ -905,55 +1095,73 @@ export default function FireDoorSchedulePage() {
                 These changes apply immediately in this view. Later we can persist them per tenant.
               </p>
               <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                {(editingConfigField === 'jobLocation' ? jobLocationOptions : signOffOptions).map((opt, idx) => (
-                  <div key={opt + idx} className="flex items-center gap-2 text-xs">
-                    <input
-                      className="flex-1 px-2 py-1 border rounded bg-white"
-                      value={opt}
-                      onChange={(e) => {
-                        const next = [...(editingConfigField === 'jobLocation' ? jobLocationOptions : signOffOptions)];
-                        next[idx] = e.target.value;
-                        if (editingConfigField === 'jobLocation') setJobLocationOptions(next);
-                        else setSignOffOptions(next);
-                      }}
-                    />
-                    <input
-                      type="color"
-                      className="w-8 h-7 border rounded cursor-pointer"
-                      onChange={(e) => {
-                        try {
-                          const hex = e.target.value;
-                          const bg = `bg-[${hex}]`;
-                          const classes = `${bg} text-white`;
-                          if (editingConfigField === 'jobLocation') {
-                            JOB_LOCATION_COLORS[opt] = classes;
-                          } else {
-                            SIGN_OFF_COLORS[opt] = classes;
-                          }
-                        } catch (err) {
-                          console.error('Failed to apply colour override', err);
-                        }
-                      }}
-                    />
-                    <button
-                      className="text-red-500 text-xs"
-                      onClick={() => {
-                        const next = (editingConfigField === 'jobLocation' ? jobLocationOptions : signOffOptions).filter((_, i) => i !== idx);
-                        if (editingConfigField === 'jobLocation') setJobLocationOptions(next);
-                        else setSignOffOptions(next);
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                {(() => {
+                  let currentOptions: string[] = [];
+                  let currentSetter: (opts: string[]) => void = () => {};
+                  const showColorPicker = editingConfigField === 'jobLocation' || editingConfigField === 'signOffStatus';
+                  
+                  if (editingConfigField === 'jobLocation') { currentOptions = jobLocationOptions; currentSetter = setJobLocationOptions; }
+                  else if (editingConfigField === 'signOffStatus') { currentOptions = signOffOptions; currentSetter = setSignOffOptions; }
+                  else if (editingConfigField === 'scheduledBy') { currentOptions = scheduledByOptions; currentSetter = setScheduledByOptions; }
+                  else if (editingConfigField === 'ironmongeryStatus') { currentOptions = ironmongeryStatusOptions; currentSetter = setIronmongeryStatusOptions; }
+                  else if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus'].includes(editingConfigField || '')) { currentOptions = materialStatusOptions; currentSetter = setMaterialStatusOptions; }
+                  else if (['doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus'].includes(editingConfigField || '')) { currentOptions = paperworkStatusOptions; currentSetter = setPaperworkStatusOptions; }
+                  else if (editingConfigField === 'transportStatus') { currentOptions = transportOptions; currentSetter = setTransportOptions; }
+                  
+                  return currentOptions.map((opt, idx) => (
+                    <div key={opt + idx} className="flex items-center gap-2 text-xs">
+                      <input
+                        className="flex-1 px-2 py-1 border rounded bg-white"
+                        value={opt}
+                        onChange={(e) => {
+                          const next = [...currentOptions];
+                          next[idx] = e.target.value;
+                          currentSetter(next);
+                        }}
+                      />
+                      {showColorPicker && (
+                        <input
+                          type="color"
+                          className="w-8 h-7 border rounded cursor-pointer"
+                          onChange={(e) => {
+                            try {
+                              const hex = e.target.value;
+                              const bg = `bg-[${hex}]`;
+                              const classes = `${bg} text-white`;
+                              if (editingConfigField === 'jobLocation') {
+                                JOB_LOCATION_COLORS[opt] = classes;
+                              } else {
+                                SIGN_OFF_COLORS[opt] = classes;
+                              }
+                            } catch (err) {
+                              console.error('Failed to apply colour override', err);
+                            }
+                          }}
+                        />
+                      )}
+                      <button
+                        className="text-red-500 text-xs"
+                        onClick={() => {
+                          const next = currentOptions.filter((_, i) => i !== idx);
+                          currentSetter(next);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ));
+                })()}
               </div>
               <button
                 className="mt-2 text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
                 onClick={() => {
-                  const next = [...(editingConfigField === 'jobLocation' ? jobLocationOptions : signOffOptions), 'NEW OPTION'];
-                  if (editingConfigField === 'jobLocation') setJobLocationOptions(next);
-                  else setSignOffOptions(next);
+                  if (editingConfigField === 'jobLocation') setJobLocationOptions([...jobLocationOptions, 'NEW OPTION']);
+                  else if (editingConfigField === 'signOffStatus') setSignOffOptions([...signOffOptions, 'NEW OPTION']);
+                  else if (editingConfigField === 'scheduledBy') setScheduledByOptions([...scheduledByOptions, 'NEW OPTION']);
+                  else if (editingConfigField === 'ironmongeryStatus') setIronmongeryStatusOptions([...ironmongeryStatusOptions, 'NEW OPTION']);
+                  else if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus'].includes(editingConfigField || '')) setMaterialStatusOptions([...materialStatusOptions, 'NEW OPTION']);
+                  else if (['doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus'].includes(editingConfigField || '')) setPaperworkStatusOptions([...paperworkStatusOptions, 'NEW OPTION']);
+                  else if (editingConfigField === 'transportStatus') setTransportOptions([...transportOptions, 'NEW OPTION']);
                 }}
               >
                 + Add option
@@ -998,11 +1206,14 @@ export default function FireDoorSchedulePage() {
                           className={`inline-flex items-center gap-1 text-left ${
                             (field === 'jobLocation' || field === 'signOffStatus') 
                               ? 'px-3 py-1.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 font-semibold shadow-sm transition-colors' 
+                              : ['scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'].includes(field)
+                              ? 'hover:text-blue-600'
                               : 'hover:text-blue-600'
                           }`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (field === 'jobLocation' || field === 'signOffStatus') {
+                            const configFields = ['jobLocation', 'signOffStatus', 'scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'];
+                            if (configFields.includes(field)) {
                               setEditingConfigField(field);
                             } else {
                               toggleSort(field);
@@ -1010,7 +1221,8 @@ export default function FireDoorSchedulePage() {
                           }}
                         >
                           {COLUMN_LABELS[field] || field}
-                          {(field === 'jobLocation' || field === 'signOffStatus') && <Filter className="w-3 h-3 ml-1" />}
+                          {['jobLocation', 'signOffStatus'].includes(field) && <Filter className="w-3 h-3 ml-1" />}
+                          {['scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'].includes(field) && <Filter className="w-3 h-3 ml-1 opacity-40" />}
                           {sortField === field ? (
                             sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
                           ) : (
