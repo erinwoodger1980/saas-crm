@@ -109,6 +109,7 @@ router.get("/:id", async (req: any, res: Response) => {
 // ============================================================================
 // POST /fire-door-schedule
 // Create a new fire door schedule project
+// Automatically creates a won opportunity for workshop scheduling
 // ============================================================================
 router.post("/", async (req: any, res: Response) => {
   try {
@@ -126,9 +127,61 @@ router.post("/", async (req: any, res: Response) => {
       lastUpdatedAt: new Date(),
     };
 
+    // Create the fire door project
     const project = await prisma.fireDoorScheduleProject.create({
       data: projectData,
     });
+
+    // Automatically create a won opportunity if client name exists
+    if (project.clientName) {
+      try {
+        // Find or create lead
+        let lead = await prisma.lead.findFirst({
+          where: {
+            tenantId,
+            companyName: project.clientName,
+          },
+        });
+
+        if (!lead) {
+          lead = await prisma.lead.create({
+            data: {
+              tenantId,
+              companyName: project.clientName,
+              name: project.clientName,
+              source: 'Fire Door Schedule',
+              createdAt: project.dateReceived || new Date(),
+            },
+          });
+        }
+
+        // Create won opportunity
+        const opportunity = await prisma.opportunity.create({
+          data: {
+            tenantId,
+            leadId: lead.id,
+            title: project.jobName || `Fire Door Project - ${project.mjsNumber || 'Untitled'}`,
+            stage: 'WON' as any,
+            startDate: project.signOffDate,
+            deliveryDate: project.approxDeliveryDate,
+            valueGBP: project.netValue,
+            wonAt: project.signOffDate || project.dateReceived || new Date(),
+            createdAt: project.dateReceived || new Date(),
+          },
+        });
+
+        // Link opportunity to project
+        await prisma.fireDoorScheduleProject.update({
+          where: { id: project.id },
+          data: { projectId: opportunity.id },
+        });
+
+        console.log(`Created won opportunity ${opportunity.id} for fire door project ${project.id}`);
+      } catch (oppError) {
+        console.error('Failed to create opportunity for fire door project:', oppError);
+        // Don't fail the project creation if opportunity creation fails
+      }
+    }
 
     res.status(201).json(project);
   } catch (error) {
