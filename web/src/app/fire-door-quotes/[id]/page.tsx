@@ -91,7 +91,9 @@ export default function FireDoorQuoteBuilderPage() {
   async function loadQuote(id: string) {
     setLoading(true);
     try {
+      console.log('Loading quote with ID:', id);
       const data = await apiFetch<FireDoorQuote>(`/fire-door-quotes/${id}`);
+      console.log('Quote loaded:', { id: data.id, title: data.title, lineItems: data.lineItems?.length });
       setQuote(data);
       await loadRfis(id);
     } catch (error: any) {
@@ -125,14 +127,20 @@ export default function FireDoorQuoteBuilderPage() {
   async function saveQuote() {
     setSaving(true);
     try {
-      const endpoint = quote.id ? `/fire-door-quotes/${quote.id}` : "/fire-door-quotes";
-      const method = quote.id ? "PUT" : "POST";
+      // Use URL param ID if available, otherwise use quote.id
+      const quoteId = (params?.id && params.id !== "new") ? params.id as string : quote.id;
+      const endpoint = quoteId ? `/fire-door-quotes/${quoteId}` : "/fire-door-quotes";
+      const method = quoteId ? "PUT" : "POST";
+      
+      console.log('Saving quote:', { quoteId, endpoint, method, hasQuoteId: !!quote.id });
       
       const savedQuote = await apiFetch<FireDoorQuote>(endpoint, {
         method,
         json: quote,
       });
 
+      console.log('Quote saved successfully:', { savedId: savedQuote.id });
+      
       setQuote(savedQuote);
       
       toast({
@@ -140,7 +148,8 @@ export default function FireDoorQuoteBuilderPage() {
         description: "Quote saved successfully",
       });
 
-      if (!quote.id) {
+      // Only redirect if this was a new quote
+      if (!quoteId && savedQuote.id) {
         router.push(`/fire-door-quotes/${savedQuote.id}`);
       }
       
