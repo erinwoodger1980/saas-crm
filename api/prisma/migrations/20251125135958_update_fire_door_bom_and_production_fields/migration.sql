@@ -1,37 +1,37 @@
--- AlterTable
-ALTER TABLE "FireDoorScheduleProject" DROP COLUMN "orderingStatus";
-ALTER TABLE "FireDoorScheduleProject" DROP COLUMN "paperworkStatus";
+-- AlterTable (drop columns if they exist)
+ALTER TABLE "FireDoorScheduleProject" DROP COLUMN IF EXISTS "orderingStatus";
+ALTER TABLE "FireDoorScheduleProject" DROP COLUMN IF EXISTS "paperworkStatus";
 
--- Add BOM date tracking fields for each material
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "blanksDateOrdered" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "blanksDateExpected" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "blanksDateReceived" TIMESTAMP(3);
+-- Add BOM date tracking fields for each material (idempotent)
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "blanksDateOrdered" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "blanksDateExpected" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "blanksDateReceived" TIMESTAMP(3);
 
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "lippingsDateOrdered" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "lippingsDateExpected" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "lippingsDateReceived" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "lippingsDateOrdered" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "lippingsDateExpected" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "lippingsDateReceived" TIMESTAMP(3);
 
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "facingsDateOrdered" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "facingsDateExpected" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "facingsDateReceived" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "facingsDateOrdered" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "facingsDateExpected" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "facingsDateReceived" TIMESTAMP(3);
 
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "glassDateOrdered" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "glassDateExpected" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "glassDateReceived" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "glassDateOrdered" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "glassDateExpected" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "glassDateReceived" TIMESTAMP(3);
 
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "cassettesDateOrdered" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "cassettesDateExpected" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "cassettesDateReceived" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "cassettesDateOrdered" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "cassettesDateExpected" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "cassettesDateReceived" TIMESTAMP(3);
 
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "timbersDateOrdered" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "timbersDateExpected" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "timbersDateReceived" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "timbersDateOrdered" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "timbersDateExpected" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "timbersDateReceived" TIMESTAMP(3);
 
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "ironmongeryDateOrdered" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "ironmongeryDateExpected" TIMESTAMP(3);
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "ironmongeryDateReceived" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "ironmongeryDateOrdered" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "ironmongeryDateExpected" TIMESTAMP(3);
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "ironmongeryDateReceived" TIMESTAMP(3);
 
--- Add production tracking fields
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "doorSets" INTEGER;
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "leaves" INTEGER;
-ALTER TABLE "FireDoorScheduleProject" ADD COLUMN "deliveryNotes" TEXT;
+-- Add production tracking fields (idempotent)
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "doorSets" INTEGER;
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "leaves" INTEGER;
+ALTER TABLE "FireDoorScheduleProject" ADD COLUMN IF NOT EXISTS "deliveryNotes" TEXT;
