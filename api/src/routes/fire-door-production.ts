@@ -1,12 +1,12 @@
 // API Routes for Fire Door Production Logging
 import { Router } from 'express';
-import prisma from '../prisma';
+import { prisma } from '../prisma';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
 // Get production logs for a project
-router.get('/:projectId/logs', requireAuth, async (req, res) => {
+router.get('/:projectId/logs', requireAuth, async (req: any, res) => {
   try {
     const { projectId } = req.params;
     const tenantId = req.user!.tenantId;
@@ -29,7 +29,7 @@ router.get('/:projectId/logs', requireAuth, async (req, res) => {
 });
 
 // Log production progress
-router.post('/:projectId/logs', requireAuth, async (req, res) => {
+router.post('/:projectId/logs', requireAuth, async (req: any, res) => {
   try {
     const { projectId } = req.params;
     const { process, addedPercent, notes } = req.body;
@@ -99,7 +99,7 @@ router.post('/:projectId/logs', requireAuth, async (req, res) => {
 });
 
 // Get monthly manufacturing value
-router.get('/stats/monthly-value', requireAuth, async (req, res) => {
+router.get('/stats/monthly-value', requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.user!.tenantId;
     const { year, month } = req.query;
@@ -139,7 +139,7 @@ router.get('/stats/monthly-value', requireAuth, async (req, res) => {
     let totalManufacturingValue = 0;
     const projectValues: Record<string, { value: number; logs: number }> = {};
 
-    logs.forEach((log) => {
+    logs.forEach((log: any) => {
       if (log.project.netValue) {
         const netValue = parseFloat(log.project.netValue.toString());
         const valuePerProcess = netValue / processCount;
