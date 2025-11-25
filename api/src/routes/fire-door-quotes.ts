@@ -49,15 +49,16 @@ router.post('/', requireAuth, async (req: any, res) => {
           where: { id: leadId, tenantId },
         });
       } else {
-        // Auto-create lead for this quote
+        // Auto-create lead for this fire door project
         lead = await tx.lead.create({
           data: {
             tenantId,
             createdById: userId,
             contactName: clientName || 'Fire Door Customer',
             email: contactEmail,
-            status: 'NEW',
+            status: 'QUALIFIED', // Start as QUALIFIED since this is an actual order
             capturedAt: new Date(),
+            estimatedValue: totalValue,
             custom: {
               projectReference,
               siteAddress,
@@ -69,13 +70,31 @@ router.post('/', requireAuth, async (req: any, res) => {
         });
       }
 
+      // Create opportunity (WON) for this fire door project
+      const opportunity = await tx.opportunity.upsert({
+        where: { leadId: lead!.id },
+        update: {
+          valueGBP: totalValue,
+          deliveryDate: dateRequired ? new Date(dateRequired) : null,
+        },
+        create: {
+          tenantId,
+          leadId: lead!.id,
+          title: title || 'Fire Door Project',
+          stage: 'WON',
+          wonAt: new Date(),
+          valueGBP: totalValue,
+          deliveryDate: dateRequired ? new Date(dateRequired) : null,
+        },
+      });
+
       // Create standard quote
       const quote = await tx.quote.create({
         data: {
           tenantId,
           leadId: lead!.id,
           title: title || 'Fire Door Quote',
-          status: 'DRAFT',
+          status: 'ACCEPTED', // Fire door orders are accepted quotes
           totalGBP: totalValue,
           currency: 'GBP',
           notes,
@@ -90,6 +109,7 @@ router.post('/', requireAuth, async (req: any, res) => {
             poNumber,
             dateRequired,
             fireDoorImportId,
+            opportunityId: opportunity.id,
           },
         },
       });
@@ -125,7 +145,7 @@ router.post('/', requireAuth, async (req: any, res) => {
         await tx.fireDoorScheduleProject.create({
           data: {
             tenantId,
-            projectId: quote.id,
+            projectId: opportunity.id, // Link to opportunity, not quote
             mjsNumber: projectReference || undefined,
             jobName: title,
             clientName,
@@ -140,15 +160,17 @@ router.post('/', requireAuth, async (req: any, res) => {
         });
       }
 
-      return { quote, lead: lead! };
+      return { quote, lead: lead!, opportunity };
     });
 
     return res.json({
       id: result.quote.id,
       leadId: result.lead.id,
+      opportunityId: result.opportunity.id,
       title: result.quote.title,
       totalValue,
       status: result.quote.status,
+      stage: result.opportunity.stage,
     });
   } catch (error: any) {
     console.error('[fire-door-quotes] Create error:', error);
@@ -259,11 +281,22 @@ router.put('/:id', requireAuth, async (req: any, res) => {
       // Get existing quote
       const existing = await tx.quote.findFirst({
         where: { id: quoteId, tenantId },
-        include: { lines: true },
+        include: { lines: true, lead: { include: { opportunity: true } } },
       });
 
       if (!existing) {
         throw new Error('Quote not found');
+      }
+
+      // Update opportunity if it exists
+      if (existing.lead?.opportunity) {
+        await tx.opportunity.update({
+          where: { id: existing.lead.opportunity.id },
+          data: {
+            valueGBP: totalValue,
+            deliveryDate: dateRequired ? new Date(dateRequired) : null,
+          },
+        });
       }
 
       // Update quote
@@ -284,6 +317,7 @@ router.put('/:id', requireAuth, async (req: any, res) => {
             contactPhone,
             poNumber,
             dateRequired,
+            opportunityId: existing.lead?.opportunity?.id,
           },
         },
       });
@@ -369,13 +403,26 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
           createdById: userId,
           contactName: clientName || 'Fire Door Customer',
           email: contactEmail,
-          status: 'NEW',
+          status: 'QUALIFIED', // Imported orders are qualified leads
           capturedAt: new Date(),
+          estimatedValue: importRecord.totalValue,
           custom: {
             importId,
             sourceName: importRecord.sourceName,
             contactPhone,
           },
+        },
+      });
+
+      // Create opportunity (WON) for imported fire door project
+      const opportunity = await tx.opportunity.create({
+        data: {
+          tenantId,
+          leadId: lead.id,
+          title: title || `Fire Door Project - ${importRecord.sourceName}`,
+          stage: 'WON',
+          wonAt: new Date(),
+          valueGBP: importRecord.totalValue,
         },
       });
 
@@ -385,7 +432,7 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
           tenantId,
           leadId: lead.id,
           title: title || `Fire Door Quote - ${importRecord.sourceName}`,
-          status: 'DRAFT',
+          status: 'ACCEPTED', // Imported orders are accepted quotes
           totalGBP: importRecord.totalValue,
           currency: importRecord.currency,
           meta: {
@@ -395,6 +442,7 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
             contactPhone,
             fireDoorImportId: importId,
             sourceName: importRecord.sourceName,
+            opportunityId: opportunity.id,
           },
         },
       });
@@ -428,7 +476,7 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
         await tx.fireDoorScheduleProject.create({
           data: {
             tenantId,
-            projectId: quote.id,
+            projectId: opportunity.id, // Link to opportunity
             jobName: title || importRecord.sourceName,
             clientName,
             dateReceived: new Date(),
@@ -440,15 +488,17 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
         });
       }
 
-      return { quote, lead };
+      return { quote, lead, opportunity };
     });
 
     return res.json({
       id: result.quote.id,
       leadId: result.lead.id,
+      opportunityId: result.opportunity.id,
       title: result.quote.title,
       totalValue: Number(result.quote.totalGBP),
-      message: 'Import successfully converted to quote',
+      stage: result.opportunity.stage,
+      message: 'Import successfully converted to quote with WON opportunity',
     });
   } catch (error: any) {
     console.error('[fire-door-quotes] From import error:', error);
