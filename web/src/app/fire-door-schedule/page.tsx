@@ -60,6 +60,7 @@ export default function FireDoorSchedulePage() {
   const [showTable, setShowTable] = useState<boolean>(true); // consolidated table view toggle
   const [sortField, setSortField] = useState<string>("dateRequired");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [editingConfigField, setEditingConfigField] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -130,8 +131,8 @@ export default function FireDoorSchedulePage() {
       const dir = sortDir === 'asc' ? 1 : -1;
       let av: any = (a as any)[sortField];
       let bv: any = (b as any)[sortField];
-      // Date parsing
-      if (sortField.includes('date')) {
+      // Date parsing (only when explicit sort field is a date column)
+      if (sortField === 'dateRequired') {
         av = av ? new Date(av).getTime() : 0;
         bv = bv ? new Date(bv).getTime() : 0;
       }
@@ -157,6 +158,27 @@ export default function FireDoorSchedulePage() {
     if (progress < 90) return "from-blue-400 to-blue-500";
     return "from-green-400 to-green-500";
   }
+
+  const JOB_LOCATION_COLORS: Record<string, string> = {
+    "ASSIGNED MJS": "bg-blue-100 text-blue-700",
+    "RED FOLDER": "bg-orange-100 text-orange-700",
+    "IN PROGRESS": "bg-cyan-100 text-cyan-700",
+    "COMPLETE IN FACTORY": "bg-emerald-100 text-emerald-700",
+    "COMPLETE & DELIVERED": "bg-green-100 text-green-700",
+    "N/A": "bg-slate-100 text-slate-600",
+    "NOT LOOKED AT": "bg-slate-100 text-slate-600",
+    "NO JOB ASSIGNED": "bg-slate-100 text-slate-600",
+    "JOB IN DISPUTE/ISSUES": "bg-red-100 text-red-700",
+    "CANCELLED": "bg-red-100 text-red-700",
+  };
+
+  const SIGN_OFF_COLORS: Record<string, string> = {
+    "AWAITING SCHEDULE": "bg-orange-100 text-orange-700",
+    "WORKING ON SCHEDULE": "bg-blue-100 text-blue-700",
+    "SCHEDULE SENT FOR SIGN OFF": "bg-cyan-100 text-cyan-700",
+    "SCHEDULE SIGNED OFF": "bg-green-100 text-green-700",
+    "NOT LOOKED AT": "bg-slate-100 text-slate-600",
+  };
 
   function getStatusColor(status?: string): string {
     if (!status) return "bg-slate-100 text-slate-600";
@@ -261,7 +283,7 @@ export default function FireDoorSchedulePage() {
     }
   }
 
-  const jobLocationOptions = [
+  const [jobLocationOptions, setJobLocationOptions] = useState<string[]>([
     "ASSIGNED MJS",
     "RED FOLDER",
     "IN PROGRESS",
@@ -272,14 +294,14 @@ export default function FireDoorSchedulePage() {
     "NO JOB ASSIGNED",
     "JOB IN DISPUTE/ISSUES",
     "CANCELLED",
-  ];
-  const signOffOptions = [
+  ]);
+  const [signOffOptions, setSignOffOptions] = useState<string[]>([
     "AWAITING SCHEDULE",
     "WORKING ON SCHEDULE",
     "SCHEDULE SENT FOR SIGN OFF",
     "SCHEDULE SIGNED OFF",
     "NOT LOOKED AT",
-  ];
+  ]);
   const orderingOptions = ["NOT IN BOM", "IN BOM TBC", "IN BOM", "STOCK", "ORDERED", "RECEIVED", "ORDERED CALL OFF", "MAKE IN HOUSE", "N/A"];
   const statusOptions = ["STOCK", "ORDERED", "RECEIVED", "N/A", "URGENT"];
 
@@ -374,11 +396,12 @@ export default function FireDoorSchedulePage() {
 
     // Status dropdowns
     if (field === 'jobLocation') {
+      const colorClasses = JOB_LOCATION_COLORS[value as string] ?? "bg-slate-100 text-slate-600";
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { jobLocation: e.target.value })}
-          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${getStatusColor(value).replace('px-3 py-1', '')}`}
+          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
         >
           <option value="">--</option>
           {jobLocationOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -387,11 +410,12 @@ export default function FireDoorSchedulePage() {
     }
 
     if (field === 'signOffStatus') {
+      const colorClasses = SIGN_OFF_COLORS[value as string] ?? "bg-slate-100 text-slate-600";
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { signOffStatus: e.target.value })}
-          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${getStatusColor(value).replace('px-3 py-1', '')}`}
+          className={`text-[11px] font-medium px-2 py-1 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
         >
           <option value="">--</option>
           {signOffOptions.map(o => <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>)}
@@ -639,6 +663,72 @@ export default function FireDoorSchedulePage() {
               );
             })}
           </div>
+          {editingConfigField && (
+            <div className="mt-4 p-3 rounded-xl border border-dashed border-slate-300 bg-white/70">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+                  Edit options & colours for {COLUMN_LABELS[editingConfigField] || editingConfigField}
+                </span>
+                <button
+                  onClick={() => setEditingConfigField(null)}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Close
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 mb-2">
+                These changes apply immediately in this view. Later we can persist them per tenant.
+              </p>
+              <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                {(editingConfigField === 'jobLocation' ? jobLocationOptions : signOffOptions).map((opt, idx) => (
+                  <div key={opt + idx} className="flex items-center gap-2 text-xs">
+                    <input
+                      className="flex-1 px-2 py-1 border rounded bg-white"
+                      value={opt}
+                      onChange={(e) => {
+                        const next = [...(editingConfigField === 'jobLocation' ? jobLocationOptions : signOffOptions)];
+                        next[idx] = e.target.value;
+                        if (editingConfigField === 'jobLocation') setJobLocationOptions(next);
+                        else setSignOffOptions(next);
+                      }}
+                    />
+                    <input
+                      type="color"
+                      className="w-8 h-7 border rounded cursor-pointer"
+                      onChange={(e) => {
+                        const hex = e.target.value;
+                        if (editingConfigField === 'jobLocation') {
+                          JOB_LOCATION_COLORS[opt] = `bg-[${hex}] text-white`;
+                        } else {
+                          SIGN_OFF_COLORS[opt] = `bg-[${hex}] text-white`;
+                        }
+                      }}
+                    />
+                    <button
+                      className="text-red-500 text-xs"
+                      onClick={() => {
+                        const next = (editingConfigField === 'jobLocation' ? jobLocationOptions : signOffOptions).filter((_, i) => i !== idx);
+                        if (editingConfigField === 'jobLocation') setJobLocationOptions(next);
+                        else setSignOffOptions(next);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                className="mt-2 text-xs px-2 py-1 rounded border border-slate-300 hover:bg-slate-50"
+                onClick={() => {
+                  const next = [...(editingConfigField === 'jobLocation' ? jobLocationOptions : signOffOptions), 'NEW OPTION'];
+                  if (editingConfigField === 'jobLocation') setJobLocationOptions(next);
+                  else setSignOffOptions(next);
+                }}
+              >
+                + Add option
+              </button>
+            </div>
+          )}
           <div className="mt-2 text-xs text-slate-500 flex flex-wrap gap-4">
             <span>Location Filter: <strong>{locationFilter}</strong></span>
             <span>Active Tab: <strong>{TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS]?.label || activeTab}</strong></span>
@@ -667,17 +757,27 @@ export default function FireDoorSchedulePage() {
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => (
                       <th
                         key={field}
-                        onClick={() => toggleSort(field)}
-                        className="px-4 py-3 text-left cursor-pointer group"
+                        className="px-4 py-3 text-left group"
                       >
-                        <span className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-left"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (field === 'jobLocation' || field === 'signOffStatus') {
+                              setEditingConfigField(field);
+                            } else {
+                              toggleSort(field);
+                            }
+                          }}
+                        >
                           {COLUMN_LABELS[field] || field}
                           {sortField === field ? (
                             sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
                           ) : (
                             <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
                           )}
-                        </span>
+                        </button>
                       </th>
                     ))}
                   </tr>
