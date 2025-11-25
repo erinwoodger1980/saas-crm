@@ -406,10 +406,39 @@ export function FireDoorGrid({
         cellClass: (row: FireDoorLineItem) => {
           const baseClass = typeof col.cellClass === 'function' ? col.cellClass(row) : col.cellClass || '';
           const highlightClass = highlightedColumn === col.key ? 'bg-blue-50' : '';
-          return [baseClass, highlightClass].filter(Boolean).join(' ');
+          
+          // Check if this cell has an RFI
+          const hasRfi = rfis.some(rfi => 
+            rfi.columnKey === col.key && 
+            (rfi.rowId === null || rfi.rowId === row.id?.toString() || rfi.rowId === row.rowIndex?.toString()) &&
+            rfi.status !== 'closed'
+          );
+          const rfiClass = hasRfi ? 'bg-yellow-100 border-2 border-yellow-400 rfi-cell' : '';
+          
+          return [baseClass, highlightClass, rfiClass].filter(Boolean).join(' ');
         },
+        renderCell: col.renderCell || ((props: any) => {
+          const { row, column } = props;
+          const value = row[column.key as keyof FireDoorLineItem];
+          
+          // Check if this cell has an RFI
+          const hasRfi = rfis.some(rfi => 
+            rfi.columnKey === column.key && 
+            (rfi.rowId === null || rfi.rowId === row.id?.toString() || rfi.rowId === row.rowIndex?.toString()) &&
+            rfi.status !== 'closed'
+          );
+          
+          return (
+            <div className="flex items-center justify-between w-full" title={hasRfi ? "Click to view RFI" : undefined}>
+              <span>{value || ''}</span>
+              {hasRfi && (
+                <span className="ml-1 text-yellow-600 font-bold text-xs">⚠</span>
+              )}
+            </div>
+          );
+        }),
       })),
-    [columns, hiddenColumns, highlightedColumn]
+    [columns, hiddenColumns, highlightedColumn, rfis]
   );
 
   // Handle header click for column highlighting
@@ -595,6 +624,25 @@ export function FireDoorGrid({
     setTimeout(() => document.addEventListener('click', closeMenu), 0);
   }, [onAddRfi, rows, columns, setFillDownMode, toggleColumnVisibility]);
 
+  // Cell click handler to show RFI info
+  const handleCellClick = useCallback((args: any) => {
+    if (!onSelectRfi) return;
+    
+    const { row, column } = args;
+    const columnKey = column.key;
+    const rowId = row.id || `row-${row.rowIndex}`;
+    
+    // Find RFI for this cell
+    const cellRfi = rfis.find(rfi => 
+      rfi.columnKey === columnKey && 
+      (rfi.rowId === rowId || rfi.rowId === row.rowIndex?.toString())
+    );
+    
+    if (cellRfi) {
+      onSelectRfi(cellRfi);
+    }
+  }, [rfis, onSelectRfi]);
+
   return (
     <div className="space-y-2">
       {/* Column Management Toolbar */}
@@ -701,6 +749,19 @@ export function FireDoorGrid({
         .bg-orange-50 {
           background: #fff7ed !important;
           border-left: 3px solid #fb923c !important;
+        }
+        .bg-yellow-100 {
+          background: #fef3c7 !important;
+        }
+        .border-yellow-400 {
+          border-color: #facc15 !important;
+        }
+        .rfi-cell {
+          cursor: pointer !important;
+          position: relative;
+        }
+        .rfi-cell:hover {
+          background: #fde68a !important;
         }
         .border-l-4 {
           border-left-width: 4px !important;
