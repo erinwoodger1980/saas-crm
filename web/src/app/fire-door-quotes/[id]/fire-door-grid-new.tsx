@@ -6,6 +6,7 @@ import "react-data-grid/lib/styles.css";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff } from "lucide-react";
+import { COST_SHEET_COLUMNS } from "../cost-sheet-columns";
 
 interface FireDoorLineItem {
   id?: string;
@@ -337,331 +338,52 @@ export function FireDoorGrid({
     onLineItemsChange(updatedRows);
   }, [onLineItemsChange]);
 
-  // Column definitions
-  const columns = useMemo<Column<FireDoorLineItem>[]>(() => [
-    SelectColumn,
-    {
-      key: 'rowIndex',
-      name: '#',
-      width: 60,
-      frozen: true,
-      renderCell: ({ rowIdx }) => rowIdx + 1,
-    },
-    {
-      key: 'doorRef',
-      name: 'Door Ref',
+  // Column definitions driven directly from Cost Sheet header
+  const columns = useMemo<Column<FireDoorLineItem>[]>(() => {
+    const dynamicColumns: Column<FireDoorLineItem>[] = COST_SHEET_COLUMNS.map((c, index) => ({
+      key: c.key,
+      name: c.name || `Col ${index + 1}`,
       width: 140,
-      frozen: true,
       editable: true,
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        const hasRfi = cellRfiMap[`${rowId}:doorRef`];
-        return hasRfi ? 'bg-orange-50 border-l-4 border-l-orange-400' : '';
+    }));
+
+    // Prepend selection + row index and append pricing columns to stay aligned with app
+    return [
+      SelectColumn,
+      {
+        key: "rowIndex",
+        name: "#",
+        width: 60,
+        frozen: true,
+        renderCell: ({ rowIdx }) => rowIdx + 1,
       },
-    },
-    {
-      key: 'location',
-      name: 'Location',
-      width: 140,
-      frozen: true,
-      editable: true,
-    },
-    
-    // SECTION 1: Certification & Initial Spec
-    { 
-      key: 'certification', 
-      name: 'Certification', 
-      width: 130, 
-      editable: true,
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:certification`] ? 'bg-orange-50' : '';
+      ...dynamicColumns,
+      {
+        key: "quantity",
+        name: "Qty",
+        width: 80,
+        editable: true,
+        frozen: true,
       },
-    },
-    { 
-      key: 'doorsetType', 
-      name: 'Doorset Type', 
-      width: 150, 
-      editable: true,
-      renderEditCell: createSelectEditor(doorsetTypeOptions),
-      renderEditCell: createSelectEditor(doorsetTypeOptions),
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:doorsetType`] ? 'bg-orange-50' : '';
+      {
+        key: "unitValue",
+        name: "Unit Price (£)",
+        width: 130,
+        editable: true,
+        frozen: true,
+        renderCell: ({ row }) => (row.unitValue ? `£${row.unitValue.toFixed(2)}` : ""),
       },
-    },
-    { key: 'lajRef', name: 'LAJ Ref', width: 110, editable: true },
-    { 
-      key: 'masterWidth', 
-      name: 'Master Width (mm)', 
-      width: 150, 
-      editable: true,
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:masterWidth`] ? 'bg-orange-50' : '';
+      {
+        key: "lineTotal",
+        name: "Line Total (£)",
+        width: 140,
+        editable: false,
+        frozen: true,
+        cellClass: "bg-blue-50 font-semibold",
+        renderCell: ({ row }) => `£${(row.lineTotal || 0).toFixed(2)}`,
       },
-    },
-    { 
-      key: 'slaveWidth', 
-      name: 'Slave Width (mm)', 
-      width: 150, 
-      editable: true,
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:slaveWidth`] ? 'bg-orange-50' : '';
-      },
-    },
-    { 
-      key: 'doorHeight', 
-      name: 'Door Height (mm)', 
-      width: 150, 
-      editable: true,
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:doorHeight`] ? 'bg-orange-50' : '';
-      },
-    },
-    { 
-      key: 'core', 
-      name: 'Core', 
-      width: 150, 
-      editable: true,
-      renderEditCell: createSelectEditor(coreOptions),
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:core`] ? 'bg-orange-50' : '';
-      },
-    },
-    { 
-      key: 'rating', 
-      name: 'Rating', 
-      width: 100, 
-      editable: true,
-      renderEditCell: createSelectEditor(ratingOptions),
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:rating`] ? 'bg-orange-50' : '';
-      },
-    },
-    { 
-      key: 'coreType', 
-      name: 'Core Type', 
-      width: 120, 
-      editable: true,
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:coreType`] ? 'bg-orange-50' : '';
-      },
-    },
-    
-    // SECTION 2: Edge Dimensions
-    { key: 'top', name: 'Top', width: 80, editable: true },
-    { key: 'btm', name: 'Bottom', width: 80, editable: true },
-    { key: 'hinge', name: 'Hinge', width: 80, editable: true },
-    { key: 'me', name: 'M/E', width: 80, editable: true },
-    { key: 'daExposed', name: 'D/A Exposed', width: 120, editable: true },
-    { key: 'trim', name: 'Trim', width: 80, editable: true },
-    { key: 'safeHinge', name: 'Safe Hinge', width: 110, editable: true },
-    { key: 'pf', name: 'P/F', width: 80, editable: true },
-    { key: 'extra', name: 'Extra', width: 80, editable: true },
-    
-    // SECTION 3: Reduced Dimensions (calculated)
-    { 
-      key: 'masterReduced', 
-      name: 'Master (R)', 
-      width: 120, 
-      editable: false,
-      cellClass: 'bg-gray-50',
-    },
-    { 
-      key: 'slaveWidthReduced', 
-      name: 'Slave Width (R)', 
-      width: 140, 
-      editable: false,
-      cellClass: 'bg-gray-50',
-    },
-    { 
-      key: 'doorHeightReduced', 
-      name: 'Door Height (R)', 
-      width: 140, 
-      editable: false,
-      cellClass: 'bg-gray-50',
-    },
-    
-    // SECTION 4: Notes
-    { 
-      key: 'notes1', 
-      name: 'Notes 1', 
-      width: 200, 
-      editable: true,
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:notes1`] ? 'bg-orange-50' : '';
-      },
-    },
-    { 
-      key: 'notes2', 
-      name: 'Notes 2', 
-      width: 200, 
-      editable: true,
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:notes2`] ? 'bg-orange-50' : '';
-      },
-    },
-    
-    // SECTION 5: LIPPING (16 fields)
-    { key: 'lajRefLipping', name: 'LAJ Ref (Lipping)', width: 130, editable: true },
-    { key: 'doorRefLipping', name: 'Door Ref (Lipping)', width: 140, editable: true },
-    { key: 'masterWidthLipping', name: 'Master Width (Lipping)', width: 160, editable: true },
-    { key: 'slaveWidthLipping', name: 'Slave Width (Lipping)', width: 160, editable: true },
-    { key: 'doorHeightLipping', name: 'Door Height (Lipping)', width: 160, editable: true },
-    { key: 'coreLipping', name: 'Core (Lipping)', width: 130, editable: true, renderEditCell: createSelectEditor(coreOptions) },
-    { key: 'ratingLipping', name: 'Rating (Lipping)', width: 120, editable: true, renderEditCell: createSelectEditor(ratingOptions) },
-    { key: 'coreTypeLipping', name: 'Core Type (Lipping)', width: 150, editable: true, renderEditCell: createSelectEditor(coreTypeOptions) },
-    { key: 'material', name: 'Material', width: 130, editable: true, renderEditCell: createSelectEditor(materialOptions) },
-    { key: 'topLipping', name: 'Top (Lipping)', width: 110, editable: true },
-    { key: 'btmLipping', name: 'Bottom (Lipping)', width: 120, editable: true },
-    { key: 'hingeLipping', name: 'Hinge (Lipping)', width: 120, editable: true },
-    { key: 'meLipping', name: 'M/E (Lipping)', width: 110, editable: true },
-    { key: 'daExposedLipping', name: 'D/A Exposed (Lipping)', width: 150, editable: true },
-    { key: 'lippingDetail', name: 'Lipping Detail', width: 150, editable: true },
-    { key: 'masterWidthLipping2', name: 'Master Width 2 (Lipping)', width: 170, editable: true },
-    
-    // SECTION 6: EDGING / 2T (10 fields)
-    { key: 'slaveWidthEdging', name: 'Slave Width (Edging)', width: 150, editable: true },
-    { key: 'doorHeightEdging', name: 'Door Height (Edging)', width: 150, editable: true },
-    { key: 'coreEdging', name: 'Core (Edging)', width: 130, editable: true },
-    { key: 'masterWidth2T', name: 'Master Width (2T)', width: 140, editable: true },
-    { key: 'slaveWidth2T', name: 'Slave Width (2T)', width: 140, editable: true },
-    { key: 'doorHeight2T', name: 'Door Height (2T)', width: 140, editable: true },
-    { key: 'core2T', name: 'Core (2T)', width: 120, editable: true },
-    { key: 'doorType', name: 'Door Type', width: 130, editable: true },
-    { key: 'note1Edge', name: 'Note 1 (Edge)', width: 150, editable: true },
-    { key: 'note2Edge', name: 'Note 2 (Edge)', width: 150, editable: true },
-    
-    // SECTION 7: FACING / CALIBRATION (20 fields)
-    { key: 'lajRefFacing', name: 'LAJ Ref (Facing)', width: 140, editable: true },
-    { key: 'doorRefFacing', name: 'Door Ref (Facing)', width: 140, editable: true },
-    { key: 'masterWidthFacing', name: 'Master Width (Facing)', width: 160, editable: true },
-    { key: 'slaveWidthFacing', name: 'Slave Width (Facing)', width: 160, editable: true },
-    { key: 'doorHeightFacing', name: 'Door Height (Facing)', width: 160, editable: true },
-    { key: 'coreFacing', name: 'Core (Facing)', width: 130, editable: true },
-    { key: 'coreTypeFacing', name: 'Core Type (Facing)', width: 140, editable: true },
-    { key: 'materialFacing', name: 'Material (Facing)', width: 140, editable: true },
-    { key: 'topFacing', name: 'Top (Facing)', width: 110, editable: true },
-    { key: 'btmFacing', name: 'Bottom (Facing)', width: 120, editable: true },
-    { key: 'hingeFacing', name: 'Hinge (Facing)', width: 120, editable: true },
-    { key: 'meFacing', name: 'M/E (Facing)', width: 110, editable: true },
-    { key: 'daExposedFacing', name: 'D/A Exposed (Facing)', width: 150, editable: true },
-    { key: 'calibratedSize', name: 'Calibrated Size', width: 140, editable: true },
-    { key: 'masterDoor', name: 'Master Door', width: 130, editable: true },
-    { key: 'slaveDoor', name: 'Slave Door', width: 130, editable: true },
-    { key: 'bookMatching', name: 'Book Matching', width: 130, editable: true },
-    { key: 'topFinal', name: 'Top (Final)', width: 110, editable: true },
-    { key: 'btmFinal', name: 'Bottom (Final)', width: 120, editable: true },
-    { key: 'hingeFinal', name: 'Hinge (Final)', width: 120, editable: true },
-    
-    // SECTION 8: FINISH / IRONMONGERY (29 fields)
-    { key: 'finishFacing', name: 'Finish Facing', width: 140, editable: true },
-    { key: 'materialFinish', name: 'Material (Finish)', width: 140, editable: true },
-    { key: 'topFinish', name: 'Top (Finish)', width: 110, editable: true },
-    { key: 'btmFinish', name: 'Bottom (Finish)', width: 120, editable: true },
-    { key: 'hingeFinish', name: 'Hinge (Finish)', width: 120, editable: true },
-    { key: 'meFinish', name: 'M/E (Finish)', width: 110, editable: true },
-    { key: 'daExposedFinish', name: 'D/A Exposed (Finish)', width: 150, editable: true },
-    { key: 'masterWidthFinish', name: 'Master Width (Finish)', width: 160, editable: true },
-    { key: 'slaveWidthFinish', name: 'Slave Width (Finish)', width: 160, editable: true },
-    { key: 'doorHeightFinish', name: 'Door Height (Finish)', width: 160, editable: true },
-    { key: 'coreFinish', name: 'Core (Finish)', width: 130, editable: true },
-    { key: 'handingFinish', name: 'Handing (Finish)', width: 130, editable: true },
-    { key: 'lippingFinish', name: 'Lipping Finish', width: 140, editable: true },
-    { key: 'doorFinish', name: 'Door Finish', width: 130, editable: true },
-    { key: 'beadType', name: 'Bead Type', width: 120, editable: true },
-    { key: 'glassType', name: 'Glass Type', width: 120, editable: true },
-    { key: 'vpType', name: 'VP Type', width: 120, editable: true },
-    { key: 'vpWidth', name: 'VP Width', width: 110, editable: true },
-    { key: 'vpHeight', name: 'VP Height', width: 110, editable: true },
-    { key: 'cassetteType', name: 'Cassette Type', width: 130, editable: true },
-    { key: 'intumescentStrip', name: 'Intumescent Strip', width: 150, editable: true },
-    { key: 'smokeStrip', name: 'Smoke Strip', width: 120, editable: true },
-    { key: 'dropSeal', name: 'Drop Seal', width: 120, editable: true },
-    { key: 'hingeQty', name: 'Hinge Qty', width: 100, editable: true },
-    { key: 'hingeType', name: 'Hinge Type', width: 130, editable: true, renderEditCell: createSelectEditor(hingeTypeOptions) },
-    { key: 'lockType', name: 'Lock Type', width: 130, editable: true, renderEditCell: createSelectEditor(lockTypeOptions) },
-    { key: 'latchType', name: 'Latch Type', width: 130, editable: true },
-    { key: 'cylinderType', name: 'Cylinder Type', width: 130, editable: true },
-    { key: 'keeperType', name: 'Keeper Type', width: 130, editable: true },
-    
-    // SECTION 9: SECONDARY IRONMONGERY (16 fields)
-    { key: 'handleType', name: 'Handle Type', width: 130, editable: true, renderEditCell: createSelectEditor(handleTypeOptions) },
-    { key: 'pullHandleType', name: 'Pull Handle Type', width: 150, editable: true },
-    { key: 'pullHandleQty', name: 'Pull Handle Qty', width: 140, editable: true },
-    { key: 'flushBoltType', name: 'Flush Bolt Type', width: 140, editable: true },
-    { key: 'flushBoltQty', name: 'Flush Bolt Qty', width: 130, editable: true },
-    { key: 'coordinatorType', name: 'Coordinator Type', width: 150, editable: true },
-    { key: 'selectorType', name: 'Selector Type', width: 130, editable: true },
-    { key: 'letterPlateType', name: 'Letter Plate Type', width: 150, editable: true },
-    { key: 'numeralType', name: 'Numeral Type', width: 130, editable: true },
-    { key: 'knockerType', name: 'Knocker Type', width: 130, editable: true },
-    { key: 'spyholeType', name: 'Spyhole Type', width: 130, editable: true },
-    { key: 'chainType', name: 'Chain Type', width: 120, editable: true },
-    { key: 'closerType', name: 'Closer Type', width: 130, editable: true },
-    { key: 'closerQty', name: 'Closer Qty', width: 120, editable: true },
-    { key: 'floorSpringType', name: 'Floor Spring Type', width: 150, editable: true },
-    { key: 'pivotType', name: 'Pivot Type', width: 120, editable: true },
-    
-    // SECTION 10: FINAL SPEC & FRAME (19 fields)
-    { key: 'masterLeafFinal', name: 'Master Leaf (Final)', width: 150, editable: true },
-    { key: 'slaveLeafFinal', name: 'Slave Leaf (Final)', width: 150, editable: true },
-    { key: 'leafHeightFinal', name: 'Leaf Height (Final)', width: 150, editable: true },
-    { key: 'masterFrameWidth', name: 'Master Frame Width', width: 160, editable: true },
-    { key: 'slaveFrameWidth', name: 'Slave Frame Width', width: 160, editable: true },
-    { key: 'frameHeight', name: 'Frame Height', width: 130, editable: true },
-    { key: 'frameDepth', name: 'Frame Depth', width: 130, editable: true },
-    { key: 'sillType', name: 'Sill Type', width: 120, editable: true },
-    { key: 'thresholdType', name: 'Threshold Type', width: 140, editable: true },
-    { key: 'weatherSeal', name: 'Weather Seal', width: 130, editable: true },
-    { key: 'architraveType', name: 'Architrave Type', width: 140, editable: true },
-    { key: 'architraveWidth', name: 'Architrave Width', width: 140, editable: true },
-    { key: 'wallType', name: 'Wall Type', width: 120, editable: true },
-    { key: 'fixingType', name: 'Fixing Type', width: 130, editable: true },
-    { key: 'handingFinal', name: 'Handing (Final)', width: 140, editable: true },
-    { key: 'frameFinish', name: 'Frame Finish', width: 130, editable: true },
-    { key: 'frameColour', name: 'Frame Colour', width: 130, editable: true },
-    { key: 'plugType', name: 'Plug Type', width: 120, editable: true },
-    { key: 'qMarkPlug', name: 'Q-Mark Plug', width: 130, editable: true },
-    
-    // PRICING (pinned right)
-    { 
-      key: 'quantity', 
-      name: 'Qty', 
-      width: 80, 
-      editable: true,
-      frozen: true,
-      cellClass: (row) => {
-        const rowId = row.id || `row-${row.rowIndex}`;
-        return cellRfiMap[`${rowId}:quantity`] ? 'bg-orange-50' : '';
-      },
-    },
-    { 
-      key: 'unitValue', 
-      name: 'Unit Price (£)', 
-      width: 130, 
-      editable: true,
-      frozen: true,
-      renderCell: ({ row }) => row.unitValue ? `£${row.unitValue.toFixed(2)}` : '',
-    },
-    { 
-      key: 'lineTotal', 
-      name: 'Line Total (£)', 
-      width: 140, 
-      editable: false,
-      frozen: true,
-      cellClass: 'bg-blue-50 font-semibold',
-      renderCell: ({ row }) => `£${(row.lineTotal || 0).toFixed(2)}`,
-    },
-  ], [coreOptions, doorsetTypeOptions, ratingOptions, coreTypeOptions, materialOptions, hingeTypeOptions, lockTypeOptions, handleTypeOptions, cellRfiMap]);
+    ];
+  }, [COST_SHEET_COLUMNS]);
 
   // Cell click handler for RFI
   const handleCellClick = useCallback((args: { row: FireDoorLineItem; column: Column<FireDoorLineItem> }) => {
