@@ -1,3 +1,4 @@
+// DEPRECATED: Backup version of quote builder page. Not used. Safe to delete later.
 "use client";
 
 import { useState, useEffect } from "react";

@@ -1,3 +1,4 @@
+// DEPRECATED: Legacy AG Grid implementation retained only to keep history. Not used by current quote builder.
 "use client";
 
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
