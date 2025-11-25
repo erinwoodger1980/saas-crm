@@ -89,17 +89,35 @@ router.post('/:projectId/logs', requireAuth, async (req: any, res) => {
       },
     });
 
-    // Update project with new percentage
+    // Calculate overall progress (average of all 11 production processes)
+    const productionProcesses = [
+      'blanksCutPercent', 'edgebandPercent', 'calibratePercent', 'facingsPercent',
+      'finalCncPercent', 'finishPercent', 'sandPercent', 'sprayPercent',
+      'cutPercent', 'cncPercent', 'buildPercent'
+    ];
+    
+    let totalPercent = 0;
+    let updatedProject = { ...project, [fieldName]: newPercent };
+    
+    productionProcesses.forEach(proc => {
+      const value = proc === fieldName ? newPercent : ((updatedProject as any)[proc] || 0);
+      totalPercent += value;
+    });
+    
+    const overallProgress = Math.round(totalPercent / productionProcesses.length);
+
+    // Update project with new percentage and overall progress
     await prisma.fireDoorScheduleProject.update({
       where: { id: projectId },
       data: {
         [fieldName]: newPercent,
+        overallProgress,
         lastUpdatedBy: loggedBy,
         lastUpdatedAt: new Date(),
       },
     });
 
-    res.json({ log, newPercent });
+    res.json({ log, newPercent, overallProgress });
   } catch (error) {
     console.error('Error logging production:', error);
     res.status(500).json({ error: 'Failed to log production' });
