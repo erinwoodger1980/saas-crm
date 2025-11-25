@@ -1226,7 +1226,6 @@ router.patch("/:id", async (req, res) => {
                 dateRequired: deliveryDate ? new Date(deliveryDate) : undefined,
                 jobLocation: "IN PROGRESS",
                 signOffStatus: "AWAITING SCHEDULE",
-                orderingStatus: "NOT IN BOM",
                 lastUpdatedBy: (req as any).user?.id,
                 lastUpdatedAt: new Date(),
               },

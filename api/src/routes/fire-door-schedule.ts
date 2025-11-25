@@ -39,7 +39,6 @@ router.get("/", async (req: any, res: Response) => {
       jobLocation,
       signOffStatus,
       scheduledBy,
-      orderingStatus,
       limit = "100",
       offset = "0",
       sortBy = "dateRequired",
@@ -51,7 +50,6 @@ router.get("/", async (req: any, res: Response) => {
     if (jobLocation) where.jobLocation = jobLocation;
     if (signOffStatus) where.signOffStatus = signOffStatus;
     if (scheduledBy) where.scheduledBy = scheduledBy;
-    if (orderingStatus) where.orderingStatus = orderingStatus;
 
     const orderBy: any = {};
     orderBy[sortBy as string] = sortOrder === "desc" ? "desc" : "asc";

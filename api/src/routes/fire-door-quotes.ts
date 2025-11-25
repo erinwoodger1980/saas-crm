@@ -154,7 +154,6 @@ router.post('/', requireAuth, async (req: any, res) => {
             poNumber,
             jobLocation: 'RED FOLDER',
             signOffStatus: 'NOT LOOKED AT',
-            orderingStatus: 'NOT IN BOM',
             lastUpdatedBy: userId,
           },
         });
@@ -482,7 +481,6 @@ router.post('/from-import/:importId', requireAuth, async (req: any, res) => {
             dateReceived: new Date(),
             jobLocation: 'RED FOLDER',
             signOffStatus: 'NOT LOOKED AT',
-            orderingStatus: 'NOT IN BOM',
             lastUpdatedBy: userId,
           },
         });
