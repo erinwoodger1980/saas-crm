@@ -883,6 +883,8 @@ router.patch("/:id", async (req: any, res: any) => {
     }
   }
 
+  console.log('[opportunities.patch] Prisma update data object:', JSON.stringify(data, null, 2));
+
   const updated = await prisma.opportunity.update({
     where: { id },
     data,
