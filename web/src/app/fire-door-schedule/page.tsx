@@ -1566,7 +1566,7 @@ export default function FireDoorSchedulePage() {
               <table className="min-w-full text-sm border-separate">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
-                    <th ref={actionsHeaderRef} className="sticky left-0 px-4 py-3 text-left z-30 bg-white bg-clip-padding border-r border-slate-200">
+                    <th ref={actionsHeaderRef} className="sticky top-0 left-0 px-4 py-3 text-left z-40 bg-white bg-clip-padding border-r border-slate-200 shadow-sm">
                       <span className="text-xs uppercase tracking-wider">Actions</span>
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
@@ -1577,7 +1577,7 @@ export default function FireDoorSchedulePage() {
                       return (
                       <th
                         key={field}
-                        className={`px-4 py-3 text-left group ${isFrozen ? 'sticky z-30 bg-white bg-clip-padding' : ''} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                        className={`px-4 py-3 text-left group sticky top-0 ${isFrozen ? 'z-40 bg-white bg-clip-padding' : 'z-30 bg-white/90 backdrop-blur-sm'} ${isLastFrozen ? 'border-r border-slate-200' : ''} shadow-sm`}
                         style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
                         ref={(el) => { headerRefs.current[field] = el }}
                       >
