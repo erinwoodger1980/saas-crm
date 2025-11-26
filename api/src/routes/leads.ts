@@ -768,97 +768,102 @@ router.get("/grouped", async (req, res) => {
 /* ------------------------------------------------------------------ */
 
 router.post("/", async (req, res) => {
-  const { tenantId, userId } = getAuth(req);
-  if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
 
-  const {
-    contactName,
-    email,
-    status,
-    custom = {},
-    description,
-  }: {
-    contactName: string;
-    email?: string;
-    status?: UiStatus;
-    custom?: any;
-    description?: string;
-  } = req.body || {};
+    const {
+      contactName,
+      email,
+      status,
+      custom = {},
+      description,
+    }: {
+      contactName: string;
+      email?: string;
+      status?: UiStatus;
+      custom?: any;
+      description?: string;
+    } = req.body || {};
 
-  if (!contactName) return res.status(400).json({ error: "contactName required" });
+    if (!contactName) return res.status(400).json({ error: "contactName required" });
 
-  const uiStatus: UiStatus = status || "NEW_ENQUIRY";
+    const uiStatus: UiStatus = status || "NEW_ENQUIRY";
 
-  const playbook = await loadTaskPlaybook(tenantId);
+    const playbook = await loadTaskPlaybook(tenantId);
 
-  const now = new Date();
-  const customData = { 
-    ...(custom ?? {}), 
-    uiStatus, 
-    enquiryDate: now.toISOString().split('T')[0],
-    // alias to support tenant questionnaires that use 'dateReceived'
-    dateReceived: now.toISOString().split('T')[0],
-  };
+    const now = new Date();
+    const customData = { 
+      ...(custom ?? {}), 
+      uiStatus, 
+      enquiryDate: now.toISOString().split('T')[0],
+      // alias to support tenant questionnaires that use 'dateReceived'
+      dateReceived: now.toISOString().split('T')[0],
+    };
 
-  // Auto-set dateQuoteSent if creating with QUOTE_SENT status
-  let dateQuoteSent: Date | undefined = undefined;
-  if (uiStatus === "QUOTE_SENT") {
-    dateQuoteSent = now;
-    customData.dateQuoteSent = now.toISOString().split('T')[0];
-  }
-
-  // Auto-set dateOrderPlaced if creating with WON status
-  if (uiStatus === "WON") {
-    customData.dateOrderPlaced = now.toISOString().split('T')[0];
-  }
-
-  const lead = await prisma.lead.create({
-    data: {
-      tenantId,
-      createdById: userId,
-      contactName: String(contactName),
-      email: email ?? "",
-      status: uiToDb(uiStatus),
-      description: description ?? null,
-      capturedAt: now,
-      dateQuoteSent: dateQuoteSent,
-      custom: customData,
-    },
-  });
-
-  // Link to ClientAccount for customer data reuse
-  if (email) {
-    linkLeadToClientAccount(lead.id).catch((err) => 
-      console.warn("[leads] Failed to link ClientAccount:", err)
-    );
-  }
-
-  // Proactive first task
-  await handleStatusTransition({ tenantId, leadId: lead.id, prevUi: null, nextUi: uiStatus, actorId: userId, playbook });
-
-  // If created with WON status, ensure opportunity exists
-  if (uiStatus === "WON") {
-    try {
-      const opp = await prisma.opportunity.create({
-        data: {
-          tenantId,
-          leadId: lead.id,
-          title: lead.contactName || "Project",
-          stage: "WON" as any,
-          wonAt: now,
-        },
-      });
-      // Link opportunity to ClientAccount
-      linkOpportunityToClientAccount(opp.id).catch((err) => 
-        console.warn("[leads] Failed to link Opportunity to ClientAccount:", err)
-      );
-    } catch (e) {
-      // May already exist if handleStatusTransition created it
-      console.warn("[leads] ensure opportunity on new WON lead failed:", (e as any)?.message || e);
+    // Auto-set dateQuoteSent if creating with QUOTE_SENT status
+    let dateQuoteSent: Date | undefined = undefined;
+    if (uiStatus === "QUOTE_SENT") {
+      dateQuoteSent = now;
+      customData.dateQuoteSent = now.toISOString().split('T')[0];
     }
-  }
 
-  res.json(lead);
+    // Auto-set dateOrderPlaced if creating with WON status
+    if (uiStatus === "WON") {
+      customData.dateOrderPlaced = now.toISOString().split('T')[0];
+    }
+
+    const lead = await prisma.lead.create({
+      data: {
+        tenantId,
+        createdById: userId,
+        contactName: String(contactName),
+        email: email ?? "",
+        status: uiToDb(uiStatus),
+        description: description ?? null,
+        capturedAt: now,
+        dateQuoteSent: dateQuoteSent,
+        custom: customData,
+      },
+    });
+
+    // Link to ClientAccount for customer data reuse
+    if (email) {
+      linkLeadToClientAccount(lead.id).catch((err) => 
+        console.warn("[leads] Failed to link ClientAccount:", err)
+      );
+    }
+
+    // Proactive first task
+    await handleStatusTransition({ tenantId, leadId: lead.id, prevUi: null, nextUi: uiStatus, actorId: userId, playbook });
+
+    // If created with WON status, ensure opportunity exists
+    if (uiStatus === "WON") {
+      try {
+        const opp = await prisma.opportunity.create({
+          data: {
+            tenantId,
+            leadId: lead.id,
+            title: lead.contactName || "Project",
+            stage: "WON" as any,
+            wonAt: now,
+          },
+        });
+        // Link opportunity to ClientAccount
+        linkOpportunityToClientAccount(opp.id).catch((err) => 
+          console.warn("[leads] Failed to link Opportunity to ClientAccount:", err)
+        );
+      } catch (e) {
+        // May already exist if handleStatusTransition created it
+        console.warn("[leads] ensure opportunity on new WON lead failed:", (e as any)?.message || e);
+      }
+    }
+
+    res.json(lead);
+  } catch (e: any) {
+    console.error("[leads] POST / failed:", e);
+    res.status(500).json({ error: "internal_error", detail: e.message });
+  }
 });
 
 /* ------------------------------------------------------------------ */
