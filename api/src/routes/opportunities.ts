@@ -802,6 +802,8 @@ router.patch("/:id", async (req: any, res: any) => {
   const id = String(req.params.id);
   const updates = req.body || {};
 
+  console.log('[opportunities.patch] incoming updates:', { id, updates });
+
   // Verify opportunity belongs to tenant
   const opp = await prisma.opportunity.findFirst({
     where: { id, tenantId },
@@ -826,7 +828,32 @@ router.patch("/:id", async (req: any, res: any) => {
   
   for (const field of dateFields) {
     if (field in updates) {
-      data[field] = updates[field] ? new Date(updates[field]) : null;
+      const raw = updates[field];
+      if (!raw) {
+        data[field] = null;
+        continue;
+      }
+      let parsed: Date | null = null;
+      try {
+        if (typeof raw === 'string') {
+          // Accept YYYY-MM-DD or DD/MM/YYYY
+          if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+            parsed = new Date(raw + 'T00:00:00Z');
+          } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+            const [d,m,y] = raw.split('/');
+            parsed = new Date(`${y}-${m}-${d}T00:00:00Z`);
+          } else {
+            const tmp = new Date(raw);
+            if (!isNaN(tmp.getTime())) parsed = tmp; else parsed = null;
+          }
+        } else if (raw instanceof Date) {
+          parsed = raw;
+        }
+      } catch (e) {
+        console.warn('[opportunities.patch] failed to parse date field', field, raw, (e as any)?.message);
+        parsed = null;
+      }
+      data[field] = parsed;
     }
   }
   
@@ -859,6 +886,14 @@ router.patch("/:id", async (req: any, res: any) => {
   const updated = await prisma.opportunity.update({
     where: { id },
     data,
+  });
+
+  console.log('[opportunities.patch] updated fields:', data);
+  console.log('[opportunities.patch] resulting opportunity dates:', {
+    startDate: updated.startDate,
+    deliveryDate: updated.deliveryDate,
+    installationStartDate: updated.installationStartDate,
+    installationEndDate: updated.installationEndDate,
   });
 
   res.json({ ok: true, opportunity: updated });
