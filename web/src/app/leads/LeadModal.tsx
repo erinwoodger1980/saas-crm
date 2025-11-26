@@ -993,7 +993,7 @@ export default function LeadModal({
     }
     
     const url = `/opportunities/${encodeURIComponent(id)}`;
-    console.log('[saveOpportunityField] will PATCH to:', url);
+    console.log('[saveOpportunityField] will PATCH to:', url, 'with payload:', { [field]: value });
     
     try {
       const payload: any = {};
@@ -1004,7 +1004,14 @@ export default function LeadModal({
         headers: { ...authHeaders, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      console.log('[saveOpportunityField] response:', response);
+      
+      const result = await response.json();
+      console.log('[saveOpportunityField] success:', result);
+      
+      // Update local state if successful
+      if (result.opportunity) {
+        setOpportunityId(result.opportunity.id);
+      }
     } catch (e: any) {
       console.error(`[saveOpportunityField] Failed to save ${field}:`, e);
       alert(`Could not save ${field}. Please try again.`);

@@ -814,20 +814,46 @@ router.patch("/:id", async (req: any, res: any) => {
   // Build update object with proper type conversions
   const data: any = {};
   
-  if ('startDate' in updates) {
-    data.startDate = updates.startDate ? new Date(updates.startDate) : null;
+  // Date fields
+  const dateFields = [
+    'startDate', 'deliveryDate', 'installationStartDate', 'installationEndDate',
+    'wonAt', 'lostAt',
+    'timberOrderedAt', 'timberExpectedAt', 'timberReceivedAt',
+    'glassOrderedAt', 'glassExpectedAt', 'glassReceivedAt',
+    'ironmongeryOrderedAt', 'ironmongeryExpectedAt', 'ironmongeryReceivedAt',
+    'paintOrderedAt', 'paintExpectedAt', 'paintReceivedAt'
+  ];
+  
+  for (const field of dateFields) {
+    if (field in updates) {
+      data[field] = updates[field] ? new Date(updates[field]) : null;
+    }
   }
-  if ('deliveryDate' in updates) {
-    data.deliveryDate = updates.deliveryDate ? new Date(updates.deliveryDate) : null;
-  }
-  if ('installationStartDate' in updates) {
-    data.installationStartDate = updates.installationStartDate ? new Date(updates.installationStartDate) : null;
-  }
-  if ('installationEndDate' in updates) {
-    data.installationEndDate = updates.installationEndDate ? new Date(updates.installationEndDate) : null;
-  }
+  
+  // Numeric fields
   if ('valueGBP' in updates) {
     data.valueGBP = updates.valueGBP != null ? Number(updates.valueGBP) : null;
+  }
+  
+  // Boolean fields
+  const booleanFields = [
+    'timberNotApplicable', 'glassNotApplicable', 
+    'ironmongeryNotApplicable', 'paintNotApplicable'
+  ];
+  
+  for (const field of booleanFields) {
+    if (field in updates) {
+      data[field] = Boolean(updates[field]);
+    }
+  }
+  
+  // String fields
+  const stringFields = ['title', 'stage', 'clientAccountId'];
+  
+  for (const field of stringFields) {
+    if (field in updates) {
+      data[field] = updates[field];
+    }
   }
 
   const updated = await prisma.opportunity.update({
