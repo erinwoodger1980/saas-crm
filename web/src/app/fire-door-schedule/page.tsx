@@ -232,9 +232,12 @@ export default function FireDoorSchedulePage() {
     const id = requestAnimationFrame(computeOffsets);
     // Recompute on resize
     window.addEventListener("resize", computeOffsets);
+    // Recompute after full page load (fonts/images can change widths)
+    window.addEventListener("load", computeOffsets);
     return () => {
       cancelAnimationFrame(id);
       window.removeEventListener("resize", computeOffsets);
+      window.removeEventListener("load", computeOffsets);
     };
   }, [frozenColumns, activeTab, projects, showTable, columnFilters]);
 
@@ -246,9 +249,11 @@ export default function FireDoorSchedulePage() {
     }
     const id = requestAnimationFrame(measureHeaderHeight);
     window.addEventListener("resize", measureHeaderHeight);
+    window.addEventListener("load", measureHeaderHeight);
     return () => {
       cancelAnimationFrame(id);
       window.removeEventListener("resize", measureHeaderHeight);
+      window.removeEventListener("load", measureHeaderHeight);
     };
   }, [activeTab, frozenColumns]);
 
