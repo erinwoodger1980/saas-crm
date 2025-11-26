@@ -1661,7 +1661,7 @@ export default function FireDoorSchedulePage() {
                       key={project.id}
                       className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100"
                     >
-                      <td className="sticky left-0 px-4 py-3 z-20 bg-white bg-clip-padding border-r border-slate-200 group-hover:bg-blue-50/40">
+                      <td className="sticky left-0 px-4 py-3 z-20 bg-white bg-clip-padding border-r border-slate-200">
                         <Button
                           variant="outline"
                           size="sm"
@@ -1683,7 +1683,7 @@ export default function FireDoorSchedulePage() {
                         return (
                         <td
                           key={field}
-                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? 'sticky z-20 bg-white bg-clip-padding group-hover:bg-blue-50/40' : ''} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? 'sticky z-20 bg-white bg-clip-padding' : 'group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                           style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
