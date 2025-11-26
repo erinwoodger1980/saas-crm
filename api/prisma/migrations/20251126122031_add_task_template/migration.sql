@@ -1,3 +1,16 @@
+-- Create missing enum types
+DO $$ BEGIN
+    CREATE TYPE "TaskType" AS ENUM ('MANUAL', 'SCHEDULED', 'FORM', 'CHECKLIST', 'APPROVAL');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE "RecurrencePattern" AS ENUM ('DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "TaskTemplate" (
     "id" TEXT NOT NULL,
