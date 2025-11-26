@@ -128,9 +128,9 @@ export async function processRecurringTasks(): Promise<ProcessResult> {
               status: "OPEN",
               dueAt: nextDueDate,
               nextDueAt: subsequentNextDueDate,
-              formSchema: template.formSchema,
+              formSchema: template.formSchema as any,
               requiresSignature: template.requiresSignature,
-              checklistItems: template.checklistItems,
+              checklistItems: template.checklistItems as any,
               assignees: template.defaultAssigneeIds?.length
                 ? {
                     create: template.defaultAssigneeIds.map((userId) => ({

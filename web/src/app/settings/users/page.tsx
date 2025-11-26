@@ -289,13 +289,13 @@ export default function UsersSettingsPage() {
                         </>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-muted-foreground whitespace-nowrap">Processes:</label>
+                    <div className="flex items-start gap-2">
+                      <label className="text-xs text-muted-foreground whitespace-nowrap mt-2">Processes:</label>
                       {editingProcesses[u.id] !== undefined ? (
-                        <>
-                          <div className="flex flex-wrap gap-1 max-w-xs">
+                        <div className="flex-1">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
                             {processes.map(proc => (
-                              <label key={proc.code} className="flex items-center gap-1 text-xs bg-slate-100 px-2 py-1 rounded cursor-pointer hover:bg-slate-200">
+                              <label key={proc.code} className="flex items-center gap-2 text-sm bg-slate-50 px-3 py-2 rounded border cursor-pointer hover:bg-slate-100 hover:border-slate-400 transition-colors">
                                 <input
                                   type="checkbox"
                                   checked={editingProcesses[u.id].includes(proc.code)}
@@ -308,32 +308,35 @@ export default function UsersSettingsPage() {
                                         : codes.filter(c => c !== proc.code)
                                     }));
                                   }}
+                                  className="rounded"
                                 />
-                                {proc.name}
+                                <span className="font-medium">{proc.name}</span>
                               </label>
                             ))}
                           </div>
-                          <Button
-                            size="sm"
-                            onClick={() => updateUserProcesses(u.id, editingProcesses[u.id])}
-                          >
-                            Save
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditingProcesses(prev => {
-                              const next = { ...prev };
-                              delete next[u.id];
-                              return next;
-                            })}
-                          >
-                            Cancel
-                          </Button>
-                        </>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => updateUserProcesses(u.id, editingProcesses[u.id])}
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingProcesses(prev => {
+                                const next = { ...prev };
+                                delete next[u.id];
+                                return next;
+                              })}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
                       ) : (
                         <>
-                          <span className="text-sm text-muted-foreground">
+                          <span className="text-sm text-muted-foreground mt-1">
                             {(u.workshopProcessCodes?.length ?? 0) === 0 
                               ? 'All' 
                               : u.workshopProcessCodes?.map(code => 
