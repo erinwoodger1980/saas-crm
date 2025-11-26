@@ -7,6 +7,14 @@ import { logEvent, logInsight } from "../services/training";
 const router = Router();
 
 /* ---------------- Helpers ---------------- */
+function getAuth(req: any) {
+  return {
+    tenantId: req.auth?.tenantId as string | undefined,
+    userId: req.auth?.userId as string | undefined,
+    email: req.auth?.email as string | undefined,
+  };
+}
+
 function resolveTenantId(req: any): string {
   return (
     req.auth?.tenantId ||
@@ -939,7 +947,6 @@ router.post("/:id/complete", async (req: any, res) => {
     // Get the task
     const task = await prisma.task.findFirst({
       where: { id: taskId, tenantId },
-      include: { assignees: true },
     });
 
     if (!task) {
@@ -1172,17 +1179,7 @@ router.get("/calendar-export/ical", async (req, res) => {
     const tasks = await prisma.task.findMany({
       where: {
         tenantId,
-        ...(userId && {
-          assignees: {
-            some: { userId }
-          }
-        }),
         dueAt: { not: null },
-      },
-      include: {
-        assignees: {
-          include: { user: true }
-        }
       },
       orderBy: { dueAt: "asc" },
     });
@@ -1232,13 +1229,11 @@ METHOD:PUBLISH
         location = "Task Center";
       }
 
-      const assigneeNames = task.assignees.map(a => a.user.name).join(", ");
       const description = [
         task.description || "",
         "",
         `Priority: ${task.priority}`,
         `Status: ${task.status}`,
-        assigneeNames && `Assigned to: ${assigneeNames}`,
         "",
         `Open in app: ${deepLink}`,
       ].filter(Boolean).join("\\n");

@@ -371,9 +371,9 @@ router.post("/seed-default", async (req: any, res) => {
  * PATCH /workshop-processes/process/:processId/complete
  * Marks a process assignment as complete and completes the associated task
  */
-router.patch('/process/:processId/complete', async (req, res) => {
+router.patch('/process/:processId/complete', async (req: any, res) => {
   const { processId } = req.params;
-  const userId = req.user?.userId;
+  const userId = req.auth?.userId;
 
   if (!userId) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -384,20 +384,21 @@ router.patch('/process/:processId/complete', async (req, res) => {
     const processAssignment = await prisma.projectProcessAssignment.update({
       where: { id: processId },
       data: { completedAt: new Date() },
-      include: {
-        processDefinition: true,
-        project: true
-      }
+    });
+
+    // Get process definition separately
+    const processDefinition = await prisma.workshopProcessDefinition.findUnique({
+      where: { id: processAssignment.processDefinitionId }
     });
 
     // Find and complete the associated task
     const task = await prisma.task.findFirst({
       where: {
         relatedType: 'WORKSHOP',
-        relatedId: processAssignment.projectId,
+        relatedId: processAssignment.opportunityId,
         meta: {
           path: ['processCode'],
-          equals: processAssignment.processDefinition?.code
+          equals: processDefinition?.code
         }
       }
     });
@@ -411,26 +412,13 @@ router.patch('/process/:processId/complete', async (req, res) => {
         }
       });
 
-      // Log activity
-      await prisma.activity.create({
-        data: {
-          verb: 'COMPLETED',
-          objectType: 'TASK',
-          objectId: task.id,
-          actorId: userId,
-          opportunityId: task.relatedId,
-          metadata: {
-            taskTitle: task.title,
-            processCode: processAssignment.processDefinition?.code,
-            completedViaProcess: true
-          }
-        }
-      });
+      // Log completion
+      console.log(`✅ Process complete → Task complete: ${task.title}`);
 
       console.log(`✅ Process complete → Task complete: ${task.title}`);
     }
 
-    res.json({ ok: true, processAssignment, taskCompleted: !!task });
+    res.json({ ok: true, taskCompleted: !!task });
   } catch (error) {
     console.error('Error completing process:', error);
     res.status(500).json({ error: 'Failed to complete process' });
