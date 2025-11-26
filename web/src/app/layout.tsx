@@ -73,6 +73,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     (isWorkshopRoute && isWorkshopOnly) ||
     isDevConsole
   );
+  
+  const shouldShowTasks = shouldFetchUser && !(
+    isAuthRoute ||
+    isPublicQuestionnaire ||
+    isPublicThankYou ||
+    isMarketingRoute ||
+    isTenantLandingPage ||
+    isVanityTenantLandingPage ||
+    isEarlyAccessRoute
+  );
   const shouldRunDevAuth = !(
     isPublicQuestionnaire ||
     isPublicThankYou ||
@@ -114,7 +124,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           children
         )}
 
-  {shouldUseShell && <TasksButton />}
+  {shouldShowTasks && <TasksButton />}
   {shouldUseShell && <FeedbackWidget />}
 
         <Toaster />

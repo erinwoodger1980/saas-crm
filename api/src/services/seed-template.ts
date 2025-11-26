@@ -107,6 +107,39 @@ export async function initializeTenantWithSeedData(tenantId: string) {
       }
     }
 
+    // Seed default workshop processes
+    const defaultProcesses = [
+      { code: "MACHINING", name: "Machining", sortOrder: 1, requiredByDefault: true, estimatedHours: 8 },
+      { code: "ASSEMBLY", name: "Assembly", sortOrder: 2, requiredByDefault: true, estimatedHours: 6 },
+      { code: "SANDING", name: "Sanding", sortOrder: 3, requiredByDefault: true, estimatedHours: 4 },
+      { code: "SPRAYING", name: "Spraying", sortOrder: 4, requiredByDefault: true, estimatedHours: 3 },
+      { code: "FINAL_ASSEMBLY", name: "Final Assembly", sortOrder: 5, requiredByDefault: true, estimatedHours: 4 },
+      { code: "GLAZING", name: "Glazing", sortOrder: 6, requiredByDefault: true, estimatedHours: 2 },
+      { code: "IRONMONGERY", name: "Ironmongery", sortOrder: 7, requiredByDefault: true, estimatedHours: 2 },
+      { code: "INSTALLATION", name: "Installation", sortOrder: 8, requiredByDefault: true, estimatedHours: 8 },
+    ];
+
+    let processesCreated = 0;
+    for (const proc of defaultProcesses) {
+      try {
+        await prisma.workshopProcessDefinition.create({
+          data: {
+            tenantId,
+            ...proc,
+          },
+        });
+        processesCreated++;
+      } catch (error: any) {
+        // Skip if already exists
+        if (error.code !== 'P2002') {
+          console.error(`⚠️  Failed to create process ${proc.code}:`, error);
+        }
+      }
+    }
+    if (processesCreated > 0) {
+      console.log(`✅ Seeded ${processesCreated} workshop processes`);
+    }
+
     console.log(`✅ Successfully initialized tenant ${tenantId} with ${copiedItems} items from Demo Tenant`);
 
     return {
@@ -114,6 +147,7 @@ export async function initializeTenantWithSeedData(tenantId: string) {
       questionnaireFields: templateTenant.leadFieldDefs?.length || 0,
       tasks: templateTenant.tasks?.filter((t: any) => !t.completedAt && t.relatedType === 'OTHER').length || 0,
       automationRules: templateTenant.automationRules?.filter((r: any) => r.enabled).length || 0,
+      workshopProcesses: processesCreated,
       totalItems: copiedItems
     };
 
