@@ -45,6 +45,8 @@ model Tenant {
   users                      User[]
   feedbacks                  Feedback[]
   tasks                      Task[]
+  taskTemplates              TaskTemplate[]
+  formTemplates              FormTemplate[]
   automationRules            AutomationRule[]
   notifications              Notification[]
   streaks                    Streak[]
@@ -1206,17 +1208,55 @@ model Task {
   autocreated Boolean      @default(true)
   meta        Json?
 
+  // Task Type System
+  taskType    TaskType     @default(MANUAL)
+  templateId  String?      // Link to TaskTemplate if from recurring template
+
+  // Communication Fields (for COMMUNICATION and FOLLOW_UP types)
+  communicationType      CommunicationType?
+  communicationChannel   String?              // email, phone, teams, zoom, etc.
+  communicationDirection CommunicationDirection?
+  communicationNotes     String?              @db.Text
+  emailMessageId         String?              // Link to EmailMessage if applicable
+  followUpLogId          String?              // Reference to original FollowUpLog (for migration)
+
+  // Recurrence Fields (for SCHEDULED type)
+  recurrencePattern   RecurrencePattern?
+  recurrenceInterval  Int?                  // e.g., every 2 weeks
+  nextDueAt           DateTime?             // Next scheduled occurrence
+  lastCompletedAt     DateTime?             // Track last completion for recurring tasks
+
+  // Auto-completion Tracking
+  autoCompleted       Boolean      @default(false) // True for historical migrated data
+  completedBy         String?                      // User ID who completed it
+
+  // Form Fields (for FORM type)
+  formSchema          Json?                 // JSON schema for form fields
+  formSubmissions     Json?                 // Array of submitted responses
+  requiresSignature   Boolean      @default(false)
+  signatureData       String?               // Base64 signature image
+  signedBy            String?               // User ID who signed
+  signedAt            DateTime?
+
+  // Checklist Fields (for CHECKLIST type)
+  checklistItems      Json?                 // Array of { id, text, completed, completedBy, completedAt }
+
   createdById String?
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template  TaskTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
   assignees TaskAssignee[]
   subtasks  Subtask[]
 
   @@index([tenantId, status, dueAt])
   @@index([tenantId, relatedType, relatedId])
+  @@index([tenantId, taskType, status])
+  @@index([tenantId, templateId])
+  @@index([emailMessageId])
+  @@index([followUpLogId])
 }
 
 enum RelatedType {
@@ -1242,6 +1282,36 @@ enum TaskPriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum TaskType {
+  MANUAL          // User-created task
+  COMMUNICATION   // Phone call, meeting, SMS logged
+  FOLLOW_UP       // Email follow-up (migrated from FollowUpLog)
+  SCHEDULED       // Recurring task from template
+  FORM            // Digital form to fill
+  CHECKLIST       // Multi-step checklist
+}
+
+enum CommunicationType {
+  EMAIL
+  PHONE
+  MEETING
+  SMS
+  OTHER
+}
+
+enum CommunicationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum RecurrencePattern {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
 }
 
 enum MeasurementSource {
@@ -1279,6 +1349,67 @@ model Subtask {
 enum SubtaskStatus {
   OPEN
   DONE
+}
+
+model TaskTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+
+  // Template Config
+  taskType           TaskType
+  defaultTitle       String
+  defaultDescription String?              @db.Text
+  defaultPriority    TaskPriority         @default(MEDIUM)
+  relatedType        RelatedType?
+  
+  // Recurrence Config (for SCHEDULED type)
+  recurrencePattern  RecurrencePattern?
+  recurrenceInterval Int?                 @default(1)
+  
+  // Form Config (for FORM type)
+  formSchema         Json?                // JSON schema for form structure
+  requiresSignature  Boolean              @default(false)
+  
+  // Checklist Config (for CHECKLIST type)
+  checklistItems     Json?                // Array of default checklist items
+  
+  // Assignment Config
+  defaultAssigneeIds String[]             // Array of user IDs to auto-assign
+  
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tasks  Task[]
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, taskType])
+}
+
+model FormTemplate {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  name               String
+  description        String?  @db.Text
+  category           String?              // e.g., "Safety", "Quality", "HR"
+  formSchema         Json                 // JSON schema defining form structure
+  requiresSignature  Boolean  @default(false)
+  isActive           Boolean  @default(true)
+
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, category])
 }
 
 model AutomationRule {

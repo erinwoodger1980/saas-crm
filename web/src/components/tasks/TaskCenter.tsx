@@ -1,0 +1,350 @@
+// web/src/components/tasks/TaskCenter.tsx
+"use client";
+
+import { useEffect, useState, useMemo } from "react";
+import { apiFetch } from "@/lib/api";
+import { getAuthIdsFromJwt } from "@/lib/auth";
+import { 
+  CheckSquare, 
+  Phone, 
+  Mail, 
+  Calendar, 
+  FileText, 
+  ListChecks,
+  Plus,
+  Filter,
+  Search
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+
+type TaskType = "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
+type TaskStatus = "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
+type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+
+type Task = {
+  id: string;
+  title: string;
+  description?: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  taskType: TaskType;
+  dueAt?: string;
+  completedAt?: string;
+  relatedType?: string;
+  relatedId?: string;
+  
+  // Communication fields
+  communicationType?: string;
+  communicationChannel?: string;
+  communicationDirection?: string;
+  communicationNotes?: string;
+  
+  // Form fields
+  formSchema?: any;
+  requiresSignature?: boolean;
+  signedAt?: string;
+  
+  // Checklist fields
+  checklistItems?: Array<{
+    id: string;
+    text: string;
+    completed: boolean;
+  }>;
+  
+  assignees?: Array<{
+    userId: string;
+    role: string;
+  }>;
+};
+
+const TASK_TYPE_CONFIG = {
+  MANUAL: {
+    label: "Tasks",
+    icon: CheckSquare,
+    color: "text-blue-600",
+    bgColor: "bg-blue-50",
+  },
+  COMMUNICATION: {
+    label: "Communications",
+    icon: Phone,
+    color: "text-green-600",
+    bgColor: "bg-green-50",
+  },
+  FOLLOW_UP: {
+    label: "Follow-ups",
+    icon: Mail,
+    color: "text-purple-600",
+    bgColor: "bg-purple-50",
+  },
+  SCHEDULED: {
+    label: "Scheduled",
+    icon: Calendar,
+    color: "text-orange-600",
+    bgColor: "bg-orange-50",
+  },
+  FORM: {
+    label: "Forms",
+    icon: FileText,
+    color: "text-pink-600",
+    bgColor: "bg-pink-50",
+  },
+  CHECKLIST: {
+    label: "Checklists",
+    icon: ListChecks,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+  },
+};
+
+export function TaskCenter() {
+  const ids = getAuthIdsFromJwt();
+  const tenantId = ids?.tenantId || "";
+  const userId = ids?.userId || "";
+
+  const [activeTab, setActiveTab] = useState<"all" | TaskType | "completed">("all");
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showOnlyMine, setShowOnlyMine] = useState(false);
+
+  const loadTasks = async () => {
+    if (!tenantId) return;
+    
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("take", "100");
+      
+      if (activeTab === "completed") {
+        params.set("status", "DONE");
+        params.set("includeDone", "true");
+      } else if (activeTab !== "all") {
+        params.set("taskType", activeTab);
+      }
+      
+      if (showOnlyMine && userId) {
+        params.set("mine", "true");
+      }
+      
+      if (searchQuery.trim()) {
+        params.set("search", searchQuery.trim());
+      }
+
+      const response = await apiFetch<{ items: Task[]; total: number }>(
+        `/tasks?${params}`,
+        { headers: { "x-tenant-id": tenantId } }
+      );
+      
+      setTasks(response.items);
+    } catch (error) {
+      console.error("Failed to load tasks:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTasks();
+  }, [activeTab, showOnlyMine]); // eslint-disable-line
+
+  const handleSearch = () => {
+    loadTasks();
+  };
+
+  const taskCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: 0,
+      completed: 0,
+    };
+    
+    Object.keys(TASK_TYPE_CONFIG).forEach(type => {
+      counts[type] = 0;
+    });
+
+    tasks.forEach(task => {
+      if (task.status === "DONE") {
+        counts.completed++;
+      } else {
+        counts.all++;
+        counts[task.taskType]++;
+      }
+    });
+
+    return counts;
+  }, [tasks]);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+      if (activeTab === "completed") {
+        return task.status === "DONE";
+      }
+      if (activeTab !== "all") {
+        return task.taskType === activeTab && task.status !== "DONE";
+      }
+      return task.status !== "DONE";
+    });
+  }, [tasks, activeTab]);
+
+  const renderTaskCard = (task: Task) => {
+    const config = TASK_TYPE_CONFIG[task.taskType];
+    const Icon = config.icon;
+    const isOverdue = task.dueAt && new Date(task.dueAt) < new Date() && task.status !== "DONE";
+
+    return (
+      <Card key={task.id} className="p-4 hover:shadow-md transition-shadow">
+        <div className="flex items-start gap-3">
+          <div className={`p-2 rounded-lg ${config.bgColor}`}>
+            <Icon className={`h-5 w-5 ${config.color}`} />
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="font-semibold text-gray-900 truncate">{task.title}</h3>
+              <Badge variant={task.priority === "URGENT" ? "destructive" : "secondary"}>
+                {task.priority}
+              </Badge>
+            </div>
+            
+            {task.description && (
+              <p className="text-sm text-gray-600 mt-1 line-clamp-2">{task.description}</p>
+            )}
+            
+            <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+              <span className={`px-2 py-1 rounded-full ${
+                task.status === "DONE" ? "bg-green-100 text-green-700" :
+                task.status === "IN_PROGRESS" ? "bg-blue-100 text-blue-700" :
+                task.status === "BLOCKED" ? "bg-red-100 text-red-700" :
+                "bg-gray-100 text-gray-700"
+              }`}>
+                {task.status}
+              </span>
+              
+              {task.dueAt && (
+                <span className={isOverdue ? "text-red-600 font-semibold" : ""}>
+                  Due: {new Date(task.dueAt).toLocaleDateString()}
+                </span>
+              )}
+              
+              {task.taskType === "CHECKLIST" && task.checklistItems && (
+                <span>
+                  {task.checklistItems.filter(i => i.completed).length}/{task.checklistItems.length} completed
+                </span>
+              )}
+              
+              {task.taskType === "FORM" && task.requiresSignature && (
+                <span className="flex items-center gap-1">
+                  <FileText className="h-3 w-3" />
+                  Requires signature
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Task Center</h1>
+          <p className="text-gray-600 mt-1">Manage all your tasks, communications, and forms in one place</p>
+        </div>
+        
+        <Button>
+          <Plus className="h-4 w-4 mr-2" />
+          New Task
+        </Button>
+      </div>
+
+      {/* Search and Filters */}
+      <Card className="p-4">
+        <div className="flex items-center gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="pl-10"
+            />
+          </div>
+          
+          <Button variant="outline" onClick={handleSearch}>
+            <Search className="h-4 w-4 mr-2" />
+            Search
+          </Button>
+          
+          <Button
+            variant={showOnlyMine ? "default" : "outline"}
+            onClick={() => setShowOnlyMine(!showOnlyMine)}
+          >
+            <Filter className="h-4 w-4 mr-2" />
+            {showOnlyMine ? "My Tasks" : "All Tasks"}
+          </Button>
+        </div>
+      </Card>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="all" className="flex items-center gap-2">
+            All
+            {taskCounts.all > 0 && (
+              <Badge variant="secondary">{taskCounts.all}</Badge>
+            )}
+          </TabsTrigger>
+          
+          {Object.entries(TASK_TYPE_CONFIG).map(([type, config]) => {
+            const Icon = config.icon;
+            return (
+              <TabsTrigger key={type} value={type} className="flex items-center gap-2">
+                <Icon className="h-4 w-4" />
+                {config.label}
+                {taskCounts[type] > 0 && (
+                  <Badge variant="secondary">{taskCounts[type]}</Badge>
+                )}
+              </TabsTrigger>
+            );
+          })}
+          
+          <TabsTrigger value="completed" className="flex items-center gap-2">
+            Completed
+            {taskCounts.completed > 0 && (
+              <Badge variant="secondary">{taskCounts.completed}</Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <div className="mt-6">
+          {loading ? (
+            <div className="text-center py-12 text-gray-500">Loading tasks...</div>
+          ) : filteredTasks.length === 0 ? (
+            <Card className="p-12 text-center">
+              <div className="text-gray-400 mb-2">
+                <CheckSquare className="h-12 w-12 mx-auto" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-700">No tasks found</h3>
+              <p className="text-gray-500 mt-1">
+                {activeTab === "completed" 
+                  ? "No completed tasks yet" 
+                  : "Create your first task to get started"}
+              </p>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {filteredTasks.map(renderTaskCard)}
+            </div>
+          )}
+        </div>
+      </Tabs>
+    </div>
+  );
+}

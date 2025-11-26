@@ -43,6 +43,10 @@ const RelatedTypeEnum = z.enum([
 ]);
 const TaskStatusEnum = z.enum(["OPEN", "IN_PROGRESS", "BLOCKED", "DONE", "CANCELLED"]);
 const TaskPriorityEnum = z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]);
+const TaskTypeEnum = z.enum(["MANUAL", "COMMUNICATION", "FOLLOW_UP", "SCHEDULED", "FORM", "CHECKLIST"]);
+const CommunicationTypeEnum = z.enum(["EMAIL", "PHONE", "MEETING", "SMS", "OTHER"]);
+const CommunicationDirectionEnum = z.enum(["INBOUND", "OUTBOUND"]);
+const RecurrencePatternEnum = z.enum(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]);
 
 /* ---------------- Schemas ---------------- */
 const createTaskSchema = z.object({
@@ -57,6 +61,16 @@ const createTaskSchema = z.object({
     .array(z.object({ userId: z.string(), role: z.enum(["OWNER", "FOLLOWER"]).optional() }))
     .optional(),
   meta: z.any().optional(),
+  
+  // New task type fields
+  taskType: TaskTypeEnum.optional().default("MANUAL"),
+  communicationType: CommunicationTypeEnum.optional(),
+  communicationChannel: z.string().optional(),
+  communicationDirection: CommunicationDirectionEnum.optional(),
+  communicationNotes: z.string().optional(),
+  formSchema: z.any().optional(),
+  requiresSignature: z.boolean().optional(),
+  checklistItems: z.any().optional(),
 });
 
 const updateTaskSchema = z.object({
@@ -98,6 +112,17 @@ router.post("/", async (req, res) => {
         dueAt: body.dueAt ? new Date(body.dueAt) : undefined,
         meta: body.meta as any,
         createdById,
+        
+        // New task type fields
+        taskType: body.taskType,
+        communicationType: body.communicationType,
+        communicationChannel: body.communicationChannel,
+        communicationDirection: body.communicationDirection,
+        communicationNotes: body.communicationNotes,
+        formSchema: body.formSchema as any,
+        requiresSignature: body.requiresSignature,
+        checklistItems: body.checklistItems as any,
+        
         assignees: body.assignees?.length
           ? {
               create: body.assignees.map((a) => ({
@@ -142,6 +167,7 @@ router.get("/", async (req, res) => {
     unassigned,
     search,
     includeDone = "false",
+    taskType,
     take = "50",
     skip = "0",
   } = req.query as Record<string, string>;
@@ -160,6 +186,7 @@ router.get("/", async (req, res) => {
 
   if (relatedType) where.relatedType = relatedType;
   if (relatedId) where.relatedId = relatedId;
+  if (taskType) where.taskType = taskType;
 
   // Due filters
   const now = new Date();
@@ -591,6 +618,310 @@ router.post("/ensure", async (req, res) => {
   } catch (e: any) {
     console.error("[tasks/ensure] failed:", e);
     return res.status(500).json({ error: e?.message || "ensure failed" });
+  }
+});
+
+/* ============================================================================
+   UNIFIED TASK SYSTEM - NEW ENDPOINTS
+   ========================================================================= */
+
+// POST /tasks/communication - Quick log a communication (phone, meeting, etc.)
+router.post("/communication", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const schema = z.object({
+      communicationType: CommunicationTypeEnum,
+      communicationChannel: z.string().optional(),
+      communicationDirection: CommunicationDirectionEnum,
+      communicationNotes: z.string(),
+      relatedType: RelatedTypeEnum,
+      relatedId: z.string(),
+      dueAt: z.string().datetime().optional(),
+    });
+
+    const body = schema.parse(req.body);
+
+    const task = await prisma.task.create({
+      data: {
+        tenantId,
+        title: `${body.communicationType} - ${body.communicationDirection}`,
+        description: body.communicationNotes,
+        taskType: "COMMUNICATION",
+        communicationType: body.communicationType,
+        communicationChannel: body.communicationChannel,
+        communicationDirection: body.communicationDirection,
+        communicationNotes: body.communicationNotes,
+        relatedType: body.relatedType as any,
+        relatedId: body.relatedId,
+        status: "DONE",
+        completedAt: new Date(),
+        autoCompleted: false,
+        completedBy: userId,
+        createdById: userId,
+      },
+    });
+
+    res.json(task);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Invalid request" });
+  }
+});
+
+// POST /tasks/:id/signature - Submit signature for a form task
+router.post("/:id/signature", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const id = req.params.id;
+    const schema = z.object({
+      signatureData: z.string(), // Base64 image
+    });
+
+    const body = schema.parse(req.body);
+
+    const task = await prisma.task.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!task) return res.status(404).json({ error: "task_not_found" });
+    if (task.taskType !== "FORM") return res.status(400).json({ error: "not_a_form_task" });
+
+    const updated = await prisma.task.update({
+      where: { id },
+      data: {
+        signatureData: body.signatureData,
+        signedBy: userId,
+        signedAt: new Date(),
+      },
+    });
+
+    res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Invalid request" });
+  }
+});
+
+// POST /tasks/:id/form-submission - Submit form data
+router.post("/:id/form-submission", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const id = req.params.id;
+    const formData = req.body;
+
+    const task = await prisma.task.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!task) return res.status(404).json({ error: "task_not_found" });
+    if (task.taskType !== "FORM") return res.status(400).json({ error: "not_a_form_task" });
+
+    const submissions = (task.formSubmissions as any[]) || [];
+    submissions.push({
+      submittedAt: new Date(),
+      submittedBy: userId,
+      data: formData,
+    });
+
+    const updated = await prisma.task.update({
+      where: { id },
+      data: {
+        formSubmissions: submissions as any,
+        status: "DONE",
+        completedAt: new Date(),
+        completedBy: userId,
+      },
+    });
+
+    res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Invalid request" });
+  }
+});
+
+// PATCH /tasks/:id/checklist - Update checklist item completion
+router.patch("/:id/checklist", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const id = req.params.id;
+    const schema = z.object({
+      itemId: z.string(),
+      completed: z.boolean(),
+    });
+
+    const body = schema.parse(req.body);
+
+    const task = await prisma.task.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!task) return res.status(404).json({ error: "task_not_found" });
+    if (task.taskType !== "CHECKLIST") return res.status(400).json({ error: "not_a_checklist_task" });
+
+    const items = (task.checklistItems as any[]) || [];
+    const item = items.find((i: any) => i.id === body.itemId);
+    
+    if (!item) return res.status(404).json({ error: "item_not_found" });
+
+    item.completed = body.completed;
+    if (body.completed) {
+      item.completedBy = userId;
+      item.completedAt = new Date();
+    } else {
+      delete item.completedBy;
+      delete item.completedAt;
+    }
+
+    // Check if all items are completed
+    const allCompleted = items.every((i: any) => i.completed);
+
+    const updated = await prisma.task.update({
+      where: { id },
+      data: {
+        checklistItems: items as any,
+        status: allCompleted ? "DONE" : task.status,
+        completedAt: allCompleted ? new Date() : task.completedAt,
+        completedBy: allCompleted ? userId : task.completedBy,
+      },
+    });
+
+    res.json(updated);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Invalid request" });
+  }
+});
+
+// GET /tasks/templates - List task templates
+router.get("/templates", async (req, res) => {
+  const tenantId = resolveTenantId(req);
+  if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+  const { isActive, taskType } = req.query as Record<string, string>;
+
+  const where: any = { tenantId };
+  if (isActive !== undefined) where.isActive = isActive === "true";
+  if (taskType) where.taskType = taskType;
+
+  const templates = await prisma.taskTemplate.findMany({
+    where,
+    orderBy: { name: "asc" },
+  });
+
+  res.json(templates);
+});
+
+// POST /tasks/templates - Create task template
+router.post("/templates", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const schema = z.object({
+      name: z.string(),
+      description: z.string().optional(),
+      taskType: TaskTypeEnum,
+      defaultTitle: z.string(),
+      defaultDescription: z.string().optional(),
+      defaultPriority: TaskPriorityEnum.optional().default("MEDIUM"),
+      relatedType: RelatedTypeEnum.optional(),
+      recurrencePattern: RecurrencePatternEnum.optional(),
+      recurrenceInterval: z.number().optional(),
+      formSchema: z.any().optional(),
+      requiresSignature: z.boolean().optional(),
+      checklistItems: z.any().optional(),
+      defaultAssigneeIds: z.array(z.string()).optional(),
+    });
+
+    const body = schema.parse(req.body);
+
+    const template = await prisma.taskTemplate.create({
+      data: {
+        tenantId,
+        name: body.name,
+        description: body.description,
+        taskType: body.taskType,
+        defaultTitle: body.defaultTitle,
+        defaultDescription: body.defaultDescription,
+        defaultPriority: body.defaultPriority,
+        relatedType: body.relatedType as any,
+        recurrencePattern: body.recurrencePattern,
+        recurrenceInterval: body.recurrenceInterval,
+        formSchema: body.formSchema as any,
+        requiresSignature: body.requiresSignature,
+        checklistItems: body.checklistItems as any,
+        defaultAssigneeIds: body.defaultAssigneeIds,
+        createdById: userId,
+      },
+    });
+
+    res.json(template);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Invalid request" });
+  }
+});
+
+// GET /tasks/forms - List form templates
+router.get("/forms", async (req, res) => {
+  const tenantId = resolveTenantId(req);
+  if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+  const { isActive, category } = req.query as Record<string, string>;
+
+  const where: any = { tenantId };
+  if (isActive !== undefined) where.isActive = isActive === "true";
+  if (category) where.category = category;
+
+  const forms = await prisma.formTemplate.findMany({
+    where,
+    orderBy: { name: "asc" },
+  });
+
+  res.json(forms);
+});
+
+// POST /tasks/forms - Create form template
+router.post("/forms", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const schema = z.object({
+      name: z.string(),
+      description: z.string().optional(),
+      category: z.string().optional(),
+      formSchema: z.any(),
+      requiresSignature: z.boolean().optional(),
+    });
+
+    const body = schema.parse(req.body);
+
+    const form = await prisma.formTemplate.create({
+      data: {
+        tenantId,
+        name: body.name,
+        description: body.description,
+        category: body.category,
+        formSchema: body.formSchema as any,
+        requiresSignature: body.requiresSignature,
+        createdById: userId,
+      },
+    });
+
+    res.json(form);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Invalid request" });
   }
 });
 

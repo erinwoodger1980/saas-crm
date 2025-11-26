@@ -29,7 +29,7 @@ import { apiFetch } from "@/lib/api";
 const BASE_NAV: Array<{ href: string; label: string; description: string; icon: any }> = [
   { href: "/dashboard", label: "Dashboard", description: "Pulse & KPIs", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", description: "Inbox & replies", icon: Mail },
-  { href: "/tasks/owner", label: "Tasks", description: "Personal queue", icon: CheckSquare },
+  { href: "/tasks/center", label: "Tasks", description: "Unified activity hub", icon: CheckSquare },
   { href: "/opportunities", label: "Opportunities", description: "Quotes to win", icon: Target },
   // Quotes moved under AI Training; keep out of main nav
   { href: "/workshop", label: "Workshop", description: "Production board", icon: Wrench },

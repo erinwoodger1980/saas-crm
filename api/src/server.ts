@@ -11,6 +11,7 @@ import path from "path";
 import { env } from "./env";
 import { prisma } from "./prisma";
 import { normalizeEmail } from "./lib/email";
+import { startRecurringTaskProcessor } from "./services/recurring-task-processor";
 
 // Helper to generate unique tenant slug
 async function generateUniqueSlug(baseName: string): Promise<string> {
@@ -866,6 +867,7 @@ function startInboxWatcher() {
 }
 
 startInboxWatcher();
+startRecurringTaskProcessor(60); // Check every 60 minutes
 
 /* ---------------- Request timeout middleware ---------------- */
 const REQUEST_TIMEOUT_MS = 25000; // 25 seconds (Render has 30s timeout)
