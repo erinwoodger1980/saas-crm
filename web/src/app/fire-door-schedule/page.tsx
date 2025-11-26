@@ -1692,7 +1692,7 @@ export default function FireDoorSchedulePage() {
                           style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
-                          <div onClick={(e) => e.stopPropagation()} className="relative z-10">
+                          <div onClick={(e) => e.stopPropagation()} className="relative z-50">
                             {renderCell(project, field)}
                           </div>
                         </td>
