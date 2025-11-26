@@ -31,6 +31,7 @@ import {
   Copy,
   Eye,
   Star,
+  Trash2,
 } from "lucide-react";
 
 type FormTemplate = {
@@ -80,6 +81,15 @@ export function FormTemplatesLibrary({ onTemplateSelected }: FormTemplatesLibrar
   const [showPublicOnly, setShowPublicOnly] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<FormTemplate | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newTemplate, setNewTemplate] = useState({
+    name: "",
+    description: "",
+    category: "",
+    requiresSignature: false,
+    isPublic: false,
+    fields: [] as any[],
+  });
 
   useEffect(() => {
     loadTemplates();
@@ -175,6 +185,84 @@ export function FormTemplatesLibrary({ onTemplateSelected }: FormTemplatesLibrar
     }
   };
 
+  const handleCreateTemplate = async () => {
+    if (!newTemplate.name.trim()) {
+      alert("Please enter a template name");
+      return;
+    }
+
+    try {
+      await apiFetch("/tasks/form-templates", {
+        method: "POST",
+        headers: {
+          "x-tenant-id": tenantId,
+          "Content-Type": "application/json",
+        },
+        json: {
+          name: newTemplate.name,
+          description: newTemplate.description,
+          category: newTemplate.category || "Other",
+          requiresSignature: newTemplate.requiresSignature,
+          isPublic: newTemplate.isPublic,
+          formSchema: {
+            fields: newTemplate.fields,
+          },
+        },
+      });
+
+      const toast = document.createElement("div");
+      toast.textContent = `✓ Template "${newTemplate.name}" created successfully`;
+      toast.className =
+        "fixed bottom-6 right-6 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg z-50";
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2000);
+
+      setShowCreateForm(false);
+      setNewTemplate({
+        name: "",
+        description: "",
+        category: "",
+        requiresSignature: false,
+        isPublic: false,
+        fields: [],
+      });
+      loadTemplates();
+    } catch (error) {
+      console.error("Failed to create template:", error);
+      alert("Failed to create template");
+    }
+  };
+
+  const addField = () => {
+    setNewTemplate((prev) => ({
+      ...prev,
+      fields: [
+        ...prev.fields,
+        {
+          id: `field_${Date.now()}`,
+          type: "text",
+          label: "",
+          placeholder: "",
+          required: false,
+        },
+      ],
+    }));
+  };
+
+  const updateField = (index: number, updates: any) => {
+    setNewTemplate((prev) => ({
+      ...prev,
+      fields: prev.fields.map((f, i) => (i === index ? { ...f, ...updates } : f)),
+    }));
+  };
+
+  const removeField = (index: number) => {
+    setNewTemplate((prev) => ({
+      ...prev,
+      fields: prev.fields.filter((_, i) => i !== index),
+    }));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -193,6 +281,10 @@ export function FormTemplatesLibrary({ onTemplateSelected }: FormTemplatesLibrar
             Browse and use pre-built form templates
           </p>
         </div>
+        <Button onClick={() => setShowCreateForm(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Create Template
+        </Button>
       </div>
 
       {/* Filters */}
@@ -322,6 +414,187 @@ export function FormTemplatesLibrary({ onTemplateSelected }: FormTemplatesLibrar
           ))}
         </div>
       )}
+
+      {/* Create Template Dialog */}
+      <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Form Template</DialogTitle>
+            <DialogDescription>
+              Create a reusable form template for tasks
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-1 block">
+                Template Name *
+              </label>
+              <Input
+                value={newTemplate.name}
+                onChange={(e) =>
+                  setNewTemplate((prev) => ({ ...prev, name: e.target.value }))
+                }
+                placeholder="e.g., Safety Inspection Checklist"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Description</label>
+              <Input
+                value={newTemplate.description}
+                onChange={(e) =>
+                  setNewTemplate((prev) => ({ ...prev, description: e.target.value }))
+                }
+                placeholder="Brief description of what this template is for"
+              />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Category</label>
+                <Select
+                  value={newTemplate.category}
+                  onValueChange={(value) =>
+                    setNewTemplate((prev) => ({ ...prev, category: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TEMPLATE_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newTemplate.requiresSignature}
+                    onChange={(e) =>
+                      setNewTemplate((prev) => ({
+                        ...prev,
+                        requiresSignature: e.target.checked,
+                      }))
+                    }
+                    className="rounded"
+                  />
+                  Requires Signature
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newTemplate.isPublic}
+                    onChange={(e) =>
+                      setNewTemplate((prev) => ({
+                        ...prev,
+                        isPublic: e.target.checked,
+                      }))
+                    }
+                    className="rounded"
+                  />
+                  Make Public (share with team)
+                </label>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold">Form Fields</h4>
+                <Button size="sm" variant="outline" onClick={addField}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Field
+                </Button>
+              </div>
+
+              {newTemplate.fields.length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  No fields yet. Click "Add Field" to get started.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {newTemplate.fields.map((field, index) => (
+                    <Card key={field.id} className="p-3">
+                      <div className="grid md:grid-cols-4 gap-3">
+                        <div>
+                          <label className="text-xs mb-1 block">Type</label>
+                          <Select
+                            value={field.type}
+                            onValueChange={(value) =>
+                              updateField(index, { type: value })
+                            }
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="text">Text</SelectItem>
+                              <SelectItem value="number">Number</SelectItem>
+                              <SelectItem value="email">Email</SelectItem>
+                              <SelectItem value="tel">Phone</SelectItem>
+                              <SelectItem value="date">Date</SelectItem>
+                              <SelectItem value="textarea">Text Area</SelectItem>
+                              <SelectItem value="select">Dropdown</SelectItem>
+                              <SelectItem value="checkbox">Checkbox</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="text-xs mb-1 block">Label</label>
+                          <Input
+                            value={field.label}
+                            onChange={(e) =>
+                              updateField(index, { label: e.target.value })
+                            }
+                            placeholder="Field label"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+
+                        <div className="flex items-end gap-2">
+                          <label className="flex items-center gap-1 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={field.required}
+                              onChange={(e) =>
+                                updateField(index, { required: e.target.checked })
+                              }
+                              className="rounded"
+                            />
+                            Required
+                          </label>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removeField(index)}
+                            className="h-8 px-2"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateForm(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateTemplate} disabled={!newTemplate.name.trim()}>
+              Create Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Preview Dialog */}
       {previewTemplate && (
