@@ -820,6 +820,12 @@ router.patch("/:id", async (req: any, res: any) => {
   if ('deliveryDate' in updates) {
     data.deliveryDate = updates.deliveryDate ? new Date(updates.deliveryDate) : null;
   }
+  if ('installationStartDate' in updates) {
+    data.installationStartDate = updates.installationStartDate ? new Date(updates.installationStartDate) : null;
+  }
+  if ('installationEndDate' in updates) {
+    data.installationEndDate = updates.installationEndDate ? new Date(updates.installationEndDate) : null;
+  }
   if ('valueGBP' in updates) {
     data.valueGBP = updates.valueGBP != null ? Number(updates.valueGBP) : null;
   }
