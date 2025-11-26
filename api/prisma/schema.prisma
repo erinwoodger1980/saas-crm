@@ -20,116 +20,83 @@ model Tenant {
   seatsDisplay               Int                         @default(2)
   subscriptionStatus         SubscriptionStatus?
   plan                       Plan?
-  financialYearEnd           String?                     @default("12-31") // MM-DD format for financial year end
-  // SEO & Ads optimization fields
+  financialYearEnd           String?                     @default("12-31")
   keywords                   String[]                    @default([])
   serviceAreas               String[]                    @default([])
   homeUrl                    String?
-  googleAdsCustomerId        String? // Google Ads customer ID
-  googleAdsRefreshToken      String? // OAuth refresh token for Ads API
-  targetCPL                  Decimal?                    @default(50) // Target cost per lead
+  googleAdsCustomerId        String?
+  googleAdsRefreshToken      String?
+  targetCPL                  Decimal?                    @default(50)
+  slug                       String                      @unique
+  activityLogs               ActivityLog[]
+  automationRules            AutomationRule[]
+  clientAccounts             ClientAccount[]
+  doorCores                  DoorCore[]
   emailIngests               EmailIngest[]
   emailMessages              EmailMessage[]
   emailThreads               EmailThread[]
+  examplePhotos              ExamplePhoto[]
+  featureRequests            FeatureRequest[]
+  feedbacks                  Feedback[]
+  fireCertificationRules     FireCertificationRule[]
+  clientJobs                 FireDoorClientJob[]
+  fireDoorProductionLogs     FireDoorProductionLog[]
+  fireDoorScheduleProjects   FireDoorScheduleProject[]
+  followUpEvents             FollowUpEvent[]
+  followUpTemplates          FollowUpTemplate[]
+  formTemplates              FormTemplate[]
+  frameFinishes              FrameFinish[]
+  glazingItems               GlazingItem[]
   GmailTenantConnection      GmailTenantConnection?
   gmailUserConnections       GmailUserConnection[]       @relation("GmailUserConnections")
-  leads                      Lead[]
-  leadFieldDefs              LeadFieldDef[]
-  leadVisionInferences       LeadVisionInference[]
-  Ms365TenantConnection      Ms365TenantConnection?
-  ms365UserConnections       Ms365UserConnection[]       @relation("Ms365UserConnections")
-  opportunities              Opportunity[]
-  quotes                     Quote[]
-  quoteQuestionnaireMatches  QuoteQuestionnaireMatch[]
-  UploadedFile               UploadedFile[]
-  users                      User[]
-  feedbacks                  Feedback[]
-  tasks                      Task[]
-  taskTemplates              TaskTemplate[]
-  formTemplates              FormTemplate[]
-  automationRules            AutomationRule[]
-  notifications              Notification[]
-  streaks                    Streak[]
-  activityLogs               ActivityLog[]
-  userPreferences            UserPreference[]
-  trainingInsights           TrainingInsights[]
-  modelOverrides             ModelOverride[]
-  trainingEvents             TrainingEvent[]
-  followUpTemplates          FollowUpTemplate[]
-  followUpEvents             FollowUpEvent[]
-  sourceSpends               SourceSpend[]
-  // Workshop relations
-  processPlans               ProcessPlan[]
-  timeEntries                TimeEntry[]
   holidays                   Holiday[]
-  targets                    Target[]
-  workshopProcessDefinitions WorkshopProcessDefinition[]
-  projectProcessAssignments  ProjectProcessAssignment[]
+  ironmongeryItems           IronmongeryItem[]
+  ironmongeryPacks           IronmongeryPack[]
   keywordPerformance         KeywordPerformance[]
   keywordSuggestions         KeywordSuggestion[]
   landingTenant              LandingTenant?
-  slug                       String                      @unique // Required for landing pages and URLs
-  // Feature Requests (inverse relation)
-  featureRequests            FeatureRequest[]
-  // Supplier relations
-  suppliers                  Supplier[]                  @relation("SupplierToTenant")
-  supplierQuoteRequests      SupplierQuoteRequest[]
+  leads                      Lead[]
+  leadFieldDefs              LeadFieldDef[]
+  leadVisionInferences       LeadVisionInference[]
+  leafFacings                LeafFacing[]
+  leafSizingRules            LeafSizingRule[]
+  leafStyles                 LeafStyle[]
+  materials                  Material[]
   materialItems              MaterialItem[]
-  shoppingLists              ShoppingList[]
+  modelOverrides             ModelOverride[]
+  Ms365TenantConnection      Ms365TenantConnection?
+  ms365UserConnections       Ms365UserConnection[]       @relation("Ms365UserConnections")
+  notifications              Notification[]
+  opportunities              Opportunity[]
+  processPlans               ProcessPlan[]
+  projectProcessAssignments  ProjectProcessAssignment[]
   purchaseOrders             PurchaseOrder[]
-  // Timesheet relations
-  timesheets                 Timesheet[]
-  // Questionnaire relations
   questionnaires             Questionnaire[]
   questionnaireFields        QuestionnaireField[]
-  questionnaireResponses     QuestionnaireResponse[]
   questionnairePhotos        QuestionnairePhoto[]
-  // Software profile relations
+  questionnaireResponses     QuestionnaireResponse[]
+  quotes                     Quote[]
+  quoteQuestionnaireMatches  QuoteQuestionnaireMatch[]
+  shoppingLists              ShoppingList[]
   softwareProfiles           SoftwareProfile[]           @relation("SoftwareProfiles")
-  // Joinery costing engine relations
-  materials                  Material[]
-  glazingItems               GlazingItem[]
-  doorCores                  DoorCore[]
-  leafStyles                 LeafStyle[]
-  leafFacings                LeafFacing[]
-  frameFinishes              FrameFinish[]
+  sourceSpends               SourceSpend[]
   sprayFinishes              SprayFinish[]
+  streaks                    Streak[]
+  suppliers                  Supplier[]                  @relation("SupplierToTenant")
+  supplierQuoteRequests      SupplierQuoteRequest[]
+  targets                    Target[]
+  tasks                      Task[]
+  taskTemplates              TaskTemplate[]
+  timeEntries                TimeEntry[]
+  timesheets                 Timesheet[]
+  trainingEvents             TrainingEvent[]
+  trainingInsights           TrainingInsights[]
+  UploadedFile               UploadedFile[]
+  users                      User[]
+  userPreferences            UserPreference[]
   veneerLayons               VeneerLayon[]
-  ironmongeryItems           IronmongeryItem[]
-  ironmongeryPacks           IronmongeryPack[]
-  fireCertificationRules     FireCertificationRule[]
-  leafSizingRules            LeafSizingRule[]
   weightLookups              WeightLookup[]
-  examplePhotos              ExamplePhoto[]
-  // Fire door schedule (project tracking)
-  fireDoorScheduleProjects   FireDoorScheduleProject[]
-  fireDoorProductionLogs     FireDoorProductionLog[]
-  // Fire door client portal
-  clientAccounts             ClientAccount[]
-  clientJobs                 FireDoorClientJob[]
-}
-
-/// ==============================
-/// Feature Requests (AI Patch Flow)
-/// ==============================
-
-enum FeatureStatus {
-  OPEN
-  IN_PROGRESS
-  READY_FOR_REVIEW
-  APPROVED
-  REJECTED
-  APPLIED
-  FAILED
-}
-
-enum FeatureCategory {
-  UI
-  COPY
-  PRICING
-  ANALYTICS
-  INTEGRATION
-  OTHER
+  workshopProcessDefinitions WorkshopProcessDefinition[]
 }
 
 model FeatureRequest {
@@ -149,8 +116,7 @@ model FeatureRequest {
   logs            String?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, status])
 }
@@ -160,140 +126,111 @@ model User {
   tenantId                  String
   email                     String                     @unique
   name                      String?
-  role                      String                     @default("user") // user, admin, workshop, supplier, developer
-  supplierId                String? // Link to Supplier if role is "supplier"
+  role                      String                     @default("user")
+  supplierId                String?
   isEarlyAdopter            Boolean                    @default(false)
   passwordHash              String?
   signupCompleted           Boolean                    @default(false)
   workshopHoursPerDay       Decimal?                   @default(8)
-  workshopColor             String? // Hex color for schedule display (e.g. "#3b82f6")
-  workshopProcessCodes      String[] // Process codes this user can work on (empty = all processes)
-  isDeveloper               Boolean                    @default(false) // Global developer access across all tenants
+  workshopColor             String?
+  isDeveloper               Boolean                    @default(false)
+  workshopProcessCodes      String[]
+  examplePhotos             ExamplePhoto[]
+  resolvedFeedbacks         Feedback[]                 @relation("FeedbackResolver")
+  feedbacks                 Feedback[]                 @relation("FeedbackAuthor")
   GmailTenantConnection     GmailTenantConnection[]
-  Ms365TenantConnection     Ms365TenantConnection[]
   gmailUserConnection       GmailUserConnection?       @relation("GmailUserConnection")
+  holidays                  Holiday[]
+  Ms365TenantConnection     Ms365TenantConnection[]
   ms365UserConnection       Ms365UserConnection?       @relation("Ms365UserConnection")
   passwordResetToken        PasswordResetToken?
-  signupTokens              SignupToken[]
-  tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
-  supplier                  Supplier?                  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  feedbacks                 Feedback[]                 @relation("FeedbackAuthor")
-  resolvedFeedbacks         Feedback[]                 @relation("FeedbackResolver")
-  // Workshop relations
+  PdfLayoutTemplate         PdfLayoutTemplate[]
   processPlansAssigned      ProcessPlan[]
   projectProcessAssignments ProjectProcessAssignment[]
-  timeEntries               TimeEntry[]
-  holidays                  Holiday[]
-  supplierQuoteRequests     SupplierQuoteRequest[]
-  timesheets                Timesheet[]                @relation("TimesheetUser")
-  signedOffTimesheets       Timesheet[]                @relation("TimesheetSignedOffBy")
-  PdfLayoutTemplate         PdfLayoutTemplate[]
   approvedQuotes            Quote[]                    @relation("QuoteApprovedBy")
-  examplePhotos             ExamplePhoto[]
+  signupTokens              SignupToken[]
+  supplierQuoteRequests     SupplierQuoteRequest[]
+  timeEntries               TimeEntry[]
+  signedOffTimesheets       Timesheet[]                @relation("TimesheetSignedOffBy")
+  timesheets                Timesheet[]                @relation("TimesheetUser")
+  supplier                  Supplier?                  @relation(fields: [supplierId], references: [id])
+  tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
 }
 
 model SignupToken {
   id         String    @id @default(uuid())
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId     String
   token      String    @unique
   expiresAt  DateTime
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Lead {
-  id                    String                 @id @default(cuid())
+  id                    String                    @id @default(cuid())
   tenantId              String
   createdById           String
-  clientAccountId       String?                // Link to customer account
   contactName           String
   email                 String?
-  status                LeadStatus             @default(NEW)
-  capturedAt            DateTime               @default(now())
+  status                LeadStatus                @default(NEW)
+  capturedAt            DateTime                  @default(now())
   nextActionAt          DateTime?
   nextAction            String?
   briefJson             Json?
   custom                Json?
   description           String?
-  globalTimberSpec      String   @default("")
-  globalGlassSpec       String   @default("")
-  globalIronmongerySpec String   @default("")
-  globalFinishSpec      String   @default("")
-  emailIngests          EmailIngest[]
-  emailMessages         EmailMessage[]
-  emailThreads          EmailThread[]
-  followUpLogs          FollowUpLog[]
-  followUpEvents        FollowUpEvent[]
   estimatedValue        Decimal?
   quotedValue           Decimal?
   dateQuoteSent         DateTime?
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
-  opportunity           Opportunity?
-  Quote                 Quote[]
-  supplierQuoteRequests SupplierQuoteRequest[]
-  questionnaireMatches QuoteQuestionnaireMatch[] @relation("LeadQuestionnaireMatches")
-  visionInferences      LeadVisionInference[]
+  globalTimberSpec      String                    @default("")
+  globalGlassSpec       String                    @default("")
+  globalIronmongerySpec String                    @default("")
+  globalFinishSpec      String                    @default("")
+  clientAccountId       String?
+  emailIngests          EmailIngest[]
+  emailMessages         EmailMessage[]
+  emailThreads          EmailThread[]
+  followUpEvents        FollowUpEvent[]
+  followUpLogs          FollowUpLog[]
+  clientAccount         ClientAccount?            @relation(fields: [clientAccountId], references: [id])
+  tenant                Tenant                    @relation(fields: [tenantId], references: [id])
   interactions          LeadInteraction[]
+  visionInferences      LeadVisionInference[]
+  opportunity           Opportunity?
   publicProjects        PublicProject[]
-  clientAccount         ClientAccount?         @relation(fields: [clientAccountId], references: [id])
+  Quote                 Quote[]
+  questionnaireMatches  QuoteQuestionnaireMatch[] @relation("LeadQuestionnaireMatches")
+  supplierQuoteRequests SupplierQuoteRequest[]
 
   @@index([clientAccountId])
 }
 
-enum LeadInteractionType {
-  QUESTIONNAIRE_STARTED
-  QUESTIONNAIRE_COMPLETED
-  STEP_VIEWED
-  STEP_COMPLETED
-  ESTIMATE_PREVIEWED
-  ESTIMATE_SHARED
-  ESTIMATE_FAVOURITED
-  ITEM_ADDED
-  ITEM_UPDATED
-  ITEM_REMOVED
-  ITEM_EDITED
-  SPECS_UPDATED
-  PROJECT_SAVED
-  CLIENT_PROCEEDED
-  CLIENT_DECLINED
-}
-
 model LeadInteraction {
-  id        String               @id @default(cuid())
+  id        String              @id @default(cuid())
   tenantId  String
   leadId    String?
-  entryMode String?              // AD or INVITE
+  entryMode String?
   type      LeadInteractionType
-  metadata  Json?                // UTM params, projectId, share channel, etc.
-  createdAt DateTime             @default(now())
-  lead      Lead?                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  metadata  Json?
+  createdAt DateTime            @default(now())
+  lead      Lead?               @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, leadId, createdAt])
   @@index([tenantId, type, createdAt])
 }
 
-enum VisionInferenceSource {
-  MEASUREMENT
-  INSPIRATION
-}
-
-enum PublicProjectEntryMode {
-  AD
-  INVITE
-}
-
 model PublicProject {
-  id          String                  @id @default(cuid())
-  tenantId    String
-  leadId      String?                 // Linked when contact details submitted or from invite
-  entryMode   PublicProjectEntryMode
-  sourceInfo  Json?                   // UTM params, referrer, gclid, fbclid
-  payload     Json                    // openings, specs, estimate snapshot, favourites
-  createdAt   DateTime                @default(now())
-  updatedAt   DateTime                @updatedAt
-  lead        Lead?                   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  id         String                 @id @default(cuid())
+  tenantId   String
+  leadId     String?
+  entryMode  PublicProjectEntryMode
+  sourceInfo Json?
+  payload    Json
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+  lead       Lead?                  @relation(fields: [leadId], references: [id])
 
   @@index([tenantId, leadId])
   @@index([tenantId, createdAt])
@@ -303,18 +240,14 @@ model Opportunity {
   id                       String                     @id @default(cuid())
   tenantId                 String
   leadId                   String                     @unique
-  clientAccountId          String?                    // Link to customer account
   title                    String
-  startDate                DateTime?  // Manufacturing start date
-  deliveryDate             DateTime?  // Completion date (was delivery date)
-  installationStartDate    DateTime?  // Installation start date
-  installationEndDate      DateTime?  // Installation end date
+  startDate                DateTime?
+  deliveryDate             DateTime?
   valueGBP                 Decimal?
   stage                    OppStage                   @default(QUALIFY)
   wonAt                    DateTime?
   lostAt                   DateTime?
   createdAt                DateTime                   @default(now())
-  // Material tracking
   timberOrderedAt          DateTime?
   timberExpectedAt         DateTime?
   timberReceivedAt         DateTime?
@@ -331,16 +264,18 @@ model Opportunity {
   paintExpectedAt          DateTime?
   paintReceivedAt          DateTime?
   paintNotApplicable       Boolean                    @default(false)
+  clientAccountId          String?
+  installationEndDate      DateTime?
+  installationStartDate    DateTime?
   emailMessages            EmailMessage[]
   emailThreads             EmailThread[]
+  clientAccount            ClientAccount?             @relation(fields: [clientAccountId], references: [id])
   lead                     Lead                       @relation(fields: [leadId], references: [id])
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id])
-  clientAccount            ClientAccount?             @relation(fields: [clientAccountId], references: [id])
-  // Workshop relations
   processPlans             ProcessPlan[]
   projectProcesses         ProjectProcessAssignment[]
-  timeEntries              TimeEntry[]
   supplierQuoteRequests    SupplierQuoteRequest[]
+  timeEntries              TimeEntry[]
 
   @@index([tenantId, stage])
   @@index([clientAccountId])
@@ -388,8 +323,8 @@ model GmailTenantConnection {
   connectedById String?
   gmailAddress  String?
   refreshToken  String
-  sentCursor    String? // Checkpoint for Sent folder crawling (historyId or message ID)
-  sentLastSync  DateTime? // Last time Sent folder was synced
+  sentCursor    String?
+  sentLastSync  DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   connectedBy   User?     @relation(fields: [connectedById], references: [id])
@@ -404,8 +339,8 @@ model Ms365TenantConnection {
   connectedById String?
   ms365Address  String?
   refreshToken  String
-  sentCursor    String? // Checkpoint for Sent folder crawling (delta link or message ID)
-  sentLastSync  DateTime? // Last time Sent folder was synced
+  sentCursor    String?
+  sentLastSync  DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   connectedBy   User?     @relation(fields: [connectedById], references: [id])
@@ -420,12 +355,12 @@ model GmailUserConnection {
   tenantId     String
   gmailAddress String
   refreshToken String
-  sentCursor   String? // Checkpoint for Sent folder crawling per user
-  sentLastSync DateTime? // Last time Sent folder was synced for this user
+  sentCursor   String?
+  sentLastSync DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-  user         User      @relation("GmailUserConnection", fields: [userId], references: [id], onDelete: Cascade)
   tenant       Tenant    @relation("GmailUserConnections", fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User      @relation("GmailUserConnection", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tenantId])
@@ -438,12 +373,12 @@ model Ms365UserConnection {
   tenantId     String
   ms365Address String
   refreshToken String
-  sentCursor   String? // Checkpoint for Sent folder crawling per user
-  sentLastSync DateTime? // Last time Sent folder was synced for this user
+  sentCursor   String?
+  sentLastSync DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-  user         User      @relation("Ms365UserConnection", fields: [userId], references: [id], onDelete: Cascade)
   tenant       Tenant    @relation("Ms365UserConnections", fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User      @relation("Ms365UserConnection", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tenantId])
@@ -477,8 +412,8 @@ model LeadTrainingExample {
 }
 
 /// *
-///  * ✅ Unified TenantSettings (only ONE model)
-///  * Extended with premium branding + social proof for public mobile estimator.
+/// * ✅ Unified TenantSettings (only ONE model)
+/// * Extended with premium branding + social proof for public mobile estimator.
 model TenantSettings {
   tenantId                  String    @id
   slug                      String    @unique
@@ -489,18 +424,6 @@ model TenantSettings {
   links                     Json?
   questionnaire             Json?
   logoUrl                   String?
-  // Premium branding fields for public estimator
-  primaryColor              String?   // Hex color for buttons, accents
-  secondaryColor            String?   // Hex color for subtle backgrounds
-  heroImageUrl              String?   // Main hero/header image
-  galleryImageUrls          String[]  @default([]) // Product gallery images
-  // Social proof
-  testimonials              Json?     // Array of {name, location, quote}
-  reviewScore               Decimal?  // e.g. 4.9
-  reviewCount               Int?      // e.g. 128
-  reviewSourceLabel         String?   // e.g. "Google Reviews", "Trustpilot"
-  serviceArea               String?   // e.g. "Kent and East Sussex"
-  // Existing fields
   inbox                     Json?
   inboxLastRun              DateTime?
   inboxWatchEnabled         Boolean   @default(false)
@@ -511,8 +434,16 @@ model TenantSettings {
   updatedAt                 DateTime  @updatedAt
   createdAt                 DateTime  @default(now())
   beta                      Json      @default("{}")
-  // Feature flags for tenant-specific functionality
   isFireDoorManufacturer    Boolean   @default(false)
+  galleryImageUrls          String[]  @default([])
+  heroImageUrl              String?
+  primaryColor              String?
+  reviewCount               Int?
+  reviewScore               Decimal?
+  reviewSourceLabel         String?
+  secondaryColor            String?
+  serviceArea               String?
+  testimonials              Json?
 }
 
 model FollowUpLog {
@@ -575,9 +506,9 @@ model FollowUpEvent {
   meta        Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  tenant      Tenant    @relation(fields: [tenantId], references: [id])
   lead        Lead      @relation(fields: [leadId], references: [id])
   quote       Quote?    @relation(fields: [quoteId], references: [id])
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, leadId, scheduledAt])
 }
@@ -697,54 +628,49 @@ model EmailMessage {
 }
 
 /// *
-///  * =============== Quoting ===============
+/// * =============== Quoting ===============
 model Quote {
-  id                    String                 @id @default(cuid())
+  id                    String                    @id @default(cuid())
   tenantId              String
   leadId                String?
-  clientAccountId       String?                // Link to customer account for portal access
   title                 String
-  status                QuoteStatus            @default(DRAFT)
-  currency              String                 @default("GBP")
+  status                QuoteStatus               @default(DRAFT)
+  currency              String                    @default("GBP")
   exchangeRate          Decimal?
-  deliveryCost          Decimal?               @default(0)
-  markupDefault         Decimal?               @default(0)
-  subtotalMaterialGBP   Decimal?               @default(0)
-  subtotalLabourGBP     Decimal?               @default(0)
-  subtotalOtherGBP      Decimal?               @default(0)
-  totalGBP              Decimal?               @default(0)
+  deliveryCost          Decimal?                  @default(0)
+  markupDefault         Decimal?                  @default(0)
+  subtotalMaterialGBP   Decimal?                  @default(0)
+  subtotalLabourGBP     Decimal?                  @default(0)
+  subtotalOtherGBP      Decimal?                  @default(0)
+  totalGBP              Decimal?                  @default(0)
   proposalPdfUrl        String?
   notes                 String?
   meta                  Json?
-  // Quote source classification (auto-detected or user-selected)
-  quoteSourceType       QuoteSourceType?
-  // Global PDF layout / parser profile key (e.g. "brio_v1", "joinerysoft_a")
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
   supplierProfileId     String?
-  // TODO: Re-enable this relation once all existing quotes have valid supplierProfileIds
-  // pdfLayoutTemplate     PdfLayoutTemplate?     @relation(fields: [supplierProfileId], references: [supplierProfileId], onDelete: SetNull)
-  // ML trust and approval workflow
-  mlEstimatedPrice      Decimal?               // ML's predicted price
-  mlConfidence          Decimal?               // ML confidence score (0-1)
-  mlModelVersion        String?                // Which ML model version generated this
-  approvalStatus        String                 @default("pending") // pending, approved, rejected, needs_review
-  approvedPrice         Decimal?               // Final approved price after human review
-  approvedById          String?                // User who approved/reviewed the price
-  approvedAt            DateTime?              // When price was approved
-  priceVariancePercent  Decimal?               // (approved - ml) / ml * 100
-  isTrainingExample     Boolean                @default(false) // Use for ML training
-  trainingNotes         String?                // Notes about this training example
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  lead                  Lead?                  @relation(fields: [leadId], references: [id])
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
-  approvedBy            User?                  @relation("QuoteApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  lines                 QuoteLine[]
-  supplierFiles         UploadedFile[]
+  quoteSourceType       QuoteSourceType?
+  approvalStatus        String                    @default("pending")
+  approvedAt            DateTime?
+  approvedById          String?
+  approvedPrice         Decimal?
+  clientAccountId       String?
+  isTrainingExample     Boolean                   @default(false)
+  mlConfidence          Decimal?
+  mlEstimatedPrice      Decimal?
+  mlModelVersion        String?
+  priceVariancePercent  Decimal?
+  trainingNotes         String?
   followUpEvents        FollowUpEvent[]
   questionnaireResponse QuestionnaireResponse?
-  shoppingLists         ShoppingList[]
+  approvedBy            User?                     @relation("QuoteApprovedBy", fields: [approvedById], references: [id])
+  clientAccount         ClientAccount?            @relation(fields: [clientAccountId], references: [id])
+  lead                  Lead?                     @relation(fields: [leadId], references: [id])
+  tenant                Tenant                    @relation(fields: [tenantId], references: [id])
+  lines                 QuoteLine[]
   questionnaireMatches  QuoteQuestionnaireMatch[]
-  clientAccount         ClientAccount?         @relation(fields: [clientAccountId], references: [id], onDelete: SetNull)
+  shoppingLists         ShoppingList[]
+  supplierFiles         UploadedFile[]
 
   @@index([tenantId, leadId])
   @@index([clientAccountId])
@@ -782,9 +708,9 @@ model UploadedFile {
   mimeType             String?
   sizeBytes            Int?
   uploadedAt           DateTime              @default(now())
+  supplierQuoteRequest SupplierQuoteRequest?
   quote                Quote?                @relation(fields: [quoteId], references: [id])
   tenant               Tenant                @relation(fields: [tenantId], references: [id])
-  supplierQuoteRequest SupplierQuoteRequest?
 
   @@index([tenantId, quoteId])
 }
@@ -803,42 +729,41 @@ model ParsedSupplierLine {
   supplier    String?
   confidence  Float?
   usedStages  String?
-  imageIndex  Int? // Index of associated image in extracted images array
-  imageRef    String? // Reference to UploadedFile ID or data URL hash
   createdAt   DateTime @default(now())
+  imageIndex  Int?
+  imageRef    String?
 
   @@index([tenantId, quoteId])
   @@index([tenantId, supplier])
 }
 
 model QuoteQuestionnaireMatch {
-  id                    String   @id @default(cuid())
-  tenantId              String
-  quoteId               String
-  leadId                String?
-  questionnaireItemId   String
-  questionnaireLabel    String?
-  description           String
-  matchStatus           String   @default("unmatched")
-  confidenceScore       Float    @default(0)
-  parsedRowId           String?
-  rowPage               Int?
-  rowBBox               Json?
-  imageBBox             Json?
-  widthMm               Float?
-  heightMm              Float?
-  thicknessMm           Float?
-  quantity              Float?
-  unitPrice             Float?
-  lineTotal             Float?
-  currency              String?
-  meta                  Json?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  quote  Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  lead   Lead?  @relation("LeadQuestionnaireMatches", fields: [leadId], references: [id], onDelete: SetNull)
+  id                  String   @id @default(cuid())
+  tenantId            String
+  quoteId             String
+  leadId              String?
+  questionnaireItemId String
+  questionnaireLabel  String?
+  description         String
+  matchStatus         String   @default("unmatched")
+  confidenceScore     Float    @default(0)
+  parsedRowId         String?
+  rowPage             Int?
+  rowBBox             Json?
+  imageBBox           Json?
+  widthMm             Float?
+  heightMm            Float?
+  thicknessMm         Float?
+  quantity            Float?
+  unitPrice           Float?
+  lineTotal           Float?
+  currency            String?
+  meta                Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  lead                Lead?    @relation("LeadQuestionnaireMatches", fields: [leadId], references: [id])
+  quote               Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, quoteId])
   @@index([quoteId])
@@ -846,11 +771,11 @@ model QuoteQuestionnaireMatch {
 }
 
 model LeadVisionInference {
-  id          String                 @id @default(cuid())
+  id          String                @id @default(cuid())
   tenantId    String
   leadId      String
   itemNumber  Int?
-  source      VisionInferenceSource  @default(MEASUREMENT)
+  source      VisionInferenceSource @default(MEASUREMENT)
   widthMm     Float?
   heightMm    Float?
   confidence  Float?
@@ -858,11 +783,10 @@ model LeadVisionInference {
   description String?
   notes       String?
   photoLabel  String?
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  lead        Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, leadId])
   @@index([leadId, itemNumber])
@@ -907,14 +831,14 @@ model ModelVersion {
   id               String    @id @default(cuid())
   model            String
   label            String
-  versionId        String?   @unique
   metricsJson      Json
   datasetHash      String
   isProduction     Boolean   @default(false)
-  awaitingApproval Boolean   @default(false)
+  createdAt        DateTime  @default(now())
   approvedAt       DateTime?
   approvedById     String?
-  createdAt        DateTime  @default(now())
+  awaitingApproval Boolean   @default(false)
+  versionId        String?   @unique
 
   @@index([model, isProduction])
 }
@@ -927,38 +851,38 @@ model TrainingRun {
   metricsJson    Json
   status         String
   modelVersionId String?
-  datasetCount   Int?
-  startedAt      DateTime?
-  finishedAt     DateTime?
   createdAt      DateTime  @default(now())
+  datasetCount   Int?
+  finishedAt     DateTime?
+  startedAt      DateTime?
 
   @@index([model, createdAt])
   @@index([tenantId, createdAt])
 }
 
 /// *
-///  * ============== ML Accuracy Tracking ==============
+/// * ============== ML Accuracy Tracking ==============
 model MLAccuracyMetric {
-  id                    String   @id @default(cuid())
-  tenantId              String
-  modelVersion          String
-  periodStart           DateTime
-  periodEnd             DateTime
-  totalQuotes           Int      @default(0)
-  accurateWithin10Pct   Int      @default(0)
-  accurateWithin20Pct   Int      @default(0)
-  averageVariancePct    Decimal?
-  medianVariancePct     Decimal?
-  confidenceAvg         Decimal?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  tenantId            String
+  modelVersion        String
+  periodStart         DateTime
+  periodEnd           DateTime
+  totalQuotes         Int      @default(0)
+  accurateWithin10Pct Int      @default(0)
+  accurateWithin20Pct Int      @default(0)
+  averageVariancePct  Decimal?
+  medianVariancePct   Decimal?
+  confidenceAvg       Decimal?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, periodStart])
 }
 
 /// *
-///  * ============== Password reset tokens ==============
+/// * ============== Password reset tokens ==============
 model PasswordResetToken {
   userId    String   @id
   token     String   @unique
@@ -966,31 +890,24 @@ model PasswordResetToken {
   user      User     @relation(fields: [userId], references: [id])
 }
 
-enum MLSampleStatus {
-  PENDING  // Awaiting review
-  APPROVED // Ready for training
-  REJECTED // Not suitable for training
-}
-
 model MLTrainingSample {
-  id           String         @id @default(cuid())
-  tenantId     String
-  messageId    String
-  attachmentId String
-  url          String
-  quotedAt     DateTime?
-  sourceType   String         @default("supplier_quote")
-  quoteId      String?
-  fileId       String?
-  status       MLSampleStatus @default(PENDING)
-  // New optional enrichment fields (added 2025-11-22)
-  confidence    Float?
-  estimatedTotal Decimal?
-  textChars      Int?
+  id             String         @id @default(cuid())
+  tenantId       String
+  messageId      String
+  attachmentId   String
+  url            String
+  quotedAt       DateTime?
+  sourceType     String         @default("supplier_quote")
+  quoteId        String?
+  fileId         String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  status         MLSampleStatus @default(PENDING)
+  confidence     Float?
   currency       String?
+  estimatedTotal Decimal?
   filename       String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  textChars      Int?
 
   @@unique([tenantId, messageId, attachmentId])
   @@unique([tenantId, quoteId])
@@ -1003,21 +920,21 @@ model MLTrainingSample {
 }
 
 /// *
-///  * ============== ML Training Visibility ==============
+/// * ============== ML Training Visibility ==============
 model TrainingInsights {
   id           String   @id @default(cuid())
   tenantId     String
-  module       String // lead_classifier | quote_builder | estimator | sales_assistant
+  module       String
   inputSummary String?
   decision     String?
   confidence   Float?
   userFeedback Json?
   lastUpdated  DateTime @updatedAt
   createdAt    DateTime @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, module, createdAt])
+  @@index([tenantId, module, createdAt], map: "TrainingInsights_tenant_module_createdAt_idx")
 }
 
 model ModelOverride {
@@ -1029,30 +946,1877 @@ model ModelOverride {
   reason      String?
   createdById String?
   createdAt   DateTime @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, module, key])
+  @@index([tenantId, module, key], map: "ModelOverride_tenant_module_key_idx")
 }
 
 model TrainingEvent {
   id        String   @id @default(cuid())
   tenantId  String
   module    String
-  kind      String // FEEDBACK | RETRAIN | RESET | PARAM_CHANGE
+  kind      String
   payload   Json
   actorId   String?
   createdAt DateTime @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, module, kind, createdAt])
+  @@index([tenantId, module, kind, createdAt], map: "TrainingEvent_tenant_module_kind_createdAt_idx")
+}
+
+model Feedback {
+  id           String           @id @default(cuid())
+  tenantId     String
+  userId       String?
+  feature      String
+  rating       Int?
+  comment      String?
+  sourceUrl    String?
+  status       FeedbackStatus   @default(OPEN)
+  priority     FeedbackPriority @default(MEDIUM)
+  category     String?
+  devNotes     String?
+  linkedTaskId String?
+  resolvedAt   DateTime?
+  resolvedById String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  resolvedBy   User?            @relation("FeedbackResolver", fields: [resolvedById], references: [id])
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+  user         User?            @relation("FeedbackAuthor", fields: [userId], references: [id])
+
+  @@index([tenantId, feature, createdAt])
+  @@index([tenantId, status, createdAt])
+  @@index([status, priority])
+}
+
+model DevTask {
+  id             String           @id @default(cuid())
+  title          String
+  description    String?
+  status         DevTaskStatus    @default(BACKLOG)
+  priority       FeedbackPriority @default(MEDIUM)
+  category       String?
+  sprint         String?
+  estimatedHours Decimal?
+  actualHours    Decimal?
+  assignee       String?
+  feedbackIds    String[]         @default([])
+  tenantIds      String[]         @default([])
+  notes          String?
+  completedAt    DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([status, priority])
+  @@index([sprint])
+}
+
+model Task {
+  id                     String                  @id @default(cuid())
+  tenantId               String
+  title                  String
+  description            String?
+  relatedType            RelatedType
+  relatedId              String?
+  status                 TaskStatus              @default(OPEN)
+  priority               TaskPriority            @default(MEDIUM)
+  dueAt                  DateTime?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  autocreated            Boolean                 @default(true)
+  meta                   Json?
+  createdById            String?
+  updatedById            String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  autoCompleted          Boolean                 @default(false)
+  checklistItems         Json?
+  communicationChannel   String?
+  communicationDirection CommunicationDirection?
+  communicationNotes     String?
+  communicationType      CommunicationType?
+  completedBy            String?
+  emailMessageId         String?
+  followUpLogId          String?
+  formSchema             Json?
+  formSubmissions        Json?
+  lastCompletedAt        DateTime?
+  nextDueAt              DateTime?
+  recurrenceInterval     Int?
+  recurrencePattern      RecurrencePattern?
+  requiresSignature      Boolean                 @default(false)
+  signatureData          String?
+  signedAt               DateTime?
+  signedBy               String?
+  taskType               TaskType                @default(MANUAL)
+  templateId             String?
+  subtasks               Subtask[]
+  template               TaskTemplate?           @relation(fields: [templateId], references: [id])
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignees              TaskAssignee[]
+
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, relatedType, relatedId])
+  @@index([tenantId, taskType, status])
+  @@index([tenantId, templateId])
+  @@index([emailMessageId])
+  @@index([followUpLogId])
+}
+
+model TaskAssignee {
+  taskId String
+  userId String
+  role   AssigneeRole @default(OWNER)
+  task   Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+}
+
+model Subtask {
+  id     String        @id @default(cuid())
+  taskId String
+  title  String
+  status SubtaskStatus @default(OPEN)
+  order  Int           @default(0)
+  task   Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model TaskTemplate {
+  id                 String             @id @default(cuid())
+  tenantId           String
+  name               String
+  description        String?
+  isActive           Boolean            @default(true)
+  taskType           TaskType
+  defaultTitle       String
+  defaultDescription String?
+  defaultPriority    TaskPriority       @default(MEDIUM)
+  relatedType        RelatedType?
+  recurrencePattern  RecurrencePattern?
+  recurrenceInterval Int?               @default(1)
+  formSchema         Json?
+  requiresSignature  Boolean            @default(false)
+  checklistItems     Json?
+  defaultAssigneeIds String[]
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  tasks              Task[]
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, taskType])
+}
+
+model FormTemplate {
+  id                String   @id @default(cuid())
+  tenantId          String
+  name              String
+  description       String?
+  category          String?
+  formSchema        Json
+  requiresSignature Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, category])
+}
+
+model AutomationRule {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  enabled     Boolean  @default(true)
+  trigger     Json
+  conditions  Json?
+  actions     Json
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, enabled])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  tenantId  String
+  userId    String
+  type      NotificationType
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, readAt])
+}
+
+model Streak {
+  id               String    @id @default(cuid())
+  tenantId         String
+  userId           String
+  dayCount         Int       @default(0)
+  lastActivityDate DateTime?
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+}
+
+model ActivityLog {
+  id                    String             @id @default(cuid())
+  tenantId              String
+  entity                ActivityEntity
+  entityId              String
+  verb                  ActivityVerb
+  actorId               String?
+  data                  Json?
+  createdAt             DateTime           @default(now())
+  estimatedHeightMm     Int?
+  estimatedWidthMm      Int?
+  measurementConfidence Float?
+  measurementSource     MeasurementSource?
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entity, entityId])
+  @@index([tenantId, verb])
+}
+
+model UserPreference {
+  id            String @id @default(cuid())
+  tenantId      String
+  userId        String
+  notifications Json?
+  quietHours    Json?
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+}
+
+model WorkshopProcessDefinition {
+  id                String                     @id @default(cuid())
+  tenantId          String
+  code              String
+  name              String
+  sortOrder         Int                        @default(0)
+  requiredByDefault Boolean                    @default(true)
+  estimatedHours    Decimal?
+  isColorKey        Boolean                    @default(false)
+  assignmentGroup   String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  projectProcesses  ProjectProcessAssignment[]
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, sortOrder])
+}
+
+model ProjectProcessAssignment {
+  id                  String                    @id @default(cuid())
+  tenantId            String
+  opportunityId       String
+  processDefinitionId String
+  required            Boolean                   @default(true)
+  assignedUserId      String?
+  estimatedHours      Decimal?
+  completedAt         DateTime?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  assignedUser        User?                     @relation(fields: [assignedUserId], references: [id])
+  opportunity         Opportunity               @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  processDefinition   WorkshopProcessDefinition @relation(fields: [processDefinitionId], references: [id], onDelete: Cascade)
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([opportunityId, processDefinitionId])
+  @@index([tenantId, opportunityId])
+  @@index([tenantId, assignedUserId])
+}
+
+model ProcessPlan {
+  id             String          @id @default(cuid())
+  tenantId       String
+  projectId      String
+  process        WorkshopProcess
+  plannedWeek    Int
+  assignedUserId String?
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  assignee       User?           @relation(fields: [assignedUserId], references: [id])
+  project        Opportunity     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, projectId, process])
+  @@unique([tenantId, projectId, process], map: "ProcessPlan_tenant_project_process_key")
+  @@index([tenantId, assignedUserId])
+  @@index([tenantId, assignedUserId], map: "ProcessPlan_tenant_assignee_idx")
+}
+
+model TimeEntry {
+  id        String          @id @default(cuid())
+  tenantId  String
+  projectId String
+  process   WorkshopProcess
+  userId    String
+  date      DateTime
+  hours     Decimal         @default(0)
+  notes     String?
+  createdAt DateTime        @default(now())
+  project   Opportunity     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, projectId, process])
+  @@index([tenantId, date])
+  @@index([tenantId, date], map: "TimeEntry_tenant_date_idx")
+  @@index([tenantId, projectId, process], map: "TimeEntry_tenant_project_process_idx")
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  startDate DateTime
+  endDate   DateTime
+  notes     String?
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model Target {
+  id                String   @id @default(cuid())
+  tenantId          String
+  year              Int
+  enquiriesTarget   Int?     @default(0)
+  quotesValueTarget Decimal? @default(0)
+  quotesCountTarget Int?     @default(0)
+  salesValueTarget  Decimal? @default(0)
+  salesCountTarget  Int?     @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, year])
+}
+
+model LandingLead {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  source       String
+  name         String
+  email        String
+  phone        String
+  postcode     String
+  projectType  String
+  propertyType String
+  message      String?
+  userAgent    String?
+  ip           String?
+
+  @@index([email, source, createdAt])
+}
+
+model LandingTenant {
+  id            String                @id @default(cuid())
+  tenantId      String                @unique
+  name          String?
+  homeUrl       String?
+  email         String?
+  phone         String?
+  address       String?
+  brandColor    String?
+  logoUrl       String?
+  headline      String?
+  subhead       String?
+  urgencyBanner String?
+  ctaText       String?               @default("Get Your Free Quote")
+  guarantees    Json?
+  publishedAt   DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  content       LandingTenantContent?
+  images        LandingTenantImage[]
+  reviews       LandingTenantReview[]
+}
+
+model LandingTenantContent {
+  id            String        @id @default(cuid())
+  tenantId      String        @unique
+  headline      String?
+  subhead       String?
+  priceFromText String?
+  priceRange    String?
+  guarantees    String?
+  urgency       String?
+  faqJson       String?
+  leadMagnet    String?
+  serviceAreas  String?
+  published     Boolean       @default(false)
+  updatedAt     DateTime      @updatedAt
+  tenant        LandingTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model LandingTenantImage {
+  id              String        @id @default(cuid())
+  landingTenantId String
+  url             String
+  altText         String?
+  caption         String?
+  order           Int           @default(0)
+  createdAt       DateTime      @default(now())
+  tenant          LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+
+  @@index([landingTenantId, order])
+}
+
+model LandingTenantReview {
+  id              String        @id @default(cuid())
+  landingTenantId String
+  author          String
+  text            String
+  rating          Int           @default(5)
+  date            DateTime      @default(now())
+  location        String?
+  order           Int           @default(0)
+  createdAt       DateTime      @default(now())
+  tenant          LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
+
+  @@index([landingTenantId, order])
+}
+
+model KeywordPerformance {
+  id                String   @id @default(cuid())
+  tenantId          String
+  keyword           String
+  matchType         String
+  impressions       Int      @default(0)
+  clicks            Int      @default(0)
+  conversions       Int      @default(0)
+  cost              Decimal  @default(0)
+  ctr               Decimal  @default(0)
+  conversionRate    Decimal  @default(0)
+  cpl               Decimal  @default(0)
+  qualityScore      Int?
+  isActive          Boolean  @default(true)
+  isUnderperforming Boolean  @default(false)
+  weekStartDate     DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, keyword, weekStartDate])
+  @@index([tenantId, isUnderperforming])
+  @@index([weekStartDate])
+}
+
+model KeywordSuggestion {
+  id             String    @id @default(cuid())
+  tenantId       String
+  keyword        String
+  suggestedFor   String
+  oldText        String?
+  newText        String
+  reason         String
+  conversionRate Decimal
+  status         String    @default("pending")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  appliedAt      DateTime?
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([createdAt])
+}
+
+/// ===============================
+/// AI Autonomous Loop Sessions
+/// ===============================
+model AiSession {
+  id          String   @id @default(cuid())
+  taskKey     String
+  description String
+  files       Json
+  mode        String
+  rounds      Int      @default(0)
+  maxRounds   Int      @default(3)
+  status      String   @default("OPEN")
+  messages    Json
+  patchText   String?
+  branch      String?
+  prUrl       String?
+  logs        String?
+  usageInput  Int      @default(0)
+  usageOutput Int      @default(0)
+  costUsd     Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+}
+
+/// ===============================
+/// Interest Registration (Pre-launch Waitlist)
+/// ===============================
+model InterestRegistration {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  company   String?
+  message   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
+model TenantAdsConfig {
+  id                  String   @id @default(cuid())
+  tenantId            String   @unique
+  googleAdsCustomerId String
+  status              String   @default("active")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([googleAdsCustomerId])
+}
+
+model Supplier {
+  id                    String                 @id @default(cuid())
+  tenantId              String
+  name                  String
+  code                  String?
+  contactPerson         String?
+  email                 String?
+  phone                 String?
+  address               String?
+  defaultCurrency       String?                @default("GBP")
+  isActive              Boolean                @default(true)
+  notes                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  materialItems         MaterialItem[]
+  purchaseOrders        PurchaseOrder[]
+  tenant                Tenant                 @relation("SupplierToTenant", fields: [tenantId], references: [id])
+  supplierQuoteRequests SupplierQuoteRequest[]
+  users                 User[]
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([tenantId, isActive])
+}
+
+model SoftwareProfile {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  displayName String
+  matchHints  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation("SoftwareProfiles", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model PdfLayoutTemplate {
+  id                String                @id @default(cuid())
+  name              String
+  description       String?
+  supplierProfileId String                @unique
+  pageCount         Int?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  createdByUserId   String?
+  meta              Json?
+  annotations       PdfLayoutAnnotation[]
+  createdByUser     User?                 @relation(fields: [createdByUserId], references: [id])
+
+  @@index([name])
+}
+
+model PdfLayoutAnnotation {
+  id         String             @id @default(cuid())
+  templateId String
+  page       Int
+  x          Float
+  y          Float
+  width      Float
+  height     Float
+  label      PdfAnnotationLabel
+  rowId      String?
+  createdAt  DateTime           @default(now())
+  template   PdfLayoutTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, page])
+}
+
+model SupplierQuoteRequest {
+  id             String        @id @default(cuid())
+  tenantId       String
+  supplierId     String
+  leadId         String?
+  opportunityId  String?
+  requestedById  String
+  status         String        @default("pending")
+  notes          String?
+  sentAt         DateTime      @default(now())
+  receivedAt     DateTime?
+  quotedAmount   Decimal?
+  uploadedFileId String?       @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  lead           Lead?         @relation(fields: [leadId], references: [id])
+  opportunity    Opportunity?  @relation(fields: [opportunityId], references: [id])
+  requestedBy    User          @relation(fields: [requestedById], references: [id])
+  supplier       Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedFile   UploadedFile? @relation(fields: [uploadedFileId], references: [id])
+
+  @@index([tenantId])
+  @@index([supplierId])
+  @@index([leadId])
+  @@index([opportunityId])
+  @@index([status])
+}
+
+model Timesheet {
+  id            String    @id @default(cuid())
+  tenantId      String
+  userId        String
+  weekStartDate DateTime
+  weekEndDate   DateTime
+  totalHours    Decimal   @default(0)
+  status        String    @default("pending")
+  signedOffById String?
+  signedOffAt   DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  signedOffBy   User?     @relation("TimesheetSignedOffBy", fields: [signedOffById], references: [id])
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User      @relation("TimesheetUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, weekStartDate])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([weekStartDate])
+  @@index([status])
+}
+
+model Questionnaire {
+  id          String                  @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  isActive    Boolean                 @default(true)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  tenant      Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fields      QuestionnaireField[]
+  responses   QuestionnaireResponse[]
+
+  @@index([tenantId, isActive])
+}
+
+model QuestionnaireField {
+  id                  String                    @id @default(cuid())
+  tenantId            String
+  questionnaireId     String
+  key                 String
+  label               String
+  type                QuestionnaireFieldType
+  options             Json?
+  required            Boolean                   @default(false)
+  order               Int                       @default(0)
+  sortOrder           Int                       @default(0)
+  isActive            Boolean                   @default(true)
+  placeholder         String?
+  helpText            String?
+  config              Json?
+  requiredForCosting  Boolean                   @default(false)
+  costingInputKey     String?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  scope               String?                   @default("item")
+  isHidden            Boolean                   @default(false)
+  isStandard          Boolean                   @default(false)
+  examplePhotoAnswers ExamplePhotoFieldAnswer[]
+  answers             QuestionnaireAnswer[]
+  questionnaire       Questionnaire             @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([questionnaireId, key])
+  @@unique([tenantId, key], name: "tenantId_key")
+  @@index([tenantId, questionnaireId])
+  @@index([tenantId, costingInputKey])
+  @@index([isStandard, isActive])
+  @@index([tenantId, isStandard])
+}
+
+model QuestionnaireResponse {
+  id              String                @id @default(cuid())
+  tenantId        String
+  questionnaireId String
+  quoteId         String?               @unique
+  createdAt       DateTime              @default(now())
+  completedAt     DateTime?
+  updatedAt       DateTime              @updatedAt
+  answers         QuestionnaireAnswer[]
+  questionnaire   Questionnaire         @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  quote           Quote?                @relation(fields: [quoteId], references: [id])
+  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, questionnaireId])
+  @@index([quoteId])
+}
+
+model QuestionnaireAnswer {
+  id         String                @id @default(cuid())
+  responseId String
+  fieldId    String
+  value      Json
+  field      QuestionnaireField    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  response   QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  photos     QuestionnairePhoto[]
+
+  @@unique([responseId, fieldId])
+  @@index([responseId])
+  @@index([fieldId])
+}
+
+model QuestionnairePhoto {
+  id          String              @id @default(cuid())
+  tenantId    String
+  answerId    String
+  filename    String
+  storagePath String
+  mimeType    String
+  sizeBytes   Int
+  caption     String?
+  metadata    Json?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  answer      QuestionnaireAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([answerId])
+  @@index([createdAt])
+}
+
+model Material {
+  id           String           @id @default(cuid())
+  tenantId     String
+  category     MaterialCategory
+  code         String
+  name         String
+  description  String?
+  supplier     String?
+  unitCost     Decimal          @default(0)
+  currency     String           @default("GBP")
+  unit         String           @default("m")
+  thickness    Decimal?
+  width        Decimal?
+  length       Decimal?
+  species      String?
+  grade        String?
+  finish       String?
+  isActive     Boolean          @default(true)
+  isStock      Boolean          @default(false)
+  leadTimeDays Int?
+  minOrderQty  Decimal?
+  notes        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category, isActive])
+}
+
+model GlazingItem {
+  id           String          @id @default(cuid())
+  tenantId     String
+  category     GlazingCategory
+  code         String
+  name         String
+  description  String?
+  supplier     String?
+  unitCost     Decimal         @default(0)
+  currency     String          @default("GBP")
+  unit         String          @default("m2")
+  thickness    Decimal?
+  glassType    String?
+  uValue       Decimal?
+  fireRating   String?
+  isActive     Boolean         @default(true)
+  leadTimeDays Int?
+  notes        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category, isActive])
+}
+
+model DoorCore {
+  id           String   @id @default(cuid())
+  tenantId     String
+  code         String
+  name         String
+  description  String?
+  supplier     String?
+  unitCost     Decimal  @default(0)
+  currency     String   @default("GBP")
+  fireRating   String?
+  acoustic     Boolean  @default(false)
+  maxHeight    Decimal?
+  maxWidth     Decimal?
+  weight       Decimal?
+  isActive     Boolean  @default(true)
+  leadTimeDays Int?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, fireRating, isActive])
+}
+
+model LeafStyle {
+  id             String   @id @default(cuid())
+  tenantId       String
+  code           String
+  name           String
+  description    String?
+  costMultiplier Decimal  @default(1.0)
+  additionalCost Decimal  @default(0)
+  currency       String   @default("GBP")
+  panelCount     Int?
+  glassArea      Decimal?
+  complexity     String?
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive, sortOrder])
+}
+
+model LeafFacing {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  costPerM2   Decimal  @default(0)
+  currency    String   @default("GBP")
+  material    String?
+  thickness   Decimal?
+  finish      String?
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+}
+
+model FrameFinish {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  costPerM    Decimal  @default(0)
+  currency    String   @default("GBP")
+  material    String?
+  profile     String?
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+}
+
+model SprayFinish {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  costPerM2   Decimal  @default(0)
+  currency    String   @default("GBP")
+  coats       Int      @default(3)
+  colour      String?
+  sheen       String?
+  dryTimeDays Int?
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+}
+
+model VeneerLayon {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  costPerM2   Decimal  @default(0)
+  currency    String   @default("GBP")
+  species     String?
+  grade       String?
+  thickness   Decimal?
+  backing     String?
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+}
+
+model IronmongeryItem {
+  id           String                @id @default(cuid())
+  tenantId     String
+  category     IronmongeryCategory
+  code         String
+  name         String
+  description  String?
+  supplier     String?
+  unitCost     Decimal               @default(0)
+  currency     String                @default("GBP")
+  material     String?
+  finish       String?
+  fireRated    Boolean               @default(false)
+  grade        String?
+  isActive     Boolean               @default(true)
+  leadTimeDays Int?
+  notes        String?
+  imageUrl     String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  packItems    IronmongeryPackItem[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category, isActive])
+}
+
+model IronmongeryPack {
+  id          String                @id @default(cuid())
+  tenantId    String
+  code        String
+  name        String
+  description String?
+  doorType    String?
+  fireRating  String?
+  isActive    Boolean               @default(true)
+  sortOrder   Int                   @default(0)
+  notes       String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items       IronmongeryPackItem[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive, sortOrder])
+}
+
+model IronmongeryPackItem {
+  id       String          @id @default(cuid())
+  packId   String
+  itemId   String
+  quantity Int             @default(1)
+  notes    String?
+  item     IronmongeryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  pack     IronmongeryPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@unique([packId, itemId])
+  @@index([packId])
+}
+
+model FireCertificationRule {
+  id                      String    @id @default(cuid())
+  tenantId                String
+  name                    String
+  description             String?
+  conditions              Json
+  coreCode                String?
+  glazingType             String?
+  sealType                String?
+  ironmongeryRequirements Json?
+  certBody                String?
+  certNumber              String?
+  validUntil              DateTime?
+  isActive                Boolean   @default(true)
+  notes                   String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  tenant                  Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+}
+
+model LeafSizingRule {
+  id         String   @id @default(cuid())
+  tenantId   String
+  frameType  String
+  minHeight  Decimal
+  maxHeight  Decimal
+  minWidth   Decimal
+  maxWidth   Decimal
+  fireRating String?
+  maxWeight  Decimal?
+  notes      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, frameType, isActive])
+}
+
+model WeightLookup {
+  id            String   @id @default(cuid())
+  tenantId      String
+  component     String
+  specification String
+  weightPerM2   Decimal
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, component, specification])
+  @@index([tenantId, component])
+}
+
+model ExamplePhoto {
+  id             String                    @id @default(cuid())
+  tenantId       String
+  imageUrl       String
+  thumbnailUrl   String?
+  title          String
+  description    String?
+  tags           String[]                  @default([])
+  productType    String?
+  widthMm        Int?
+  heightMm       Int?
+  thicknessMm    Int?
+  timberSpecies  String?
+  timberGrade    String?
+  glassType      String?
+  finishType     String?
+  fireRating     String?
+  priceGBP       Decimal?
+  priceDate      DateTime?
+  supplierName   String?
+  isActive       Boolean                   @default(true)
+  displayOrder   Int                       @default(0)
+  viewCount      Int                       @default(0)
+  selectionCount Int                       @default(0)
+  uploadedById   String?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  tenant         Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedBy     User?                     @relation(fields: [uploadedById], references: [id])
+  answers        ExamplePhotoFieldAnswer[]
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, tags])
+  @@index([tenantId, productType])
+  @@index([displayOrder])
+}
+
+model ExamplePhotoFieldAnswer {
+  id             String             @id @default(cuid())
+  examplePhotoId String
+  fieldId        String
+  fieldKey       String
+  value          String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  examplePhoto   ExamplePhoto       @relation(fields: [examplePhotoId], references: [id], onDelete: Cascade)
+  field          QuestionnaireField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([examplePhotoId, fieldId])
+  @@index([examplePhotoId])
+  @@index([fieldKey])
+}
+
+model MaterialItem {
+  id                 String               @id @default(cuid())
+  tenantId           String
+  supplierId         String?
+  category           MaterialItemCategory
+  code               String
+  name               String
+  description        String?
+  cost               Decimal              @default(0)
+  currency           String               @default("GBP")
+  unit               String               @default("each")
+  stockQuantity      Decimal?             @default(0)
+  minStockLevel      Decimal?
+  leadTimeDays       Int?
+  isActive           Boolean              @default(true)
+  notes              String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  supplier           Supplier?            @relation(fields: [supplierId], references: [id])
+  tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchaseOrderLines PurchaseOrderLine[]
+  shoppingListItems  ShoppingListItem[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, category, isActive])
+  @@index([tenantId, supplierId])
+}
+
+model ShoppingList {
+  id        String             @id @default(cuid())
+  tenantId  String
+  quoteId   String?
+  status    ShoppingListStatus @default(DRAFT)
+  notes     String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  quote     Quote?             @relation(fields: [quoteId], references: [id])
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items     ShoppingListItem[]
+
+  @@index([tenantId, status])
+  @@index([quoteId])
+}
+
+model ShoppingListItem {
+  id                  String       @id @default(cuid())
+  shoppingListId      String
+  materialItemId      String
+  descriptionOverride String?
+  quantity            Decimal
+  unit                String
+  sourceQuoteLineId   String?
+  notes               String?
+  createdAt           DateTime     @default(now())
+  materialItem        MaterialItem @relation(fields: [materialItemId], references: [id])
+  shoppingList        ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  sourceQuoteLine     QuoteLine?   @relation(fields: [sourceQuoteLineId], references: [id])
+
+  @@index([shoppingListId])
+  @@index([materialItemId])
+}
+
+model PurchaseOrder {
+  id           String              @id @default(cuid())
+  tenantId     String
+  supplierId   String
+  status       PurchaseOrderStatus @default(DRAFT)
+  orderNumber  String?
+  orderDate    DateTime?
+  expectedDate DateTime?
+  receivedDate DateTime?
+  notes        String?
+  totalAmount  Decimal?            @default(0)
+  currency     String              @default("GBP")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  supplier     Supplier            @relation(fields: [supplierId], references: [id])
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines        PurchaseOrderLine[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, supplierId])
+  @@index([orderNumber])
+}
+
+model PurchaseOrderLine {
+  id               String        @id @default(cuid())
+  purchaseOrderId  String
+  materialItemId   String
+  description      String
+  quantity         Decimal
+  unit             String
+  unitPrice        Decimal       @default(0)
+  lineTotal        Decimal       @default(0)
+  receivedQuantity Decimal?      @default(0)
+  notes            String?
+  createdAt        DateTime      @default(now())
+  materialItem     MaterialItem  @relation(fields: [materialItemId], references: [id])
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseOrderId])
+  @@index([materialItemId])
+}
+
+model FireDoorImport {
+  id          String             @id @default(cuid())
+  tenantId    String
+  createdById String
+  sourceName  String
+  status      String             @default("DRAFT")
+  totalValue  Decimal            @default(0)
+  currency    String             @default("GBP")
+  rowCount    Int                @default(0)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  projectId   String?
+  orderId     String?
+  lineItems   FireDoorLineItem[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+model FireDoorLineItem {
+  id                      String         @id @default(cuid())
+  fireDoorImportId        String
+  tenantId                String
+  rowIndex                Int
+  certification           String?
+  doorsetType             String?
+  lajRef                  String?
+  doorRef                 String?
+  masterWidth             Float?
+  slaveWidth              Float?
+  doorHeight              Float?
+  core                    String?
+  rating                  String?
+  coreType                String?
+  top                     Float?
+  btm                     Float?
+  hinge                   Float?
+  me                      Float?
+  daExposed               Float?
+  trim                    Float?
+  safeHinge               Float?
+  pf                      Float?
+  extra                   Float?
+  masterReduced           Float?
+  slaveWidthReduced       Float?
+  doorHeightReduced       Float?
+  coreReduced             String?
+  notes1                  String?
+  notes2                  String?
+  lajRefLipping           String?
+  doorRefLipping          String?
+  masterWidthLipping      Float?
+  slaveWidthLipping       Float?
+  doorHeightLipping       Float?
+  coreLipping             String?
+  ratingLipping           String?
+  coreTypeLipping         String?
+  material                String?
+  topLipping              Float?
+  btmLipping              Float?
+  hingeLipping            Float?
+  meLipping               Float?
+  daExposedLipping        Float?
+  lippingDetail           String?
+  masterWidthLipping2     Float?
+  slaveWidthEdging        Float?
+  doorHeightEdging        Float?
+  coreEdging              String?
+  masterWidth2T           Float?
+  slaveWidth2T            Float?
+  doorHeight2T            Float?
+  core2T                  String?
+  doorType                String?
+  note1Edge               String?
+  note2Edge               String?
+  lajRefFacing            String?
+  doorRefFacing           String?
+  masterWidthFacing       Float?
+  slaveWidthFacing        Float?
+  doorHeightFacing        Float?
+  coreFacing              String?
+  coreTypeFacing          String?
+  materialFacing          String?
+  topFacing               Float?
+  btmFacing               Float?
+  hingeFacing             Float?
+  meFacing                Float?
+  daExposedFacing         Float?
+  calibratedSize          String?
+  masterDoor              String?
+  slaveDoor               String?
+  bookMatching            String?
+  chamferRequired         String?
+  notes1Cal               String?
+  note2Cal                String?
+  lajRefFinish            String?
+  doorRefFinish           String?
+  masterWidthFinish       Float?
+  slaveWidthFinish        Float?
+  doorHeightFinish        Float?
+  coreFinish              String?
+  coreTypeFinish          String?
+  doorFinish              String?
+  fireRatingFinish        String?
+  handingFinish           String?
+  position                String?
+  qtyOfHinges             Int?
+  hingeType               String?
+  groovesForMe            String?
+  lockType                String?
+  spindlePrep             String?
+  cylinderPrep            String?
+  lockHeight              Float?
+  flushBolt               String?
+  uc                      String?
+  hingeInt                String?
+  lockInt                 String?
+  flushboltInt            String?
+  vpType                  String?
+  visionPanelMaster       String?
+  visionPanelSlave        String?
+  beadType                String?
+  vpPosition              String?
+  dropseal                String?
+  additionalIronmongery1  String?
+  additionalIronmongery2  String?
+  doorRefSecondary        String?
+  lockType2               String?
+  spindlePrep2            String?
+  cylinderPrep2           String?
+  lockHeight2             Float?
+  concealedDoorCloser     String?
+  atgSize                 String?
+  atgPosition             String?
+  safehingSureclose       String?
+  safehingeStandardPivot  String?
+  safehingeRhinoBolts     String?
+  doorViewer              String?
+  letterbox               String?
+  flushPulls              String?
+  cableway                String?
+  lajRefFinal             String?
+  doorRefFinal            String?
+  master                  Float?
+  slave                   Float?
+  height                  Float?
+  coreFinal               String?
+  fireRatingFinal         String?
+  doorFinishFinal         String?
+  fireSealsInMe           String?
+  glazingSystem           String?
+  vpSize                  String?
+  glassType               String?
+  cassetteType            String?
+  dropSeal                String?
+  hinges                  String?
+  handingFinal            String?
+  lock                    String?
+  lockHeightOnDoor        Float?
+  keep                    String?
+  flushBolts              String?
+  fittedInFrame           String?
+  hingeLockFlushboltIntum String?
+  qMarkPlug               String?
+  itemType                String?
+  code                    String?
+  quantity                Int?
+  location                String?
+  acousticRatingDb        Int?
+  internalColour          String?
+  externalColour          String?
+  frameFinish             String?
+  leafHeight              Float?
+  masterLeafWidth         Float?
+  slaveLeafWidth          Float?
+  leafThickness           Float?
+  leafConfiguration       String?
+  ifSplitMasterSize       String?
+  doorFinishSide1         String?
+  doorFinishSide2         String?
+  doorFacing              String?
+  lippingFinish           String?
+  doorEdgeProtType        String?
+  doorEdgeProtPos         String?
+  doorUndercut            String?
+  doorUndercutMm          Float?
+  visionQtyLeaf1          Int?
+  vp1WidthLeaf1           Float?
+  vp1HeightLeaf1          Float?
+  vp2WidthLeaf1           Float?
+  vp2HeightLeaf1          Float?
+  visionQtyLeaf2          Int?
+  vp1WidthLeaf2           Float?
+  vp1HeightLeaf2          Float?
+  vp2WidthLeaf2           Float?
+  vp2HeightLeaf2          Float?
+  totalGlazedAreaMaster   Float?
+  fanlightSidelightGlz    String?
+  glazingTape             String?
+  ironmongeryPackRef      String?
+  closerOrFloorSpring     String?
+  spindleFacePrep         String?
+  cylinderFacePrep        String?
+  flushBoltSupplyPrep     String?
+  flushBoltQty            Int?
+  fingerProtection        String?
+  fireSignage             String?
+  fireSignageQty          Int?
+  fireSignageFactoryFit   String?
+  fireIdDisc              String?
+  fireIdDiscQty           Int?
+  doorViewerPosition      String?
+  doorViewerPrepSize      String?
+  doorChain               String?
+  doorViewersQty          Int?
+  doorChainFactoryFit     String?
+  doorViewersFactoryFit   String?
+  additionNote1           String?
+  additionNote1Qty        Int?
+  unitValue               Decimal?
+  labourCost              Decimal?
+  materialCost            Decimal?
+  lineTotal               Decimal?
+  rawRowJson              Json
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  import                  FireDoorImport @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, fireDoorImportId])
+  @@index([tenantId, rating])
+  @@index([fireDoorImportId, rowIndex])
+}
+
+model FireDoorScheduleProject {
+  id                      String                  @id @default(cuid())
+  tenantId                String
+  projectId               String?
+  mjsNumber               String?
+  jobName                 String?
+  clientName              String?
+  dateReceived            DateTime?
+  dateRequired            DateTime?
+  poNumber                String?
+  laqNumber               String?
+  compOrderNumber         String?
+  jobLocation             String?
+  signOffStatus           String?
+  signOffDate             DateTime?
+  scheduledBy             String?
+  leadTimeWeeks           Int?
+  approxDeliveryDate      DateTime?
+  workingDaysRemaining    Int?
+  blanksStatus            String?
+  blanksChecked           Boolean                 @default(false)
+  lippingsStatus          String?
+  lippingsChecked         Boolean                 @default(false)
+  facingsStatus           String?
+  facingsChecked          Boolean                 @default(false)
+  glassStatus             String?
+  glassChecked            Boolean                 @default(false)
+  cassettesStatus         String?
+  cassettesChecked        Boolean                 @default(false)
+  timbersStatus           String?
+  timbersChecked          Boolean                 @default(false)
+  ironmongeryStatus       String?
+  ironmongeryChecked      Boolean                 @default(false)
+  blanksCutPercent        Int?
+  edgebandPercent         Int?
+  calibratePercent        Int?
+  facingsPercent          Int?
+  finalCncPercent         Int?
+  finishPercent           Int?
+  sandPercent             Int?
+  sprayPercent            Int?
+  cutPercent              Int?
+  cncPercent              Int?
+  buildPercent            Int?
+  overallProgress         Int?
+  hiddenStatus            String?
+  doorPaperworkStatus     String?
+  finalCncSheetStatus     String?
+  finalChecksSheetStatus  String?
+  deliveryChecklistStatus String?
+  framesPaperworkStatus   String?
+  paperworkComments       String?
+  certificationRequired   String?
+  fscRequired             Boolean                 @default(false)
+  invoiceStatus           String?
+  transportStatus         String?
+  deliveryDate            DateTime?
+  installStart            DateTime?
+  installEnd              DateTime?
+  snaggingStatus          String?
+  snaggingComplete        Boolean                 @default(false)
+  snaggingNotes           String?
+  communicationNotes      String?
+  internalNotes           String?
+  lastUpdatedBy           String?
+  lastUpdatedAt           DateTime                @default(now())
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  blanksDateExpected      DateTime?
+  blanksDateOrdered       DateTime?
+  blanksDateReceived      DateTime?
+  bomPercent              Int?
+  cassettesDateExpected   DateTime?
+  cassettesDateOrdered    DateTime?
+  cassettesDateReceived   DateTime?
+  deliveryNotes           String?
+  doorSets                Int?
+  facingsDateExpected     DateTime?
+  facingsDateOrdered      DateTime?
+  facingsDateReceived     DateTime?
+  glassDateExpected       DateTime?
+  glassDateOrdered        DateTime?
+  glassDateReceived       DateTime?
+  ironmongeryDateExpected DateTime?
+  ironmongeryDateOrdered  DateTime?
+  ironmongeryDateReceived DateTime?
+  leaves                  Int?
+  lippingsDateExpected    DateTime?
+  lippingsDateOrdered     DateTime?
+  lippingsDateReceived    DateTime?
+  netValue                Decimal?
+  paperworkPercent        Int?
+  productionPercent       Int?
+  timbersDateExpected     DateTime?
+  timbersDateOrdered      DateTime?
+  timbersDateReceived     DateTime?
+  productionLogs          FireDoorProductionLog[]
+  tenant                  Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, jobLocation])
+  @@index([tenantId, signOffStatus])
+  @@index([tenantId, dateRequired])
+  @@index([projectId])
+}
+
+model FireDoorProductionLog {
+  id              String                  @id @default(cuid())
+  tenantId        String
+  projectId       String
+  process         String
+  previousPercent Int
+  addedPercent    Int
+  newPercent      Int
+  loggedBy        String
+  loggedAt        DateTime                @default(now())
+  notes           String?
+  project         FireDoorScheduleProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, projectId])
+  @@index([tenantId, loggedAt])
+  @@index([projectId, process])
+}
+
+model ClientAccount {
+  id             String              @id @default(cuid())
+  tenantId       String
+  companyName    String
+  accountNumber  String?
+  primaryContact String?
+  email          String
+  phone          String?
+  address        String?
+  city           String?
+  postcode       String?
+  country        String?             @default("UK")
+  isActive       Boolean             @default(true)
+  notes          String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users          ClientUser[]
+  jobs           FireDoorClientJob[]
+  leads          Lead[]
+  opportunities  Opportunity[]
+  quotes         Quote[]
+
+  @@index([tenantId])
+  @@index([tenantId, email])
+  @@index([tenantId, companyName])
+}
+
+model ClientUser {
+  id               String        @id @default(cuid())
+  clientAccountId  String
+  email            String        @unique
+  passwordHash     String
+  firstName        String
+  lastName         String
+  phone            String?
+  jobTitle         String?
+  isActive         Boolean       @default(true)
+  emailVerified    Boolean       @default(false)
+  lastLoginAt      DateTime?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  clientAccount    ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+
+  @@index([clientAccountId])
+  @@index([email])
+}
+
+model FireDoorClientJob {
+  id                  String                   @id @default(cuid())
+  tenantId            String
+  clientAccountId     String
+  submittedBy         String?
+  jobName             String
+  projectReference    String?
+  siteAddress         String?
+  deliveryAddress     String?
+  contactPerson       String?
+  contactEmail        String?
+  contactPhone        String?
+  poNumber            String?
+  quoteReference      String?
+  dateRequired        DateTime?
+  status              String                   @default("PENDING_REVIEW")
+  totalPrice          Decimal?
+  pricePerUnit        Json?
+  pricedAt            DateTime?
+  pricedBy            String?
+  productionStarted   DateTime?
+  estimatedCompletion DateTime?
+  actualCompletion    DateTime?
+  clientNotes         String?
+  internalNotes       String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  submittedAt         DateTime                 @default(now())
+  doorItems           FireDoorClientDoorItem[]
+  clientAccount       ClientAccount            @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
+  tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rfis                FireDoorClientRFI[]
+
+  @@index([tenantId])
+  @@index([clientAccountId])
+  @@index([tenantId, status])
+  @@index([tenantId, dateRequired])
+  @@index([submittedAt])
+}
+
+model FireDoorClientDoorItem {
+  id                           String            @id @default(cuid())
+  tenantId                     String
+  fireDoorClientJobId          String
+  rowNumber                    Int?
+  sequence                     String?
+  doorRef                      String?
+  location                     String?
+  quantity                     Int?
+  type                         String?
+  coreType                     String?
+  fireRating                   String?
+  acousticRating               String?
+  thresholdSealType            String?
+  doorsetLeafFrame             String?
+  configuration                String?
+  masterLeafWidth              Decimal?
+  soH                          String?
+  soW                          String?
+  ofH                          String?
+  ofW                          String?
+  sOWallThickness              Decimal?
+  frameMaterial                String?
+  frameFinish                  String?
+  frameType                    String?
+  antiBarricadeEmergencyStops  String?
+  architraveMaterialFinish     String?
+  arcWidth                     Decimal?
+  arcDepth                     Decimal?
+  doorFacing                   String?
+  doorFinish                   String?
+  doorColour                   String?
+  lippingMaterial              String?
+  doorAction                   String?
+  doorUndercut                 String?
+  aperture                     String?
+  apertureWidth                Decimal?
+  apertureHeight               Decimal?
+  vistamaticSupplyType         String?
+  vistmaticHardwareSide1       String?
+  vistamaticHardwareSide2      String?
+  beadType                     String?
+  beadMaterial                 String?
+  lwGlassType                  String?
+  hingeSupplyType              String?
+  hingeFitting                 String?
+  hingeType                    String?
+  hingeConfiguration           String?
+  handing                      String?
+  lockSupplyPrep               Boolean?
+  lockFitting                  String?
+  lockType1                    String?
+  lockHeightToSpindle1         Decimal?
+  spindlePrep                  Boolean?
+  cylinderPrep                 Boolean?
+  lockType2                    String?
+  lockHeightToSpindle2         Decimal?
+  closersFloorSprings          String?
+  flushBoltSupplyPrep          Boolean?
+  specials                     String?
+  leadLiningCode               String?
+  overpanelDetails             String?
+  screenDetails                String?
+  airTransferGrilleRequirement String?
+  airTransferGrilleSize        Decimal?
+  airTransferGrillePosition    String?
+  doorEdgeProtectionType       Boolean?
+  doorEdgeProtectionPosition   Boolean?
+  kickPlates                   String?
+  pvcFaceProtection            Boolean?
+  wiringPrep                   Boolean?
+  freeIssueCableLoopPrep       Boolean?
+  fireIdDisc                   String?
+  ironmongeryPackRef           String?
+  comments                     String?
+  unitPrice                    Decimal?
+  lineTotal                    Decimal?
+  rawRowJson                   Json?
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @updatedAt
+  job                          FireDoorClientJob @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
+
+  @@index([fireDoorClientJobId])
+  @@index([tenantId])
+  @@index([doorRef])
+}
+
+model FireDoorClientRFI {
+  id                  String            @id @default(cuid())
+  tenantId            String
+  fireDoorClientJobId String
+  subject             String
+  question            String
+  doorItemRef         String?
+  response            String?
+  respondedBy         String?
+  respondedAt         DateTime?
+  status              String            @default("OPEN")
+  priority            String            @default("NORMAL")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  job                 FireDoorClientJob @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
+
+  @@index([fireDoorClientJobId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+model Rfi {
+  id              String   @id @default(cuid())
+  tenantId        String
+  projectId       String
+  rowId           String?
+  columnKey       String
+  title           String?
+  message         String
+  status          String   @default("open")
+  visibleToClient Boolean  @default(true)
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, projectId])
+  @@index([tenantId, projectId, columnKey])
+  @@index([tenantId, status])
+}
+
+enum FeatureStatus {
+  OPEN
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  APPROVED
+  REJECTED
+  APPLIED
+  FAILED
+}
+
+enum FeatureCategory {
+  UI
+  COPY
+  PRICING
+  ANALYTICS
+  INTEGRATION
+  OTHER
+}
+
+enum LeadInteractionType {
+  QUESTIONNAIRE_STARTED
+  QUESTIONNAIRE_COMPLETED
+  ESTIMATE_PREVIEWED
+  ESTIMATE_SHARED
+  ESTIMATE_FAVOURITED
+  PROJECT_SAVED
+  CLIENT_PROCEEDED
+  CLIENT_DECLINED
+  STEP_VIEWED
+  STEP_COMPLETED
+  ITEM_ADDED
+  ITEM_UPDATED
+  ITEM_REMOVED
+  ITEM_EDITED
+  SPECS_UPDATED
+}
+
+enum VisionInferenceSource {
+  MEASUREMENT
+  INSPIRATION
+}
+
+enum PublicProjectEntryMode {
+  AD
+  INVITE
+}
+
+enum MLSampleStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 /// *
-///  * =========================
-///  * Enums
-///  * =========================
+/// * =========================
+/// * Enums
+/// * =========================
 enum SubscriptionStatus {
   trialing
   active
@@ -1109,33 +2873,6 @@ enum FileKind {
   OTHER
 }
 
-model Feedback {
-  id           String           @id @default(cuid())
-  tenantId     String
-  userId       String?
-  feature      String // e.g. "quoteParserV2" or area slug
-  rating       Int? // 1–5 optional
-  comment      String?
-  sourceUrl    String?
-  status       FeedbackStatus   @default(OPEN)
-  priority     FeedbackPriority @default(MEDIUM)
-  category     String? // UI, Feature, Bug, Performance, etc.
-  devNotes     String? // Internal developer notes
-  linkedTaskId String? // Link to development task/sprint item
-  resolvedAt   DateTime?
-  resolvedById String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-
-  tenant     Tenant @relation(fields: [tenantId], references: [id])
-  user       User?  @relation("FeedbackAuthor", fields: [userId], references: [id])
-  resolvedBy User?  @relation("FeedbackResolver", fields: [resolvedById], references: [id])
-
-  @@index([tenantId, feature, createdAt])
-  @@index([tenantId, status, createdAt])
-  @@index([status, priority])
-}
-
 enum FeedbackStatus {
   OPEN
   IN_REVIEW
@@ -1153,32 +2890,6 @@ enum FeedbackPriority {
   CRITICAL
 }
 
-// ==============================
-// Developer Task Management
-// ==============================
-
-model DevTask {
-  id             String           @id @default(cuid())
-  title          String
-  description    String?          @db.Text
-  status         DevTaskStatus    @default(BACKLOG)
-  priority       FeedbackPriority @default(MEDIUM)
-  category       String? // Feature, Bug, Refactor, Infrastructure
-  sprint         String? // Sprint identifier (e.g., "2025-W46")
-  estimatedHours Decimal?
-  actualHours    Decimal?
-  assignee       String? // Developer name/email
-  feedbackIds    String[]         @default([]) // Related feedback IDs
-  tenantIds      String[]         @default([]) // Related tenant IDs
-  notes          String?          @db.Text
-  completedAt    DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-
-  @@index([status, priority])
-  @@index([sprint])
-}
-
 enum DevTaskStatus {
   BACKLOG
   TODO
@@ -1187,76 +2898,6 @@ enum DevTaskStatus {
   TESTING
   DONE
   BLOCKED
-}
-
-// ==============================
-// Tasks, Rules, Notifications, Streaks
-// ==============================
-
-model Task {
-  id          String       @id @default(cuid())
-  tenantId    String
-  title       String
-  description String?      @db.Text
-  relatedType RelatedType
-  relatedId   String?
-  status      TaskStatus   @default(OPEN)
-  priority    TaskPriority @default(MEDIUM)
-  dueAt       DateTime?
-  startedAt   DateTime?
-  completedAt DateTime?
-  autocreated Boolean      @default(true)
-  meta        Json?
-
-  // Task Type System
-  taskType    TaskType     @default(MANUAL)
-  templateId  String?      // Link to TaskTemplate if from recurring template
-
-  // Communication Fields (for COMMUNICATION and FOLLOW_UP types)
-  communicationType      CommunicationType?
-  communicationChannel   String?              // email, phone, teams, zoom, etc.
-  communicationDirection CommunicationDirection?
-  communicationNotes     String?              @db.Text
-  emailMessageId         String?              // Link to EmailMessage if applicable
-  followUpLogId          String?              // Reference to original FollowUpLog (for migration)
-
-  // Recurrence Fields (for SCHEDULED type)
-  recurrencePattern   RecurrencePattern?
-  recurrenceInterval  Int?                  // e.g., every 2 weeks
-  nextDueAt           DateTime?             // Next scheduled occurrence
-  lastCompletedAt     DateTime?             // Track last completion for recurring tasks
-
-  // Auto-completion Tracking
-  autoCompleted       Boolean      @default(false) // True for historical migrated data
-  completedBy         String?                      // User ID who completed it
-
-  // Form Fields (for FORM type)
-  formSchema          Json?                 // JSON schema for form fields
-  formSubmissions     Json?                 // Array of submitted responses
-  requiresSignature   Boolean      @default(false)
-  signatureData       String?               // Base64 signature image
-  signedBy            String?               // User ID who signed
-  signedAt            DateTime?
-
-  // Checklist Fields (for CHECKLIST type)
-  checklistItems      Json?                 // Array of { id, text, completed, completedBy, completedAt }
-
-  createdById String?
-  updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  template  TaskTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  assignees TaskAssignee[]
-  subtasks  Subtask[]
-
-  @@index([tenantId, status, dueAt])
-  @@index([tenantId, relatedType, relatedId])
-  @@index([tenantId, taskType, status])
-  @@index([tenantId, templateId])
-  @@index([emailMessageId])
-  @@index([followUpLogId])
 }
 
 enum RelatedType {
@@ -1285,12 +2926,12 @@ enum TaskPriority {
 }
 
 enum TaskType {
-  MANUAL          // User-created task
-  COMMUNICATION   // Phone call, meeting, SMS logged
-  FOLLOW_UP       // Email follow-up (migrated from FollowUpLog)
-  SCHEDULED       // Recurring task from template
-  FORM            // Digital form to fill
-  CHECKLIST       // Multi-step checklist
+  MANUAL
+  COMMUNICATION
+  FOLLOW_UP
+  SCHEDULED
+  FORM
+  CHECKLIST
 }
 
 enum CommunicationType {
@@ -1319,131 +2960,14 @@ enum MeasurementSource {
   PHOTO_ESTIMATE
 }
 
-model TaskAssignee {
-  taskId String
-  userId String
-  role   AssigneeRole @default(OWNER)
-
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@id([taskId, userId])
-}
-
 enum AssigneeRole {
   OWNER
   FOLLOWER
 }
 
-model Subtask {
-  id     String        @id @default(cuid())
-  taskId String
-  title  String
-  status SubtaskStatus @default(OPEN)
-  order  Int           @default(0)
-
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@index([taskId])
-}
-
 enum SubtaskStatus {
   OPEN
   DONE
-}
-
-model TaskTemplate {
-  id          String   @id @default(cuid())
-  tenantId    String
-  name        String
-  description String?  @db.Text
-  isActive    Boolean  @default(true)
-
-  // Template Config
-  taskType           TaskType
-  defaultTitle       String
-  defaultDescription String?              @db.Text
-  defaultPriority    TaskPriority         @default(MEDIUM)
-  relatedType        RelatedType?
-  
-  // Recurrence Config (for SCHEDULED type)
-  recurrencePattern  RecurrencePattern?
-  recurrenceInterval Int?                 @default(1)
-  
-  // Form Config (for FORM type)
-  formSchema         Json?                // JSON schema for form structure
-  requiresSignature  Boolean              @default(false)
-  
-  // Checklist Config (for CHECKLIST type)
-  checklistItems     Json?                // Array of default checklist items
-  
-  // Assignment Config
-  defaultAssigneeIds String[]             // Array of user IDs to auto-assign
-  
-  createdById String?
-  updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  tasks  Task[]
-
-  @@index([tenantId, isActive])
-  @@index([tenantId, taskType])
-}
-
-model FormTemplate {
-  id                 String   @id @default(cuid())
-  tenantId           String
-  name               String
-  description        String?  @db.Text
-  category           String?              // e.g., "Safety", "Quality", "HR"
-  formSchema         Json                 // JSON schema defining form structure
-  requiresSignature  Boolean  @default(false)
-  isActive           Boolean  @default(true)
-
-  createdById String?
-  updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, isActive])
-  @@index([tenantId, category])
-}
-
-model AutomationRule {
-  id         String  @id @default(cuid())
-  tenantId   String
-  name       String
-  enabled    Boolean @default(true)
-  trigger    Json // e.g. { "type": "LEAD_STATUS_CHANGED", "to": "READY_TO_QUOTE" }
-  conditions Json?
-  actions    Json // e.g. { "createTask": {...}, "assignRoles":[...], "setDueInDays":2 }
-
-  createdById String?
-  updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, enabled])
-}
-
-model Notification {
-  id        String           @id @default(cuid())
-  tenantId  String
-  userId    String
-  type      NotificationType
-  payload   Json
-  readAt    DateTime?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, userId, readAt])
 }
 
 enum NotificationType {
@@ -1453,38 +2977,6 @@ enum NotificationType {
   MENTION
   STREAK
   SUMMARY
-}
-
-model Streak {
-  id               String    @id @default(cuid())
-  tenantId         String
-  userId           String
-  dayCount         Int       @default(0)
-  lastActivityDate DateTime?
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, userId])
-}
-
-model ActivityLog {
-  estimatedWidthMm      Int?
-  estimatedHeightMm     Int?
-  measurementSource     MeasurementSource?
-  measurementConfidence Float?
-  id        String         @id @default(cuid())
-  tenantId  String
-  entity    ActivityEntity
-  entityId  String
-  verb      ActivityVerb
-  actorId   String?
-  data      Json?
-  createdAt DateTime       @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, entity, entityId])
-  @@index([tenantId, verb])
 }
 
 enum ActivityEntity {
@@ -1503,22 +2995,6 @@ enum ActivityVerb {
   NUDGED
 }
 
-model UserPreference {
-  id            String @id @default(cuid())
-  tenantId      String
-  userId        String
-  notifications Json?
-  quietHours    Json?
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, userId])
-}
-
-/// ==============================
-/// Workshop Planning & Timekeeping
-/// ==============================
-
 enum WorkshopProcess {
   MACHINING
   ASSEMBLY
@@ -1529,454 +3005,6 @@ enum WorkshopProcess {
   IRONMONGERY
   INSTALLATION
 }
-
-// Tenant-level workshop process definitions
-model WorkshopProcessDefinition {
-  id                String   @id @default(cuid())
-  tenantId          String
-  code              String // e.g., "MACHINING", "ASSEMBLY", etc.
-  name              String // Display name
-  sortOrder         Int      @default(0)
-  requiredByDefault Boolean  @default(true) // Whether this process is required by default for new projects
-  estimatedHours    Decimal? // Optional estimated hours for this process
-  isColorKey        Boolean  @default(false) // If true, this process determines the project's schedule color
-  assignmentGroup   String? // Group code for batch user assignment (e.g., "PRODUCTION")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  tenant           Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  projectProcesses ProjectProcessAssignment[]
-
-  @@unique([tenantId, code])
-  @@index([tenantId, sortOrder])
-}
-
-// Per-project process enablement and assignment
-model ProjectProcessAssignment {
-  id                  String    @id @default(cuid())
-  tenantId            String
-  opportunityId       String // The project (WON opportunity)
-  processDefinitionId String
-  required            Boolean   @default(true) // Whether this process is required for this specific project
-  assignedUserId      String? // User assigned to this process for this project
-  estimatedHours      Decimal? // Override estimated hours for this specific project
-  completedAt         DateTime? // When this process was marked complete
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  opportunity       Opportunity               @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-  processDefinition WorkshopProcessDefinition @relation(fields: [processDefinitionId], references: [id], onDelete: Cascade)
-  assignedUser      User?                     @relation(fields: [assignedUserId], references: [id])
-
-  @@unique([opportunityId, processDefinitionId])
-  @@index([tenantId, opportunityId])
-  @@index([tenantId, assignedUserId])
-}
-
-model ProcessPlan {
-  id             String          @id @default(cuid())
-  tenantId       String
-  projectId      String // references Opportunity.id (a WON opportunity acts as a project)
-  process        WorkshopProcess
-  plannedWeek    Int // 1..4 relative to current week (UI-level convention)
-  assignedUserId String?
-  notes          String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-
-  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project  Opportunity @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignee User?       @relation(fields: [assignedUserId], references: [id])
-
-  @@unique([tenantId, projectId, process])
-  @@index([tenantId, assignedUserId])
-}
-
-model TimeEntry {
-  id        String          @id @default(cuid())
-  tenantId  String
-  projectId String
-  process   WorkshopProcess
-  userId    String
-  date      DateTime
-  hours     Decimal         @default(0)
-  notes     String?
-  createdAt DateTime        @default(now())
-
-  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project Opportunity @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User        @relation(fields: [userId], references: [id])
-
-  @@index([tenantId, projectId, process])
-  @@index([tenantId, date])
-}
-
-model Holiday {
-  id        String   @id @default(cuid())
-  tenantId  String
-  userId    String
-  startDate DateTime
-  endDate   DateTime
-  notes     String?
-  createdAt DateTime @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([userId])
-}
-
-model Target {
-  id                String   @id @default(cuid())
-  tenantId          String
-  year              Int
-  enquiriesTarget   Int?     @default(0)
-  quotesValueTarget Decimal? @default(0)
-  quotesCountTarget Int?     @default(0)
-  salesValueTarget  Decimal? @default(0)
-  salesCountTarget  Int?     @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, year])
-}
-
-// Landing page lead capture (public, no tenant association)
-model LandingLead {
-  id           String   @id @default(cuid())
-  createdAt    DateTime @default(now())
-  source       String
-  name         String
-  email        String
-  phone        String
-  postcode     String
-  projectType  String
-  propertyType String
-  message      String?
-  userAgent    String?
-  ip           String?
-
-  // Simple index to speed up dedupe checks:
-  @@index([email, source, createdAt])
-}
-
-// Multi-tenant landing page system
-model LandingTenant {
-  id            String                @id @default(cuid())
-  tenantId      String                @unique
-  name          String?
-  homeUrl       String?
-  email         String?
-  phone         String?
-  address       String?
-  brandColor    String? // hex
-  logoUrl       String?
-  // Editor fields
-  headline      String?
-  subhead       String?
-  urgencyBanner String?
-  ctaText       String?               @default("Get Your Free Quote")
-  guarantees    Json? // Array of guarantee objects
-  publishedAt   DateTime?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  content       LandingTenantContent?
-  images        LandingTenantImage[]
-  reviews       LandingTenantReview[]
-  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-}
-
-model LandingTenantContent {
-  id            String        @id @default(cuid())
-  tenantId      String        @unique
-  headline      String?
-  subhead       String?
-  priceFromText String?
-  priceRange    String?
-  guarantees    String? // JSON string: { bullets:[], riskReversal:"" }
-  urgency       String? // JSON string: { text:"", sub:"" }
-  faqJson       String? // JSON array of Q&As
-  leadMagnet    String? // JSON { title, cta, url }
-  serviceAreas  String? // JSON string array
-  published     Boolean       @default(false)
-  updatedAt     DateTime      @updatedAt
-  tenant        LandingTenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-}
-
-model LandingTenantImage {
-  id              String        @id @default(cuid())
-  landingTenantId String
-  url             String // Image URL
-  altText         String?
-  caption         String?
-  order           Int           @default(0)
-  createdAt       DateTime      @default(now())
-  tenant          LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
-
-  @@index([landingTenantId, order])
-}
-
-model LandingTenantReview {
-  id              String        @id @default(cuid())
-  landingTenantId String
-  author          String
-  text            String
-  rating          Int           @default(5)
-  date            DateTime      @default(now())
-  location        String?
-  order           Int           @default(0)
-  createdAt       DateTime      @default(now())
-  tenant          LandingTenant @relation(fields: [landingTenantId], references: [id], onDelete: Cascade)
-
-  @@index([landingTenantId, order])
-}
-
-// Google Ads keyword performance tracking
-model KeywordPerformance {
-  id                String   @id @default(cuid())
-  tenantId          String
-  keyword           String
-  matchType         String // EXACT, PHRASE, BROAD
-  // Performance metrics (7-day rolling)
-  impressions       Int      @default(0)
-  clicks            Int      @default(0)
-  conversions       Int      @default(0)
-  cost              Decimal  @default(0)
-  // Calculated metrics
-  ctr               Decimal  @default(0) // Click-through rate
-  conversionRate    Decimal  @default(0)
-  cpl               Decimal  @default(0) // Cost per lead
-  qualityScore      Int? // 1-10 from Google Ads
-  // Status flags
-  isActive          Boolean  @default(true)
-  isUnderperforming Boolean  @default(false) // CTR < 1% OR CPL > target
-  // Timestamps
-  weekStartDate     DateTime // Monday of the week this data represents
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, keyword, weekStartDate])
-  @@index([tenantId, isUnderperforming])
-  @@index([weekStartDate])
-}
-
-// SEO keyword optimization suggestions
-model KeywordSuggestion {
-  id             String    @id @default(cuid())
-  tenantId       String
-  keyword        String
-  suggestedFor   String // 'headline', 'subhead', 'meta_title', 'meta_description'
-  oldText        String?
-  newText        String
-  reason         String // Why this suggestion was made
-  conversionRate Decimal // The keyword's conversion rate that prompted this
-  status         String    @default("pending") // pending, approved, rejected, applied
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  appliedAt      DateTime?
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, status])
-  @@index([createdAt])
-}
-
-/// ===============================
-/// AI Autonomous Loop Sessions
-/// ===============================
-model AiSession {
-  id          String   @id @default(cuid())
-  taskKey     String
-  description String
-  files       Json
-  mode        String // "dry-run" | "pr"
-  rounds      Int      @default(0)
-  maxRounds   Int      @default(3)
-  status      String   @default("OPEN") // OPEN|RUNNING|READY|FAILED
-  messages    Json // [{ role: "system"|"user"|"assistant", content: string }]
-  patchText   String?
-  branch      String?
-  prUrl       String?
-  logs        String?
-  usageInput  Int      @default(0)
-  usageOutput Int      @default(0)
-  costUsd     Float    @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([status])
-}
-
-/// ===============================
-/// Interest Registration (Pre-launch Waitlist)
-/// ===============================
-model InterestRegistration {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  company   String?
-  message   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([createdAt])
-}
-
-// Tenant Google Ads configuration (MCC-linked sub-accounts)
-model TenantAdsConfig {
-  id                  String   @id @default(cuid())
-  tenantId            String   @unique
-  googleAdsCustomerId String // e.g. "448-935-8197" or "4489358197"
-  status              String   @default("active")
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  @@index([googleAdsCustomerId])
-}
-
-// Suppliers - External companies that provide quotes
-model Supplier {
-  id                    String                 @id @default(cuid())
-  tenantId              String
-  tenant                Tenant                 @relation("SupplierToTenant", fields: [tenantId], references: [id])
-  name                  String
-  code                  String? // Optional code for material supplier integration
-  contactPerson         String?
-  email                 String?
-  phone                 String?
-  address               String?
-  defaultCurrency       String?                @default("GBP")
-  isActive              Boolean                @default(true)
-  notes                 String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  supplierQuoteRequests SupplierQuoteRequest[]
-  materialItems         MaterialItem[]
-  purchaseOrders        PurchaseOrder[]
-  users                 User[] // Supplier users linked to this supplier
-
-  @@index([tenantId])
-  @@index([email])
-  @@index([tenantId, isActive])
-}
-
-// Software Profiles - Tenant-managed parsing profiles for software-generated quotes
-model SoftwareProfile {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation("SoftwareProfiles", fields: [tenantId], references: [id], onDelete: Cascade)
-  name        String // Internal name/ID (e.g., "joinerysoft_v1")
-  displayName String // User-friendly name shown in UI
-  matchHints  String? // JSON: { textIncludes: [], filenameIncludes: [], emailDomainIncludes: [] }
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@unique([tenantId, name])
-  @@index([tenantId])
-}
-
-// Place at very end of file
-
-model PdfLayoutTemplate {
-  id                String                @id @default(cuid())
-  supplierProfileId String                @unique
-  name              String
-  description       String?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  createdByUserId   String?
-  createdByUser     User?                 @relation(fields: [createdByUserId], references: [id])
-  pageCount         Int?
-  meta              Json?
-  annotations       PdfLayoutAnnotation[]
-  // TODO: Re-enable Quote relation once foreign key is working
-  // Quote             Quote[]
-
-  @@index([name])
-}
-
-model PdfLayoutAnnotation {
-  id         String             @id @default(cuid())
-  templateId String
-  template   PdfLayoutTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  page       Int
-  x          Float
-  y          Float
-  width      Float
-  height     Float
-  label      PdfAnnotationLabel
-  rowId      String?
-  createdAt  DateTime           @default(now())
-
-  @@index([templateId, page])
-}
-
-// Supplier Quote Requests - Track quotes requested from suppliers
-model SupplierQuoteRequest {
-  id             String    @id @default(cuid())
-  tenantId       String
-  supplierId     String
-  leadId         String?
-  opportunityId  String?
-  requestedById  String // User who requested the quote
-  status         String    @default("pending") // pending, quote_received, accepted, declined
-  notes          String?
-  sentAt         DateTime  @default(now())
-  receivedAt     DateTime?
-  quotedAmount   Decimal?
-  uploadedFileId String?   @unique // If supplier uploads a quote document
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier     Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  opportunity  Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  requestedBy  User          @relation(fields: [requestedById], references: [id])
-  uploadedFile UploadedFile? @relation(fields: [uploadedFileId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId])
-  @@index([supplierId])
-  @@index([leadId])
-  @@index([opportunityId])
-  @@index([status])
-}
-
-// Timesheet sign-offs for workshop hours
-model Timesheet {
-  id            String    @id @default(cuid())
-  tenantId      String
-  userId        String
-  weekStartDate DateTime
-  weekEndDate   DateTime
-  totalHours    Decimal   @default(0)
-  status        String    @default("pending") // pending, signed_off, rejected
-  signedOffById String?
-  signedOffAt   DateTime?
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user        User   @relation("TimesheetUser", fields: [userId], references: [id], onDelete: Cascade)
-  signedOffBy User?  @relation("TimesheetSignedOffBy", fields: [signedOffById], references: [id], onDelete: SetNull)
-
-  @@unique([tenantId, userId, weekStartDate])
-  @@index([tenantId])
-  @@index([userId])
-  @@index([weekStartDate])
-  @@index([status])
-}
-
-/// ===============================
-/// Dynamic Questionnaire System (Custom Quote Fields)
-/// ===============================
 
 enum QuestionnaireFieldType {
   TEXT
@@ -2003,164 +3031,6 @@ enum PdfAnnotationLabel {
   IGNORE
 }
 
-// Questionnaire template (form definition)
-model Questionnaire {
-  id          String   @id @default(cuid())
-  tenantId    String
-  name        String
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fields    QuestionnaireField[]
-  responses QuestionnaireResponse[]
-
-  @@index([tenantId, isActive])
-}
-
-// Questionnaire field definition
-model QuestionnaireField {
-  id                 String                 @id @default(cuid())
-  tenantId           String
-  questionnaireId    String
-  key                String // Stable identifier (e.g., "door_height")
-  label              String // Display label (e.g., "Door Height (mm)")
-  type               QuestionnaireFieldType
-  options            Json? // For SELECT type: ["Option 1", "Option 2"]
-  required           Boolean                @default(false)
-  // NOTE: Both sortOrder and order retained temporarily while UI/routes migrate.
-  // Prefer using sortOrder going forward; order will be deprecated.
-  order              Int                    @default(0)
-  sortOrder          Int                    @default(0)
-  // Activity & presentation helpers (referenced by questionnaire-fields route & admin UI)
-  isActive           Boolean                @default(true)
-  placeholder        String?
-  helpText           String?
-  config             Json? // Arbitrary per-field config (e.g. validation rules)
-  // Flag to indicate the field is required for costing calculations (future use)
-  requiredForCosting Boolean                @default(false)
-  costingInputKey    String? // Maps to costing engine input (e.g., "door_height_mm")
-  // Standard fields are system-defined for ML training consistency
-  isStandard         Boolean                @default(false) // True for ML training fields (cannot be deleted)
-  isHidden           Boolean                @default(false) // Allow hiding standard fields if not relevant
-  // Scope determines where field is shown: 'client' (lead-level), 'item' (line-item level), 'internal' (auto-calculated, hidden from forms)
-  scope              String?                @default("item") // 'client', 'item', or 'internal'
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-
-  tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  questionnaire       Questionnaire                 @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
-  answers             QuestionnaireAnswer[]
-  examplePhotoAnswers ExamplePhotoFieldAnswer[]     // Example photos tagged with this field
-
-  @@unique([questionnaireId, key])
-  // Added composite unique used by questionnaire-fields route lookups
-  @@unique([tenantId, key], name: "tenantId_key")
-  @@index([tenantId, questionnaireId])
-  @@index([tenantId, costingInputKey])
-  @@index([isStandard, isActive])
-  @@index([tenantId, isStandard])
-}
-
-// Questionnaire response (filled form instance)
-model QuestionnaireResponse {
-  id              String    @id @default(cuid())
-  tenantId        String
-  questionnaireId String
-  quoteId         String?   @unique
-  createdAt       DateTime  @default(now())
-  // Track completion timestamp & updates for workflow / UI
-  completedAt     DateTime?
-  updatedAt       DateTime  @updatedAt
-
-  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  questionnaire Questionnaire         @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
-  quote         Quote?                @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  answers       QuestionnaireAnswer[]
-
-  @@index([tenantId, questionnaireId])
-  @@index([quoteId])
-}
-
-// Individual answer to a questionnaire field
-model QuestionnaireAnswer {
-  id         String @id @default(cuid())
-  responseId String
-  fieldId    String
-  value      Json // Stores any type: string, number, boolean, array, etc.
-
-  response QuestionnaireResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
-  field    QuestionnaireField    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-  photos   QuestionnairePhoto[]  // Photos attached to this answer
-
-  @@unique([responseId, fieldId])
-  @@index([responseId])
-  @@index([fieldId])
-}
-
-// Photos uploaded with questionnaire answers
-model QuestionnairePhoto {
-  id          String   @id @default(cuid())
-  tenantId    String
-  answerId    String
-  filename    String   // Original filename
-  storagePath String   // Path in file system or S3
-  mimeType    String   // image/jpeg, image/png, etc.
-  sizeBytes   Int      // File size
-  caption     String?  // Optional user caption
-  metadata    Json?    // EXIF data, dimensions, etc.
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  answer QuestionnaireAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([answerId])
-  @@index([createdAt])
-}
-
-/// ===============================
-/// Joinery Costing Engine Models
-/// ===============================
-
-// ---- Materials: Timber, Boards, Mouldings ----
-model Material {
-  id           String           @id @default(cuid())
-  tenantId     String
-  category     MaterialCategory
-  code         String
-  name         String
-  description  String?
-  supplier     String?
-  // Pricing
-  unitCost     Decimal          @default(0)
-  currency     String           @default("GBP")
-  unit         String           @default("m") // m, m2, m3, each, etc.
-  // Specifications
-  thickness    Decimal? // mm
-  width        Decimal? // mm
-  length       Decimal? // mm
-  species      String? // For timber: Oak, Ash, Pine, etc.
-  grade        String? // A, B, C, Prime, etc.
-  finish       String? // Rough sawn, planed, etc.
-  // Metadata
-  isActive     Boolean          @default(true)
-  isStock      Boolean          @default(false) // In stock vs made-to-order
-  leadTimeDays Int?
-  minOrderQty  Decimal?
-  notes        String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, code])
-  @@index([tenantId, category, isActive])
-}
-
 enum MaterialCategory {
   TIMBER_HARDWOOD
   TIMBER_SOFTWOOD
@@ -2172,232 +3042,11 @@ enum MaterialCategory {
   VENEER_SHEET
 }
 
-// ---- Glazing: Glass, Beading, Tape ----
-model GlazingItem {
-  id           String          @id @default(cuid())
-  tenantId     String
-  category     GlazingCategory
-  code         String
-  name         String
-  description  String?
-  supplier     String?
-  // Pricing
-  unitCost     Decimal         @default(0)
-  currency     String          @default("GBP")
-  unit         String          @default("m2") // m2, m, each
-  // Specifications
-  thickness    Decimal? // mm
-  glassType    String? // Clear, Obscured, Toughened, Laminated, DGU
-  uValue       Decimal? // Thermal performance
-  fireRating   String? // FD30, FD60, etc.
-  // Metadata
-  isActive     Boolean         @default(true)
-  leadTimeDays Int?
-  notes        String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, code])
-  @@index([tenantId, category, isActive])
-}
-
 enum GlazingCategory {
   GLASS
   BEADING
   GLAZING_TAPE
   INTUMESCENT_STRIP
-}
-
-// ---- Door Construction ----
-model DoorCore {
-  id           String   @id @default(cuid())
-  tenantId     String
-  code         String
-  name         String
-  description  String?
-  supplier     String?
-  // Pricing
-  unitCost     Decimal  @default(0)
-  currency     String   @default("GBP")
-  // Specifications
-  fireRating   String? // None, FD30, FD60, FD90, FD120
-  acoustic     Boolean  @default(false)
-  maxHeight    Decimal? // mm
-  maxWidth     Decimal? // mm
-  weight       Decimal? // kg per m2
-  // Metadata
-  isActive     Boolean  @default(true)
-  leadTimeDays Int?
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, code])
-  @@index([tenantId, fireRating, isActive])
-}
-
-model LeafStyle {
-  id             String   @id @default(cuid())
-  tenantId       String
-  code           String
-  name           String
-  description    String?
-  // Pricing adjustments (multipliers or fixed costs)
-  costMultiplier Decimal  @default(1.0)
-  additionalCost Decimal  @default(0)
-  currency       String   @default("GBP")
-  // Specifications
-  panelCount     Int? // 2-panel, 4-panel, etc.
-  glassArea      Decimal? // % of door that is glass
-  complexity     String? // Simple, Medium, Complex
-  // Metadata
-  isActive       Boolean  @default(true)
-  sortOrder      Int      @default(0)
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, code])
-  @@index([tenantId, isActive, sortOrder])
-}
-
-model LeafFacing {
-  id          String   @id @default(cuid())
-  tenantId    String
-  code        String
-  name        String
-  description String?
-  // Pricing
-  costPerM2   Decimal  @default(0)
-  currency    String   @default("GBP")
-  // Specifications
-  material    String? // Veneer, Paint-grade MDF, etc.
-  thickness   Decimal? // mm
-  finish      String? // Prefinished, unfinished
-  // Metadata
-  isActive    Boolean  @default(true)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, code])
-  @@index([tenantId, isActive])
-}
-
-model FrameFinish {
-  id          String   @id @default(cuid())
-  tenantId    String
-  code        String
-  name        String
-  description String?
-  // Pricing
-  costPerM    Decimal  @default(0) // Cost per linear meter
-  currency    String   @default("GBP")
-  // Specifications
-  material    String?
-  profile     String? // Rebated, square, chamfered
-  // Metadata
-  isActive    Boolean  @default(true)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, code])
-  @@index([tenantId, isActive])
-}
-
-model SprayFinish {
-  id          String   @id @default(cuid())
-  tenantId    String
-  code        String
-  name        String
-  description String?
-  // Pricing
-  costPerM2   Decimal  @default(0)
-  currency    String   @default("GBP")
-  // Specifications
-  coats       Int      @default(3)
-  colour      String?
-  sheen       String? // Matt, Satin, Gloss
-  dryTimeDays Int?
-  // Metadata
-  isActive    Boolean  @default(true)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, code])
-  @@index([tenantId, isActive])
-}
-
-model VeneerLayon {
-  id          String   @id @default(cuid())
-  tenantId    String
-  code        String
-  name        String
-  description String?
-  // Pricing
-  costPerM2   Decimal  @default(0)
-  currency    String   @default("GBP")
-  // Specifications
-  species     String?
-  grade       String?
-  thickness   Decimal? // mm
-  backing     String? // Paper, fleece, etc.
-  // Metadata
-  isActive    Boolean  @default(true)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, code])
-  @@index([tenantId, isActive])
-}
-
-// ---- Ironmongery ----
-model IronmongeryItem {
-  id           String              @id @default(cuid())
-  tenantId     String
-  category     IronmongeryCategory
-  code         String
-  name         String
-  description  String?
-  supplier     String?
-  // Pricing
-  unitCost     Decimal             @default(0)
-  currency     String              @default("GBP")
-  // Specifications
-  material     String? // Brass, SS, Chrome, etc.
-  finish       String? // Polished, satin, etc.
-  fireRated    Boolean             @default(false)
-  grade        String? // Grade 13, 14, etc. for locks
-  // Metadata
-  isActive     Boolean             @default(true)
-  leadTimeDays Int?
-  notes        String?
-  imageUrl     String?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  packItems IronmongeryPackItem[]
-
-  @@unique([tenantId, code])
-  @@index([tenantId, category, isActive])
 }
 
 enum IronmongeryCategory {
@@ -2427,200 +3076,6 @@ enum IronmongeryCategory {
   OTHER
 }
 
-model IronmongeryPack {
-  id          String   @id @default(cuid())
-  tenantId    String
-  code        String
-  name        String
-  description String?
-  // Pre-defined pack for common door types (e.g., "FD30 Internal", "External Entrance")
-  doorType    String? // Internal, External, Fire, etc.
-  fireRating  String? // FD30, FD60, etc.
-  // Metadata
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  items  IronmongeryPackItem[]
-
-  @@unique([tenantId, code])
-  @@index([tenantId, isActive, sortOrder])
-}
-
-model IronmongeryPackItem {
-  id       String  @id @default(cuid())
-  packId   String
-  itemId   String
-  quantity Int     @default(1)
-  notes    String?
-
-  pack IronmongeryPack @relation(fields: [packId], references: [id], onDelete: Cascade)
-  item IronmongeryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-
-  @@unique([packId, itemId])
-  @@index([packId])
-}
-
-// ---- Rules & Lookups ----
-model FireCertificationRule {
-  id                      String    @id @default(cuid())
-  tenantId                String
-  name                    String
-  description             String?
-  // Rule conditions (as JSON for flexibility)
-  conditions              Json // e.g., { "fireRating": "FD30", "maxHeight": 2100, "maxWidth": 926 }
-  // Required components
-  coreCode                String?
-  glazingType             String?
-  sealType                String?
-  ironmongeryRequirements Json? // Array of required category/specs
-  // Certification details
-  certBody                String? // BWF, BM Trada, Certifire, etc.
-  certNumber              String?
-  validUntil              DateTime?
-  // Metadata
-  isActive                Boolean   @default(true)
-  notes                   String?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, isActive])
-}
-
-model LeafSizingRule {
-  id         String   @id @default(cuid())
-  tenantId   String
-  frameType  String // Single, Double, etc.
-  minHeight  Decimal // mm
-  maxHeight  Decimal // mm
-  minWidth   Decimal // mm
-  maxWidth   Decimal // mm
-  // Additional constraints
-  fireRating String?
-  maxWeight  Decimal? // kg
-  notes      String?
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, frameType, isActive])
-}
-
-model WeightLookup {
-  id            String   @id @default(cuid())
-  tenantId      String
-  component     String // Door core, Glass, Frame, etc.
-  specification String // Core type, glass thickness, etc.
-  weightPerM2   Decimal // kg/m2
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, component, specification])
-  @@index([tenantId, component])
-}
-
-// ---- Example Photo Gallery ----
-model ExamplePhoto {
-  id              String   @id @default(cuid())
-  tenantId        String
-  imageUrl        String // URL to stored image
-  thumbnailUrl    String? // Optimized thumbnail
-  title           String
-  description     String?
-  tags            String[] @default([]) // entrance, internal, french, bifold, etc.
-  // Specifications that help ML estimation
-  productType     String? // door, window, frame, etc.
-  widthMm         Int?
-  heightMm        Int?
-  thicknessMm     Int?
-  timberSpecies   String? // Oak, Pine, Ash, etc.
-  timberGrade     String?
-  glassType       String?
-  finishType      String?
-  fireRating      String? // FD30, FD60, etc.
-  // Pricing information
-  priceGBP        Decimal?
-  priceDate       DateTime? // When this price was valid
-  supplierName    String?
-  // Display settings
-  isActive        Boolean  @default(true)
-  displayOrder    Int      @default(0)
-  viewCount       Int      @default(0)
-  selectionCount  Int      @default(0) // How many times customers selected this
-  // Metadata
-  uploadedById    String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  tenant     Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  uploadedBy User?                     @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
-  answers    ExamplePhotoFieldAnswer[] // Linked questionnaire field answers
-
-  @@index([tenantId, isActive])
-  @@index([tenantId, tags])
-  @@index([tenantId, productType])
-  @@index([displayOrder])
-}
-
-// Stores questionnaire field answers for example photos
-// Allows tagging photos with answers to ALL standard questions
-model ExamplePhotoFieldAnswer {
-  id              String   @id @default(cuid())
-  examplePhotoId  String
-  fieldId         String // QuestionnaireField.id
-  fieldKey        String // For quick lookup (denormalized)
-  value           String // Stored as string, cast based on field type
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  examplePhoto ExamplePhoto        @relation(fields: [examplePhotoId], references: [id], onDelete: Cascade)
-  field        QuestionnaireField  @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-
-  @@unique([examplePhotoId, fieldId])
-  @@index([examplePhotoId])
-  @@index([fieldKey])
-}
-
-// ---- Materials Integration ----
-model MaterialItem {
-  id            String               @id @default(cuid())
-  tenantId      String
-  supplierId    String?
-  category      MaterialItemCategory
-  code          String
-  name          String
-  description   String?
-  cost          Decimal              @default(0)
-  currency      String               @default("GBP")
-  unit          String               @default("each") // each, m, m2, kg, etc.
-  stockQuantity Decimal?             @default(0)
-  minStockLevel Decimal?
-  leadTimeDays  Int?
-  isActive      Boolean              @default(true)
-  notes         String?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-
-  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier           Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  shoppingListItems  ShoppingListItem[]
-  purchaseOrderLines PurchaseOrderLine[]
-
-  @@unique([tenantId, code])
-  @@index([tenantId, category, isActive])
-  @@index([tenantId, supplierId])
-}
-
 enum MaterialItemCategory {
   DOOR_BLANK
   LIPPING
@@ -2635,72 +3090,12 @@ enum MaterialItemCategory {
   OTHER
 }
 
-model ShoppingList {
-  id        String             @id @default(cuid())
-  tenantId  String
-  quoteId   String?
-  status    ShoppingListStatus @default(DRAFT)
-  notes     String?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-
-  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  quote  Quote?             @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  items  ShoppingListItem[]
-
-  @@index([tenantId, status])
-  @@index([quoteId])
-}
-
 enum ShoppingListStatus {
   DRAFT
   APPROVED
   ORDERED
   RECEIVED
   CANCELLED
-}
-
-model ShoppingListItem {
-  id                  String   @id @default(cuid())
-  shoppingListId      String
-  materialItemId      String
-  descriptionOverride String?
-  quantity            Decimal
-  unit                String
-  sourceQuoteLineId   String? // Optional link to Quote line that generated this
-  notes               String?
-  createdAt           DateTime @default(now())
-
-  shoppingList    ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
-  materialItem    MaterialItem @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
-  sourceQuoteLine QuoteLine?   @relation(fields: [sourceQuoteLineId], references: [id], onDelete: SetNull)
-
-  @@index([shoppingListId])
-  @@index([materialItemId])
-}
-
-model PurchaseOrder {
-  id           String              @id @default(cuid())
-  tenantId     String
-  supplierId   String
-  status       PurchaseOrderStatus @default(DRAFT)
-  orderNumber  String?
-  orderDate    DateTime?
-  expectedDate DateTime?
-  receivedDate DateTime?
-  notes        String?
-  totalAmount  Decimal?            @default(0)
-  currency     String              @default("GBP")
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  supplier Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  lines    PurchaseOrderLine[]
-
-  @@index([tenantId, status])
-  @@index([tenantId, supplierId])
-  @@index([orderNumber])
 }
 
 enum PurchaseOrderStatus {
@@ -2710,801 +3105,4 @@ enum PurchaseOrderStatus {
   PARTIALLY_RECEIVED
   RECEIVED
   CANCELLED
-}
-
-model PurchaseOrderLine {
-  id               String   @id @default(cuid())
-  purchaseOrderId  String
-  materialItemId   String
-  description      String
-  quantity         Decimal
-  unit             String
-  unitPrice        Decimal  @default(0)
-  lineTotal        Decimal  @default(0)
-  receivedQuantity Decimal? @default(0)
-  notes            String?
-  createdAt        DateTime @default(now())
-
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  materialItem  MaterialItem  @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
-
-  @@index([purchaseOrderId])
-  @@index([materialItemId])
-}
-
-/// ===============================
-/// Fire Door Spreadsheet Import System
-/// (Using existing DoorCore, IronmongeryItem, GlazingItem models)
-/// ===============================
-
-model FireDoorImport {
-  id          String   @id @default(cuid())
-  tenantId    String
-  createdById String
-  sourceName  String // Original filename
-  status      String   @default("DRAFT") // DRAFT, PROCESSING, COMPLETED, ERROR
-  totalValue  Decimal  @default(0)
-  currency    String   @default("GBP")
-  rowCount    Int      @default(0) // Number of line items imported
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Optional linkage to existing project/order entities
-  projectId String?
-  orderId   String?
-
-  lineItems FireDoorLineItem[]
-
-  @@index([tenantId, status])
-  @@index([tenantId, createdAt])
-}
-
-model FireDoorLineItem {
-  id               String   @id @default(cuid())
-  fireDoorImportId String
-  tenantId         String
-  rowIndex         Int // Original row number from CSV
-
-  // ============================================================================
-  // SECTION 1: CERTIFICATION & INITIAL SPEC (Columns A-J)
-  // ============================================================================
-  certification String? // A: CERTIFICATION
-  doorsetType   String? // B: DOORSET TYPE
-  lajRef        String? // C: LAJ REF
-  doorRef       String? // D: DOOR REF
-  masterWidth   Float? // E: MASTER WIDTH
-  slaveWidth    Float? // F: SLAVE WIDTH
-  doorHeight    Float? // G: DOOR HEIGHT
-  core          String? // H: CORE
-  rating        String? // I: RATING (fire rating)
-  coreType      String? // J: CORE TYPE
-
-  // ============================================================================
-  // SECTION 2: EDGE DIMENSIONS & ADJUSTMENTS (Columns K-S)
-  // ============================================================================
-  top          Float? // K: TOP
-  btm          Float? // L: BTM
-  hinge        Float? // M: HINGE
-  me           Float? // N: M/E
-  daExposed    Float? // O: D/A EXPOSED
-  trim         Float? // P: TRIM
-  safeHinge    Float? // Q: SAFE HINGE
-  pf           Float? // R: P/F
-  extra        Float? // S: EXTRA
-
-  // ============================================================================
-  // SECTION 3: REDUCED DIMENSIONS (Calculated) (Columns T-W)
-  // ============================================================================
-  masterReduced     Float? // T: MASTER (R) - Calculated
-  slaveWidthReduced Float? // U: SLAVE WIDTH (R) - Calculated
-  doorHeightReduced Float? // V: DOOR HEIGHT (R) - Calculated
-  coreReduced       String? // W: CORE
-
-  // ============================================================================
-  // SECTION 4: NOTES (Columns X-Y)
-  // ============================================================================
-  notes1 String? // X: NOTES 1
-  notes2 String? // Y: NOTES 2
-
-  // ============================================================================
-  // SECTION 5: LIPPING SECTION (Columns Z-AO)
-  // ============================================================================
-  lajRefLipping       String? // Z: LAJ REF
-  doorRefLipping      String? // AA: DOOR REF
-  masterWidthLipping  Float? // AB: MASTER WIDTH
-  slaveWidthLipping   Float? // AC: SLAVE WIDTH
-  doorHeightLipping   Float? // AD: DOOR HEIGHT
-  coreLipping         String? // AE: CORE
-  ratingLipping       String? // AF: RATING
-  coreTypeLipping     String? // AG: CORE TYPE
-  material            String? // AH: MATERIAL
-  topLipping          Float? // AI: TOP
-  btmLipping          Float? // AJ: BTM
-  hingeLipping        Float? // AK: HINGE
-  meLipping           Float? // AL: M/E
-  daExposedLipping    Float? // AM: D/A EXPOSED
-  lippingDetail       String? // AN: Lipping Detail
-  masterWidthLipping2 Float? // AO: MASTER WIDTH
-
-  // ============================================================================
-  // SECTION 6: EDGING / 2T SECTION (Columns AP-AY)
-  // ============================================================================
-  slaveWidthEdging    Float? // AP: SLAVE WIDTH
-  doorHeightEdging    Float? // AQ: DOOR HEIGHT
-  coreEdging          String? // AR: CORE
-  masterWidth2T       Float? // AS: MASTER WIDTH (2T)
-  slaveWidth2T        Float? // AT: SLAVE WIDTH (2T)
-  doorHeight2T        Float? // AU: DOOR HEIGHT (2T)
-  core2T              String? // AV: CORE
-  doorType            String? // AW: DOOR TYPE
-  note1Edge           String? // AX: NOTE 1 (Edge)
-  note2Edge           String? // AY: NOTE 2 (Edge)
-
-  // ============================================================================
-  // SECTION 7: FACING / CALIBRATION SECTION (Columns AZ-BS)
-  // ============================================================================
-  lajRefFacing         String? // AZ: LAJ REF
-  doorRefFacing        String? // BA: DOOR REF
-  masterWidthFacing    Float? // BB: MASTER WIDTH
-  slaveWidthFacing     Float? // BC: SLAVE WIDTH
-  doorHeightFacing     Float? // BD: DOOR HEIGHT
-  coreFacing           String? // BE: CORE
-  coreTypeFacing       String? // BF: CORE TYPE
-  materialFacing       String? // BG: MATERIAL
-  topFacing            Float? // BH: TOP
-  btmFacing            Float? // BI: BTM
-  hingeFacing          Float? // BJ: HINGE
-  meFacing             Float? // BK: M/E
-  daExposedFacing      Float? // BL: D/A EXPOSED
-  calibratedSize       String? // BM: CALIBRATED SIZE
-  masterDoor           String? // BN: MASTER DOOR
-  slaveDoor            String? // BO: SLAVE DOOR
-  bookMatching         String? // BP: BOOK MATCHING
-  chamferRequired      String? // BQ: CHAMFER REQUIRED
-  notes1Cal            String? // BR: NOTES 1 (Cal)
-  note2Cal             String? // BS: NOTE 2 (Cal)
-
-  // ============================================================================
-  // SECTION 8: FINISH / IRONMONGERY SECTION (Columns BT-CX)
-  // ============================================================================
-  lajRefFinish             String? // BT: LAJ REF
-  doorRefFinish            String? // BU: DOOR REF
-  masterWidthFinish        Float? // BV: MASTER WIDTH
-  slaveWidthFinish         Float? // BW: SLAVE WIDTH
-  doorHeightFinish         Float? // BX: DOOR HEIGHT
-  coreFinish               String? // BY: CORE
-  coreTypeFinish           String? // BZ: CORE TYPE
-  doorFinish               String? // CA: DOOR FINISH
-  fireRatingFinish         String? // CB: FIRE RATING
-  handingFinish            String? // CC: HANDING
-  position                 String? // CD: POSITION
-  qtyOfHinges              Int? // CE: QTY OF HINGES
-  hingeType                String? // CF: HINGE TYPE
-  groovesForMe             String? // CG: GROOVES FOR M/E
-  lockType                 String? // CH: LOCK TYPE
-  spindlePrep              String? // CI: SPINDLE PREP
-  cylinderPrep             String? // CJ: CYLINDER PREP
-  lockHeight               Float? // CK: LOCK HEIGHT
-  flushBolt                String? // CL: FLUSH BOLT
-  uc                       String? // CM: U/C
-  hingeInt                 String? // CN: HINGE (Int)
-  lockInt                  String? // CO: LOCK (Int)
-  flushboltInt             String? // CP: FLUSHBOLT (Int)
-  vpType                   String? // CQ: VP TYPE
-  visionPanelMaster        String? // CR: VISION PANEL MASTER
-  visionPanelSlave         String? // CS: VISION PANEL SLAVE
-  beadType                 String? // CT: BEAD TYPE
-  vpPosition               String? // CU: VP POSITION
-  dropseal                 String? // CV: DROPSEAL
-  additionalIronmongery1   String? // CW: ADDITIONAL IRONMONGERY
-  additionalIronmongery2   String? // CX: ADDITIONAL IRONMONGERY
-
-  // ============================================================================
-  // SECTION 9: SECONDARY IRONMONGERY (Columns CZ-DN)
-  // ============================================================================
-  doorRefSecondary       String? // CZ: DOOR REF
-  lockType2              String? // DA: LOCK TYPE 2
-  spindlePrep2           String? // DB: SPINDLE PREP 2
-  cylinderPrep2          String? // DC: CYLINDER PREP 2
-  lockHeight2            Float? // DD: LOCK HEIGHT 2
-  concealedDoorCloser    String? // DE: CONCEALED DOOR CLOSER
-  atgSize                String? // DF: ATG SIZE
-  atgPosition            String? // DG: ATG POSITION
-  safehingSureclose      String? // DH: SAFEHINGE SURECLOSE
-  safehingeStandardPivot String? // DI: SAFEHINGE STANDARD PIVOT
-  safehingeRhinoBolts    String? // DJ: SAFEHINGE RHINO BOLTS
-  doorViewer             String? // DK: DOOR VIEWER
-  letterbox              String? // DL: LETTERBOX
-  flushPulls             String? // DM: FLUSH PULLS
-  cableway               String? // DN: CABLEWAY
-
-  // ============================================================================
-  // SECTION 10: FINAL SPEC & FRAME (Columns DR-EN)
-  // ============================================================================
-  lajRefFinal                 String? // DR: LAJ REF
-  doorRefFinal                String? // DS: DOOR REF
-  master                      Float? // DT: MASTER
-  slave                       Float? // DU: SLAVE
-  height                      Float? // DV: HEIGHT
-  coreFinal                   String? // DW: CORE
-  fireRatingFinal             String? // DX: FIRE RATING
-  doorFinishFinal             String? // DY: DOOR FINISH
-  fireSealsInMe               String? // DZ: FIRE SEALS IN M/E
-  glazingSystem               String? // EA: GLAZING SYSTEM
-  vpSize                      String? // EB: VP SIZE
-  glassType                   String? // EC: GLASS TYPE
-  cassetteType                String? // ED: CASSETTE TYPE
-  dropSeal                    String? // EE: DROP SEAL
-  hinges                      String? // EF: HINGES
-  handingFinal                String? // EG: HANDING
-  lock                        String? // EH: LOCK
-  lockHeightOnDoor            Float? // EI: LOCK HEIGHT ON DOOR
-  keep                        String? // EJ: KEEP
-  flushBolts                  String? // EK: FLUSH BOLTS
-  fittedInFrame               String? // EL: FITTED IN FRAME
-  hingeLockFlushboltIntum     String? // EM: HINGE / LOCK / FLUSHBOLT INTUMESCENT
-  qMarkPlug                   String? // EN: Q-MARK PLUG
-
-  // ============================================================================
-  // LEGACY FIELDS (for backward compatibility with existing imports)
-  // ============================================================================
-  itemType          String? // from `Item`
-  code              String? // from `Code`
-  quantity          Int?
-  location          String? // `Location`
-  acousticRatingDb  Int? // `Acoustic Rating dB`
-  internalColour    String? // `Internal Colour`
-  externalColour    String? // `External Colour`
-  frameFinish       String? // `Frame Finish`
-  leafHeight        Float? // `Leaf Height`
-  masterLeafWidth   Float? // `M Leaf Width`
-  slaveLeafWidth    Float? // `S Leaf Width`
-  leafThickness     Float? // `Leaf Thickness`
-  leafConfiguration String? // `Leaf Configuration`
-  ifSplitMasterSize String? // `If Split, Master Leaf Size`
-  doorFinishSide1   String? // `Door Finish - Side 1 (Push)`
-  doorFinishSide2   String? // `Door Finish - Side 2 (Pull)`
-  doorFacing        String? // `Door Facing`
-  lippingFinish     String? // `Lipping Finish`
-  doorEdgeProtType  String? // `Door Edge Protection Type`
-  doorEdgeProtPos   String? // `Door Edge Protection Position`
-  doorUndercut      String? // `Door Undercut`
-  doorUndercutMm    Float? // `Door Undercut (mm)`
-
-  // Vision panels / glazing (Leaf 1)
-  visionQtyLeaf1 Int? // `Vision Panel Qty, Leaf 1`
-  vp1WidthLeaf1  Float? // `Leaf 1 Aperture 1 Width (See Size Detail)`
-  vp1HeightLeaf1 Float? // `Leaf 1 Aperture 1 Height (See Size Detail)`
-  vp2WidthLeaf1  Float? // `Leaf 1 Aperture 2 Width (See Size Detail)`
-  vp2HeightLeaf1 Float? // `Leaf 1 Aperture 2 Height (See Size Detail)`
-
-  // Vision panels / glazing (Leaf 2)
-  visionQtyLeaf2 Int? // `Vision Panel Qty, Leaf 2`
-  vp1WidthLeaf2  Float? // `Leaf 2 Cut Out Aperture 1 Width`
-  vp1HeightLeaf2 Float? // `Leaf 2 Cut Out Aperture 1 Height`
-  vp2WidthLeaf2  Float? // `Leaf 2 Cut Out Aperture 2 Width`
-  vp2HeightLeaf2 Float? // `Leaf 2 Cut Out Aperture 2 Height`
-
-  // Total glazing
-  totalGlazedAreaMaster Float? // `Total Glazed Area Master Leaf (msq)`
-  fanlightSidelightGlz  String? // `Fanlight/Sidelight Glazing`
-  glazingTape           String? // `Glazing Tape`
-
-  // Ironmongery & accessories (legacy CSV imports)
-  ironmongeryPackRef    String? // `Ironmongery Pack Ref`
-  closerOrFloorSpring   String? // `Closers / Floor Springs`
-  spindleFacePrep       String? // `Spindle Face Prep`
-  cylinderFacePrep      String? // `Cylinder Face Prep`
-  flushBoltSupplyPrep   String? // `Flush Bolt Supply/Prep`
-  flushBoltQty          Int? // `Flush Bolt Qty`
-  fingerProtection      String? // `Finger Protection`
-  fireSignage           String? // `Fire Signage`
-  fireSignageQty        Int? // `Fire Signage Qty`
-  fireSignageFactoryFit String? // `Factory Fit Fire Signage`
-  fireIdDisc            String? // `Fire ID Disc`
-  fireIdDiscQty         Int? // `Fire ID Disc Qty`
-  doorViewerPosition    String? // `Door Viewer Position`
-  doorViewerPrepSize    String? // `Door Viewer Prep Size`
-  doorChain             String? // `Door Chain`
-  doorViewersQty        Int? // `Door Viewers Qty`
-  doorChainFactoryFit   String? // `Factory Fit Door Chain`
-  doorViewersFactoryFit String? // `Factory Fit Door Viewers`
-  additionNote1         String? // `Addition 1 / Note 1`
-  additionNote1Qty      Int? // `Addition 1 Qty`
-
-  // Pricing
-  unitValue    Decimal? // parsed from `Value` per door
-  labourCost   Decimal? // parsed from `Cost of Labour`
-  materialCost Decimal? // parsed from `Cost of Materials`
-  lineTotal    Decimal? // use `unitValue * quantity` or `unitValue` if qty is 1+
-
-  // Traceability: store entire original CSV row as JSON
-  rawRowJson Json
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  import FireDoorImport @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, fireDoorImportId])
-  @@index([tenantId, rating])
-  @@index([fireDoorImportId, rowIndex])
-}
-
-// ============================================================================
-// FIRE DOOR SCHEDULE - Unified project tracking system
-// Replaces: 2026 TEST SYSTEM.xlsx + NEW 2023 BOM CHECK.xlsx
-// One row per WON project - tracks from enquiry to completion
-// ============================================================================
-
-model FireDoorScheduleProject {
-  id        String   @id @default(cuid())
-  tenantId  String
-  projectId String? // Optional link to existing Project/Quote
-
-  // 1. OVERVIEW & IDENTIFICATION
-  mjsNumber       String? // MJS No. from LAJ MASTER
-  jobName         String? // Job Name
-  clientName      String? // Company Name / CUSTOMER
-  dateReceived    DateTime? // Date Received / DATE RECEIVED IN RED FOLDER
-  dateRequired    DateTime? // Date Required (client deadline)
-  poNumber        String? // P/O No.
-  laqNumber       String? // LAQ No.
-  compOrderNumber String? // Comp Order No.
-
-  // 2. DESIGN & SIGN-OFF
-  jobLocation            String? // RED FOLDER | IN PROGRESS | COMPLETE
-  signOffStatus          String? // AWAITING SCHEDULE | NOT LOOKED AT | WORKING ON SCHEDULE | SCHEDULE SENT FOR SIGN OFF | SCHEDULE SIGNED OFF
-  signOffDate            DateTime? // DATE SIGNED OFF
-  scheduledBy            String? // DARREN | DAVE | STEVE | PAUL | DAN
-  leadTimeWeeks          Int? // LEAD TIME IN WEEKS
-  approxDeliveryDate     DateTime? // APPROX DATE (AUTO ADDS LEAD TIME)
-  workingDaysRemaining   Int? // APPROX WORKING DAYS REMAINING
-
-  // 3. BOM & ORDERING
-  // BOM Component Tracking (status + dates + checked flag)
-  // Status options: Not in BOM | In BOM TBC | Ordered Call Off | In BOM | Stock | Ordered | N/A | Received
-  // IronMongery adds: Received from TBS | Received from Customer
-  blanksStatus      String?
-  blanksDateOrdered DateTime?
-  blanksDateExpected DateTime?
-  blanksDateReceived DateTime?
-  blanksChecked     Boolean @default(false)
-  
-  lippingsStatus      String?
-  lippingsDateOrdered DateTime?
-  lippingsDateExpected DateTime?
-  lippingsDateReceived DateTime?
-  lippingsChecked     Boolean @default(false)
-  
-  facingsStatus      String?
-  facingsDateOrdered DateTime?
-  facingsDateExpected DateTime?
-  facingsDateReceived DateTime?
-  facingsChecked     Boolean @default(false)
-  
-  glassStatus      String?
-  glassDateOrdered DateTime?
-  glassDateExpected DateTime?
-  glassDateReceived DateTime?
-  glassChecked     Boolean @default(false)
-  
-  cassettesStatus      String?
-  cassettesDateOrdered DateTime?
-  cassettesDateExpected DateTime?
-  cassettesDateReceived DateTime?
-  cassettesChecked     Boolean @default(false)
-  
-  timbersStatus      String?
-  timbersDateOrdered DateTime?
-  timbersDateExpected DateTime?
-  timbersDateReceived DateTime?
-  timbersChecked     Boolean @default(false)
-
-  ironmongeryStatus      String? // Has extra options: Received from TBS | Received from Customer
-  ironmongeryDateOrdered DateTime?
-  ironmongeryDateExpected DateTime?
-  ironmongeryDateReceived DateTime?
-  ironmongeryChecked     Boolean @default(false)
-
-  // 4. PRODUCTION & CAPACITY (all percentages 0-100)
-  blanksCutPercent Int? // BLANKS CUT %
-  edgebandPercent  Int? // EDGEBAND %
-  calibratePercent Int? // CALIBRATE %
-  facingsPercent   Int? // FACINGS %
-  finalCncPercent  Int? // FINAL CNC %
-  finishPercent    Int? // FINISH %
-  sandPercent      Int? // SAND %
-  sprayPercent     Int? // SPRAY %
-  cutPercent       Int? // CUT %
-  cncPercent       Int? // CNC %
-  buildPercent     Int? // BUILD %
-  overallProgress  Int? // PROGRESS (overall %)
-  
-  // Calculated progress percentages
-  bomPercent        Int? // BOM Progress (% of materials received)
-  paperworkPercent  Int? // Paperwork Progress (% of paperwork completed)
-  productionPercent Int? // Production Progress (average of all production processes)
-
-  hiddenStatus String? // HIDDEN field from BOM CHECK
-
-  // 5. PAPERWORK & CERTIFICATION
-  // Paperwork status options: Not Started | Part Complete | Printed in Office | In Factory | N/A
-  doorPaperworkStatus       String? // DOOR PAPERWORK
-  finalCncSheetStatus       String? // FINAL CNC SHEET
-  finalChecksSheetStatus    String? // FINAL CHECKS SHEET
-  deliveryChecklistStatus   String? // DELIVERY CHECKLIST
-  framesPaperworkStatus     String? // FRAMES PAPERWORK
-  paperworkComments         String? // PAPERWORK COMMENTS
-
-  certificationRequired String? // Q Mark, etc. (from LAJ MASTER: Certification)
-  fscRequired           Boolean @default(false) // FSC from LAJ MASTER
-  invoiceStatus         String? // Inv Y / N
-
-  // 6. DELIVERY & INSTALLATION
-  transportStatus   String? // TBC | By Customer | By LAJ | Collect | Not Booked | Booked
-  doorSets          Int? // Number of door sets
-  leaves            Int? // Number of leaves
-  deliveryNotes     String? // Delivery notes
-  deliveryDate      DateTime? // Actual delivery date
-  installStart      DateTime? // Installation start
-  installEnd        DateTime? // Installation completion
-  snaggingStatus    String? // Snagging list status
-  snaggingComplete  Boolean   @default(false)
-  snaggingNotes     String? // Snagging notes
-
-  // 7. COMMUNICATION & NOTES
-  communicationNotes String? // Communication column from BOM CHECK
-  internalNotes      String? // Internal team notes
-  lastUpdatedBy      String? // Who last modified
-  lastUpdatedAt      DateTime @default(now()) // When last modified
-
-  // 8. VALUE TRACKING
-  netValue Decimal? // Net project value for manufacturing value calculation
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  productionLogs FireDoorProductionLog[]
-
-  @@index([tenantId])
-  @@index([tenantId, jobLocation])
-  @@index([tenantId, signOffStatus])
-  @@index([tenantId, dateRequired])
-  @@index([projectId])
-}
-
-model FireDoorProductionLog {
-  id        String   @id @default(cuid())
-  tenantId  String
-  projectId String
-  
-  process         String  // Which production process: blanksCut, edgeband, calibrate, facings, finalCnc, finish, sand, spray, cut, cnc, build
-  previousPercent Int     // Percentage before this log entry
-  addedPercent    Int     // Percentage added in this log entry
-  newPercent      Int     // New total percentage after this entry
-  
-  loggedBy   String   // User who logged this entry
-  loggedAt   DateTime @default(now())
-  notes      String?  // Optional notes about this production update
-  
-  tenant  Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project FireDoorScheduleProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId, projectId])
-  @@index([tenantId, loggedAt])
-  @@index([projectId, process])
-}
-
-// ============================================================================
-// FIRE DOOR CLIENT PORTAL MODELS
-// Public-facing system for clients to submit door schedules and track orders
-// Replaces Google Sheet: "LAJ & Lloyd Worrall Import Sheet (Master).csv"
-// ============================================================================
-
-model ClientAccount {
-  id        String   @id @default(cuid())
-  tenantId  String   // Fire door manufacturer this client belongs to
-  
-  // Company Information
-  companyName     String
-  accountNumber   String?  // Internal reference
-  primaryContact  String?
-  email           String
-  phone           String?
-  address         String?
-  city            String?
-  postcode        String?
-  country         String?   @default("UK")
-  
-  // Account Settings
-  isActive        Boolean   @default(true)
-  notes           String?
-  
-  // Timestamps
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
-  // Relations
-  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users           ClientUser[]
-  jobs            FireDoorClientJob[]
-  leads           Lead[]              // Leads linked to this customer
-  opportunities   Opportunity[]       // Opportunities linked to this customer
-  quotes          Quote[]             // Quotes for this customer
-  
-  @@index([tenantId])
-  @@index([tenantId, email])
-  @@index([tenantId, companyName])
-}
-
-model ClientUser {
-  id                String   @id @default(cuid())
-  clientAccountId   String
-  
-  // User Information
-  email             String
-  passwordHash      String
-  firstName         String
-  lastName          String
-  phone             String?
-  jobTitle          String?
-  
-  // Account Status
-  isActive          Boolean   @default(true)
-  emailVerified     Boolean   @default(false)
-  lastLoginAt       DateTime?
-  
-  // Password Reset
-  resetToken        String?
-  resetTokenExpiry  DateTime?
-  
-  // Timestamps
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  
-  // Relations
-  clientAccount     ClientAccount @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
-  
-  @@unique([email])
-  @@index([clientAccountId])
-  @@index([email])
-}
-
-model FireDoorClientJob {
-  id                String   @id @default(cuid())
-  tenantId          String   // Fire door manufacturer
-  clientAccountId   String   // Client who submitted
-  submittedBy       String?  // ClientUser ID who submitted
-  
-  // Job Details (top section of import sheet)
-  jobName           String
-  projectReference  String?
-  siteAddress       String?
-  deliveryAddress   String?
-  contactPerson     String?
-  contactEmail      String?
-  contactPhone      String?
-  
-  // Order Information
-  poNumber          String?
-  quoteReference    String?
-  dateRequired      DateTime?
-  
-  // Status & Progress
-  status            String    @default("PENDING_REVIEW")  
-  // PENDING_REVIEW | PRICING_IN_PROGRESS | PRICED | AWAITING_APPROVAL | 
-  // APPROVED | IN_PRODUCTION | READY_FOR_DELIVERY | DELIVERED | COMPLETE
-  
-  // Pricing
-  totalPrice        Decimal?
-  pricePerUnit      Json?     // Breakdown by door item
-  pricedAt          DateTime?
-  pricedBy          String?   // User ID who priced
-  
-  // Production Tracking
-  productionStarted DateTime?
-  estimatedCompletion DateTime?
-  actualCompletion  DateTime?
-  
-  // Notes & Communication
-  clientNotes       String?   // Notes from client at submission
-  internalNotes     String?   // Internal manufacturer notes
-  
-  // Timestamps
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  submittedAt       DateTime  @default(now())
-  
-  // Relations
-  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  clientAccount     ClientAccount       @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
-  doorItems         FireDoorClientDoorItem[]
-  rfis              FireDoorClientRFI[]
-  
-  @@index([tenantId])
-  @@index([clientAccountId])
-  @@index([tenantId, status])
-  @@index([tenantId, dateRequired])
-  @@index([submittedAt])
-}
-
-model FireDoorClientDoorItem {
-  id                      String   @id @default(cuid())
-  tenantId                String
-  fireDoorClientJobId     String
-  
-  // Row metadata
-  rowNumber               Int?     // Sequence in the grid
-  
-  // Door Schedule Fields (from LW Import Sheet CSV - 70 columns)
-  // Basic Information
-  sequence                String?
-  doorRef                 String?
-  location                String?
-  quantity                Int?
-  type                    String?
-  coreType                String?
-  fireRating              String?
-  acousticRating          String?
-  thresholdSealType       String?
-  doorsetLeafFrame        String?
-  configuration           String?
-  
-  // Dimensions
-  masterLeafWidth         Decimal?
-  soH                     String?
-  soW                     String?
-  ofH                     String?
-  ofW                     String?
-  sOWallThickness         Decimal?
-  
-  // Frame Specifications
-  frameMaterial           String?
-  frameFinish             String?
-  frameType               String?
-  antiBarricadeEmergencyStops String?
-  
-  // Architrave
-  architraveMaterialFinish String?
-  arcWidth                Decimal?
-  arcDepth                Decimal?
-  
-  // Door Specifications
-  doorFacing              String?
-  doorFinish              String?
-  doorColour              String?
-  lippingMaterial         String?
-  doorAction              String?
-  doorUndercut            String?
-  
-  // Aperture (Vision Panel)
-  aperture                String?
-  apertureWidth           Decimal?
-  apertureHeight          Decimal?
-  vistamaticSupplyType    String?
-  vistmaticHardwareSide1  String?
-  vistamaticHardwareSide2 String?
-  beadType                String?
-  beadMaterial            String?
-  lwGlassType             String?
-  
-  // Hinges
-  hingeSupplyType         String?
-  hingeFitting            String?
-  hingeType               String?
-  hingeConfiguration      String?
-  handing                 String?
-  
-  // Locks
-  lockSupplyPrep          Boolean?
-  lockFitting             String?
-  lockType1               String?
-  lockHeightToSpindle1    Decimal?
-  spindlePrep             Boolean?
-  cylinderPrep            Boolean?
-  lockType2               String?
-  lockHeightToSpindle2    Decimal?
-  
-  // Hardware
-  closersFloorSprings     String?
-  flushBoltSupplyPrep     Boolean?
-  
-  // Special Requirements
-  specials                String?
-  leadLiningCode          String?
-  overpanelDetails        String?
-  screenDetails           String?
-  
-  // Air Transfer Grille
-  airTransferGrilleRequirement String?
-  airTransferGrilleSize   Decimal?
-  airTransferGrillePosition String?
-  
-  // Protection
-  doorEdgeProtectionType  Boolean?
-  doorEdgeProtectionPosition Boolean?
-  kickPlates              String?
-  pvcFaceProtection       Boolean?
-  
-  // Wiring & ID
-  wiringPrep              Boolean?
-  freeIssueCableLoopPrep  Boolean?
-  fireIdDisc              String?
-  ironmongeryPackRef      String?
-  comments                String?
-  
-  // Pricing (calculated per door)
-  unitPrice               Decimal?
-  lineTotal               Decimal?
-  
-  // Raw data preservation
-  rawRowJson              Json?    // Store complete row as JSON for audit
-  
-  // Timestamps
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-  
-  // Relations
-  job                     FireDoorClientJob @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
-  
-  @@index([fireDoorClientJobId])
-  @@index([tenantId])
-  @@index([doorRef])
-}
-
-model FireDoorClientRFI {
-  id                      String   @id @default(cuid())
-  tenantId                String
-  fireDoorClientJobId     String
-  
-  // RFI Details
-  subject                 String
-  question                String
-  doorItemRef             String?  // Reference to specific door if applicable
-  
-  // Response
-  response                String?
-  respondedBy             String?  // User ID
-  respondedAt             DateTime?
-  
-  // Status
-  status                  String   @default("OPEN")  // OPEN | ANSWERED | CLOSED
-  priority                String   @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
-  
-  // Timestamps
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-  
-  // Relations
-  job                     FireDoorClientJob @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
-  
-  @@index([fireDoorClientJobId])
-  @@index([tenantId])
-  @@index([status])
-}
-
-// ============================================================================
-// Generic RFI model for Fire Door Schedule / Quote Grid (column & cell level)
-// Supports attaching an RFI to an entire column (rowId = null) or a specific
-// cell (rowId + columnKey). Designed to be lightweight and tenant scoped.
-// ============================================================================
-model Rfi {
-  id              String   @id @default(cuid())
-  tenantId        String
-  projectId       String    // Links to a FireDoorScheduleProject id or quote/project reference
-  rowId           String?   // Null for column-level RFI, otherwise row identifier
-  columnKey       String    // Matches AG Grid column field (e.g. "masterWidth", "hingeQty")
-  title           String?   // Optional short summary
-  message         String    // Full question / request for information
-  status          String    @default("open") // open | answered | closed
-  visibleToClient Boolean   @default(true)    // Whether client portal should display it
-  createdById     String    // User id who created the RFI
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@index([tenantId, projectId])
-  @@index([tenantId, projectId, columnKey])
-  @@index([tenantId, status])
 }
