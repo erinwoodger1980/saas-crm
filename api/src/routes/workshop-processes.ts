@@ -367,4 +367,74 @@ router.post("/seed-default", async (req: any, res) => {
   res.json({ ok: true, created: created.length, processes: created });
 });
 
+/**
+ * PATCH /workshop-processes/process/:processId/complete
+ * Marks a process assignment as complete and completes the associated task
+ */
+router.patch('/process/:processId/complete', async (req, res) => {
+  const { processId } = req.params;
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    // Mark the process complete
+    const processAssignment = await prisma.projectProcessAssignment.update({
+      where: { id: processId },
+      data: { completedAt: new Date() },
+      include: {
+        processDefinition: true,
+        project: true
+      }
+    });
+
+    // Find and complete the associated task
+    const task = await prisma.task.findFirst({
+      where: {
+        relatedType: 'WORKSHOP',
+        relatedId: processAssignment.projectId,
+        meta: {
+          path: ['processCode'],
+          equals: processAssignment.processDefinition?.code
+        }
+      }
+    });
+
+    if (task && task.status !== 'DONE') {
+      await prisma.task.update({
+        where: { id: task.id },
+        data: {
+          status: 'DONE',
+          completedAt: new Date()
+        }
+      });
+
+      // Log activity
+      await prisma.activity.create({
+        data: {
+          verb: 'COMPLETED',
+          objectType: 'TASK',
+          objectId: task.id,
+          actorId: userId,
+          opportunityId: task.relatedId,
+          metadata: {
+            taskTitle: task.title,
+            processCode: processAssignment.processDefinition?.code,
+            completedViaProcess: true
+          }
+        }
+      });
+
+      console.log(`✅ Process complete → Task complete: ${task.title}`);
+    }
+
+    res.json({ ok: true, processAssignment, taskCompleted: !!task });
+  } catch (error) {
+    console.error('Error completing process:', error);
+    res.status(500).json({ error: 'Failed to complete process' });
+  }
+});
+
 export default router;

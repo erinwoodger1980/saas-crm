@@ -925,4 +925,236 @@ router.post("/forms", async (req, res) => {
   }
 });
 
+/**
+ * POST /tasks/:id/complete
+ * Mark a task as complete with celebration tracking
+ */
+router.post("/:id/complete", async (req: any, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const taskId = req.params.id;
+
+  try {
+    // Get the task
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, tenantId },
+      include: { assignees: true },
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    // Mark as complete
+    const updated = await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        status: "DONE",
+        completedAt: new Date(),
+      },
+    });
+
+    // If this is a workshop task, mark the process as complete
+    if (task.relatedType === "WORKSHOP" && task.relatedId) {
+      const processCode = (task.meta as any)?.processCode;
+      if (processCode) {
+        const processDef = await prisma.workshopProcessDefinition.findFirst({
+          where: { tenantId, code: processCode },
+        });
+
+        if (processDef) {
+          await prisma.projectProcessAssignment.updateMany({
+            where: {
+              tenantId,
+              opportunityId: task.relatedId,
+              processDefinitionId: processDef.id,
+            },
+            data: { completedAt: new Date() },
+          });
+        }
+      }
+    }
+
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        tenantId,
+        entity: "TASK",
+        entityId: taskId,
+        verb: "COMPLETED",
+        actorId: req.auth?.userId,
+        data: { completedAt: updated.completedAt } as any,
+      },
+    });
+
+    res.json({ ok: true, task: updated });
+  } catch (e: any) {
+    console.error("Failed to complete task:", e);
+    res.status(500).json({ error: e.message || "Failed to complete task" });
+  }
+});
+
+/**
+ * GET /tasks/stats/:userId
+ * Get user statistics for gamification
+ */
+router.get("/stats/:userId", async (req: any, res) => {
+  const { tenantId } = getAuth(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+  const userId = req.params.userId;
+
+  try {
+    // Get all completed tasks for user
+    const completedTasks = await prisma.task.findMany({
+      where: {
+        tenantId,
+        status: "DONE",
+        assignees: {
+          some: { userId },
+        },
+      },
+      orderBy: { completedAt: "desc" },
+      select: {
+        id: true,
+        completedAt: true,
+        priority: true,
+      },
+    });
+
+    // Calculate streak
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let tempStreak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const completionDates = new Set<string>();
+    completedTasks.forEach((task) => {
+      if (task.completedAt) {
+        const dateStr = task.completedAt.toISOString().split("T")[0];
+        completionDates.add(dateStr);
+      }
+    });
+
+    // Sort dates
+    const sortedDates = Array.from(completionDates).sort().reverse();
+
+    // Calculate current streak
+    let checkDate = new Date(today);
+    for (let i = 0; i < 365; i++) {
+      const dateStr = checkDate.toISOString().split("T")[0];
+      if (completionDates.has(dateStr)) {
+        currentStreak++;
+      } else if (i > 0) {
+        break;
+      }
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+
+    // Calculate longest streak
+    for (let i = 0; i < sortedDates.length; i++) {
+      if (i === 0 || 
+          new Date(sortedDates[i - 1]).getTime() - new Date(sortedDates[i]).getTime() === 86400000) {
+        tempStreak++;
+        longestStreak = Math.max(longestStreak, tempStreak);
+      } else {
+        tempStreak = 1;
+      }
+    }
+
+    // Tasks completed today
+    const todayStr = today.toISOString().split("T")[0];
+    const tasksCompletedToday = completedTasks.filter((task) => {
+      if (!task.completedAt) return false;
+      const taskDateStr = task.completedAt.toISOString().split("T")[0];
+      return taskDateStr === todayStr;
+    }).length;
+
+    // Calculate total points
+    const totalPoints = completedTasks.reduce((sum, task) => {
+      const points =
+        task.priority === "URGENT" ? 25 :
+        task.priority === "HIGH" ? 15 :
+        task.priority === "MEDIUM" ? 10 : 5;
+      return sum + points;
+    }, 0);
+
+    const level = Math.floor(totalPoints / 100) + 1;
+
+    // Define achievements
+    const achievements = [
+      {
+        id: "first_task",
+        name: "Getting Started",
+        description: "Complete your first task",
+        icon: "🎯",
+        unlockedAt: completedTasks.length >= 1 ? completedTasks[0]?.completedAt : null,
+        progress: Math.min(completedTasks.length, 1),
+        target: 1,
+      },
+      {
+        id: "week_streak",
+        name: "Week Warrior",
+        description: "7-day completion streak",
+        icon: "🔥",
+        unlockedAt: currentStreak >= 7 ? new Date() : null,
+        progress: Math.min(currentStreak, 7),
+        target: 7,
+      },
+      {
+        id: "ten_tasks",
+        name: "Productive",
+        description: "Complete 10 tasks",
+        icon: "⚡",
+        unlockedAt: completedTasks.length >= 10 ? completedTasks[9]?.completedAt : null,
+        progress: Math.min(completedTasks.length, 10),
+        target: 10,
+      },
+      {
+        id: "fifty_tasks",
+        name: "Task Master",
+        description: "Complete 50 tasks",
+        icon: "🏆",
+        unlockedAt: completedTasks.length >= 50 ? completedTasks[49]?.completedAt : null,
+        progress: Math.min(completedTasks.length, 50),
+        target: 50,
+      },
+      {
+        id: "hundred_tasks",
+        name: "Centurion",
+        description: "Complete 100 tasks",
+        icon: "👑",
+        unlockedAt: completedTasks.length >= 100 ? completedTasks[99]?.completedAt : null,
+        progress: Math.min(completedTasks.length, 100),
+        target: 100,
+      },
+      {
+        id: "month_streak",
+        name: "Unstoppable",
+        description: "30-day completion streak",
+        icon: "🚀",
+        unlockedAt: currentStreak >= 30 ? new Date() : null,
+        progress: Math.min(currentStreak, 30),
+        target: 30,
+      },
+    ];
+
+    res.json({
+      currentStreak,
+      longestStreak,
+      totalTasksCompleted: completedTasks.length,
+      totalPoints,
+      tasksCompletedToday,
+      achievements,
+      level,
+      nextLevelPoints: level * 100,
+    });
+  } catch (e: any) {
+    console.error("Failed to get stats:", e);
+    res.status(500).json({ error: e.message || "Failed to get stats" });
+  }
+});
+
 export default router;

@@ -26,6 +26,8 @@ import { Badge } from "@/components/ui/badge";
 import { TaskAnalyticsDashboard } from "./TaskAnalyticsDashboard";
 import { FormTemplatesLibrary } from "./FormTemplatesLibrary";
 import { CalendarIntegration } from "./CalendarIntegration";
+import { TaskCelebration } from "./TaskCelebration";
+import { TaskStreakTracker } from "./TaskStreakTracker";
 
 type TaskType = "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
 type TaskStatus = "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
@@ -116,6 +118,11 @@ export function TaskCenter() {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showOnlyMine, setShowOnlyMine] = useState(false);
+  
+  // Celebration state
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationTask, setCelebrationTask] = useState<Task | null>(null);
+  const [celebrationStats, setCelebrationStats] = useState({ streak: 0, total: 0, points: 10 });
 
   const loadTasks = async () => {
     if (!tenantId) return;
@@ -159,6 +166,36 @@ export function TaskCenter() {
 
   const handleSearch = () => {
     loadTasks();
+  };
+
+  const handleCompleteTask = async (task: Task) => {
+    try {
+      // Mark task as complete
+      await apiFetch(`/tasks/${task.id}/complete`, {
+        method: "POST",
+        headers: { "x-tenant-id": tenantId },
+      });
+
+      // Get updated stats for celebration
+      const statsResponse = await apiFetch<any>(`/tasks/stats/${userId}`, {
+        headers: { "x-tenant-id": tenantId },
+      });
+
+      // Show celebration
+      setCelebrationTask(task);
+      setCelebrationStats({
+        streak: statsResponse.currentStreak || 0,
+        total: statsResponse.totalTasksCompleted || 0,
+        points: task.priority === "URGENT" ? 25 : task.priority === "HIGH" ? 15 : 10,
+      });
+      setShowCelebration(true);
+
+      // Reload tasks
+      await loadTasks();
+    } catch (error) {
+      console.error("Failed to complete task:", error);
+      alert("Failed to complete task. Please try again.");
+    }
   };
 
   const taskCounts = useMemo(() => {
@@ -248,6 +285,20 @@ export function TaskCenter() {
                 </span>
               )}
             </div>
+
+            {/* Complete Button */}
+            {task.status !== "DONE" && (
+              <div className="mt-3">
+                <Button
+                  size="sm"
+                  onClick={() => handleCompleteTask(task)}
+                  className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                >
+                  <CheckSquare className="h-4 w-4 mr-2" />
+                  Complete Task
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </Card>
@@ -256,6 +307,19 @@ export function TaskCenter() {
 
   return (
     <div className="space-y-6">
+      {/* Celebration Modal */}
+      {showCelebration && celebrationTask && (
+        <TaskCelebration
+          show={showCelebration}
+          onClose={() => setShowCelebration(false)}
+          taskTitle={celebrationTask.title}
+          celebrationType={celebrationStats.streak >= 7 ? "streak" : "standard"}
+          streakDays={celebrationStats.streak}
+          totalCompleted={celebrationStats.total}
+          pointsEarned={celebrationStats.points}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -268,6 +332,9 @@ export function TaskCenter() {
           New Task
         </Button>
       </div>
+
+      {/* Streak Tracker */}
+      <TaskStreakTracker />
 
       {/* Search and Filters */}
       <Card className="p-4">
