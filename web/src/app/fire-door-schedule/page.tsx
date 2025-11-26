@@ -70,6 +70,7 @@ export default function FireDoorSchedulePage() {
   const ACTIONS_WIDTH = 80; // revert to previous stable left baseline
   const headerRowRef = useRef<HTMLTableRowElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
+  const [frozenLeftOffsets, setFrozenLeftOffsets] = useState<Record<string, number>>({});
 
   useEffect(() => {
     loadData();
@@ -228,6 +229,40 @@ export default function FireDoorSchedulePage() {
       window.removeEventListener("load", measureHeaderHeight);
     };
   }, [activeTab, frozenColumns]);
+
+  // Measure header cell widths to compute dynamic left offsets for frozen columns
+  useEffect(() => {
+    function computeFrozenOffsets() {
+      try {
+        const offsets: Record<string, number> = {};
+        // Start from actions column width
+        const actionsCell = headerRowRef.current?.children?.[0] as HTMLTableCellElement | undefined;
+        let cumulative = (actionsCell?.offsetWidth ?? ACTIONS_WIDTH);
+        frozenColumns.forEach((field) => {
+          offsets[field] = cumulative;
+          const headerEl = headerRefs.current[field];
+          const width = headerEl?.offsetWidth ?? 150;
+          cumulative += width;
+        });
+        setFrozenLeftOffsets(offsets);
+      } catch (e) {
+        // Fallback silently
+        const fallback: Record<string, number> = {};
+        frozenColumns.forEach((field, idx) => {
+          fallback[field] = ACTIONS_WIDTH + idx * 150;
+        });
+        setFrozenLeftOffsets(fallback);
+      }
+    }
+    const id = requestAnimationFrame(computeFrozenOffsets);
+    window.addEventListener("resize", computeFrozenOffsets);
+    window.addEventListener("load", computeFrozenOffsets);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener("resize", computeFrozenOffsets);
+      window.removeEventListener("load", computeFrozenOffsets);
+    };
+  }, [activeTab, frozenColumns, projects]);
 
   // Apply search + tab filters + column filters
   const filteredProjects = projects
@@ -1568,7 +1603,7 @@ export default function FireDoorSchedulePage() {
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
                       const isFrozen = frozenColumns.includes(field);
                       const frozenIndex = frozenColumns.indexOf(field);
-                      const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenIndex * 150) : undefined;
+                      const leftOffset = isFrozen ? frozenLeftOffsets[field] : undefined;
                       const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                       return (
                       <th
@@ -1632,8 +1667,8 @@ export default function FireDoorSchedulePage() {
                       return (
                         <th
                           key={field}
-                          className={`px-4 py-2 sticky ${isFrozen ? 'z-[150] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)]' : 'z-30 bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
-                          style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, top: `${headerHeight}px` } : { top: `${headerHeight}px` }}
+                            className={`px-4 py-2 sticky ${isFrozen ? 'z-[150] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)]' : 'z-30 bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                              style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, top: `${headerHeight}px` } : { top: `${headerHeight}px` }}
                         >
                           <Input
                             placeholder="Filter..."
@@ -1677,7 +1712,7 @@ export default function FireDoorSchedulePage() {
                       {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
                         const isFrozen = frozenColumns.includes(field);
                         const frozenIndex = frozenColumns.indexOf(field);
-                        const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenIndex * 150) : undefined;
+                        const leftOffset = isFrozen ? frozenLeftOffsets[field] : undefined;
                         const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                         return (
                         <td
