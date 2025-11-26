@@ -68,6 +68,7 @@ export default function FireDoorSchedulePage() {
   const [showColumnFreezeModal, setShowColumnFreezeModal] = useState(false);
   const [leftOffsets, setLeftOffsets] = useState<Record<string, number>>({});
   const headerRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
+  const actionsHeaderRef = useRef<HTMLTableCellElement | null>(null);
 
   useEffect(() => {
     loadData();
@@ -209,15 +210,19 @@ export default function FireDoorSchedulePage() {
     }
   }
 
-  // Compute dynamic left offsets based on actual header positions
+  // Compute cumulative left offsets based on measured column widths
   useEffect(() => {
     function computeOffsets() {
       const offsets: Record<string, number> = {};
-      const frozen = frozenColumns.slice();
-      // Ensure order of frozen columns is respected
-      frozen.forEach((field) => {
+      // Start with the width of the actions column (sticky left-0)
+      const actionsWidth = actionsHeaderRef.current?.offsetWidth ?? 0;
+      let acc = actionsWidth; // cumulative left from left edge
+      const frozenInOrder = TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.filter(c => frozenColumns.includes(c));
+      frozenInOrder.forEach((field) => {
         const el = headerRefs.current[field];
-        if (el) offsets[field] = el.offsetLeft;
+        const w = el?.offsetWidth ?? 0;
+        offsets[field] = acc;
+        acc += w;
       });
       setLeftOffsets(offsets);
     }
@@ -1561,7 +1566,7 @@ export default function FireDoorSchedulePage() {
               <table className="min-w-full text-sm border-separate">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
-                    <th className="sticky left-0 px-4 py-3 text-left z-30 bg-white bg-clip-padding border-r border-slate-200">
+                    <th ref={actionsHeaderRef} className="sticky left-0 px-4 py-3 text-left z-30 bg-white bg-clip-padding border-r border-slate-200">
                       <span className="text-xs uppercase tracking-wider">Actions</span>
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
@@ -1622,14 +1627,14 @@ export default function FireDoorSchedulePage() {
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
                       const isFrozen = frozenColumns.includes(field);
+                      const leftOffset = leftOffsets[field];
                       const frozenIndex = frozenColumns.indexOf(field);
-                      const leftOffset = frozenIndex >= 0 ? 80 + (frozenIndex * 150) : 0;
                       const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                       return (
                         <th
                           key={field}
                           className={`px-4 py-2 ${isFrozen ? 'sticky z-30 bg-white bg-clip-padding' : ''} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
-                          style={isFrozen ? { left: `${leftOffset}px` } : undefined}
+                          style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
                         >
                           <Input
                             placeholder="Filter..."
@@ -1672,14 +1677,14 @@ export default function FireDoorSchedulePage() {
                       </td>
                       {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
                         const isFrozen = frozenColumns.includes(field);
+                        const leftOffset = leftOffsets[field];
                         const frozenIndex = frozenColumns.indexOf(field);
-                        const leftOffset = frozenIndex >= 0 ? 80 + (frozenIndex * 150) : 0;
                         const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                         return (
                         <td
                           key={field}
                           className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? 'sticky z-20 bg-white bg-clip-padding group-hover:bg-blue-50/40' : ''} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
-                          style={isFrozen ? { left: `${leftOffset}px` } : undefined}
+                          style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
                           <div onClick={(e) => e.stopPropagation()} className="relative z-10">
