@@ -1008,6 +1008,10 @@ export default function LeadModal({
       
       console.log('[saveOpportunityField] success:', result);
       console.log('[saveOpportunityField] returned opportunity:', (result as any)?.opportunity);
+      console.log('[saveOpportunityField] returned installation dates:', {
+        installationStartDate: (result as any)?.opportunity?.installationStartDate,
+        installationEndDate: (result as any)?.opportunity?.installationEndDate,
+      });
       
       // Update local state if successful
       if ((result as any)?.opportunity) {
