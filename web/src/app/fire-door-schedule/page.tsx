@@ -66,9 +66,8 @@ export default function FireDoorSchedulePage() {
   const [frozenColumns, setFrozenColumns] = useState<string[]>(['mjsNumber']); // Default freeze MJS column
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [showColumnFreezeModal, setShowColumnFreezeModal] = useState(false);
-  const [leftOffsets, setLeftOffsets] = useState<Record<string, number>>({});
   const headerRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
-  const actionsHeaderRef = useRef<HTMLTableCellElement | null>(null);
+  const ACTIONS_WIDTH = 80; // revert to previous stable left baseline
   const headerRowRef = useRef<HTMLTableRowElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
 
@@ -212,34 +211,7 @@ export default function FireDoorSchedulePage() {
     }
   }
 
-  // Compute cumulative left offsets based on measured column widths
-  useEffect(() => {
-    function computeOffsets() {
-      const offsets: Record<string, number> = {};
-      // Start with the width of the actions column (sticky left-0)
-      const actionsWidth = actionsHeaderRef.current?.offsetWidth ?? 0;
-      let acc = actionsWidth; // cumulative left from left edge
-      const frozenInOrder = TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.filter(c => frozenColumns.includes(c));
-      frozenInOrder.forEach((field) => {
-        const el = headerRefs.current[field];
-        const w = el?.offsetWidth ?? 0;
-        offsets[field] = acc;
-        acc += w;
-      });
-      setLeftOffsets(offsets);
-    }
-    // Compute after layout
-    const id = requestAnimationFrame(computeOffsets);
-    // Recompute on resize
-    window.addEventListener("resize", computeOffsets);
-    // Recompute after full page load (fonts/images can change widths)
-    window.addEventListener("load", computeOffsets);
-    return () => {
-      cancelAnimationFrame(id);
-      window.removeEventListener("resize", computeOffsets);
-      window.removeEventListener("load", computeOffsets);
-    };
-  }, [frozenColumns, activeTab, projects, showTable, columnFilters]);
+  // Removed dynamic left offsets; use stable constant-based offsets as before
 
   // Measure header row height to position filter row exactly beneath
   useEffect(() => {
@@ -1587,13 +1559,13 @@ export default function FireDoorSchedulePage() {
               <table className="min-w-full text-sm border-separate">
                 <thead>
                   <tr ref={headerRowRef} className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
-                    <th ref={actionsHeaderRef} className="sticky top-0 left-0 px-4 py-3 text-left z-40 bg-white bg-clip-padding border-r border-slate-200 shadow-sm">
+                    <th className="sticky top-0 left-0 px-4 py-3 text-left z-40 bg-white bg-clip-padding border-r border-slate-200 shadow-sm">
                       <span className="text-xs uppercase tracking-wider">Actions</span>
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
                       const isFrozen = frozenColumns.includes(field);
-                      const leftOffset = leftOffsets[field] ?? undefined;
                       const frozenIndex = frozenColumns.indexOf(field);
+                      const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenIndex * 150) : undefined;
                       const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                       return (
                       <th
@@ -1649,8 +1621,8 @@ export default function FireDoorSchedulePage() {
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
                       const isFrozen = frozenColumns.includes(field);
-                      const leftOffset = leftOffsets[field];
                       const frozenIndex = frozenColumns.indexOf(field);
+                      const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenIndex * 150) : undefined;
                       const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                       return (
                         <th
@@ -1699,8 +1671,8 @@ export default function FireDoorSchedulePage() {
                       </td>
                       {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
                         const isFrozen = frozenColumns.includes(field);
-                        const leftOffset = leftOffsets[field];
                         const frozenIndex = frozenColumns.indexOf(field);
+                        const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenIndex * 150) : undefined;
                         const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                         return (
                         <td
