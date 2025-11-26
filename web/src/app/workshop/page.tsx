@@ -169,6 +169,8 @@ type Project = {
   wonAt?: string | null;
   startDate?: string | null;
   deliveryDate?: string | null;
+  installationStartDate?: string | null;
+  installationEndDate?: string | null;
   weeks: number;
   processPlans: Plan[];
   processAssignments?: ProcessAssignment[]; // New process assignments
@@ -1251,135 +1253,171 @@ export default function WorkshopPage() {
                     projectRows[rowIndex].push(proj);
                   });
                   
-                  return projectRows.map((row, rowIdx) => (
-                    <div key={rowIdx} style={{ position: 'absolute', top: `${rowIdx * 28}px`, left: 0, right: 0, height: '24px' }}>
-                      {row.map(proj => {
-                        const projStart = new Date(proj.startDate!);
-                        const projEnd = new Date(proj.deliveryDate!);
-                        const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-                        
-                        // Calculate visible start and end within the month
-                        const visibleStart = projStart < monthStart ? monthStart : projStart;
-                        const visibleEnd = projEnd > monthEnd ? monthEnd : projEnd;
-                        
-                        // Calculate position
-                        const daysSinceMonthStart = Math.floor((visibleStart.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
-                        const duration = Math.floor((visibleEnd.getTime() - visibleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                        
-                        const startCol = firstDayOffset + daysSinceMonthStart;
-                        const startRow = Math.floor(startCol / 7);
-                        const startDayOfWeek = startCol % 7;
-                        
-                        // Handle multi-week projects by splitting into segments
-                        const segments: Array<{row: number, col: number, span: number}> = [];
-                        let remainingDays = duration;
-                        let currentRow = startRow;
-                        let currentCol = startDayOfWeek;
-                        
-                        while (remainingDays > 0) {
-                          const daysToEndOfWeek = 7 - currentCol;
-                          const segmentDays = Math.min(remainingDays, daysToEndOfWeek);
-                          segments.push({ row: currentRow, col: currentCol, span: segmentDays });
-                          remainingDays -= segmentDays;
-                          currentRow++;
-                          currentCol = 0;
-                        }
-                        
-                        const progress = getProjectProgress(proj);
-                        const projectColor = getProjectColor(proj, users);
-                        
-                        return segments.map((segment, segIdx) => {
-                          // Get assigned users from process assignments
-                          const assignedUsers = (proj.processAssignments || [])
-                            .filter(pa => pa.assignedUser)
-                            .map(pa => pa.assignedUser!.name || pa.assignedUser!.email.split('@')[0])
-                            .filter((name, idx, arr) => arr.indexOf(name) === idx); // Unique names
-                          
-                          const usersSummary = assignedUsers.length > 0 
-                            ? ` | Assigned: ${assignedUsers.join(', ')}`
-                            : '';
-                          
-                          // Create background with project color and progress indicator
-                          const background = projectColor.startsWith('linear-gradient')
-                            ? projectColor // Use gradient as-is for multi-user projects
-                            : `linear-gradient(90deg, #22c55e ${progress}%, ${projectColor} ${progress}%)`;
-                          
-                          // Material status indicators
-                          const timberStatus = getMaterialStatus(proj.timberOrderedAt, proj.timberReceivedAt, proj.timberNotApplicable);
-                          const glassStatus = getMaterialStatus(proj.glassOrderedAt, proj.glassReceivedAt, proj.glassNotApplicable);
-                          const ironmongeryStatus = getMaterialStatus(proj.ironmongeryOrderedAt, proj.ironmongeryReceivedAt, proj.ironmongeryNotApplicable);
-                          const paintStatus = getMaterialStatus(proj.paintOrderedAt, proj.paintReceivedAt, proj.paintNotApplicable);
-                          
-                          return (
-                            <div
-                              key={`${proj.id}-${segIdx}`}
-                              className="absolute rounded text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto flex items-stretch gap-1"
-                              style={{
-                                top: `${segment.row * 128}px`,
-                                left: `${(segment.col / 7) * 100}%`,
-                                width: `${(segment.span / 7) * 100}%`,
-                              }}
-                              draggable
-                              onDragStart={() => handleDragStart(proj.id)}
-                              onClick={() => setShowProjectDetails(proj.id)}
-                              title={`${proj.name} (${progress}% complete)${usersSummary}`}
-                            >
-                              {/* Traffic lights for materials - only show on first segment */}
-                              {segIdx === 0 && (
-                                <div className="flex gap-0.5 shrink-0 items-center pl-1 pr-0.5 py-1 bg-white rounded-l">
-                                  <div className="flex flex-col items-center">
-                                    <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">T</div>
-                                    <div 
-                                      className="w-2 h-2 rounded-full" 
-                                      style={{ backgroundColor: getMaterialColor(timberStatus) }}
-                                      title="Timber"
-                                    />
-                                  </div>
-                                  <div className="flex flex-col items-center">
-                                    <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">G</div>
-                                    <div 
-                                      className="w-2 h-2 rounded-full" 
-                                      style={{ backgroundColor: getMaterialColor(glassStatus) }}
-                                      title="Glass"
-                                    />
-                                  </div>
-                                  <div className="flex flex-col items-center">
-                                    <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">I</div>
-                                    <div 
-                                      className="w-2 h-2 rounded-full" 
-                                      style={{ backgroundColor: getMaterialColor(ironmongeryStatus) }}
-                                      title="Ironmongery"
-                                    />
-                                  </div>
-                                  <div className="flex flex-col items-center">
-                                    <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">P</div>
-                                    <div 
-                                      className="w-2 h-2 rounded-full" 
-                                      style={{ backgroundColor: getMaterialColor(paintStatus) }}
-                                      title="Paint"
-                                    />
+                  return (
+                    <>
+                      {projectRows.map((row, rowIdx) => (
+                        <div key={`mfg-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128}px`, left: 0, right: 0, height: '24px' }}>
+                          {row.map(proj => {
+                            const projStart = new Date(proj.startDate!);
+                            const projEnd = new Date(proj.deliveryDate!);
+                            const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+
+                            const visibleStart = projStart < monthStart ? monthStart : projStart;
+                            const visibleEnd = projEnd > monthEnd ? monthEnd : projEnd;
+
+                            const daysSinceMonthStart = Math.floor((visibleStart.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
+                            const duration = Math.floor((visibleEnd.getTime() - visibleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+                            const startCol = firstDayOffset + daysSinceMonthStart;
+                            const startRow = Math.floor(startCol / 7);
+                            const startDayOfWeek = startCol % 7;
+
+                            const segments: Array<{row: number, col: number, span: number}> = [];
+                            let remainingDays = duration;
+                            let currentRow = startRow;
+                            let currentCol = startDayOfWeek;
+
+                            while (remainingDays > 0) {
+                              const daysToEndOfWeek = 7 - currentCol;
+                              const segmentDays = Math.min(remainingDays, daysToEndOfWeek);
+                              segments.push({ row: currentRow, col: currentCol, span: segmentDays });
+                              remainingDays -= segmentDays;
+                              currentRow++;
+                              currentCol = 0;
+                            }
+
+                            const progress = getProjectProgress(proj);
+                            const projectColor = getProjectColor(proj, users);
+
+                            return segments.map((segment, segIdx) => {
+                              const assignedUsers = (proj.processAssignments || [])
+                                .filter(pa => pa.assignedUser)
+                                .map(pa => pa.assignedUser!.name || pa.assignedUser!.email.split('@')[0])
+                                .filter((name, idx, arr) => arr.indexOf(name) === idx);
+
+                              const usersSummary = assignedUsers.length > 0 
+                                ? ` | Assigned: ${assignedUsers.join(', ')}`
+                                : '';
+
+                              const background = projectColor.startsWith('linear-gradient')
+                                ? projectColor
+                                : `linear-gradient(90deg, #22c55e ${progress}%, ${projectColor} ${progress}%)`;
+
+                              const timberStatus = getMaterialStatus(proj.timberOrderedAt, proj.timberReceivedAt, proj.timberNotApplicable);
+                              const glassStatus = getMaterialStatus(proj.glassOrderedAt, proj.glassReceivedAt, proj.glassNotApplicable);
+                              const ironmongeryStatus = getMaterialStatus(proj.ironmongeryOrderedAt, proj.ironmongeryReceivedAt, proj.ironmongeryNotApplicable);
+                              const paintStatus = getMaterialStatus(proj.paintOrderedAt, proj.paintReceivedAt, proj.paintNotApplicable);
+
+                              return (
+                                <div
+                                  key={`${proj.id}-mfg-${segIdx}`}
+                                  className="absolute rounded text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto flex items-stretch gap-1"
+                                  style={{
+                                    top: `${segment.row * 128}px`,
+                                    left: `${(segment.col / 7) * 100}%`,
+                                    width: `${(segment.span / 7) * 100}%`,
+                                  }}
+                                  draggable
+                                  onDragStart={() => handleDragStart(proj.id)}
+                                  onClick={() => setShowProjectDetails(proj.id)}
+                                  title={`${proj.name} (${progress}% complete)${usersSummary}`}
+                                >
+                                  {segIdx === 0 && (
+                                    <div className="flex gap-0.5 shrink-0 items-center pl-1 pr-0.5 py-1 bg-white rounded-l">
+                                      <div className="flex flex-col items-center">
+                                        <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">T</div>
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getMaterialColor(timberStatus) }} title="Timber" />
+                                      </div>
+                                      <div className="flex flex-col items-center">
+                                        <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">G</div>
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getMaterialColor(glassStatus) }} title="Glass" />
+                                      </div>
+                                      <div className="flex flex-col items-center">
+                                        <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">I</div>
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getMaterialColor(ironmongeryStatus) }} title="Ironmongery" />
+                                      </div>
+                                      <div className="flex flex-col items-center">
+                                        <div className="text-[8px] font-bold leading-none mb-0.5 text-gray-700">P</div>
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getMaterialColor(paintStatus) }} title="Paint" />
+                                      </div>
+                                    </div>
+                                  )}
+                                  <div className={`flex items-center gap-1 px-2 py-1 flex-1 ${segIdx === 0 ? 'rounded-r' : 'rounded'}`} style={{ background }}>
+                                    <div className="truncate flex-1">{proj.name}</div>
+                                    {assignedUsers.length > 0 && (
+                                      <div className="text-[10px] opacity-90 truncate shrink-0">
+                                        👤 {assignedUsers.slice(0, 2).join(', ')}
+                                        {assignedUsers.length > 2 && ` +${assignedUsers.length - 2}`}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
-                              )}
-                              {/* Content area with gradient background */}
+                              );
+                            });
+                          })}
+                        </div>
+                      ))}
+
+                      {/* Installation overlays */}
+                      {projectRows.map((row, rowIdx) => (
+                        <div key={`install-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128 + 24}px`, left: 0, right: 0, height: '20px' }}>
+                          {row.map(proj => {
+                            if (!proj.installationStartDate || !proj.installationEndDate) return null;
+                            const instStart = new Date(proj.installationStartDate);
+                            const instEnd = new Date(proj.installationEndDate);
+                            const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+
+                            if (instEnd < monthStart || instStart > monthEnd) return null;
+
+                            const visibleStart = instStart < monthStart ? monthStart : instStart;
+                            const visibleEnd = instEnd > monthEnd ? monthEnd : instEnd;
+
+                            const daysSinceMonthStart = Math.floor((visibleStart.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24));
+                            const duration = Math.floor((visibleEnd.getTime() - visibleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+                            const startCol = firstDayOffset + daysSinceMonthStart;
+                            const startRow = Math.floor(startCol / 7);
+                            const startDayOfWeek = startCol % 7;
+
+                            const segments: Array<{row: number, col: number, span: number}> = [];
+                            let remainingDays = duration;
+                            let currentRow = startRow;
+                            let currentCol = startDayOfWeek;
+
+                            while (remainingDays > 0) {
+                              const daysToEndOfWeek = 7 - currentCol;
+                              const segmentDays = Math.min(remainingDays, daysToEndOfWeek);
+                              segments.push({ row: currentRow, col: currentCol, span: segmentDays });
+                              remainingDays -= segmentDays;
+                              currentRow++;
+                              currentCol = 0;
+                            }
+
+                            return segments.map((segment, segIdx) => (
                               <div
-                                className={`flex items-center gap-1 px-2 py-1 flex-1 ${segIdx === 0 ? 'rounded-r' : 'rounded'}`}
-                                style={{ background }}
+                                key={`${proj.id}-inst-${segIdx}`}
+                                className="absolute rounded text-[10px] font-medium text-white pointer-events-auto"
+                                style={{
+                                  top: `${segment.row * 128}px`,
+                                  left: `${(segment.col / 7) * 100}%`,
+                                  width: `${(segment.span / 7) * 100}%`,
+                                  background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                                  border: '2px dashed rgba(255,255,255,0.7)'
+                                }}
+                                onClick={() => setShowProjectDetails(proj.id)}
+                                title={`${proj.name} – Installation`}
                               >
-                                <div className="truncate flex-1">{proj.name}</div>
-                                {assignedUsers.length > 0 && (
-                                  <div className="text-[10px] opacity-90 truncate shrink-0">
-                                    👤 {assignedUsers.slice(0, 2).join(', ')}
-                                    {assignedUsers.length > 2 && ` +${assignedUsers.length - 2}`}
-                                  </div>
-                                )}
+                                <div className="flex items-center gap-1 px-2 py-0.5">
+                                  <span>🔧</span>
+                                  <span className="truncate">Install</span>
+                                </div>
                               </div>
-                            </div>
-                          );
-                        });
-                      })}
-                    </div>
-                  ));
+                            ));
+                          })}
+                        </div>
+                      ))}
+                    </>
+                  );
                 })()}
               </div>
             </div>

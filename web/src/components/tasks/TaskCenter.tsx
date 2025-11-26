@@ -241,7 +241,7 @@ export function TaskCenter() {
   }, [tasks, activeTab]);
 
   const renderTaskCard = (task: Task) => {
-    const config = TASK_TYPE_CONFIG[task.taskType];
+    const config = TASK_TYPE_CONFIG[task.taskType] || TASK_TYPE_CONFIG.MANUAL;
     const Icon = config.icon;
     const isOverdue = task.dueAt && new Date(task.dueAt) < new Date() && task.status !== "DONE";
 
