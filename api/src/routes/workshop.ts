@@ -307,6 +307,8 @@ router.get("/schedule", async (req: any, res) => {
       wonAt: true, 
       startDate: true, 
       deliveryDate: true,
+      installationStartDate: true,
+      installationEndDate: true,
       leadId: true,
       createdAt: true,
       // Material tracking
@@ -427,6 +429,8 @@ router.get("/schedule", async (req: any, res) => {
     wonAt: proj.wonAt,
     startDate: proj.startDate,
     deliveryDate: proj.deliveryDate,
+    installationStartDate: proj.installationStartDate,
+    installationEndDate: proj.installationEndDate,
     // Expose material tracking to the client (including N/A flags)
     timberOrderedAt: proj.timberOrderedAt,
     timberExpectedAt: proj.timberExpectedAt,

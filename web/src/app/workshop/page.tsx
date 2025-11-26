@@ -1255,7 +1255,8 @@ export default function WorkshopPage() {
                   
                   return (
                     <>
-                      {projectRows.map((row, rowIdx) => (
+                      {/* Manufacturing overlays */}
+                      {(timelineViewFilter === 'both' || timelineViewFilter === 'manufacturing') && projectRows.map((row, rowIdx) => (
                         <div key={`mfg-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128}px`, left: 0, right: 0, height: '24px' }}>
                           {row.map(proj => {
                             const projStart = new Date(proj.startDate!);
@@ -1359,7 +1360,7 @@ export default function WorkshopPage() {
                       ))}
 
                       {/* Installation overlays */}
-                      {projectRows.map((row, rowIdx) => (
+                      {(timelineViewFilter === 'both' || timelineViewFilter === 'installation') && projectRows.map((row, rowIdx) => (
                         <div key={`install-${rowIdx}`} style={{ position: 'absolute', top: `${rowIdx * 128 + 24}px`, left: 0, right: 0, height: '20px' }}>
                           {row.map(proj => {
                             if (!proj.installationStartDate || !proj.installationEndDate) return null;
