@@ -28,6 +28,7 @@ import { FormTemplatesLibrary } from "./FormTemplatesLibrary";
 import { CalendarIntegration } from "./CalendarIntegration";
 import { TaskCelebration } from "./TaskCelebration";
 import { TaskStreakTracker } from "./TaskStreakTracker";
+import { TaskModal } from "./TaskModal";
 
 type TaskType = "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
 type TaskStatus = "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
@@ -123,6 +124,8 @@ export function TaskCenter() {
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationTask, setCelebrationTask] = useState<Task | null>(null);
   const [celebrationStats, setCelebrationStats] = useState({ streak: 0, total: 0, points: 10 });
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const loadTasks = async () => {
     if (!tenantId) return;
@@ -166,6 +169,11 @@ export function TaskCenter() {
 
   const handleSearch = () => {
     loadTasks();
+  };
+
+  const handleNewTask = () => {
+    setSelectedTask(null);
+    setShowTaskModal(true);
   };
 
   const handleCompleteTask = async (task: Task) => {
@@ -327,7 +335,7 @@ export function TaskCenter() {
           <p className="text-gray-600 mt-1">Manage all your tasks, communications, and forms in one place</p>
         </div>
         
-        <Button>
+        <Button onClick={handleNewTask}>
           <Plus className="h-4 w-4 mr-2" />
           New Task
         </Button>
@@ -439,6 +447,21 @@ export function TaskCenter() {
           )}
         </div>
       </Tabs>
+      {/* Task Modal */}
+      <TaskModal
+        open={showTaskModal}
+        onClose={() => {
+          setShowTaskModal(false);
+          setSelectedTask(null);
+        }}
+        task={selectedTask}
+        tenantId={tenantId}
+        userId={userId}
+        onChanged={() => {
+          loadTasks();
+          setShowTaskModal(false);
+        }}
+      />
     </div>
   );
 }
