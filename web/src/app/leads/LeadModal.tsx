@@ -1007,10 +1007,35 @@ export default function LeadModal({
       });
       
       console.log('[saveOpportunityField] success:', result);
+      console.log('[saveOpportunityField] returned opportunity:', (result as any)?.opportunity);
       
       // Update local state if successful
       if ((result as any)?.opportunity) {
-        setOpportunityId((result as any).opportunity.id);
+        const opp = (result as any).opportunity;
+        setOpportunityId(opp.id);
+        
+        // Sync returned date values back to state
+        const formatDateForInput = (dateStr: any) => {
+          if (!dateStr) return "";
+          try {
+            return new Date(dateStr).toISOString().split('T')[0];
+          } catch {
+            return "";
+          }
+        };
+        
+        if (field === 'installationStartDate' && opp.installationStartDate) {
+          setProjectInstallationStartDate(formatDateForInput(opp.installationStartDate));
+        }
+        if (field === 'installationEndDate' && opp.installationEndDate) {
+          setProjectInstallationEndDate(formatDateForInput(opp.installationEndDate));
+        }
+        if (field === 'startDate' && opp.startDate) {
+          setProjectStartDate(formatDateForInput(opp.startDate));
+        }
+        if (field === 'deliveryDate' && opp.deliveryDate) {
+          setProjectDeliveryDate(formatDateForInput(opp.deliveryDate));
+        }
       }
     } catch (e: any) {
       console.error(`[saveOpportunityField] Failed to save ${field}:`, e);
