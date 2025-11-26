@@ -28,6 +28,7 @@ import { FormTemplatesLibrary } from "./FormTemplatesLibrary";
 import { CalendarIntegration } from "./CalendarIntegration";
 import { TaskCelebration } from "./TaskCelebration";
 import { TaskStreakTracker } from "./TaskStreakTracker";
+import { ScheduledTasksTab } from "./ScheduledTasksTab";
 import { TaskModal } from "./TaskModal";
 
 type TaskType = "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
@@ -114,7 +115,7 @@ export function TaskCenter() {
   const tenantId = ids?.tenantId || "";
   const userId = ids?.userId || "";
 
-  const [activeTab, setActiveTab] = useState<"all" | TaskType | "completed" | "analytics" | "templates" | "calendar">("all");
+  const [activeTab, setActiveTab] = useState<"all" | TaskType | "completed" | "analytics" | "templates" | "calendar" | "scheduled-templates">("all");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -314,7 +315,7 @@ export function TaskCenter() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
       {/* Celebration Modal */}
       {showCelebration && celebrationTask && (
         <TaskCelebration
@@ -328,54 +329,57 @@ export function TaskCenter() {
         />
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Task Center</h1>
-          <p className="text-gray-600 mt-1">Manage all your tasks, communications, and forms in one place</p>
-        </div>
-        
-        <Button onClick={handleNewTask}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Task
-        </Button>
-      </div>
-
-      {/* Streak Tracker */}
-      <TaskStreakTracker />
-
-      {/* Search and Filters */}
-      <Card className="p-4">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="pl-10"
-            />
+      {/* Sticky Header Section */}
+      <div className="flex-shrink-0 space-y-4 pb-4 bg-white">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Task Center</h1>
+            <p className="text-gray-600 mt-1">Manage all your tasks, communications, and forms in one place</p>
           </div>
           
-          <Button variant="outline" onClick={handleSearch}>
-            <Search className="h-4 w-4 mr-2" />
-            Search
-          </Button>
-          
-          <Button
-            variant={showOnlyMine ? "default" : "outline"}
-            onClick={() => setShowOnlyMine(!showOnlyMine)}
-          >
-            <Filter className="h-4 w-4 mr-2" />
-            {showOnlyMine ? "My Tasks" : "All Tasks"}
+          <Button onClick={handleNewTask} size="lg" className="shadow-lg">
+            <Plus className="h-5 w-5 mr-2" />
+            New Task
           </Button>
         </div>
-      </Card>
+
+        {/* Streak Tracker */}
+        <TaskStreakTracker />
+
+        {/* Search and Filters */}
+        <Card className="p-4">
+          <div className="flex items-center gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="pl-10"
+              />
+            </div>
+            
+            <Button variant="outline" onClick={handleSearch}>
+              <Search className="h-4 w-4 mr-2" />
+              Search
+            </Button>
+            
+            <Button
+              variant={showOnlyMine ? "default" : "outline"}
+              onClick={() => setShowOnlyMine(!showOnlyMine)}
+            >
+              <Filter className="h-4 w-4 mr-2" />
+              {showOnlyMine ? "My Tasks" : "All Tasks"}
+            </Button>
+          </div>
+        </Card>
+      </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-        <TabsList className="w-full justify-start overflow-x-auto">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col overflow-hidden">
+        <TabsList className="w-full justify-start overflow-x-auto flex-shrink-0">
           <TabsTrigger value="all" className="flex items-center gap-2">
             All
             {taskCounts.all > 0 && (
@@ -417,15 +421,22 @@ export function TaskCenter() {
             <Link2 className="h-4 w-4" />
             Calendar
           </TabsTrigger>
-        </TabsList>
+          
+          <TabsTrigger value="scheduled-templates" className="flex items-center gap-2">
+             <Calendar className="h-4 w-4" />
+             Scheduled
+           </TabsTrigger>
+         </TabsList>
 
-        <div className="mt-6">
+        <div className="flex-1 overflow-y-auto mt-6 pr-2">
           {activeTab === "analytics" ? (
             <TaskAnalyticsDashboard />
           ) : activeTab === "templates" ? (
             <FormTemplatesLibrary />
           ) : activeTab === "calendar" ? (
             <CalendarIntegration />
+          ) : activeTab === "scheduled-templates" ? (
+            <ScheduledTasksTab />
           ) : loading ? (
             <div className="text-center py-12 text-gray-500">Loading tasks...</div>
           ) : filteredTasks.length === 0 ? (
@@ -441,7 +452,7 @@ export function TaskCenter() {
               </p>
             </Card>
           ) : (
-            <div className="grid gap-4">
+            <div className="grid gap-4 pb-6">
               {filteredTasks.map(renderTaskCard)}
             </div>
           )}

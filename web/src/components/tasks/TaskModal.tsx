@@ -11,6 +11,7 @@ type Task = {
   description?: string | null;
   status: "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+   taskType?: "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
   relatedType: "LEAD" | "PROJECT" | "QUOTE" | "EMAIL" | "QUESTIONNAIRE" | "WORKSHOP" | "OTHER";
   relatedId?: string | null;
   dueAt?: string | null;
@@ -42,6 +43,7 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
         description: "",
         status: "OPEN",
         priority: "MEDIUM",
+         taskType: "MANUAL",
         relatedType: "OTHER",
         relatedId: null,
         dueAt: null,
@@ -81,6 +83,7 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
         description: form.description || "",
         status: form.status,
         priority: form.priority,
+        taskType: form.taskType || "MANUAL",
         relatedType: form.relatedType,
         relatedId: form.relatedId || undefined,
         dueAt: form.dueAt || undefined,
@@ -246,8 +249,28 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
             </Button>
           </header>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-sm">
+         <div className="grid gap-4 md:grid-cols-3">
+           <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-sm">
+                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Task Type</div>
+                 <select
+                   value={form.taskType || "MANUAL"}
+                   onChange={(e) => {
+                     const newType = e.target.value as Task["taskType"];
+                     setForm(prev => prev ? {...prev, taskType: newType} : prev);
+                     !isNewTask && update({ taskType: newType });
+                   }}
+                   className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                 >
+                   <option value="MANUAL">Manual Task</option>
+                   <option value="COMMUNICATION">Communication</option>
+                   <option value="FOLLOW_UP">Follow-up</option>
+                   <option value="SCHEDULED">Scheduled</option>
+                   <option value="FORM">Form</option>
+                   <option value="CHECKLIST">Checklist</option>
+                 </select>
+             </div>
+       
+             <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-sm">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</div>
               <select
                 value={form.status}
@@ -284,8 +307,7 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                 ))}
               </select>
             </div>
-
-            <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-sm md:col-span-2">
+           <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-sm md:col-span-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Due date</div>
               <input
                 type="datetime-local"
@@ -298,7 +320,7 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
               />
             </div>
 
-            <div className="md:col-span-2">
+           <div className="md:col-span-3">
               <div className="rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes</div>
                 <textarea
