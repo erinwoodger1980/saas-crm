@@ -677,6 +677,8 @@ router.get("/by-lead/:leadId", async (req: any, res: any) => {
       valueGBP: true,
       startDate: true,
       deliveryDate: true,
+      installationStartDate: true,
+      installationEndDate: true,
       // Material tracking
       timberOrderedAt: true,
       timberExpectedAt: true,
@@ -721,6 +723,8 @@ router.get("/:id", async (req: any, res: any) => {
       valueGBP: true,
       startDate: true,
       deliveryDate: true,
+      installationStartDate: true,
+      installationEndDate: true,
       // Material tracking
       timberOrderedAt: true,
       timberExpectedAt: true,

@@ -229,9 +229,30 @@ router.get("/", async (req, res) => {
   const [items, total] = await Promise.all([
     prisma.task.findMany({
       where,
-      include: { assignees: true },
+      // Explicitly select core columns known to exist to avoid P2022 when
+      // prisma client expects columns that older DBs may not yet have.
+      select: {
+        id: true,
+        tenantId: true,
+        title: true,
+        description: true,
+        relatedType: true,
+        relatedId: true,
+        status: true,
+        priority: true,
+        dueAt: true,
+        startedAt: true,
+        completedAt: true,
+        autocreated: true,
+        meta: true,
+        createdAt: true,
+        updatedAt: true,
+        // Assignees via relation
+        assignees: {
+          select: { userId: true, role: true },
+        },
+      },
       orderBy: [
-        // overdue first, then by due date, then newest created
         { dueAt: "asc" },
         { createdAt: "desc" },
       ],
