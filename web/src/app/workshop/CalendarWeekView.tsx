@@ -327,9 +327,10 @@ export default function CalendarWeekView({
             className="absolute inset-0 pointer-events-none"
             style={{ paddingTop: "3rem", zIndex: 10 }}
           >
+            {/* Manufacturing bars */}
             {projectRows.map((row, rowIdx) => (
               <div
-                key={rowIdx}
+                key={`mfg-${rowIdx}`}
                 style={{
                   position: "absolute",
                   top: `${rowIdx * 32 + 16}px`,
@@ -464,6 +465,66 @@ export default function CalendarWeekView({
                             {assignedUsers.length > 2 && ` +${assignedUsers.length - 2}`}
                           </div>
                         )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+
+            {/* Installation bars - render below manufacturing bars */}
+            {projectRows.map((row, rowIdx) => (
+              <div
+                key={`install-${rowIdx}`}
+                style={{
+                  position: "absolute",
+                  top: `${rowIdx * 32 + 16}px`,
+                  left: 0,
+                  right: 0,
+                  height: "28px",
+                }}
+              >
+                {row.map((proj) => {
+                  // Only render if project has installation dates
+                  if (!proj.installationStartDate || !proj.installationEndDate) return null;
+
+                  const installStart = new Date(proj.installationStartDate);
+                  const installEnd = new Date(proj.installationEndDate);
+
+                  // Only show if installation overlaps with current week
+                  if (installEnd < weekStart || installStart > weekEnd) return null;
+
+                  // Calculate visible start and end within the week
+                  const visibleStart = installStart < weekStart ? weekStart : installStart;
+                  const visibleEnd = installEnd > weekEnd ? weekEnd : installEnd;
+
+                  // Calculate position
+                  const daysSinceWeekStart = Math.floor(
+                    (visibleStart.getTime() - weekStart.getTime()) / (1000 * 60 * 60 * 24)
+                  );
+                  const duration =
+                    Math.floor(
+                      (visibleEnd.getTime() - visibleStart.getTime()) / (1000 * 60 * 60 * 24)
+                    ) + 1;
+
+                  const startCol = daysSinceWeekStart;
+
+                  return (
+                    <div
+                      key={`install-${proj.id}`}
+                      className="absolute rounded text-xs font-medium text-white cursor-pointer hover:opacity-90 pointer-events-auto"
+                      style={{
+                        left: `${(startCol / 7) * 100}%`,
+                        width: `${(duration / 7) * 100}%`,
+                        background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                        border: '2px dashed rgba(255,255,255,0.5)',
+                      }}
+                      onClick={() => onProjectClick?.(proj.id)}
+                      title={`${proj.name} - Installation`}
+                    >
+                      <div className="flex items-center gap-1 px-2 py-1">
+                        <span className="text-[10px]">🔧</span>
+                        <div className="truncate flex-1">{proj.name} - Install</div>
                       </div>
                     </div>
                   );

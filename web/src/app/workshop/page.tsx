@@ -1701,12 +1701,20 @@ export default function WorkshopPage() {
                     <span className="ml-2 font-semibold">{project.totalProjectHours || 0}h</span>
                   </div>
                   <div>
-                    <span className="text-sm text-gray-600">Start:</span>
+                    <span className="text-sm text-gray-600">Mfg Start:</span>
                     <span className="ml-2">{project.startDate ? new Date(project.startDate).toLocaleDateString() : 'Not set'}</span>
                   </div>
                   <div>
-                    <span className="text-sm text-gray-600">Delivery:</span>
+                    <span className="text-sm text-gray-600">Completion:</span>
                     <span className="ml-2">{project.deliveryDate ? new Date(project.deliveryDate).toLocaleDateString() : 'Not set'}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-600">Install Start:</span>
+                    <span className="ml-2">{project.installationStartDate ? new Date(project.installationStartDate).toLocaleDateString() : 'Not set'}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-600">Install End:</span>
+                    <span className="ml-2">{project.installationEndDate ? new Date(project.installationEndDate).toLocaleDateString() : 'Not set'}</span>
                   </div>
                 </div>
                 

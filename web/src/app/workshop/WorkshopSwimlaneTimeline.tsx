@@ -316,6 +316,21 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                       )}
                     </div>
                   )}
+
+                  {/* Installation timeline indicator */}
+                  {(proj.installationStartDate || proj.installationEndDate) && (
+                    <div className="mt-1 text-[10px] text-purple-600 font-medium flex items-center gap-1">
+                      <span>🔧</span>
+                      <span>Install:</span>
+                      {proj.installationStartDate && (
+                        <span>{new Date(proj.installationStartDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                      )}
+                      <span>→</span>
+                      {proj.installationEndDate && (
+                        <span>{new Date(proj.installationEndDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Week columns - render visual process bars */}
