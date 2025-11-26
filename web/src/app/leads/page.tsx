@@ -408,33 +408,60 @@ function LeadsPageContent() {
     const input = prompt("Enter lead name:");
     const contactName = input?.trim();
     if (!contactName) return;
+    
+    let leadCreated = false;
+    let leadId: string | null = null;
+    
     try {
       const lead = await apiFetch<any>("/leads", {
         method: "POST",
         headers: buildAuthHeaders(),
         json: { contactName, email: "", custom: { provider: "manual" } },
       });
+      
+      leadCreated = true;
+      leadId = lead?.id || null;
+      
       await refreshGrouped();
+      
       if (lead?.id) {
-        openLead({
-          id: lead.id,
-          contactName: lead.contactName ?? contactName,
-          email: lead.email ?? "",
-          status: (lead.status as LeadStatus) ?? "NEW_ENQUIRY",
-          custom: lead.custom ?? { provider: "manual" },
-          description:
-            (typeof lead.description === "string" && lead.description.trim() !== ""
-              ? lead.description.trim()
-              : typeof lead.custom?.description === "string"
-                ? lead.custom.description.trim()
-                : null) ?? null,
-        });
+        try {
+          openLead({
+            id: lead.id,
+            contactName: lead.contactName ?? contactName,
+            email: lead.email ?? "",
+            status: (lead.status as LeadStatus) ?? "NEW_ENQUIRY",
+            custom: lead.custom ?? { provider: "manual" },
+            description:
+              (typeof lead.description === "string" && lead.description.trim() !== ""
+                ? lead.description.trim()
+                : typeof lead.custom?.description === "string"
+                  ? lead.custom.description.trim()
+                  : null) ?? null,
+          });
+        } catch (openErr) {
+          console.error("Failed to open lead modal:", openErr);
+          // Lead was created, just couldn't open modal - show success anyway
+        }
       }
+      
       toast({
         title: "Lead created",
         description: `${lead?.contactName ?? contactName} added to your inbox.`,
       });
     } catch (e: any) {
+      console.error("Lead creation error:", e);
+      
+      // If lead was created but something else failed, still show success
+      if (leadCreated) {
+        toast({
+          title: "Lead created",
+          description: `${contactName} added to your inbox.`,
+        });
+        await refreshGrouped();
+        return;
+      }
+      
       const rawMessage = typeof e?.message === "string" ? e.message : "Please try again.";
       const cleaned = rawMessage.replace(/\sfor\shttps?:\/\/\S+/, "").trim();
       toast({

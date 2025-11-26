@@ -162,23 +162,24 @@ router.post("/", async (req, res) => {
 // GET /tasks – list with filters
 // ?status=OPEN&mine=true&unassigned=true&due=today|overdue|upcoming&relatedType=LEAD&relatedId=abc123&search=foo&includeDone=true
 router.get("/", async (req, res) => {
-  const tenantId = resolveTenantId(req);
-  if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+  try {
+    const tenantId = resolveTenantId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
 
-  const userId = resolveUserId(req);
-  const {
-    status,
-    mine,
-    due,
-    relatedType,
-    relatedId,
-    unassigned,
-    search,
-    includeDone = "false",
-    taskType,
-    take = "50",
-    skip = "0",
-  } = req.query as Record<string, string>;
+    const userId = resolveUserId(req);
+    const {
+      status,
+      mine,
+      due,
+      relatedType,
+      relatedId,
+      unassigned,
+      search,
+      includeDone = "false",
+      taskType,
+      take = "50",
+      skip = "0",
+    } = req.query as Record<string, string>;
 
   const where: any = { tenantId };
 
@@ -241,6 +242,10 @@ router.get("/", async (req, res) => {
   ]);
 
   res.json({ items, total });
+  } catch (e: any) {
+    console.error("[tasks.get] Error:", e);
+    res.status(500).json({ error: "internal_error", detail: e.message });
+  }
 });
 
 // PATCH /tasks/:id – update fields
