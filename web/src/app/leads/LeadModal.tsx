@@ -1000,24 +1000,17 @@ export default function LeadModal({
       const payload: any = {};
       payload[field] = value;
       
-      const response = await apiFetch(url, {
+      const result = await apiFetch(url, {
         method: "PATCH",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        headers: authHeaders,
+        json: payload,
       });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[saveOpportunityField] Server error:', response.status, errorText);
-        throw new Error(`Server returned ${response.status}: ${errorText}`);
-      }
-      
-      const result = await response.json();
       console.log('[saveOpportunityField] success:', result);
       
       // Update local state if successful
-      if (result.opportunity) {
-        setOpportunityId(result.opportunity.id);
+      if ((result as any)?.opportunity) {
+        setOpportunityId((result as any).opportunity.id);
       }
     } catch (e: any) {
       console.error(`[saveOpportunityField] Failed to save ${field}:`, e);
