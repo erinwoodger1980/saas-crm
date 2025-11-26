@@ -1556,7 +1556,7 @@ export default function FireDoorSchedulePage() {
         ) : showTable ? (
           <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg overflow-hidden">
             <div
-              className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]"
+              className="relative z-0 overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)]"
               style={{ ['--page-header-offset' as any]: `${headerHeight}px` } as React.CSSProperties}
             >
               <table className="min-w-full text-sm border-separate">
