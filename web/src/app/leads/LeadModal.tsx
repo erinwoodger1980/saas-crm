@@ -476,6 +476,8 @@ export default function LeadModal({
   // Project details state
   const [projectStartDate, setProjectStartDate] = useState<string>("");
   const [projectDeliveryDate, setProjectDeliveryDate] = useState<string>("");
+  const [projectInstallationStartDate, setProjectInstallationStartDate] = useState<string>("");
+  const [projectInstallationEndDate, setProjectInstallationEndDate] = useState<string>("");
   const [projectValueGBP, setProjectValueGBP] = useState<string>("");
   const [opportunityId, setOpportunityId] = useState<string | null>(null);
 
@@ -859,6 +861,8 @@ export default function LeadModal({
           });
           setProjectStartDate(formatDateForInput(opp.startDate) || "");
           setProjectDeliveryDate(formatDateForInput(opp.deliveryDate) || "");
+          setProjectInstallationStartDate(formatDateForInput(opp.installationStartDate) || "");
+          setProjectInstallationEndDate(formatDateForInput(opp.installationEndDate) || "");
           setProjectValueGBP(opp.valueGBP ? String(opp.valueGBP) : "");
         }
       } catch (err) {
@@ -2227,7 +2231,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
       extras.push({
         id: "__deliveryDate",
         key: "deliveryDate",
-        label: "Delivery Date",
+        label: "Completion Date",
         required: false,
         type: "date",
         options: [],
@@ -2235,6 +2239,34 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         showOnLead: true,
         visibleAfterOrder: true,
         sortOrder: Number.MAX_SAFE_INTEGER + 2,
+      });
+    }
+    if (!existingKeys.has("installationStartDate")) {
+      extras.push({
+        id: "__installationStartDate",
+        key: "installationStartDate",
+        label: "Installation Start Date",
+        required: false,
+        type: "date",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        visibleAfterOrder: true,
+        sortOrder: Number.MAX_SAFE_INTEGER + 3,
+      });
+    }
+    if (!existingKeys.has("installationEndDate")) {
+      extras.push({
+        id: "__installationEndDate",
+        key: "installationEndDate",
+        label: "Installation End Date",
+        required: false,
+        type: "date",
+        options: [],
+        askInQuestionnaire: false,
+        showOnLead: true,
+        visibleAfterOrder: true,
+        sortOrder: Number.MAX_SAFE_INTEGER + 4,
       });
     }
     return [...baseWorkspaceFields, ...extras];
@@ -3985,7 +4017,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </label>
                         <label className="block">
                           <span className="text-xs text-slate-600 font-medium mb-1 block">
-                            Delivery Date
+                            Completion Date
                           </span>
                           <input
                             type="date"
@@ -3995,6 +4027,41 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                             onBlur={() => {
                               if (projectDeliveryDate) {
                                 saveOpportunityField("deliveryDate", projectDeliveryDate);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">
+                            Installation Start Date
+                          </span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectInstallationStartDate}
+                            onChange={(e) => setProjectInstallationStartDate(e.target.value)}
+                            onBlur={() => {
+                              if (projectInstallationStartDate) {
+                                saveOpportunityField("installationStartDate", projectInstallationStartDate);
+                              }
+                            }}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs text-slate-600 font-medium mb-1 block">
+                            Installation End Date
+                          </span>
+                          <input
+                            type="date"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={projectInstallationEndDate}
+                            onChange={(e) => setProjectInstallationEndDate(e.target.value)}
+                            onBlur={() => {
+                              if (projectInstallationEndDate) {
+                                saveOpportunityField("installationEndDate", projectInstallationEndDate);
                               }
                             }}
                           />

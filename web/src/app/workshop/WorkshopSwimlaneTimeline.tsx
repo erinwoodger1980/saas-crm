@@ -172,19 +172,40 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                       </div>
                       {(proj.startDate || proj.deliveryDate) && (
                         <div className="text-[11px] text-slate-600 mt-0.5 font-medium">
-                          {proj.startDate
-                            ? new Date(proj.startDate).toLocaleDateString("en-GB", {
-                                day: "numeric",
-                                month: "short",
-                              })
-                            : "?"}
-                          <span className="text-slate-400 mx-1">→</span>
-                          {proj.deliveryDate
-                            ? new Date(proj.deliveryDate).toLocaleDateString("en-GB", {
-                                day: "numeric",
-                                month: "short",
-                              })
-                            : "?"}
+                          <div>
+                            <span className="text-[10px] text-slate-500">Mfg:</span>{" "}
+                            {proj.startDate
+                              ? new Date(proj.startDate).toLocaleDateString("en-GB", {
+                                  day: "numeric",
+                                  month: "short",
+                                })
+                              : "?"}
+                            <span className="text-slate-400 mx-1">→</span>
+                            {proj.deliveryDate
+                              ? new Date(proj.deliveryDate).toLocaleDateString("en-GB", {
+                                  day: "numeric",
+                                  month: "short",
+                                })
+                              : "?"}
+                          </div>
+                          {(proj.installationStartDate || proj.installationEndDate) && (
+                            <div className="mt-0.5">
+                              <span className="text-[10px] text-slate-500">Install:</span>{" "}
+                              {proj.installationStartDate
+                                ? new Date(proj.installationStartDate).toLocaleDateString("en-GB", {
+                                    day: "numeric",
+                                    month: "short",
+                                  })
+                                : "?"}
+                              <span className="text-slate-400 mx-1">→</span>
+                              {proj.installationEndDate
+                                ? new Date(proj.installationEndDate).toLocaleDateString("en-GB", {
+                                    day: "numeric",
+                                    month: "short",
+                                  })
+                                : "?"}
+                            </div>
+                          )}
                         </div>
                       )}
 

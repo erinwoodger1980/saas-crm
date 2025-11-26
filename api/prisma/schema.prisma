@@ -302,8 +302,10 @@ model Opportunity {
   leadId                   String                     @unique
   clientAccountId          String?                    // Link to customer account
   title                    String
-  startDate                DateTime?
-  deliveryDate             DateTime?
+  startDate                DateTime?  // Manufacturing start date
+  deliveryDate             DateTime?  // Completion date (was delivery date)
+  installationStartDate    DateTime?  // Installation start date
+  installationEndDate      DateTime?  // Installation end date
   valueGBP                 Decimal?
   stage                    OppStage                   @default(QUALIFY)
   wonAt                    DateTime?

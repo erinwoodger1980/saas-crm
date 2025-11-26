@@ -498,17 +498,36 @@ export default function CalendarWeekView({
                   <div className="flex-1">
                     <div className="font-medium">{proj.name}</div>
                     <div className="text-sm text-muted-foreground">
-                      {proj.startDate &&
-                        new Date(proj.startDate).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                        })}{" "}
-                      -{" "}
-                      {proj.deliveryDate &&
-                        new Date(proj.deliveryDate).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                        })}
+                      <div>
+                        <span className="text-xs text-slate-500">Manufacturing:</span>{" "}
+                        {proj.startDate &&
+                          new Date(proj.startDate).toLocaleDateString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                          })}{" "}
+                        -{" "}
+                        {proj.deliveryDate &&
+                          new Date(proj.deliveryDate).toLocaleDateString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                          })}
+                      </div>
+                      {(proj.installationStartDate || proj.installationEndDate) && (
+                        <div className="mt-1">
+                          <span className="text-xs text-slate-500">Installation:</span>{" "}
+                          {proj.installationStartDate &&
+                            new Date(proj.installationStartDate).toLocaleDateString("en-GB", {
+                              day: "numeric",
+                              month: "short",
+                            })}{" "}
+                          -{" "}
+                          {proj.installationEndDate &&
+                            new Date(proj.installationEndDate).toLocaleDateString("en-GB", {
+                              day: "numeric",
+                              month: "short",
+                            })}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">

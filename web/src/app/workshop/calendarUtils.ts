@@ -44,8 +44,10 @@ export type Project = {
   name: string;
   valueGBP?: string | number | null;
   wonAt?: string | null;
-  startDate?: string | null;
-  deliveryDate?: string | null;
+  startDate?: string | null;  // Manufacturing start date
+  deliveryDate?: string | null;  // Completion date
+  installationStartDate?: string | null;  // Installation start date
+  installationEndDate?: string | null;  // Installation end date
   weeks: number;
   totalProjectHours: number;
   expectedHours?: number | string | null;
