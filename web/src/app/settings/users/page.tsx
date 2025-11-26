@@ -44,8 +44,10 @@ export default function UsersSettingsPage() {
 
   async function loadProcesses() {
     try {
-      const data = await apiFetch<{ ok: boolean; processes: ProcessDef[] }>("/workshop/processes");
-      if (data?.ok) setProcesses(data.processes);
+      const data = await apiFetch<ProcessDef[]>("/workshop-processes");
+      if (Array.isArray(data)) {
+        setProcesses(data);
+      }
     } catch (e: any) {
       console.error("Failed to load processes:", e);
     }
