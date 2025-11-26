@@ -1,6 +1,31 @@
 -- Add missing enum type fields to Task table
 -- These fields were added to the schema but not migrated to the database
 
+-- Create enum types if they don't exist (idempotent)
+DO $$ BEGIN
+  CREATE TYPE "TaskType" AS ENUM ('MANUAL', 'COMMUNICATION', 'FOLLOW_UP', 'SCHEDULED', 'FORM', 'CHECKLIST');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "CommunicationType" AS ENUM ('EMAIL', 'PHONE', 'MEETING', 'SMS', 'OTHER');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "CommunicationDirection" AS ENUM ('INBOUND', 'OUTBOUND');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "RecurrencePattern" AS ENUM ('DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
 -- Add taskType with default MANUAL
 ALTER TABLE "Task" ADD COLUMN IF NOT EXISTS "taskType" "TaskType" DEFAULT 'MANUAL'::"TaskType";
 
