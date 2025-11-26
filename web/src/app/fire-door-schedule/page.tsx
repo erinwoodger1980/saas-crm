@@ -67,7 +67,7 @@ export default function FireDoorSchedulePage() {
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [showColumnFreezeModal, setShowColumnFreezeModal] = useState(false);
   const headerRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
-  const ACTIONS_WIDTH = 80; // revert to previous stable left baseline
+  const ACTIONS_WIDTH = 140; // widen actions column to fit button comfortably
   const headerRowRef = useRef<HTMLTableRowElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
 
@@ -1564,7 +1564,7 @@ export default function FireDoorSchedulePage() {
                 <thead>
                   <tr ref={headerRowRef} className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
                     {/* Sticky header cells at top of scroll container */}
-                    <th className="sticky top-0 left-0 px-4 py-3 text-left z-[200] bg-white bg-clip-padding border-r border-slate-200 w-[80px] min-w-[80px] max-w-[80px]">
+                    <th className="sticky top-0 left-0 px-4 py-3 text-left z-[200] bg-white bg-clip-padding border-r border-slate-200 w-[140px] min-w-[140px] max-w-[140px]">
                       <span className="text-xs uppercase tracking-wider">Actions</span>
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
@@ -1616,7 +1616,7 @@ export default function FireDoorSchedulePage() {
                   <tr className="bg-white border-b border-slate-200">
                     {/* Filter row sticks directly under header using combined offset */}
                     <th
-                      className="sticky top-[${headerHeight}px] left-0 px-4 py-2 z-[150] bg-white bg-clip-padding border-r border-slate-200 w-[80px] min-w-[80px] max-w-[80px]"
+                      className="sticky top-[${headerHeight}px] left-0 px-4 py-2 z-[150] bg-white bg-clip-padding border-r border-slate-200 w-[140px] min-w-[140px] max-w-[140px]"
                     >
                       <button
                         onClick={() => setColumnFilters({})}
@@ -1662,7 +1662,7 @@ export default function FireDoorSchedulePage() {
                       key={project.id}
                       className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100"
                     >
-                      <td className="sticky left-0 px-4 py-3 z-[160] bg-white bg-clip-padding border-r border-slate-200 shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] w-[80px] min-w-[80px] max-w-[80px]">
+                      <td className="sticky left-0 px-4 py-3 z-[160] bg-white bg-clip-padding border-r border-slate-200 shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] w-[140px] min-w-[140px] max-w-[140px]">
                         <Button
                           variant="outline"
                           size="sm"
