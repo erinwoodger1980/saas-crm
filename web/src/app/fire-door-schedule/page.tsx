@@ -1616,7 +1616,7 @@ export default function FireDoorSchedulePage() {
                   </tr>
                   {/* Filter Row */}
                   <tr className="bg-white border-b border-slate-200">
-                    <th className="sticky left-0 px-4 py-2 z-30 bg-white bg-clip-padding border-r border-slate-200">
+                    <th className="sticky top-12 left-0 px-4 py-2 z-30 bg-white bg-clip-padding border-r border-slate-200 shadow-sm">
                       <button
                         onClick={() => setColumnFilters({})}
                         className="text-xs text-blue-600 hover:text-blue-800 font-normal"
@@ -1633,7 +1633,7 @@ export default function FireDoorSchedulePage() {
                       return (
                         <th
                           key={field}
-                          className={`px-4 py-2 ${isFrozen ? 'sticky z-30 bg-white bg-clip-padding' : ''} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                          className={`px-4 py-2 sticky top-12 ${isFrozen ? 'z-30 bg-white bg-clip-padding' : 'z-20 bg-white/90 backdrop-blur-sm'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                           style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
                         >
                           <Input
