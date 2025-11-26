@@ -265,15 +265,15 @@ export default function CalendarWeekView({
       </Card>
 
       {/* Process Capacity Breakdown */}
-      <Card className=\"p-4\">
-        <h3 className=\"font-semibold mb-3 text-sm\">Capacity by Process</h3>
-        <div className=\"grid grid-cols-2 md:grid-cols-4 gap-3\">
+      <Card className="p-4">
+        <h3 className="font-semibold mb-3 text-sm">Capacity by Process</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {Object.entries(processCapacities).map(([code, capacity]) => {
             const displayName = code.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
             return (
-              <div key={code} className=\"p-2 bg-slate-50 rounded border\">
-                <div className=\"text-xs text-muted-foreground\">{displayName}</div>
-                <div className=\"text-lg font-bold text-blue-600\">{capacity}h</div>
+              <div key={code} className="p-2 bg-slate-50 rounded border">
+                <div className="text-xs text-muted-foreground">{displayName}</div>
+                <div className="text-lg font-bold text-blue-600">{capacity}h</div>
               </div>
             );
           })}
@@ -281,7 +281,7 @@ export default function CalendarWeekView({
       </Card>
 
       {/* Week Calendar Grid */}
-      <div className=\"bg-white rounded-lg border overflow-hidden\">
+      <div className="bg-white rounded-lg border overflow-hidden">
         {/* Day headers */}
         <div className="grid grid-cols-7 border-b bg-slate-50">
           {weekDays.map((day, idx) => {
