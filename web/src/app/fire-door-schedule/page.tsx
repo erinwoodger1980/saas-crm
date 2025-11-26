@@ -1537,8 +1537,8 @@ export default function FireDoorSchedulePage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
-                    <th className="sticky left-0 px-4 py-3 text-left bg-gradient-to-r from-slate-100 to-slate-50 z-20 border-r-2 border-slate-300/50">
-                      <span className="text-xs uppercase tracking-wider">Actions</span>
+                    <th className="sticky left-0 px-4 py-3 text-left z-30 before:absolute before:inset-0 before:bg-gradient-to-r before:from-slate-100 before:to-slate-50 before:-z-10 after:absolute after:top-0 after:right-0 after:bottom-0 after:w-[2px] after:bg-slate-300/50">
+                      <span className="text-xs uppercase tracking-wider relative z-10">Actions</span>
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
                       const isFrozen = frozenColumns.includes(field);
@@ -1548,10 +1548,10 @@ export default function FireDoorSchedulePage() {
                       return (
                       <th
                         key={field}
-                        className={`px-4 py-3 text-left group ${isFrozen ? 'sticky bg-gradient-to-r from-slate-100 to-slate-50 z-20' : ''} ${isLastFrozen ? 'border-r-2 border-slate-300/50' : ''}`}
+                        className={`px-4 py-3 text-left group ${isFrozen ? 'sticky z-30 before:absolute before:inset-0 before:bg-gradient-to-r before:from-slate-100 before:to-slate-50 before:-z-10' : ''} ${isLastFrozen ? 'after:absolute after:top-0 after:right-0 after:bottom-0 after:w-[2px] after:bg-slate-300/50' : ''}`}
                         style={isFrozen ? { left: `${leftOffset}px` } : undefined}
                       >
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1 relative z-10">
                           <button
                             type="button"
                             className={`inline-flex items-center gap-1 text-left whitespace-nowrap ${
@@ -1586,10 +1586,10 @@ export default function FireDoorSchedulePage() {
                   </tr>
                   {/* Filter Row */}
                   <tr className="bg-white border-b border-slate-200">
-                    <th className="sticky left-0 px-4 py-2 bg-white z-20 border-r-2 border-slate-300/50">
+                    <th className="sticky left-0 px-4 py-2 z-30 before:absolute before:inset-0 before:bg-white before:-z-10 after:absolute after:top-0 after:right-0 after:bottom-0 after:w-[2px] after:bg-slate-300/50">
                       <button
                         onClick={() => setColumnFilters({})}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-normal"
+                        className="text-xs text-blue-600 hover:text-blue-800 font-normal relative z-10"
                         title="Clear all filters"
                       >
                         Clear
@@ -1603,7 +1603,7 @@ export default function FireDoorSchedulePage() {
                       return (
                         <th
                           key={field}
-                          className={`px-4 py-2 ${isFrozen ? 'sticky bg-white z-20' : ''} ${isLastFrozen ? 'border-r-2 border-slate-300/50' : ''}`}
+                          className={`px-4 py-2 ${isFrozen ? 'sticky z-30 before:absolute before:inset-0 before:bg-white before:-z-10' : ''} ${isLastFrozen ? 'after:absolute after:top-0 after:right-0 after:bottom-0 after:w-[2px] after:bg-slate-300/50' : ''}`}
                           style={isFrozen ? { left: `${leftOffset}px` } : undefined}
                         >
                           <Input
@@ -1618,7 +1618,7 @@ export default function FireDoorSchedulePage() {
                               }
                               setColumnFilters(newFilters);
                             }}
-                            className="h-7 text-xs bg-white border-slate-200"
+                            className="h-7 text-xs bg-white border-slate-200 relative z-10"
                           />
                         </th>
                       );
@@ -1631,7 +1631,7 @@ export default function FireDoorSchedulePage() {
                       key={project.id}
                       className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100"
                     >
-                      <td className="sticky left-0 px-4 py-3 bg-white z-10 border-r-2 border-slate-300/50 group-hover:bg-blue-50/40">
+                      <td className="sticky left-0 px-4 py-3 z-20 before:absolute before:inset-0 before:bg-white before:-z-10 group-hover:before:bg-blue-50/40 after:absolute after:top-0 after:right-0 after:bottom-0 after:w-[2px] after:bg-slate-300/50">
                         <Button
                           variant="outline"
                           size="sm"
@@ -1639,7 +1639,7 @@ export default function FireDoorSchedulePage() {
                             e.stopPropagation();
                             router.push(`/fire-door-quotes/${project.id}`);
                           }}
-                          className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500"
+                          className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500 relative z-10"
                         >
                           <FileText className="w-3 h-3 mr-1" />
                           View Order
@@ -1653,11 +1653,11 @@ export default function FireDoorSchedulePage() {
                         return (
                         <td
                           key={field}
-                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? 'sticky bg-white z-10 group-hover:bg-blue-50/40' : ''} ${isLastFrozen ? 'border-r-2 border-slate-300/50' : ''}`}
+                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? 'sticky z-20 before:absolute before:inset-0 before:bg-white before:-z-10 group-hover:before:bg-blue-50/40' : ''} ${isLastFrozen ? 'after:absolute after:top-0 after:right-0 after:bottom-0 after:w-[2px] after:bg-slate-300/50' : ''}`}
                           style={isFrozen ? { left: `${leftOffset}px` } : undefined}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
-                          <div onClick={(e) => e.stopPropagation()}>
+                          <div onClick={(e) => e.stopPropagation()} className="relative z-10">
                             {renderCell(project, field)}
                           </div>
                         </td>
