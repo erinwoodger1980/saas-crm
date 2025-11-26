@@ -165,6 +165,7 @@ model User {
   signupCompleted           Boolean                    @default(false)
   workshopHoursPerDay       Decimal?                   @default(8)
   workshopColor             String? // Hex color for schedule display (e.g. "#3b82f6")
+  workshopProcessCodes      String[] // Process codes this user can work on (empty = all processes)
   isDeveloper               Boolean                    @default(false) // Global developer access across all tenants
   GmailTenantConnection     GmailTenantConnection[]
   Ms365TenantConnection     Ms365TenantConnection[]

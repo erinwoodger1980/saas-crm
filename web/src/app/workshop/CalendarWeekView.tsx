@@ -63,6 +63,7 @@ export type CalendarWeekViewProps = {
   users: UserLite[];
   holidays: Holiday[];
   showValues: boolean;
+  timelineViewFilter?: 'both' | 'manufacturing' | 'installation';
   onPreviousWeek: () => void;
   onNextWeek: () => void;
   onToday: () => void;
@@ -135,6 +136,7 @@ export default function CalendarWeekView({
   users,
   holidays,
   showValues,
+  timelineViewFilter = 'both',
   onPreviousWeek,
   onNextWeek,
   onToday,
@@ -328,7 +330,7 @@ export default function CalendarWeekView({
             style={{ paddingTop: "3rem", zIndex: 10 }}
           >
             {/* Manufacturing bars */}
-            {projectRows.map((row, rowIdx) => (
+            {(timelineViewFilter === 'both' || timelineViewFilter === 'manufacturing') && projectRows.map((row, rowIdx) => (
               <div
                 key={`mfg-${rowIdx}`}
                 style={{
@@ -473,7 +475,7 @@ export default function CalendarWeekView({
             ))}
 
             {/* Installation bars - render below manufacturing bars */}
-            {projectRows.map((row, rowIdx) => (
+            {(timelineViewFilter === 'both' || timelineViewFilter === 'installation') && projectRows.map((row, rowIdx) => (
               <div
                 key={`install-${rowIdx}`}
                 style={{

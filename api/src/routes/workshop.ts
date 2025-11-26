@@ -16,7 +16,7 @@ router.get("/users", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const users = await prisma.user.findMany({
     where: { tenantId },
-    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true, workshopColor: true, passwordHash: true },
+    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true, workshopColor: true, workshopProcessCodes: true, passwordHash: true },
     orderBy: { name: "asc" },
   });
   res.json({ ok: true, items: users });
@@ -45,6 +45,34 @@ router.patch("/users/:userId/hours", async (req: any, res) => {
     where: { id: userId },
     data: { workshopHoursPerDay: Number(hoursPerDay) },
     select: { id: true, name: true, email: true, workshopHoursPerDay: true, workshopColor: true },
+  });
+  
+  res.json({ ok: true, user: updated });
+});
+
+// PATCH /workshop/users/:userId/processes { processCodes: string[] }
+router.patch("/users/:userId/processes", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = String(req.params.userId);
+  const { processCodes } = req.body || {};
+  
+  if (!Array.isArray(processCodes)) {
+    return res.status(400).json({ error: "invalid_process_codes" });
+  }
+  
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, tenantId: true },
+  });
+  
+  if (!user || user.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { workshopProcessCodes: processCodes },
+    select: { id: true, name: true, email: true, workshopProcessCodes: true },
   });
   
   res.json({ ok: true, user: updated });

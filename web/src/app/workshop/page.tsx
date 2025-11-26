@@ -271,6 +271,7 @@ export default function WorkshopPage() {
   const [viewMode, setViewMode] = useState<'calendar' | 'timeline'>('calendar');
   const [calendarViewMode, setCalendarViewMode] = useState<'week' | 'month' | 'year'>('month'); // New state for calendar sub-views
   const [showValues, setShowValues] = useState(false); // Toggle between workshop view (false) and management view (true)
+  const [timelineViewFilter, setTimelineViewFilter] = useState<'both' | 'manufacturing' | 'installation'>('both'); // Filter for timeline bars
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [currentWeek, setCurrentWeek] = useState(() => new Date());
   const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
@@ -1013,6 +1014,33 @@ export default function WorkshopPage() {
               >
                 {showValues ? '£ Values' : '🔧 Workshop'}
               </Button>
+              <div className="h-6 w-px bg-border" />
+              <div className="flex items-center gap-1">
+                <Button 
+                  variant={timelineViewFilter === 'both' ? 'default' : 'outline'} 
+                  size="sm" 
+                  onClick={() => setTimelineViewFilter('both')}
+                  title="Show both manufacturing and installation"
+                >
+                  Both
+                </Button>
+                <Button 
+                  variant={timelineViewFilter === 'manufacturing' ? 'default' : 'outline'} 
+                  size="sm" 
+                  onClick={() => setTimelineViewFilter('manufacturing')}
+                  title="Show only manufacturing"
+                >
+                  🏭 Mfg
+                </Button>
+                <Button 
+                  variant={timelineViewFilter === 'installation' ? 'default' : 'outline'} 
+                  size="sm" 
+                  onClick={() => setTimelineViewFilter('installation')}
+                  title="Show only installation"
+                >
+                  🔧 Install
+                </Button>
+              </div>
               <Button variant="outline" size="sm" onClick={() => setShowHolidayModal(true)}>Holidays</Button>
               <Button variant="outline" size="sm" onClick={() => setShowUserColors(true)}>User Colors</Button>
             </>
@@ -1095,6 +1123,7 @@ export default function WorkshopPage() {
                 users={users}
                 holidays={holidays}
                 showValues={showValues}
+                timelineViewFilter={timelineViewFilter}
                 onPreviousWeek={previousWeek}
                 onNextWeek={nextWeek}
                 onToday={goToToday}

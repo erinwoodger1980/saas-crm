@@ -7,19 +7,23 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, KeyRound } from "lucide-react";
 
-type UserRow = { id: string; name: string | null; email: string; role?: string; workshopHoursPerDay?: number | null; passwordHash?: string | null };
+type UserRow = { id: string; name: string | null; email: string; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; passwordHash?: string | null };
 
 type UsersResponse = { ok: boolean; items: UserRow[] };
 
 type InviteResponse = { ok: true; userId: string; email: string; role: string; setupToken: string; setupLink: string } | { error: string };
 
+type ProcessDef = { code: string; name: string };
+
 export default function UsersSettingsPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [processes, setProcesses] = useState<ProcessDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<{ email: string; role: "admin" | "workshop" | "" }>({ email: "", role: "" });
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [editingHours, setEditingHours] = useState<Record<string, string>>({});
+  const [editingProcesses, setEditingProcesses] = useState<Record<string, string[]>>({});
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
@@ -38,7 +42,19 @@ export default function UsersSettingsPage() {
     }
   }
 
-  useEffect(() => { loadUsers(); }, []);
+  async function loadProcesses() {
+    try {
+      const data = await apiFetch<{ ok: boolean; processes: ProcessDef[] }>("/workshop/processes");
+      if (data?.ok) setProcesses(data.processes);
+    } catch (e: any) {
+      console.error("Failed to load processes:", e);
+    }
+  }
+
+  useEffect(() => { 
+    loadUsers(); 
+    loadProcesses();
+  }, []);
 
   async function onInvite() {
     setInviteLink(null);
@@ -94,6 +110,23 @@ export default function UsersSettingsPage() {
       });
     } catch (e: any) {
       setError(e?.message || "Failed to update hours");
+    }
+  }
+
+  async function updateUserProcesses(userId: string, processCodes: string[]) {
+    try {
+      await apiFetch(`/workshop/users/${userId}/processes`, {
+        method: "PATCH",
+        json: { processCodes },
+      });
+      await loadUsers();
+      setEditingProcesses(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    } catch (e: any) {
+      setError(e?.message || "Failed to update processes");
     }
   }
 
@@ -249,6 +282,70 @@ export default function UsersSettingsPage() {
                             onClick={() => setEditingHours(prev => ({
                               ...prev,
                               [u.id]: String(u.workshopHoursPerDay != null ? Number(u.workshopHoursPerDay) : 8)
+                            }))}
+                          >
+                            Edit
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-muted-foreground whitespace-nowrap">Processes:</label>
+                      {editingProcesses[u.id] !== undefined ? (
+                        <>
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {processes.map(proc => (
+                              <label key={proc.code} className="flex items-center gap-1 text-xs bg-slate-100 px-2 py-1 rounded cursor-pointer hover:bg-slate-200">
+                                <input
+                                  type="checkbox"
+                                  checked={editingProcesses[u.id].includes(proc.code)}
+                                  onChange={(e) => {
+                                    const codes = editingProcesses[u.id];
+                                    setEditingProcesses(prev => ({
+                                      ...prev,
+                                      [u.id]: e.target.checked 
+                                        ? [...codes, proc.code]
+                                        : codes.filter(c => c !== proc.code)
+                                    }));
+                                  }}
+                                />
+                                {proc.name}
+                              </label>
+                            ))}
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => updateUserProcesses(u.id, editingProcesses[u.id])}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingProcesses(prev => {
+                              const next = { ...prev };
+                              delete next[u.id];
+                              return next;
+                            })}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm text-muted-foreground">
+                            {(u.workshopProcessCodes?.length ?? 0) === 0 
+                              ? 'All' 
+                              : u.workshopProcessCodes?.map(code => 
+                                  processes.find(p => p.code === code)?.name || code
+                                ).join(', ')}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingProcesses(prev => ({
+                              ...prev,
+                              [u.id]: u.workshopProcessCodes || []
                             }))}
                           >
                             Edit
