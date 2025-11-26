@@ -69,6 +69,8 @@ export default function FireDoorSchedulePage() {
   const [leftOffsets, setLeftOffsets] = useState<Record<string, number>>({});
   const headerRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
   const actionsHeaderRef = useRef<HTMLTableCellElement | null>(null);
+  const headerRowRef = useRef<HTMLTableRowElement | null>(null);
+  const [headerHeight, setHeaderHeight] = useState<number>(0);
 
   useEffect(() => {
     loadData();
@@ -235,6 +237,20 @@ export default function FireDoorSchedulePage() {
       window.removeEventListener("resize", computeOffsets);
     };
   }, [frozenColumns, activeTab, projects, showTable, columnFilters]);
+
+  // Measure header row height to position filter row exactly beneath
+  useEffect(() => {
+    function measureHeaderHeight() {
+      const h = headerRowRef.current?.offsetHeight ?? 0;
+      setHeaderHeight(h);
+    }
+    const id = requestAnimationFrame(measureHeaderHeight);
+    window.addEventListener("resize", measureHeaderHeight);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener("resize", measureHeaderHeight);
+    };
+  }, [activeTab, frozenColumns]);
 
   // Apply search + tab filters + column filters
   const filteredProjects = projects
@@ -1565,7 +1581,7 @@ export default function FireDoorSchedulePage() {
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm border-separate">
                 <thead>
-                  <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
+                  <tr ref={headerRowRef} className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
                     <th ref={actionsHeaderRef} className="sticky top-0 left-0 px-4 py-3 text-left z-40 bg-white bg-clip-padding border-r border-slate-200 shadow-sm">
                       <span className="text-xs uppercase tracking-wider">Actions</span>
                     </th>
@@ -1577,7 +1593,7 @@ export default function FireDoorSchedulePage() {
                       return (
                       <th
                         key={field}
-                        className={`px-4 py-3 text-left group sticky top-0 ${isFrozen ? 'z-40 bg-white bg-clip-padding' : 'z-30 bg-white/90 backdrop-blur-sm'} ${isLastFrozen ? 'border-r border-slate-200' : ''} shadow-sm`}
+                        className={`px-4 py-3 text-left group sticky top-0 ${isFrozen ? 'z-40 bg-white bg-clip-padding' : 'z-30 bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                         style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
                         ref={(el) => { headerRefs.current[field] = el }}
                       >
@@ -1616,7 +1632,8 @@ export default function FireDoorSchedulePage() {
                   </tr>
                   {/* Filter Row */}
                   <tr className="bg-white border-b border-slate-200">
-                    <th className="sticky top-12 left-0 px-4 py-2 z-30 bg-white bg-clip-padding border-r border-slate-200 shadow-sm">
+                    <th className="sticky left-0 px-4 py-2 z-30 bg-white bg-clip-padding border-r border-slate-200"
+                        style={{ top: `${headerHeight}px` }}>
                       <button
                         onClick={() => setColumnFilters({})}
                         className="text-xs text-blue-600 hover:text-blue-800 font-normal"
@@ -1633,8 +1650,8 @@ export default function FireDoorSchedulePage() {
                       return (
                         <th
                           key={field}
-                          className={`px-4 py-2 sticky top-12 ${isFrozen ? 'z-30 bg-white bg-clip-padding' : 'z-20 bg-white/90 backdrop-blur-sm'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
-                          style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
+                          className={`px-4 py-2 sticky ${isFrozen ? 'z-30 bg-white bg-clip-padding' : 'z-20 bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                          style={Object.assign({}, { top: `${headerHeight}px` }, (isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : {}))}
                         >
                           <Input
                             placeholder="Filter..."
