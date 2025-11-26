@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +66,8 @@ export default function FireDoorSchedulePage() {
   const [frozenColumns, setFrozenColumns] = useState<string[]>(['mjsNumber']); // Default freeze MJS column
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [showColumnFreezeModal, setShowColumnFreezeModal] = useState(false);
+  const [leftOffsets, setLeftOffsets] = useState<Record<string, number>>({});
+  const headerRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
 
   useEffect(() => {
     loadData();
@@ -206,6 +208,28 @@ export default function FireDoorSchedulePage() {
       setLoading(false);
     }
   }
+
+  // Compute dynamic left offsets based on actual header positions
+  useEffect(() => {
+    function computeOffsets() {
+      const offsets: Record<string, number> = {};
+      const frozen = frozenColumns.slice();
+      // Ensure order of frozen columns is respected
+      frozen.forEach((field) => {
+        const el = headerRefs.current[field];
+        if (el) offsets[field] = el.offsetLeft;
+      });
+      setLeftOffsets(offsets);
+    }
+    // Compute after layout
+    const id = requestAnimationFrame(computeOffsets);
+    // Recompute on resize
+    window.addEventListener("resize", computeOffsets);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener("resize", computeOffsets);
+    };
+  }, [frozenColumns, activeTab, projects, showTable, columnFilters]);
 
   // Apply search + tab filters + column filters
   const filteredProjects = projects
@@ -1542,14 +1566,15 @@ export default function FireDoorSchedulePage() {
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
                       const isFrozen = frozenColumns.includes(field);
+                      const leftOffset = leftOffsets[field] ?? undefined;
                       const frozenIndex = frozenColumns.indexOf(field);
-                      const leftOffset = frozenIndex >= 0 ? 80 + (frozenIndex * 150) : 0; // 80px for actions column + 150px per frozen column
                       const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                       return (
                       <th
                         key={field}
                         className={`px-4 py-3 text-left group ${isFrozen ? 'sticky z-30 bg-white bg-clip-padding' : ''} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
-                        style={isFrozen ? { left: `${leftOffset}px` } : undefined}
+                        style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
+                        ref={(el) => { headerRefs.current[field] = el }}
                       >
                         <div className="flex flex-col gap-1">
                           <button
