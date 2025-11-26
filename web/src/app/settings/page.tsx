@@ -919,23 +919,27 @@ export default function SettingsPage() {
           >
             👥 Users
           </a>
-          <a
-            href="/dev"
-            className="inline-flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open the new Developer Dashboard"
-          >
-            Dev Dashboard
-          </a>
-          <a
-            href="/admin/dev-console"
-            className="inline-flex items-center gap-2 px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 text-sm font-medium"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Landing Editor (legacy)
-          </a>
+          {user?.isDeveloper && (
+            <>
+              <a
+                href="/dev"
+                className="inline-flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open the new Developer Dashboard"
+              >
+                Dev Dashboard
+              </a>
+              <a
+                href="/admin/dev-console"
+                className="inline-flex items-center gap-2 px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-900 text-sm font-medium"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Landing Editor (legacy)
+              </a>
+            </>
+          )}
         </div>
       </div>
 
