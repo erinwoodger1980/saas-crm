@@ -1008,7 +1008,9 @@ export default function LeadModal({
       
       console.log('[saveOpportunityField] success:', result);
       console.log('[saveOpportunityField] returned opportunity:', (result as any)?.opportunity);
-      console.log('[saveOpportunityField] returned installation dates:', {
+      console.log('[saveOpportunityField] ALL opportunity dates from server:', {
+        startDate: (result as any)?.opportunity?.startDate,
+        deliveryDate: (result as any)?.opportunity?.deliveryDate,
         installationStartDate: (result as any)?.opportunity?.installationStartDate,
         installationEndDate: (result as any)?.opportunity?.installationEndDate,
       });
@@ -1028,17 +1030,27 @@ export default function LeadModal({
           }
         };
         
-        if (field === 'installationStartDate' && opp.installationStartDate) {
-          setProjectInstallationStartDate(formatDateForInput(opp.installationStartDate));
+        // Always sync back ALL date fields from server response (even if saving a different field)
+        // This ensures UI stays in sync with database
+        if ('startDate' in opp) {
+          const formatted = formatDateForInput(opp.startDate);
+          console.log('[saveOpportunityField] syncing startDate:', opp.startDate, '->', formatted);
+          setProjectStartDate(formatted);
         }
-        if (field === 'installationEndDate' && opp.installationEndDate) {
-          setProjectInstallationEndDate(formatDateForInput(opp.installationEndDate));
+        if ('deliveryDate' in opp) {
+          const formatted = formatDateForInput(opp.deliveryDate);
+          console.log('[saveOpportunityField] syncing deliveryDate:', opp.deliveryDate, '->', formatted);
+          setProjectDeliveryDate(formatted);
         }
-        if (field === 'startDate' && opp.startDate) {
-          setProjectStartDate(formatDateForInput(opp.startDate));
+        if ('installationStartDate' in opp) {
+          const formatted = formatDateForInput(opp.installationStartDate);
+          console.log('[saveOpportunityField] syncing installationStartDate:', opp.installationStartDate, '->', formatted);
+          setProjectInstallationStartDate(formatted);
         }
-        if (field === 'deliveryDate' && opp.deliveryDate) {
-          setProjectDeliveryDate(formatDateForInput(opp.deliveryDate));
+        if ('installationEndDate' in opp) {
+          const formatted = formatDateForInput(opp.installationEndDate);
+          console.log('[saveOpportunityField] syncing installationEndDate:', opp.installationEndDate, '->', formatted);
+          setProjectInstallationEndDate(formatted);
         }
       }
     } catch (e: any) {
