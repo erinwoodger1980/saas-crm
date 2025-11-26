@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame, ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useCurrentUser } from "@/lib/use-current-user";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 
@@ -26,7 +27,7 @@ const nav = [
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [isDeveloper, setIsDeveloper] = useState(false);
+  const { user } = useCurrentUser();
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedTenant, setImpersonatedTenant] = useState<string | null>(null);
   const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
@@ -51,10 +52,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [isFireDoorManufacturer]);
 
   useEffect(() => {
-    // Check if user has developer access
-    apiFetch<{ ok: boolean }>("/dev/stats")
-      .then(() => setIsDeveloper(true))
-      .catch(() => setIsDeveloper(false));
 
     // Check if we're impersonating by reading the JWT token
     const token = document.cookie
@@ -183,7 +180,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Developer Section */}
-        {isDeveloper && (
+        {user?.isDeveloper && (
           <>
             <Separator className="my-2" />
             {!sidebarCollapsed && (

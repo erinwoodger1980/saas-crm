@@ -1,0 +1,3 @@
+-- No-op migration created to satisfy Prisma migrate deploy locally.
+-- Installation date columns were added in a subsequent migration 20251126083300_add_installation_dates.
+-- This file intentionally contains no schema changes.
