@@ -1575,7 +1575,7 @@ export default function FireDoorSchedulePage() {
                       return (
                       <th
                         key={field}
-                        className={`px-4 py-3 text-left group sticky top-0 ${isFrozen ? 'z-[200] bg-white bg-clip-padding min-w-[150px] w-[150px] max-w-[150px]' : 'z-[200] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                        className={`px-4 py-3 text-left group sticky top-0 ${isFrozen ? 'z-[210] bg-white bg-clip-padding min-w-[150px] w-[150px] max-w-[150px]' : 'z-[200] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                         style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px` } : undefined}
                         ref={(el) => { headerRefs.current[field] = el }}
                       >
@@ -1662,7 +1662,7 @@ export default function FireDoorSchedulePage() {
                       key={project.id}
                       className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100"
                     >
-                      <td className="sticky left-0 px-4 py-3 z-[150] bg-white bg-clip-padding border-r border-slate-200 shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] w-[80px] min-w-[80px] max-w-[80px]">
+                      <td className="sticky left-0 px-4 py-3 z-[160] bg-white bg-clip-padding border-r border-slate-200 shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] w-[80px] min-w-[80px] max-w-[80px]">
                         <Button
                           variant="outline"
                           size="sm"
