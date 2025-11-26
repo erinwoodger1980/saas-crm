@@ -631,6 +631,70 @@ export default function CalendarWeekView({
             })}
         </div>
       </Card>
+
+      {/* Legend */}
+      <Card className="p-4">
+        <h3 className="font-semibold mb-3">Legend</h3>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-sm font-medium mb-2">Bar Types</div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-16 h-6 rounded bg-gradient-to-r from-green-500 to-blue-500 flex items-center justify-center">
+                  <div className="flex gap-0.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                  </div>
+                </div>
+                <div className="text-sm">
+                  <div className="font-medium">Manufacturing</div>
+                  <div className="text-xs text-muted-foreground">Solid bar with material traffic lights (T/G/I/P)</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div 
+                  className="w-16 h-6 rounded flex items-center justify-center text-white text-xs"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                    border: '2px dashed rgba(255,255,255,0.7)'
+                  }}
+                >
+                  🔧
+                </div>
+                <div className="text-sm">
+                  <div className="font-medium">Installation</div>
+                  <div className="text-xs text-muted-foreground">Dashed purple bar with wrench icon</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div className="text-sm font-medium mb-2">Material Status</div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span>Not ordered</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-amber-500" />
+                <span>Ordered</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span>Received</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-gray-500" />
+                <span>Not applicable</span>
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-muted-foreground">
+              T = Timber, G = Glass, I = Ironmongery, P = Paint
+            </div>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
