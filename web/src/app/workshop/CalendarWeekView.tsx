@@ -19,7 +19,7 @@ import {
   isWeekday,
   getISOWeek,
   getProcessCapacities,
-} from \"./calendarUtils\";
+} from "./calendarUtils";
 
 // ============================================================================
 // TYPE DEFINITIONS
