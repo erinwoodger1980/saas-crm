@@ -28,6 +28,7 @@ export type UserLite = {
   email: string;
   workshopHoursPerDay?: number | null;
   workshopColor?: string | null;
+  workshopProcessCodes?: string[];
 };
 
 export type Holiday = {
@@ -221,6 +222,55 @@ export function getCapacity(
   }
 
   return totalHrs;
+}
+
+/**
+ * Calculate capacity for a specific process in a date range
+ * Only counts users who can work on that process (empty array = can work all)
+ */
+export function getProcessCapacity(
+  processCode: string,
+  rangeStart: Date,
+  rangeEnd: Date,
+  users: UserLite[],
+  holidays: Holiday[]
+): number {
+  const days = eachDay(rangeStart, rangeEnd).filter(isWeekday);
+
+  // Filter users who can work this process
+  const eligibleUsers = users.filter(u => {
+    const codes = u.workshopProcessCodes || [];
+    return codes.length === 0 || codes.includes(processCode);
+  });
+
+  let totalHrs = 0;
+  for (const u of eligibleUsers) {
+    const userHoursPerDay = u.workshopHoursPerDay != null ? Number(u.workshopHoursPerDay) : 8;
+    const userHols = holidays.filter((h) => h.userId === u.id);
+    const workingDays = days.filter((d) => !userHols.some((h) => dayInHoliday(d, h))).length;
+    totalHrs += workingDays * userHoursPerDay;
+  }
+
+  return totalHrs;
+}
+
+/**
+ * Calculate capacity breakdown by process for a date range
+ */
+export function getProcessCapacities(
+  rangeStart: Date,
+  rangeEnd: Date,
+  users: UserLite[],
+  holidays: Holiday[],
+  processCodes: string[]
+): Record<string, number> {
+  const capacities: Record<string, number> = {};
+  
+  for (const code of processCodes) {
+    capacities[code] = getProcessCapacity(code, rangeStart, rangeEnd, users, holidays);
+  }
+  
+  return capacities;
 }
 
 /**
