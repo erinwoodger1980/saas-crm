@@ -63,6 +63,9 @@ export default function FireDoorSchedulePage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingConfigField, setEditingConfigField] = useState<string | null>(null);
   const [customColors, setCustomColors] = useState<Record<string, {bg: string, text: string}>>({});
+  const [frozenColumns, setFrozenColumns] = useState<string[]>(['mjsNumber']); // Default freeze MJS column
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [showColumnFreezeModal, setShowColumnFreezeModal] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -74,11 +77,23 @@ export default function FireDoorSchedulePage() {
       const savedSortF = localStorage.getItem("fds:sortField");
       const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
       const savedCustomColors = localStorage.getItem("fds:customColors");
+      const savedFrozenColumns = localStorage.getItem("fds:frozenColumns");
+      const savedColumnFilters = localStorage.getItem("fds:columnFilters");
       if (savedView) setShowTable(savedView === "table");
       if (savedActiveTab) setActiveTab(savedActiveTab);
       if (savedCustomColors) {
         try {
           setCustomColors(JSON.parse(savedCustomColors));
+        } catch {}
+      }
+      if (savedFrozenColumns) {
+        try {
+          setFrozenColumns(JSON.parse(savedFrozenColumns));
+        } catch {}
+      }
+      if (savedColumnFilters) {
+        try {
+          setColumnFilters(JSON.parse(savedColumnFilters));
         } catch {}
       }
       
@@ -156,6 +171,12 @@ export default function FireDoorSchedulePage() {
   useEffect(() => {
     try { localStorage.setItem("fds:customColors", JSON.stringify(customColors)); } catch {}
   }, [customColors]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:frozenColumns", JSON.stringify(frozenColumns)); } catch {}
+  }, [frozenColumns]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:columnFilters", JSON.stringify(columnFilters)); } catch {}
+  }, [columnFilters]);
 
   async function loadData() {
     setLoading(true);
@@ -186,7 +207,7 @@ export default function FireDoorSchedulePage() {
     }
   }
 
-  // Apply search + tab filters
+  // Apply search + tab filters + column filters
   const filteredProjects = projects
     .filter((project) => {
       const searchLower = searchTerm.toLowerCase();
@@ -207,10 +228,21 @@ export default function FireDoorSchedulePage() {
         const loc = (project.jobLocation || "").trim().toUpperCase();
         // Convert selected locations to uppercase for comparison
         const upperSelectedLocations = selectedLocations.map(l => l.toUpperCase());
-        return upperSelectedLocations.includes(loc);
+        if (!upperSelectedLocations.includes(loc)) {
+          return false;
+        }
       }
       
-      // If no locations selected, show all
+      // Apply column filters
+      for (const [field, filterValue] of Object.entries(columnFilters)) {
+        if (!filterValue) continue;
+        const projectValue = String(project[field] || '').toLowerCase();
+        const filterLower = filterValue.toLowerCase();
+        if (!projectValue.includes(filterLower)) {
+          return false;
+        }
+      }
+      
       return true;
     })
     .sort((a, b) => {
@@ -642,7 +674,7 @@ export default function FireDoorSchedulePage() {
           className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
           onChange={(e) => {
-            const dateValue = e.target.value ? new Date(e.target.value).toISOString() : null;
+            const dateValue = e.target.value ? new Date(e.target.value).toISOString() : undefined;
             updateProject(project.id, { signOffDate: dateValue });
           }}
         />
@@ -657,7 +689,7 @@ export default function FireDoorSchedulePage() {
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
           onChange={(e) => {
             const newDate = e.target.value;
-            const dateValue = newDate ? new Date(newDate).toISOString() : null;
+            const dateValue = newDate ? new Date(newDate).toISOString() : undefined;
             const leadWeeks = project.leadTimeWeeks || 0;
             let approxDeliveryDate: string | undefined = project.approxDeliveryDate;
             let workingDaysRemaining: number | undefined = project.workingDaysRemaining;
@@ -685,7 +717,7 @@ export default function FireDoorSchedulePage() {
           className="bg-white border border-slate-200 rounded px-2 py-1 outline-none text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
           value={value ? new Date(value).toISOString().slice(0, 10) : ''}
           onChange={(e) => {
-            const dateValue = e.target.value ? new Date(e.target.value).toISOString() : null;
+            const dateValue = e.target.value ? new Date(e.target.value).toISOString() : undefined;
             updateProject(project.id, { [field]: dateValue });
           }}
         />
@@ -1008,7 +1040,7 @@ export default function FireDoorSchedulePage() {
               approxDeliveryDate = undefined;
               workingDaysRemaining = undefined;
             }
-            updateProject(project.id, { leadTimeWeeks: newWeeks || null, approxDeliveryDate, workingDaysRemaining });
+            updateProject(project.id, { leadTimeWeeks: newWeeks || undefined, approxDeliveryDate, workingDaysRemaining });
           }}
           className="bg-white border border-slate-200 rounded px-2 py-1 w-20 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-300"
         />
@@ -1233,6 +1265,18 @@ export default function FireDoorSchedulePage() {
             >
               {showTable ? "Card View" : "Table View"}
             </Button>
+            {showTable && (
+              <Button
+                variant="outline"
+                className="h-12 bg-white/50"
+                onClick={() => setShowColumnFreezeModal(!showColumnFreezeModal)}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Freeze Columns
+              </Button>
+            )}
           </div>
           {/* Tabs */}
           <div className="mt-4 flex flex-wrap gap-2">
@@ -1250,10 +1294,64 @@ export default function FireDoorSchedulePage() {
               );
             })}
           </div>
+          {showColumnFreezeModal && (
+            <div className="mt-4 p-4 rounded-xl border border-slate-300 bg-white shadow-lg">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-semibold text-slate-700">Freeze Columns</h3>
+                <button
+                  onClick={() => setShowColumnFreezeModal(false)}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Close
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">
+                Select columns to freeze (stick to the left when scrolling). They will appear in the order you select them.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-60 overflow-y-auto p-2 border border-slate-200 rounded-md bg-slate-50">
+                {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => {
+                  const isChecked = frozenColumns.includes(field);
+                  return (
+                    <label key={field} className="flex items-center gap-2 cursor-pointer hover:bg-white p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFrozenColumns([...frozenColumns, field]);
+                          } else {
+                            setFrozenColumns(frozenColumns.filter(f => f !== field));
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-xs">{COLUMN_LABELS[field] || field}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 mt-3">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setFrozenColumns([])}
+                >
+                  Clear All
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setFrozenColumns(['mjsNumber', 'clientName', 'jobName'])}
+                >
+                  Reset to Default
+                </Button>
+              </div>
+            </div>
+          )}
           {showFiltersModal && (
             <div className="mt-4 p-4 rounded-xl border border-slate-300 bg-white shadow-lg">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-slate-700">Filters</h3>
+                <h3 className="font-semibold text-slate-700">Location Filters</h3>
                 <button
                   onClick={() => setShowFiltersModal(false)}
                   className="text-xs text-slate-500 hover:text-slate-700"
@@ -1414,6 +1512,12 @@ export default function FireDoorSchedulePage() {
           <div className="mt-2 text-xs text-slate-500 flex flex-wrap gap-4">
             <span>Location Filter: <strong>{selectedLocations.length === 0 ? 'None' : selectedLocations.length === jobLocationOptions.length ? 'All' : selectedLocations.join(', ')}</strong></span>
             <span>Active Tab: <strong>{TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS]?.label || activeTab}</strong></span>
+            {Object.keys(columnFilters).length > 0 && (
+              <span>Column Filters: <strong className="text-blue-600">{Object.keys(columnFilters).length} active</strong></span>
+            )}
+            {frozenColumns.length > 0 && (
+              <span>Frozen Columns: <strong className="text-purple-600">{frozenColumns.length}</strong></span>
+            )}
           </div>
         </div>
         {/* Projects Listing (Table or Cards) */}
@@ -1433,56 +1537,99 @@ export default function FireDoorSchedulePage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
-                    <th className={`px-4 py-3 text-left ${activeTab === 'ALL' ? 'sticky left-0 bg-gradient-to-r from-slate-100 to-slate-50 z-10' : ''}`}>
+                    <th className="sticky left-0 px-4 py-3 text-left bg-gradient-to-r from-slate-100 to-slate-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                       <span className="text-xs uppercase tracking-wider">Actions</span>
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
-                      const isSticky = activeTab === 'ALL' && index < 3; // Freeze first 3 columns (mjsNumber, clientName, jobName) in ALL tab
+                      const isFrozen = frozenColumns.includes(field);
+                      const frozenIndex = frozenColumns.indexOf(field);
+                      const leftOffset = frozenIndex >= 0 ? 80 + (frozenIndex * 150) : 0; // 80px for actions column + 150px per frozen column
                       return (
                       <th
                         key={field}
-                        className={`px-4 py-3 text-left group ${isSticky ? 'sticky bg-gradient-to-r from-slate-100 to-slate-50 z-10' : ''}`}
-                        style={isSticky ? { left: index === 0 ? '80px' : index === 1 ? '180px' : '350px' } : undefined}
+                        className={`px-4 py-3 text-left group ${isFrozen ? 'sticky bg-gradient-to-r from-slate-100 to-slate-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : ''}`}
+                        style={isFrozen ? { left: `${leftOffset}px` } : undefined}
                       >
-                        <button
-                          type="button"
-                          className={`inline-flex items-center gap-1 text-left ${
-                            (field === 'jobLocation' || field === 'signOffStatus') 
-                              ? 'px-3 py-1.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 font-semibold shadow-sm transition-colors' 
-                              : ['scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'].includes(field)
-                              ? 'hover:text-blue-600'
-                              : 'hover:text-blue-600'
-                          }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const configFields = ['jobLocation', 'signOffStatus', 'scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'];
-                            if (configFields.includes(field)) {
-                              setEditingConfigField(field);
-                            } else {
-                              toggleSort(field);
-                            }
-                          }}
-                        >
-                          {COLUMN_LABELS[field] || field}
-                          {['jobLocation', 'signOffStatus'].includes(field) && <Filter className="w-3 h-3 ml-1" />}
-                          {['scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'].includes(field) && <Filter className="w-3 h-3 ml-1 opacity-40" />}
-                          {sortField === field ? (
-                            sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
-                          )}
-                        </button>
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            className={`inline-flex items-center gap-1 text-left whitespace-nowrap ${
+                              (field === 'jobLocation' || field === 'signOffStatus') 
+                                ? 'px-3 py-1.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 font-semibold shadow-sm transition-colors' 
+                                : ['scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'].includes(field)
+                                ? 'hover:text-blue-600'
+                                : 'hover:text-blue-600'
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const configFields = ['jobLocation', 'signOffStatus', 'scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'];
+                              if (configFields.includes(field)) {
+                                setEditingConfigField(field);
+                              } else {
+                                toggleSort(field);
+                              }
+                            }}
+                          >
+                            {COLUMN_LABELS[field] || field}
+                            {['jobLocation', 'signOffStatus'].includes(field) && <Filter className="w-3 h-3 ml-1" />}
+                            {['scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'].includes(field) && <Filter className="w-3 h-3 ml-1 opacity-40" />}
+                            {sortField === field ? (
+                              sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                            ) : (
+                              <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-60" />
+                            )}
+                          </button>
+                        </div>
                       </th>
                     )})}
+                  </tr>
+                  {/* Filter Row */}
+                  <tr className="bg-white border-b border-slate-200">
+                    <th className="sticky left-0 px-4 py-2 bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                      <button
+                        onClick={() => setColumnFilters({})}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-normal"
+                        title="Clear all filters"
+                      >
+                        Clear
+                      </button>
+                    </th>
+                    {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
+                      const isFrozen = frozenColumns.includes(field);
+                      const frozenIndex = frozenColumns.indexOf(field);
+                      const leftOffset = frozenIndex >= 0 ? 80 + (frozenIndex * 150) : 0;
+                      return (
+                        <th
+                          key={field}
+                          className={`px-4 py-2 ${isFrozen ? 'sticky bg-white z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]' : ''}`}
+                          style={isFrozen ? { left: `${leftOffset}px` } : undefined}
+                        >
+                          <Input
+                            placeholder="Filter..."
+                            value={columnFilters[field] || ''}
+                            onChange={(e) => {
+                              const newFilters = { ...columnFilters };
+                              if (e.target.value) {
+                                newFilters[field] = e.target.value;
+                              } else {
+                                delete newFilters[field];
+                              }
+                              setColumnFilters(newFilters);
+                            }}
+                            className="h-7 text-xs bg-white border-slate-200"
+                          />
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredProjects.map((project) => (
                     <tr
                       key={project.id}
-                      className="group hover:bg-blue-50/40 transition-colors"
+                      className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100"
                     >
-                      <td className={`px-4 py-3 ${activeTab === 'ALL' ? 'sticky left-0 bg-white z-10' : ''}`}>
+                      <td className="sticky left-0 px-4 py-3 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] group-hover:bg-blue-50/40">
                         <Button
                           variant="outline"
                           size="sm"
@@ -1496,13 +1643,15 @@ export default function FireDoorSchedulePage() {
                           View Order
                         </Button>
                       </td>
-                      {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
-                        const isSticky = activeTab === 'ALL' && index < 3;
+                      {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
+                        const isFrozen = frozenColumns.includes(field);
+                        const frozenIndex = frozenColumns.indexOf(field);
+                        const leftOffset = frozenIndex >= 0 ? 80 + (frozenIndex * 150) : 0;
                         return (
                         <td
                           key={field}
-                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isSticky ? 'sticky bg-white z-10' : ''}`}
-                          style={isSticky ? { left: index === 0 ? '80px' : index === 1 ? '180px' : '350px' } : undefined}
+                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? 'sticky bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] group-hover:bg-blue-50/40' : ''}`}
+                          style={isFrozen ? { left: `${leftOffset}px` } : undefined}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
                           <div onClick={(e) => e.stopPropagation()}>
