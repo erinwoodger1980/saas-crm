@@ -13,13 +13,19 @@ import {
   ListChecks,
   Plus,
   Filter,
-  Search
+  Search,
+  BarChart3,
+  Library,
+  Link2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { TaskAnalyticsDashboard } from "./TaskAnalyticsDashboard";
+import { FormTemplatesLibrary } from "./FormTemplatesLibrary";
+import { CalendarIntegration } from "./CalendarIntegration";
 
 type TaskType = "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
 type TaskStatus = "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
@@ -105,7 +111,7 @@ export function TaskCenter() {
   const tenantId = ids?.tenantId || "";
   const userId = ids?.userId || "";
 
-  const [activeTab, setActiveTab] = useState<"all" | TaskType | "completed">("all");
+  const [activeTab, setActiveTab] = useState<"all" | TaskType | "completed" | "analytics" | "templates" | "calendar">("all");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -321,10 +327,31 @@ export function TaskCenter() {
               <Badge variant="secondary">{taskCounts.completed}</Badge>
             )}
           </TabsTrigger>
+          
+          <TabsTrigger value="analytics" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Analytics
+          </TabsTrigger>
+          
+          <TabsTrigger value="templates" className="flex items-center gap-2">
+            <Library className="h-4 w-4" />
+            Templates
+          </TabsTrigger>
+          
+          <TabsTrigger value="calendar" className="flex items-center gap-2">
+            <Link2 className="h-4 w-4" />
+            Calendar
+          </TabsTrigger>
         </TabsList>
 
         <div className="mt-6">
-          {loading ? (
+          {activeTab === "analytics" ? (
+            <TaskAnalyticsDashboard />
+          ) : activeTab === "templates" ? (
+            <FormTemplatesLibrary />
+          ) : activeTab === "calendar" ? (
+            <CalendarIntegration />
+          ) : loading ? (
             <div className="text-center py-12 text-gray-500">Loading tasks...</div>
           ) : filteredTasks.length === 0 ? (
             <Card className="p-12 text-center">

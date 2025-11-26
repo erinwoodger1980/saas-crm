@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PenTool, Check } from "lucide-react";
+import { PenTool, Check, Upload, MapPin, Star } from "lucide-react";
 
 type FormField = {
   id: string;
@@ -63,6 +63,7 @@ export function FormRenderer({
   const [signatureName, setSignatureName] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<Record<string, boolean>>({});
 
   const handleFieldChange = (fieldId: string, value: any) => {
     setFormData((prev) => ({ ...prev, [fieldId]: value }));
@@ -149,30 +150,58 @@ export function FormRenderer({
     }
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Enhanced signature capture with mobile support
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
         const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        let clientX, clientY;
+        if ('touches' in e) {
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+        } else {
+          clientX = e.clientX;
+          clientY = e.clientY;
+        }
+        
         ctx.beginPath();
-        ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+        ctx.moveTo((clientX - rect.left) * scaleX, (clientY - rect.top) * scaleY);
       }
     }
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
+    e.preventDefault();
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
         const rect = canvas.getBoundingClientRect();
-        ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        let clientX, clientY;
+        if ('touches' in e) {
+          clientX = e.touches[0].clientX;
+          clientY = e.touches[0].clientY;
+        } else {
+          clientX = e.clientX;
+          clientY = e.clientY;
+        }
+        
+        ctx.lineTo((clientX - rect.left) * scaleX, (clientY - rect.top) * scaleY);
         ctx.strokeStyle = "#000";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.lineCap = "round";
+        ctx.lineJoin = "round";
         ctx.stroke();
       }
     }
@@ -180,6 +209,36 @@ export function FormRenderer({
 
   const stopDrawing = () => {
     setIsDrawing(false);
+  };
+
+  // File upload handler
+  const handleFileUpload = async (fieldId: string, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    
+    setUploadingFiles(prev => ({ ...prev, [fieldId]: true }));
+    
+    try {
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+      }
+      
+      const response = await apiFetch(`/tasks/${taskId}/upload`, {
+        method: "POST",
+        headers: {
+          "x-tenant-id": tenantId,
+        },
+        body: formData,
+      });
+      
+      const uploadedFiles = await response.json();
+      handleFieldChange(fieldId, uploadedFiles);
+    } catch (error) {
+      console.error("File upload failed:", error);
+      alert("File upload failed");
+    } finally {
+      setUploadingFiles(prev => ({ ...prev, [fieldId]: false }));
+    }
   };
 
   const renderField = (field: FormField) => {
@@ -321,6 +380,97 @@ export function FormRenderer({
             ))}
           </div>
         )}
+
+        {field.type === "file" && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Input
+                id={field.id}
+                type="file"
+                onChange={(e) => handleFileUpload(field.id, e.target.files)}
+                disabled={readOnly || uploadingFiles[field.id]}
+                multiple
+                className="cursor-pointer"
+              />
+              {uploadingFiles[field.id] && (
+                <span className="text-sm text-gray-500">Uploading...</span>
+              )}
+            </div>
+            {value && Array.isArray(value) && value.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {value.map((file: any, idx: number) => (
+                  <div key={idx} className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-sm">
+                    <Upload className="w-3 h-3" />
+                    <span>{file.name || `File ${idx + 1}`}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {field.type === "location" && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-gray-500" />
+              <Input
+                id={field.id}
+                value={value?.address || ""}
+                onChange={(e) => handleFieldChange(field.id, { ...value, address: e.target.value })}
+                placeholder={field.placeholder || "Enter address"}
+                disabled={readOnly}
+                required={field.required}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                step="any"
+                value={value?.latitude || ""}
+                onChange={(e) => handleFieldChange(field.id, { ...value, latitude: e.target.value })}
+                placeholder="Latitude"
+                disabled={readOnly}
+                className="text-sm"
+              />
+              <Input
+                type="number"
+                step="any"
+                value={value?.longitude || ""}
+                onChange={(e) => handleFieldChange(field.id, { ...value, longitude: e.target.value })}
+                placeholder="Longitude"
+                disabled={readOnly}
+                className="text-sm"
+              />
+            </div>
+          </div>
+        )}
+
+        {field.type === "rating" && (
+          <div className="flex items-center gap-2">
+            {[1, 2, 3, 4, 5].map((rating) => (
+              <button
+                key={rating}
+                type="button"
+                onClick={() => !readOnly && handleFieldChange(field.id, rating)}
+                disabled={readOnly}
+                className="focus:outline-none transition-transform hover:scale-110 disabled:opacity-50"
+              >
+                <Star
+                  className={`w-8 h-8 ${
+                    rating <= (value || 0)
+                      ? "fill-yellow-400 text-yellow-400"
+                      : "text-gray-300"
+                  }`}
+                />
+              </button>
+            ))}
+            {value && (
+              <span className="ml-2 text-sm font-medium text-gray-700">
+                {value} / 5
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -367,16 +517,20 @@ export function FormRenderer({
             </div>
             <div>
               <Label>Sign below</Label>
-              <div className="border-2 border-gray-300 rounded-lg bg-white">
+              <div className="border-2 border-gray-300 rounded-lg bg-white touch-none">
                 <canvas
                   ref={canvasRef}
-                  width={600}
-                  height={200}
-                  className="w-full cursor-crosshair"
+                  width={800}
+                  height={300}
+                  className="w-full cursor-crosshair touch-none"
+                  style={{ maxHeight: '300px' }}
                   onMouseDown={startDrawing}
                   onMouseMove={draw}
                   onMouseUp={stopDrawing}
                   onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
                 />
               </div>
               <div className="flex justify-end gap-2 mt-3">

@@ -17,6 +17,9 @@ import {
   Phone,
   FileText,
   PenTool,
+  Upload,
+  MapPin,
+  Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -49,7 +52,10 @@ type FieldType =
   | "date"
   | "checkbox"
   | "select"
-  | "radio";
+  | "radio"
+  | "file"
+  | "location"
+  | "rating";
 
 type FormField = {
   id: string;
@@ -86,6 +92,9 @@ const FIELD_TYPES = [
   { type: "checkbox" as FieldType, label: "Checkbox", icon: CheckSquare },
   { type: "select" as FieldType, label: "Dropdown", icon: List },
   { type: "radio" as FieldType, label: "Radio Buttons", icon: List },
+  { type: "file" as FieldType, label: "File Upload", icon: Upload },
+  { type: "location" as FieldType, label: "Location", icon: MapPin },
+  { type: "rating" as FieldType, label: "Rating Scale", icon: Star },
 ];
 
 interface FormBuilderProps {
