@@ -981,7 +981,7 @@ export default function LeadModal({
     }
   }
 
-  async function saveOpportunityField(field: string, value: any) {
+  const saveOpportunityField = async (field: string, value: any) => {
     let id = opportunityId || null;
     if (!id) {
       id = await ensureOpportunity();
@@ -989,6 +989,7 @@ export default function LeadModal({
     console.log('[saveOpportunityField] called with:', { field, value, opportunityId, leadId: lead?.id, resolvedId: id, idType: typeof id });
     if (!id) {
       console.warn('[saveOpportunityField] no id resolved, aborting');
+      alert(`Could not save ${field}: No opportunity ID found.`);
       return;
     }
     
@@ -1005,6 +1006,12 @@ export default function LeadModal({
         body: JSON.stringify(payload),
       });
       
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[saveOpportunityField] Server error:', response.status, errorText);
+        throw new Error(`Server returned ${response.status}: ${errorText}`);
+      }
+      
       const result = await response.json();
       console.log('[saveOpportunityField] success:', result);
       
@@ -1014,9 +1021,9 @@ export default function LeadModal({
       }
     } catch (e: any) {
       console.error(`[saveOpportunityField] Failed to save ${field}:`, e);
-      alert(`Could not save ${field}. Please try again.`);
+      alert(`Could not save ${field}. Error: ${e.message || 'Please try again.'}`);
     }
-  }
+  };
 
   // Reset to initial stage when modal opens or lead changes (but not during navigation)
   useEffect(() => {
