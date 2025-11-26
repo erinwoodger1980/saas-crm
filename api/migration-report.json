@@ -1,0 +1,16 @@
+{
+  "timestamp": "2025-11-26T17:30:53.743Z",
+  "steps": [
+    {
+      "step": "prisma generate",
+      "ok": true,
+      "out": "Prisma schema loaded from prisma/schema.prisma\n\n✔ Generated Prisma Client (v7.0.0) to ./node_modules/.pnpm/@prisma+client@7.0.0_prisma@7.0.0_@types+react@19.2.6_react-dom@19.2.0_react@19.2.0__react@19_azvqfyy76gbumj3v3d6eou4idi/node_modules/@prisma/client in 392ms\n\nStart by importing your Prisma Client (See: https://pris.ly/d/importing-client)\n\nTip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate\n\n"
+    },
+    {
+      "step": "deploy migrations",
+      "ok": true,
+      "out": "Prisma schema loaded from prisma/schema.prisma\nDatasource \"db\": PostgreSQL database \"postgres\", schema \"public\" at \"localhost:5432\"\n\n77 migrations found in prisma/migrations\n\n\nNo pending migrations to apply.\n"
+    }
+  ],
+  "holidayCheck": null
+}

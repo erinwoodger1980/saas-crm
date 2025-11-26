@@ -905,6 +905,114 @@ router.post("/templates", async (req, res) => {
   }
 });
 
+// POST /tasks/templates/:id/schedule - Create a task immediately from a template
+router.post("/templates/:id/schedule", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    const id = String(req.params.id);
+
+    // Optional override fields
+    const schema = z.object({
+      dueAt: z.string().datetime().optional(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      priority: TaskPriorityEnum.optional(),
+      relatedType: RelatedTypeEnum.optional(),
+      relatedId: z.string().optional(),
+      assigneeIds: z.array(z.string()).optional(),
+    });
+    const overrides = schema.parse(req.body || {});
+
+    const template = await prisma.taskTemplate.findFirst({
+      where: { id, tenantId },
+    });
+    if (!template) return res.status(404).json({ error: "template_not_found" });
+
+    const now = new Date();
+    const dueAt = overrides.dueAt ? new Date(overrides.dueAt) : now;
+
+    const task = await prisma.task.create({
+      data: {
+        tenantId,
+        templateId: template.id,
+        taskType: template.taskType,
+        title: overrides.title || template.defaultTitle,
+        description: overrides.description || template.defaultDescription,
+        priority: (overrides.priority || template.defaultPriority) as any,
+        relatedType: (overrides.relatedType || template.relatedType || "OTHER") as any,
+        relatedId: overrides.relatedId,
+        status: "OPEN" as any,
+        dueAt,
+        // If template has recurrence, set nextDueAt based on its pattern
+        nextDueAt:
+          template.recurrencePattern
+            ? new Date(
+                (function calcNext(start: Date) {
+                  const next = new Date(start);
+                  const interval = template.recurrenceInterval || 1;
+                  switch (template.recurrencePattern) {
+                    case "DAILY":
+                      next.setDate(next.getDate() + interval);
+                      break;
+                    case "WEEKLY":
+                      next.setDate(next.getDate() + 7 * interval);
+                      break;
+                    case "MONTHLY":
+                      next.setMonth(next.getMonth() + interval);
+                      break;
+                    case "QUARTERLY":
+                      next.setMonth(next.getMonth() + 3 * interval);
+                      break;
+                    case "YEARLY":
+                      next.setFullYear(next.getFullYear() + interval);
+                      break;
+                    default:
+                      return start;
+                  }
+                  return next;
+                })(dueAt)
+              )
+            : undefined,
+        formSchema: template.formSchema as any,
+        requiresSignature: template.requiresSignature,
+        checklistItems: template.checklistItems as any,
+        createdById: userId,
+        assignees:
+          (overrides.assigneeIds && overrides.assigneeIds.length
+            ? overrides.assigneeIds
+            : template.defaultAssigneeIds) &&
+          ((overrides.assigneeIds || template.defaultAssigneeIds)!.length
+            ? {
+                create: (overrides.assigneeIds || template.defaultAssigneeIds)!.map((uid) => ({
+                  userId: uid,
+                  role: "OWNER" as any,
+                })),
+              }
+            : undefined),
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        tenantId,
+        entity: "TASK",
+        entityId: task.id,
+        verb: "CREATED",
+        actorId: userId ?? undefined,
+        data: { source: "template_schedule", templateId: template.id } as any,
+      },
+    });
+
+    res.json(task);
+  } catch (e: any) {
+    console.error("[tasks.templates.schedule] failed:", e);
+    res.status(400).json({ error: e.message || "Invalid request" });
+  }
+});
+
 // GET /tasks/forms - List form templates
 router.get("/forms", async (req, res) => {
   const tenantId = resolveTenantId(req);
