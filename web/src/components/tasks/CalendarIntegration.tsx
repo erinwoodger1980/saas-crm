@@ -281,6 +281,10 @@ export function CalendarIntegration() {
           <p className="text-sm text-muted-foreground">
             Sync tasks with external calendar systems
           </p>
+          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+            <Link2 className="h-3 w-3" />
+            Calendar events include deep links back to tasks, leads, and workshop processes
+          </p>
         </div>
         <div className="flex gap-2">
           <Button onClick={handleExportICal} variant="outline">

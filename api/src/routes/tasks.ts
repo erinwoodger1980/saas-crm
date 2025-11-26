@@ -1157,4 +1157,115 @@ router.get("/stats/:userId", async (req: any, res) => {
   }
 });
 
+/**
+ * GET /tasks/calendar-export/ical
+ * Export tasks as iCal file with deep links back to the app
+ */
+router.get("/calendar-export/ical", async (req, res) => {
+  try {
+    const tenantId = resolveTenantId(req);
+    const userId = resolveUserId(req);
+    
+    if (!tenantId) return res.status(400).json({ error: "Missing tenantId" });
+
+    // Get all tasks with due dates
+    const tasks = await prisma.task.findMany({
+      where: {
+        tenantId,
+        ...(userId && {
+          assignees: {
+            some: { userId }
+          }
+        }),
+        dueAt: { not: null },
+      },
+      include: {
+        assignees: {
+          include: { user: true }
+        }
+      },
+      orderBy: { dueAt: "asc" },
+    });
+
+    // Get tenant for app URL
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true }
+    });
+
+    // Build iCal content
+    const appUrl = process.env.APP_URL || "https://app.example.com";
+    const now = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    
+    let ical = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Task System//EN
+CALSCALE:GREGORIAN
+X-WR-CALNAME:${tenant?.name || "Tasks"}
+X-WR-TIMEZONE:UTC
+METHOD:PUBLISH
+`;
+
+    for (const task of tasks) {
+      const uid = `task-${task.id}@${appUrl.replace(/https?:\/\//, "")}`;
+      const created = task.createdAt.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+      const dueDate = task.dueAt ? new Date(task.dueAt).toISOString().replace(/[-:]/g, "").split(".")[0] + "Z" : now;
+      
+      // Build deep link based on related type
+      let deepLink = `${appUrl}/tasks`;
+      let location = "";
+      
+      if (task.relatedType === "LEAD" && task.relatedId) {
+        deepLink = `${appUrl}/leads?task=${task.id}`;
+        location = "Leads";
+      } else if (task.relatedType === "PROJECT" && task.relatedId) {
+        deepLink = `${appUrl}/workshop?task=${task.id}`;
+        location = "Workshop";
+      } else if (task.relatedType === "QUOTE" && task.relatedId) {
+        deepLink = `${appUrl}/quotes/${task.relatedId}?task=${task.id}`;
+        location = "Quote Builder";
+      } else if (task.relatedType === "WORKSHOP" && task.relatedId) {
+        deepLink = `${appUrl}/workshop?opportunity=${task.relatedId}&task=${task.id}`;
+        location = "Workshop Process";
+      } else {
+        deepLink = `${appUrl}/tasks?id=${task.id}`;
+        location = "Task Center";
+      }
+
+      const assigneeNames = task.assignees.map(a => a.user.name).join(", ");
+      const description = [
+        task.description || "",
+        "",
+        `Priority: ${task.priority}`,
+        `Status: ${task.status}`,
+        assigneeNames && `Assigned to: ${assigneeNames}`,
+        "",
+        `Open in app: ${deepLink}`,
+      ].filter(Boolean).join("\\n");
+
+      ical += `BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:${created}
+DTSTART:${dueDate}
+SUMMARY:${task.title.replace(/\n/g, " ")}
+DESCRIPTION:${description}
+LOCATION:${location}
+URL:${deepLink}
+STATUS:${task.status === "DONE" ? "COMPLETED" : "CONFIRMED"}
+PRIORITY:${task.priority === "URGENT" ? "1" : task.priority === "HIGH" ? "3" : task.priority === "MEDIUM" ? "5" : "7"}
+END:VEVENT
+`;
+    }
+
+    ical += `END:VCALENDAR`;
+
+    res.setHeader("Content-Type", "text/calendar");
+    res.setHeader("Content-Disposition", `attachment; filename="tasks-${new Date().toISOString().split("T")[0]}.ics"`);
+    res.send(ical);
+  } catch (e: any) {
+    console.error("Failed to export calendar:", e);
+    res.status(500).json({ error: e.message || "Failed to export calendar" });
+  }
+});
+
 export default router;
