@@ -778,12 +778,14 @@ router.post("/", async (req, res) => {
       status,
       custom = {},
       description,
+      assignedUserId,
     }: {
       contactName: string;
       email?: string;
       status?: UiStatus;
       custom?: any;
       description?: string;
+      assignedUserId?: string;
     } = req.body || {};
 
     if (!contactName) return res.status(400).json({ error: "contactName required" });
@@ -824,6 +826,7 @@ router.post("/", async (req, res) => {
         capturedAt: now,
         dateQuoteSent: dateQuoteSent,
         custom: customData,
+        assignedToId: assignedUserId || null,
       },
     });
 
@@ -836,6 +839,35 @@ router.post("/", async (req, res) => {
 
     // Proactive first task
     await handleStatusTransition({ tenantId, leadId: lead.id, prevUi: null, nextUi: uiStatus, actorId: userId, playbook });
+
+    // If assigned to a user, create initial task for them
+    if (assignedUserId) {
+      const initialTask = await prisma.task.create({
+        data: {
+          tenantId,
+          createdById: userId,
+          title: `Review enquiry: ${lead.contactName}`,
+          description: `Review and respond to enquiry from ${lead.contactName}${email ? ` (${email})` : ''}`,
+          status: "OPEN",
+          priority: "HIGH",
+          taskType: "MANUAL",
+          relatedType: "LEAD",
+          relatedId: lead.id,
+          autoCompleted: false,
+          requiresSignature: false,
+          dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // Due in 24 hours
+        },
+      });
+
+      // Assign task to user
+      await prisma.taskAssignee.create({
+        data: {
+          taskId: initialTask.id,
+          userId: assignedUserId,
+          role: "OWNER",
+        },
+      });
+    }
 
     // If created with WON status, ensure opportunity exists
     if (uiStatus === "WON") {
