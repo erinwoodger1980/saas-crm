@@ -414,22 +414,38 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
           </div>
 
           {/* FOLLOW-UP PANEL (AI email) */}
-          {form.taskType === "FOLLOW_UP" && form.meta?.aiDraft && (
+          {form.taskType === "FOLLOW_UP" && (
             <div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
-              <FollowUpTaskPanel
-                task={form as any}
-                authHeaders={authHeaders}
-                onEmailSent={() => { onChanged?.(); }}
-                onTaskCompleted={() => { onChanged?.(); setForm(prev => prev ? { ...prev, status: "DONE" } : prev); }}
-              />
+              {form.meta?.aiDraft ? (
+                <FollowUpTaskPanel
+                  task={form as any}
+                  authHeaders={authHeaders}
+                  onEmailSent={() => { onChanged?.(); }}
+                  onTaskCompleted={() => { onChanged?.(); setForm(prev => prev ? { ...prev, status: "DONE" } : prev); }}
+                />
+              ) : (
+                <div className="space-y-3">
+                  <div className="text-sm font-semibold text-indigo-900">AI Follow-up Task</div>
+                  <p className="text-sm text-slate-600">
+                    Follow-up tasks with AI drafts are created automatically from lead actions. 
+                    To generate an AI follow-up, use the follow-up features in the lead modal.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
           {/* FORM TASK UI */}
-          {form.taskType === "FORM" && form.formSchema?.fields && (
+          {form.taskType === "FORM" && (
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 space-y-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Form Fields</div>
-              <div className="space-y-3">
+              {!form.formSchema?.fields?.length ? (
+                <div className="text-sm text-slate-600 py-3">
+                  No form schema configured. Form tasks are created automatically with questionnaires and other workflows.
+                </div>
+              ) : (
+                <>
+                <div className="space-y-3">
                 {form.formSchema.fields.map((f, idx) => {
                   const key = f.key || f.id || f.label || `field_${idx}`;
                   const label = f.label || key;
@@ -472,24 +488,32 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                     </label>
                   );
                 })}
-              </div>
-              <div className="flex justify-end">
-                <Button
-                  onClick={submitFormTask}
-                  disabled={submittingForm}
-                  variant="default"
-                >
-                  {submittingForm ? "Submitting…" : "Submit Form"}
-                </Button>
-              </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    onClick={submitFormTask}
+                    disabled={submittingForm}
+                    variant="default"
+                  >
+                    {submittingForm ? "Submitting…" : "Submit Form"}
+                  </Button>
+                </div>
+                </>
+              )}
             </div>
           )}
 
           {/* CHECKLIST TASK UI */}
-          {form.taskType === "CHECKLIST" && form.checklistItems && (
+          {form.taskType === "CHECKLIST" && (
             <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 space-y-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Checklist</div>
-              {form.checklistItems.map(item => (
+              {!form.checklistItems?.length ? (
+                <div className="text-sm text-slate-600 py-3">
+                  No checklist items configured. Checklist tasks are created automatically with workshop processes and other workflows.
+                </div>
+              ) : (
+                <>
+                {form.checklistItems.map(item => (
                 <button
                   key={item.id}
                   type="button"
@@ -503,6 +527,8 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
               <div className="text-xs text-slate-500 mt-2">
                 {form.checklistItems.filter(i => i.completed).length}/{form.checklistItems.length} completed
               </div>
+              </>
+              )}
             </div>
           )}
 
