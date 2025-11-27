@@ -411,7 +411,21 @@ export function TaskCenter({
                       setSelectedTask(found);
                       setShowTaskModal(true);
                     } else {
-                      alert('Quote task created');
+                      (async () => {
+                        try {
+                          const fetched: any = await apiFetch(`/tasks/${task.meta.quoteTaskId}`, {
+                            headers: { 'x-tenant-id': tenantId },
+                          });
+                          if (fetched && fetched.id) {
+                            setSelectedTask(fetched);
+                            setShowTaskModal(true);
+                          } else {
+                            alert('Quote task created');
+                          }
+                        } catch (err) {
+                          alert('Unable to open quote task');
+                        }
+                      })();
                     }
                   }}
                 >Quote task created</button>
