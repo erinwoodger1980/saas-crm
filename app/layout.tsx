@@ -2,10 +2,10 @@
 
 import { ReactNode, useEffect } from "react";
 import { usePathname } from "next/navigation";
-import AppShell from "../src/components/AppShell";
+import AppShell from "@/components/AppShell";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import { ensureDemoAuth } from "@/lib/api";
-import "../src/app/globals.css";
+import "@/app/globals.css";
 
 function DevAuth() {
   useEffect(() => {
