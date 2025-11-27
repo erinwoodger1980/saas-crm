@@ -283,15 +283,15 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
 
   return (
     <div
-      className="fixed inset-0 z-[999] flex items-center justify-center bg-gradient-to-br from-sky-500/40 via-indigo-900/40 to-rose-400/40 backdrop-blur-sm md:px-4 md:py-12"
+      className="fixed inset-0 z-[999] flex items-start justify-center bg-gradient-to-br from-sky-500/40 via-indigo-900/40 to-rose-400/40 backdrop-blur-sm overflow-y-auto px-4 py-4 md:py-12"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full h-full md:h-auto md:max-w-3xl overflow-hidden md:rounded-3xl rounded-none border border-white/30 md:border-white/40 bg-white md:bg-white/90 p-4 md:p-6 shadow-[0_35px_80px_-35px_rgba(30,64,175,0.45)]">
+      <div className="relative w-full md:max-w-3xl my-auto md:my-0 overflow-hidden md:rounded-3xl rounded-2xl border border-white/30 md:border-white/40 bg-white md:bg-white/90 p-4 md:p-6 shadow-[0_35px_80px_-35px_rgba(30,64,175,0.45)] max-h-[calc(100vh-2rem)] md:max-h-[calc(100vh-6rem)]">
         <div aria-hidden="true" className="pointer-events-none absolute -top-16 -right-20 h-56 w-56 rounded-full bg-rose-200/40 blur-3xl" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-sky-300/40 blur-3xl" />
 
-        <div className="relative space-y-6 h-full overflow-y-auto">
+        <div className="relative space-y-6 overflow-y-auto max-h-[calc(100vh-4rem)] md:max-h-[calc(100vh-8rem)]">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex-1 space-y-2">
               <input
