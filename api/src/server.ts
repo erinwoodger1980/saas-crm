@@ -86,7 +86,8 @@ import eventsRouter from "./routes/events";
 import notificationsRouter from "./routes/notifications";
 import streaksRouter from "./routes/streaks";
 import followupsRouter from "./routes/followups";
-import followUpRulesRouter from "./routes/follow-up-rules";
+// TEMP: Commented out until schema fields are fixed
+// import followUpRulesRouter from "./routes/follow-up-rules";
 import marketingRoiRouter from "./routes/marketing-roi";
 import interestRouter from "./routes/interest";
 import earlyAccessRouter from "./routes/early-access";
@@ -632,7 +633,8 @@ app.use("/events", eventsRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/streaks", streaksRouter);
 app.use("/followups", followupsRouter);
-app.use("/follow-up-rules", requireAuth, followUpRulesRouter);
+// TEMP: Commented out until schema fields are fixed
+// app.use("/follow-up-rules", requireAuth, followUpRulesRouter);
 app.use("/marketing/roi", marketingRoiRouter);
 app.use("/keywords", requireAuth, keywordsRouter);
 app.use("/ads", requireAuth, adsRouter);
@@ -871,27 +873,28 @@ function startInboxWatcher() {
 startInboxWatcher();
 startRecurringTaskProcessor(60); // Check every 60 minutes
 
+// TEMP: Commented out until schema fields are fixed
 // Start AI follow-up trigger engine - scans for events that need follow-up
-import { scanForFollowUpTriggers } from "./services/followUpTriggerEngine";
-function startFollowUpEngine() {
-  console.log("[follow-up-engine] Starting...");
-  
-  // Run immediately
-  scanForFollowUpTriggers().catch((err) => {
-    console.error("[follow-up-engine] Initial scan failed:", err);
-  });
-
-  // Then every 30 minutes
-  setInterval(
-    () => {
-      scanForFollowUpTriggers().catch((err) => {
-        console.error("[follow-up-engine] Interval scan failed:", err);
-      });
-    },
-    30 * 60 * 1000
-  );
-}
-startFollowUpEngine();
+// import { scanForFollowUpTriggers } from "./services/followUpTriggerEngine";
+// function startFollowUpEngine() {
+//   console.log("[follow-up-engine] Starting...");
+//   
+//   // Run immediately
+//   scanForFollowUpTriggers().catch((err) => {
+//     console.error("[follow-up-engine] Initial scan failed:", err);
+//   });
+//
+//   // Then every 30 minutes
+//   setInterval(
+//     () => {
+//       scanForFollowUpTriggers().catch((err) => {
+//         console.error("[follow-up-engine] Interval scan failed:", err);
+//       });
+//     },
+//     30 * 60 * 1000
+//   );
+// }
+// startFollowUpEngine();
 
 /* ---------------- Request timeout middleware ---------------- */
 const REQUEST_TIMEOUT_MS = 25000; // 25 seconds (Render has 30s timeout)

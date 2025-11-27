@@ -8,7 +8,8 @@ import { logInsight } from "../services/training";
 import { load } from "cheerio";
 import { redactEmailBody } from "../lib/ml/redact";
 import { gmailFetchAttachment } from "../services/gmail";
-import { handleNewLeadFromEmail } from "../services/conversationalFollowUp";
+// TEMP: Commented out until schema fields are fixed
+// import { handleNewLeadFromEmail } from "../services/conversationalFollowUp";
 
 const router = Router();
 
@@ -1181,18 +1182,19 @@ router.post("/import", async (req, res) => {
           createdLead = true;
           classification.leadId = leadId;
 
+          // TEMP: Commented out until schema fields are fixed
           // Use conversational follow-up system instead of generic task
-          await handleNewLeadFromEmail({
-            leadId,
-            tenantId,
-            userId: userId!,
-            contactName: created.contactName,
-            email: created.email || "",
-            threadId: thread.threadId || undefined,
-            messageId: m.id,
-            subject,
-            snippet,
-          });
+          // await handleNewLeadFromEmail({
+          //   leadId,
+          //   tenantId,
+          //   userId: userId!,
+          //   contactName: created.contactName,
+          //   email: created.email || "",
+          //   threadId: thread.threadId || undefined,
+          //   messageId: m.id,
+          //   subject,
+          //   snippet,
+          // });
 
           await recordTrainingExample({
             tenantId,
@@ -1578,18 +1580,19 @@ router.post("/import-all-users", async (req, res) => {
                 leadId = created.id;
                 createdLead = true;
 
+                // TEMP: Commented out until schema fields are fixed
                 // Use conversational follow-up system instead of old generic task
-                await handleNewLeadFromEmail({
-                  leadId,
-                  tenantId,
-                  userId: conn.userId,
-                  contactName: created.contactName,
-                  email: created.email || "",
-                  threadId: thread.threadId || undefined,
-                  messageId: m.id,
-                  subject,
-                  snippet,
-                });
+                // await handleNewLeadFromEmail({
+                //   leadId,
+                //   tenantId,
+                //   userId: conn.userId,
+                //   contactName: created.contactName,
+                //   email: created.email || "",
+                //   threadId: thread.threadId || undefined,
+                //   messageId: m.id,
+                //   subject,
+                //   snippet,
+                // });
 
                 await recordTrainingExample({ tenantId, provider: "gmail", messageId: m.id, label: "accepted", subject, snippet, from: fromHdr, body: bodyForAnalysis, ai, heuristics: heur, decidedBy, reason, confidence: aiConfidence, leadId });
                 

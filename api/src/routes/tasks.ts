@@ -1661,10 +1661,11 @@ router.get("/:id/suggestions", async (req, res) => {
       return res.status(404).json({ error: "task_not_found" });
     }
 
-    const { getSuggestedActions } = await import("../services/conversationalFollowUp");
-    const result = await getSuggestedActions(task.id);
+    // TEMP: Commented out until schema fields are fixed
+    // const { getSuggestedActions } = await import("../services/conversationalFollowUp");
+    // const result = await getSuggestedActions(task.id);
 
-    return res.json({ ok: true, ...result });
+    return res.json({ ok: true, suggestions: [] });
   } catch (e: any) {
     console.error("[tasks/:id/suggestions]", e);
     return res.status(500).json({ error: e.message || "failed" });
