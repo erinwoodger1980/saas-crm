@@ -92,9 +92,9 @@ jobs:
       - name: Migrate database (deploy)
         if: ${{ env.DATABASE_URL != '' }}
         run: |
-          echo "🚀 Running prisma migrate deploy against provisioned database"
-          npx prisma migrate deploy || {
-            echo "⚠️ migrate deploy failed; continuing (non-blocking)";
+          echo "🚀 Running prisma db push against provisioned database to sync schema"
+          npx prisma db push --accept-data-loss --skip-generate || {
+            echo "⚠️ db push failed; continuing (non-blocking)";
           }
 
       - name: TypeScript compile
