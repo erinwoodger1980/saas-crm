@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
+import { FollowUpTaskPanel } from "@/components/follow-up/FollowUpTaskPanel";
 
 type FollowUpLog = {
   id: string;
@@ -537,6 +538,7 @@ export default function OpportunityModal({
   const [draftSubject, setDraftSubject] = useState("");
   const [draftBody, setDraftBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [selectedFollowUpTask, setSelectedFollowUpTask] = useState<any>(null);
   const [status, setStatusState] = useState<LeadStatus>(leadStatus);
   const [statusUpdating, setStatusUpdating] = useState<LeadStatus | null>(null);
   const [_autoMode, setAutoMode] = useState(false);
@@ -985,6 +987,56 @@ export default function OpportunityModal({
               </Button>
             </div>
 
+            {/* AI Follow-ups Section - Prominently displayed */}
+            {pendingTasks.filter(t => t.taskType === 'FOLLOW_UP' || t.meta?.aiDraft).length > 0 && (
+              <div className="mb-6 rounded-xl border-2 border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 p-5 shadow-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-3 rounded-lg bg-indigo-100">
+                    <span className="text-2xl">✨</span>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-slate-900">AI-Powered Follow-ups</h3>
+                    <p className="text-sm text-slate-600">Smart email drafts ready to review and send</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  {pendingTasks.filter(t => t.taskType === 'FOLLOW_UP' || t.meta?.aiDraft).map((task) => (
+                    <div key={task.id} className="rounded-lg border-2 border-indigo-200 bg-white hover:shadow-md transition-shadow">
+                      <Button
+                        variant="ghost"
+                        className="w-full p-4 text-left flex items-center justify-between hover:bg-indigo-50/50"
+                        onClick={() => setSelectedFollowUpTask(task)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">✨</span>
+                          <div>
+                            <div className="text-base font-medium text-slate-900">{task.title}</div>
+                            {task.meta?.aiDraft && (
+                              <div className="text-sm text-indigo-600 font-medium">
+                                AI Draft Ready • {Math.round((task.meta.aiDraft.confidence || 0) * 100)}% Confidence
+                              </div>
+                            )}
+                            {task.description && (
+                              <div className="text-xs text-slate-600 mt-1">{task.description}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-slate-500">
+                            {task.dueAt ? `Due ${new Date(task.dueAt).toLocaleDateString()}` : "Due soon"}
+                          </div>
+                          <div className="text-sm font-medium text-indigo-600 mt-1">
+                            Click to review →
+                          </div>
+                        </div>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Two column layout */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Create Follow-up Tasks */}
@@ -1087,53 +1139,83 @@ export default function OpportunityModal({
                       No scheduled follow-up tasks. Create one above.
                     </div>
                   ) : (
-                    pendingTasks.map((task) => (
-                      <div key={task.id} className="rounded-md border p-3 bg-blue-50">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <span>{task.meta?.type === "email_followup" ? "📧" : "📞"}</span>
-                            <span className="text-sm font-medium">{task.title}</span>
+                    pendingTasks.map((task) => {
+                      const isFollowUpTask = task.taskType === 'FOLLOW_UP' || task.meta?.aiDraft;
+                      
+                      if (isFollowUpTask) {
+                        return (
+                          <div key={task.id} className="rounded-lg border-2 border-indigo-200">
+                            <Button
+                              variant="ghost"
+                              className="w-full p-3 text-left flex items-center justify-between hover:bg-indigo-50"
+                              onClick={() => setSelectedFollowUpTask(task)}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-indigo-600">✨</span>
+                                <div>
+                                  <div className="text-sm font-medium">{task.title}</div>
+                                  {task.meta?.aiDraft && (
+                                    <div className="text-xs text-indigo-600">AI-Powered Follow-up</div>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="text-xs text-slate-500">
+                                {task.dueAt
+                                  ? `Due ${new Date(task.dueAt).toLocaleDateString()}`
+                                  : "Due soon"}
+                              </span>
+                            </Button>
                           </div>
-                          <span className="text-xs text-slate-500">
-                            {task.dueAt ? `Due ${new Date(task.dueAt).toLocaleDateString()}` : "Due soon"}
-                          </span>
-                        </div>
-                        <div className="text-xs text-slate-600 mb-2">
-                          {task.description}
-                        </div>
-                        <div className="flex gap-2">
-                          {task.meta?.type === "email_followup" ? (
+                        );
+                      }
+                      
+                      return (
+                        <div key={task.id} className="rounded-md border p-3 bg-blue-50">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span>{task.meta?.type === "email_followup" ? "📧" : "📞"}</span>
+                              <span className="text-sm font-medium">{task.title}</span>
+                            </div>
+                            <span className="text-xs text-slate-500">
+                              {task.dueAt ? `Due ${new Date(task.dueAt).toLocaleDateString()}` : "Due soon"}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-600 mb-2">
+                            {task.description}
+                          </div>
+                          <div className="flex gap-2">
+                            {task.meta?.type === "email_followup" ? (
+                              <Button 
+                                size="sm" 
+                                className="text-xs"
+                                onClick={() => openEmailComposer(task.id)}
+                              >
+                                Compose & Send
+                              </Button>
+                            ) : (
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                className="text-xs"
+                                onClick={() => {
+                                  toast({ title: "Call logging would open here" });
+                                }}
+                              >
+                                Log Call
+                              </Button>
+                            )}
                             <Button 
                               size="sm" 
+                              variant="ghost"
                               className="text-xs"
-                              onClick={() => openEmailComposer(task.id)}
+                              onClick={() => completeTask(task.id)}
                             >
-                              Compose & Send
+                              Mark Done
                             </Button>
-                          ) : (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="text-xs"
-                              onClick={() => {
-                                // TODO: Open call logging
-                                toast({ title: "Call logging would open here" });
-                              }}
-                            >
-                              Log Call
-                            </Button>
-                          )}
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            className="text-xs"
-                            onClick={() => completeTask(task.id)}
-                          >
-                            Mark Done
-                          </Button>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
 
                   {/* Completed Tasks */}
@@ -1254,6 +1336,28 @@ export default function OpportunityModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* AI Follow-Up Task Panel Dialog */}
+    {selectedFollowUpTask && (
+      <Dialog open={!!selectedFollowUpTask} onOpenChange={(open) => !open && setSelectedFollowUpTask(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <FollowUpTaskPanel
+            task={selectedFollowUpTask}
+            authHeaders={{ Authorization: `Bearer ${localStorage.getItem('token')}` }}
+            onEmailSent={async () => {
+              toast({ title: "Email sent successfully!" });
+              await fetchTasks();
+            }}
+            onTaskCompleted={async () => {
+              toast({ title: "Task completed!" });
+              setSelectedFollowUpTask(null);
+              await fetchTasks();
+            }}
+            onClose={() => setSelectedFollowUpTask(null)}
+          />
+        </DialogContent>
+      </Dialog>
+    )}
     </>
   );
 }

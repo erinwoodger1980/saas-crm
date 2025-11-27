@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, KeyRound } from "lucide-react";
 
-type UserRow = { id: string; name: string | null; email: string; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; passwordHash?: string | null };
+type UserRow = { id: string; name: string | null; email: string; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null };
 
 type UsersResponse = { ok: boolean; items: UserRow[] };
 
@@ -24,6 +24,7 @@ export default function UsersSettingsPage() {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [editingHours, setEditingHours] = useState<Record<string, string>>({});
   const [editingProcesses, setEditingProcesses] = useState<Record<string, string[]>>({});
+  const [editingProfile, setEditingProfile] = useState<Record<string, { firstName: string; lastName: string; emailFooter: string }>>({});
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
@@ -132,6 +133,27 @@ export default function UsersSettingsPage() {
     }
   }
 
+  async function updateUserProfile(userId: string, profile: { firstName: string; lastName: string; emailFooter: string }) {
+    try {
+      await apiFetch(`/workshop/users/${userId}/profile`, {
+        method: "PATCH",
+        json: {
+          firstName: profile.firstName || null,
+          lastName: profile.lastName || null,
+          emailFooter: profile.emailFooter || null,
+        },
+      });
+      await loadUsers();
+      setEditingProfile(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    } catch (e: any) {
+      setError(e?.message || "Failed to update profile");
+    }
+  }
+
   async function resetUserPassword(userId: string) {
     if (!newPassword || newPassword.length < 8) {
       setError("Password must be at least 8 characters");
@@ -226,11 +248,30 @@ export default function UsersSettingsPage() {
                   <div className="flex-1">
                     <div className="font-medium">{u.name || u.email}</div>
                     <div className="text-xs text-muted-foreground">{u.email}</div>
+                    {(u.firstName || u.lastName) && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Email signature: {u.firstName} {u.lastName}
+                      </div>
+                    )}
                     {!u.passwordHash && (
                       <div className="text-xs text-amber-600 mt-1">⚠️ Password not set - needs to complete setup</div>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingProfile(prev => ({
+                        ...prev,
+                        [u.id]: {
+                          firstName: u.firstName || '',
+                          lastName: u.lastName || '',
+                          emailFooter: u.emailFooter || ''
+                        }
+                      }))}
+                    >
+                      Edit Profile
+                    </Button>
                     {!u.passwordHash && (
                       <Button
                         size="sm"
@@ -451,6 +492,78 @@ export default function UsersSettingsPage() {
                           setDeletingUserId(null);
                           setDeleteConfirm("");
                         }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Profile Editing Form */}
+                {editingProfile[u.id] && (
+                  <div className="mt-2 p-3 bg-blue-50 rounded border border-blue-200">
+                    <div className="font-medium text-sm mb-3">Edit Profile for {u.email}</div>
+                    <div className="text-xs text-muted-foreground mb-3">
+                      These details will be used to personalize AI-generated emails
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label className="text-xs text-muted-foreground">First Name</label>
+                        <Input
+                          type="text"
+                          value={editingProfile[u.id].firstName}
+                          onChange={(e) => setEditingProfile(prev => ({
+                            ...prev,
+                            [u.id]: { ...prev[u.id], firstName: e.target.value }
+                          }))}
+                          placeholder="John"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Last Name</label>
+                        <Input
+                          type="text"
+                          value={editingProfile[u.id].lastName}
+                          onChange={(e) => setEditingProfile(prev => ({
+                            ...prev,
+                            [u.id]: { ...prev[u.id], lastName: e.target.value }
+                          }))}
+                          placeholder="Smith"
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div className="mb-3">
+                      <label className="text-xs text-muted-foreground">Email Footer / Signature</label>
+                      <textarea
+                        value={editingProfile[u.id].emailFooter}
+                        onChange={(e) => setEditingProfile(prev => ({
+                          ...prev,
+                          [u.id]: { ...prev[u.id], emailFooter: e.target.value }
+                        }))}
+                        placeholder="Best regards,&#10;John Smith&#10;Sales Manager&#10;Phone: (555) 123-4567"
+                        className="mt-1 w-full min-h-[100px] px-3 py-2 text-sm border rounded-md"
+                      />
+                      <div className="text-xs text-muted-foreground mt-1">
+                        This will be appended to all AI-generated emails sent by this user
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => updateUserProfile(u.id, editingProfile[u.id])}
+                      >
+                        Save Profile
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditingProfile(prev => {
+                          const next = { ...prev };
+                          delete next[u.id];
+                          return next;
+                        })}
                       >
                         Cancel
                       </Button>

@@ -42,6 +42,25 @@ async function main() {
 
   const tenant = await ensureTenant(slug, name);
   const user = await ensureUser(tenant.id, email, password);
+  
+  // Create a sample task
+  const existingTask = await prisma.task.findFirst({ where: { tenantId: tenant.id } });
+  if (!existingTask) {
+    await prisma.task.create({
+      data: {
+        tenantId: tenant.id,
+        title: 'Welcome to JoineryAI Tasks!',
+        description: 'This is your first task. You can create, assign, and track tasks here.',
+        taskType: 'MANUAL',
+        priority: 'HIGH',
+        status: 'OPEN',
+        relatedType: 'OTHER',
+        createdById: user.id
+      }
+    });
+    console.log(`[seed-local-demo] Created sample task`);
+  }
+  
   console.log(`[seed-local-demo] Done. TenantId=${tenant.id}, UserId=${user.id}`);
 }
 

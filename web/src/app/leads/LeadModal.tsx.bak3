@@ -18,10 +18,10 @@ import {
 import { useTenantBrand } from "@/lib/use-tenant-brand";
 import { Button } from "@/components/ui/button";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
+import DeclineEnquiryButton from "./DeclineEnquiryButton";
 import { UnifiedActivityTimeline } from "@/components/leads/UnifiedActivityTimeline";
 import { useLeadActivity } from "@/lib/use-lead-activity";
 import { FollowUpTaskPanel } from "@/components/follow-up/FollowUpTaskPanel";
-import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -378,7 +378,7 @@ export default function LeadModal({
 
   useEffect(() => {
     if (showFollowUp) {
-      setCurrentStage("tasks");
+      setCurrentStage("activity");
     }
   }, [showFollowUp]);
 
@@ -485,54 +485,6 @@ export default function LeadModal({
 
   const lastSavedServerStatusRef = useRef<string | null>(null);
 
-  // Email preview state
-  const [emailPreview, setEmailPreview] = useState<{
-    isOpen: boolean;
-    subject: string;
-    body: string;
-    to: string;
-    recipientName?: string;
-    action: 'accept' | 'decline' | null;
-    taskId: string | null;
-  }>({
-    isOpen: false,
-    subject: '',
-    body: '',
-    to: '',
-    action: null,
-    taskId: null,
-  });
-
-  // Handler for sending email after preview
-  const handleEmailPreviewSend = async (editedSubject: string, editedBody: string) => {
-    if (!emailPreview.taskId || !emailPreview.action) {
-      toast("Unable to send email: missing task information");
-      return;
-    }
-
-    try {
-      const endpoint = emailPreview.action === 'accept' 
-        ? `/tasks/${emailPreview.taskId}/actions/accept-enquiry`
-        : `/tasks/${emailPreview.taskId}/actions/decline-enquiry`;
-
-      await apiFetch(endpoint, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({
-          customSubject: editedSubject,
-          customBody: editedBody,
-        }),
-      });
-
-      toast("Email sent successfully");
-      setEmailPreview(prev => ({ ...prev, isOpen: false }));
-      await refreshActivity();
-    } catch (error) {
-      console.error("Error sending email:", error);
-      toast("Failed to send email");
-    }
-  };
-
   const playbook = useMemo(
     () => normalizeTaskPlaybook(settings?.taskPlaybook ?? DEFAULT_TASK_PLAYBOOK),
     [settings?.taskPlaybook]
@@ -559,18 +511,58 @@ export default function LeadModal({
       description: 'Client questionnaire answers and photos'
     },
     {
-      id: 'tasks' as const,
-      title: 'Tasks & Follow-ups',
-      icon: '✨',
-      description: 'AI-powered follow-ups, communication & activity timeline'
+      id: 'activity' as const,
+      title: 'Activity',
+      icon: '📅',
+      description: 'Unified timeline: communication, tasks & follow-ups'
+    },
+    {
+      id: 'communication' as const,
+      title: 'Communication',
+      icon: '�',
+      description: 'Communication log and follow-ups'
     },
     {
       id: 'order' as const,
       title: 'Order',
       icon: '🛠️',
       description: 'Workshop processes and materials'
+    },
+    {
+      id: 'tasks' as const,
+      title: 'Tasks',
+      icon: '✅',
+      description: 'Task list and progress'
     }
   ];
+
+  useEffect(() => {
+    if (open) {
+      // When opening, initialize uiStatus from leadPreview
+      if (leadPreview?.status) {
+        setUiStatus(serverToUiStatus(String(leadPreview.status)));
+      }
+      return;
+    }
+    // When closing, reset everything
+    setLead(null);
+    setNameInput("");
+    setEmailInput("");
+    setPhoneInput("");
+    setDescInput("");
+    setNewNote("");
+    setTasks([]);
+    setUiStatus("NEW_ENQUIRY");
+    lastSavedServerStatusRef.current = null;
+    setLoading(false);
+    setSaving(false);
+    setBusyTask(false);
+    setShowTaskComposer(false);
+    setTaskComposer({ title: "", description: "", priority: "MEDIUM", dueAt: "" });
+    setTaskAssignToMe(true);
+    setTaskError(null);
+    setTaskSaving(false);
+  }, [open, leadPreview?.status]);
 
   // Load suppliers when modal opens
   useEffect(() => {
@@ -1707,13 +1699,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     }
   }
 
-  // Get all tasks from unified activities
-  const allTasks = activities.filter(event => event.type === 'task');
-  
-  const pendingTasks = allTasks.filter(t => t.status !== "DONE" && t.status !== "CANCELLED");
-  const completedTasks = allTasks.filter(t => t.status === "DONE" || t.status === "CANCELLED");
-
-  // Legacy - keep for backward compatibility
+  // Get pending and completed follow-up tasks from unified activities
   const pendingFollowUpTasks = activities.filter(event => 
     event.type === 'task' &&
     event.status !== "DONE" && 
@@ -2205,10 +2191,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
   const emailSubject = pickFirst<string>(get(lead?.custom, "subject"));
   const emailSnippet = pickFirst<string>(get(lead?.custom, "snippet"), get(lead?.custom, "summary"));
   const fromEmail = pickFirst<string>(get(lead?.custom, "fromEmail"), lead?.email);
-  const emailAttachments = useMemo(() => {
-    const attachments = get(lead?.custom, "attachments");
-    return Array.isArray(attachments) ? attachments : [];
-  }, [lead?.custom]);
   const questionnaireFields = useMemo(
     () => normalizeQuestionnaireFields(settings?.questionnaire ?? null),
     [settings?.questionnaire]
@@ -2671,6 +2653,25 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
         {/* Global Actions */}
         <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 border-b border-sky-100/60 bg-gradient-to-r from-sky-50 via-indigo-50 to-amber-50 text-slate-700">
+          {uiStatus === "NEW_ENQUIRY" && (
+            <DeclineEnquiryButton
+              lead={{
+                id: lead?.id || leadPreview?.id || "",
+                contactName: lead?.contactName ?? leadPreview?.contactName,
+                email: lead?.email ?? leadPreview?.email,
+                description: lead?.description ?? leadPreview?.description,
+                custom: (lead?.custom as any) ?? (leadPreview?.custom as any) ?? null,
+              }}
+              disabled={saving || loading}
+              authHeaders={authHeaders}
+              brandName={settings?.brandName ?? null}
+              onMarkedRejected={() => {
+                setUiStatus("REJECTED");
+                return saveStatus("REJECTED");
+              }}
+            />
+          )}
+
           <Button
             variant="outline"
             onClick={sendQuestionnaire}
@@ -2718,73 +2719,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           {currentStage === "client" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
               <div className="max-w-4xl mx-auto space-y-6">
-                {/* Original Email - shown for enquiries */}
-                {(emailSubject || emailSnippet || fromEmail) && (
-                  <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <span aria-hidden="true">💌</span>
-                      Original Enquiry
-                    </div>
-                    <div className="mt-3 text-sm text-slate-700 space-y-1">
-                      {fromEmail && (
-                        <div>
-                          <span className="text-slate-400">From:</span> {String(fromEmail)}
-                        </div>
-                      )}
-                      {emailSubject && (
-                        <div>
-                          <span className="text-slate-400">Subject:</span> {emailSubject}
-                        </div>
-                      )}
-                      {emailSnippet && (
-                        <div className="mt-2 text-slate-600 whitespace-pre-wrap">{emailSnippet}</div>
-                      )}
-                      {emailAttachments.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-slate-200">
-                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-                            Attachments ({emailAttachments.length})
-                          </div>
-                          <ul className="space-y-1.5">
-                            {emailAttachments.map((att: any, idx: number) => {
-                              const messageId = get(lead?.custom, "messageId");
-                              const jwt = typeof window !== "undefined" ? localStorage.getItem("jwt") : null;
-                              const attachmentUrl = messageId && att.attachmentId && jwt
-                                ? `${API_BASE}/gmail/message/${messageId}/attachments/${att.attachmentId}?jwt=${jwt}`
-                                : null;
-                              
-                              return (
-                                <li key={idx} className="flex items-center gap-2 text-sm">
-                                  {attachmentUrl ? (
-                                    <a
-                                      href={attachmentUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1.5 text-sky-600 hover:text-sky-700 hover:underline"
-                                    >
-                                      <span aria-hidden="true">📎</span>
-                                      {att.filename}
-                                      {typeof att.size === "number" && (
-                                        <span className="text-xs text-slate-500">
-                                          ({Math.round(att.size / 1024)} KB)
-                                        </span>
-                                      )}
-                                    </a>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1.5 text-slate-600">
-                                      <span aria-hidden="true">📎</span>
-                                      {att.filename}
-                                    </span>
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </section>
-                )}
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Lead details */}
                   <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
@@ -3656,391 +3590,131 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     Couldn’t load the latest lead activity. Please refresh the panel.
                   </div>
                 )}
-                
-                {/* All Tasks List */}
-                <div className="mb-6">
-                  <div className="flex items-start justify-between gap-4 mb-2">
-                    <div>
-                      <h2 className="text-2xl font-bold text-slate-900">Tasks & Follow-ups</h2>
-                      <p className="text-sm text-slate-600 mt-1">All tasks and action items for this lead</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
-                      onClick={() => {
-                        if (showTaskComposer) {
-                          resetTaskComposer();
-                        }
-                        setShowTaskComposer((v) => !v);
-                      }}
-                    >
-                      {showTaskComposer ? "✕ Cancel" : "➕ Add Task"}
-                    </button>
-                  </div>
-                  
-                  {showTaskComposer && (
-                    <form
-                      className="bg-slate-50 rounded-xl p-4 space-y-4 mb-6 border border-slate-200"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        createManualTask();
-                      }}
-                    >
-                      {taskError && (
-                        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">
-                          {taskError}
-                        </div>
-                      )}
-                      <label className="block text-sm font-semibold text-slate-600">
-                        Title *
-                        <input
-                          type="text"
-                          value={taskComposer.title}
-                          onChange={(e) =>
-                            setTaskComposer((prev) => ({
-                              ...prev,
-                              title: e.target.value,
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
-                          placeholder="e.g. Call the client"
-                          required
-                        />
-                      </label>
-                      <label className="block text-sm font-semibold text-slate-600">
-                        Description
-                        <textarea
-                          value={taskComposer.description}
-                          onChange={(e) =>
-                            setTaskComposer((prev) => ({
-                              ...prev,
-                              description: e.target.value,
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200 min-h-[72px]"
-                          placeholder="Add context for the team"
-                        />
-                      </label>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <label className="block text-sm font-semibold text-slate-600">
-                          Priority
-                          <select
-                            value={taskComposer.priority}
-                            onChange={(e) =>
-                              setTaskComposer((prev) => ({
-                                ...prev,
-                                priority: e.target.value as Task["priority"],
-                              }))
-                            }
-                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
-                          >
-                            {["LOW", "MEDIUM", "HIGH", "URGENT"].map((p) => (
-                              <option key={p} value={p}>
-                                {p}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="block text-sm font-semibold text-slate-600">
-                          Due date
-                          <input
-                            type="datetime-local"
-                            value={taskComposer.dueAt}
-                            onChange={(e) =>
-                              setTaskComposer((prev) => ({
-                                ...prev,
-                                dueAt: e.target.value,
-                              }))
-                            }
-                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
-                          />
-                        </label>
-                      </div>
-                      <button
-                        type="submit"
-                        className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
-                      >
-                        Create Task
-                      </button>
-                    </form>
-                  )}
-                </div>
-
-                {pendingTasks.length === 0 ? (
-                  <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-8 text-center mb-8">
-                    <div className="text-slate-400 text-4xl mb-2">✓</div>
-                    <p className="text-sm text-slate-600">No pending tasks</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 mb-8">
-                    {pendingTasks.map((task) => {
-                      const isAITask = (task as any).taskType === 'FOLLOW_UP' || (task as any).meta?.aiDraft;
-                      const taskMeta = (task as any).meta || {};
-                      const isReviewEnquiry = task.title.toLowerCase().includes('review enquiry');
-                      const trigger = taskMeta.trigger || '';
-                      
-                      let icon = isAITask ? '✨' : taskMeta.type === 'email_followup' ? '📧' : taskMeta.type === 'phone_followup' ? '📞' : '📋';
-                      let borderColor = isAITask ? 'border-indigo-300' : taskMeta.type === 'email_followup' ? 'border-blue-200' : 'border-slate-200';
-                      let bgColor = isAITask ? 'bg-gradient-to-r from-indigo-50 to-purple-50' : taskMeta.type === 'email_followup' ? 'bg-blue-50' : 'bg-white';
-                      
-                      return (
-                        <div key={task.id} className={`rounded-xl border-2 ${borderColor} ${bgColor} hover:shadow-lg transition-all`}>
-                          <div className="p-4">
-                            <div className="flex items-start justify-between gap-3 mb-3" onClick={() => setSelectedFollowUpTask(task as Task)} style={{cursor: 'pointer'}}>
-                              <div className="flex items-start gap-3 flex-1">
-                                <span className="text-2xl">{icon}</span>
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="text-base font-semibold text-slate-900 mb-1">{task.title}</h4>
-                                  {isAITask && taskMeta.aiDraft && (
-                                    <div className="text-sm text-indigo-600 font-medium mb-1">✓ AI Draft Ready • {Math.round((taskMeta.aiDraft.confidence || 0) * 100)}% Confidence</div>
-                                  )}
-                                  {task.description && <p className="text-sm text-slate-600 line-clamp-2 mb-2">{task.description}</p>}
-                                  <div className="flex items-center gap-3 text-xs text-slate-500">
-                                    {task.dueAt && <span>Due: {new Date(task.dueAt).toLocaleDateString()}</span>}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="text-sm font-medium text-indigo-600 whitespace-nowrap">{isAITask ? 'Review →' : 'View →'}</div>
-                            </div>
-                            
-                            {/* Contextual Actions */}
-                            <div className="flex gap-2 pt-3 border-t border-slate-200" onClick={(e) => e.stopPropagation()}>
-                              {isReviewEnquiry ? (
-                                // Review Enquiry: Accept / Decline / Reject
-                                <>
-                                  <button
-                                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
-                                    onClick={async () => {
-                                      try {
-                                        const preview = await apiFetch<any>(`/tasks/${task.id}/actions/accept-enquiry/preview`, {
-                                          method: 'POST',
-                                          headers: authHeaders,
-                                        });
-                                        setEmailPreview({
-                                          isOpen: true,
-                                          subject: preview.subject,
-                                          body: preview.body,
-                                          to: preview.to,
-                                          recipientName: preview.recipientName,
-                                          action: 'accept',
-                                          taskId: task.id,
-                                        });
-                                      } catch (err) {
-                                        toast('Failed to generate preview');
-                                      }
-                                    }}
-                                  >
-                                    ✓ Accept
-                                  </button>
-                                  <button
-                                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-orange-600 text-white hover:bg-orange-700 transition-colors"
-                                    onClick={async () => {
-                                      try {
-                                        const preview = await apiFetch<any>(`/tasks/${task.id}/actions/decline-enquiry/preview`, {
-                                          method: 'POST',
-                                          headers: authHeaders,
-                                        });
-                                        setEmailPreview({
-                                          isOpen: true,
-                                          subject: preview.subject,
-                                          body: preview.body,
-                                          to: preview.to,
-                                          recipientName: preview.recipientName,
-                                          action: 'decline',
-                                          taskId: task.id,
-                                        });
-                                      } catch (err) {
-                                        toast('Failed to generate preview');
-                                      }
-                                    }}
-                                  >
-                                    ↓ Decline
-                                  </button>
-                                  <button
-                                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-red-400 text-red-700 hover:bg-red-50 transition-colors"
-                                    onClick={async () => {
-                                      if (confirm('Reject as not a real enquiry? This will mark the lead as rejected and provide feedback to the ML system.')) {
-                                        try {
-                                          await apiFetch(`/tasks/${task.id}/actions/reject-enquiry`, {
-                                            method: 'POST',
-                                            headers: authHeaders,
-                                          });
-                                          await refreshActivity();
-                                          toast('Marked as not an enquiry');
-                                        } catch (err) {
-                                          toast('Failed to reject enquiry');
-                                        }
-                                      }
-                                    }}
-                                  >
-                                    ✕ Reject
-                                  </button>
-                                </>
-                              ) : isAITask ? (
-                                // Follow-up tasks: Send / Skip / Details
-                                <>
-                                  <button
-                                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                                    onClick={() => setSelectedFollowUpTask(task as Task)}
-                                  >
-                                    📧 Send Email
-                                  </button>
-                                  <button
-                                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
-                                    onClick={async () => {
-                                      if (confirm('Skip this follow-up?')) {
-                                        await apiFetch(`/tasks/${task.id}`, {
-                                          method: 'PATCH',
-                                          headers: authHeaders,
-                                          json: { status: 'CANCELLED' }
-                                        });
-                                        await refreshActivity();
-                                        toast('Follow-up skipped');
-                                      }
-                                    }}
-                                  >
-                                    ⏭️ Skip
-                                  </button>
-                                  <button
-                                    className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
-                                    onClick={() => setSelectedFollowUpTask(task as Task)}
-                                  >
-                                    👁️
-                                  </button>
-                                </>
-                              ) : (
-                                // Generic tasks: Complete / Defer / Details
-                                <>
-                                  <button
-                                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
-                                    onClick={async () => {
-                                      await apiFetch(`/tasks/${task.id}`, {
-                                        method: 'PATCH',
-                                        headers: authHeaders,
-                                        json: { status: 'DONE' }
-                                      });
-                                      await refreshActivity();
-                                      toast('✓ Task completed');
-                                    }}
-                                  >
-                                    ✓ Complete
-                                  </button>
-                                  <button
-                                    className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
-                                    onClick={async () => {
-                                      const days = prompt('Defer by how many days?', '1');
-                                      if (days) {
-                                        const newDue = new Date();
-                                        newDue.setDate(newDue.getDate() + parseInt(days));
-                                        await apiFetch(`/tasks/${task.id}`, {
-                                          method: 'PATCH',
-                                          headers: authHeaders,
-                                          json: { dueAt: newDue.toISOString() }
-                                        });
-                                        await refreshActivity();
-                                        toast(`Task deferred by ${days} days`);
-                                      }
-                                    }}
-                                  >
-                                    ⏰ Defer
-                                  </button>
-                                  <button
-                                    className="px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
-                                    onClick={() => setSelectedFollowUpTask(task as Task)}
-                                  >
-                                    👁️
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {completedTasks.length > 0 && (
-                  <div className="mb-8">
-                    <h3 className="text-lg font-semibold text-slate-900 mb-3">Completed Tasks</h3>
-                    <div className="bg-slate-50 rounded-lg border border-slate-200 p-4 space-y-2">
-                      {completedTasks.map((task) => {
-                        const meta = (task as any).meta || {};
-                        const taskWithDate = task as any;
-                        const completedAt = meta.completedAt ? new Date(meta.completedAt) : taskWithDate.updatedAt ? new Date(taskWithDate.updatedAt) : null;
-                        return (
-                          <div key={task.id} className="flex items-center justify-between gap-3 text-sm py-1">
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <span className="text-green-600 text-base">✓</span>
-                              <span className="text-slate-700 line-clamp-1">{task.title}</span>
-                            </div>
-                            <div className="flex items-center gap-3 text-xs text-slate-500">
-                              {completedAt && (
-                                <span>{completedAt.toLocaleDateString()}</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Legacy section removed - all tasks now shown above */}
-                {false && pendingFollowUpTasks.filter(t => t.type === 'task' && ((t as any).taskType === 'FOLLOW_UP' || (t as any).meta?.aiDraft)).length > 0 && (
-                  <div className="mb-8 rounded-2xl border-2 border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 p-6 shadow-xl">
-                    <div className="flex items-center gap-4 mb-5">
-                      <div className="p-3 rounded-xl bg-indigo-100">
-                        <span className="text-3xl">✨</span>
-                      </div>
-                      <div className="flex-1">
-                        <h2 className="text-xl font-bold text-slate-900">AI-Powered Follow-ups</h2>
-                        <p className="text-sm text-slate-600 mt-1">Smart email drafts ready to review and send</p>
-                      </div>
-                      <div className="px-4 py-2 rounded-full bg-indigo-600 text-white text-sm font-semibold">
-                        {pendingFollowUpTasks.filter(t => t.type === 'task' && ((t as any).taskType === 'FOLLOW_UP' || (t as any).meta?.aiDraft)).length} ready
-                      </div>
-                    </div>
+                <UnifiedActivityTimeline
+                  activities={activities}
+                  isLoading={loadingActivity}
+                  onAddNote={async (content) => {
+                    // Optimistically add note
+                    addActivityOptimistic({
+                      type: 'note',
+                      id: `temp-${Date.now()}`,
+                      text: content,
+                      author: { id: '', name: 'You', email: '' },
+                      createdAt: new Date().toISOString(),
+                    });
                     
-                    <div className="space-y-3">
-                      {pendingFollowUpTasks.filter(t => t.type === 'task' && ((t as any).taskType === 'FOLLOW_UP' || (t as any).meta?.aiDraft)).map((event) => {
-                        if (event.type !== 'task') return null;
-                        return (
-                          <div key={event.id} className="rounded-xl border-2 border-indigo-200 bg-white hover:shadow-lg transition-all">
-                            <Button
-                              variant="ghost"
-                              className="w-full p-5 text-left flex items-center justify-between hover:bg-indigo-50/50"
-                              onClick={() => setSelectedFollowUpTask(event as Task)}
-                            >
-                              <div className="flex items-center gap-4">
-                                <span className="text-3xl">✨</span>
-                                <div className="flex-1">
-                                  <div className="text-base font-semibold text-slate-900">{event.title}</div>
-                                  {(event as any).meta?.aiDraft && (
-                                    <div className="text-sm text-indigo-600 font-medium mt-1">
-                                      ✓ AI Draft Ready • {Math.round(((event as any).meta.aiDraft.confidence || 0) * 100)}% Confidence
-                                    </div>
-                                  )}
-                                  {event.description && (
-                                    <div className="text-xs text-slate-600 mt-2 line-clamp-2">{event.description}</div>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="text-right ml-4">
-                                <div className="text-xs text-slate-500 mb-1">
-                                  {event.dueAt ? new Date(event.dueAt).toLocaleDateString() : "Due soon"}
-                                </div>
-                                <div className="text-base font-semibold text-indigo-600">
-                                  Review & Send →
-                                </div>
-                              </div>
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                    // Save to backend
+                    const oldNote = newNote;
+                    const oldType = communicationType;
+                    try {
+                      setNewNote(content);
+                      setCommunicationType('note');
+                      await addCommunicationNote();
+                      await refreshActivity();
+                    } catch (error) {
+                      console.error('Failed to add note:', error);
+                      await refreshActivity();
+                    } finally {
+                      setNewNote(oldNote);
+                      setCommunicationType(oldType);
+                    }
+                  }}
+                  onAddCall={async (summary) => {
+                    addActivityOptimistic({
+                      type: 'call',
+                      id: `temp-${Date.now()}`,
+                      direction: 'outbound',
+                      summary,
+                      loggedAt: new Date().toISOString(),
+                    });
+                    
+                    const oldNote = newNote;
+                    const oldType = communicationType;
+                    try {
+                      setNewNote(summary);
+                      setCommunicationType('call');
+                      await addCommunicationNote();
+                      await refreshActivity();
+                    } catch (error) {
+                      console.error('Failed to add call:', error);
+                      await refreshActivity();
+                    } finally {
+                      setNewNote(oldNote);
+                      setCommunicationType(oldType);
+                    }
+                  }}
+                  onAddEmail={async (summary) => {
+                    addActivityOptimistic({
+                      type: 'email',
+                      id: `temp-${Date.now()}`,
+                      direction: 'outbound',
+                      summary,
+                      sentAt: new Date().toISOString(),
+                    });
+                    
+                    const oldNote = newNote;
+                    const oldType = communicationType;
+                    try {
+                      setNewNote(summary);
+                      setCommunicationType('email');
+                      await addCommunicationNote();
+                      await refreshActivity();
+                    } catch (error) {
+                      console.error('Failed to add email log:', error);
+                      await refreshActivity();
+                    } finally {
+                      setNewNote(oldNote);
+                      setCommunicationType(oldType);
+                    }
+                  }}
+                  onCreateTask={async (task) => {
+                    // Optimistically add task
+                    addActivityOptimistic({
+                      type: 'task',
+                      id: `temp-${Date.now()}`,
+                      title: task.title,
+                      description: task.description || undefined,
+                      status: 'OPEN',
+                      priority: task.priority,
+                      dueAt: task.dueAt || undefined,
+                      createdAt: new Date().toISOString(),
+                    });
+                    
+                    const oldComposer = { ...taskComposer };
+                    try {
+                      setTaskComposer({
+                        title: task.title,
+                        description: task.description,
+                        priority: task.priority,
+                        dueAt: task.dueAt,
+                      });
+                      await createManualTask();
+                      await refreshActivity();
+                    } catch (error) {
+                      console.error('Failed to create task:', error);
+                      await refreshActivity();
+                    } finally {
+                      setTaskComposer(oldComposer);
+                    }
+                  }}
+                  onCompleteTask={async (taskId) => {
+                    await completeFollowUpTask(taskId);
+                    await refreshActivity();
+                  }}
+                  onComposeEmail={openEmailComposer}
+                  onScheduleEmailFollowup={async () => {
+                    await createEmailTask();
+                    await refreshActivity();
+                  }}
+                  onSchedulePhoneFollowup={async () => {
+                    await createPhoneTask();
+                    await refreshActivity();
+                  }}
+                  onCreateAutoSequence={async () => {
+                    await createFollowupSequence();
+                    await refreshActivity();
+                  }}
+                />
               </div>
             </div>
           )}
@@ -4253,7 +3927,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         pendingFollowUpTasks.map((event) => {
                           if (event.type !== 'task') return null;
                           
-                          const isFollowUpTask = (event as any).taskType === 'FOLLOW_UP' || (event as any).meta?.aiDraft;
+                          const isFollowUpTask = event.taskType === 'FOLLOW_UP' || event.meta?.aiDraft;
                           
                           // If this is a FOLLOW_UP task with AI draft, use FollowUpTaskPanel
                           if (isFollowUpTask) {
@@ -4268,7 +3942,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                     <span className="text-indigo-600">✨</span>
                                     <div>
                                       <div className="text-sm font-medium">{event.title}</div>
-                                      {(event as any).meta?.aiDraft && (
+                                      {event.meta?.aiDraft && (
                                         <div className="text-xs text-indigo-600">AI-Powered Follow-up</div>
                                       )}
                                     </div>
@@ -4811,6 +4485,277 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
             </div>
           )}
 
+          {/* TASKS STAGE */}
+          {currentStage === "tasks" && (
+            <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
+              <div className="max-w-6xl mx-auto">
+                <div className="rounded-2xl border border-indigo-100 bg-white/80 p-6 shadow-sm backdrop-blur">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2 font-semibold text-slate-900">
+                      <span aria-hidden="true">⭐</span>
+                      Task journey
+                    </div>
+                    <div className="text-xs text-slate-500">{openCount} open</div>
+                  </div>
+
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-2">
+                      <span>{completedCount} completed</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-rose-400 transition-all"
+                        style={{ width: `${progress}%` }}
+                        aria-hidden="true"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Task cards */}
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {tasks.map((t) => {
+                      let bgColor = "bg-slate-50";
+                      if (t.status === "DONE") bgColor = "bg-emerald-50";
+                      else if (t.status === "IN_PROGRESS") bgColor = "bg-blue-50";
+                      else if (t.status === "BLOCKED") bgColor = "bg-rose-50";
+                      else if (t.priority === "URGENT") bgColor = "bg-orange-50";
+
+                      return (
+                        <div
+                          key={t.id}
+                          className={`rounded-xl border border-slate-200 ${bgColor} p-4 transition-colors hover:shadow-sm`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <label className="inline-flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={t.status === "DONE"}
+                                    onChange={() => toggleTaskComplete(t)}
+                                    className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
+                                    aria-label={`Complete ${t.title}`}
+                                  />
+                                </label>
+                                <div className="text-sm font-semibold text-slate-900 leading-snug">
+                                  {t.title}
+                                </div>
+                              </div>
+                              {t.description && (
+                                <div className="text-xs text-slate-600 mb-2 line-clamp-2">
+                                  {t.description}
+                                </div>
+                              )}
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    t.status === "DONE"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : t.status === "IN_PROGRESS"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : t.status === "BLOCKED"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : "bg-slate-100 text-slate-700"
+                                  }`}
+                                >
+                                  {t.status === "DONE"
+                                    ? "✓"
+                                    : t.status === "IN_PROGRESS"
+                                    ? "⏳"
+                                    : t.status === "BLOCKED"
+                                    ? "⚠"
+                                    : "○"}
+                                  <span className="ml-1">
+                                    {t.status === "IN_PROGRESS"
+                                      ? "In progress"
+                                      : t.status.toLowerCase()}
+                                  </span>
+                                </span>
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    t.priority === "URGENT"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : t.priority === "HIGH"
+                                      ? "bg-orange-100 text-orange-700"
+                                      : t.priority === "MEDIUM"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-slate-100 text-slate-700"
+                                  }`}
+                                >
+                                  {t.priority.toLowerCase()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                            <span className="inline-flex items-center gap-1">
+                              <span aria-hidden="true">⏰</span>
+                              {t.dueAt
+                                ? new Date(t.dueAt).toLocaleString()
+                                : "No due date"}
+                            </span>
+                            {t.relatedType && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-600">
+                                <span aria-hidden="true">🔗</span>
+                                {t.relatedType.toLowerCase()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {tasks.length === 0 && (
+                      <div className="col-span-full text-sm text-slate-500 py-8 text-center">
+                        No tasks created yet. Use the actions above or create a manual task
+                        to get started.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Add Task */}
+                  <div className="mt-6 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between gap-2 mb-4">
+                      <div className="flex items-center gap-2 font-semibold text-slate-900">
+                        <span aria-hidden="true">➕</span>
+                        New task
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:bg-white"
+                        onClick={() => {
+                          if (showTaskComposer) {
+                            resetTaskComposer();
+                          }
+                          setShowTaskComposer((v) => !v);
+                        }}
+                      >
+                        {showTaskComposer ? "Cancel" : "Add Task"}
+                      </button>
+                    </div>
+
+                    {showTaskComposer && (
+                      <form
+                        className="bg-slate-50/50 rounded-lg p-4 space-y-4"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          createManualTask();
+                        }}
+                      >
+                        {taskError && (
+                          <div className="rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2 text-sm text-rose-600">
+                            {taskError}
+                          </div>
+                        )}
+
+                        <label className="block text-sm font-semibold text-slate-600">
+                          Title *
+                          <input
+                            type="text"
+                            value={taskComposer.title}
+                            onChange={(e) =>
+                              setTaskComposer((prev) => ({
+                                ...prev,
+                                title: e.target.value,
+                              }))
+                            }
+                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                            placeholder="e.g. Call the client"
+                            required
+                          />
+                        </label>
+
+                        <label className="block text-sm font-semibold text-slate-600">
+                          Description
+                          <textarea
+                            value={taskComposer.description}
+                            onChange={(e) =>
+                              setTaskComposer((prev) => ({
+                                ...prev,
+                                description: e.target.value,
+                              }))
+                            }
+                            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200 min-h-[72px]"
+                            placeholder="Add context for the team"
+                          />
+                        </label>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label className="block text-sm font-semibold text-slate-600">
+                            Priority
+                            <select
+                              value={taskComposer.priority}
+                              onChange={(e) =>
+                                setTaskComposer((prev) => ({
+                                  ...prev,
+                                  priority: e.target.value as Task["priority"],
+                                }))
+                              }
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                            >
+                              {["LOW", "MEDIUM", "HIGH", "URGENT"].map((p) => (
+                                <option key={p} value={p}>
+                                  {p}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block text-sm font-semibold text-slate-600">
+                            Due date &amp; time
+                            <input
+                              type="datetime-local"
+                              value={taskComposer.dueAt}
+                              onChange={(e) =>
+                                setTaskComposer((prev) => ({
+                                  ...prev,
+                                  dueAt: e.target.value,
+                                }))
+                              }
+                              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-inner focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                            />
+                          </label>
+                        </div>
+
+                        <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-600 shadow-inner">
+                          <input
+                            type="checkbox"
+                            checked={taskAssignToMe}
+                            onChange={(e) => setTaskAssignToMe(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-400"
+                          />
+                          Assign to me (leave unchecked to keep unassigned)
+                        </label>
+
+                        <div className="flex gap-3">
+                          <button
+                            type="submit"
+                            className="rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 text-white px-6 py-2 text-sm font-semibold shadow hover:from-indigo-600 hover:to-sky-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
+                            disabled={taskSaving || !taskComposer.title.trim()}
+                          >
+                            {taskSaving ? "Creating..." : "Create Task"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowTaskComposer(false)}
+                            className="rounded-full border border-slate-200 bg-white px-6 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    <div className="mt-4 text-xs text-slate-500 text-center">
+                      Tip: Completing a lead action will sprinkle pixie dust on the matching task
+                      automatically.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Parse tester output */}
@@ -4955,24 +4900,22 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
         {/* AI Follow-Up Task Panel Modal */}
         {selectedFollowUpTask && (
-          <div className="absolute inset-0 z-[80] bg-black/40 overflow-y-auto">
-            <div className="min-h-full flex items-start justify-center p-4 sm:p-6">
-              <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl p-4 sm:p-6 my-4 sm:my-8">
-                <FollowUpTaskPanel
-                  task={selectedFollowUpTask as any}
-                  authHeaders={authHeaders}
-                  onEmailSent={async () => {
-                    toast("Email sent successfully!");
-                    await refreshActivity();
-                  }}
-                  onTaskCompleted={async () => {
-                    toast("Task completed!");
-                    setSelectedFollowUpTask(null);
-                    await refreshActivity();
-                  }}
-                  onClose={() => setSelectedFollowUpTask(null)}
-                />
-              </div>
+          <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
+            <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl p-6 my-8">
+              <FollowUpTaskPanel
+                task={selectedFollowUpTask}
+                authHeaders={authHeaders}
+                onEmailSent={async () => {
+                  toast("Email sent successfully!");
+                  await refreshActivity();
+                }}
+                onTaskCompleted={async () => {
+                  toast("Task completed!");
+                  setSelectedFollowUpTask(null);
+                  await refreshActivity();
+                }}
+                onClose={() => setSelectedFollowUpTask(null)}
+              />
             </div>
           </div>
         )}
@@ -5031,17 +4974,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           </div>
         )}
       </div>
-
-      {/* Email Preview Modal */}
-      <EmailPreviewModal
-        isOpen={emailPreview.isOpen}
-        onClose={() => setEmailPreview(prev => ({ ...prev, isOpen: false }))}
-        onSend={handleEmailPreviewSend}
-        subject={emailPreview.subject}
-        body={emailPreview.body}
-        to={emailPreview.to}
-        recipientName={emailPreview.recipientName}
-      />
     </div>
   );
 }

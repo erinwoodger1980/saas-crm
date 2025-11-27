@@ -8,6 +8,7 @@ import { logInsight } from "../services/training";
 import { load } from "cheerio";
 import { redactEmailBody } from "../lib/ml/redact";
 import { gmailFetchAttachment } from "../services/gmail";
+import { handleNewLeadFromEmail } from "../services/conversationalFollowUp";
 
 const router = Router();
 
@@ -341,35 +342,6 @@ async function recordTrainingExample(params: {
   } catch (e: any) {
     console.error("[gmail] failed to record training example", e?.message || e);
   }
-}
-
-async function ensureLeadReviewTask(tenantId: string, leadId: string) {
-  const metaKey = `lead:${leadId}:review-enquiry`;
-  const existing = await prisma.task.findFirst({
-    where: {
-      tenantId,
-      relatedType: "LEAD" as any,
-      relatedId: leadId,
-      meta: { path: ["key"], equals: metaKey },
-    },
-    select: { id: true },
-  });
-  if (existing) return existing;
-
-  const dueAt = new Date(Date.now() + 24 * 3600 * 1000);
-  return prisma.task.create({
-    data: {
-      tenantId,
-      title: "Review enquiry",
-      relatedType: "LEAD" as any,
-      relatedId: leadId,
-      status: "OPEN" as any,
-      priority: "MEDIUM" as any,
-      dueAt,
-      autocreated: true,
-      meta: { key: metaKey, source: "gmail-import" } as any,
-    },
-  });
 }
 
 async function extractLeadWithOpenAI(
@@ -987,7 +959,7 @@ router.post("/import", async (req, res) => {
       const ccAddrs = splitAddresses(ccHdr);
       const allRcpts = [...toAddrs, ...ccAddrs];
 
-      const { bodyText } = extractBodyAndAttachments(msg);
+      const { bodyText, attachments } = extractBodyAndAttachments(msg);
       const snippet = msg.snippet || "";
       const bodyForAnalysis = bodyText || snippet || "";
       const threadId = msg.threadId || null;
@@ -1192,6 +1164,7 @@ router.post("/import", async (req, res) => {
           if (typeof ai?.projectType === "string" && ai.projectType) custom.projectType = ai.projectType;
           if (Array.isArray(ai?.tags) && ai.tags.length) custom.tags = ai.tags;
           if (typeof ai?.nextAction === "string" && ai.nextAction) custom.suggestedNextAction = ai.nextAction;
+          if (attachments.length > 0) custom.attachments = attachments;
 
           const created = await prisma.lead.create({
             data: {
@@ -1208,7 +1181,18 @@ router.post("/import", async (req, res) => {
           createdLead = true;
           classification.leadId = leadId;
 
-          await ensureLeadReviewTask(tenantId, leadId);
+          // Use conversational follow-up system instead of generic task
+          await handleNewLeadFromEmail({
+            leadId,
+            tenantId,
+            userId: userId!,
+            contactName: created.contactName,
+            email: created.email || "",
+            threadId: thread.threadId || undefined,
+            messageId: m.id,
+            subject,
+            snippet,
+          });
 
           await recordTrainingExample({
             tenantId,
@@ -1496,7 +1480,7 @@ router.post("/import-all-users", async (req, res) => {
             const toAddrs = splitAddresses(toHdr);
             const ccAddrs = splitAddresses(ccHdr);
             const allRcpts = [...toAddrs, ...ccAddrs];
-            const { bodyText } = extractBodyAndAttachments(msg);
+            const { bodyText, attachments } = extractBodyAndAttachments(msg);
             const snippet = msg.snippet || "";
             const threadId = msg.threadId || null;
 
@@ -1566,6 +1550,20 @@ router.post("/import-all-users", async (req, res) => {
                 const emailCandidate = (typeof ai?.email === "string" && ai.email) || heur.email || fromAddr || null;
                 const email = emailCandidate ? String(emailCandidate).toLowerCase() : null;
 
+                const customData: Record<string, any> = {
+                  provider: "gmail",
+                  messageId: m.id,
+                  threadId: thread.threadId,
+                  subject: subject || null,
+                  from: fromHdr || null,
+                  summary: (typeof ai?.summary === "string" && ai.summary) || snippet || null,
+                  uiStatus: "NEW_ENQUIRY",
+                  aiDecision: { decidedBy, reason, confidence: aiConfidence ?? null, model: ai ? "openai" : "heuristics" },
+                  enquiryDate: new Date().toISOString().split('T')[0],
+                  dateReceived: new Date().toISOString().split('T')[0],
+                };
+                if (attachments.length > 0) customData.attachments = attachments;
+
                 const created = await prisma.lead.create({
                   data: {
                     tenantId,
@@ -1574,24 +1572,25 @@ router.post("/import-all-users", async (req, res) => {
                     email,
                     status: "NEW",
                     nextAction: (typeof ai?.nextAction === "string" && ai.nextAction) || "Review enquiry",
-                    custom: {
-                      provider: "gmail",
-                      messageId: m.id,
-                      threadId: thread.threadId,
-                      subject: subject || null,
-                      from: fromHdr || null,
-                      summary: (typeof ai?.summary === "string" && ai.summary) || snippet || null,
-                      uiStatus: "NEW_ENQUIRY",
-                      aiDecision: { decidedBy, reason, confidence: aiConfidence ?? null, model: ai ? "openai" : "heuristics" },
-                      enquiryDate: new Date().toISOString().split('T')[0],
-                      dateReceived: new Date().toISOString().split('T')[0],
-                    },
+                    custom: customData,
                   },
                 });
                 leadId = created.id;
                 createdLead = true;
 
-                await ensureLeadReviewTask(tenantId, leadId);
+                // Use conversational follow-up system instead of old generic task
+                await handleNewLeadFromEmail({
+                  leadId,
+                  tenantId,
+                  userId: conn.userId,
+                  contactName: created.contactName,
+                  email: created.email || "",
+                  threadId: thread.threadId || undefined,
+                  messageId: m.id,
+                  subject,
+                  snippet,
+                });
+
                 await recordTrainingExample({ tenantId, provider: "gmail", messageId: m.id, label: "accepted", subject, snippet, from: fromHdr, body: bodyForAnalysis, ai, heuristics: heur, decidedBy, reason, confidence: aiConfidence, leadId });
                 
                 try {

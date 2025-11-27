@@ -240,6 +240,25 @@ export async function ensureTaskFromRecipe(opts: {
       dueAt = new Date(Date.now() + dueInDays * 86_400_000);
     }
 
+    // Build metadata - include lead email info for review enquiry tasks
+    const meta: any = key ? { key } : {};
+    
+    // If this is a lead task, fetch email info to support action buttons
+    if (relatedType === "LEAD") {
+      try {
+        const lead = await prisma.lead.findUnique({
+          where: { id: relatedId },
+          select: { email: true, contactName: true },
+        });
+        if (lead?.email) {
+          meta.recipientEmail = lead.email;
+          meta.recipientName = lead.contactName;
+        }
+      } catch (err) {
+        console.warn(`[task-playbook] Could not fetch lead email for task metadata:`, err);
+      }
+    }
+
     const task = await prisma.task.create({
       data: {
         tenantId,
@@ -250,7 +269,7 @@ export async function ensureTaskFromRecipe(opts: {
         status: "OPEN" as any,
         priority: (recipe.priority ?? "MEDIUM") as any,
         dueAt,
-        meta: key ? ({ key } as any) : ({} as any),
+        meta,
       },
     });
 

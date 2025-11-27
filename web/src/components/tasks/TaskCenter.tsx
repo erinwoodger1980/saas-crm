@@ -30,6 +30,7 @@ import { TaskCelebration } from "./TaskCelebration";
 import { TaskStreakTracker } from "./TaskStreakTracker";
 import { ScheduledTasksTab } from "./ScheduledTasksTab";
 import { TaskModal } from "./TaskModal";
+import { CreateTaskWizard } from "./CreateTaskWizard";
 
 type TaskType = "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
 type TaskStatus = "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
@@ -111,25 +112,36 @@ const TASK_TYPE_CONFIG = {
 };
 
 export function TaskCenter() {
-  const ids = getAuthIdsFromJwt();
-  const tenantId = ids?.tenantId || "";
-  const userId = ids?.userId || "";
+  const [tenantId, setTenantId] = useState("");
+  const [userId, setUserId] = useState("");
 
   const [activeTab, setActiveTab] = useState<"all" | TaskType | "completed" | "analytics" | "templates" | "calendar" | "scheduled-templates">("all");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showOnlyMine, setShowOnlyMine] = useState(false);
+
+  // Get auth IDs on mount and when localStorage changes
+  useEffect(() => {
+    const ids = getAuthIdsFromJwt();
+    if (ids) {
+      setTenantId(ids.tenantId);
+      setUserId(ids.userId);
+    }
+  }, []);
   
   // Celebration state
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationTask, setCelebrationTask] = useState<Task | null>(null);
   const [celebrationStats, setCelebrationStats] = useState({ streak: 0, total: 0, points: 10 });
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const loadTasks = async () => {
-    if (!tenantId) return;
+    if (!tenantId) {
+      return;
+    }
     
     // Don't load tasks for special tabs
     const specialTabs = ["analytics", "templates", "calendar", "scheduled-templates"];
@@ -177,16 +189,17 @@ export function TaskCenter() {
   };
 
   useEffect(() => {
-    loadTasks();
-  }, [activeTab, showOnlyMine]); // eslint-disable-line
+    if (tenantId) {
+      loadTasks();
+    }
+  }, [tenantId, activeTab, showOnlyMine, searchQuery]); // eslint-disable-line
 
   const handleSearch = () => {
     loadTasks();
   };
 
   const handleNewTask = () => {
-    setSelectedTask(null);
-    setShowTaskModal(true);
+    setShowCreateWizard(true);
   };
 
   const handleCompleteTask = async (task: Task) => {
@@ -327,7 +340,7 @@ export function TaskCenter() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col min-h-0">
       {/* Celebration Modal */}
       {showCelebration && celebrationTask && (
         <TaskCelebration
@@ -342,18 +355,13 @@ export function TaskCenter() {
       )}
 
       {/* Sticky Header Section */}
-      <div className="flex-shrink-0 space-y-4 pb-4 bg-white">
+      <div className="flex-shrink-0 space-y-4 pb-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Task Center</h1>
             <p className="text-gray-600 mt-1">Manage all your tasks, communications, and forms in one place</p>
           </div>
-          
-          <Button onClick={handleNewTask} size="lg" className="shadow-lg">
-            <Plus className="h-5 w-5 mr-2" />
-            New Task
-          </Button>
         </div>
 
         {/* Streak Tracker */}
@@ -390,8 +398,9 @@ export function TaskCenter() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col overflow-hidden">
-        <TabsList className="w-full justify-start overflow-x-auto flex-shrink-0">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex flex-col min-h-0">
+        <div className="flex items-center justify-between mb-3">
+          <TabsList className="flex-1 justify-start overflow-x-auto flex-shrink-0">
           <TabsTrigger value="all" className="flex items-center gap-2">
             All
             {taskCounts.all > 0 && (
@@ -439,8 +448,14 @@ export function TaskCenter() {
              Scheduled
            </TabsTrigger>
          </TabsList>
+         
+         <Button onClick={handleNewTask} size="lg" className="shadow-lg ml-4">
+            <Plus className="h-5 w-5 mr-2" />
+            New Task
+          </Button>
+        </div>
 
-        <div className="flex-1 overflow-y-auto mt-6 pr-2">
+        <div className="mt-6">
           {activeTab === "analytics" ? (
             <TaskAnalyticsDashboard />
           ) : activeTab === "templates" ? (
@@ -470,7 +485,18 @@ export function TaskCenter() {
           )}
         </div>
       </Tabs>
-      {/* Task Modal */}
+      {/* Create Task Wizard */}
+      <CreateTaskWizard
+        open={showCreateWizard}
+        onClose={() => setShowCreateWizard(false)}
+        tenantId={tenantId}
+        userId={userId}
+        onCreated={() => {
+          loadTasks();
+        }}
+      />
+
+      {/* Task Modal (for editing existing tasks) */}
       <TaskModal
         open={showTaskModal}
         onClose={() => {

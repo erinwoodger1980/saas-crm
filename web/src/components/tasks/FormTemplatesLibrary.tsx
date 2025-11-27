@@ -102,11 +102,10 @@ export function FormTemplatesLibrary({ onTemplateSelected }: FormTemplatesLibrar
   const loadTemplates = async () => {
     setLoading(true);
     try {
-      const response = await apiFetch("/tasks/form-templates", {
+      const data = await apiFetch("/tasks/forms", {
         headers: { "x-tenant-id": tenantId },
       });
-      const data = await response.json();
-      setTemplates(data);
+      setTemplates(Array.isArray(data) ? data : data.items || []);
     } catch (error) {
       console.error("Failed to load templates:", error);
     } finally {
@@ -160,14 +159,20 @@ export function FormTemplatesLibrary({ onTemplateSelected }: FormTemplatesLibrar
 
   const handleCloneTemplate = async (template: FormTemplate) => {
     try {
-      const response = await apiFetch(`/tasks/form-templates/${template.id}/clone`, {
+      const cloned = await apiFetch("/tasks/forms", {
         method: "POST",
         headers: {
           "x-tenant-id": tenantId,
           "Content-Type": "application/json",
         },
+        json: {
+          name: `${template.name} (Copy)`,
+          description: template.description,
+          category: template.category,
+          formSchema: template.formSchema,
+          requiresSignature: template.requiresSignature,
+        },
       });
-      const cloned = await response.json();
       
       // Success notification
       const toast = document.createElement("div");
@@ -192,7 +197,7 @@ export function FormTemplatesLibrary({ onTemplateSelected }: FormTemplatesLibrar
     }
 
     try {
-      await apiFetch("/tasks/form-templates", {
+      await apiFetch("/tasks/forms", {
         method: "POST",
         headers: {
           "x-tenant-id": tenantId,

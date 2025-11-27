@@ -9,6 +9,7 @@ import { normalizeEmail } from "../lib/email";
 import { getAccessTokenForTenant, getAttachment } from "../services/ms365";
 import OpenAI from "openai";
 import { logInsight } from "../services/training";
+import { handleNewLeadFromEmail } from "../services/conversationalFollowUp";
 
 // Helper to generate unique tenant slug
 async function generateUniqueSlug(baseName: string): Promise<string> {
@@ -971,6 +972,19 @@ router.post("/import", async (req, res) => {
           });
           leadId = created.id;
           createdLead = true;
+
+          // Use conversational follow-up system
+          await handleNewLeadFromEmail({
+            leadId,
+            tenantId,
+            userId: userId!,
+            contactName: created.contactName,
+            email: created.email || "",
+            threadId: thread.ms365ConversationId || undefined,
+            messageId: m.id,
+            subject,
+            snippet,
+          });
 
           // Persist training example (accepted)
           try {

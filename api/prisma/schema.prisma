@@ -35,7 +35,10 @@ model Tenant {
   emailIngests               EmailIngest[]
   emailMessages              EmailMessage[]
   emailThreads               EmailThread[]
+  emailConversations         EmailConversation[]
   examplePhotos              ExamplePhoto[]
+  followUpRules              FollowUpRule[]
+  followUpHistories          FollowUpHistory[]
   featureRequests            FeatureRequest[]
   feedbacks                  Feedback[]
   fireCertificationRules     FireCertificationRule[]
@@ -126,6 +129,9 @@ model User {
   tenantId                  String
   email                     String                     @unique
   name                      String?
+  firstName                 String?
+  lastName                  String?
+  emailFooter               String?
   role                      String                     @default("user")
   supplierId                String?
   isEarlyAdopter            Boolean                    @default(false)
@@ -138,6 +144,7 @@ model User {
   examplePhotos             ExamplePhoto[]
   resolvedFeedbacks         Feedback[]                 @relation("FeedbackResolver")
   feedbacks                 Feedback[]                 @relation("FeedbackAuthor")
+  followUpHistories         FollowUpHistory[]
   GmailTenantConnection     GmailTenantConnection[]
   gmailUserConnection       GmailUserConnection?       @relation("GmailUserConnection")
   holidays                  Holiday[]
@@ -628,6 +635,82 @@ model EmailMessage {
 }
 
 /// *
+/// * =============== AI Follow-up System ===============
+
+model FollowUpRule {
+  id              String   @id @default(cuid())
+  tenantId        String
+  trigger         String   // "questionnaire_sent" | "quote_sent" | "lead_created" | "opportunity_stalled"
+  delayDays       Int
+  condition       String?  // SQL-like condition for filtering
+  taskTitle       String
+  emailSubject    String
+  contextTemplate String   @db.Text
+  priority        String   @default("MEDIUM") // TASK priority
+  autoSchedule    Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, trigger, isActive])
+}
+
+model FollowUpHistory {
+  id              String    @id @default(cuid())
+  taskId          String
+  tenantId        String
+  userId          String
+  aiDraftSubject  String?
+  aiDraftBody     String?   @db.Text
+  finalSubject    String?
+  finalBody       String?   @db.Text
+  sentAt          DateTime?
+  messageId       String?
+  threadId        String?
+  recipientEmail  String
+  responded       Boolean   @default(false)
+  respondedAt     DateTime?
+  responseTime    Int?      // minutes to response
+  converted       Boolean   @default(false) // led to sale/action
+  userEdited      Boolean   @default(false)
+  editDistance    Int?      // how much user changed AI draft
+  createdAt       DateTime  @default(now())
+  task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, userId])
+  @@index([taskId])
+  @@index([recipientEmail])
+  @@index([responded, converted])
+}
+
+model EmailConversation {
+  id          String   @id @default(cuid())
+  taskId      String
+  tenantId    String
+  messageId   String   @unique
+  threadId    String?
+  fromAddress String
+  toAddress   String
+  subject     String
+  body        String   @db.Text
+  htmlBody    String?  @db.Text
+  direction   String   // "SENT" or "RECEIVED"
+  timestamp   DateTime
+  inReplyTo   String?
+  references  String[] @default([])
+  createdAt   DateTime @default(now())
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([tenantId, threadId])
+  @@index([messageId])
+}
+
+/// *
 /// * =============== Quoting ===============
 model Quote {
   id                    String                    @id @default(cuid())
@@ -1057,6 +1140,8 @@ model Task {
   template               TaskTemplate?           @relation(fields: [templateId], references: [id])
   tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   assignees              TaskAssignee[]
+  followUpHistory        FollowUpHistory[]
+  emailConversations     EmailConversation[]
 
   @@index([tenantId, status, dueAt])
   @@index([tenantId, relatedType, relatedId])

@@ -109,11 +109,10 @@ export function ScheduledTasksTab() {
   const loadTemplates = async () => {
     setLoading(true);
     try {
-      const response = await apiFetch("/tasks/templates", {
+      const data = await apiFetch("/tasks/templates", {
         headers: { "x-tenant-id": tenantId },
       });
-      const data = await response.json();
-      setTemplates(data);
+      setTemplates(Array.isArray(data) ? data : data.items || []);
     } catch (error) {
       console.error("Failed to load templates:", error);
     } finally {
@@ -123,10 +122,9 @@ export function ScheduledTasksTab() {
 
   const loadUsers = async () => {
     try {
-      const response = await apiFetch("/users", {
+      const data = await apiFetch("/workshop/users", {
         headers: { "x-tenant-id": tenantId },
       });
-      const data = await response.json();
       setUsers(Array.isArray(data) ? data : data.items || []);
     } catch (error) {
       console.error("Failed to load users:", error);
@@ -572,11 +570,11 @@ export function ScheduledTasksTab() {
                     Assign To Users
                   </label>
                   <Select
-                    value={formData.defaultAssigneeIds[0] || ""}
+                    value={formData.defaultAssigneeIds[0] || "none"}
                     onValueChange={(value) =>
                       setFormData((prev) => ({
                         ...prev,
-                        defaultAssigneeIds: value ? [value] : [],
+                        defaultAssigneeIds: value === "none" ? [] : [value],
                       }))
                     }
                   >
@@ -584,7 +582,7 @@ export function ScheduledTasksTab() {
                       <SelectValue placeholder="Select user (optional)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No assignment</SelectItem>
+                      <SelectItem value="none">No assignment</SelectItem>
                       {users.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
                           {`${user.firstName || ""} ${user.lastName || ""}`.trim() ||

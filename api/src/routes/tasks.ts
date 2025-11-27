@@ -153,6 +153,47 @@ router.post("/", async (req, res) => {
       },
     });
 
+    // Auto-generate AI draft for FOLLOW_UP tasks
+    if (body.taskType === "FOLLOW_UP" && body.meta) {
+      try {
+        const meta = body.meta as any;
+        const recipientEmail = meta.recipientEmail;
+        const recipientName = meta.recipientName;
+        
+        if (recipientEmail) {
+          const { generateEmailDraft } = await import("../services/aiEmailDrafter");
+          const draft = await generateEmailDraft({
+            recipientEmail,
+            recipientName,
+            purpose: meta.trigger || "custom",
+            customContext: body.description || "Follow-up required",
+            tone: "professional",
+          });
+
+          // Update task with AI draft
+          await prisma.task.update({
+            where: { id: task.id },
+            data: {
+              meta: {
+                ...meta,
+                aiDraft: {
+                  subject: draft.subject,
+                  body: draft.body,
+                  confidence: draft.confidence,
+                  generatedAt: new Date().toISOString(),
+                },
+              },
+            },
+          });
+
+          console.log(`[tasks] Auto-generated AI draft for task ${task.id}`);
+        }
+      } catch (draftError) {
+        console.error(`[tasks] Failed to auto-generate draft for task ${task.id}:`, draftError);
+        // Don't fail the task creation if draft generation fails
+      }
+    }
+
     res.json(task);
   } catch (e: any) {
     res.status(400).json({ error: e.message || "Invalid request" });
@@ -1403,6 +1444,792 @@ END:VEVENT
   } catch (e: any) {
     console.error("Failed to export calendar:", e);
     res.status(500).json({ error: e.message || "Failed to export calendar" });
+  }
+});
+
+/* ---------------- AI Follow-up Email System ---------------- */
+
+// Generate AI draft for a follow-up task
+router.post("/:id/generate-draft", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+      include: {
+        tenant: { select: { id: true } },
+      },
+    });
+
+    if (!task || task.tenantId !== tenantId) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    const meta = (task.meta as any) || {};
+    let recipientEmail = meta.recipientEmail || req.body.recipientEmail;
+    let recipientName = meta.recipientName || req.body.recipientName;
+
+    // If no recipient email and task is related to a lead, fetch from lead
+    if (!recipientEmail && task.relatedType === "LEAD" && task.relatedId) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: task.relatedId },
+        select: { email: true, contactName: true },
+      });
+      if (lead) {
+        recipientEmail = lead.email;
+        recipientName = recipientName || lead.contactName;
+      }
+    }
+
+    if (!recipientEmail) {
+      return res.status(400).json({ error: "recipient_email_required" });
+    }
+
+    // Generate draft
+    const { generateEmailDraft } = await import("../services/aiEmailDrafter");
+    const draft = await generateEmailDraft({
+      recipientEmail,
+      recipientName,
+      purpose: req.body.purpose || "custom",
+      customContext: task.description || req.body.context,
+      tone: req.body.tone || "professional",
+    });
+
+    // Update task meta with draft
+    await prisma.task.update({
+      where: { id: task.id },
+      data: {
+        meta: {
+          ...meta,
+          aiDraft: {
+            subject: draft.subject,
+            body: draft.body,
+            confidence: draft.confidence,
+            generatedAt: new Date().toISOString(),
+          },
+        },
+      },
+    });
+
+    return res.json({ ok: true, draft });
+  } catch (e: any) {
+    console.error("[tasks/:id/generate-draft]", e);
+    return res.status(500).json({ error: e.message || "failed" });
+  }
+});
+
+// Send email from a follow-up task
+router.post("/:id/send-email", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId || !userId) return res.status(401).json({ error: "unauthorized" });
+
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!task || task.tenantId !== tenantId) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    const { subject, body, to } = req.body;
+    if (!subject || !body || !to) {
+      return res.status(400).json({ error: "subject, body, and to are required" });
+    }
+
+    // Get tenant settings for brand name
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { brandName: true },
+    });
+    const brandName = settings?.brandName || "Sales Team";
+
+    // Get email provider for user
+    const { getEmailProviderForUser } = await import("../services/emailProvider");
+    const provider = await getEmailProviderForUser(userId);
+
+    if (!provider) {
+      return res.status(400).json({ error: "no_email_provider_connected" });
+    }
+
+    // Send email with brand name
+    const result = await provider.send({
+      subject,
+      body,
+      to,
+      cc: req.body.cc,
+      bcc: req.body.bcc,
+      fromName: brandName,
+    });
+
+    // Record in follow-up history
+    const meta = (task.meta as any) || {};
+    const aiDraft = meta.aiDraft;
+
+    await (prisma as any).followUpHistory.create({
+      data: {
+        taskId: task.id,
+        tenantId,
+        userId,
+        recipientEmail: to,
+        aiDraftSubject: aiDraft?.subject,
+        aiDraftBody: aiDraft?.body,
+        finalSubject: subject,
+        finalBody: body,
+        sentAt: new Date(),
+        messageId: result.messageId,
+        threadId: result.threadId,
+        userEdited: aiDraft ? aiDraft.subject !== subject || aiDraft.body !== body : false,
+      },
+    });
+
+    // Store in email conversation
+    await (prisma as any).emailConversation.create({
+      data: {
+        taskId: task.id,
+        tenantId,
+        messageId: result.messageId,
+        threadId: result.threadId,
+        fromAddress: userId, // Will need to get actual email
+        toAddress: to,
+        subject,
+        body,
+        direction: "SENT",
+        timestamp: new Date(),
+      },
+    });
+
+    // Update task status
+    await prisma.task.update({
+      where: { id: task.id },
+      data: {
+        status: "IN_PROGRESS",
+        emailMessageId: result.messageId,
+        meta: {
+          ...meta,
+          emailSent: true,
+          sentAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    return res.json({ ok: true, messageId: result.messageId });
+  } catch (e: any) {
+    console.error("[tasks/:id/send-email]", e);
+    return res.status(500).json({ error: e.message || "failed" });
+  }
+});
+
+// Get email conversation for a task
+router.get("/:id/conversation", async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!task || task.tenantId !== tenantId) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    const conversation = await (prisma as any).emailConversation.findMany({
+      where: { taskId: task.id },
+      orderBy: { timestamp: "asc" },
+    });
+
+    return res.json({ ok: true, conversation });
+  } catch (e: any) {
+    console.error("[tasks/:id/conversation]", e);
+    return res.status(500).json({ error: e.message || "failed" });
+  }
+});
+
+// Get AI-powered suggested actions for a task
+router.get("/:id/suggestions", async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!task || task.tenantId !== tenantId) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    const { getSuggestedActions } = await import("../services/conversationalFollowUp");
+    const result = await getSuggestedActions(task.id);
+
+    return res.json({ ok: true, ...result });
+  } catch (e: any) {
+    console.error("[tasks/:id/suggestions]", e);
+    return res.status(500).json({ error: e.message || "failed" });
+  }
+});
+
+// POST /tasks/:id/actions/accept-enquiry/preview - Preview accept email
+router.post("/:id/actions/accept-enquiry/preview", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!task || task.tenantId !== tenantId) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    const meta = (task.meta as any) || {};
+    let recipientEmail = meta.recipientEmail;
+    let recipientName = meta.recipientName;
+
+    console.log("[accept-enquiry/preview] Task:", task.id, "meta:", meta, "relatedType:", task.relatedType, "relatedId:", task.relatedId);
+
+    if (!recipientEmail && task.relatedType === "LEAD" && task.relatedId) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: task.relatedId },
+        select: { email: true, contactName: true },
+      });
+      console.log("[accept-enquiry/preview] Lead lookup:", lead);
+      if (lead) {
+        recipientEmail = lead.email;
+        recipientName = recipientName || lead.contactName;
+      }
+    }
+
+    if (!recipientEmail) {
+      console.error("[accept-enquiry/preview] No recipient email found. Task meta:", meta, "Lead:", task.relatedType, task.relatedId);
+      return res.status(400).json({ error: "recipient_email_required", details: "No email found in task metadata or related lead" });
+    }
+
+    // Get user details for email signature
+    const user = userId ? await prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true, name: true, emailFooter: true },
+    }) : null;
+
+    const { generateEmailDraft } = await import("../services/aiEmailDrafter");
+    const draft = await generateEmailDraft({
+      recipientEmail,
+      recipientName: recipientName || "there",
+      senderFirstName: user?.firstName || user?.name?.split(' ')[0],
+      senderLastName: user?.lastName || user?.name?.split(' ')[1],
+      senderFullName: user?.name,
+      emailFooter: user?.emailFooter || undefined,
+      purpose: "custom",
+      customContext: "Thank the customer for their enquiry and confirm we'll be in touch soon with a quote.",
+      tone: "friendly",
+    });
+
+    return res.json({ 
+      subject: draft.subject, 
+      body: draft.body, 
+      to: recipientEmail,
+      recipientName 
+    });
+  } catch (e: any) {
+    console.error("[tasks/:id/actions/accept-enquiry/preview]", e);
+    return res.status(500).json({ error: e.message || "failed" });
+  }
+});
+
+// POST /tasks/:id/actions/decline-enquiry/preview - Preview decline email
+router.post("/:id/actions/decline-enquiry/preview", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!task || task.tenantId !== tenantId) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    const meta = (task.meta as any) || {};
+    let recipientEmail = meta.recipientEmail;
+    let recipientName = meta.recipientName;
+
+    console.log("[decline-enquiry/preview] Task:", task.id, "meta:", meta, "relatedType:", task.relatedType, "relatedId:", task.relatedId);
+
+    if (!recipientEmail && task.relatedType === "LEAD" && task.relatedId) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: task.relatedId },
+        select: { email: true, contactName: true },
+      });
+      console.log("[decline-enquiry/preview] Lead lookup:", lead);
+      if (lead) {
+        recipientEmail = lead.email;
+        recipientName = recipientName || lead.contactName;
+      }
+    }
+
+    if (!recipientEmail) {
+      console.error("[decline-enquiry/preview] No recipient email found. Task meta:", meta, "Lead:", task.relatedType, task.relatedId);
+      return res.status(400).json({ error: "recipient_email_required", details: "No email found in task metadata or related lead" });
+    }
+
+    // Get user details for email signature
+    const user = userId ? await prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true, name: true, emailFooter: true },
+    }) : null;
+
+    const { generateEmailDraft } = await import("../services/aiEmailDrafter");
+    const draft = await generateEmailDraft({
+      recipientEmail,
+      recipientName: recipientName || "there",
+      senderFirstName: user?.firstName || user?.name?.split(' ')[0],
+      senderLastName: user?.lastName || user?.name?.split(' ')[1],
+      senderFullName: user?.name,
+      emailFooter: user?.emailFooter || undefined,
+      purpose: "custom",
+      customContext: "Politely decline the enquiry while keeping the door open for future opportunities. Explain that we're unable to take on this project at this time.",
+      tone: "professional",
+    });
+
+    return res.json({ 
+      subject: draft.subject, 
+      body: draft.body, 
+      to: recipientEmail,
+      recipientName 
+    });
+  } catch (e: any) {
+    console.error("[tasks/:id/actions/decline-enquiry/preview]", e);
+    return res.status(500).json({ error: e.message || "failed" });
+  }
+});
+
+// POST /tasks/:id/actions/accept-enquiry - Accept a review enquiry task
+router.post("/:id/actions/accept-enquiry", async (req, res) => {
+  try {
+    console.log("[tasks/:id/actions/accept-enquiry] Starting...");
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+      include: { assignees: true },
+    });
+
+    if (!task || task.tenantId !== tenantId) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    const meta = (task.meta as any) || {};
+    let recipientEmail = meta.recipientEmail;
+    let recipientName = meta.recipientName;
+
+    // Fetch user details for personalization
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        firstName: true,
+        lastName: true,
+        name: true,
+        emailFooter: true,
+      },
+    });
+
+    // If no recipient email and task is related to a lead, fetch from lead
+    let emailMessageId: string | undefined;
+    let emailThreadId: string | undefined;
+    if (!recipientEmail && task.relatedType === "LEAD" && task.relatedId) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: task.relatedId },
+        select: { email: true, contactName: true, custom: true },
+      });
+      if (lead) {
+        recipientEmail = lead.email;
+        recipientName = recipientName || lead.contactName;
+        
+        // Extract email threading information
+        const custom = lead.custom as any;
+        if (custom) {
+          emailMessageId = custom.messageId;
+          emailThreadId = custom.threadId;
+        }
+      }
+    }
+    
+    // Get tenant settings for brand name
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+    });
+    const brandName = (settings?.brandName as string) || "Sales Team";
+
+    // Send thank you email
+    if (recipientEmail && userId) {
+      const { customSubject, customBody } = req.body || {};
+      let finalSubject = customSubject;
+      let finalBody = customBody;
+      let userEdited = !!(customSubject || customBody);
+
+      // Generate draft if no custom content provided
+      if (!finalSubject || !finalBody) {
+        const { generateEmailDraft } = await import("../services/aiEmailDrafter");
+        const draft = await generateEmailDraft({
+          recipientEmail: recipientEmail,
+          recipientName: recipientName || "there",
+          senderFirstName: user?.firstName || user?.name?.split(' ')[0],
+          senderLastName: user?.lastName || user?.name?.split(' ')[1],
+          senderFullName: user?.name,
+          emailFooter: user?.emailFooter || undefined,
+          purpose: "custom",
+          customContext: "Thank the customer for their enquiry and confirm we'll be in touch soon with a quote.",
+          tone: "friendly",
+        });
+        finalSubject = finalSubject || draft.subject;
+        finalBody = finalBody || draft.body;
+      }
+
+      const { getEmailProviderForUser } = await import("../services/emailProvider");
+      const provider = await getEmailProviderForUser(userId);
+      if (provider) {
+        await provider.send({
+          to: recipientEmail,
+          subject: finalSubject,
+          body: finalBody,
+          htmlBody: finalBody,
+          fromName: brandName,
+          inReplyTo: emailMessageId,
+          references: emailThreadId,
+        });
+      }
+
+      // Record in follow-up history
+      await (prisma as any).followUpHistory.create({
+        data: {
+          taskId: task.id,
+          tenantId,
+          userId,
+          recipientEmail: recipientEmail,
+          aiDraftSubject: finalSubject,
+          aiDraftBody: finalBody,
+          finalSubject: finalSubject,
+          finalBody: finalBody,
+          sentAt: new Date(),
+          userEdited: userEdited,
+        },
+      });
+    }
+
+    // Update task to completed
+    await prisma.task.update({
+      where: { id: task.id },
+      data: {
+        status: "DONE",
+        meta: {
+          ...meta,
+          action: "accepted",
+          completedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        tenantId,
+        entity: "TASK",
+        entityId: task.id,
+        verb: "COMPLETED",
+        actorId: userId,
+        data: { action: "accept_enquiry", emailSent: !!recipientEmail } as any,
+      },
+    });
+
+    // Log training event
+    if (userId) {
+      await logEvent({
+        tenantId,
+        module: "tasks",
+        kind: "task_action_accept_enquiry",
+        payload: { taskId: task.id, emailSent: !!recipientEmail },
+        actorId: userId,
+      });
+    }
+
+    console.log("[tasks/:id/actions/accept-enquiry] Success");
+    return res.json({ ok: true, emailSent: !!recipientEmail });
+  } catch (e: any) {
+    console.error("[tasks/:id/actions/accept-enquiry] Error:", e?.message || e);
+    console.error("[tasks/:id/actions/accept-enquiry] Stack:", e?.stack);
+    return res.status(500).json({ error: e.message || "failed" });
+  }
+});
+
+// POST /tasks/:id/actions/decline-enquiry - Decline an enquiry and set lead to DISQUALIFIED
+router.post("/:id/actions/decline-enquiry", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!task || task.tenantId !== tenantId) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    const meta = (task.meta as any) || {};
+    let recipientEmail = meta.recipientEmail;
+    let recipientName = meta.recipientName;
+
+    // Fetch user details for personalization
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        firstName: true,
+        lastName: true,
+        name: true,
+        emailFooter: true,
+      },
+    });
+
+    // If no recipient email and task is related to a lead, fetch from lead
+    let emailMessageId: string | undefined;
+    let emailThreadId: string | undefined;
+    if (!recipientEmail && task.relatedType === "LEAD" && task.relatedId) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: task.relatedId },
+        select: { email: true, contactName: true, custom: true },
+      });
+      if (lead) {
+        recipientEmail = lead.email;
+        recipientName = recipientName || lead.contactName;
+        
+        // Extract email threading information
+        const custom = lead.custom as any;
+        if (custom) {
+          emailMessageId = custom.messageId;
+          emailThreadId = custom.threadId;
+        }
+      }
+    }
+    
+    // Get tenant settings for brand name
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+    });
+    const brandName = (settings?.brandName as string) || "Sales Team";
+
+    // Send decline email
+    if (recipientEmail && userId) {
+      const { customSubject, customBody } = req.body || {};
+      let finalSubject = customSubject;
+      let finalBody = customBody;
+      let userEdited = !!(customSubject || customBody);
+
+      // Generate draft if no custom content provided
+      if (!finalSubject || !finalBody) {
+        const { generateEmailDraft } = await import("../services/aiEmailDrafter");
+        const draft = await generateEmailDraft({
+          recipientEmail: recipientEmail,
+          recipientName: recipientName || "there",
+          senderFirstName: user?.firstName || user?.name?.split(' ')[0],
+          senderLastName: user?.lastName || user?.name?.split(' ')[1],
+          senderFullName: user?.name,
+          emailFooter: user?.emailFooter || undefined,
+          purpose: "custom",
+          customContext: "Politely decline to quote for this project, thank them for their interest and wish them well.",
+          tone: "professional",
+        });
+        finalSubject = finalSubject || draft.subject;
+        finalBody = finalBody || draft.body;
+      }
+
+      const { getEmailProviderForUser } = await import("../services/emailProvider");
+      const provider = await getEmailProviderForUser(userId);
+      if (provider) {
+        await provider.send({
+          to: recipientEmail,
+          subject: finalSubject,
+          body: finalBody,
+          htmlBody: finalBody,
+          fromName: brandName,
+          inReplyTo: emailMessageId,
+          references: emailThreadId,
+        });
+      }
+
+      // Record in follow-up history
+      await (prisma as any).followUpHistory.create({
+        data: {
+          taskId: task.id,
+          tenantId,
+          userId,
+          recipientEmail: recipientEmail,
+          aiDraftSubject: finalSubject,
+          aiDraftBody: finalBody,
+          finalSubject: finalSubject,
+          finalBody: finalBody,
+          sentAt: new Date(),
+          userEdited: userEdited,
+        },
+      });
+    }
+
+    // Update lead status to DISQUALIFIED if task is related to a lead
+    if (task.relatedType === "LEAD" && task.relatedId) {
+      await prisma.lead.update({
+        where: { id: task.relatedId },
+        data: { status: "DISQUALIFIED" },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          tenantId,
+          entity: "TASK" as any,
+          entityId: task.relatedId,
+          verb: "UPDATED" as any,
+          actorId: userId,
+          data: { reason: "decline_enquiry", taskId: task.id, leadStatus: "DISQUALIFIED" } as any,
+        },
+      });
+    }
+
+    // Update task to completed
+    await prisma.task.update({
+      where: { id: task.id },
+      data: {
+        status: "DONE",
+        meta: {
+          ...meta,
+          action: "declined",
+          completedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        tenantId,
+        entity: "TASK",
+        entityId: task.id,
+        verb: "COMPLETED",
+        actorId: userId,
+        data: { action: "decline_enquiry", emailSent: !!meta.recipientEmail } as any,
+      },
+    });
+
+    // Log training event
+    if (userId) {
+      await logEvent({
+        tenantId,
+        module: "tasks",
+        kind: "task_action_decline_enquiry",
+        payload: { taskId: task.id, leadDisqualified: true },
+        actorId: userId,
+      });
+    }
+
+    return res.json({ ok: true, emailSent: !!recipientEmail, leadDisqualified: true });
+  } catch (e: any) {
+    console.error("[tasks/:id/actions/decline-enquiry]", e);
+    console.error("[tasks/:id/actions/decline-enquiry] Stack:", e?.stack);
+    return res.status(500).json({ error: e.message || "failed" });
+  }
+});
+
+// POST /tasks/:id/actions/reject-enquiry - Reject as not a real enquiry and provide ML feedback
+router.post("/:id/actions/reject-enquiry", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!task || task.tenantId !== tenantId) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    // Update lead status to REJECTED if task is related to a lead
+    if (task.relatedType === "LEAD" && task.relatedId) {
+      await prisma.lead.update({
+        where: { id: task.relatedId },
+        data: { status: "REJECTED" },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          tenantId,
+          entity: "TASK" as any,
+          entityId: task.relatedId,
+          verb: "UPDATED" as any,
+          actorId: userId,
+          data: { reason: "not_an_enquiry", taskId: task.id, leadStatus: "REJECTED" } as any,
+        },
+      });
+
+      // Log ML feedback
+      await logInsight({
+        tenantId,
+        module: "tasks",
+        inputSummary: "lead_rejected_not_enquiry",
+        decision: "reject",
+        confidence: 1.0,
+        userFeedback: {
+          leadId: task.relatedId,
+          taskId: task.id,
+          feedback: "not_an_enquiry",
+        },
+      });
+    }
+
+    const meta = (task.meta as any) || {};
+
+    // Update task to completed
+    await prisma.task.update({
+      where: { id: task.id },
+      data: {
+        status: "DONE",
+        meta: {
+          ...meta,
+          action: "rejected",
+          completedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        tenantId,
+        entity: "TASK",
+        entityId: task.id,
+        verb: "COMPLETED",
+        actorId: userId,
+        data: { action: "reject_enquiry", mlFeedback: true } as any,
+      },
+    });
+
+    // Log training event
+    if (userId) {
+      await logEvent({
+        tenantId,
+        module: "tasks",
+        kind: "task_action_reject_enquiry",
+        payload: { taskId: task.id, leadRejected: true },
+        actorId: userId,
+      });
+    }
+
+    return res.json({ ok: true, leadRejected: true, mlFeedback: true });
+  } catch (e: any) {
+    console.error("[tasks/:id/actions/reject-enquiry]", e);
+    return res.status(500).json({ error: e.message || "failed" });
   }
 });
 

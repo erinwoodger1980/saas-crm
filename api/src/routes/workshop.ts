@@ -16,7 +16,7 @@ router.get("/users", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const users = await prisma.user.findMany({
     where: { tenantId },
-    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true, workshopColor: true, workshopProcessCodes: true, passwordHash: true },
+    select: { id: true, name: true, email: true, role: true, workshopHoursPerDay: true, workshopColor: true, workshopProcessCodes: true, passwordHash: true, firstName: true, lastName: true, emailFooter: true },
     orderBy: { name: "asc" },
   });
   res.json({ ok: true, items: users });
@@ -105,6 +105,35 @@ router.patch("/users/:userId/color", async (req: any, res) => {
     where: { id: userId },
     data: { workshopColor: color || null },
     select: { id: true, name: true, email: true, workshopHoursPerDay: true, workshopColor: true },
+  });
+  
+  res.json({ ok: true, user: updated });
+});
+
+// PATCH /workshop/users/:userId/profile { firstName?: string, lastName?: string, emailFooter?: string }
+router.patch("/users/:userId/profile", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = String(req.params.userId);
+  const { firstName, lastName, emailFooter } = req.body || {};
+  
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, tenantId: true },
+  });
+  
+  if (!user || user.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  
+  const data: any = {};
+  if (firstName !== undefined) data.firstName = firstName || null;
+  if (lastName !== undefined) data.lastName = lastName || null;
+  if (emailFooter !== undefined) data.emailFooter = emailFooter || null;
+  
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data,
+    select: { id: true, name: true, email: true, firstName: true, lastName: true, emailFooter: true },
   });
   
   res.json({ ok: true, user: updated });
