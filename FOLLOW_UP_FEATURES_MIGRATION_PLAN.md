@@ -4,6 +4,8 @@
 
 The following features were temporarily disabled to allow CI/deployment to pass. They need schema updates before re-enabling.
 
+**Last CI Status Check:** November 27, 2025 - Files confirmed disabled, triggering new build to verify.
+
 ## Disabled Files
 
 1. `api/src/routes/follow-up-rules.ts.disabled`
