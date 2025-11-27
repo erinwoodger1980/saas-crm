@@ -2,7 +2,7 @@
   "name": "api",
   "version": "1.0.0",
   "private": true,
-  "description": "Joinery AI API",
+  "description": "Joinery AI API - CI verification",
   "packageManager": "pnpm@9.0.0",
   "type": "commonjs",
   "main": "dist/server.js",
