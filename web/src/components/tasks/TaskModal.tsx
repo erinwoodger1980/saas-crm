@@ -47,6 +47,10 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
   const [scheduleEdit, setScheduleEdit] = useState<{ pattern: RecurrencePattern; interval: number }>({ pattern: "DAILY", interval: 1 });
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [attachments, setAttachments] = useState<Array<{ id: string; filename: string; size: number; mimeType: string; uploadedAt: string; base64?: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [assigneeBusy, setAssigneeBusy] = useState(false);
+  const [addUserId, setAddUserId] = useState("");
   const isNewTask = !task;
 
   useEffect(() => {
@@ -93,6 +97,63 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
       }
     }
   }, [task, open]);
+
+  // Load users for assignment when modal opens (and task exists)
+  useEffect(() => {
+    if (!open || isNewTask) return;
+    let cancelled = false;
+    async function load() {
+      setLoadingUsers(true);
+      try {
+        const res: any = await apiFetch('/workshop/users', {
+          method: 'GET',
+          headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+        });
+        if (!cancelled && (res as any)?.items) {
+          const list = (res as any).items as any[];
+          const safe = list.map(u => ({ id: u.id, name: u.name || (u.firstName ? `${u.firstName} ${u.lastName||''}`.trim() : 'User'), email: u.email }));
+          setUsers(safe);
+        }
+      } catch {}
+      finally {
+        if (!cancelled) setLoadingUsers(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [open, isNewTask, tenantId, userId]);
+
+  async function modifyAssignees(addIds: string[] = [], removeIds: string[] = []) {
+    if (!form || isNewTask || (!addIds.length && !removeIds.length)) return;
+    setAssigneeBusy(true);
+    try {
+      await apiFetch(`/tasks/${form.id}/assignees`, {
+        method: 'POST',
+        headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+        json: {
+          add: addIds.map(id => ({ userId: id, role: 'OWNER' })),
+          remove: removeIds,
+        },
+      });
+      // Refresh task locally
+      setForm(prev => prev ? {
+        ...prev,
+        assignees: (prev.assignees || [])
+          .filter(a => !removeIds.includes(a.userId))
+          .concat(addIds.map(id => ({ userId: id, role: 'OWNER' as any })))
+      } : prev);
+      onChanged?.();
+      toast('Assignees updated');
+    } catch (e: any) {
+      toast('Failed to update assignees');
+    } finally {
+      setAssigneeBusy(false);
+      setAddUserId("");
+    }
+  }
+
+  const assignedIds = new Set((form?.assignees || []).map(a => a.userId));
+  const unassignedUsers = users.filter(u => !assignedIds.has(u.id));
   function toast(msg: string) {
     const el = document.createElement("div");
     el.textContent = msg;
@@ -675,6 +736,68 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
               {attachments.length > 0 && (
                 <div className="text-[10px] text-slate-500">Stored inline (base64). For large files use a dedicated upload flow later.</div>
               )}
+            </div>
+          )}
+
+          {/* ASSIGNEES PANEL */}
+          {!isNewTask && (
+            <div className="rounded-2xl border border-slate-200 bg-white/85 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Assignees</div>
+                <button
+                  type="button"
+                  disabled={assigneeBusy || assignedIds.has(userId)}
+                  onClick={() => modifyAssignees([userId], [])}
+                  className="text-xs font-medium text-indigo-600 disabled:opacity-40"
+                >
+                  {assignedIds.has(userId) ? 'Assigned to you' : 'Assign to me'}
+                </button>
+              </div>
+              <div className="space-y-2">
+                {(form.assignees || []).length === 0 && !assigneeBusy && (
+                  <div className="text-sm text-slate-600">No assignees yet.</div>
+                )}
+                {(form.assignees || []).map(a => {
+                  const u = users.find(u => u.id === a.userId);
+                  return (
+                    <div key={a.userId} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-slate-700 truncate">{u?.name || a.userId}</div>
+                        <div className="text-[10px] text-slate-500">{u?.email || 'role: ' + a.role}</div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={assigneeBusy}
+                        onClick={() => modifyAssignees([], [a.userId])}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-100"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <select
+                  value={addUserId}
+                  disabled={assigneeBusy || loadingUsers || unassignedUsers.length === 0}
+                  onChange={(e) => setAddUserId(e.target.value)}
+                  className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
+                >
+                  <option value="">{loadingUsers ? 'Loading users…' : unassignedUsers.length ? 'Select user…' : 'No users available'}</option>
+                  {unassignedUsers.map(u => (
+                    <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!addUserId || assigneeBusy}
+                  onClick={() => modifyAssignees([addUserId], [])}
+                  className="text-xs"
+                >Add</Button>
+              </div>
+              {assigneeBusy && <div className="text-[10px] text-indigo-600">Updating assignees…</div>}
             </div>
           )}
 

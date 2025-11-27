@@ -29,6 +29,7 @@ type Task = {
   formSchema?: any;
   meta?: any;
   assignees?: Array<{ userId: string; role: "OWNER" | "FOLLOWER" }>;
+  requiresSignature?: boolean; // optional form signature flag
 };
 
 const TASK_TYPE_CONFIG: Record<string, { color: string; bgColor: string; label: string }> = {
@@ -583,129 +584,103 @@ export function TaskCenter({
   };
 
   const mobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const showCategories = true; // simple flag to always show search/filter bar
 
   return (
     <div className={`flex flex-col min-h-0 ${focusMode ? 'bg-white' : ''}`}>
-      {/* Mobile Top Bar (minimal) */}
+      {/* Mobile Top Bar */}
       {!embedded && mobile && (
         <div className="sticky top-0 z-30 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-2 flex items-center gap-2 shadow-sm">
-          <button
-            onClick={() => setHeaderCollapsed(!headerCollapsed)}
-            className="text-xs font-semibold px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition"
-          >{headerCollapsed ? 'Show' : 'Hide'} Header</button>
+          <button onClick={() => setHeaderCollapsed(!headerCollapsed)} className="text-xs font-semibold px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition">
+            {headerCollapsed ? 'Show' : 'Hide'} Header
+          </button>
           <h2 className="text-sm font-bold flex-1 truncate">Tasks ({filteredTasks.length})</h2>
-          <button
-            onClick={() => setExpandAll(v => !v)}
-            className="text-xs px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition"
-          >{expandAll ? 'Collapse All' : 'Expand All'}</button>
-          <button
-            onClick={() => setFocusMode(!focusMode)}
-            className="text-xs px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition"
-          >{focusMode ? 'Exit Focus' : 'Focus'}</button>
-          <button
-            onClick={handleNewTask}
-            className="text-xs px-2 py-1 rounded bg-emerald-500 hover:bg-emerald-600 transition"
-          >New</button>
+          <button onClick={() => setExpandAll(v => !v)} className="text-xs px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition">
+            {expandAll ? 'Collapse All' : 'Expand All'}
+          </button>
+          <button onClick={() => setFocusMode(!focusMode)} className="text-xs px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition">
+            {focusMode ? 'Exit Focus' : 'Focus'}
+          </button>
+          <button onClick={handleNewTask} className="text-xs px-2 py-1 rounded bg-emerald-500 hover:bg-emerald-600 transition">New</button>
         </div>
       )}
+
       {/* Celebration Modal */}
       {showCelebration && celebrationTask && (
         <TaskCelebration
           show={showCelebration}
           onClose={() => setShowCelebration(false)}
           taskTitle={celebrationTask.title}
-          celebrationType={celebrationStats.streak >= 7 ? "streak" : "standard"}
+          celebrationType={celebrationStats.streak >= 7 ? 'streak' : 'standard'}
           streakDays={celebrationStats.streak}
           totalCompleted={celebrationStats.total}
           pointsEarned={celebrationStats.points}
         />
       )}
 
-      {/* Collapsible Header Section (hidden in focus mode) */}
+      {/* Header (desktop) */}
       {!embedded && !focusMode && (
-        <div className={`flex-shrink-0 space-y-4 pb-4 ${mobile ? (headerCollapsed ? 'hidden' : 'block') : ''}`}>
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              {filterRelatedType && filterRelatedId ? `${filterRelatedType} Tasks` : "Task Center"}
-            </h1>
-            <p className="text-gray-600 mt-1">
-              {filterRelatedType && filterRelatedId
-                ? "Filtered to the current record"
-                : "Manage all your tasks, communications, and forms in one place"}
-            </p>
-          </div>
-          <div className="hidden md:flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setExpandAll(v => !v)}
-            >
-              {expandAll ? 'Collapse All' : 'Expand All'}
-            </Button>
-          </div>
-        </div>
-
-        {/* Mobile Stats Header (collapsible) */}
-        <div className="md:hidden bg-gradient-to-br from-blue-600 to-purple-600 text-white p-4 rounded-2xl shadow">
-          <h2 className="text-xl font-bold mb-3">My Tasks</h2>
-          <div className="grid grid-cols-3 gap-3">
-            <Card className="p-3 text-center bg-white/10 backdrop-blur border-white/20">
-              <div className="text-2xl font-bold">{filteredTasks.length}</div>
-              <div className="text-[10px] opacity-90">Active</div>
-            </Card>
-            <Card className="p-3 text-center bg-white/10 backdrop-blur border-white/20">
-              <div className="text-2xl font-bold">{streakDays}</div>
-              <div className="text-[10px] opacity-90">Day Streak</div>
-            </Card>
-            <Card className="p-3 text-center bg-white/10 backdrop-blur border-white/20">
-              <div className="text-2xl font-bold">{todayCompleted}</div>
-              <div className="text-[10px] opacity-90">Today</div>
-            </Card>
-          </div>
-        </div>
-
-        {/* Streak Tracker (desktop/tablet) */}
-        <div className="hidden md:block">
-          <TaskStreakTracker />
-        </div>
-
-        {showCategories && (
-        <Card className="p-4 md:sticky md:top-0 md:z-20 md:bg-white/95 md:backdrop-blur">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search tasks..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="pl-10"
-              />
+        <div className={`space-y-4 pb-4 ${mobile && headerCollapsed ? 'hidden' : 'block'}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">{filterRelatedType && filterRelatedId ? `${filterRelatedType} Tasks` : 'Task Center'}</h1>
+              <p className="text-gray-600 mt-1">{filterRelatedType && filterRelatedId ? 'Filtered to the current record' : 'Manage all your tasks, communications, and forms in one place'}</p>
             </div>
-            
-            <Button variant="outline" onClick={handleSearch} className="w-full sm:w-auto">
-              <Search className="h-4 w-4 mr-2" />
-              Search
-            </Button>
-            
-            <Button
-              variant={showOnlyMine ? "default" : "outline"}
-              onClick={() => setShowOnlyMine(!showOnlyMine)}
-              className="w-full sm:w-auto"
-            >
-              <Filter className="h-4 w-4 mr-2" />
-              {showOnlyMine ? "My Tasks" : "All Tasks"}
-            </Button>
+            <div className="hidden md:flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setExpandAll(v => !v)}>{expandAll ? 'Collapse All' : 'Expand All'}</Button>
+              <Button variant={showOnlyMine ? 'default' : 'outline'} size="sm" onClick={() => setShowOnlyMine(!showOnlyMine)}>{showOnlyMine ? 'My Tasks' : 'All Tasks'}</Button>
+            </div>
           </div>
-        </Card>
+
+          {/* Stats (mobile collapsed view handled above) */}
+          <div className="hidden md:grid grid-cols-3 gap-4">
+            <Card className="p-4 text-center">
+              <div className="text-2xl font-bold">{filteredTasks.length}</div>
+              <div className="text-xs text-gray-500">Active</div>
+            </Card>
+            <Card className="p-4 text-center">
+              <div className="text-2xl font-bold">{streakDays}</div>
+              <div className="text-xs text-gray-500">Day Streak</div>
+            </Card>
+            <Card className="p-4 text-center">
+              <div className="text-2xl font-bold">{todayCompleted}</div>
+              <div className="text-xs text-gray-500">Completed Today</div>
+            </Card>
+          </div>
+
+          <div className="hidden md:block">
+            <TaskStreakTracker />
+          </div>
+
+          {showCategories && (
+            <Card className="p-4 md:sticky md:top-0 md:z-20 md:bg-white/95 md:backdrop-blur">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search tasks..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    className="pl-10"
+                  />
+                </div>
+                <Button variant="outline" onClick={handleSearch} className="w-full sm:w-auto">
+                  <Search className="h-4 w-4 mr-2" />
+                  Search
+                </Button>
+                <Button variant={showOnlyMine ? 'default' : 'outline'} onClick={() => setShowOnlyMine(!showOnlyMine)} className="w-full sm:w-auto">
+                  <Filter className="h-4 w-4 mr-2" />
+                  {showOnlyMine ? 'My Tasks' : 'All Tasks'}
+                </Button>
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
-      {/* Tabs (optional categories) */}
-      {/* Categories removed per simplification */}
-
-        <div className="mt-6">
+      {/* Task Feed */}
+      <div className="mt-6">
           {loading ? (
             <div className="text-center py-12 text-gray-500">Loading tasks...</div>
           ) : filteredTasks.length === 0 ? (
@@ -770,33 +745,25 @@ export function TaskCenter({
               </div>
             </>
           )}
-        </div>
-      {/* End task feed */}
+      </div>
+
       {/* Create Task Wizard */}
       <CreateTaskWizard
         open={showCreateWizard}
         onClose={() => setShowCreateWizard(false)}
         tenantId={tenantId}
         userId={userId}
-        onCreated={() => {
-          loadTasks();
-        }}
+        onCreated={() => loadTasks()}
       />
 
       {/* Task Modal */}
       <TaskModal
         open={showTaskModal}
-        onClose={() => {
-          setShowTaskModal(false);
-          setSelectedTask(null);
-        }}
+        onClose={() => { setShowTaskModal(false); setSelectedTask(null); }}
         task={selectedTask}
         tenantId={tenantId}
         userId={userId}
-        onChanged={() => {
-          loadTasks();
-          setShowTaskModal(false);
-        }}
+        onChanged={() => { loadTasks(); setShowTaskModal(false); }}
       />
 
       {/* Email Preview Modal */}
@@ -805,35 +772,18 @@ export function TaskCenter({
           <Card className="w-full h-full max-w-none md:max-w-2xl md:h-auto md:my-10 rounded-none md:rounded-xl overflow-y-auto">
             <div className="p-4 md:p-6 h-full flex flex-col">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">
-                  {emailPreview.action === 'accept' ? '✓ Accept Enquiry' : '↓ Decline Enquiry'}
-                </h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setEmailPreview({ ...emailPreview, isOpen: false })}
-                >
-                  ✕
-                </Button>
+                <h2 className="text-xl font-bold">{emailPreview.action === 'accept' ? '✓ Accept Enquiry' : '↓ Decline Enquiry'}</h2>
+                <Button variant="ghost" size="sm" onClick={() => setEmailPreview({ ...emailPreview, isOpen: false })}>✕</Button>
               </div>
-
               <div className="space-y-4 flex-1 overflow-y-auto">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">To:</label>
-                  <div className="text-sm text-gray-900">
-                    {emailPreview.recipientName ? `${emailPreview.recipientName} <${emailPreview.to}>` : emailPreview.to}
-                  </div>
+                  <div className="text-sm text-gray-900">{emailPreview.recipientName ? `${emailPreview.recipientName} <${emailPreview.to}>` : emailPreview.to}</div>
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Subject:</label>
-                  <Input
-                    value={emailPreview.subject}
-                    onChange={(e) => setEmailPreview({ ...emailPreview, subject: e.target.value })}
-                    className="w-full"
-                  />
+                  <Input value={emailPreview.subject} onChange={(e) => setEmailPreview({ ...emailPreview, subject: e.target.value })} />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Message:</label>
                   <textarea
@@ -843,15 +793,8 @@ export function TaskCenter({
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
                   />
                 </div>
-
                 <div className="flex gap-3 pt-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => setEmailPreview({ ...emailPreview, isOpen: false })}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
+                  <Button variant="outline" onClick={() => setEmailPreview({ ...emailPreview, isOpen: false })} className="flex-1">Cancel</Button>
                   <Button
                     onClick={async () => {
                       if (!emailPreview.taskId || !emailPreview.action) return;
@@ -859,11 +802,8 @@ export function TaskCenter({
                         const endpoint = emailPreview.action === 'accept' ? 'accept-enquiry' : 'decline-enquiry';
                         await apiFetch(`/tasks/${emailPreview.taskId}/actions/${endpoint}`, {
                           method: 'POST',
-                          headers: { "x-tenant-id": tenantId },
-                          json: {
-                            subject: emailPreview.subject,
-                            body: emailPreview.body,
-                          },
+                          headers: { 'x-tenant-id': tenantId },
+                          json: { subject: emailPreview.subject, body: emailPreview.body },
                         });
                         setEmailPreview({ ...emailPreview, isOpen: false });
                         await loadTasks();

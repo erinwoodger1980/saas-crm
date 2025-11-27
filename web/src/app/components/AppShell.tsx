@@ -116,8 +116,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         className="pointer-events-none absolute inset-x-0 top-0 h-[320px] bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_70%)]"
       />
 
-      {/* Top header */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur">
+      {/* Top header (was sticky; now scrolls with content) */}
+      <header className="relative z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur">
         <div className="mx-auto flex w-full items-center justify-between gap-6 px-6 py-4">
           <div className="flex items-center gap-6">
             <div className="relative">
