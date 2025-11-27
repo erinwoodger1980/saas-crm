@@ -77,6 +77,8 @@ async function checkQuestionnaireTriggers(
   tenantId: string,
   rule: any
 ): Promise<void> {
+  // Disabled: Schema fields not available in production
+  return;
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - rule.delayDays);
 
@@ -151,6 +153,8 @@ async function checkQuestionnaireTriggers(
  * Check for quotes that need follow-up
  */
 async function checkQuoteTriggers(tenantId: string, rule: any): Promise<void> {
+  // Disabled: Schema fields not available in production
+  return;
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - rule.delayDays);
 
@@ -314,6 +318,8 @@ async function checkLeadTriggers(tenantId: string, rule: any): Promise<void> {
  * Check for stalled opportunities
  */
 async function checkOpportunityTriggers(tenantId: string, rule: any): Promise<void> {
+  // Disabled: Schema fields not available in production
+  return;
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - rule.delayDays);
 

@@ -1720,7 +1720,7 @@ router.post("/:id/actions/accept-enquiry/preview", async (req, res) => {
       recipientName: recipientName || "there",
       senderFirstName: user?.firstName || user?.name?.split(' ')[0],
       senderLastName: user?.lastName || user?.name?.split(' ')[1],
-      senderFullName: user?.name,
+      senderFullName: user?.name || undefined,
       emailFooter: user?.emailFooter || undefined,
       purpose: "custom",
       customContext: "Thank the customer for their enquiry and confirm we'll be in touch soon with a quote.",
@@ -1788,7 +1788,7 @@ router.post("/:id/actions/decline-enquiry/preview", async (req, res) => {
       recipientName: recipientName || "there",
       senderFirstName: user?.firstName || user?.name?.split(' ')[0],
       senderLastName: user?.lastName || user?.name?.split(' ')[1],
-      senderFullName: user?.name,
+      senderFullName: user?.name || undefined,
       emailFooter: user?.emailFooter || undefined,
       purpose: "custom",
       customContext: "Politely decline the enquiry while keeping the door open for future opportunities. Explain that we're unable to take on this project at this time.",
@@ -1880,7 +1880,7 @@ router.post("/:id/actions/accept-enquiry", async (req, res) => {
           recipientName: recipientName || "there",
           senderFirstName: user?.firstName || user?.name?.split(' ')[0],
           senderLastName: user?.lastName || user?.name?.split(' ')[1],
-          senderFullName: user?.name,
+          senderFullName: user?.name || undefined,
           emailFooter: user?.emailFooter || undefined,
           purpose: "custom",
           customContext: "Thank the customer for their enquiry and confirm we'll be in touch soon with a quote.",
@@ -1899,8 +1899,8 @@ router.post("/:id/actions/accept-enquiry", async (req, res) => {
           body: finalBody,
           htmlBody: finalBody,
           fromName: brandName,
-          inReplyTo: emailMessageId,
-          references: emailThreadId,
+          inReplyTo: emailMessageId || undefined,
+          references: emailThreadId ? [emailThreadId] : undefined,
         });
       }
 
@@ -2037,7 +2037,7 @@ router.post("/:id/actions/decline-enquiry", async (req, res) => {
           recipientName: recipientName || "there",
           senderFirstName: user?.firstName || user?.name?.split(' ')[0],
           senderLastName: user?.lastName || user?.name?.split(' ')[1],
-          senderFullName: user?.name,
+          senderFullName: user?.name || undefined,
           emailFooter: user?.emailFooter || undefined,
           purpose: "custom",
           customContext: "Politely decline to quote for this project, thank them for their interest and wish them well.",
@@ -2056,8 +2056,8 @@ router.post("/:id/actions/decline-enquiry", async (req, res) => {
           body: finalBody,
           htmlBody: finalBody,
           fromName: brandName,
-          inReplyTo: emailMessageId,
-          references: emailThreadId,
+          inReplyTo: emailMessageId || undefined,
+          references: emailThreadId ? [emailThreadId] : undefined,
         });
       }
 
