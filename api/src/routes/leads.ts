@@ -826,7 +826,6 @@ router.post("/", async (req, res) => {
         capturedAt: now,
         dateQuoteSent: dateQuoteSent,
         custom: customData,
-        assignedToId: assignedUserId || null,
       },
     });
 
