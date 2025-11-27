@@ -247,6 +247,15 @@ router.get("/", async (req, res) => {
         meta: true,
         createdAt: true,
         updatedAt: true,
+        taskType: true,
+        communicationType: true,
+        communicationChannel: true,
+        communicationDirection: true,
+        communicationNotes: true,
+        formSchema: true,
+        requiresSignature: true,
+        signedAt: true,
+        checklistItems: true,
         // Assignees via relation
         assignees: {
           select: { userId: true, role: true },
