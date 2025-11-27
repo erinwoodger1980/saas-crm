@@ -47,10 +47,22 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
   const [scheduleEdit, setScheduleEdit] = useState<{ pattern: RecurrencePattern; interval: number }>({ pattern: "DAILY", interval: 1 });
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [attachments, setAttachments] = useState<Array<{ id: string; filename: string; size: number; mimeType: string; uploadedAt: string; base64?: string }>>([]);
+  const [newChecklistLabel, setNewChecklistLabel] = useState("");
+  const [newFormField, setNewFormField] = useState<{ label: string; type: string; options?: string }>(() => ({ label: "", type: "text", options: "" }));
   const [users, setUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [assigneeBusy, setAssigneeBusy] = useState(false);
   const [addUserId, setAddUserId] = useState("");
+  const [emailThread, setEmailThread] = useState<Array<{ id: string; subject?: string; from?: string; to?: string; date?: string; snippet?: string; body?: string }>>([]);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [leadAttachments, setLeadAttachments] = useState<Array<{ filename?: string; name?: string; url?: string; path?: string }>>([]);
+  const [moreInfoOpen, setMoreInfoOpen] = useState(false);
+  const [moreInfoSubject, setMoreInfoSubject] = useState("Could you provide a few more details?");
+  const [moreInfoBody, setMoreInfoBody] = useState("Hi there,\n\nTo help us move forward, could you please answer a few quick questions here: {{QUESTIONNAIRE_LINK}}\n\nThanks!");
+  const [leadDetails, setLeadDetails] = useState<any>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeData, setComposeData] = useState<{ subject: string; body: string; endpoint: string } | null>(null);
+  const [quoteTaskAutoCreated, setQuoteTaskAutoCreated] = useState(false);
   const isNewTask = !task;
 
   useEffect(() => {
@@ -97,6 +109,91 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
       }
     }
   }, [task, open]);
+
+  // Load client email chain for follow-up or enquiry review tasks
+  useEffect(() => {
+    if (!open || !form || isNewTask) return;
+    const isFollowUp = form.taskType === 'FOLLOW_UP';
+    const titleLC = (form.title || '').toLowerCase();
+    const isReviewEnquiry = titleLC.includes('review') && titleLC.includes('enquiry');
+    const leadId = form.relatedType === 'LEAD' ? form.relatedId : null;
+    if (!(isFollowUp || isReviewEnquiry) || !leadId) return;
+    let cancelled = false;
+    async function loadEmails() {
+      setEmailLoading(true);
+      try {
+        const res: any = await apiFetch(`/leads/${leadId}/emails`, {
+          method: 'GET',
+          headers: authHeaders,
+        });
+        if (!cancelled && Array.isArray(res?.items)) {
+          setEmailThread(res.items);
+        }
+        // also fetch lead attachments for full context
+        const leadRes: any = await apiFetch(`/leads/${leadId}`, {
+          method: 'GET',
+          headers: authHeaders,
+        });
+        if (!cancelled) {
+          setLeadDetails(leadRes);
+        }
+        if (!cancelled && Array.isArray(leadRes?.attachments)) {
+          setLeadAttachments(leadRes.attachments);
+        } else if (!cancelled) {
+          setLeadAttachments([]);
+        }
+      } catch (e) {
+        // non-blocking
+      } finally {
+        if (!cancelled) setEmailLoading(false);
+      }
+    }
+    loadEmails();
+    return () => { cancelled = true; };
+  }, [open, form?.id, form?.taskType, form?.relatedId, form?.relatedType]);
+
+  // Auto-create a "Create Quote" task when questionnaire info is received/completed
+  useEffect(() => {
+    if (!open || !form || quoteTaskAutoCreated) return;
+    const leadId = form.relatedType === 'LEAD' ? form.relatedId : null;
+    if (!leadId) return;
+    const completed = Boolean(
+      leadDetails?.questionnaireCompleted ||
+      leadDetails?.questionnaireStatus === 'COMPLETED' ||
+      leadDetails?.hasEstimatorResponses ||
+      (Array.isArray(leadDetails?.questionnaireAnswers) && leadDetails.questionnaireAnswers.length > 0)
+    );
+    if (!completed) return;
+    (async () => {
+      try {
+        await apiFetch('/tasks', {
+          method: 'POST',
+          headers: authHeaders,
+          json: {
+            title: 'Create Quote',
+            description: 'Auto-created after questionnaire completion; prepare customer quote.',
+            status: 'OPEN',
+            priority: 'HIGH',
+            taskType: 'MANUAL',
+            relatedType: 'LEAD',
+            relatedId: leadId,
+          },
+        });
+        // Mark current follow-up/review task as completed
+        if (form?.id) {
+          try {
+            await apiFetch(`/tasks/${form.id}/complete`, { method: 'POST', headers: authHeaders });
+            setForm(prev => prev ? { ...prev, status: 'DONE', completedAt: new Date().toISOString() } : prev);
+          } catch {}
+        }
+        setQuoteTaskAutoCreated(true);
+        toast('Quote task auto-created');
+        onChanged?.();
+      } catch {
+        // non-blocking
+      }
+    })();
+  }, [open, leadDetails, form?.relatedId, form?.relatedType, quoteTaskAutoCreated]);
 
   // Load users for assignment when modal opens (and task exists)
   useEffect(() => {
@@ -556,13 +653,286 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                 />
               ) : (
                 <div className="space-y-3">
-                  <div className="text-sm font-semibold text-indigo-900">AI Follow-up Task</div>
-                  <p className="text-sm text-slate-600">
-                    Follow-up tasks with AI drafts are created automatically from lead actions. 
-                    To generate an AI follow-up, use the follow-up features in the lead modal.
-                  </p>
+                  <div className="text-sm font-semibold text-indigo-900">AI Follow-up</div>
+                  <p className="text-sm text-slate-600">Generate an AI email draft and send directly from here.</p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="default"
+                      onClick={async () => {
+                        if (!form?.id) return;
+                        try {
+                          const res = await apiFetch(`/tasks/${form.id}/generate-draft`, {
+                            method: 'POST',
+                            headers: authHeaders,
+                            json: {},
+                          });
+                          setForm(prev => prev ? { ...prev, meta: { ...(prev.meta||{}), aiDraft: res?.draft || { generatedAt: new Date().toISOString() } } } : prev);
+                          onChanged?.();
+                          toast('Draft generated');
+                        } catch (e:any) {
+                          toast('Failed to generate draft');
+                        }
+                      }}
+                    >Generate Draft</Button>
+                  </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* CLIENT EMAIL CONTEXT */}
+          {(form.taskType === 'FOLLOW_UP' || ((form.title||'').toLowerCase().includes('review') && (form.title||'').toLowerCase().includes('enquiry'))) && form.relatedType === 'LEAD' && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Client Email Chain</div>
+              {emailLoading ? (
+                <div className="text-sm text-amber-800">Loading emails…</div>
+              ) : emailThread.length === 0 ? (
+                <div className="text-sm text-amber-800">No emails found for this lead.</div>
+              ) : (
+                <div className="space-y-2">
+                  {emailThread.map((m) => (
+                    <div key={m.id} className="rounded-lg border border-amber-300 bg-white/80 p-3 text-xs">
+                      <div className="font-medium text-slate-900">{m.subject || 'No subject'}</div>
+                      <div className="text-slate-600">From: {m.from} • To: {m.to}</div>
+                      {m.date && <div className="text-slate-500">{new Date(m.date).toLocaleString()}</div>}
+                      {m.snippet && <div className="mt-1 text-slate-700 line-clamp-3">{m.snippet}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="pt-2 space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Attachments</div>
+                {leadAttachments.length === 0 ? (
+                  <div className="text-xs text-amber-800">No attachments.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {leadAttachments.map((a, idx) => {
+                      const href = (a.url || a.path) as string | undefined;
+                      const name = a.filename || a.name || `Attachment ${idx+1}`;
+                      const isImage = href ? /\.(png|jpg|jpeg|gif|webp)$/i.test(href) : false;
+                      const isPdf = href ? /\.(pdf)$/i.test(href) : false;
+                      return (
+                        <div key={idx} className="rounded-lg border border-amber-300 bg-white/80 p-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="font-medium text-slate-900 truncate mr-2">{name}</div>
+                            {href && (
+                              <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-700 hover:text-indigo-900 hover:underline">
+                                Open
+                              </a>
+                            )}
+                          </div>
+                          {href && isImage && (
+                            <div className="mt-2">
+                              <img src={href} alt={name} className="max-h-48 w-auto rounded-md border border-slate-200" />
+                            </div>
+                          )}
+                          {href && isPdf && (
+                            <div className="mt-2">
+                              <iframe src={href} className="w-full h-64 rounded-md border border-slate-200" />
+                            </div>
+                          )}
+                          {!href && (
+                            <div className="text-[11px] text-slate-500">No preview available</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              {/* Action buttons: Accept / Decline / Reject / Request More Info */}
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button
+                  variant="default"
+                  onClick={async () => {
+                    if (!form?.id) return;
+                    try {
+                      const preview: any = await apiFetch(`/tasks/${form.id}/actions/accept-enquiry/preview`, { method: 'POST', headers: authHeaders });
+                      setComposeData({ subject: preview.subject, body: preview.body, endpoint: `/tasks/${form.id}/actions/accept-enquiry` });
+                      setComposeOpen(true);
+                    } catch { toast('Failed to generate preview'); }
+                  }}
+                  className="bg-green-600 hover:bg-green-700"
+                >✓ Accept</Button>
+                <Button
+                  variant="default"
+                  onClick={async () => {
+                    if (!form?.id) return;
+                    try {
+                      const preview: any = await apiFetch(`/tasks/${form.id}/actions/decline-enquiry/preview`, { method: 'POST', headers: authHeaders });
+                      setComposeData({ subject: preview.subject, body: preview.body, endpoint: `/tasks/${form.id}/actions/decline-enquiry` });
+                      setComposeOpen(true);
+                    } catch { toast('Failed to generate preview'); }
+                  }}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >↓ Decline</Button>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (!form?.id) return;
+                    if (!confirm('Reject as not a real enquiry?')) return;
+                    try {
+                      await apiFetch(`/tasks/${form.id}/actions/reject-enquiry`, { method: 'POST', headers: authHeaders });
+                      toast('Marked as not an enquiry');
+                      onChanged?.();
+                    } catch { toast('Failed to reject'); }
+                  }}
+                  className="border-red-400 text-red-700 hover:bg-red-50"
+                >✕ Reject</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setMoreInfoOpen(true)}
+                >Request More Info</Button>
+              </div>
+            </div>
+          )}
+
+          {/* Request More Info Dialog */}
+          {moreInfoOpen && (
+            <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4">
+              <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl border border-slate-200 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Request More Information</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setMoreInfoOpen(false)}>✕</Button>
+                </div>
+                <label className="text-sm font-medium text-slate-700">Subject
+                  <input
+                    value={moreInfoSubject}
+                    onChange={e => setMoreInfoSubject(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">Message
+                  <textarea
+                    value={moreInfoBody}
+                    onChange={e => setMoreInfoBody(e.target.value)}
+                    rows={8}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+                  />
+                </label>
+                <div className="text-xs text-slate-500">Tip: include {{QUESTIONNAIRE_LINK}} where you want the link inserted.</div>
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setMoreInfoOpen(false)} className="flex-1">Cancel</Button>
+                  <Button
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                    onClick={async () => {
+                      if (!form?.id) return;
+                      try {
+                        // Build questionnaire link if available from meta; otherwise a placeholder
+                        const qLink = form.meta?.questionnaireLink || leadDetails?.publicEstimatorUrl || leadDetails?.estimatorLink || `${location.origin}/questionnaire/${form.relatedId || ''}`;
+                        const body = moreInfoBody.replace('{{QUESTIONNAIRE_LINK}}', qLink);
+                        // open preview compose before sending
+                        setComposeData({ subject: moreInfoSubject, body, endpoint: `/tasks/${form.id}/actions/send-email` });
+                        setComposeOpen(true);
+                        setMoreInfoOpen(false);
+                      } catch { toast('Failed to send request'); }
+                    }}
+                  >Send</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Compose & Preview Modal */}
+          {composeOpen && composeData && (
+            <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4">
+              <div className="w-full max-w-xl rounded-2xl bg-white shadow-xl border border-slate-200 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Email Preview</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setComposeOpen(false)}>✕</Button>
+                </div>
+                <label className="text-sm font-medium text-slate-700">Subject
+                  <input
+                    value={composeData.subject}
+                    onChange={e => setComposeData(d => d ? { ...d, subject: e.target.value } : d)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">Message
+                  <textarea
+                    value={composeData.body}
+                    onChange={e => setComposeData(d => d ? { ...d, body: e.target.value } : d)}
+                    rows={12}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+                  />
+                </label>
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setComposeOpen(false)} className="flex-1">Cancel</Button>
+                  <Button
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                    onClick={async () => {
+                      try {
+                        if (!composeData) return;
+                        await apiFetch(composeData.endpoint, {
+                          method: 'POST',
+                          headers: authHeaders,
+                          json: { subject: composeData.subject, body: composeData.body },
+                        });
+                        toast('Email sent');
+                        setComposeOpen(false);
+                        onChanged?.();
+                      } catch { toast('Failed to send'); }
+                    }}
+                  >Send</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Create Quote Task Section */}
+          {(form.relatedType === 'LEAD') && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Next Step: Quote</div>
+              <div className="text-sm text-emerald-900">Create a quote task, send to supplier, or open the quote builder.</div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="default"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={async () => {
+                    if (!form?.relatedId) return;
+                    try {
+                      await apiFetch('/tasks', {
+                        method: 'POST',
+                        headers: authHeaders,
+                        json: {
+                          title: 'Create Quote',
+                          description: 'Prepare customer quote based on questionnaire details',
+                          status: 'OPEN',
+                          priority: 'HIGH',
+                          taskType: 'MANUAL',
+                          relatedType: 'LEAD',
+                          relatedId: form.relatedId,
+                        },
+                      });
+                      toast('Quote task created');
+                      onChanged?.();
+                    } catch { toast('Failed to create quote task'); }
+                  }}
+                >Create Quote Task</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const supplierTemplate = `Hello,\n\nPlease provide a supplier quote for the attached enquiry details.\n\nThanks,`;
+                    setComposeData({ subject: 'Supplier Quote Request', body: supplierTemplate, endpoint: `/tasks/${form.id}/actions/send-email` });
+                    setComposeOpen(true);
+                  }}
+                >Send Supplier Quote</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const href = `${location.origin}/quote-builder?leadId=${form.relatedId || ''}`;
+                    window.open(href, '_blank');
+                  }}
+                >Open Quote Builder</Button>
+                {leadDetails?.publicEstimatorUrl && (
+                  <a
+                    href={leadDetails.publicEstimatorUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-emerald-700 underline"
+                  >Public Estimator</a>
+                )}
+              </div>
             </div>
           )}
 
@@ -620,6 +990,54 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                   );
                 })}
                 </div>
+                {!isNewTask && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                    <div className="text-xs font-semibold text-slate-600">Add Field</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <input
+                        placeholder="Label"
+                        value={newFormField.label}
+                        onChange={e => setNewFormField(f => ({ ...f, label: e.target.value }))}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      />
+                      <select
+                        value={newFormField.type}
+                        onChange={e => setNewFormField(f => ({ ...f, type: e.target.value }))}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      >
+                        <option value="text">Text</option>
+                        <option value="textarea">Textarea</option>
+                        <option value="select">Select</option>
+                      </select>
+                      <input
+                        placeholder="Options (comma-separated)"
+                        value={newFormField.options}
+                        onChange={e => setNewFormField(f => ({ ...f, options: e.target.value }))}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          if (!form?.id || !newFormField.label.trim()) return;
+                          const nextFields = [...(form.formSchema?.fields || [])];
+                          const field: any = { label: newFormField.label, type: newFormField.type };
+                          if (newFormField.type === 'select' && newFormField.options) {
+                            field.options = newFormField.options.split(',').map(s => s.trim()).filter(Boolean);
+                          }
+                          nextFields.push(field);
+                          try {
+                            await update({ formSchema: { ...(form.formSchema || {}), fields: nextFields } as any });
+                            setForm(prev => prev ? { ...prev, formSchema: { ...(prev.formSchema || {}), fields: nextFields } } : prev);
+                            setNewFormField({ label: '', type: 'text', options: '' });
+                            toast('Field added');
+                          } catch { toast('Failed to add field'); }
+                        }}
+                      >Add</Button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-end">
                   <Button
                     onClick={submitFormTask}
@@ -658,6 +1076,31 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
               <div className="text-xs text-slate-500 mt-2">
                 {form.checklistItems.filter(i => i.completed).length}/{form.checklistItems.length} completed
               </div>
+              {!isNewTask && (
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    placeholder="New item label"
+                    value={newChecklistLabel}
+                    onChange={e => setNewChecklistLabel(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    disabled={!newChecklistLabel.trim()}
+                    onClick={async () => {
+                      if (!form?.id || !newChecklistLabel.trim()) return;
+                      const next = [...(form.checklistItems || [])];
+                      next.push({ id: crypto.randomUUID(), label: newChecklistLabel, completed: false });
+                      try {
+                        await update({ checklistItems: next as any });
+                        setForm(prev => prev ? { ...prev, checklistItems: next } : prev);
+                        setNewChecklistLabel('');
+                        toast('Checklist item added');
+                      } catch { toast('Failed to add item'); }
+                    }}
+                  >Add</Button>
+                </div>
+              )}
               </>
               )}
             </div>

@@ -55,7 +55,7 @@ export function TaskCenter({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showOnlyMine, setShowOnlyMine] = useState(false);
+  const [showOnlyMine, setShowOnlyMine] = useState(true);
 
   // Get auth IDs on mount and when localStorage changes
   useEffect(() => {
@@ -628,8 +628,11 @@ export function TaskCenter({
             </div>
             <div className="hidden md:flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setExpandAll(v => !v)}>{expandAll ? 'Collapse All' : 'Expand All'}</Button>
-              <Button variant={showOnlyMine ? 'default' : 'outline'} size="sm" onClick={() => setShowOnlyMine(!showOnlyMine)}>{showOnlyMine ? 'My Tasks' : 'All Tasks'}</Button>
             </div>
+              <Button variant="default" onClick={handleNewTask} className="w-full sm:w-auto">
+                <Plus className="h-4 w-4 mr-2" />
+                New
+              </Button>
           </div>
 
           {/* Stats (mobile collapsed view handled above) */}
@@ -763,7 +766,7 @@ export function TaskCenter({
         task={selectedTask}
         tenantId={tenantId}
         userId={userId}
-        onChanged={() => { loadTasks(); setShowTaskModal(false); }}
+        onChanged={() => { loadTasks(); }}
       />
 
       {/* Email Preview Modal */}
