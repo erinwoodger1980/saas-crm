@@ -137,6 +137,8 @@ export function TaskCenter() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [streakDays, setStreakDays] = useState(0);
+  const [todayCompleted, setTodayCompleted] = useState(0);
 
   const loadTasks = async () => {
     if (!tenantId) {
@@ -194,6 +196,27 @@ export function TaskCenter() {
     }
   }, [tenantId, activeTab, showOnlyMine, searchQuery]); // eslint-disable-line
 
+  // Lightweight stats for mobile header
+  const loadStats = async () => {
+    if (!tenantId || !userId) return;
+    try {
+      const statsResponse = await apiFetch<any>(`/tasks/stats/${userId}`, {
+        headers: { "x-tenant-id": tenantId },
+      });
+      setStreakDays(statsResponse.currentStreak || 0);
+      setTodayCompleted(statsResponse.tasksCompletedToday || statsResponse.todayCompleted || 0);
+    } catch (error) {
+      // Non-blocking
+      console.warn("Failed to load task stats", error);
+    }
+  };
+
+  useEffect(() => {
+    if (tenantId && userId) {
+      loadStats();
+    }
+  }, [tenantId, userId]); // eslint-disable-line
+
   const handleSearch = () => {
     loadTasks();
   };
@@ -226,6 +249,8 @@ export function TaskCenter() {
 
       // Reload tasks
       await loadTasks();
+      // Refresh lightweight stats for mobile header
+      await loadStats();
     } catch (error) {
       console.error("Failed to complete task:", error);
       alert("Failed to complete task. Please try again.");
@@ -265,6 +290,31 @@ export function TaskCenter() {
       return task.status !== "DONE";
     });
   }, [tasks, activeTab]);
+
+  // Mobile-friendly groupings
+  const { overdue, urgent, highPriority, upcoming } = useMemo(() => {
+    const now = new Date();
+    const overdue: Task[] = [];
+    const urgent: Task[] = [];
+    const highPriority: Task[] = [];
+    const upcoming: Task[] = [];
+
+    filteredTasks.forEach((task) => {
+      const dueDate = task.dueAt ? new Date(task.dueAt) : null;
+      const isOverdue = dueDate && dueDate < now;
+      if (isOverdue) {
+        overdue.push(task);
+      } else if (task.priority === "URGENT") {
+        urgent.push(task);
+      } else if (task.priority === "HIGH") {
+        highPriority.push(task);
+      } else {
+        upcoming.push(task);
+      }
+    });
+
+    return { overdue, urgent, highPriority, upcoming };
+  }, [filteredTasks]);
 
   const renderTaskCard = (task: Task) => {
     const config = TASK_TYPE_CONFIG[task.taskType] || TASK_TYPE_CONFIG.MANUAL;
@@ -364,12 +414,33 @@ export function TaskCenter() {
           </div>
         </div>
 
-        {/* Streak Tracker */}
-        <TaskStreakTracker />
+        {/* Mobile Stats Header */}
+        <div className="md:hidden bg-gradient-to-br from-blue-600 to-purple-600 text-white p-4 rounded-2xl shadow">
+          <h2 className="text-xl font-bold mb-3">My Tasks</h2>
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="p-3 text-center bg-white/10 backdrop-blur border-white/20">
+              <div className="text-2xl font-bold">{filteredTasks.length}</div>
+              <div className="text-[10px] opacity-90">Active</div>
+            </Card>
+            <Card className="p-3 text-center bg-white/10 backdrop-blur border-white/20">
+              <div className="text-2xl font-bold">{streakDays}</div>
+              <div className="text-[10px] opacity-90">Day Streak</div>
+            </Card>
+            <Card className="p-3 text-center bg-white/10 backdrop-blur border-white/20">
+              <div className="text-2xl font-bold">{todayCompleted}</div>
+              <div className="text-[10px] opacity-90">Today</div>
+            </Card>
+          </div>
+        </div>
+
+        {/* Streak Tracker (desktop/tablet) */}
+        <div className="hidden md:block">
+          <TaskStreakTracker />
+        </div>
 
         {/* Search and Filters */}
         <Card className="p-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
@@ -381,7 +452,7 @@ export function TaskCenter() {
               />
             </div>
             
-            <Button variant="outline" onClick={handleSearch}>
+            <Button variant="outline" onClick={handleSearch} className="w-full sm:w-auto">
               <Search className="h-4 w-4 mr-2" />
               Search
             </Button>
@@ -389,6 +460,7 @@ export function TaskCenter() {
             <Button
               variant={showOnlyMine ? "default" : "outline"}
               onClick={() => setShowOnlyMine(!showOnlyMine)}
+              className="w-full sm:w-auto"
             >
               <Filter className="h-4 w-4 mr-2" />
               {showOnlyMine ? "My Tasks" : "All Tasks"}
@@ -479,9 +551,56 @@ export function TaskCenter() {
               </p>
             </Card>
           ) : (
-            <div className="grid gap-4 pb-6">
-              {filteredTasks.map(renderTaskCard)}
-            </div>
+            <>
+              {/* Mobile grouped sections */}
+              <div className="md:hidden space-y-6">
+                {overdue.length > 0 && (
+                  <section>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-semibold text-red-600">Overdue ({overdue.length})</span>
+                    </div>
+                    <div className="space-y-3">
+                      {overdue.map((t) => renderTaskCard(t))}
+                    </div>
+                  </section>
+                )}
+                {urgent.length > 0 && (
+                  <section>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-semibold text-orange-600">Urgent ({urgent.length})</span>
+                    </div>
+                    <div className="space-y-3">
+                      {urgent.map((t) => renderTaskCard(t))}
+                    </div>
+                  </section>
+                )}
+                {highPriority.length > 0 && (
+                  <section>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-semibold text-blue-600">High Priority ({highPriority.length})</span>
+                    </div>
+                    <div className="space-y-3">
+                      {highPriority.map((t) => renderTaskCard(t))}
+                    </div>
+                  </section>
+                )}
+                {upcoming.length > 0 && (
+                  <section>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-semibold text-gray-700">Upcoming ({upcoming.length})</span>
+                    </div>
+                    <div className="space-y-3">
+                      {upcoming.map((t) => renderTaskCard(t))}
+                    </div>
+                  </section>
+                )}
+              </div>
+
+              {/* Desktop/Tablet grid */}
+              <div className="hidden md:grid gap-4 pb-6">
+                {filteredTasks.map(renderTaskCard)}
+              </div>
+            </>
           )}
         </div>
       </Tabs>
