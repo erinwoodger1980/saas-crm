@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect } from "react";
 import { usePathname } from "next/navigation";
-import AppShell from "@/components/AppShell";
+import AppShell from "@/app/components/AppShell";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import { ensureDemoAuth } from "@/lib/api";
 import "@/app/globals.css";
