@@ -86,8 +86,7 @@ import eventsRouter from "./routes/events";
 import notificationsRouter from "./routes/notifications";
 import streaksRouter from "./routes/streaks";
 import followupsRouter from "./routes/followups";
-// TEMP: Commented out until schema fields are fixed
-// import followUpRulesRouter from "./routes/follow-up-rules";
+// import followUpRulesRouter from "./routes/follow-up-rules"; // Disabled - needs schema migration
 import marketingRoiRouter from "./routes/marketing-roi";
 import interestRouter from "./routes/interest";
 import earlyAccessRouter from "./routes/early-access";
@@ -633,8 +632,7 @@ app.use("/events", eventsRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/streaks", streaksRouter);
 app.use("/followups", followupsRouter);
-// TEMP: Commented out until schema fields are fixed
-// app.use("/follow-up-rules", requireAuth, followUpRulesRouter);
+// app.use("/follow-up-rules", requireAuth, followUpRulesRouter); // Disabled - needs schema migration
 app.use("/marketing/roi", marketingRoiRouter);
 app.use("/keywords", requireAuth, keywordsRouter);
 app.use("/ads", requireAuth, adsRouter);
