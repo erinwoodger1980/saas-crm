@@ -146,6 +146,7 @@ export function TaskCenter() {
   const [headerCollapsed, setHeaderCollapsed] = useState(true); // default collapsed on mobile
   const [focusMode, setFocusMode] = useState(false); // hides non-task chrome for deep focus
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set()); // track which tasks are expanded
+  const [expandAll, setExpandAll] = useState<boolean>(false); // global expand/collapse
   const [leadPreviews, setLeadPreviews] = useState<Record<string, any>>({}); // cache lead details
   const [emailPreview, setEmailPreview] = useState<{
     isOpen: boolean;
@@ -420,7 +421,7 @@ export function TaskCenter() {
     const trigger = taskMeta.trigger || '';
     const isReviewEnquiry = trigger === 'new_lead_received' || task.title.toLowerCase().includes('review') && task.title.toLowerCase().includes('enquiry');
     const isAITask = task.taskType === "FOLLOW_UP" || trigger.includes('follow_up');
-    const isExpanded = expandedTaskIds.has(task.id);
+    const isExpanded = expandAll || expandedTaskIds.has(task.id);
     const leadId = task.relatedType === 'LEAD' ? task.relatedId : null;
     const leadData = leadId ? leadPreviews[leadId] : null;
 
@@ -672,6 +673,10 @@ export function TaskCenter() {
           >{headerCollapsed ? 'Show' : 'Hide'} Header</button>
           <h2 className="text-sm font-bold flex-1 truncate">Tasks ({filteredTasks.length})</h2>
           <button
+            onClick={() => setExpandAll(v => !v)}
+            className="text-xs px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition"
+          >{expandAll ? 'Collapse All' : 'Expand All'}</button>
+          <button
             onClick={() => setFocusMode(!focusMode)}
             className="text-xs px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition"
           >{focusMode ? 'Exit Focus' : 'Focus'}</button>
@@ -702,6 +707,15 @@ export function TaskCenter() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Task Center</h1>
             <p className="text-gray-600 mt-1">Manage all your tasks, communications, and forms in one place</p>
+          </div>
+          <div className="hidden md:flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExpandAll(v => !v)}
+            >
+              {expandAll ? 'Collapse All' : 'Expand All'}
+            </Button>
           </div>
         </div>
 
