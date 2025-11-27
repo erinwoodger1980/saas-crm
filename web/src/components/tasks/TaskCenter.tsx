@@ -114,7 +114,13 @@ const TASK_TYPE_CONFIG = {
   },
 };
 
-export function TaskCenter() {
+export function TaskCenter({
+  filterRelatedType,
+  filterRelatedId,
+}: {
+  filterRelatedType?: "LEAD" | "PROJECT" | "QUOTE" | "EMAIL" | "QUESTIONNAIRE" | "WORKSHOP" | "OTHER";
+  filterRelatedId?: string;
+} = {}) {
   const [tenantId, setTenantId] = useState("");
   const [userId, setUserId] = useState("");
 
@@ -197,6 +203,12 @@ export function TaskCenter() {
       
       if (searchQuery.trim()) {
         params.set("search", searchQuery.trim());
+      }
+
+      // Apply contextual filters if provided (lead/opportunity etc.)
+      if (filterRelatedType && filterRelatedId) {
+        params.set("relatedType", filterRelatedType);
+        params.set("relatedId", filterRelatedId);
       }
 
       const response = await apiFetch<{ items: Task[]; total: number }>(
@@ -705,8 +717,14 @@ export function TaskCenter() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Task Center</h1>
-            <p className="text-gray-600 mt-1">Manage all your tasks, communications, and forms in one place</p>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {filterRelatedType && filterRelatedId ? `${filterRelatedType} Tasks` : "Task Center"}
+            </h1>
+            <p className="text-gray-600 mt-1">
+              {filterRelatedType && filterRelatedId
+                ? "Filtered to the current record"
+                : "Manage all your tasks, communications, and forms in one place"}
+            </p>
           </div>
           <div className="hidden md:flex items-center gap-2">
             <Button
