@@ -645,6 +645,7 @@ model FollowUpRule {
   condition       String?  // SQL-like condition for filtering
   taskTitle       String
   emailSubject    String
+   emailBodyTemplate String? @db.Text
   contextTemplate String   @db.Text
   priority        String   @default("MEDIUM") // TASK priority
   autoSchedule    Boolean  @default(false)
@@ -659,6 +660,7 @@ model FollowUpRule {
 model FollowUpHistory {
   id              String    @id @default(cuid())
   taskId          String
+   ruleId          String?
   tenantId        String
   userId          String
   aiDraftSubject  String?
@@ -2993,6 +2995,7 @@ enum RelatedType {
   EMAIL
   QUESTIONNAIRE
   WORKSHOP
+   OPPORTUNITY
   OTHER
 }
 
@@ -3063,6 +3066,10 @@ enum NotificationType {
   MENTION
   STREAK
   SUMMARY
+   LEAD_SUGGESTION
+   QUOTE_FOLLOWUP_SCHEDULED
+   QUESTIONNAIRE_FOLLOWUP_SCHEDULED
+   FOLLOW_UP_REPLY
 }
 
 enum ActivityEntity {

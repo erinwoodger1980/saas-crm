@@ -63,21 +63,23 @@ export async function handleNewLeadFromEmail(context: LeadContext): Promise<void
       },
     });
 
-    // Create conversational notification
+    // Create conversational notification (Notification uses payload Json)
     await prisma.notification.create({
       data: {
         tenantId: context.tenantId,
         userId: context.userId,
         type: "LEAD_SUGGESTION",
-        title: `🎉 New lead: ${context.contactName}`,
-        message: `Great news! You've received a new enquiry from **${context.contactName}** (${context.email}).\n\nI've drafted a welcome email to acknowledge their enquiry. Would you like to review and send it?`,
-        actionLabel: "Review Email",
-        actionUrl: `/leads?id=${context.leadId}&task=${task.id}`,
-        metadata: {
-          leadId: context.leadId,
-          taskId: task.id,
-          aiConfidence: aiDraft.confidence,
-          suggestedSubject: aiDraft.subject,
+        payload: {
+          title: `🎉 New lead: ${context.contactName}`,
+            message: `Great news! You've received a new enquiry from **${context.contactName}** (${context.email}).\n\nI've drafted a welcome email to acknowledge their enquiry. Would you like to review and send it?`,
+            actionLabel: "Review Email",
+            actionUrl: `/leads?id=${context.leadId}&task=${task.id}`,
+            metadata: {
+              leadId: context.leadId,
+              taskId: task.id,
+              aiConfidence: aiDraft.confidence,
+              suggestedSubject: aiDraft.subject,
+            },
         },
       },
     });
@@ -155,20 +157,22 @@ export async function handleQuoteSent(params: {
       });
     }
 
-    // Create immediate notification
+    // Create immediate notification (payload Json)
     await prisma.notification.create({
       data: {
         tenantId: params.tenantId,
         userId: params.userId,
         type: "QUOTE_FOLLOWUP_SCHEDULED",
-        title: `📋 Follow-ups scheduled for ${params.recipientName}`,
-        message: `Perfect! I've scheduled automatic follow-up reminders for this quote at 3 and 7 days. I'll draft personalized emails when it's time to follow up.`,
-        actionLabel: "View Schedule",
-        actionUrl: `/leads?id=${params.leadId}`,
-        metadata: {
-          leadId: params.leadId,
-          quoteId: params.quoteId,
-          quoteValue: params.quoteValue,
+        payload: {
+          title: `📋 Follow-ups scheduled for ${params.recipientName}`,
+          message: `Perfect! I've scheduled automatic follow-up reminders for this quote at 3 and 7 days. I'll draft personalized emails when it's time to follow up.`,
+          actionLabel: "View Schedule",
+          actionUrl: `/leads?id=${params.leadId}`,
+          metadata: {
+            leadId: params.leadId,
+            quoteId: params.quoteId,
+            quoteValue: params.quoteValue,
+          },
         },
       },
     });
@@ -238,14 +242,16 @@ export async function handleQuestionnaireSent(params: {
         tenantId: params.tenantId,
         userId: params.userId,
         type: "QUESTIONNAIRE_FOLLOWUP_SCHEDULED",
-        title: `📝 Questionnaire follow-up scheduled`,
-        message: `All set! I'll remind you in 3 days to follow up with **${params.recipientName}** if they haven't completed the questionnaire. I'll have a gentle reminder email ready.`,
-        actionLabel: "View Task",
-        actionUrl: `/leads?id=${params.leadId}&task=${task.id}`,
-        metadata: {
-          leadId: params.leadId,
-          questionnaireId: params.questionnaireId,
-          taskId: task.id,
+        payload: {
+          title: `📝 Questionnaire follow-up scheduled`,
+          message: `All set! I'll remind you in 3 days to follow up with **${params.recipientName}** if they haven't completed the questionnaire. I'll have a gentle reminder email ready.`,
+          actionLabel: "View Task",
+          actionUrl: `/leads?id=${params.leadId}&task=${task.id}`,
+          metadata: {
+            leadId: params.leadId,
+            questionnaireId: params.questionnaireId,
+            taskId: task.id,
+          },
         },
       },
     });
@@ -282,7 +288,7 @@ export async function handleEmailReply(params: {
         status: { in: ["OPEN", "IN_PROGRESS"] },
       },
       include: {
-        assignees: { include: { user: { select: { id: true } } } },
+        assignees: true,
       },
     });
 
@@ -368,16 +374,18 @@ export async function handleEmailReply(params: {
           tenantId: params.tenantId,
           userId,
           type: "FOLLOW_UP_REPLY",
-          title: `Reply received from ${params.fromEmail}`,
-          message: notificationMessage,
-          actionLabel: "View Conversation",
-          actionUrl: `/leads?id=${params.leadId}&task=${task.id}`,
-          metadata: {
-            leadId: params.leadId,
-            taskId: task.id,
-            messageId: params.messageId,
-            sentiment: params.sentiment,
-            suggestedAction,
+          payload: {
+            title: `Reply received from ${params.fromEmail}`,
+            message: notificationMessage,
+            actionLabel: "View Conversation",
+            actionUrl: `/leads?id=${params.leadId}&task=${task.id}`,
+            metadata: {
+              leadId: params.leadId,
+              taskId: task.id,
+              messageId: params.messageId,
+              sentiment: params.sentiment,
+              suggestedAction,
+            },
           },
         },
       });

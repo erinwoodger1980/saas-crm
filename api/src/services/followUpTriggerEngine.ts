@@ -80,48 +80,40 @@ async function checkQuestionnaireTriggers(
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - rule.delayDays);
 
-  // Find questionnaires sent but not completed
+  // Find questionnaire responses (createdAt ≈ sent time) not completed
   const questionnaires = await prisma.questionnaireResponse.findMany({
     where: {
       tenantId,
-      sentAt: {
-        lte: cutoffDate,
-      },
+      createdAt: { lte: cutoffDate },
       completedAt: null,
     },
     include: {
-      lead: {
-        select: {
-          id: true,
-          contactName: true,
-          email: true,
-          custom: true,
+      quote: {
+        include: {
+          lead: {
+            select: { id: true, contactName: true, email: true, custom: true },
+          },
         },
       },
     },
   });
 
   for (const q of questionnaires) {
-    if (!q.lead?.email) continue;
+    const lead = q.quote?.lead;
+    if (!lead?.email) continue;
 
-    // Check if task already exists
+    // Check if task already exists (multiple JSON path filters via AND)
     const existingTask = await prisma.task.findFirst({
       where: {
         tenantId,
         relatedType: "LEAD",
-        relatedId: q.lead.id,
+        relatedId: lead.id,
         taskType: "FOLLOW_UP",
-        meta: {
-          path: ["trigger"],
-          equals: "questionnaire_sent",
-        },
-        meta: {
-          path: ["questionnaireId"],
-          equals: q.id,
-        },
-        status: {
-          not: "COMPLETED",
-        },
+        AND: [
+          { meta: { path: ["trigger"], equals: "questionnaire_sent" } },
+          { meta: { path: ["questionnaireId"], equals: q.id } },
+        ],
+        status: { notIn: ["DONE", "CANCELLED"] },
       },
     });
 
@@ -130,14 +122,14 @@ async function checkQuestionnaireTriggers(
     // Create follow-up task with AI draft
     await createFollowUpTask({
       tenantId,
-      leadId: q.lead.id,
-      recipientEmail: q.lead.email,
-      recipientName: q.lead.contactName,
+      leadId: lead.id,
+      recipientEmail: lead.email,
+      recipientName: lead.contactName,
       rule,
       context: {
         purpose: "follow_up_questionnaire",
-        daysSince: Math.floor((Date.now() - (q.sentAt?.getTime() || 0)) / (1000 * 60 * 60 * 24)),
-        questionnaireSentDate: q.sentAt?.toISOString().split("T")[0],
+        daysSince: Math.floor((Date.now() - q.createdAt.getTime()) / (1000 * 60 * 60 * 24)),
+        questionnaireSentDate: q.createdAt.toISOString().split("T")[0],
       },
       metadata: {
         trigger: "questionnaire_sent",
@@ -154,27 +146,10 @@ async function checkQuoteTriggers(tenantId: string, rule: any): Promise<void> {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - rule.delayDays);
 
-  // Find quotes sent but not won/lost
+  // Find SENT quotes older than cutoff (enum lacks WON/LOST)
   const quotes = await prisma.quote.findMany({
-    where: {
-      tenantId,
-      createdAt: {
-        lte: cutoffDate,
-      },
-      status: {
-        notIn: ["WON", "LOST"],
-      },
-    },
-    include: {
-      lead: {
-        select: {
-          id: true,
-          contactName: true,
-          email: true,
-          custom: true,
-        },
-      },
-    },
+    where: { tenantId, createdAt: { lte: cutoffDate }, status: "SENT" },
+    include: { lead: { select: { id: true, contactName: true, email: true, custom: true } } },
   });
 
   for (const quote of quotes) {
@@ -187,21 +162,12 @@ async function checkQuoteTriggers(tenantId: string, rule: any): Promise<void> {
         relatedType: "LEAD",
         relatedId: quote.lead.id,
         taskType: "FOLLOW_UP",
-        meta: {
-          path: ["trigger"],
-          equals: "quote_sent",
-        },
-        meta: {
-          path: ["quoteId"],
-          equals: quote.id,
-        },
-        meta: {
-          path: ["delayDays"],
-          equals: rule.delayDays,
-        },
-        status: {
-          not: "COMPLETED",
-        },
+        AND: [
+          { meta: { path: ["trigger"], equals: "quote_sent" } },
+          { meta: { path: ["quoteId"], equals: quote.id } },
+          { meta: { path: ["delayDays"], equals: rule.delayDays } },
+        ],
+        status: { notIn: ["DONE", "CANCELLED"] },
       },
     });
 
@@ -317,26 +283,10 @@ async function checkOpportunityTriggers(tenantId: string, rule: any): Promise<vo
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - rule.delayDays);
 
-  // Find opportunities with no recent activity
+  // Approximate stalled opportunities by createdAt (schema lacks updatedAt)
   const opportunities = await prisma.opportunity.findMany({
-    where: {
-      tenantId,
-      updatedAt: {
-        lte: cutoffDate,
-      },
-      stage: {
-        notIn: ["WON", "LOST"],
-      },
-    },
-    include: {
-      lead: {
-        select: {
-          id: true,
-          contactName: true,
-          email: true,
-        },
-      },
-    },
+    where: { tenantId, createdAt: { lte: cutoffDate } },
+    include: { lead: { select: { id: true, contactName: true, email: true } } },
   });
 
   for (const opp of opportunities) {
@@ -349,13 +299,8 @@ async function checkOpportunityTriggers(tenantId: string, rule: any): Promise<vo
         relatedType: "OPPORTUNITY",
         relatedId: opp.id,
         taskType: "FOLLOW_UP",
-        meta: {
-          path: ["trigger"],
-          equals: "opportunity_stalled",
-        },
-        status: {
-          not: "COMPLETED",
-        },
+        meta: { path: ["trigger"], equals: "opportunity_stalled" },
+        status: { notIn: ["DONE", "CANCELLED"] },
       },
     });
 
@@ -370,8 +315,8 @@ async function checkOpportunityTriggers(tenantId: string, rule: any): Promise<vo
       rule,
       context: {
         purpose: "check_in",
-        daysSince: Math.floor((Date.now() - opp.updatedAt.getTime()) / (1000 * 60 * 60 * 24)),
-        previousInteraction: `Last update: ${opp.updatedAt.toISOString().split("T")[0]}`,
+        daysSince: Math.floor((Date.now() - opp.createdAt.getTime()) / (1000 * 60 * 60 * 24)),
+        previousInteraction: `Created: ${opp.createdAt.toISOString().split("T")[0]}`,
       },
       metadata: {
         trigger: "opportunity_stalled",
