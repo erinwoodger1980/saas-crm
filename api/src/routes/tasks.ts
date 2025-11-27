@@ -81,6 +81,7 @@ const createTaskSchema = z.object({
   checklistItems: z.any().optional(),
 });
 
+// Allow upgrading a task to scheduled / changing type, recurrence and advanced schemas
 const updateTaskSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
@@ -90,6 +91,11 @@ const updateTaskSchema = z.object({
   relatedType: RelatedTypeEnum.optional(),
   relatedId: z.string().optional(),
   meta: z.any().optional(),
+  taskType: TaskTypeEnum.optional(),
+  recurrencePattern: RecurrencePatternEnum.optional(),
+  recurrenceInterval: z.number().optional(),
+  formSchema: z.any().optional(),
+  checklistItems: z.any().optional(),
 });
 
 const assigneesBodySchema = z.object({
@@ -343,6 +349,11 @@ router.patch("/:id", async (req, res) => {
         relatedType: patch.relatedType as any,
         relatedId: patch.relatedId,
         meta: patch.meta as any,
+        taskType: patch.taskType as any,
+        recurrencePattern: patch.recurrencePattern,
+        recurrenceInterval: patch.recurrenceInterval,
+        formSchema: patch.formSchema as any,
+        checklistItems: patch.checklistItems as any,
         updatedById: resolveUserId(req),
       },
     });

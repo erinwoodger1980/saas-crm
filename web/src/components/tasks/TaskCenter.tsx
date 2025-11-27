@@ -139,6 +139,9 @@ export function TaskCenter() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [streakDays, setStreakDays] = useState(0);
   const [todayCompleted, setTodayCompleted] = useState(0);
+  // Mobile UI state
+  const [headerCollapsed, setHeaderCollapsed] = useState(true); // default collapsed on mobile
+  const [focusMode, setFocusMode] = useState(false); // hides non-task chrome for deep focus
   const [emailPreview, setEmailPreview] = useState<{
     isOpen: boolean;
     subject: string;
@@ -522,8 +525,28 @@ export function TaskCenter() {
     );
   };
 
+  const mobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
   return (
-    <div className="flex flex-col min-h-0">
+    <div className={`flex flex-col min-h-0 ${focusMode ? 'bg-white' : ''}`}>
+      {/* Mobile Top Bar (minimal) */}
+      {mobile && (
+        <div className="sticky top-0 z-30 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-2 flex items-center gap-2 shadow-sm">
+          <button
+            onClick={() => setHeaderCollapsed(!headerCollapsed)}
+            className="text-xs font-semibold px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition"
+          >{headerCollapsed ? 'Show' : 'Hide'} Header</button>
+          <h2 className="text-sm font-bold flex-1 truncate">Tasks ({filteredTasks.length})</h2>
+          <button
+            onClick={() => setFocusMode(!focusMode)}
+            className="text-xs px-2 py-1 rounded bg-white/15 hover:bg-white/25 transition"
+          >{focusMode ? 'Exit Focus' : 'Focus'}</button>
+          <button
+            onClick={handleNewTask}
+            className="text-xs px-2 py-1 rounded bg-emerald-500 hover:bg-emerald-600 transition"
+          >New</button>
+        </div>
+      )}
       {/* Celebration Modal */}
       {showCelebration && celebrationTask && (
         <TaskCelebration
@@ -537,8 +560,9 @@ export function TaskCenter() {
         />
       )}
 
-      {/* Sticky Header Section */}
-      <div className="flex-shrink-0 space-y-4 pb-4">
+      {/* Collapsible Header Section (hidden in focus mode) */}
+      {!focusMode && (
+        <div className={`flex-shrink-0 space-y-4 pb-4 ${mobile ? (headerCollapsed ? 'hidden' : 'block') : ''}`}>
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -547,7 +571,7 @@ export function TaskCenter() {
           </div>
         </div>
 
-        {/* Mobile Stats Header */}
+        {/* Mobile Stats Header (collapsible) */}
         <div className="md:hidden bg-gradient-to-br from-blue-600 to-purple-600 text-white p-4 rounded-2xl shadow">
           <h2 className="text-xl font-bold mb-3">My Tasks</h2>
           <div className="grid grid-cols-3 gap-3">
@@ -572,7 +596,7 @@ export function TaskCenter() {
         </div>
 
         {/* Search and Filters */}
-        <Card className="p-4">
+        <Card className="p-4 md:sticky md:top-0 md:z-20 md:bg-white/95 md:backdrop-blur">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -600,12 +624,13 @@ export function TaskCenter() {
             </Button>
           </div>
         </Card>
-      </div>
+        </div>
+      )}
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex flex-col min-h-0">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className={`flex flex-col min-h-0 ${focusMode ? 'mt-2' : 'mt-0'}`}>
         <div className="flex items-center justify-between mb-3">
-          <TabsList className="flex-1 justify-start overflow-x-auto flex-shrink-0">
+          <TabsList className="flex-1 justify-start overflow-x-auto flex-shrink-0 md:rounded-xl md:border md:bg-white">
           <TabsTrigger value="all" className="flex items-center gap-2">
             All
             {taskCounts.all > 0 && (
@@ -654,10 +679,12 @@ export function TaskCenter() {
            </TabsTrigger>
          </TabsList>
          
+         {!mobile && (
          <Button onClick={handleNewTask} size="lg" className="shadow-lg ml-4">
             <Plus className="h-5 w-5 mr-2" />
             New Task
           </Button>
+         )}
         </div>
 
         <div className="mt-6">
@@ -686,7 +713,7 @@ export function TaskCenter() {
           ) : (
             <>
               {/* Mobile grouped sections */}
-              <div className="md:hidden space-y-6">
+              <div className={`md:hidden space-y-6 ${focusMode ? 'pt-2' : ''}`}>
                 {overdue.length > 0 && (
                   <section>
                     <div className="flex items-center gap-2 mb-3">
@@ -766,9 +793,9 @@ export function TaskCenter() {
 
       {/* Email Preview Modal */}
       {emailPreview.isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-0 z-[60]">
+          <Card className="w-full h-full max-w-none md:max-w-2xl md:h-auto md:my-10 rounded-none md:rounded-xl overflow-y-auto">
+            <div className="p-4 md:p-6 h-full flex flex-col">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">
                   {emailPreview.action === 'accept' ? '✓ Accept Enquiry' : '↓ Decline Enquiry'}
@@ -782,7 +809,7 @@ export function TaskCenter() {
                 </Button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-4 flex-1 overflow-y-auto">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">To:</label>
                   <div className="text-sm text-gray-900">

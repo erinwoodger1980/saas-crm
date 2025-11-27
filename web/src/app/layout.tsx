@@ -5,7 +5,6 @@ import { ReactNode, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Toaster } from "@/components/ui/toaster";
 import AppShell from "./components/AppShell";
-import { TasksButton } from "@/components/tasks/TasksButton";
 import FeedbackWidget from "@/components/FeedbackWidget";
 import { setJwt, apiFetch } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
@@ -124,7 +123,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           children
         )}
 
-  {shouldShowTasks && <TasksButton />}
+  {/* TasksButton removed: Task Center accessible via main navigation */}
   {shouldUseShell && <FeedbackWidget />}
 
         <Toaster />

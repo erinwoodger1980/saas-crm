@@ -4,20 +4,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { FollowUpTaskPanel } from "@/components/follow-up/FollowUpTaskPanel";
 
+type RecurrencePattern = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 type Task = {
   id: string;
   title: string;
   description?: string | null;
   status: "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-   taskType?: "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
+  taskType?: "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
   relatedType: "LEAD" | "PROJECT" | "QUOTE" | "EMAIL" | "QUESTIONNAIRE" | "WORKSHOP" | "OTHER";
   relatedId?: string | null;
   dueAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
   assignees?: { userId: string; role: "OWNER" | "FOLLOWER" }[];
+  meta?: any;
+  formSchema?: { fields?: Array<{ id?: string; key?: string; label?: string; type?: string; required?: boolean; options?: string[] }> } | null;
+  formSubmissions?: any[] | null;
+  checklistItems?: Array<{ id: string; label: string; completed?: boolean; completedBy?: string; completedAt?: string }>; 
+  recurrencePattern?: RecurrencePattern | null;
+  recurrenceInterval?: number | null;
 };
 
 type Props = {
@@ -32,6 +40,11 @@ type Props = {
 export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: Props) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Task | null>(task);
+  const [authHeaders, setAuthHeaders] = useState<Record<string,string>>({ "x-tenant-id": tenantId, "x-user-id": userId });
+  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [submittingForm, setSubmittingForm] = useState(false);
+  const [checklistBusy, setChecklistBusy] = useState<string | null>(null);
+  const [scheduleEdit, setScheduleEdit] = useState<{ pattern: RecurrencePattern; interval: number }>({ pattern: "DAILY", interval: 1 });
   const isNewTask = !task;
 
   useEffect(() => {
@@ -50,8 +63,29 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
       });
     } else {
       setForm(task);
+      // Seed schedule edit panel
+      if (task.recurrencePattern) {
+        setScheduleEdit({ pattern: task.recurrencePattern, interval: task.recurrenceInterval || 1 });
+      }
+      // Seed form data with empty defaults
+      if (task.taskType === "FORM" && task.formSchema?.fields) {
+        const initial: Record<string, any> = {};
+        task.formSchema.fields.forEach(f => {
+          const key = f.key || f.id || f.label || "field";
+          initial[key] = "";
+        });
+        setFormData(initial);
+      }
     }
   }, [task, open]);
+  function toast(msg: string) {
+    const el = document.createElement("div");
+    el.textContent = msg;
+    el.className =
+      "fixed bottom-6 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded-xl shadow-lg z-[1000]";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2000);
+  }
 
   const dueISO = useMemo(() => {
     if (!form?.dueAt) return "";
@@ -170,13 +204,58 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
     }
   }
 
-  function toast(msg: string) {
-    const el = document.createElement("div");
-    el.textContent = msg;
-    el.className =
-      "fixed bottom-6 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded-xl shadow-lg z-[1000]";
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 2000);
+  async function submitFormTask() {
+    if (!form || form.taskType !== "FORM" || !form.formSchema?.fields) return;
+    setSubmittingForm(true);
+    try {
+      await apiFetch(`/tasks/${form.id}/form-submission`, {
+        method: "POST",
+        headers: authHeaders,
+        json: formData,
+      });
+      toast("Form submitted ✔");
+      onChanged?.();
+      onClose();
+    } catch (e: any) {
+      toast("Failed to submit form: " + (e.message || "error"));
+    } finally {
+      setSubmittingForm(false);
+    }
+  }
+
+  async function toggleChecklist(itemId: string, completed: boolean) {
+    if (!form || form.taskType !== "CHECKLIST") return;
+    setChecklistBusy(itemId);
+    try {
+      await apiFetch(`/tasks/${form.id}/checklist`, {
+        method: "PATCH",
+        headers: authHeaders,
+        json: { itemId, completed },
+      });
+      // Optimistic update
+      setForm(prev => {
+        if (!prev?.checklistItems) return prev;
+        return {
+          ...prev,
+          checklistItems: prev.checklistItems.map(i => i.id === itemId ? { ...i, completed } : i),
+        };
+      });
+      onChanged?.();
+    } catch (e: any) {
+      toast("Checklist update failed");
+    } finally {
+      setChecklistBusy(null);
+    }
+  }
+
+  async function convertToScheduled() {
+    if (!form) return;
+    try {
+      await update({ taskType: "SCHEDULED" as any, recurrencePattern: scheduleEdit.pattern as any, recurrenceInterval: scheduleEdit.interval });
+      toast("Task scheduled ✅");
+    } catch (e: any) {
+      toast("Failed to schedule task");
+    }
   }
 
   function confetti() {
@@ -204,15 +283,15 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
 
   return (
     <div
-      className="fixed inset-0 z-[999] flex items-center justify-center bg-gradient-to-br from-sky-500/20 via-indigo-900/25 to-rose-400/20 px-4 py-12 backdrop-blur"
+      className="fixed inset-0 z-[999] flex items-center justify-center bg-gradient-to-br from-sky-500/40 via-indigo-900/40 to-rose-400/40 backdrop-blur-sm md:px-4 md:py-12"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-3xl overflow-hidden rounded-3xl border border-white/40 bg-white/90 p-6 sm:p-8 shadow-[0_35px_80px_-35px_rgba(30,64,175,0.55)]">
+      <div className="relative w-full h-full md:h-auto md:max-w-3xl overflow-hidden md:rounded-3xl rounded-none border border-white/30 md:border-white/40 bg-white md:bg-white/90 p-4 md:p-6 shadow-[0_35px_80px_-35px_rgba(30,64,175,0.45)]">
         <div aria-hidden="true" className="pointer-events-none absolute -top-16 -right-20 h-56 w-56 rounded-full bg-rose-200/40 blur-3xl" />
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-sky-300/40 blur-3xl" />
 
-        <div className="relative space-y-6">
+        <div className="relative space-y-6 h-full overflow-y-auto">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex-1 space-y-2">
               <input
@@ -334,7 +413,134 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
             </div>
           </div>
 
-          <footer className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* FOLLOW-UP PANEL (AI email) */}
+          {form.taskType === "FOLLOW_UP" && form.meta?.aiDraft && (
+            <div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
+              <FollowUpTaskPanel
+                task={form as any}
+                authHeaders={authHeaders}
+                onEmailSent={() => { onChanged?.(); }}
+                onTaskCompleted={() => { onChanged?.(); setForm(prev => prev ? { ...prev, status: "DONE" } : prev); }}
+              />
+            </div>
+          )}
+
+          {/* FORM TASK UI */}
+          {form.taskType === "FORM" && form.formSchema?.fields && (
+            <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 space-y-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Form Fields</div>
+              <div className="space-y-3">
+                {form.formSchema.fields.map((f, idx) => {
+                  const key = f.key || f.id || f.label || `field_${idx}`;
+                  const label = f.label || key;
+                  const type = (f.type || "text").toLowerCase();
+                  if (type === "select" && f.options?.length) {
+                    return (
+                      <label key={key} className="block text-sm">
+                        <span className="font-medium text-slate-700">{label}</span>
+                        <select
+                          value={formData[key] || ""}
+                          onChange={e => setFormData(d => ({ ...d, [key]: e.target.value }))}
+                          className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                        >
+                          <option value="">Select…</option>
+                          {f.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      </label>
+                    );
+                  }
+                  if (type === "textarea") {
+                    return (
+                      <label key={key} className="block text-sm">
+                        <span className="font-medium text-slate-700">{label}</span>
+                        <textarea
+                          value={formData[key] || ""}
+                          onChange={e => setFormData(d => ({ ...d, [key]: e.target.value }))}
+                          className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm min-h-[100px]"
+                        />
+                      </label>
+                    );
+                  }
+                  return (
+                    <label key={key} className="block text-sm">
+                      <span className="font-medium text-slate-700">{label}</span>
+                      <input
+                        value={formData[key] || ""}
+                        onChange={e => setFormData(d => ({ ...d, [key]: e.target.value }))}
+                        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={submitFormTask}
+                  disabled={submittingForm}
+                  variant="default"
+                >
+                  {submittingForm ? "Submitting…" : "Submit Form"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* CHECKLIST TASK UI */}
+          {form.taskType === "CHECKLIST" && form.checklistItems && (
+            <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Checklist</div>
+              {form.checklistItems.map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => toggleChecklist(item.id, !item.completed)}
+                  className={`w-full flex items-center justify-between rounded-xl border px-3 py-2 text-sm mb-1 transition ${item.completed ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                >
+                  <span className="truncate text-left">{item.label}</span>
+                  <span className={`ml-3 inline-flex h-5 w-5 items-center justify-center rounded-full border text-xs font-semibold ${item.completed ? "bg-green-500 text-white border-green-600" : "bg-slate-100 text-slate-600 border-slate-300"}`}>{item.completed ? "✓" : ""}</span>
+                </button>
+              ))}
+              <div className="text-xs text-slate-500 mt-2">
+                {form.checklistItems.filter(i => i.completed).length}/{form.checklistItems.length} completed
+              </div>
+            </div>
+          )}
+
+          {/* SCHEDULING PANEL */}
+          {form.taskType !== "SCHEDULED" && !isNewTask && (
+            <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Schedule this task</div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">Pattern
+                  <select
+                    value={scheduleEdit.pattern}
+                    onChange={e => setScheduleEdit(p => ({ ...p, pattern: e.target.value as RecurrencePattern }))}
+                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                  >
+                    {['DAILY','WEEKLY','MONTHLY','QUARTERLY','YEARLY'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-700">Interval
+                  <input
+                    type="number"
+                    min={1}
+                    value={scheduleEdit.interval}
+                    onChange={e => setScheduleEdit(p => ({ ...p, interval: Math.max(1, Number(e.target.value)||1) }))}
+                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+              <Button onClick={convertToScheduled} variant="default">Convert to Scheduled</Button>
+            </div>
+          )}
+
+          {form.taskType === "SCHEDULED" && (
+            <div className="rounded-2xl border border-green-200 bg-green-50/70 p-4 text-sm text-green-800">
+              Recurs: {form.recurrenceInterval || 1} × {form.recurrencePattern || 'DAILY'}
+            </div>
+          )}
+
+          <footer className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-2">
             <div className="text-xs text-slate-500">
               {!isNewTask && (
                 <>

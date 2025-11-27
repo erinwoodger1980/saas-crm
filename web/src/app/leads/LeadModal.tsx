@@ -20,7 +20,8 @@ import { Button } from "@/components/ui/button";
 import LeadSourcePicker from "@/components/leads/LeadSourcePicker";
 import { UnifiedActivityTimeline } from "@/components/leads/UnifiedActivityTimeline";
 import { useLeadActivity } from "@/lib/use-lead-activity";
-import { FollowUpTaskPanel } from "@/components/follow-up/FollowUpTaskPanel";
+// Unified task modal (replaces legacy FollowUpTaskPanel usage in this file)
+import { TaskModal } from "@/components/tasks/TaskModal";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 
 /* ----------------------------- Types ----------------------------- */
@@ -4111,13 +4112,13 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       </Button>
                     </div>
 
-                    {lead?.communicationLog && lead.communicationLog.length > 0 && (
+                    {(lead?.communicationLog?.length ?? 0) > 0 && (
                       <div className="space-y-3 pt-4 border-t border-slate-200">
                         <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                           Recent Communications
                         </h4>
                         <div className="space-y-2 max-h-60 overflow-y-auto">
-                          {lead.communicationLog.map((entry) => (
+                          {lead?.communicationLog?.map((entry) => (
                             <div
                               key={entry.id}
                               className="p-3 bg-slate-50 rounded-lg border border-slate-200"
@@ -4255,7 +4256,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           
                           const isFollowUpTask = (event as any).taskType === 'FOLLOW_UP' || (event as any).meta?.aiDraft;
                           
-                          // If this is a FOLLOW_UP task with AI draft, use FollowUpTaskPanel
+                          // If this is a FOLLOW_UP task with AI draft, open unified TaskModal
                           if (isFollowUpTask) {
                             return (
                               <div key={event.id} className="rounded-lg border-2 border-indigo-200">
@@ -4953,29 +4954,17 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           </div>
         )}
 
-        {/* AI Follow-Up Task Panel Modal */}
-        {selectedFollowUpTask && (
-          <div className="absolute inset-0 z-[80] bg-black/40 overflow-y-auto">
-            <div className="min-h-full flex items-start justify-center p-4 sm:p-6">
-              <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl p-4 sm:p-6 my-4 sm:my-8">
-                <FollowUpTaskPanel
-                  task={selectedFollowUpTask as any}
-                  authHeaders={authHeaders}
-                  onEmailSent={async () => {
-                    toast("Email sent successfully!");
-                    await refreshActivity();
-                  }}
-                  onTaskCompleted={async () => {
-                    toast("Task completed!");
-                    setSelectedFollowUpTask(null);
-                    await refreshActivity();
-                  }}
-                  onClose={() => setSelectedFollowUpTask(null)}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Unified Task Modal (replaces legacy FollowUpTaskPanel) */}
+        <TaskModal
+          open={!!selectedFollowUpTask}
+          task={selectedFollowUpTask as any}
+          tenantId={tenantId}
+          userId={userId}
+          onChanged={async () => {
+            await refreshActivity();
+          }}
+          onClose={() => setSelectedFollowUpTask(null)}
+        />
 
         {/* Simple email composer modal for follow-up tasks */}
         {showEmailComposer && (
