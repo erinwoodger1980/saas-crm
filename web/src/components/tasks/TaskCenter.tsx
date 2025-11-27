@@ -44,7 +44,7 @@ type Task = {
   taskType: TaskType;
   dueAt?: string;
   completedAt?: string;
-  relatedType?: string;
+  relatedType: "LEAD" | "PROJECT" | "QUOTE" | "EMAIL" | "QUESTIONNAIRE" | "WORKSHOP" | "OTHER";
   relatedId?: string;
   
   // Communication fields
@@ -67,7 +67,7 @@ type Task = {
   
   assignees?: Array<{
     userId: string;
-    role: string;
+    role: "OWNER" | "FOLLOWER";
   }>;
 };
 
@@ -131,6 +131,13 @@ export function TaskCenter() {
   const loadTasks = async () => {
     if (!tenantId) return;
     
+    // Don't load tasks for special tabs
+    const specialTabs = ["analytics", "templates", "calendar", "scheduled-templates"];
+    if (specialTabs.includes(activeTab)) {
+      setTasks([]);
+      return;
+    }
+    
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -140,7 +147,11 @@ export function TaskCenter() {
         params.set("status", "DONE");
         params.set("includeDone", "true");
       } else if (activeTab !== "all") {
-        params.set("taskType", activeTab);
+        // Only set taskType if it's a valid task type
+        const validTaskTypes = Object.keys(TASK_TYPE_CONFIG);
+        if (validTaskTypes.includes(activeTab as string)) {
+          params.set("taskType", activeTab as string);
+        }
       }
       
       if (showOnlyMine && userId) {
@@ -159,6 +170,7 @@ export function TaskCenter() {
       setTasks(response.items);
     } catch (error) {
       console.error("Failed to load tasks:", error);
+      setTasks([]);
     } finally {
       setLoading(false);
     }
