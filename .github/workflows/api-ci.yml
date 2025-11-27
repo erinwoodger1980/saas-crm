@@ -60,11 +60,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-prisma-engines-
 
+      - name: Migrate database (deploy)
+        if: ${{ env.DATABASE_URL != '' }}
+        run: |
+          echo "🚀 Running prisma migrate deploy to sync schema with production"
+          npx prisma migrate deploy || {
+            echo "⚠️ migrate deploy failed; continuing (non-blocking)";
+          }
+
       - name: Prisma generate (with extended timeout and retries)
         env:
           PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
         run: |
-          echo "� Generating Prisma client..."
+          echo "🔄 Generating Prisma client from updated schema..."
           # Increase Node.js max HTTP header size and timeout
           export NODE_OPTIONS="--max-http-header-size=80000"
           
@@ -88,14 +96,6 @@ jobs:
               exit $exit_code
             fi
           done
-
-      - name: Migrate database (deploy)
-        if: ${{ env.DATABASE_URL != '' }}
-        run: |
-          echo "🚀 Running prisma db push against provisioned database to sync schema"
-          npx prisma db push --accept-data-loss --skip-generate || {
-            echo "⚠️ db push failed; continuing (non-blocking)";
-          }
 
       - name: TypeScript compile
         run: pnpm run build
