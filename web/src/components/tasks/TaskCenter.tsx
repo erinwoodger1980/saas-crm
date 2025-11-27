@@ -139,6 +139,20 @@ export function TaskCenter() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [streakDays, setStreakDays] = useState(0);
   const [todayCompleted, setTodayCompleted] = useState(0);
+  const [emailPreview, setEmailPreview] = useState<{
+    isOpen: boolean;
+    subject: string;
+    body: string;
+    to: string;
+    recipientName?: string;
+    action?: 'accept' | 'decline';
+    taskId?: string;
+  }>({
+    isOpen: false,
+    subject: '',
+    body: '',
+    to: '',
+  });
 
   const loadTasks = async () => {
     if (!tenantId) {
@@ -316,13 +330,77 @@ export function TaskCenter() {
     return { overdue, urgent, highPriority, upcoming };
   }, [filteredTasks]);
 
+  const handleSkipTask = async (taskId: string) => {
+    if (!confirm('Skip this task?')) return;
+    try {
+      await apiFetch(`/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { "x-tenant-id": tenantId },
+        json: { status: 'CANCELLED' }
+      });
+      await loadTasks();
+      alert('Task skipped');
+    } catch (error) {
+      console.error("Failed to skip task:", error);
+      alert("Failed to skip task");
+    }
+  };
+
+  const handleSendEmailPreview = async (taskId: string, action: 'accept' | 'decline') => {
+    try {
+      const endpoint = action === 'accept' ? 'accept-enquiry' : 'decline-enquiry';
+      const preview = await apiFetch<any>(`/tasks/${taskId}/actions/${endpoint}/preview`, {
+        method: 'POST',
+        headers: { "x-tenant-id": tenantId },
+      });
+      setEmailPreview({
+        isOpen: true,
+        subject: preview.subject,
+        body: preview.body,
+        to: preview.to,
+        recipientName: preview.recipientName,
+        action,
+        taskId,
+      });
+    } catch (err) {
+      alert('Failed to generate email preview');
+    }
+  };
+
+  const handleRejectEnquiry = async (taskId: string) => {
+    if (!confirm('Reject as not a real enquiry? This will mark the lead as rejected and provide feedback to the ML system.')) return;
+    try {
+      await apiFetch(`/tasks/${taskId}/actions/reject-enquiry`, {
+        method: 'POST',
+        headers: { "x-tenant-id": tenantId },
+      });
+      await loadTasks();
+      alert('Marked as not an enquiry');
+    } catch (err) {
+      alert('Failed to reject enquiry');
+    }
+  };
+
   const renderTaskCard = (task: Task) => {
     const config = TASK_TYPE_CONFIG[task.taskType] || TASK_TYPE_CONFIG.MANUAL;
     const Icon = config.icon;
     const isOverdue = task.dueAt && new Date(task.dueAt) < new Date() && task.status !== "DONE";
+    
+    // Check if this is a review enquiry task or AI follow-up task
+    const taskMeta = (task as any).meta || {};
+    const trigger = taskMeta.trigger || '';
+    const isReviewEnquiry = trigger === 'new_lead_received' || task.title.toLowerCase().includes('review') && task.title.toLowerCase().includes('enquiry');
+    const isAITask = task.taskType === "FOLLOW_UP" || trigger.includes('follow_up');
 
     return (
-      <Card key={task.id} className="p-4 hover:shadow-md transition-shadow">
+      <Card 
+        key={task.id} 
+        className="p-4 hover:shadow-md transition-all cursor-pointer"
+        onClick={() => {
+          setSelectedTask(task);
+          setShowTaskModal(true);
+        }}
+      >
         <div className="flex items-start gap-3">
           <div className={`p-2 rounded-lg ${config.bgColor}`}>
             <Icon className={`h-5 w-5 ${config.color}`} />
@@ -370,17 +448,72 @@ export function TaskCenter() {
               )}
             </div>
 
-            {/* Complete Button */}
+            {/* Contextual Action Buttons */}
             {task.status !== "DONE" && (
-              <div className="mt-3">
-                <Button
-                  size="sm"
-                  onClick={() => handleCompleteTask(task)}
-                  className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
-                >
-                  <CheckSquare className="h-4 w-4 mr-2" />
-                  Complete Task
-                </Button>
+              <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
+                {isReviewEnquiry ? (
+                  // Review Enquiry: Accept / Decline / Reject
+                  <>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      onClick={() => handleSendEmailPreview(task.id, 'accept')}
+                    >
+                      ✓ Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="flex-1 bg-orange-600 hover:bg-orange-700"
+                      onClick={() => handleSendEmailPreview(task.id, 'decline')}
+                    >
+                      ↓ Decline
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 border-red-400 text-red-700 hover:bg-red-50"
+                      onClick={() => handleRejectEnquiry(task.id)}
+                    >
+                      ✕ Reject
+                    </Button>
+                  </>
+                ) : isAITask ? (
+                  // AI Follow-up tasks: Send Email / Skip
+                  <>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="flex-1"
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setShowTaskModal(true);
+                      }}
+                    >
+                      <Mail className="h-4 w-4 mr-2" />
+                      Send Email
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => handleSkipTask(task.id)}
+                    >
+                      Skip
+                    </Button>
+                  </>
+                ) : (
+                  // Standard tasks: Complete
+                  <Button
+                    size="sm"
+                    onClick={() => handleCompleteTask(task)}
+                    className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                  >
+                    <CheckSquare className="h-4 w-4 mr-2" />
+                    Complete Task
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -630,6 +763,91 @@ export function TaskCenter() {
           setShowTaskModal(false);
         }}
       />
+
+      {/* Email Preview Modal */}
+      {emailPreview.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">
+                  {emailPreview.action === 'accept' ? '✓ Accept Enquiry' : '↓ Decline Enquiry'}
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEmailPreview({ ...emailPreview, isOpen: false })}
+                >
+                  ✕
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">To:</label>
+                  <div className="text-sm text-gray-900">
+                    {emailPreview.recipientName ? `${emailPreview.recipientName} <${emailPreview.to}>` : emailPreview.to}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subject:</label>
+                  <Input
+                    value={emailPreview.subject}
+                    onChange={(e) => setEmailPreview({ ...emailPreview, subject: e.target.value })}
+                    className="w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Message:</label>
+                  <textarea
+                    value={emailPreview.body}
+                    onChange={(e) => setEmailPreview({ ...emailPreview, body: e.target.value })}
+                    rows={12}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setEmailPreview({ ...emailPreview, isOpen: false })}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!emailPreview.taskId || !emailPreview.action) return;
+                      try {
+                        const endpoint = emailPreview.action === 'accept' ? 'accept-enquiry' : 'decline-enquiry';
+                        await apiFetch(`/tasks/${emailPreview.taskId}/actions/${endpoint}`, {
+                          method: 'POST',
+                          headers: { "x-tenant-id": tenantId },
+                          json: {
+                            subject: emailPreview.subject,
+                            body: emailPreview.body,
+                          },
+                        });
+                        setEmailPreview({ ...emailPreview, isOpen: false });
+                        await loadTasks();
+                        alert('Email sent successfully!');
+                      } catch (err) {
+                        alert('Failed to send email');
+                      }
+                    }}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Mail className="h-4 w-4 mr-2" />
+                    Send Email
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
