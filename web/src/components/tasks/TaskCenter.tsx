@@ -1,130 +1,56 @@
-// web/src/components/tasks/TaskCenter.tsx
+// web/src/components/tasks/TaskCenter.tsx (reconstructed simplified version)
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
 import { apiFetch } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
-import { 
-  CheckSquare, 
-  Phone, 
-  Mail, 
-  Calendar, 
-  FileText, 
-  ListChecks,
-  Plus,
-  Filter,
-  Search,
-  BarChart3,
-  Library,
-  Link2
-} from "lucide-react";
+import { CheckSquare, Mail, Plus, Search, Filter, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { TaskAnalyticsDashboard } from "./TaskAnalyticsDashboard";
-import { FormTemplatesLibrary } from "./FormTemplatesLibrary";
-import { CalendarIntegration } from "./CalendarIntegration";
-import { TaskCelebration } from "./TaskCelebration";
-import { TaskStreakTracker } from "./TaskStreakTracker";
-import { ScheduledTasksTab } from "./ScheduledTasksTab";
 import { TaskModal } from "./TaskModal";
 import { CreateTaskWizard } from "./CreateTaskWizard";
-
-type TaskType = "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
-type TaskStatus = "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
-type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+import { TaskCelebration } from "./TaskCelebration";
+import { TaskStreakTracker } from "./TaskStreakTracker";
 
 type Task = {
   id: string;
   title: string;
   description?: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  taskType: TaskType;
+  status: "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "CANCELLED";
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  taskType: "MANUAL" | "COMMUNICATION" | "FOLLOW_UP" | "SCHEDULED" | "FORM" | "CHECKLIST";
   dueAt?: string;
   completedAt?: string;
   relatedType: "LEAD" | "PROJECT" | "QUOTE" | "EMAIL" | "QUESTIONNAIRE" | "WORKSHOP" | "OTHER";
   relatedId?: string;
-  
-  // Communication fields
-  communicationType?: string;
-  communicationChannel?: string;
-  communicationDirection?: string;
-  communicationNotes?: string;
-  
-  // Form fields
+  checklistItems?: Array<{ id: string; label: string; completed?: boolean }>;
   formSchema?: any;
-  requiresSignature?: boolean;
-  signedAt?: string;
-  
-  // Checklist fields
-  checklistItems?: Array<{
-    id: string;
-    text?: string;
-    label: string;
-    completed?: boolean;
-    completedBy?: string;
-    completedAt?: string;
-  }>;
-  
-  assignees?: Array<{
-    userId: string;
-    role: "OWNER" | "FOLLOWER";
-  }>;
+  meta?: any;
+  assignees?: Array<{ userId: string; role: "OWNER" | "FOLLOWER" }>;
 };
 
-const TASK_TYPE_CONFIG = {
-  MANUAL: {
-    label: "Tasks",
-    icon: CheckSquare,
-    color: "text-blue-600",
-    bgColor: "bg-blue-50",
-  },
-  COMMUNICATION: {
-    label: "Communications",
-    icon: Phone,
-    color: "text-green-600",
-    bgColor: "bg-green-50",
-  },
-  FOLLOW_UP: {
-    label: "Follow-ups",
-    icon: Mail,
-    color: "text-purple-600",
-    bgColor: "bg-purple-50",
-  },
-  SCHEDULED: {
-    label: "Scheduled",
-    icon: Calendar,
-    color: "text-orange-600",
-    bgColor: "bg-orange-50",
-  },
-  FORM: {
-    label: "Forms",
-    icon: FileText,
-    color: "text-pink-600",
-    bgColor: "bg-pink-50",
-  },
-  CHECKLIST: {
-    label: "Checklists",
-    icon: ListChecks,
-    color: "text-indigo-600",
-    bgColor: "bg-indigo-50",
-  },
+const TASK_TYPE_CONFIG: Record<string, { color: string; bgColor: string; label: string }> = {
+  MANUAL: { label: "Task", color: "text-blue-600", bgColor: "bg-blue-50" },
+  COMMUNICATION: { label: "Comm", color: "text-green-600", bgColor: "bg-green-50" },
+  FOLLOW_UP: { label: "Follow", color: "text-purple-600", bgColor: "bg-purple-50" },
+  SCHEDULED: { label: "Sched", color: "text-orange-600", bgColor: "bg-orange-50" },
+  FORM: { label: "Form", color: "text-pink-600", bgColor: "bg-pink-50" },
+  CHECKLIST: { label: "Checklist", color: "text-indigo-600", bgColor: "bg-indigo-50" },
 };
 
 export function TaskCenter({
   filterRelatedType,
   filterRelatedId,
+  embedded = false,
 }: {
-  filterRelatedType?: "LEAD" | "PROJECT" | "QUOTE" | "EMAIL" | "QUESTIONNAIRE" | "WORKSHOP" | "OTHER";
-  filterRelatedId?: string;
+  filterRelatedType?: Task["relatedType"]; filterRelatedId?: string; embedded?: boolean;
 } = {}) {
   const [tenantId, setTenantId] = useState("");
   const [userId, setUserId] = useState("");
 
-  const [activeTab, setActiveTab] = useState<"all" | TaskType | "completed" | "analytics" | "templates" | "calendar" | "scheduled-templates">("all");
+  const [activeTab] = useState("all");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -149,10 +75,10 @@ export function TaskCenter({
   const [streakDays, setStreakDays] = useState(0);
   const [todayCompleted, setTodayCompleted] = useState(0);
   // Mobile UI state
-  const [headerCollapsed, setHeaderCollapsed] = useState(true); // default collapsed on mobile
+  const [headerCollapsed, setHeaderCollapsed] = useState(true);
   const [focusMode, setFocusMode] = useState(false); // hides non-task chrome for deep focus
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set()); // track which tasks are expanded
-  const [expandAll, setExpandAll] = useState<boolean>(false); // global expand/collapse
+  const [expandAll, setExpandAll] = useState(false);
   const [leadPreviews, setLeadPreviews] = useState<Record<string, any>>({}); // cache lead details
   const [emailPreview, setEmailPreview] = useState<{
     isOpen: boolean;
@@ -174,28 +100,11 @@ export function TaskCenter({
       return;
     }
     
-    // Don't load tasks for special tabs
-    const specialTabs = ["analytics", "templates", "calendar", "scheduled-templates"];
-    if (specialTabs.includes(activeTab)) {
-      setTasks([]);
-      return;
-    }
-    
     setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set("take", "100");
-      
-      if (activeTab === "completed") {
-        params.set("status", "DONE");
-        params.set("includeDone", "true");
-      } else if (activeTab !== "all") {
-        // Only set taskType if it's a valid task type
-        const validTaskTypes = Object.keys(TASK_TYPE_CONFIG);
-        if (validTaskTypes.includes(activeTab as string)) {
-          params.set("taskType", activeTab as string);
-        }
-      }
+      // Completed filter not exposed in simplified UI
       
       if (showOnlyMine && userId) {
         params.set("mine", "true");
@@ -425,7 +334,8 @@ export function TaskCenter({
 
   const renderTaskCard = (task: Task) => {
     const config = TASK_TYPE_CONFIG[task.taskType] || TASK_TYPE_CONFIG.MANUAL;
-    const Icon = config.icon;
+    // Reuse Mail icon for follow-ups, CheckSquare for manual, FileText for form, default for others
+    const IconComponent = task.taskType === 'FOLLOW_UP' ? Mail : task.taskType === 'FORM' ? FileText : CheckSquare;
     const isOverdue = task.dueAt && new Date(task.dueAt) < new Date() && task.status !== "DONE";
     
     // Check if this is a review enquiry task or AI follow-up task
@@ -444,7 +354,7 @@ export function TaskCenter({
       >
         <div className="flex items-start gap-3">
           <div className={`p-2 rounded-lg ${config.bgColor}`}>
-            <Icon className={`h-5 w-5 ${config.color}`} />
+            <IconComponent className={`h-5 w-5 ${config.color}`} />
           </div>
           
           <div className="flex-1 min-w-0">
@@ -677,7 +587,7 @@ export function TaskCenter({
   return (
     <div className={`flex flex-col min-h-0 ${focusMode ? 'bg-white' : ''}`}>
       {/* Mobile Top Bar (minimal) */}
-      {mobile && (
+      {!embedded && mobile && (
         <div className="sticky top-0 z-30 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-2 flex items-center gap-2 shadow-sm">
           <button
             onClick={() => setHeaderCollapsed(!headerCollapsed)}
@@ -712,7 +622,7 @@ export function TaskCenter({
       )}
 
       {/* Collapsible Header Section (hidden in focus mode) */}
-      {!focusMode && (
+      {!embedded && !focusMode && (
         <div className={`flex-shrink-0 space-y-4 pb-4 ${mobile ? (headerCollapsed ? 'hidden' : 'block') : ''}`}>
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -761,7 +671,7 @@ export function TaskCenter({
           <TaskStreakTracker />
         </div>
 
-        {/* Search and Filters */}
+        {showCategories && (
         <Card className="p-4 md:sticky md:top-0 md:z-20 md:bg-white/95 md:backdrop-blur">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
             <div className="flex-1 relative">
@@ -790,79 +700,13 @@ export function TaskCenter({
             </Button>
           </div>
         </Card>
-        </div>
       )}
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className={`flex flex-col min-h-0 ${focusMode ? 'mt-2' : 'mt-0'}`}>
-        <div className="flex items-center justify-between mb-3">
-          <TabsList className="flex-1 justify-start overflow-x-auto flex-shrink-0 md:rounded-xl md:border md:bg-white">
-          <TabsTrigger value="all" className="flex items-center gap-2">
-            All
-            {taskCounts.all > 0 && (
-              <Badge variant="secondary">{taskCounts.all}</Badge>
-            )}
-          </TabsTrigger>
-          
-          {Object.entries(TASK_TYPE_CONFIG).map(([type, config]) => {
-            const Icon = config.icon;
-            return (
-              <TabsTrigger key={type} value={type} className="flex items-center gap-2">
-                <Icon className="h-4 w-4" />
-                {config.label}
-                {taskCounts[type] > 0 && (
-                  <Badge variant="secondary">{taskCounts[type]}</Badge>
-                )}
-              </TabsTrigger>
-            );
-          })}
-          
-          <TabsTrigger value="completed" className="flex items-center gap-2">
-            Completed
-            {taskCounts.completed > 0 && (
-              <Badge variant="secondary">{taskCounts.completed}</Badge>
-            )}
-          </TabsTrigger>
-          
-          <TabsTrigger value="analytics" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Analytics
-          </TabsTrigger>
-          
-          <TabsTrigger value="templates" className="flex items-center gap-2">
-            <Library className="h-4 w-4" />
-            Templates
-          </TabsTrigger>
-          
-          <TabsTrigger value="calendar" className="flex items-center gap-2">
-            <Link2 className="h-4 w-4" />
-            Calendar
-          </TabsTrigger>
-          
-          <TabsTrigger value="scheduled-templates" className="flex items-center gap-2">
-             <Calendar className="h-4 w-4" />
-             Scheduled
-           </TabsTrigger>
-         </TabsList>
-         
-         {!mobile && (
-         <Button onClick={handleNewTask} size="lg" className="shadow-lg ml-4">
-            <Plus className="h-5 w-5 mr-2" />
-            New Task
-          </Button>
-         )}
-        </div>
+      {/* Tabs (optional categories) */}
+      {/* Categories removed per simplification */}
 
         <div className="mt-6">
-          {activeTab === "analytics" ? (
-            <TaskAnalyticsDashboard />
-          ) : activeTab === "templates" ? (
-            <FormTemplatesLibrary />
-          ) : activeTab === "calendar" ? (
-            <CalendarIntegration />
-          ) : activeTab === "scheduled-templates" ? (
-            <ScheduledTasksTab />
-          ) : loading ? (
+          {loading ? (
             <div className="text-center py-12 text-gray-500">Loading tasks...</div>
           ) : filteredTasks.length === 0 ? (
             <Card className="p-12 text-center">
@@ -871,9 +715,7 @@ export function TaskCenter({
               </div>
               <h3 className="text-lg font-semibold text-gray-700">No tasks found</h3>
               <p className="text-gray-500 mt-1">
-                {activeTab === "completed" 
-                  ? "No completed tasks yet" 
-                  : "Create your first task to get started"}
+                Create your first task to get started
               </p>
             </Card>
           ) : (
@@ -929,7 +771,7 @@ export function TaskCenter({
             </>
           )}
         </div>
-      </Tabs>
+      {/* End task feed */}
       {/* Create Task Wizard */}
       <CreateTaskWizard
         open={showCreateWizard}
@@ -941,7 +783,7 @@ export function TaskCenter({
         }}
       />
 
-      {/* Task Modal (for editing existing tasks) */}
+      {/* Task Modal */}
       <TaskModal
         open={showTaskModal}
         onClose={() => {

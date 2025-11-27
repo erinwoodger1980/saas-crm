@@ -45,6 +45,8 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
   const [submittingForm, setSubmittingForm] = useState(false);
   const [checklistBusy, setChecklistBusy] = useState<string | null>(null);
   const [scheduleEdit, setScheduleEdit] = useState<{ pattern: RecurrencePattern; interval: number }>({ pattern: "DAILY", interval: 1 });
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [attachments, setAttachments] = useState<Array<{ id: string; filename: string; size: number; mimeType: string; uploadedAt: string; base64?: string }>>([]);
   const isNewTask = !task;
 
   useEffect(() => {
@@ -75,6 +77,19 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
           initial[key] = "";
         });
         setFormData(initial);
+      }
+      // Seed attachments from meta
+      const existing = (task.meta?.attachments as any[]) || [];
+      if (Array.isArray(existing)) {
+        const norm = existing.map(a => ({
+          id: a.id || crypto.randomUUID(),
+          filename: a.filename || a.name || 'file',
+          size: a.size || 0,
+          mimeType: a.mimeType || 'application/octet-stream',
+          uploadedAt: a.uploadedAt || new Date().toISOString(),
+          base64: a.base64,
+        }));
+        setAttachments(norm);
       }
     }
   }, [task, open]);
@@ -161,6 +176,61 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveAttachments(next: typeof attachments) {
+    if (!form || isNewTask) return;
+    try {
+      await apiFetch(`/tasks/${form.id}`, {
+        method: 'PATCH',
+        headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+        json: { meta: { ...(form.meta || {}), attachments: next } },
+      });
+      setForm(prev => prev ? { ...prev, meta: { ...(prev.meta || {}), attachments: next } } : prev);
+      onChanged?.();
+      toast('Attachments saved');
+    } catch (e: any) {
+      toast('Failed to save attachments');
+    }
+  }
+
+  async function handleAttachmentFiles(fileList: FileList | null) {
+    if (!fileList || !fileList.length) return;
+    setUploadingAttachments(true);
+    try {
+      const newOnes: typeof attachments = [];
+      for (const file of Array.from(fileList)) {
+        const base64 = await fileToBase64(file);
+        newOnes.push({
+          id: crypto.randomUUID(),
+          filename: file.name,
+          size: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          uploadedAt: new Date().toISOString(),
+          base64,
+        });
+      }
+      const merged = [...attachments, ...newOnes];
+      setAttachments(merged);
+      await saveAttachments(merged);
+    } finally {
+      setUploadingAttachments(false);
+    }
+  }
+
+  function removeAttachment(id: string) {
+    const next = attachments.filter(a => a.id !== id);
+    setAttachments(next);
+    saveAttachments(next);
+  }
+
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',').pop() || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   async function startTask() {
@@ -563,6 +633,48 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
           {form.taskType === "SCHEDULED" && (
             <div className="rounded-2xl border border-green-200 bg-green-50/70 p-4 text-sm text-green-800">
               Recurs: {form.recurrenceInterval || 1} × {form.recurrencePattern || 'DAILY'}
+            </div>
+          )}
+
+          {/* ATTACHMENTS PANEL */}
+          {!isNewTask && (
+            <div className="rounded-2xl border border-slate-200 bg-white/85 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Attachments</div>
+                <label className="text-xs font-medium text-indigo-600 cursor-pointer">
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleAttachmentFiles(e.target.files)}
+                  />
+                  {uploadingAttachments ? 'Uploading…' : 'Add files'}
+                </label>
+              </div>
+              {attachments.length === 0 ? (
+                <div className="text-sm text-slate-600">No attachments yet.</div>
+              ) : (
+                <ul className="space-y-2">
+                  {attachments.map(att => (
+                    <li key={att.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-slate-700 truncate">{att.filename}</div>
+                        <div className="text-[10px] text-slate-500">{(att.size/1024).toFixed(1)} KB · {att.mimeType}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(att.id)}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-100"
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {attachments.length > 0 && (
+                <div className="text-[10px] text-slate-500">Stored inline (base64). For large files use a dedicated upload flow later.</div>
+              )}
             </div>
           )}
 
