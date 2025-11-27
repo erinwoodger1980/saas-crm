@@ -166,7 +166,7 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
     if (!completed) return;
     (async () => {
       try {
-        await apiFetch('/tasks', {
+        const created: any = await apiFetch('/tasks', {
           method: 'POST',
           headers: authHeaders,
           json: {
@@ -179,6 +179,17 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
             relatedId: leadId,
           },
         });
+        // Tag current task meta with link to the created quote task
+        if (form?.id && created?.id) {
+          try {
+            await apiFetch(`/tasks/${form.id}`, {
+              method: 'PATCH',
+              headers: authHeaders,
+              json: { meta: { ...(form.meta || {}), quoteTaskCreated: true, quoteTaskId: created.id } },
+            });
+            setForm(prev => prev ? { ...prev, meta: { ...(prev.meta || {}), quoteTaskCreated: true, quoteTaskId: created.id } } : prev);
+          } catch {}
+        }
         // Mark current follow-up/review task as completed
         if (form?.id) {
           try {

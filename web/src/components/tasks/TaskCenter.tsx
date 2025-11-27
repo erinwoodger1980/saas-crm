@@ -400,6 +400,22 @@ export function TaskCenter({
               }`}>
                 {task.status}
               </span>
+              {task.meta?.quoteTaskCreated && task.meta?.quoteTaskId && (
+                <button
+                  className="px-2 py-1 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Open the created quote task in the modal
+                    const found = tasks.find(t => t.id === task.meta.quoteTaskId);
+                    if (found) {
+                      setSelectedTask(found);
+                      setShowTaskModal(true);
+                    } else {
+                      alert('Quote task created');
+                    }
+                  }}
+                >Quote task created</button>
+              )}
               
               {task.dueAt && (
                 <span className={isOverdue ? "text-red-600 font-semibold" : ""}>
