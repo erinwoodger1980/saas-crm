@@ -62,8 +62,11 @@ type Task = {
   // Checklist fields
   checklistItems?: Array<{
     id: string;
-    text: string;
-    completed: boolean;
+    text?: string;
+    label: string;
+    completed?: boolean;
+    completedBy?: string;
+    completedAt?: string;
   }>;
   
   assignees?: Array<{
@@ -142,6 +145,8 @@ export function TaskCenter() {
   // Mobile UI state
   const [headerCollapsed, setHeaderCollapsed] = useState(true); // default collapsed on mobile
   const [focusMode, setFocusMode] = useState(false); // hides non-task chrome for deep focus
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set()); // track which tasks are expanded
+  const [leadPreviews, setLeadPreviews] = useState<Record<string, any>>({}); // cache lead details
   const [emailPreview, setEmailPreview] = useState<{
     isOpen: boolean;
     subject: string;
@@ -384,6 +389,27 @@ export function TaskCenter() {
     }
   };
 
+  const toggleTaskExpansion = async (taskId: string, leadId?: string) => {
+    const newExpanded = new Set(expandedTaskIds);
+    if (newExpanded.has(taskId)) {
+      newExpanded.delete(taskId);
+    } else {
+      newExpanded.add(taskId);
+      // Fetch lead details if not already cached and leadId exists
+      if (leadId && !leadPreviews[leadId]) {
+        try {
+          const lead = await apiFetch<any>(`/leads/${leadId}`, {
+            headers: { "x-tenant-id": tenantId },
+          });
+          setLeadPreviews(prev => ({ ...prev, [leadId]: lead }));
+        } catch (err) {
+          console.error('Failed to fetch lead details:', err);
+        }
+      }
+    }
+    setExpandedTaskIds(newExpanded);
+  };
+
   const renderTaskCard = (task: Task) => {
     const config = TASK_TYPE_CONFIG[task.taskType] || TASK_TYPE_CONFIG.MANUAL;
     const Icon = config.icon;
@@ -394,15 +420,14 @@ export function TaskCenter() {
     const trigger = taskMeta.trigger || '';
     const isReviewEnquiry = trigger === 'new_lead_received' || task.title.toLowerCase().includes('review') && task.title.toLowerCase().includes('enquiry');
     const isAITask = task.taskType === "FOLLOW_UP" || trigger.includes('follow_up');
+    const isExpanded = expandedTaskIds.has(task.id);
+    const leadId = task.relatedType === 'LEAD' ? task.relatedId : null;
+    const leadData = leadId ? leadPreviews[leadId] : null;
 
     return (
       <Card 
         key={task.id} 
-        className="p-4 hover:shadow-md transition-all cursor-pointer"
-        onClick={() => {
-          setSelectedTask(task);
-          setShowTaskModal(true);
-        }}
+        className="p-4 hover:shadow-md transition-all"
       >
         <div className="flex items-start gap-3">
           <div className={`p-2 rounded-lg ${config.bgColor}`}>
@@ -411,10 +436,31 @@ export function TaskCenter() {
           
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="font-semibold text-gray-900 truncate">{task.title}</h3>
-              <Badge variant={task.priority === "URGENT" ? "destructive" : "secondary"}>
-                {task.priority}
-              </Badge>
+              <h3 
+                className="font-semibold text-gray-900 truncate cursor-pointer hover:text-indigo-600"
+                onClick={() => {
+                  setSelectedTask(task);
+                  setShowTaskModal(true);
+                }}
+              >
+                {task.title}
+              </h3>
+              <div className="flex items-center gap-2">
+                {leadId && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleTaskExpansion(task.id, leadId);
+                    }}
+                    className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition"
+                  >
+                    {isExpanded ? '▲ Hide' : '▼ Details'}
+                  </button>
+                )}
+                <Badge variant={task.priority === "URGENT" ? "destructive" : "secondary"}>
+                  {task.priority}
+                </Badge>
+              </div>
             </div>
             
             {task.description && (
@@ -517,6 +563,94 @@ export function TaskCenter() {
                     Complete Task
                   </Button>
                 )}
+              </div>
+            )}
+
+            {/* Expanded Lead Preview */}
+            {isExpanded && leadData && (
+              <div className="mt-4 pt-4 border-t border-slate-200 space-y-3 text-sm">
+                <div className="font-semibold text-slate-900">Lead Details</div>
+                
+                {/* Contact Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                  {leadData.contactName && (
+                    <div><span className="font-medium text-slate-600">Name:</span> {leadData.contactName}</div>
+                  )}
+                  {leadData.email && (
+                    <div><span className="font-medium text-slate-600">Email:</span> {leadData.email}</div>
+                  )}
+                  {leadData.phone && (
+                    <div><span className="font-medium text-slate-600">Phone:</span> {leadData.phone}</div>
+                  )}
+                  {leadData.estimatedValue && (
+                    <div><span className="font-medium text-slate-600">Est. Value:</span> ${leadData.estimatedValue.toLocaleString()}</div>
+                  )}
+                </div>
+
+                {/* Description */}
+                {leadData.description && (
+                  <div className="bg-slate-50 rounded p-3">
+                    <div className="font-medium text-slate-700 mb-1">Description</div>
+                    <div className="text-slate-600 whitespace-pre-wrap">{leadData.description}</div>
+                  </div>
+                )}
+
+                {/* Quote Details */}
+                {leadData.quoteId && (
+                  <div className="bg-blue-50 rounded p-3">
+                    <div className="font-medium text-blue-900 mb-1">Quote</div>
+                    <div className="text-blue-700 text-xs">
+                      Quote ID: {leadData.quoteId}
+                      {leadData.quotedValue && ` • Value: $${leadData.quotedValue.toLocaleString()}`}
+                      {leadData.quoteStatus && ` • Status: ${leadData.quoteStatus}`}
+                    </div>
+                  </div>
+                )}
+
+                {/* Attachments */}
+                {leadData.attachments && leadData.attachments.length > 0 && (
+                  <div>
+                    <div className="font-medium text-slate-700 mb-2">Attachments ({leadData.attachments.length})</div>
+                    <div className="space-y-1">
+                      {leadData.attachments.map((att: any, idx: number) => (
+                        <a
+                          key={idx}
+                          href={att.url || att.path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
+                        >
+                          <FileText className="h-3 w-3" />
+                          {att.filename || att.name || `Attachment ${idx + 1}`}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Email Preview (if available) */}
+                {leadData.originalEmail && (
+                  <div className="bg-amber-50 rounded p-3">
+                    <div className="font-medium text-amber-900 mb-1">Original Email</div>
+                    <div className="text-amber-800 text-xs space-y-1">
+                      {leadData.originalEmail.subject && (
+                        <div><span className="font-medium">Subject:</span> {leadData.originalEmail.subject}</div>
+                      )}
+                      {leadData.originalEmail.from && (
+                        <div><span className="font-medium">From:</span> {leadData.originalEmail.from}</div>
+                      )}
+                      {leadData.originalEmail.snippet && (
+                        <div className="mt-2 text-amber-700 italic line-clamp-3">{leadData.originalEmail.snippet}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isExpanded && !leadData && leadId && (
+              <div className="mt-4 pt-4 border-t border-slate-200 text-center text-sm text-slate-500">
+                Loading lead details...
               </div>
             )}
           </div>

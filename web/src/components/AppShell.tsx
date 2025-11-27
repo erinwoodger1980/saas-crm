@@ -227,7 +227,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         )}
         
-        <header className="h-14 bg-white border-b flex items-center justify-between px-4">
+        <header className="sticky top-0 z-50 h-14 bg-white border-b flex items-center justify-between px-4">
           <div className="text-sm text-slate-600">
             <span className="font-medium text-[rgb(var(--brand))]">Joinery AI</span> · Ask about sales, pipeline, timecards…
           </div>
