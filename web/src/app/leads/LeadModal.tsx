@@ -484,6 +484,7 @@ export default function LeadModal({
   const [projectInstallationEndDate, setProjectInstallationEndDate] = useState<string>("");
   const [projectValueGBP, setProjectValueGBP] = useState<string>("");
   const [opportunityId, setOpportunityId] = useState<string | null>(null);
+  const [opportunityStage, setOpportunityStage] = useState<string | null>(null);
 
   const lastSavedServerStatusRef = useRef<string | null>(null);
 
@@ -842,6 +843,10 @@ export default function LeadModal({
           if (opp.id && !actualOpportunityId) {
             console.log('[LeadModal] setting opportunityId from opp data:', opp.id);
             setOpportunityId(String(opp.id));
+          }
+          // Store opportunity stage for conditional labeling
+          if (opp.stage) {
+            setOpportunityStage(opp.stage);
           }
           // Format dates for date input (YYYY-MM-DD)
           const formatDateForInput = (dateStr: any) => {
@@ -4006,7 +4011,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                           <span aria-hidden>📅</span>
-                          Project Overview
+                          {opportunityStage === "WON" ? "Project Overview" : "Opportunity Overview"}
                         </div>
                         {projectValueGBP && (
                           <div className="text-sm text-slate-700">

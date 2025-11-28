@@ -533,7 +533,7 @@ function RuleEditor({
                   <SelectContent>
                     <SelectItem value="OPPORTUNITY">Opportunity</SelectItem>
                     <SelectItem value="LEAD">Lead</SelectItem>
-                    <SelectItem value="PROJECT">Project</SelectItem>
+                    <SelectItem value="PROJECT">Project (Won Opportunity)</SelectItem>
                     <SelectItem value="QUOTE">Quote</SelectItem>
                   </SelectContent>
                 </Select>

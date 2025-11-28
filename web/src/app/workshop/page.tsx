@@ -983,7 +983,7 @@ export default function WorkshopPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">{projects.length} projects</span>
+          <span className="text-sm text-muted-foreground">{projects.length} project{projects.length !== 1 ? 's' : ''}</span>
           {!isWorkshopOnly && (
             <>
               <Button variant="outline" size="sm" onClick={() => window.location.href = '/timesheets'}>
