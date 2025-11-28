@@ -82,6 +82,14 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
       });
     } else {
       setForm(task);
+      console.log('[TaskModal] Task loaded:', {
+        id: task.id,
+        taskType: task.taskType,
+        hasFormSchema: !!task.formSchema,
+        formFields: task.formSchema?.fields?.length || 0,
+        hasChecklistItems: !!task.checklistItems,
+        checklistCount: task.checklistItems?.length || 0
+      });
       // Seed schedule edit panel
       if (task.recurrencePattern) {
         setScheduleEdit({ pattern: task.recurrencePattern, interval: task.recurrenceInterval || 1 });
