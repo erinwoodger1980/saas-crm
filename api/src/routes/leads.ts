@@ -18,6 +18,7 @@ import {
 } from "../lib/leads/fieldMap";
 import { extractGlobalSpecsFromAnswers, specsToPrismaData } from "../lib/globalSpecs";
 import { linkLeadToClientAccount, linkOpportunityToClientAccount } from "../lib/clientAccount";
+import { completeTasksOnRecordChangeByLinks } from "../services/field-link";
 
 const router = Router();
 
@@ -1015,6 +1016,34 @@ router.patch("/:id", async (req, res) => {
   data.custom = nextCustom;
 
   const updated = await prisma.lead.update({ where: { id }, data });
+
+  // After persisting, trigger generic Field ↔ Task link auto-completion on relevant changes
+  try {
+    const changed: Record<string, any> = {};
+    // Include all top-level fields updated (except the custom blob)
+    for (const k of Object.keys(data)) {
+      if (k === "custom") continue;
+      changed[k] = (updated as any)[k];
+    }
+    // For canonical date fields stored in custom, expose them by key
+    if (body.startDate !== undefined || Object.prototype.hasOwnProperty.call(canonicalUpdates, "startDate")) {
+      changed["startDate"] = (updated.custom as any)?.startDate ?? null;
+    }
+    if (body.deliveryDate !== undefined || Object.prototype.hasOwnProperty.call(canonicalUpdates, "deliveryDate")) {
+      changed["deliveryDate"] = (updated.custom as any)?.deliveryDate ?? null;
+    }
+    if (Object.keys(changed).length > 0) {
+      await completeTasksOnRecordChangeByLinks({
+        tenantId,
+        model: "Lead",
+        recordId: id,
+        changed,
+        newRecord: updated,
+      });
+    }
+  } catch (e) {
+    console.warn("[leads.patch] field-link sync failed:", (e as any)?.message || e);
+  }
 
   if (nextUi !== prevUi) {
     const actorId = (req.auth?.userId as string | undefined) ?? null;

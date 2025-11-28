@@ -189,6 +189,23 @@ async function buildQuestionnaireFromLeadFieldDefs(tenantId: string): Promise<Qu
    SETTINGS
 ============================================================ */
 
+/** List users for current tenant (id, name, email) */
+router.get("/users", async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+  try {
+    const users = await prisma.user.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, email: true },
+      orderBy: [{ name: "asc" }, { email: "asc" }],
+    });
+    res.json(users);
+  } catch (e: any) {
+    console.error("[/tenant/users] failed:", e?.message || e);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 /** Get current tenant settings (create defaults if missing) */
 router.get("/settings", async (req, res) => {
   const tenantId = authTenantId(req);

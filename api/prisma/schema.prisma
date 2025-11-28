@@ -100,6 +100,7 @@ model Tenant {
   veneerLayons               VeneerLayon[]
   weightLookups              WeightLookup[]
   workshopProcessDefinitions WorkshopProcessDefinition[]
+  taskFieldLinks             TaskFieldLink[]
 }
 
 model FeatureRequest {

@@ -8,6 +8,7 @@ import fetch from "node-fetch";
 import { FOLLOWUPS_ENABLED } from "../lib/followups-feature";
 import { linkOpportunityToClientAccount } from "../lib/clientAccount";
 import { evaluateAutomationRules } from "./automation-rules";
+import { completeTasksOnRecordChangeByLinks } from "../services/field-link";
 
 const router = Router();
 
@@ -923,6 +924,25 @@ router.patch("/:id", async (req: any, res: any) => {
   } catch (autoErr) {
     console.error('[opportunities.patch] Automation evaluation error:', autoErr);
     // Don't fail the request if automation fails
+  }
+
+  // Trigger generic Field ↔ Task link auto-completion on relevant field changes
+  try {
+    const changed: Record<string, any> = {};
+    for (const k of Object.keys(data)) {
+      changed[k] = (updated as any)[k];
+    }
+    if (Object.keys(changed).length > 0) {
+      await completeTasksOnRecordChangeByLinks({
+        tenantId,
+        model: "Opportunity",
+        recordId: id,
+        changed,
+        newRecord: updated,
+      });
+    }
+  } catch (e) {
+    console.warn("[opportunities.patch] field-link sync failed:", (e as any)?.message || e);
   }
 
   res.json({ ok: true, opportunity: updated });

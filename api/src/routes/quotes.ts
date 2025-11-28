@@ -14,6 +14,7 @@ import { fallbackParseSupplierPdf } from "../lib/pdf/fallback";
 import { parseSupplierPdf } from "../lib/supplier/parse";
 import type { SupplierParseResult } from "../types/parse";
 import { logInsight, logInferenceEvent } from "../services/training";
+import { completeTasksOnRecordChangeByLinks } from "../services/field-link";
 import { redactSupplierLine } from "../lib/ml/redact";
 import { sendParserErrorAlert, sendParserFallbackAlert } from "../lib/ops/alerts";
 import {
@@ -963,7 +964,7 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
       },
     } as any;
 
-    await prisma.quote.update({
+    const savedTotals = await prisma.quote.update({
       where: { id: quote.id },
       data: {
         currency,
@@ -971,6 +972,22 @@ router.post("/:id/lines/save-processed", requireAuth, async (req: any, res) => {
         meta,
       },
     });
+
+    // Trigger field-link completion for Quote on totals/currency changes
+    try {
+      await completeTasksOnRecordChangeByLinks({
+        tenantId,
+        model: "Quote",
+        recordId: quote.id,
+        changed: {
+          currency: savedTotals.currency,
+          totalGBP: savedTotals.totalGBP,
+        },
+        newRecord: savedTotals,
+      });
+    } catch (e) {
+      console.warn("[/quotes/:id/parse save-processed] field-link sync failed:", (e as any)?.message || e);
+    }
 
     // Auto-save to ML training data when user applies markup
     // This captures both supplier cost and client estimate for learning
@@ -1386,6 +1403,23 @@ router.patch("/:id/source", requireAuth, async (req: any, res) => {
           resolvedProfileId === undefined ? q.supplierProfileId : resolvedProfileId,
       },
     });
+    // Trigger field-link completion for quote source/profile changes
+    try {
+      const changed: Record<string, any> = {};
+      if (normalizedSource !== undefined) changed.quoteSourceType = updated.quoteSourceType;
+      if (resolvedProfileId !== undefined) changed.supplierProfileId = updated.supplierProfileId;
+      if (Object.keys(changed).length > 0) {
+        await completeTasksOnRecordChangeByLinks({
+          tenantId,
+          model: "Quote",
+          recordId: id,
+          changed,
+          newRecord: updated,
+        });
+      }
+    } catch (e) {
+      console.warn("[/quotes/:id/source] field-link sync failed:", (e as any)?.message || e);
+    }
 
     res.json({ ok: true, quote: mapQuoteSourceForResponse(updated) });
   } catch (e: any) {
@@ -1419,6 +1453,26 @@ router.patch("/:id/preference", requireAuth, async (req: any, res) => {
     }
 
     const saved = await prisma.quote.update({ where: { id: q.id }, data: updates });
+    // Trigger field-link completion for preference change (markupDefault)
+    try {
+      const changed: Record<string, any> = {};
+      if (updates.markupDefault !== undefined) changed.markupDefault = saved.markupDefault;
+      // pricingMode is stored in meta; expose as synthetic key for linking if needed
+      if ((updates.meta as any)?.pricingMode !== undefined) {
+        changed.pricingMode = (saved.meta as any)?.pricingMode ?? null;
+      }
+      if (Object.keys(changed).length > 0) {
+        await completeTasksOnRecordChangeByLinks({
+          tenantId,
+          model: "Quote",
+          recordId: id,
+          changed,
+          newRecord: saved,
+        });
+      }
+    } catch (e) {
+      console.warn("[/quotes/:id/preference] field-link sync failed:", (e as any)?.message || e);
+    }
     return res.json({ ok: true, quote: mapQuoteSourceForResponse(saved) });
   } catch (e: any) {
     console.error("[/quotes/:id/preference] failed:", e?.message || e);
@@ -3717,7 +3771,21 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
         totalGBP += sellTotal;
         await prisma.quoteLine.update({ where: { id: ln.id }, data: { meta: { set: { ...(lineMeta || {}), sellUnitGBP: sellUnit, sellTotalGBP: sellTotal, pricingMethod: "margin", margin } } } as any });
       }
-  await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) } });
+  const pricedSaved1 = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP), markupDefault: new Prisma.Decimal(margin) } });
+      try {
+        await completeTasksOnRecordChangeByLinks({
+          tenantId,
+          model: "Quote",
+          recordId: quote.id,
+          changed: {
+            totalGBP: pricedSaved1.totalGBP,
+            markupDefault: pricedSaved1.markupDefault,
+          },
+          newRecord: pricedSaved1,
+        });
+      } catch (e) {
+        console.warn("[/quotes/:id/price margin] field-link sync failed:", (e as any)?.message || e);
+      }
       return res.json({ ok: true, method, margin, totalGBP, skippedOverrides: skippedCount });
     }
 
@@ -3833,7 +3901,20 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
                 } as any,
               },
             });
-            await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotal) } });
+            {
+              const saved = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotal) } });
+              try {
+                await completeTasksOnRecordChangeByLinks({
+                  tenantId,
+                  model: "Quote",
+                  recordId: quote.id,
+                  changed: { totalGBP: saved.totalGBP },
+                  newRecord: saved,
+                });
+              } catch (e) {
+                console.warn("[/quotes/:id/price cached placeholder] field-link sync failed:", (e as any)?.message || e);
+              }
+            }
 
             await logInferenceEvent({
               tenantId,
@@ -3888,7 +3969,20 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
               },
             });
           }
-          await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+          {
+            const saved = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+            try {
+              await completeTasksOnRecordChangeByLinks({
+                tenantId,
+                model: "Quote",
+                recordId: quote.id,
+                changed: { totalGBP: saved.totalGBP },
+                newRecord: saved,
+              });
+            } catch (e) {
+              console.warn("[/quotes/:id/price cached distribute] field-link sync failed:", (e as any)?.message || e);
+            }
+          }
 
           const sanitizedEstimate: any = {
             predictedTotal,
@@ -4009,7 +4103,20 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             } as any,
           },
         });
-        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotalFinal) } });
+        {
+          const saved = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(predictedTotalFinal) } });
+          try {
+            await completeTasksOnRecordChangeByLinks({
+              tenantId,
+              model: "Quote",
+              recordId: quote.id,
+              changed: { totalGBP: saved.totalGBP },
+              newRecord: saved,
+            });
+          } catch (e) {
+            console.warn("[/quotes/:id/price placeholder] field-link sync failed:", (e as any)?.message || e);
+          }
+        }
         totalGBPForReturn = predictedTotalFinal;
       } else {
         // Always distribute by quantity in questionnaire-only mode
@@ -4036,7 +4143,20 @@ router.post("/:id/price", requireAuth, async (req: any, res) => {
             },
           });
         }
-        await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+        {
+          const saved = await prisma.quote.update({ where: { id: quote.id }, data: { totalGBP: new Prisma.Decimal(totalGBP) } });
+          try {
+            await completeTasksOnRecordChangeByLinks({
+              tenantId,
+              model: "Quote",
+              recordId: quote.id,
+              changed: { totalGBP: saved.totalGBP },
+              newRecord: saved,
+            });
+          } catch (e) {
+            console.warn("[/quotes/:id/price distribute] field-link sync failed:", (e as any)?.message || e);
+          }
+        }
         totalGBPForReturn = totalGBP;
       }
 

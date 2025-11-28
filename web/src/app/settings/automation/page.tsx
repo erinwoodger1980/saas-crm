@@ -400,7 +400,7 @@ function RuleEditor({
   const [taskDescription, setTaskDescription] = useState(rule?.actions[0]?.taskDescription || "");
   const [taskType, setTaskType] = useState(rule?.actions[0]?.taskType || "MANUAL");
   const [priority, setPriority] = useState(rule?.actions[0]?.priority || "MEDIUM");
-  const [assignToUserId, setAssignToUserId] = useState(rule?.actions[0]?.assignToUserId || "");
+  const [assignToUserId, setAssignToUserId] = useState(rule?.actions[0]?.assignToUserId || "UNASSIGNED");
   const [calculationType, setCalculationType] = useState(rule?.actions[0]?.dueAtCalculation.type || "RELATIVE_TO_FIELD");
   const [dateFieldName, setDateFieldName] = useState(rule?.actions[0]?.dueAtCalculation.fieldName || "deliveryDate");
   const [offsetDays, setOffsetDays] = useState(rule?.actions[0]?.dueAtCalculation.offsetDays?.toString() || "-20");
@@ -431,7 +431,7 @@ function RuleEditor({
             taskDescription,
             taskType,
             priority,
-            assignToUserId: assignToUserId || undefined,
+            assignToUserId: assignToUserId && assignToUserId !== "UNASSIGNED" ? assignToUserId : undefined,
             relatedTo: entityType as any,
             dueAtCalculation: {
               type: calculationType,
@@ -634,7 +634,7 @@ function RuleEditor({
                       <SelectValue placeholder="Unassigned" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
+                      <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
                       {users.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
                           {user.name || user.email}
