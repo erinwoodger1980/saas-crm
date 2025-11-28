@@ -1886,113 +1886,82 @@ export default function SettingsPage() {
       )}
 
       {currentStage === "automation" && (
-      <Section title="Task playbook" description="Define the tasks to create for each stage and the quick-add actions">
+      <Section title="Task Automation" description="Automate task creation based on field changes and status updates">
         <div className="space-y-6">
-          {STATUS_KEYS.map((status) => (
-            <div key={status} className="rounded-xl border bg-white/70 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-800">{status.replace(/_/g, " ")}</div>
-                <button
-                  type="button"
-                  className="text-sm text-blue-600 hover:text-blue-800"
-                  onClick={() => addStatusRecipe(status)}
-                >
-                  Add task
-                </button>
-              </div>
-              {(playbook.status[status] || []).length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-200 bg-white/60 p-3 text-xs text-slate-500">
-                  No tasks yet for this stage.
-                </div>
-              ) : (
-                (playbook.status[status] || []).map((r, idx) => (
-                  <div key={r.id || idx} className="mb-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto_auto_auto]">
-                    <input
-                      className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
-                      value={r.title}
-                      onChange={(e) => updateStatusRecipe(status, idx, { title: e.target.value })}
-                    />
-                    <input
-                      type="number"
-                      className="w-28 rounded-xl border bg-white/95 px-3 py-2 text-sm"
-                      value={r.dueInDays ?? 1}
-                      onChange={(e) => updateStatusRecipe(status, idx, { dueInDays: Number(e.target.value || 0) })}
-                    />
-                    <select
-                      className="w-32 rounded-xl border bg-white/95 px-3 py-2 text-sm"
-                      value={r.priority || "MEDIUM"}
-                      onChange={(e) => updateStatusRecipe(status, idx, { priority: e.target.value as any })}
-                    >
-                      {(["LOW", "MEDIUM", "HIGH", "URGENT"] as const).map((p) => (
-                        <option key={p} value={p}>{p.toLowerCase()}</option>
-                      ))}
-                    </select>
-                    <label className="inline-flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={r.active !== false}
-                        onChange={(e) => updateStatusRecipe(status, idx, { active: e.target.checked })}
-                      />
-                      Active
-                    </label>
-                    <button
-                      type="button"
-                      className="text-sm text-rose-600"
-                      onClick={() => removeStatusRecipe(status, idx)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          ))}
-
-          <div className="rounded-xl border bg-white/70 p-3">
-            <div className="mb-2 text-sm font-semibold text-slate-800">Quick-add tasks</div>
-            <div className="space-y-2">
-              {(MANUAL_TASK_KEYS as readonly ManualTaskKey[]).map((key) => {
-                const r = playbook.manual[key];
-                return (
-                  <div key={key} className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto_auto]">
-                    <input
-                      className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
-                      value={r.title}
-                      onChange={(e) => updateManualRecipe(key, { title: e.target.value })}
-                    />
-                    <input
-                      type="number"
-                      className="w-28 rounded-xl border bg-white/95 px-3 py-2 text-sm"
-                      value={r.dueInDays ?? 1}
-                      onChange={(e) => updateManualRecipe(key, { dueInDays: Number(e.target.value || 0) })}
-                    />
-                    <select
-                      className="w-32 rounded-xl border bg-white/95 px-3 py-2 text-sm"
-                      value={r.priority || "MEDIUM"}
-                      onChange={(e) => updateManualRecipe(key, { priority: e.target.value as any })}
-                    >
-                      {(["LOW", "MEDIUM", "HIGH", "URGENT"] as const).map((p) => (
-                        <option key={p} value={p}>{p.toLowerCase()}</option>
-                      ))}
-                    </select>
-                    <label className="inline-flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={r.active !== false}
-                        onChange={(e) => updateManualRecipe(key, { active: e.target.checked })}
-                      />
-                      Active
-                    </label>
-                  </div>
-                );
-              })}
+          <div className="rounded-xl border bg-gradient-to-br from-blue-50 to-white p-6 text-center">
+            <div className="text-4xl mb-3">⚡</div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">
+              Task Automation Rules
+            </h3>
+            <p className="text-sm text-slate-600 mb-4 max-w-2xl mx-auto">
+              Create powerful automation rules that automatically generate tasks when fields change or statuses update.
+              Perfect for triggering follow-ups, reminders, and workflow actions.
+            </p>
+            <div className="flex justify-center gap-3">
+              <a
+                href="/settings/automation"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+              >
+                Open Automation Builder →
+              </a>
             </div>
           </div>
 
-          <div>
-            <Button onClick={saveSettings} disabled={savingSettings}>
-              {savingSettings ? "Saving playbook…" : "Save playbook"}
-            </Button>
+          <div className="rounded-xl border bg-white/70 p-5">
+            <h4 className="text-sm font-semibold text-slate-800 mb-3">
+              Migration from Task Playbook
+            </h4>
+            <p className="text-sm text-slate-600 mb-4">
+              The new automation system replaces the old task playbook with more powerful, flexible rules. 
+              You can replicate all playbook functionality by creating automation rules:
+            </p>
+            <div className="space-y-3 text-sm">
+              <div className="flex gap-3">
+                <span className="text-2xl">1️⃣</span>
+                <div>
+                  <strong>Status Change Tasks:</strong>
+                  <p className="text-slate-600 mt-1">
+                    Create a rule with trigger "Status Changed" → choose entity (Lead/Opportunity) → 
+                    select the status (e.g., "QUOTE_SENT") → action "Create Task" with your task details.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <span className="text-2xl">2️⃣</span>
+                <div>
+                  <strong>Field Update Tasks:</strong>
+                  <p className="text-slate-600 mt-1">
+                    Create a rule with trigger "Field Updated" → choose field (e.g., "deliveryDate") → 
+                    action "Create Task" with relative date calculation (e.g., 20 days before delivery).
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <span className="text-2xl">3️⃣</span>
+                <div>
+                  <strong>Auto-rescheduling:</strong>
+                  <p className="text-slate-600 mt-1">
+                    Enable "Automatically reschedule task if trigger field changes" to keep tasks synchronized 
+                    with changing dates and values.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-amber-50 p-4">
+            <div className="flex gap-3">
+              <span className="text-2xl">💡</span>
+              <div>
+                <strong className="text-sm text-amber-900">Example Use Cases:</strong>
+                <ul className="text-sm text-amber-800 mt-2 space-y-1 list-disc list-inside">
+                  <li>Order materials 20 days before completion date</li>
+                  <li>Send follow-up email 7 days after quote sent</li>
+                  <li>Schedule site visit when opportunity moves to "READY_TO_QUOTE"</li>
+                  <li>Request customer feedback 14 days after project completion</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       </Section>

@@ -1,6 +1,6 @@
 // api/src/routes/automation-rules.ts
 import { Router, Request, Response } from "express";
-import { prisma } from "../prisma-client";
+import { prisma } from "../prisma";
 import { z } from "zod";
 
 const router = Router();
