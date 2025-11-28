@@ -11,7 +11,7 @@ export function initializeScheduler(): void {
   // Daily task digest - weekdays at 9:00 AM (UK time)
   // Cron format: minute hour day month weekday
   // 0 9 * * 1-5 = 9:00 AM Monday-Friday
-  const dailyDigestSchedule = cron.schedule(
+  cron.schedule(
     "0 9 * * 1-5",
     async () => {
       console.log("[scheduler] Running daily task digest job");
@@ -27,12 +27,6 @@ export function initializeScheduler(): void {
   );
 
   console.log("[scheduler] ✅ Daily task digest scheduled for weekdays at 9:00 AM UK time");
-
-  // Optional: Manual trigger endpoint for testing
-  // This allows testing without waiting for 9am
-  return {
-    dailyDigest: dailyDigestSchedule,
-  };
 }
 
 /**
