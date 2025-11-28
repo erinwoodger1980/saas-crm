@@ -847,7 +847,8 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                             headers: authHeaders,
                             json: {},
                           });
-                          setForm(prev => prev ? { ...prev, meta: { ...(prev.meta||{}), aiDraft: res?.draft || { generatedAt: new Date().toISOString() } } } : prev);
+                          const draft = (res as any)?.draft || { generatedAt: new Date().toISOString() };
+                          setForm(prev => prev ? { ...prev, meta: { ...(prev.meta||{}), aiDraft: draft } } : prev);
                           onChanged?.();
                           toast('Draft generated');
                         } catch (e:any) {
@@ -991,7 +992,7 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
                   />
                 </label>
-                <div className="text-xs text-slate-500">Tip: include {{QUESTIONNAIRE_LINK}} where you want the link inserted.</div>
+                <div className="text-xs text-slate-500">Tip: include {'{{QUESTIONNAIRE_LINK}}'} where you want the link inserted.</div>
                 <div className="flex gap-2 pt-2">
                   <Button variant="outline" onClick={() => setMoreInfoOpen(false)} className="flex-1">Cancel</Button>
                   <Button

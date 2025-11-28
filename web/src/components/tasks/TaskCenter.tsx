@@ -76,6 +76,7 @@ export function TaskCenter({
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [streakDays, setStreakDays] = useState(0);
   const [todayCompleted, setTodayCompleted] = useState(0);
+  const [emailComposeMap, setEmailComposeMap] = useState<Record<string, { open: boolean; subject: string; body: string; sending?: boolean }>>({});
   // Mobile UI state
   const [headerCollapsed, setHeaderCollapsed] = useState(true);
   const [focusMode, setFocusMode] = useState(false); // hides non-task chrome for deep focus
@@ -734,6 +735,74 @@ export function TaskCenter({
                         </div>
                       </div>
                     )}
+
+                    {/* Inline Reply */}
+                    <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-semibold text-purple-900">Reply</div>
+                        <button
+                          className="text-xs text-purple-700 hover:text-purple-900"
+                          onClick={() => {
+                            setEmailComposeMap(prev => {
+                              const curr = prev[task.id];
+                              const subject = curr?.subject || `Re: ${leadData?.originalEmail?.subject || task.title || 'Your enquiry'}`;
+                              const body = curr?.body || '';
+                              return { ...prev, [task.id]: { open: !curr?.open, subject, body } };
+                            });
+                          }}
+                        >
+                          {emailComposeMap[task.id]?.open ? 'Hide' : 'Reply'}
+                        </button>
+                      </div>
+                      {emailComposeMap[task.id]?.open && (
+                        <div className="space-y-2">
+                          <input
+                            className="w-full rounded border border-purple-200 px-3 py-2 text-sm"
+                            placeholder="Subject"
+                            value={emailComposeMap[task.id]?.subject || ''}
+                            onChange={(e) => setEmailComposeMap(prev => ({ ...prev, [task.id]: { ...(prev[task.id]||{ open: true }), subject: e.target.value, body: prev[task.id]?.body || '' } }))}
+                          />
+                          <textarea
+                            className="w-full rounded border border-purple-200 px-3 py-2 text-sm min-h-[120px]"
+                            placeholder="Write your reply..."
+                            value={emailComposeMap[task.id]?.body || ''}
+                            onChange={(e) => setEmailComposeMap(prev => ({ ...prev, [task.id]: { ...(prev[task.id]||{ open: true }), subject: prev[task.id]?.subject || '', body: e.target.value } }))}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              className="rounded bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 py-2 disabled:opacity-50"
+                              disabled={emailComposeMap[task.id]?.sending}
+                              onClick={async () => {
+                                const compose = emailComposeMap[task.id] || { subject: '', body: '' };
+                                try {
+                                  setEmailComposeMap(prev => ({ ...prev, [task.id]: { ...(prev[task.id]||{ open: true }), sending: true } }));
+                                  await apiFetch(`/tasks/${task.id}/actions/send-email`, {
+                                    method: 'POST',
+                                    headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+                                    json: { subject: compose.subject, body: compose.body },
+                                  });
+                                  alert('Email sent');
+                                  // Optionally clear composer
+                                  setEmailComposeMap(prev => ({ ...prev, [task.id]: { open: true, subject: compose.subject, body: '', sending: false } }));
+                                } catch (e) {
+                                  console.error('Failed to send email', e);
+                                  alert('Failed to send email');
+                                  setEmailComposeMap(prev => ({ ...prev, [task.id]: { ...(prev[task.id]||{ open: true }), sending: false } }));
+                                }
+                              }}
+                            >
+                              Send
+                            </button>
+                            <button
+                              className="rounded border border-purple-300 text-purple-800 text-sm px-3 py-2"
+                              onClick={() => setEmailComposeMap(prev => ({ ...prev, [task.id]: { open: false, subject: '', body: '' } }))}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
