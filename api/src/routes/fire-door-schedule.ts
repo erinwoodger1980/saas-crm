@@ -11,6 +11,7 @@
 import express, { Response } from "express";
 import { prisma } from "../prisma";
 import { completeLinkedTasksForProjectFieldUpdate } from "../services/fire-door-link";
+import { completeTasksOnRecordChangeByLinks } from "../services/field-link";
 
 const router = express.Router();
 
@@ -302,6 +303,8 @@ router.put("/:id", async (req: any, res: Response) => {
       }
       if (Object.keys(changed).length > 0) {
         await completeLinkedTasksForProjectFieldUpdate({ tenantId, projectId: id, changed });
+        // Generic field-link sync for configured links on this model
+        await completeTasksOnRecordChangeByLinks({ tenantId, model: "FireDoorScheduleProject", recordId: id, changed, newRecord: project });
       }
     } catch (e) {
       console.warn("[fire-door-schedule] task sync failed:", (e as any)?.message || e);

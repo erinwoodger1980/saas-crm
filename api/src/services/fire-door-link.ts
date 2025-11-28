@@ -95,13 +95,6 @@ export async function completeLinkedTasksForProjectFieldUpdate(params: {
           status: "DONE" as any,
           completedAt: now,
           autoCompleted: true,
-          meta: {
-            // Keep existing meta and annotate auto-completion
-            // Prisma updateMany does not support JSON merge, so set fields if present
-            // Clients reading can rely on status/completedAt primarily
-            autoCompletedReason: "fireDoorFieldUpdate",
-            autoCompletedAt: now.toISOString(),
-          } as any,
         },
       });
     } catch (e) {

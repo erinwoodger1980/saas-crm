@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { markLinkedProjectFieldFromTaskCompletion } from "../services/fire-door-link";
+import { applyFieldLinkOnTaskComplete } from "../services/field-link";
 import { logEvent, logInsight } from "../services/training";
 
 const router = Router();
@@ -466,9 +467,14 @@ router.post("/:id/complete", async (req, res) => {
 
   // Sync: if task links to a fire door schedule field, update the project
   try {
-    await markLinkedProjectFieldFromTaskCompletion({ tenantId, taskId: id });
+    await markLinkedProjectFieldFromTaskCompletion({ tenantId, taskId });
   } catch (e) {
     console.warn("[tasks:complete] fire-door sync failed:", (e as any)?.message || e);
+  }
+  try {
+    await applyFieldLinkOnTaskComplete({ tenantId, taskId });
+  } catch (e) {
+    console.warn("[tasks:complete] generic field-link sync failed:", (e as any)?.message || e);
   }
 
   await prisma.activityLog.create({

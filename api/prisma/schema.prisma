@@ -3199,3 +3199,19 @@ enum PurchaseOrderStatus {
   RECEIVED
   CANCELLED
 }
+
+/// Field ↔ Task linking for generic entities
+model TaskFieldLink {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  model               String   // Prisma model name e.g., "Opportunity", "Lead", "FireDoorScheduleProject"
+  fieldPath           String   // Dot path within model json fields or top-level field name
+  label               String?
+  completionCondition Json?    // e.g., { kind: "NON_NULL" } | { kind: "EQUALS", value: "Printed in Office" } | { kind: "DATE_SET" }
+  onTaskComplete      Json?    // e.g., { kind: "SET_NOW" } | { kind: "SET_VALUE", value: "Printed in Office" } | { kind: "SET_TRUE" }
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, model, fieldPath])
+}

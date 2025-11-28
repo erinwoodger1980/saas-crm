@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Edit, Trash2, Play, Pause, Zap } from "lucide-react";
+import { X } from "lucide-react";
 
 type AutomationRule = {
   id: string;
@@ -58,6 +59,11 @@ export default function AutomationSettingsPage() {
   const [showEditor, setShowEditor] = useState(false);
   const [editingRule, setEditingRule] = useState<AutomationRule | null>(null);
 
+  // Field ↔ Task Links
+  const [links, setLinks] = useState<any[]>([]);
+  const [showLinkEditor, setShowLinkEditor] = useState(false);
+  const [editingLink, setEditingLink] = useState<any | null>(null);
+
   useEffect(() => {
     const ids = getAuthIdsFromJwt();
     if (ids) {
@@ -70,6 +76,7 @@ export default function AutomationSettingsPage() {
     if (tenantId) {
       loadRules();
       loadUsers();
+      loadLinks();
     }
   }, [tenantId]);
 
@@ -95,6 +102,41 @@ export default function AutomationSettingsPage() {
       setUsers(response || []);
     } catch (error) {
       console.error("Failed to load users:", error);
+    }
+  };
+
+  const loadLinks = async () => {
+    try {
+      const response = await apiFetch<{ items: any[] }>("/automation/field-links", {
+        headers: { "x-tenant-id": tenantId },
+      });
+      setLinks(response.items || []);
+    } catch (error) {
+      console.error("Failed to load field links:", error);
+    }
+  };
+
+  const openLinkEditor = (link?: any) => {
+    setEditingLink(link || null);
+    setShowLinkEditor(true);
+  };
+
+  const closeLinkEditor = () => {
+    setShowLinkEditor(false);
+    setEditingLink(null);
+  };
+
+  const deleteLink = async (link: any) => {
+    if (!confirm(`Delete link \"${link.label || link.fieldPath}\"?`)) return;
+    try {
+      await apiFetch(`/automation/field-links/${link.id}`, {
+        method: "DELETE",
+        headers: { "x-tenant-id": tenantId },
+      });
+      await loadLinks();
+    } catch (error) {
+      console.error("Failed to delete link:", error);
+      alert("Failed to delete link");
     }
   };
 
@@ -268,6 +310,40 @@ export default function AutomationSettingsPage() {
             ))}
           </div>
         )}
+
+        {/* Field ↔ Task Links */}
+        <div className="pt-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-semibold text-slate-900">Field ↔ Task Links</h2>
+            <Button onClick={() => openLinkEditor()} className="gap-2">
+              <Plus className="h-4 w-4" /> New Link
+            </Button>
+          </div>
+          {links.length === 0 ? (
+            <Card className="p-6 text-slate-600">No links configured yet.</Card>
+          ) : (
+            <div className="space-y-3">
+              {links.map((link) => (
+                <Card key={link.id} className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-slate-900">{link.label || `${link.model}.${link.fieldPath}`}</div>
+                    <div className="text-xs text-slate-600 mt-1">
+                      {link.model}.{link.fieldPath} • Complete when: {formatCondition(link.completionCondition)} • On complete: {formatAction(link.onTaskComplete)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => openLinkEditor(link)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => deleteLink(link)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Editor Dialog */}
@@ -280,6 +356,16 @@ export default function AutomationSettingsPage() {
           tenantId={tenantId}
           userId={userId}
           users={users}
+        />
+      )}
+
+      {showLinkEditor && (
+        <FieldLinkEditor
+          open={showLinkEditor}
+          onClose={closeLinkEditor}
+          onSaved={() => { closeLinkEditor(); loadLinks(); }}
+          tenantId={tenantId}
+          link={editingLink}
         />
       )}
     </div>
@@ -622,4 +708,159 @@ function RuleEditor({
       </DialogContent>
     </Dialog>
   );
+}
+
+function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boolean; onClose: () => void; onSaved: () => void; tenantId: string; link: any | null; }) {
+  const [model, setModel] = useState<string>(link?.model || "FireDoorScheduleProject");
+  const [fieldPath, setFieldPath] = useState<string>(link?.fieldPath || "blanksDateOrdered");
+  const [label, setLabel] = useState<string>(link?.label || "");
+  const [condKind, setCondKind] = useState<string>(link?.completionCondition?.kind || "NON_NULL");
+  const [condValue, setCondValue] = useState<string>(link?.completionCondition?.value ?? "");
+  const [actionKind, setActionKind] = useState<string>(link?.onTaskComplete?.kind || "SET_NOW");
+  const [actionValue, setActionValue] = useState<string>(link?.onTaskComplete?.value ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const models = [
+    { value: "FireDoorScheduleProject", label: "Fire Door Project" },
+    { value: "Lead", label: "Lead" },
+    { value: "Opportunity", label: "Opportunity" },
+    { value: "Quote", label: "Quote" },
+  ];
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload: any = {
+        model,
+        fieldPath,
+        label: label || undefined,
+        completionCondition: { kind: condKind, ...(condKind === "EQUALS" ? { value: condValue } : {}) },
+        onTaskComplete: actionKind ? { kind: actionKind, ...(actionKind === "SET_VALUE" ? { value: actionValue } : {}) } : undefined,
+      };
+
+      if (link?.id) {
+        await apiFetch(`/automation/field-links/${link.id}`, {
+          method: "PUT",
+          headers: { "x-tenant-id": tenantId },
+          json: payload,
+        });
+      } else {
+        await apiFetch(`/automation/field-links`, {
+          method: "POST",
+          headers: { "x-tenant-id": tenantId },
+          json: payload,
+        });
+      }
+
+      onSaved();
+    } catch (e) {
+      console.error("Failed to save link", e);
+      alert("Failed to save link");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{link ? "Edit Field ↔ Task Link" : "Create Field ↔ Task Link"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Model</label>
+              <Select value={model} onValueChange={setModel}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {models.map(m => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Field Path</label>
+              <Input value={fieldPath} onChange={(e) => setFieldPath(e.target.value)} placeholder="e.g., blanksDateOrdered" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-2 block">Label (optional)</label>
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Friendly name" />
+          </div>
+
+          <Card className="p-4 border-blue-200 bg-blue-50">
+            <div className="font-semibold text-slate-900 mb-3">What action completes the task?</div>
+            <div className="grid md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Condition</label>
+                <Select value={condKind} onValueChange={setCondKind}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NON_NULL">Field is set</SelectItem>
+                    <SelectItem value="EQUALS">Field equals value</SelectItem>
+                    <SelectItem value="DATE_SET">Field is a date</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {condKind === "EQUALS" && (
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Value</label>
+                  <Input value={condValue} onChange={(e) => setCondValue(e.target.value)} placeholder="e.g., Printed in Office" />
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card className="p-4 border-green-200 bg-green-50">
+            <div className="font-semibold text-slate-900 mb-3">When the task is marked complete, update the field</div>
+            <div className="grid md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Action</label>
+                <Select value={actionKind} onValueChange={setActionKind}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="SET_NOW">Set to current date</SelectItem>
+                    <SelectItem value="SET_VALUE">Set to specific value</SelectItem>
+                    <SelectItem value="SET_TRUE">Set to true</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {actionKind === "SET_VALUE" && (
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Value</label>
+                  <Input value={actionValue} onChange={(e) => setActionValue(e.target.value)} placeholder="e.g., Printed in Office" />
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "Saving..." : link ? "Update Link" : "Create Link"}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function formatCondition(cond: any): string {
+  if (!cond) return "—";
+  if (cond.kind === "NON_NULL") return "field is set";
+  if (cond.kind === "DATE_SET") return "field is a date";
+  if (cond.kind === "EQUALS") return `equals \"${cond.value}\"`;
+  return "custom";
+}
+
+function formatAction(act: any): string {
+  if (!act) return "no change";
+  if (act.kind === "SET_NOW") return "set to now";
+  if (act.kind === "SET_TRUE") return "set true";
+  if (act.kind === "SET_VALUE") return `set \"${act.value}\"`;
+  return "custom";
 }
