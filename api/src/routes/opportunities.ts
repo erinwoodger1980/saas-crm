@@ -7,6 +7,7 @@ import { env } from "../env";
 import fetch from "node-fetch";
 import { FOLLOWUPS_ENABLED } from "../lib/followups-feature";
 import { linkOpportunityToClientAccount } from "../lib/clientAccount";
+import { evaluateAutomationRules } from "./automation-rules";
 
 const router = Router();
 
@@ -901,6 +902,28 @@ router.patch("/:id", async (req: any, res: any) => {
     installationStartDate: updated.installationStartDate,
     installationEndDate: updated.installationEndDate,
   });
+
+  // Evaluate automation rules for this opportunity update
+  try {
+    const changedFields = Object.keys(data);
+    const oldValues: Record<string, any> = {};
+    for (const field of changedFields) {
+      oldValues[field] = (opp as any)[field];
+    }
+    
+    await evaluateAutomationRules({
+      tenantId,
+      entityType: 'OPPORTUNITY',
+      entityId: id,
+      entity: updated,
+      changedFields,
+      oldValues,
+      userId: req.auth?.userId,
+    });
+  } catch (autoErr) {
+    console.error('[opportunities.patch] Automation evaluation error:', autoErr);
+    // Don't fail the request if automation fails
+  }
 
   res.json({ ok: true, opportunity: updated });
 });
