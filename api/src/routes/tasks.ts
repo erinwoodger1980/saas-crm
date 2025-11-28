@@ -467,12 +467,12 @@ router.post("/:id/complete", async (req, res) => {
 
   // Sync: if task links to a fire door schedule field, update the project
   try {
-    await markLinkedProjectFieldFromTaskCompletion({ tenantId, taskId });
+    await markLinkedProjectFieldFromTaskCompletion({ tenantId, taskId: id });
   } catch (e) {
     console.warn("[tasks:complete] fire-door sync failed:", (e as any)?.message || e);
   }
   try {
-    await applyFieldLinkOnTaskComplete({ tenantId, taskId });
+    await applyFieldLinkOnTaskComplete({ tenantId, taskId: id });
   } catch (e) {
     console.warn("[tasks:complete] generic field-link sync failed:", (e as any)?.message || e);
   }
@@ -1176,6 +1176,12 @@ router.post("/:id/complete", async (req: any, res) => {
       await markLinkedProjectFieldFromTaskCompletion({ tenantId, taskId });
     } catch (e) {
       console.warn("[tasks:complete] fire-door sync failed:", (e as any)?.message || e);
+    }
+    // Generic Field ↔ Task link write-back
+    try {
+      await applyFieldLinkOnTaskComplete({ tenantId, taskId });
+    } catch (e) {
+      console.warn("[tasks:complete] generic field-link sync failed:", (e as any)?.message || e);
     }
 
     // If this is a workshop task, mark the process as complete
