@@ -106,7 +106,11 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated, r
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" aria-describedby="task-wizard-desc">
+      <DialogContent 
+        className="max-w-4xl max-h-[90vh] overflow-y-auto z-[70]" 
+        aria-describedby="task-wizard-desc"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <span>{step === "type" ? "Create New Task" : "Task Details"}</span>
