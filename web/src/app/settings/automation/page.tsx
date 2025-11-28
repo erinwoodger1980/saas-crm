@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Plus, Edit, Trash2, Play, Pause, Zap } from "lucide-react";
 import { X } from "lucide-react";
 
@@ -520,6 +520,9 @@ function RuleEditor({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto z-[70]">
         <DialogHeader>
           <DialogTitle>{rule ? "Edit Automation Rule" : "Create Automation Rule"}</DialogTitle>
+          <DialogDescription>
+            Configure when and how tasks are automatically created based on field changes
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -879,9 +882,12 @@ function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boo
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl z-[70]">
         <DialogHeader>
           <DialogTitle>{link ? "Edit Field ↔ Task Link" : "Create Field ↔ Task Link"}</DialogTitle>
+          <DialogDescription>
+            Link a field to a task so they update each other automatically
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
