@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { FollowUpTaskPanel } from "@/components/follow-up/FollowUpTaskPanel";
+import { FileText, CheckSquare } from "lucide-react";
 
 type RecurrencePattern = "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
 type Task = {
