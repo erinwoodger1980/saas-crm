@@ -28,6 +28,8 @@ type Props = {
   tenantId: string;
   userId: string;
   onCreated?: () => void;
+  relatedType?: string;
+  relatedId?: string;
 };
 
 const TASK_TYPES = [
@@ -81,7 +83,7 @@ const TASK_TYPES = [
   }
 ];
 
-export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }: Props) {
+export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated, relatedType, relatedId }: Props) {
   const [step, setStep] = useState<"type" | "details">("type");
   const [selectedType, setSelectedType] = useState<TaskType | null>(null);
   const [saving, setSaving] = useState(false);
@@ -156,6 +158,8 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
           <BasicTaskForm
             tenantId={tenantId}
             userId={userId}
+            relatedType={relatedType}
+            relatedId={relatedId}
             onCreated={() => {
               onCreated?.();
               handleClose();
@@ -167,6 +171,8 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
           <FormTaskCreator
             tenantId={tenantId}
             userId={userId}
+            relatedType={relatedType}
+            relatedId={relatedId}
             onCreated={() => {
               onCreated?.();
               handleClose();
@@ -178,6 +184,8 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
           <ChecklistCreator
             tenantId={tenantId}
             userId={userId}
+            relatedType={relatedType}
+            relatedId={relatedId}
             onCreated={() => {
               onCreated?.();
               handleClose();
@@ -189,6 +197,8 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
           <ScheduledTaskCreator
             tenantId={tenantId}
             userId={userId}
+            relatedType={relatedType}
+            relatedId={relatedId}
             onCreated={() => { onCreated?.(); handleClose(); }}
             setSaving={setSaving}
             saving={saving}
@@ -197,6 +207,8 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
           <FollowUpCreator
             tenantId={tenantId}
             userId={userId}
+            relatedType={relatedType}
+            relatedId={relatedId}
             onCreated={() => {
               onCreated?.();
               handleClose();
@@ -208,6 +220,8 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
           <CommunicationTaskForm
             tenantId={tenantId}
             userId={userId}
+            relatedType={relatedType}
+            relatedId={relatedId}
             onCreated={() => {
               onCreated?.();
               handleClose();
@@ -222,7 +236,7 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
 }
 
 // Basic Task Form
-function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving }: any) {
+function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving, relatedType, relatedId }: any) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
@@ -242,7 +256,9 @@ function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving }: any) 
           description,
           priority,
           taskType: "MANUAL",
-          relatedType: "OTHER",
+          relatedType: relatedType || "OTHER",
+          relatedId: relatedId,
+          assignees: userId ? [{ userId, role: "OWNER" }] : undefined,
           status: "OPEN",
           dueAt: isoDueAt
         }
@@ -314,9 +330,15 @@ function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving }: any) 
 }
 
 // Form Task Creator - Select or create form
-function FormTaskCreator({ tenantId, userId, onCreated, setSaving, saving }: any) {
+function FormTaskCreator({ tenantId, userId, onCreated, setSaving, saving, relatedType, relatedId }: any) {
   const [title, setTitle] = useState("");
   const [fields, setFields] = useState<Array<{ label: string; type: string; options?: string }>>([]);
+  const [requiresSignature, setRequiresSignature] = useState<boolean>(false);
+  const [dueAt, setDueAt] = useState<string>("");
+  const [scheduleForm, setScheduleForm] = useState<boolean>(false);
+  const [pattern, setPattern] = useState<"DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY">("DAILY");
+  const [interval, setInterval] = useState<number>(1);
+  const [startAt, setStartAt] = useState<string>("");
   const addField = () => setFields(f => [...f, { label: "", type: "text" }]);
   const updateField = (i: number, patch: Partial<{ label: string; type: string; options?: string }>) => {
     setFields(f => f.map((field, idx) => idx === i ? { ...field, ...patch } : field));
@@ -328,19 +350,42 @@ function FormTaskCreator({ tenantId, userId, onCreated, setSaving, saving }: any
     setSaving(true);
     try {
       const schemaFields = fields.map(f => ({ label: f.label.trim(), type: f.type, options: f.type === 'select' && f.options ? f.options.split(',').map(o => o.trim()).filter(Boolean) : undefined })).map((f, idx) => ({ ...f, id: `f_${idx}_${Date.now()}` }));
-      await apiFetch('/tasks', {
-        method: 'POST',
-        headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
-        json: {
-          title,
-          description: `Form task with ${schemaFields.length} fields`,
-          taskType: 'FORM',
-          relatedType: 'OTHER',
-          status: 'OPEN',
-          priority: 'MEDIUM',
-          formSchema: { fields: schemaFields },
-        }
-      });
+      const isoDueAt = dueAt ? new Date(dueAt).toISOString() : undefined;
+      const isoStart = startAt ? new Date(startAt).toISOString() : undefined;
+      const baseJson: any = {
+        title,
+        description: `Form task with ${schemaFields.length} fields`,
+        relatedType: relatedType || 'OTHER',
+        relatedId: relatedId,
+        status: 'OPEN',
+        priority: 'MEDIUM',
+        assignees: userId ? [{ userId, role: 'OWNER' }] : undefined,
+        formSchema: { fields: schemaFields },
+        requiresSignature: requiresSignature || undefined,
+      };
+      if (scheduleForm) {
+        await apiFetch('/tasks', {
+          method: 'POST',
+          headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+          json: {
+            ...baseJson,
+            taskType: 'SCHEDULED',
+            dueAt: isoStart,
+            recurrencePattern: pattern,
+            recurrenceInterval: interval,
+          }
+        });
+      } else {
+        await apiFetch('/tasks', {
+          method: 'POST',
+          headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+          json: {
+            ...baseJson,
+            taskType: 'FORM',
+            dueAt: isoDueAt,
+          }
+        });
+      }
       onCreated();
     } catch (e) {
       alert('Failed to create form task');
@@ -390,15 +435,58 @@ function FormTaskCreator({ tenantId, userId, onCreated, setSaving, saving }: any
           </Card>
         ))}
       </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium mb-1 block">Due Date (optional)</label>
+          <Input type="datetime-local" value={dueAt} onChange={e => setDueAt(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-2 mt-6 md:mt-8">
+          <input id="requiresSignature" type="checkbox" className="h-4 w-4" checked={requiresSignature} onChange={e => setRequiresSignature(e.target.checked)} />
+          <label htmlFor="requiresSignature" className="text-sm">Require signature</label>
+        </div>
+      </div>
+
+      <div className="mt-2 p-3 border rounded-lg">
+        <div className="flex items-center gap-2">
+          <input id="scheduleForm" type="checkbox" className="h-4 w-4" checked={scheduleForm} onChange={e => setScheduleForm(e.target.checked)} />
+          <label htmlFor="scheduleForm" className="text-sm font-medium">Schedule this form</label>
+        </div>
+        {scheduleForm && (
+          <div className="mt-3 grid md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Pattern</label>
+              <Select value={pattern} onValueChange={(v: any) => setPattern(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DAILY">Daily</SelectItem>
+                  <SelectItem value="WEEKLY">Weekly</SelectItem>
+                  <SelectItem value="MONTHLY">Monthly</SelectItem>
+                  <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+                  <SelectItem value="YEARLY">Yearly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Interval</label>
+              <Input type="number" min={1} value={interval} onChange={e => setInterval(Math.max(1, Number(e.target.value)||1))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Start</label>
+              <Input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} />
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-end pt-2">
-        <Button onClick={handleCreate} disabled={saving || !title.trim() || fields.length === 0 || fields.some(f => !f.label.trim())}>Create Form Task</Button>
+        <Button onClick={handleCreate} disabled={saving || !title.trim() || fields.length === 0 || fields.some(f => !f.label.trim())}>{scheduleForm ? 'Create Scheduled Form' : 'Create Form Task'}</Button>
       </div>
     </div>
   );
 }
 
 // Checklist Creator
-function ChecklistCreator({ tenantId, userId, onCreated, setSaving, saving }: any) {
+function ChecklistCreator({ tenantId, userId, onCreated, setSaving, saving, relatedType, relatedId }: any) {
   const [title, setTitle] = useState("");
   const [items, setItems] = useState<string[]>([""]);
 
@@ -424,9 +512,11 @@ function ChecklistCreator({ tenantId, userId, onCreated, setSaving, saving }: an
           title,
           description: `Checklist with ${validItems.length} items:\n${validItems.map((item, i) => `${i + 1}. ${item}`).join('\n')}`,
           taskType: "CHECKLIST",
-          relatedType: "OTHER",
+          relatedType: relatedType || "OTHER",
+          relatedId: relatedId,
           status: "OPEN",
-          priority: "MEDIUM"
+          priority: "MEDIUM",
+          assignees: userId ? [{ userId, role: "OWNER" }] : undefined,
         }
       });
       onCreated();
@@ -488,7 +578,7 @@ function ChecklistCreator({ tenantId, userId, onCreated, setSaving, saving }: an
 }
 
 // Follow-up Creator - Email with AI
-function FollowUpCreator({ tenantId, userId, onCreated, setSaving, saving }: any) {
+function FollowUpCreator({ tenantId, userId, onCreated, setSaving, saving, relatedType, relatedId }: any) {
   const [recipient, setRecipient] = useState("");
   const [subject, setSubject] = useState("");
   const [context, setContext] = useState("");
@@ -506,9 +596,11 @@ function FollowUpCreator({ tenantId, userId, onCreated, setSaving, saving }: any
           title: `Follow-up: ${subject}`,
           description: `Email follow-up to ${recipient}\nTone: ${tone}\nContext: ${context}`,
           taskType: "FOLLOW_UP",
-          relatedType: "OTHER",
+          relatedType: relatedType || "OTHER",
+          relatedId: relatedId,
           status: "OPEN",
-          priority: "MEDIUM"
+          priority: "MEDIUM",
+          assignees: userId ? [{ userId, role: "OWNER" }] : undefined,
         }
       });
       onCreated();
@@ -591,7 +683,7 @@ function FollowUpCreator({ tenantId, userId, onCreated, setSaving, saving }: any
 }
 
 // Communication Task Form
-function CommunicationTaskForm({ tenantId, userId, onCreated, setSaving, saving }: any) {
+function CommunicationTaskForm({ tenantId, userId, onCreated, setSaving, saving, relatedType, relatedId }: any) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<"call" | "meeting" | "email">("call");
   const [notes, setNotes] = useState("");
@@ -610,99 +702,14 @@ function CommunicationTaskForm({ tenantId, userId, onCreated, setSaving, saving 
           title,
           description: `${type.toUpperCase()}: ${notes}`,
           taskType: "COMMUNICATION",
-          relatedType: "OTHER",
+          relatedType: relatedType || "OTHER",
+          relatedId: relatedId,
           status: "OPEN",
           priority: "MEDIUM",
-          dueAt: isoScheduled
+          dueAt: isoScheduled,
+          assignees: userId ? [{ userId, role: "OWNER" }] : undefined,
         }
       });
-      // Scheduled Task Creator
-      function ScheduledTaskCreator({ tenantId, userId, onCreated, setSaving, saving }: any) {
-        const [title, setTitle] = useState("");
-        const [description, setDescription] = useState("");
-        const [pattern, setPattern] = useState<"DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY">("DAILY");
-        const [interval, setInterval] = useState(1);
-        const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
-        const [startAt, setStartAt] = useState("");
-
-        const handleCreate = async () => {
-          if (!title.trim()) return;
-          setSaving(true);
-          try {
-            const isoStart = startAt ? new Date(startAt).toISOString() : undefined;
-            await apiFetch('/tasks', {
-              method: 'POST',
-              headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
-              json: {
-                title,
-                description,
-                taskType: 'SCHEDULED',
-                relatedType: 'OTHER',
-                status: 'OPEN',
-                priority,
-                dueAt: isoStart,
-                recurrencePattern: pattern,
-                recurrenceInterval: interval,
-              }
-            });
-            onCreated();
-          } catch { alert('Failed to create scheduled task'); }
-          finally { setSaving(false); }
-        };
-
-        return (
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Title *</label>
-              <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Weekly Project Review" autoFocus />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">Description</label>
-              <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} placeholder="Optional context" />
-            </div>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Recurrence Pattern</label>
-                <Select value={pattern} onValueChange={(v: any) => setPattern(v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DAILY">Daily</SelectItem>
-                    <SelectItem value="WEEKLY">Weekly</SelectItem>
-                    <SelectItem value="MONTHLY">Monthly</SelectItem>
-                    <SelectItem value="QUARTERLY">Quarterly</SelectItem>
-                    <SelectItem value="YEARLY">Yearly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Interval</label>
-                <Input type="number" min={1} value={interval} onChange={e => setInterval(Math.max(1, Number(e.target.value)||1))} />
-              </div>
-            </div>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Priority</label>
-                <Select value={priority} onValueChange={(v: any) => setPriority(v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="LOW">Low</SelectItem>
-                    <SelectItem value="MEDIUM">Medium</SelectItem>
-                    <SelectItem value="HIGH">High</SelectItem>
-                    <SelectItem value="URGENT">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Start / First Due</label>
-                <Input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} />
-              </div>
-            </div>
-            <div className="flex justify-end pt-2">
-              <Button onClick={handleCreate} disabled={saving || !title.trim()}>Create Scheduled Task</Button>
-            </div>
-          </div>
-        );
-      }
       onCreated();
     } catch (error) {
       console.error("Failed to create communication:", error);
@@ -761,6 +768,96 @@ function CommunicationTaskForm({ tenantId, userId, onCreated, setSaving, saving 
         <Button onClick={handleCreate} disabled={saving || !title.trim()}>
           Create Communication
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// Scheduled Task Creator (top-level)
+function ScheduledTaskCreator({ tenantId, userId, onCreated, setSaving, saving, relatedType, relatedId }: any) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [pattern, setPattern] = useState<"DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY">("DAILY");
+  const [interval, setInterval] = useState<number>(1);
+  const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
+  const [startAt, setStartAt] = useState<string>("");
+
+  const handleCreate = async () => {
+    if (!title.trim()) return;
+    setSaving(true);
+    try {
+      const isoStart = startAt ? new Date(startAt).toISOString() : undefined;
+      await apiFetch('/tasks', {
+        method: 'POST',
+        headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+        json: {
+          title,
+          description,
+          taskType: 'SCHEDULED',
+          relatedType: relatedType || 'OTHER',
+          relatedId: relatedId,
+          status: 'OPEN',
+          priority,
+          dueAt: isoStart,
+          recurrencePattern: pattern,
+          recurrenceInterval: interval,
+          assignees: userId ? [{ userId, role: 'OWNER' }] : undefined,
+        }
+      });
+      onCreated();
+    } catch { alert('Failed to create scheduled task'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="text-sm font-medium mb-2 block">Title *</label>
+        <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Weekly Project Review" autoFocus />
+      </div>
+      <div>
+        <label className="text-sm font-medium mb-2 block">Description</label>
+        <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} placeholder="Optional context" />
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        <div>
+          <label className="text-sm font-medium mb-2 block">Recurrence Pattern</label>
+          <Select value={pattern} onValueChange={(v: any) => setPattern(v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="DAILY">Daily</SelectItem>
+              <SelectItem value="WEEKLY">Weekly</SelectItem>
+              <SelectItem value="MONTHLY">Monthly</SelectItem>
+              <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+              <SelectItem value="YEARLY">Yearly</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-2 block">Interval</label>
+          <Input type="number" min={1} value={interval} onChange={e => setInterval(Math.max(1, Number(e.target.value)||1))} />
+        </div>
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        <div>
+          <label className="text-sm font-medium mb-2 block">Priority</label>
+          <Select value={priority} onValueChange={(v: any) => setPriority(v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="LOW">Low</SelectItem>
+              <SelectItem value="MEDIUM">Medium</SelectItem>
+              <SelectItem value="HIGH">High</SelectItem>
+              <SelectItem value="URGENT">Urgent</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-2 block">Start / First Due</label>
+          <Input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} />
+        </div>
+      </div>
+      <div className="flex justify-end pt-2">
+        <Button onClick={handleCreate} disabled={saving || !title.trim()}>Create Scheduled Task</Button>
       </div>
     </div>
   );

@@ -656,13 +656,7 @@ export function TaskCenter({
               <h1 className="text-3xl font-bold text-gray-900">{filterRelatedType && filterRelatedId ? `${filterRelatedType} Tasks` : 'Task Center'}</h1>
               <p className="text-gray-600 mt-1">{filterRelatedType && filterRelatedId ? 'Filtered to the current record' : 'Manage all your tasks, communications, and forms in one place'}</p>
             </div>
-            <div className="hidden md:flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setExpandAll(v => !v)}>{expandAll ? 'Collapse All' : 'Expand All'}</Button>
-            </div>
-              <Button variant="default" onClick={handleNewTask} className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 mr-2" />
-                New
-              </Button>
+            <div className="hidden md:flex items-center gap-2" />
           </div>
 
           {/* Stats (mobile collapsed view handled above) */}
@@ -705,6 +699,13 @@ export function TaskCenter({
                 <Button variant={showOnlyMine ? 'default' : 'outline'} onClick={() => setShowOnlyMine(!showOnlyMine)} className="w-full sm:w-auto">
                   <Filter className="h-4 w-4 mr-2" />
                   {showOnlyMine ? 'My Tasks' : 'All Tasks'}
+                </Button>
+                <Button variant="outline" onClick={() => setExpandAll(v => !v)} className="w-full sm:w-auto">
+                  {expandAll ? 'Collapse All' : 'Expand All'}
+                </Button>
+                <Button variant="default" onClick={handleNewTask} className="w-full sm:w-auto">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New
                 </Button>
               </div>
             </Card>
@@ -815,6 +816,8 @@ export function TaskCenter({
         onClose={() => setShowCreateWizard(false)}
         tenantId={tenantId}
         userId={userId}
+        relatedType={filterRelatedType}
+        relatedId={filterRelatedId}
         onCreated={() => loadTasks()}
       />
 
