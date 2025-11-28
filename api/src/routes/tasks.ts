@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
+import { markLinkedProjectFieldFromTaskCompletion } from "../services/fire-door-link";
 import { logEvent, logInsight } from "../services/training";
 
 const router = Router();
@@ -462,6 +463,13 @@ router.post("/:id/complete", async (req, res) => {
     where: { id },
     data: { status: "DONE" as any, completedAt: new Date(), updatedById: actorId },
   });
+
+  // Sync: if task links to a fire door schedule field, update the project
+  try {
+    await markLinkedProjectFieldFromTaskCompletion({ tenantId, taskId: id });
+  } catch (e) {
+    console.warn("[tasks:complete] fire-door sync failed:", (e as any)?.message || e);
+  }
 
   await prisma.activityLog.create({
     data: { tenantId, entity: "TASK", entityId: id, verb: "COMPLETED", actorId, data: {} as any },
@@ -1156,6 +1164,13 @@ router.post("/:id/complete", async (req: any, res) => {
         completedAt: new Date(),
       },
     });
+
+    // Sync: if task links to a fire door schedule field, update the project
+    try {
+      await markLinkedProjectFieldFromTaskCompletion({ tenantId, taskId });
+    } catch (e) {
+      console.warn("[tasks:complete] fire-door sync failed:", (e as any)?.message || e);
+    }
 
     // If this is a workshop task, mark the process as complete
     if (task.relatedType === "WORKSHOP" && task.relatedId) {

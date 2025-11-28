@@ -10,6 +10,7 @@
 
 import express, { Response } from "express";
 import { prisma } from "../prisma";
+import { completeLinkedTasksForProjectFieldUpdate } from "../services/fire-door-link";
 
 const router = express.Router();
 
@@ -289,6 +290,22 @@ router.put("/:id", async (req: any, res: Response) => {
       where: { id },
       data: updateData,
     });
+
+    // After updating, auto-complete any tasks linked to changed fields
+    try {
+      const changed: any = {};
+      if (Object.prototype.hasOwnProperty.call(updateData, "blanksDateOrdered")) {
+        changed.blanksDateOrdered = (updateData as any).blanksDateOrdered;
+      }
+      if (Object.prototype.hasOwnProperty.call(updateData, "doorPaperworkStatus")) {
+        changed.doorPaperworkStatus = (updateData as any).doorPaperworkStatus;
+      }
+      if (Object.keys(changed).length > 0) {
+        await completeLinkedTasksForProjectFieldUpdate({ tenantId, projectId: id, changed });
+      }
+    } catch (e) {
+      console.warn("[fire-door-schedule] task sync failed:", (e as any)?.message || e);
+    }
 
     res.json(project);
   } catch (error) {
