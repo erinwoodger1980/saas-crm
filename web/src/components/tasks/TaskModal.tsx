@@ -56,6 +56,9 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
   const [addUserId, setAddUserId] = useState("");
   const [emailThread, setEmailThread] = useState<Array<{ id: string; subject?: string; from?: string; to?: string; date?: string; snippet?: string; body?: string }>>([]);
   const [emailLoading, setEmailLoading] = useState(false);
+  const [fieldLinks, setFieldLinks] = useState<Array<{ id: string; model: string; fieldPath: string; label?: string }>>([]);
+  const [selectedLinkId, setSelectedLinkId] = useState<string>("");
+  const [linkedRecordId, setLinkedRecordId] = useState<string>("");
   const [leadAttachments, setLeadAttachments] = useState<Array<{ filename?: string; name?: string; url?: string; path?: string }>>([]);
   const [moreInfoOpen, setMoreInfoOpen] = useState(false);
   const [moreInfoSubject, setMoreInfoSubject] = useState("Could you provide a few more details?");
@@ -240,6 +243,33 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
     return () => { cancelled = true; };
   }, [open, isNewTask, tenantId, userId]);
 
+  // Load field links when modal opens
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    async function loadLinks() {
+      try {
+        const res: any = await apiFetch('/automation/field-links', {
+          method: 'GET',
+          headers: authHeaders,
+        });
+        if (!cancelled && Array.isArray(res?.items)) {
+          setFieldLinks(res.items);
+          // Pre-populate if task already has a field link
+          const existingLink = form?.meta?.linkedField;
+          if (existingLink?.type === 'fieldLink' && existingLink?.linkId && existingLink?.recordId) {
+            setSelectedLinkId(existingLink.linkId);
+            setLinkedRecordId(existingLink.recordId);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load field links:', e);
+      }
+    }
+    loadLinks();
+    return () => { cancelled = true; };
+  }, [open, authHeaders, form?.meta]);
+
   async function modifyAssignees(addIds: string[] = [], removeIds: string[] = []) {
     if (!form || isNewTask || (!addIds.length && !removeIds.length)) return;
     setAssigneeBusy(true);
@@ -266,6 +296,46 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
     } finally {
       setAssigneeBusy(false);
       setAddUserId("");
+    }
+  }
+
+  async function linkToField() {
+    if (!form || isNewTask || !selectedLinkId || !linkedRecordId.trim()) return;
+    setSaving(true);
+    try {
+      const newMeta = {
+        ...(form.meta || {}),
+        linkedField: {
+          type: 'fieldLink',
+          linkId: selectedLinkId,
+          recordId: linkedRecordId.trim(),
+        },
+      };
+      await update({ meta: newMeta as any });
+      setForm(prev => prev ? { ...prev, meta: newMeta } : prev);
+      toast('Task linked to field');
+    } catch (e) {
+      toast('Failed to link task to field');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function unlinkFromField() {
+    if (!form || isNewTask) return;
+    setSaving(true);
+    try {
+      const newMeta = { ...(form.meta || {}) };
+      delete (newMeta as any).linkedField;
+      await update({ meta: newMeta as any });
+      setForm(prev => prev ? { ...prev, meta: newMeta } : prev);
+      setSelectedLinkId("");
+      setLinkedRecordId("");
+      toast('Task unlinked from field');
+    } catch (e) {
+      toast('Failed to unlink task');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -659,6 +729,97 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                 />
               </div>
             </div>
+
+            {/* FIELD LINK SECTION */}
+            {!isNewTask && (
+              <div className="md:col-span-3">
+                <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Field Link</div>
+                    {form?.meta?.linkedField?.type === 'fieldLink' && (
+                      <button
+                        onClick={unlinkFromField}
+                        disabled={saving}
+                        className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                      >
+                        Unlink
+                      </button>
+                    )}
+                  </div>
+                  {form?.meta?.linkedField?.type === 'fieldLink' ? (
+                    <div className="space-y-2">
+                      <div className="rounded-lg bg-white p-3 text-sm">
+                        <div className="font-medium text-emerald-900">Linked to Field</div>
+                        {(() => {
+                          const link = fieldLinks.find(l => l.id === form.meta.linkedField.linkId);
+                          return link ? (
+                            <div className="mt-1 text-xs text-slate-600">
+                              {link.label || `${link.model}.${link.fieldPath}`}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-xs text-slate-600">
+                              Link ID: {form.meta.linkedField.linkId}
+                            </div>
+                          );
+                        })()}
+                        <div className="text-xs text-slate-600">
+                          Record: {form.meta.linkedField.recordId}
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-600">
+                        This task is bidirectionally linked to a field. When the field changes, this task auto-completes. When you complete this task, the field updates.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-600">
+                        Link this task to a field for bidirectional updates
+                      </p>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">Field Link</label>
+                        <select
+                          value={selectedLinkId}
+                          onChange={(e) => setSelectedLinkId(e.target.value)}
+                          className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-200"
+                        >
+                          <option value="">Select a field link...</option>
+                          {fieldLinks.map(link => (
+                            <option key={link.id} value={link.id}>
+                              {link.label || `${link.model}.${link.fieldPath}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">Record ID</label>
+                        <input
+                          type="text"
+                          value={linkedRecordId}
+                          onChange={(e) => setLinkedRecordId(e.target.value)}
+                          placeholder={form.relatedId || "Enter record ID..."}
+                          className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-200"
+                        />
+                        {form.relatedId && (
+                          <button
+                            onClick={() => setLinkedRecordId(form.relatedId!)}
+                            className="mt-1 text-xs text-emerald-600 hover:text-emerald-700"
+                          >
+                            Use related record ID ({form.relatedType})
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        onClick={linkToField}
+                        disabled={!selectedLinkId || !linkedRecordId.trim() || saving}
+                        className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Link Task to Field
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* FOLLOW-UP PANEL (AI email) */}

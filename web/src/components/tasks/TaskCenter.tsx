@@ -56,6 +56,7 @@ export function TaskCenter({
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showOnlyMine, setShowOnlyMine] = useState(true);
+  const [formDataMap, setFormDataMap] = useState<Record<string, Record<string, any>>>({});
 
   // Get auth IDs on mount and when localStorage changes
   useEffect(() => {
@@ -127,6 +128,18 @@ export function TaskCenter({
       );
       
       setTasks(response.items);
+      
+      // Initialize formDataMap with existing submissions
+      const newFormDataMap: Record<string, Record<string, any>> = {};
+      response.items.forEach((task: Task) => {
+        if (task.taskType === 'FORM' && task.formSchema?.submissions && Array.isArray(task.formSchema.submissions) && task.formSchema.submissions.length > 0) {
+          const latestSubmission = task.formSchema.submissions[task.formSchema.submissions.length - 1];
+          if (latestSubmission?.data) {
+            newFormDataMap[task.id] = latestSubmission.data;
+          }
+        }
+      });
+      setFormDataMap(prev => ({ ...prev, ...newFormDataMap }));
     } catch (error) {
       console.error("Failed to load tasks:", error);
       setTasks([]);
@@ -321,10 +334,22 @@ export function TaskCenter({
       // Fetch lead details if not already cached and leadId exists
       if (leadId && !leadPreviews[leadId]) {
         try {
-          const lead = await apiFetch<any>(`/leads/${leadId}`, {
-            headers: { "x-tenant-id": tenantId },
-          });
-          setLeadPreviews(prev => ({ ...prev, [leadId]: lead }));
+          const [lead, emailsRes] = await Promise.all([
+            apiFetch<any>(`/leads/${leadId}`, {
+              headers: { "x-tenant-id": tenantId },
+            }),
+            apiFetch<any>(`/leads/${leadId}/emails`, {
+              headers: { "x-tenant-id": tenantId },
+            }).catch(() => ({ items: [] })) // Fallback if emails endpoint fails
+          ]);
+          
+          // Merge emails into lead data
+          const leadWithEmails = {
+            ...lead,
+            emails: emailsRes.items || []
+          };
+          
+          setLeadPreviews(prev => ({ ...prev, [leadId]: leadWithEmails }));
         } catch (err) {
           console.error('Failed to fetch lead details:', err);
         }
@@ -600,6 +625,118 @@ export function TaskCenter({
                   </div>
                 )}
 
+                {/* Email Thread & Attachments (for FOLLOW_UP tasks) */}
+                {task.taskType === "FOLLOW_UP" && leadData && (
+                  <div className="space-y-3">
+                    {/* Email Thread */}
+                    {leadData.emails && leadData.emails.length > 0 && (
+                      <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                        <div className="font-semibold text-purple-900 mb-3 flex items-center gap-2">
+                          <Mail className="h-4 w-4" />
+                          Email Conversation ({leadData.emails.length})
+                        </div>
+                        <div className="space-y-3">
+                          {leadData.emails.map((email: any, idx: number) => (
+                            <div key={email.id || idx} className="bg-white rounded-lg p-3 border border-purple-100">
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex-1">
+                                  <div className="font-medium text-sm text-gray-900">{email.subject || '(No subject)'}</div>
+                                  <div className="text-xs text-gray-600 mt-1">
+                                    <span className="font-medium">From:</span> {email.from || 'Unknown'}
+                                  </div>
+                                  {email.to && (
+                                    <div className="text-xs text-gray-600">
+                                      <span className="font-medium">To:</span> {email.to}
+                                    </div>
+                                  )}
+                                </div>
+                                {email.date && (
+                                  <div className="text-xs text-gray-500 ml-2">
+                                    {new Date(email.date).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                              {email.snippet && (
+                                <div className="text-sm text-gray-700 mt-2 line-clamp-3 italic">
+                                  {email.snippet}
+                                </div>
+                              )}
+                              {email.body && (
+                                <details className="mt-2">
+                                  <summary className="text-xs text-purple-600 cursor-pointer hover:text-purple-800">
+                                    View full message
+                                  </summary>
+                                  <div className="mt-2 text-sm text-gray-700 whitespace-pre-wrap max-h-60 overflow-auto bg-gray-50 rounded p-2">
+                                    {email.body}
+                                  </div>
+                                </details>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Email Attachments */}
+                    {leadData.attachments && leadData.attachments.length > 0 && (
+                      <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-200">
+                        <div className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          Email Attachments ({leadData.attachments.length})
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {leadData.attachments.map((att: any, idx: number) => {
+                            const fileName = att.filename || att.name || `Attachment ${idx + 1}`;
+                            const fileUrl = att.url || att.path;
+                            const isImage = fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                            const isPdf = fileName.match(/\.pdf$/i);
+                            
+                            return (
+                              <div key={idx} className="bg-white rounded-lg p-3 border border-indigo-100">
+                                <a
+                                  href={fileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-start gap-2 group"
+                                >
+                                  <FileText className="h-4 w-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-indigo-900 group-hover:text-indigo-700 truncate">
+                                      {fileName}
+                                    </div>
+                                    {att.size && (
+                                      <div className="text-xs text-gray-500">
+                                        {(att.size / 1024).toFixed(1)} KB
+                                      </div>
+                                    )}
+                                  </div>
+                                </a>
+                                {/* Image preview */}
+                                {isImage && fileUrl && (
+                                  <div className="mt-2 rounded overflow-hidden border border-gray-200">
+                                    <img 
+                                      src={fileUrl} 
+                                      alt={fileName}
+                                      className="w-full h-32 object-cover"
+                                      loading="lazy"
+                                    />
+                                  </div>
+                                )}
+                                {/* PDF preview indicator */}
+                                {isPdf && (
+                                  <div className="mt-2 text-xs text-gray-600 bg-gray-50 rounded px-2 py-1">
+                                    📄 PDF Document
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Form Fields (for FORM tasks) */}
                 {task.taskType === "FORM" && task.formSchema?.fields && task.formSchema.fields.length > 0 && (
                   <div className="bg-pink-50 rounded-lg p-4 border border-pink-200">
@@ -613,6 +750,35 @@ export function TaskCenter({
                         const label = field.label || key;
                         const type = (field.type || "text").toLowerCase();
                         const required = field.required ? " *" : "";
+                        const taskFormData = formDataMap[task.id] || {};
+                        const value = taskFormData[key] || "";
+                        
+                        const handleChange = (newValue: string) => {
+                          setFormDataMap(prev => ({
+                            ...prev,
+                            [task.id]: { ...(prev[task.id] || {}), [key]: newValue }
+                          }));
+                        };
+                        
+                        const handleBlur = async () => {
+                          try {
+                            // Save incrementally by updating the latest submission or creating one
+                            const currentData = formDataMap[task.id] || {};
+                            await apiFetch(`/tasks/${task.id}`, {
+                              method: 'PATCH',
+                              headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+                              json: { 
+                                formSubmissions: [{
+                                  submittedAt: new Date().toISOString(),
+                                  submittedBy: userId,
+                                  data: currentData
+                                }]
+                              },
+                            });
+                          } catch (e) {
+                            console.error('Failed to save form data:', e);
+                          }
+                        };
                         
                         return (
                           <div key={key} className="bg-white rounded-lg p-3 border border-pink-100">
@@ -620,9 +786,11 @@ export function TaskCenter({
                               {label}{required}
                             </label>
                             {type === "select" && field.options?.length ? (
-                              <select 
-                                disabled
-                                className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
+                              <select
+                                value={value}
+                                onChange={(e) => handleChange(e.target.value)}
+                                onBlur={handleBlur}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:ring-2 focus:ring-pink-200"
                               >
                                 <option value="">Select...</option>
                                 {field.options.map((opt: string) => (
@@ -631,24 +799,25 @@ export function TaskCenter({
                               </select>
                             ) : type === "textarea" ? (
                               <textarea
-                                disabled
+                                value={value}
+                                onChange={(e) => handleChange(e.target.value)}
+                                onBlur={handleBlur}
                                 placeholder="Enter response..."
-                                className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm min-h-[80px]"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-[80px] focus:border-pink-400 focus:ring-2 focus:ring-pink-200"
                               />
                             ) : (
                               <input
-                                disabled
-                                type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+                                type={type === "number" ? "number" : type === "date" ? "date" : type === "email" ? "email" : "text"}
+                                value={value}
+                                onChange={(e) => handleChange(e.target.value)}
+                                onBlur={handleBlur}
                                 placeholder="Enter response..."
-                                className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:ring-2 focus:ring-pink-200"
                               />
                             )}
                           </div>
                         );
                       })}
-                    </div>
-                    <div className="mt-3 text-xs text-pink-700 bg-pink-100 rounded px-3 py-2">
-                      💡 Click "Complete Task" or open the task modal to fill in these fields
                     </div>
                   </div>
                 )}
@@ -662,23 +831,43 @@ export function TaskCenter({
                     </div>
                     <div className="space-y-2">
                       {task.checklistItems.map((item: any) => (
-                        <div 
+                        <button
                           key={item.id}
-                          className={`flex items-center gap-3 p-2 rounded-lg ${
+                          onClick={async () => {
+                            try {
+                              await apiFetch(`/tasks/${task.id}/checklist/${item.id}/toggle`, {
+                                method: 'POST',
+                                headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+                              });
+                              // Update local state
+                              setTasks(prev => prev.map(t => {
+                                if (t.id !== task.id) return t;
+                                return {
+                                  ...t,
+                                  checklistItems: t.checklistItems?.map(ci => 
+                                    ci.id === item.id ? { ...ci, completed: !ci.completed } : ci
+                                  )
+                                };
+                              }));
+                            } catch (e) {
+                              console.error('Failed to toggle checklist item:', e);
+                            }
+                          }}
+                          className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors hover:opacity-80 ${
                             item.completed 
                               ? "bg-green-100 text-green-800" 
-                              : "bg-white text-gray-700"
+                              : "bg-white text-gray-700 hover:bg-gray-50"
                           }`}
                         >
-                          <div className={`flex items-center justify-center h-5 w-5 rounded border-2 ${
+                          <div className={`flex items-center justify-center h-5 w-5 rounded border-2 transition-colors ${
                             item.completed 
                               ? "bg-green-500 border-green-600" 
                               : "bg-white border-gray-300"
                           }`}>
                             {item.completed && <span className="text-white text-xs">✓</span>}
                           </div>
-                          <span className="text-sm flex-1">{item.label}</span>
-                        </div>
+                          <span className="text-sm flex-1 text-left">{item.label}</span>
+                        </button>
                       ))}
                     </div>
                   </div>
