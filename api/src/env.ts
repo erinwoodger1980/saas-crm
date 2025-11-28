@@ -112,6 +112,20 @@ export const env = {
 
   // ML safety
   ML_REDACT_PII: String(process.env.ML_REDACT_PII ?? "true").toLowerCase() !== "false",
+
+  // Email configuration
+  SMTP_HOST: process.env.SMTP_HOST ?? "",
+  SMTP_PORT: process.env.SMTP_PORT ?? "587",
+  SMTP_USER: process.env.SMTP_USER ?? "",
+  SMTP_PASS: process.env.SMTP_PASS ?? "",
+  SMTP_SECURE: process.env.SMTP_SECURE ?? "false",
+
+  // Web URL for deep links in emails
+  WEB_URL: process.env.WEB_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://app.joineryai.app",
+
+  // OpenAI model configuration
+  OPENAI_MODEL: process.env.OPENAI_MODEL ?? "gpt-4o",
+  OPENAI_MODEL_FAST: process.env.OPENAI_MODEL_FAST ?? "gpt-4o-mini",
 } as const;
 
 console.log('✅ Environment configuration loaded successfully');

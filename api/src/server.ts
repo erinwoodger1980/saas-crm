@@ -12,6 +12,7 @@ import { env } from "./env";
 import { prisma } from "./prisma";
 import { normalizeEmail } from "./lib/email";
 import { startRecurringTaskProcessor } from "./services/recurring-task-processor";
+import { initializeScheduler } from "./services/scheduler";
 
 // Helper to generate unique tenant slug
 async function generateUniqueSlug(baseName: string): Promise<string> {
@@ -103,6 +104,7 @@ import purchaseOrderUploadRouter from "./routes/purchase-order-upload";
 import automationRulesRouter from "./routes/automation-rules";
 import estimatorAiRouter from "./routes/estimator-ai";
 import quoteApprovalRouter from "./routes/quote-approval";
+import schedulerRouter from "./routes/scheduler";
 import mlTrainingRouter from "./routes/ml-training";
 import examplePhotosRouter from "./routes/example-photos";
 import fireDoorsRouter from "./routes/fire-doors";
@@ -630,6 +632,7 @@ app.use("/feedback", feedbackRouter);
 app.use("/files", filesRouter);
 app.use("/tasks", tasksRouter);
 app.use("/automation-rules", requireAuth, automationRulesRouter);
+app.use("/scheduler", requireAuth, schedulerRouter);
 app.use("/events", eventsRouter);
 app.use("/notifications", notificationsRouter);
 app.use("/streaks", streaksRouter);
@@ -969,6 +972,14 @@ function startServer() {
         console.warn(`[ml] ML_URL is '${mlEnv}' which points to localhost in production — update your API env to the deployed ML service URL.`);
       } else {
         console.log(`[ml] ML proxy target: ${mlEnv}`);
+      }
+      
+      // Initialize scheduled jobs (cron tasks)
+      try {
+        initializeScheduler();
+        console.log('⏰ Scheduled jobs initialized');
+      } catch (error: any) {
+        console.error('❌ Failed to initialize scheduler:', error.message);
       }
     });
 

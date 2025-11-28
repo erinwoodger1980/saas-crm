@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { FeedbackStatus } from "@prisma/client";
 import { prisma } from "../prisma";
+import { sendFeedbackNotification } from "../services/email-notification";
 
 const router = Router();
 
@@ -202,6 +203,31 @@ router.post("/", async (req: any, res) => {
         throw e;
       }
     }
+
+    // Send email notification to admin (non-blocking)
+    (async () => {
+      try {
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: auth.tenantId },
+          select: { name: true },
+        });
+
+        await sendFeedbackNotification({
+          tenantName: tenant?.name || auth.tenantId,
+          tenantId: auth.tenantId,
+          userName: row.user?.name || undefined,
+          userEmail: row.user?.email || undefined,
+          feature: row.feature,
+          rating: row.rating || undefined,
+          comment: row.comment || undefined,
+          sourceUrl: row.sourceUrl || undefined,
+          createdAt: row.createdAt,
+        });
+      } catch (emailError) {
+        console.error("[feedback] Failed to send email notification:", emailError);
+        // Don't fail the request if email fails
+      }
+    })();
 
     res.json({ ok: true, feedback: row });
   } catch (e: any) {
