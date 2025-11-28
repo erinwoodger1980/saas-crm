@@ -599,6 +599,90 @@ export function TaskCenter({
                     </div>
                   </div>
                 )}
+
+                {/* Form Fields (for FORM tasks) */}
+                {task.taskType === "FORM" && task.formSchema?.fields && task.formSchema.fields.length > 0 && (
+                  <div className="bg-pink-50 rounded-lg p-4 border border-pink-200">
+                    <div className="font-semibold text-pink-900 mb-3 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Form Fields ({task.formSchema.fields.length})
+                    </div>
+                    <div className="space-y-3">
+                      {task.formSchema.fields.map((field: any, idx: number) => {
+                        const key = field.key || field.id || field.label || `field_${idx}`;
+                        const label = field.label || key;
+                        const type = (field.type || "text").toLowerCase();
+                        const required = field.required ? " *" : "";
+                        
+                        return (
+                          <div key={key} className="bg-white rounded-lg p-3 border border-pink-100">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              {label}{required}
+                            </label>
+                            {type === "select" && field.options?.length ? (
+                              <select 
+                                disabled
+                                className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
+                              >
+                                <option value="">Select...</option>
+                                {field.options.map((opt: string) => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            ) : type === "textarea" ? (
+                              <textarea
+                                disabled
+                                placeholder="Enter response..."
+                                className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm min-h-[80px]"
+                              />
+                            ) : (
+                              <input
+                                disabled
+                                type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+                                placeholder="Enter response..."
+                                className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 text-xs text-pink-700 bg-pink-100 rounded px-3 py-2">
+                      💡 Click "Complete Task" or open the task modal to fill in these fields
+                    </div>
+                  </div>
+                )}
+
+                {/* Checklist Items (for CHECKLIST tasks) */}
+                {task.taskType === "CHECKLIST" && task.checklistItems && task.checklistItems.length > 0 && (
+                  <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-200">
+                    <div className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+                      <CheckSquare className="h-4 w-4" />
+                      Checklist ({task.checklistItems.filter(i => i.completed).length}/{task.checklistItems.length})
+                    </div>
+                    <div className="space-y-2">
+                      {task.checklistItems.map((item: any) => (
+                        <div 
+                          key={item.id}
+                          className={`flex items-center gap-3 p-2 rounded-lg ${
+                            item.completed 
+                              ? "bg-green-100 text-green-800" 
+                              : "bg-white text-gray-700"
+                          }`}
+                        >
+                          <div className={`flex items-center justify-center h-5 w-5 rounded border-2 ${
+                            item.completed 
+                              ? "bg-green-500 border-green-600" 
+                              : "bg-white border-gray-300"
+                          }`}>
+                            {item.completed && <span className="text-white text-xs">✓</span>}
+                          </div>
+                          <span className="text-sm flex-1">{item.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

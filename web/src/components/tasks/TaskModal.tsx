@@ -949,29 +949,33 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
 
           {/* FORM TASK UI */}
           {form.taskType === "FORM" && (
-            <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 space-y-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Form Fields</div>
+            <div className="rounded-2xl border-2 border-pink-300 bg-gradient-to-br from-pink-50 to-purple-50 p-6 space-y-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-pink-600" />
+                <div className="text-base font-bold text-slate-800">Form Fields to Complete</div>
+              </div>
               {!form.formSchema?.fields?.length ? (
-                <div className="text-sm text-slate-600 py-3">
+                <div className="text-sm text-slate-600 py-3 bg-white/60 rounded-lg p-4">
                   No form schema configured. Form tasks are created automatically with questionnaires and other workflows.
                 </div>
               ) : (
                 <>
-                <div className="space-y-3">
+                <div className="space-y-4">
                 {form.formSchema.fields.map((f, idx) => {
                   const key = f.key || f.id || f.label || `field_${idx}`;
                   const label = f.label || key;
                   const type = (f.type || "text").toLowerCase();
+                  const required = f.required ? " *" : "";
                   if (type === "select" && f.options?.length) {
                     return (
-                      <label key={key} className="block text-sm">
-                        <span className="font-medium text-slate-700">{label}</span>
+                      <label key={key} className="block">
+                        <span className="font-semibold text-slate-800 mb-2 block">{label}{required}</span>
                         <select
                           value={formData[key] || ""}
                           onChange={e => setFormData(d => ({ ...d, [key]: e.target.value }))}
-                          className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                          className="w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-base focus:border-pink-400 focus:ring-2 focus:ring-pink-200 outline-none"
                         >
-                          <option value="">Select…</option>
+                          <option value="">Select an option…</option>
                           {f.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                         </select>
                       </label>
@@ -979,23 +983,26 @@ export function TaskModal({ open, onClose, task, tenantId, userId, onChanged }: 
                   }
                   if (type === "textarea") {
                     return (
-                      <label key={key} className="block text-sm">
-                        <span className="font-medium text-slate-700">{label}</span>
+                      <label key={key} className="block">
+                        <span className="font-semibold text-slate-800 mb-2 block">{label}{required}</span>
                         <textarea
                           value={formData[key] || ""}
                           onChange={e => setFormData(d => ({ ...d, [key]: e.target.value }))}
-                          className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm min-h-[100px]"
+                          placeholder="Enter your response here..."
+                          className="w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-base min-h-[120px] focus:border-pink-400 focus:ring-2 focus:ring-pink-200 outline-none"
                         />
                       </label>
                     );
                   }
                   return (
-                    <label key={key} className="block text-sm">
-                      <span className="font-medium text-slate-700">{label}</span>
+                    <label key={key} className="block">
+                      <span className="font-semibold text-slate-800 mb-2 block">{label}{required}</span>
                       <input
+                        type={type === "number" ? "number" : type === "date" ? "date" : type === "email" ? "email" : "text"}
                         value={formData[key] || ""}
                         onChange={e => setFormData(d => ({ ...d, [key]: e.target.value }))}
-                        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                        placeholder="Enter your response..."
+                        className="w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-base focus:border-pink-400 focus:ring-2 focus:ring-pink-200 outline-none"
                       />
                     </label>
                   );
