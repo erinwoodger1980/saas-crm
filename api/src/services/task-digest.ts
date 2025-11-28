@@ -383,7 +383,7 @@ export async function sendDailyDigestsToAllUsers(): Promise<void> {
   });
 
   // Filter out any users without email (TypeScript safety)
-  const users = allUsers.filter((u): u is { id: string; email: string; name: string | null } => !!u.email);
+  const users = allUsers.filter((u) => u.email != null) as Array<{ id: string; email: string; name: string | null }>;
 
   console.log(`[task-digest] Found ${users.length} users with email addresses`);
 
