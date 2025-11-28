@@ -371,9 +371,9 @@ export async function sendDailyDigestsToAllUsers(): Promise<void> {
   console.log("[task-digest] Starting daily digest send for all users");
 
   // Get all users with email addresses
-  const users = await prisma.user.findMany({
+  const allUsers = await prisma.user.findMany({
     where: {
-      email: { not: { equals: null } },
+      email: { not: null },
     },
     select: {
       id: true,
@@ -381,6 +381,9 @@ export async function sendDailyDigestsToAllUsers(): Promise<void> {
       name: true,
     },
   });
+
+  // Filter out any users without email (TypeScript safety)
+  const users = allUsers.filter((u): u is { id: string; email: string; name: string | null } => !!u.email);
 
   console.log(`[task-digest] Found ${users.length} users with email addresses`);
 
