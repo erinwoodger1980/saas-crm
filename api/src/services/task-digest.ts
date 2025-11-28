@@ -373,7 +373,9 @@ export async function sendDailyDigestsToAllUsers(): Promise<void> {
   // Get all users with email addresses
   const allUsers = await prisma.user.findMany({
     where: {
-      email: { not: null },
+      NOT: {
+        email: null,
+      },
     },
     select: {
       id: true,
