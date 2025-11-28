@@ -727,6 +727,94 @@ function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boo
     { value: "Quote", label: "Quote" },
   ];
 
+  const modelFields: Record<string, string[]> = {
+    FireDoorScheduleProject: [
+      "dateReceived",
+      "dateRequired",
+      "approxDeliveryDate",
+      "blanksDateOrdered",
+      "blanksDateExpected",
+      "blanksDateReceived",
+      "lippingsDateOrdered",
+      "lippingsDateExpected",
+      "lippingsDateReceived",
+      "facingsDateOrdered",
+      "facingsDateExpected",
+      "facingsDateReceived",
+      "glassDateOrdered",
+      "glassDateExpected",
+      "glassDateReceived",
+      "cassettesDateOrdered",
+      "cassettesDateExpected",
+      "cassettesDateReceived",
+      "timbersDateOrdered",
+      "timbersDateExpected",
+      "timbersDateReceived",
+      "ironmongeryDateOrdered",
+      "ironmongeryDateExpected",
+      "ironmongeryDateReceived",
+      "deliveryDate",
+      "installStart",
+      "installEnd",
+      "signOffDate",
+      "blanksStatus",
+      "lippingsStatus",
+      "facingsStatus",
+      "glassStatus",
+      "cassettesStatus",
+      "timbersStatus",
+      "ironmongeryStatus",
+      "doorPaperworkStatus",
+      "finalCncSheetStatus",
+      "finalChecksSheetStatus",
+      "deliveryChecklistStatus",
+      "framesPaperworkStatus",
+      "certificationRequired",
+      "invoiceStatus",
+      "transportStatus",
+      "snaggingStatus",
+      "blanksChecked",
+      "lippingsChecked",
+      "facingsChecked",
+      "glassChecked",
+      "cassettesChecked",
+      "timbersChecked",
+      "ironmongeryChecked",
+      "snaggingComplete",
+      "fscRequired",
+    ],
+    Lead: [
+      "capturedAt",
+      "nextActionAt",
+      "dateQuoteSent",
+      "status",
+      "deliveryDate",
+      "startDate",
+    ],
+    Opportunity: [
+      "startDate",
+      "deliveryDate",
+      "installationStartDate",
+      "installationEndDate",
+      "timberOrderedAt",
+      "timberExpectedAt",
+      "timberReceivedAt",
+      "glassOrderedAt",
+      "glassExpectedAt",
+      "glassReceivedAt",
+      "ironmongeryOrderedAt",
+      "ironmongeryExpectedAt",
+      "ironmongeryReceivedAt",
+      "paintOrderedAt",
+      "paintExpectedAt",
+      "paintReceivedAt",
+    ],
+    Quote: [
+      "dateQuoteSent",
+      "deliveryDate",
+    ],
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -772,7 +860,14 @@ function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boo
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium mb-2 block">Model</label>
-              <Select value={model} onValueChange={setModel}>
+              <Select value={model} onValueChange={(newModel) => {
+                setModel(newModel);
+                // Reset field path when model changes
+                const availableFields = modelFields[newModel] || [];
+                if (availableFields.length > 0) {
+                  setFieldPath(availableFields[0]);
+                }
+              }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {models.map(m => (
@@ -784,7 +879,14 @@ function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boo
 
             <div>
               <label className="text-sm font-medium mb-2 block">Field Path</label>
-              <Input value={fieldPath} onChange={(e) => setFieldPath(e.target.value)} placeholder="e.g., blanksDateOrdered" />
+              <Select value={fieldPath} onValueChange={setFieldPath}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {(modelFields[model] || []).map((field) => (
+                    <SelectItem key={field} value={field}>{field}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
