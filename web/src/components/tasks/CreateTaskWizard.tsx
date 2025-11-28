@@ -104,7 +104,7 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" aria-describedby="task-wizard-desc">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <span>{step === "type" ? "Create New Task" : "Task Details"}</span>
@@ -115,6 +115,9 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
             )}
           </DialogTitle>
         </DialogHeader>
+        {step === 'type' && (
+          <p id="task-wizard-desc" className="sr-only">Select the type of task to create, then enter its details in the wizard form.</p>
+        )}
 
         {step === "type" ? (
           <div className="space-y-4">
@@ -183,9 +186,13 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated }:
             saving={saving}
           />
         ) : selectedType === "SCHEDULED" ? (
-          <p className="text-center text-muted-foreground py-8">
-            Use the "Scheduled" tab to create recurring task templates
-          </p>
+          <ScheduledTaskCreator
+            tenantId={tenantId}
+            userId={userId}
+            onCreated={() => { onCreated?.(); handleClose(); }}
+            setSaving={setSaving}
+            saving={saving}
+          />
         ) : selectedType === "FOLLOW_UP" ? (
           <FollowUpCreator
             tenantId={tenantId}
@@ -226,6 +233,7 @@ function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving }: any) 
     
     setSaving(true);
     try {
+      const isoDueAt = dueAt ? new Date(dueAt).toISOString() : undefined;
       await apiFetch("/tasks", {
         method: "POST",
         headers: { "x-tenant-id": tenantId, "x-user-id": userId },
@@ -236,7 +244,7 @@ function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving }: any) 
           taskType: "MANUAL",
           relatedType: "OTHER",
           status: "OPEN",
-          dueAt: dueAt || undefined
+          dueAt: isoDueAt
         }
       });
       onCreated();
@@ -307,11 +315,84 @@ function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving }: any) 
 
 // Form Task Creator - Select or create form
 function FormTaskCreator({ tenantId, userId, onCreated, setSaving, saving }: any) {
+  const [title, setTitle] = useState("");
+  const [fields, setFields] = useState<Array<{ label: string; type: string; options?: string }>>([]);
+  const addField = () => setFields(f => [...f, { label: "", type: "text" }]);
+  const updateField = (i: number, patch: Partial<{ label: string; type: string; options?: string }>) => {
+    setFields(f => f.map((field, idx) => idx === i ? { ...field, ...patch } : field));
+  };
+  const removeField = (i: number) => setFields(f => f.filter((_, idx) => idx !== i));
+
+  const handleCreate = async () => {
+    if (!title.trim() || fields.length === 0 || fields.some(f => !f.label.trim())) return;
+    setSaving(true);
+    try {
+      const schemaFields = fields.map(f => ({ label: f.label.trim(), type: f.type, options: f.type === 'select' && f.options ? f.options.split(',').map(o => o.trim()).filter(Boolean) : undefined })).map((f, idx) => ({ ...f, id: `f_${idx}_${Date.now()}` }));
+      await apiFetch('/tasks', {
+        method: 'POST',
+        headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+        json: {
+          title,
+          description: `Form task with ${schemaFields.length} fields`,
+          taskType: 'FORM',
+          relatedType: 'OTHER',
+          status: 'OPEN',
+          priority: 'MEDIUM',
+          formSchema: { fields: schemaFields },
+        }
+      });
+      onCreated();
+    } catch (e) {
+      alert('Failed to create form task');
+    } finally { setSaving(false); }
+  };
+
   return (
-    <div className="text-center py-8 text-muted-foreground">
-      <FileText className="h-12 w-12 mx-auto mb-4 text-indigo-400" />
-      <p>Use the "Templates" tab to create and manage form templates</p>
-      <p className="text-sm mt-2">Then create form tasks from those templates</p>
+    <div className="space-y-4">
+      <div>
+        <label className="text-sm font-medium mb-2 block">Form Title *</label>
+        <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Site Survey Form" autoFocus />
+      </div>
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium">Fields</label>
+        <Button variant="outline" size="sm" onClick={addField}>+ Add Field</Button>
+      </div>
+      {fields.length === 0 && <p className="text-xs text-muted-foreground">No fields yet. Add your first field.</p>}
+      <div className="space-y-3">
+        {fields.map((f, i) => (
+          <Card key={i} className="p-3 space-y-2">
+            <div className="grid md:grid-cols-3 gap-2">
+              <Input
+                value={f.label}
+                onChange={e => updateField(i, { label: e.target.value })}
+                placeholder="Label"
+                className="text-sm"
+              />
+              <Select value={f.type} onValueChange={(v: any) => updateField(i, { type: v })}>
+                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text">Text</SelectItem>
+                  <SelectItem value="textarea">Textarea</SelectItem>
+                  <SelectItem value="select">Select</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                value={f.options || ''}
+                onChange={e => updateField(i, { options: e.target.value })}
+                placeholder={f.type === 'select' ? 'Options (comma separated)' : '—'}
+                disabled={f.type !== 'select'}
+                className="text-sm"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button variant="ghost" size="sm" onClick={() => removeField(i)}>Remove</Button>
+            </div>
+          </Card>
+        ))}
+      </div>
+      <div className="flex justify-end pt-2">
+        <Button onClick={handleCreate} disabled={saving || !title.trim() || fields.length === 0 || fields.some(f => !f.label.trim())}>Create Form Task</Button>
+      </div>
     </div>
   );
 }
@@ -521,6 +602,7 @@ function CommunicationTaskForm({ tenantId, userId, onCreated, setSaving, saving 
     
     setSaving(true);
     try {
+      const isoScheduled = scheduledFor ? new Date(scheduledFor).toISOString() : undefined;
       await apiFetch("/tasks", {
         method: "POST",
         headers: { "x-tenant-id": tenantId, "x-user-id": userId },
@@ -531,9 +613,96 @@ function CommunicationTaskForm({ tenantId, userId, onCreated, setSaving, saving 
           relatedType: "OTHER",
           status: "OPEN",
           priority: "MEDIUM",
-          dueAt: scheduledFor || undefined
+          dueAt: isoScheduled
         }
       });
+      // Scheduled Task Creator
+      function ScheduledTaskCreator({ tenantId, userId, onCreated, setSaving, saving }: any) {
+        const [title, setTitle] = useState("");
+        const [description, setDescription] = useState("");
+        const [pattern, setPattern] = useState<"DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY">("DAILY");
+        const [interval, setInterval] = useState(1);
+        const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
+        const [startAt, setStartAt] = useState("");
+
+        const handleCreate = async () => {
+          if (!title.trim()) return;
+          setSaving(true);
+          try {
+            const isoStart = startAt ? new Date(startAt).toISOString() : undefined;
+            await apiFetch('/tasks', {
+              method: 'POST',
+              headers: { 'x-tenant-id': tenantId, 'x-user-id': userId },
+              json: {
+                title,
+                description,
+                taskType: 'SCHEDULED',
+                relatedType: 'OTHER',
+                status: 'OPEN',
+                priority,
+                dueAt: isoStart,
+                recurrencePattern: pattern,
+                recurrenceInterval: interval,
+              }
+            });
+            onCreated();
+          } catch { alert('Failed to create scheduled task'); }
+          finally { setSaving(false); }
+        };
+
+        return (
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Title *</label>
+              <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Weekly Project Review" autoFocus />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Description</label>
+              <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} placeholder="Optional context" />
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Recurrence Pattern</label>
+                <Select value={pattern} onValueChange={(v: any) => setPattern(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DAILY">Daily</SelectItem>
+                    <SelectItem value="WEEKLY">Weekly</SelectItem>
+                    <SelectItem value="MONTHLY">Monthly</SelectItem>
+                    <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+                    <SelectItem value="YEARLY">Yearly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Interval</label>
+                <Input type="number" min={1} value={interval} onChange={e => setInterval(Math.max(1, Number(e.target.value)||1))} />
+              </div>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Priority</label>
+                <Select value={priority} onValueChange={(v: any) => setPriority(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="URGENT">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Start / First Due</label>
+                <Input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button onClick={handleCreate} disabled={saving || !title.trim()}>Create Scheduled Task</Button>
+            </div>
+          </div>
+        );
+      }
       onCreated();
     } catch (error) {
       console.error("Failed to create communication:", error);

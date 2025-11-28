@@ -712,6 +712,35 @@ export function TaskCenter({
         </div>
       )}
 
+      {/* Embedded toolbar (lead modal etc.) */}
+      {embedded && (
+        <div className="mb-3">
+          <Card className="p-3 bg-white/90 backdrop-blur border border-slate-200">
+            <div className="flex flex-col md:flex-row gap-2 md:items-center">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search tasks..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant={showOnlyMine ? 'default' : 'outline'} size="sm" onClick={() => setShowOnlyMine(!showOnlyMine)}>
+                  {showOnlyMine ? 'My Tasks' : 'All Tasks'}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setExpandAll(v => !v)}>
+                  {expandAll ? 'Collapse All' : 'Expand All'}
+                </Button>
+                <Button variant="default" size="sm" onClick={handleNewTask}>New</Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Task Feed */}
       <div className="mt-6">
           {loading ? (
