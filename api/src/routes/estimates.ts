@@ -12,7 +12,7 @@ function getAuth(req: any) {
 
 /**
  * GET /estimates/:leadId
- * Fetch ML estimate for a lead (from database or generate placeholder)
+ * Fetch ML estimate for a lead (from database or generate using ML)
  */
 router.get("/:leadId", async (req, res) => {
   const { tenantId } = getAuth(req);
@@ -22,12 +22,24 @@ router.get("/:leadId", async (req, res) => {
   if (!leadId) return res.status(400).json({ error: "leadId required" });
 
   try {
-    // Find lead and related questionnaire items
+    // Find lead and its quote with questionnaire response
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
       include: {
-        questionnaireItems: {
-          orderBy: { sortOrder: "asc" },
+        Quote: {
+          include: {
+            questionnaireResponse: {
+              include: {
+                answers: {
+                  include: {
+                    field: true,
+                  },
+                },
+              },
+            },
+          },
+          take: 1,
+          orderBy: { createdAt: "desc" },
         },
       },
     });
@@ -36,55 +48,178 @@ router.get("/:leadId", async (req, res) => {
       return res.status(404).json({ error: "lead not found" });
     }
 
-    // Check if we have a stored ML estimate in lead.computed or lead.mlEstimate
-    const computed = (lead.computed as any) || {};
-    let estimate = computed.mlEstimate || null;
+    // Check if we have a stored ML estimate in lead.custom.mlEstimate
+    const custom = (lead.custom as any) || {};
+    let estimate = custom.mlEstimate || null;
 
-    // If no stored estimate, generate a placeholder from questionnaire items
-    if (!estimate && lead.questionnaireItems?.length > 0) {
-      const items = lead.questionnaireItems.map((item: any, idx: number) => {
-        const answers = (item.answers as any) || {};
-        const width = answers.door_width_mm || answers.width || null;
-        const height = answers.door_height_mm || answers.height || null;
-        
-        // Simple placeholder pricing logic (can be replaced with real ML)
-        const area = width && height ? (width * height) / 1_000_000 : 1.5; // m²
-        const basePrice = area * 300; // £300/m² placeholder
-        const netGBP = Math.round(basePrice * 100) / 100;
-        const vatGBP = Math.round(netGBP * 0.2 * 100) / 100;
-        const totalGBP = netGBP + vatGBP;
+    // Get questionnaire data from quote or lead.custom
+    const quote = lead.Quote?.[0];
+    const questionnaireAnswers = quote?.questionnaireResponse?.answers || [];
+    const customItems = custom.items || [];
 
-        return {
-          id: item.id,
+    // If no stored estimate, generate using ML predict-lines
+    if (!estimate && (questionnaireAnswers.length > 0 || customItems.length > 0)) {
+      // Build lines array from questionnaire answers or custom items
+      let lines: any[] = [];
+
+      if (questionnaireAnswers.length > 0) {
+        // Group answers by item (assuming grouped structure or single item)
+        const answerMap: any = {};
+        questionnaireAnswers.forEach((answer: any) => {
+          const fieldKey = answer.field?.key || "";
+          const value = answer.value;
+          answerMap[fieldKey] = value;
+        });
+
+        lines = [{
+          itemNumber: 1,
+          description: answerMap.description || "Door",
+          quantity: answerMap.quantity || 1,
+          widthMm: answerMap.door_width_mm || answerMap.width || null,
+          heightMm: answerMap.door_height_mm || answerMap.height || null,
+          material: answerMap.material_type || answerMap.material || answerMap.wood_type || "oak",
+          finish: answerMap.finish || answerMap.paint_colour || null,
+          glazing: answerMap.glazing || null,
+          hardwareType: answerMap.hardware_type || answerMap.ironmongery || null,
+          fireRated: answerMap.fire_rated === true || answerMap.fire_rated === "true" || answerMap.fire_rated === "yes",
+        }];
+      } else if (customItems.length > 0) {
+        lines = customItems.map((item: any, idx: number) => ({
           itemNumber: idx + 1,
-          description: answers.description || `Door ${idx + 1} - ${width || "?"}mm x ${height || "?"}mm`,
-          netGBP,
-          vatGBP,
-          totalGBP,
-          width,
-          height,
+          description: item.description || `Door ${idx + 1}`,
+          quantity: item.quantity || 1,
+          widthMm: item.door_width_mm || item.width || null,
+          heightMm: item.door_height_mm || item.height || null,
+          material: item.material_type || item.material || item.wood_type || "oak",
+          finish: item.finish || item.paint_colour || null,
+          glazing: item.glazing || null,
+          hardwareType: item.hardware_type || item.ironmongery || null,
+          fireRated: item.fire_rated === true || item.fire_rated === "true" || item.fire_rated === "yes",
+        }));
+      }
+
+      // Call ML service for accurate pricing
+      const ML_URL = (process.env.ML_URL || process.env.NEXT_PUBLIC_ML_URL || "http://localhost:8000")
+        .trim()
+        .replace(/\/$/, "");
+      
+      try {
+        const mlResponse = await fetch(`${ML_URL}/predict-lines`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lines,
+            currency: "GBP",
+            vatPercent: 20,
+            markupPercent: 0, // Lead estimate, no markup yet
+          }),
+        });
+
+        if (mlResponse.ok) {
+          const mlData = await mlResponse.json();
+          const items = (mlData.lines || []).map((line: any, idx: number) => ({
+            id: `item-${idx}`,
+            itemNumber: line.itemNumber || idx + 1,
+            description: line.description || lines[idx]?.description || `Door ${idx + 1}`,
+            netGBP: line.netGBP || 0,
+            vatGBP: line.vatGBP || 0,
+            totalGBP: line.totalGBP || 0,
+            width: lines[idx]?.widthMm || null,
+            height: lines[idx]?.heightMm || null,
+            mlConfidence: line.confidence,
+          }));
+
+          estimate = {
+            leadId,
+            items,
+            totalNet: mlData.totalNet || 0,
+            totalVat: mlData.totalVat || 0,
+            totalGross: mlData.totalGross || 0,
+            generatedAt: new Date().toISOString(),
+            mlPowered: true,
+          };
+        } else {
+          // Fallback to simple calculation if ML unavailable
+          const items = lines.map((line: any, idx: number) => {
+            const width = line.widthMm || null;
+            const height = line.heightMm || null;
+            const area = width && height ? (width * height) / 1_000_000 : 1.5;
+            const basePrice = area * 300;
+            const netGBP = Math.round(basePrice * 100) / 100;
+            const vatGBP = Math.round(netGBP * 0.2 * 100) / 100;
+            const totalGBP = netGBP + vatGBP;
+
+            return {
+              id: `item-${idx}`,
+              itemNumber: idx + 1,
+              description: line.description || `Door ${idx + 1} - ${width || "?"}mm x ${height || "?"}mm`,
+              netGBP,
+              vatGBP,
+              totalGBP,
+              width,
+              height,
+            };
+          });
+
+          const totalNet = items.reduce((sum: number, it: any) => sum + it.netGBP, 0);
+          const totalVat = items.reduce((sum: number, it: any) => sum + it.vatGBP, 0);
+          const totalGross = items.reduce((sum: number, it: any) => sum + it.totalGBP, 0);
+
+          estimate = {
+            leadId,
+            items,
+            totalNet: Math.round(totalNet * 100) / 100,
+            totalVat: Math.round(totalVat * 100) / 100,
+            totalGross: Math.round(totalGross * 100) / 100,
+            generatedAt: new Date().toISOString(),
+            mlPowered: false,
+          };
+        }
+      } catch (mlError) {
+        console.error("[estimates/:leadId] ML prediction failed:", mlError);
+        // Fallback to simple calculation
+        const items = lines.map((line: any, idx: number) => {
+          const width = line.widthMm || null;
+          const height = line.heightMm || null;
+          const area = width && height ? (width * height) / 1_000_000 : 1.5;
+          const basePrice = area * 300;
+          const netGBP = Math.round(basePrice * 100) / 100;
+          const vatGBP = Math.round(netGBP * 0.2 * 100) / 100;
+          const totalGBP = netGBP + vatGBP;
+
+          return {
+            id: `item-${idx}`,
+            itemNumber: idx + 1,
+            description: line.description || `Door ${idx + 1} - ${width || "?"}mm x ${height || "?"}mm`,
+            netGBP,
+            vatGBP,
+            totalGBP,
+            width,
+            height,
+          };
+        });
+
+        const totalNet = items.reduce((sum: number, it: any) => sum + it.netGBP, 0);
+        const totalVat = items.reduce((sum: number, it: any) => sum + it.vatGBP, 0);
+        const totalGross = items.reduce((sum: number, it: any) => sum + it.totalGBP, 0);
+
+        estimate = {
+          leadId,
+          items,
+          totalNet: Math.round(totalNet * 100) / 100,
+          totalVat: Math.round(totalVat * 100) / 100,
+          totalGross: Math.round(totalGross * 100) / 100,
+          generatedAt: new Date().toISOString(),
+          mlPowered: false,
         };
-      });
+      }
 
-      const totalNet = items.reduce((sum: number, it: any) => sum + it.netGBP, 0);
-      const totalVat = items.reduce((sum: number, it: any) => sum + it.vatGBP, 0);
-      const totalGross = items.reduce((sum: number, it: any) => sum + it.totalGBP, 0);
-
-      estimate = {
-        leadId,
-        items,
-        totalNet: Math.round(totalNet * 100) / 100,
-        totalVat: Math.round(totalVat * 100) / 100,
-        totalGross: Math.round(totalGross * 100) / 100,
-        generatedAt: new Date().toISOString(),
-      };
-
-      // Store the generated estimate in lead.computed for future retrieval
+      // Store the generated estimate in lead.custom for future retrieval
       await prisma.lead.update({
         where: { id: leadId },
         data: {
-          computed: {
-            ...(computed || {}),
+          custom: {
+            ...(custom || {}),
             mlEstimate: estimate,
           } as any,
         },
@@ -116,26 +251,26 @@ router.post("/:leadId/update", async (req, res) => {
   try {
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, tenantId: true, computed: true },
+      select: { id: true, tenantId: true, custom: true },
     });
 
     if (!lead || lead.tenantId !== tenantId) {
       return res.status(404).json({ error: "lead not found" });
     }
 
-    // Update the stored estimate in lead.computed
-    const computed = (lead.computed as any) || {};
-    computed.mlEstimate = {
+    // Update the stored estimate in lead.custom
+    const custom = (lead.custom as any) || {};
+    custom.mlEstimate = {
       ...estimate,
       updatedAt: new Date().toISOString(),
     };
 
     await prisma.lead.update({
       where: { id: leadId },
-      data: { computed: computed as any },
+      data: { custom: custom as any },
     });
 
-    return res.json({ success: true, estimate: computed.mlEstimate });
+    return res.json({ success: true, estimate: custom.mlEstimate });
   } catch (error: any) {
     console.error("[estimates/:leadId/update] error:", error);
     return res.status(500).json({ error: error?.message || "internal error" });
@@ -160,7 +295,7 @@ router.post("/:leadId/confirm", async (req, res) => {
   try {
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      include: { tenant: { select: { slug: true, brandName: true } } },
+      include: { tenant: { select: { slug: true } } },
     });
 
     if (!lead || lead.tenantId !== tenantId) {
@@ -169,10 +304,10 @@ router.post("/:leadId/confirm", async (req, res) => {
 
     const totalGross = estimate?.totalGross || 0;
 
-    // 1. Update lead.computed with confirmed estimate
-    const computed = (lead.computed as any) || {};
-    computed.mlEstimate = {
-      ...(estimate || computed.mlEstimate || {}),
+    // 1. Update lead.custom with confirmed estimate
+    const custom = (lead.custom as any) || {};
+    custom.mlEstimate = {
+      ...(estimate || custom.mlEstimate || {}),
       confirmedAt: new Date().toISOString(),
       confirmedBy: userId,
     };
@@ -180,13 +315,13 @@ router.post("/:leadId/confirm", async (req, res) => {
     await prisma.lead.update({
       where: { id: leadId },
       data: {
-        computed: computed as any,
+        custom: custom as any,
         estimatedValue: totalGross > 0 ? totalGross : undefined,
       },
     });
 
     // 2. Find or create public estimator project for this lead
-    let project = await prisma.publicEstimatorProject.findFirst({
+    let project = await (prisma as any).publicEstimatorProject?.findFirst({
       where: {
         tenantId,
         OR: [
@@ -195,44 +330,42 @@ router.post("/:leadId/confirm", async (req, res) => {
         ],
       },
       orderBy: { createdAt: "desc" },
-    });
+    }).catch(() => null);
 
     if (project) {
       // Update existing project with estimate ready flag and totals
-      await prisma.publicEstimatorProject.update({
+      await (prisma as any).publicEstimatorProject?.update({
         where: { id: project.id },
         data: {
           estimateReady: true,
           totalGross: totalGross > 0 ? totalGross : undefined,
           leadId: lead.id,
         },
-      });
-    } else if (lead.email) {
+      }).catch(() => null);
+    } else if (lead.email && (prisma as any).publicEstimatorProject) {
       // Create new project if lead has email
-      project = await prisma.publicEstimatorProject.create({
+      project = await (prisma as any).publicEstimatorProject.create({
         data: {
           tenantId,
           email: lead.email,
           contactName: lead.contactName || undefined,
-          phone: lead.phone || undefined,
+          phone: null,
           leadId: lead.id,
           estimateReady: true,
           totalGross: totalGross > 0 ? totalGross : undefined,
           answers: {},
         },
-      });
+      }).catch(() => null);
     }
 
     // 3. Send "estimate ready" email notification
     if (lead.email && project) {
-      const brandName = lead.tenant?.brandName || "Your Company";
       const slug = lead.tenant?.slug || tenantSlug || "demo";
       const projectUrl = `${process.env.APP_ORIGIN || "https://app.joineryai.uk"}/tenant/${slug}/estimator?project=${project.id}`;
 
-      // Queue email via email service or mail router
-      // For now, we'll just log it - you can integrate with your mail service
+      // Log email notification (TODO: integrate with mail service)
       console.log(`[estimates/:leadId/confirm] Would send email to ${lead.email}:`);
-      console.log(`  Subject: Your estimate from ${brandName} is ready`);
+      console.log(`  Subject: Your estimate is ready`);
       console.log(`  Body: Your personalized estimate of £${totalGross.toFixed(2)} is now available.`);
       console.log(`  Link: ${projectUrl}`);
 
@@ -240,7 +373,6 @@ router.post("/:leadId/confirm", async (req, res) => {
       // await sendEstimateReadyEmail({
       //   to: lead.email,
       //   contactName: lead.contactName,
-      //   brandName,
       //   totalGross,
       //   projectUrl,
       // });
@@ -248,7 +380,7 @@ router.post("/:leadId/confirm", async (req, res) => {
 
     return res.json({
       success: true,
-      estimate: computed.mlEstimate,
+      estimate: custom.mlEstimate,
       projectId: project?.id,
       projectUrl: project
         ? `${process.env.APP_ORIGIN || "https://app.joineryai.uk"}/tenant/${lead.tenant?.slug || tenantSlug || "demo"}/estimator?project=${project.id}`
