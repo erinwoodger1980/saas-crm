@@ -404,6 +404,19 @@ async function main() {
   }
 
   try {
+    // Pre-flight: Check TypeScript compilation
+    console.log("\n🔍 Running TypeScript compilation check...");
+    const { execSync } = await import("child_process");
+    try {
+      execSync("pnpm run build", { stdio: "pipe", cwd: process.cwd() });
+      console.log("✅ TypeScript compilation passed");
+    } catch (tscError: any) {
+      console.error("❌ TypeScript compilation failed:");
+      console.error(tscError.stdout?.toString() || tscError.stderr?.toString() || tscError.message);
+      console.error("\nFix TypeScript errors before running tests.");
+      process.exit(1);
+    }
+
     // Run tests
     await testDatabaseConnection();
 
