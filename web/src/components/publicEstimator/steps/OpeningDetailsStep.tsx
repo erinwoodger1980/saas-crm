@@ -163,92 +163,66 @@ export function OpeningDetailsStep({
   };
 
   const handleAddItem = () => {
-    const newItem: OpeningItem = {
-      id: `item-${Date.now()}`,
-      type: 'external_door',
-    };
+    const newItem: OpeningItem = { id: `item-${Date.now()}`, type: 'external_door' };
     const next = [...currentItems, newItem];
     setCurrentItems(next);
-    // Persist immediately so upstream preview + autosave can react
     onChange({ openingDetails: next });
-            <ExamplePhotoGallery
-              tenantId={tenantId}
-              onSelect={({ specifications, photo }) => {
-                setPendingExampleSpecs(specifications);
-                setPendingExamplePhoto(photo);
-                setApplyTargetId(currentItems[0]?.id || null);
-                setShowApplyDialog(true);
-                onTrackInteraction?.('EXAMPLE_SELECTED', {
-                  photoId: photo.id,
-                  hasWidth: Boolean(specifications.widthMm),
-                  hasHeight: Boolean(specifications.heightMm),
-                  tagCount: Array.isArray(specifications.tags) ? specifications.tags.length : 0,
-                  questionnaireAnswerCount: specifications.questionnaireAnswers ? Object.keys(specifications.questionnaireAnswers).length : 0,
-                });
-              }}
-              onClose={() => setShowGallery(false)}
-            />
-      } catch {}
+    setEditingId(newItem.id);
+    setErrors({});
+  };
+
+  const handleUpdateItem = (id: string, updates: Partial<OpeningItem>) => {
+    const updated = currentItems.map(item => item.id === id ? { ...item, ...updates } : item);
+    setCurrentItems(updated);
+    onChange({ openingDetails: updated });
+  };
+
+  const handleRemoveItem = (id: string) => {
+    const filtered = currentItems.filter(item => item.id !== id);
+    setCurrentItems(filtered);
+    onChange({ openingDetails: filtered });
+    if (editingId === id) setEditingId(null);
+  };
+
+  const handleImageUpload = async (id: string, files: FileList | File[]) => {
+    const list = Array.from(files as any);
+    for (const file of list) {
+      const localUrl = URL.createObjectURL(file);
+      const item = currentItems.find(i => i.id === id);
+      const images = item?.images || [];
+      handleUpdateItem(id, { images: [...images, localUrl] });
+      try {
+        const baseLabel = file.name.split('.')[0];
+        const heuristic = await inferFromImage(localUrl, baseLabel);
+        const freshItem1 = currentItems.find(i => i.id === id);
+        if (freshItem1) {
+          const hUpdates: Partial<OpeningItem> = { inferenceSource: 'heuristic', inferenceConfidence: 0.35 };
+          if (!freshItem1.width && heuristic.widthMm) hUpdates.width = heuristic.widthMm;
+          if (!freshItem1.height && heuristic.heightMm) hUpdates.height = heuristic.heightMm;
+          if (!freshItem1.notes && heuristic.description) hUpdates.notes = heuristic.description;
+          handleUpdateItem(id, hUpdates);
+        }
+        const freshItem2 = currentItems.find(i => i.id === id);
+        const ai = await inferOpeningFromImage(file, { openingType: freshItem2?.type });
+        if (ai && freshItem2) {
+          const aiUpdates: Partial<OpeningItem> = { inferenceSource: 'ai', inferenceConfidence: ai.confidence ?? undefined };
+          if (!freshItem2.width && ai.width_mm) aiUpdates.width = ai.width_mm;
+          if (!freshItem2.height && ai.height_mm) aiUpdates.height = ai.height_mm;
+          if (!freshItem2.notes && ai.description) aiUpdates.notes = ai.description;
+          handleUpdateItem(id, aiUpdates);
+        }
+      } catch { /* silent */ }
+    }
+  };
+
+  const handleInspirationUpload = (files: FileList | null) => {
+    if (!files || !files.length) return;
+    const existing = inspirationImages.slice();
+    const next: string[] = [];
+    Array.from(files).forEach(f => {
+      try { next.push(URL.createObjectURL(f)); } catch {}
     });
-    const merged = [...existing, ...next];
-    onInspirationChange?.(merged);
-      {/* Apply Example Dialog */}
-      <Dialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
-        <DialogContent className="max-w-lg">
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Apply Example</h3>
-            {pendingExamplePhoto && (
-              <div className="flex items-center gap-3">
-                <img src={pendingExamplePhoto.thumbnailUrl || pendingExamplePhoto.imageUrl} alt={pendingExamplePhoto.title} className="h-16 w-16 rounded-lg object-cover" />
-                <div className="text-sm">
-                  <div className="font-medium">{pendingExamplePhoto.title}</div>
-                  {pendingExamplePhoto.priceGBP && (
-                    <div className="text-slate-600">Approx £{pendingExamplePhoto.priceGBP.toFixed(2)}</div>
-                  )}
-                </div>
-              </div>
-            )}
-            {/* Target opening */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 mb-2 block">Target opening</label>
-              <div className="space-y-2">
-                {currentItems.map(it => (
-                  <label key={it.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="applyOpening"
-                      checked={applyTargetId === it.id}
-                      onChange={() => setApplyTargetId(it.id)}
-                    />
-                    <span>Opening {currentItems.indexOf(it)+1} ({it.type.replace(/_/g,' ')})</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            {/* Options */}
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {Object.entries(applyOptions).map(([key,val]) => (
-                <label key={key} className="flex items-center gap-2">
-                  <input type="checkbox" checked={val} onChange={() => toggleApplyOption(key as keyof typeof applyOptions)} />
-                  <span className="capitalize">Apply {key}</span>
-                </label>
-              ))}
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button
-                onClick={applyExampleSelection}
-                className="flex-1"
-                style={{ backgroundColor: primaryColor }}
-              >
-                Apply Example
-              </Button>
-              <Button variant="outline" onClick={() => { setShowApplyDialog(false); setPendingExamplePhoto(null); setPendingExampleSpecs(null); }}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+    onInspirationChange?.([...existing, ...next]);
   };
 
   const removeInspiration = (index: number) => {
