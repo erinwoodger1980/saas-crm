@@ -92,6 +92,14 @@ export function GlobalSpecsStep({
 
   // If we have dynamic fields, render those; otherwise fall back to hardcoded specs
   const useDynamicFields = fields && fields.length > 0;
+  const filteredFields = (fields || []).filter((f) => {
+    const key = (f.key || '').toLowerCase();
+    const label = (f.label || '').toLowerCase();
+    // Exclude fire-rated and window/door count style fields; quantity handled separately
+    if (key === 'fire_rated' || label.includes('fire rated')) return false;
+    if (label.includes('number of windows') || label.includes('number of doors')) return false;
+    return true;
+  });
 
   return (
     <div className="space-y-8">
@@ -111,7 +119,7 @@ export function GlobalSpecsStep({
 
       {useDynamicFields && !isLoadingFields && (
         <div className="space-y-6">
-          {fields.map(field => (
+          {filteredFields.map(field => (
             <div key={field.id}>
               <UnifiedFieldRenderer
                 field={{
