@@ -255,9 +255,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     scope: "public",
     isStandard: true,
   },
-  {
-    // Removed duplicate dimension questions; OpeningDetailsStep captures width/height
-  
+  // Removed duplicate dimension questions; OpeningDetailsStep captures width/height
+
   // ============ MANUFACTURING (post-won final specs) ============
   {
     key: "final_width_mm",
