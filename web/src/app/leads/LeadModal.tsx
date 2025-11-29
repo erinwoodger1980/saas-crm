@@ -25,7 +25,7 @@ import { TaskModal } from "@/components/tasks/TaskModal";
 import { TaskCenter } from "@/components/tasks/TaskCenter";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 import { UnifiedFieldRenderer } from "@/components/fields/UnifiedFieldRenderer";
-import { getQuestionnaireFieldsForScope } from "@/lib/questionnaireFields";
+import { fetchQuestionnaireFields } from "@/lib/questionnaireFields";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -279,73 +279,7 @@ function normalizeQuestionnaireFields(
       return {
         id,
         key,
-        const [activeDetailsTab, setActiveDetailsTab] = useState<"client" | "quote" | "questionnaire">("client");
-        const [mlEstimate, setMlEstimate] = useState<any | null>(null);
-        const [isAmendingEstimate, setIsAmendingEstimate] = useState(false);
-        // Load ML estimate for this lead
-        useEffect(() => {
-          const load = async () => {
-            try {
-              const res = await fetch(`/api/estimates/${encodeURIComponent(lead.id)}`);
-              if (res.ok) {
-                const data = await res.json();
-                setMlEstimate(data);
-              }
-            } catch {}
-          };
-          if (lead?.id) load();
-        }, [lead?.id]);
-
-        const amendItemTotal = (index: number, newTotal: number) => {
-          setMlEstimate((prev: any) => {
-            if (!prev) return prev;
-            const items = (prev.items || []).slice();
-            const item = { ...(items[index] || {}) };
-            const net = Number(newTotal) / 1.2;
-            const vat = Number(newTotal) - net;
-            item.totalGBP = Number(newTotal);
-            item.netGBP = net;
-            item.vatGBP = vat;
-            items[index] = item;
-            const totals = items.reduce((acc: any, it: any) => {
-              acc.net += Number(it.netGBP || 0);
-              acc.vat += Number(it.vatGBP || 0);
-              acc.gross += Number(it.totalGBP || 0);
-              return acc;
-            }, { net: 0, vat: 0, gross: 0 });
-            return { ...prev, items, totalNet: totals.net, totalVat: totals.vat, totalGross: totals.gross };
-          });
-        };
-
-        const saveAmendedEstimate = async () => {
-          try {
-            await fetch(`/api/estimates/${encodeURIComponent(lead.id)}/update`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
-            });
-            setIsAmendingEstimate(false);
-            // Optionally refresh
-          } catch {}
-        };
-
-        const confirmMlEstimate = async () => {
-          try {
-            await fetch(`/api/estimates/${encodeURIComponent(lead.id)}/confirm`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
-            });
-            // Notify success, could show toast
-          } catch {}
-        };
-
-        const reloadMlEstimate = async () => {
-          try {
-            const res = await fetch(`/api/estimates/${encodeURIComponent(lead.id)}`);
-            if (res.ok) setMlEstimate(await res.json());
-          } catch {}
-        };
+        label,
         required,
         type,
         options,
@@ -487,6 +421,11 @@ export default function LeadModal({
   const [internalFields, setInternalFields] = useState<NormalizedQuestionnaireField[]>([]);
   const [manufacturingFields, setManufacturingFields] = useState<NormalizedQuestionnaireField[]>([]);
   
+  // ML Estimate state
+  const [activeDetailsTab, setActiveDetailsTab] = useState<"client" | "quote" | "questionnaire">("client");
+  const [mlEstimate, setMlEstimate] = useState<any | null>(null);
+  const [isAmendingEstimate, setIsAmendingEstimate] = useState(false);
+  
   // Unified activity hook - replaces old followUpTasks state
   const {
     activities,
@@ -608,6 +547,71 @@ export default function LeadModal({
       console.error("Error sending email:", error);
       toast("Failed to send email");
     }
+  };
+
+  // Load ML estimate for this lead
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/estimates/${encodeURIComponent(lead?.id || '')}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMlEstimate(data);
+        }
+      } catch {}
+    };
+    if (lead?.id) load();
+  }, [lead?.id]);
+
+  const amendItemTotal = (index: number, newTotal: number) => {
+    setMlEstimate((prev: any) => {
+      if (!prev) return prev;
+      const items = (prev.items || []).slice();
+      const item = { ...(items[index] || {}) };
+      const net = Number(newTotal) / 1.2;
+      const vat = Number(newTotal) - net;
+      item.totalGBP = Number(newTotal);
+      item.netGBP = net;
+      item.vatGBP = vat;
+      items[index] = item;
+      const totals = items.reduce((acc: any, it: any) => {
+        acc.net += Number(it.netGBP || 0);
+        acc.vat += Number(it.vatGBP || 0);
+        acc.gross += Number(it.totalGBP || 0);
+        return acc;
+      }, { net: 0, vat: 0, gross: 0 });
+      return { ...prev, items, totalNet: totals.net, totalVat: totals.vat, totalGross: totals.gross };
+    });
+  };
+
+  const saveAmendedEstimate = async () => {
+    try {
+      await fetch(`/api/estimates/${encodeURIComponent(lead?.id || '')}/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
+      });
+      setIsAmendingEstimate(false);
+      // Optionally refresh
+    } catch {}
+  };
+
+  const confirmMlEstimate = async () => {
+    try {
+      await fetch(`/api/estimates/${encodeURIComponent(lead?.id || '')}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
+      });
+      // Notify success, could show toast
+    } catch {}
+  };
+
+  const reloadMlEstimate = async () => {
+    try {
+      const res = await fetch(`/api/estimates/${encodeURIComponent(lead?.id || '')}`);
+      if (res.ok) setMlEstimate(await res.json());
+    } catch {}
   };
 
   const playbook = useMemo(
@@ -839,15 +843,15 @@ export default function LeadModal({
             const slug = (s as any)?.slug || null;
             if (slug) {
               const [client, pub, internal, manuf] = await Promise.all([
-                getQuestionnaireFieldsForScope(slug, "client").catch(() => []),
-                getQuestionnaireFieldsForScope(slug, "public").catch(() => []),
-                getQuestionnaireFieldsForScope(slug, "internal").catch(() => []),
-                getQuestionnaireFieldsForScope(slug, "manufacturing").catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "client" }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "public" }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "internal" }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "manufacturing" }).catch(() => []),
               ]);
-              setClientFields(client || []);
-              setPublicFields(pub || []);
-              setInternalFields(internal || []);
-              setManufacturingFields(manuf || []);
+              setClientFields((client || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              setPublicFields((pub || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              setInternalFields((internal || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, internalOnly: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              setManufacturingFields((manuf || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, visibleAfterOrder: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
             }
           } catch (e) {
             console.debug("[LeadModal] failed loading scoped fields", e);
