@@ -279,7 +279,73 @@ function normalizeQuestionnaireFields(
       return {
         id,
         key,
-        label,
+        const [activeDetailsTab, setActiveDetailsTab] = useState<"client" | "quote" | "questionnaire">("client");
+        const [mlEstimate, setMlEstimate] = useState<any | null>(null);
+        const [isAmendingEstimate, setIsAmendingEstimate] = useState(false);
+        // Load ML estimate for this lead
+        useEffect(() => {
+          const load = async () => {
+            try {
+              const res = await fetch(`/api/estimates/${encodeURIComponent(lead.id)}`);
+              if (res.ok) {
+                const data = await res.json();
+                setMlEstimate(data);
+              }
+            } catch {}
+          };
+          if (lead?.id) load();
+        }, [lead?.id]);
+
+        const amendItemTotal = (index: number, newTotal: number) => {
+          setMlEstimate((prev: any) => {
+            if (!prev) return prev;
+            const items = (prev.items || []).slice();
+            const item = { ...(items[index] || {}) };
+            const net = Number(newTotal) / 1.2;
+            const vat = Number(newTotal) - net;
+            item.totalGBP = Number(newTotal);
+            item.netGBP = net;
+            item.vatGBP = vat;
+            items[index] = item;
+            const totals = items.reduce((acc: any, it: any) => {
+              acc.net += Number(it.netGBP || 0);
+              acc.vat += Number(it.vatGBP || 0);
+              acc.gross += Number(it.totalGBP || 0);
+              return acc;
+            }, { net: 0, vat: 0, gross: 0 });
+            return { ...prev, items, totalNet: totals.net, totalVat: totals.vat, totalGross: totals.gross };
+          });
+        };
+
+        const saveAmendedEstimate = async () => {
+          try {
+            await fetch(`/api/estimates/${encodeURIComponent(lead.id)}/update`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
+            });
+            setIsAmendingEstimate(false);
+            // Optionally refresh
+          } catch {}
+        };
+
+        const confirmMlEstimate = async () => {
+          try {
+            await fetch(`/api/estimates/${encodeURIComponent(lead.id)}/confirm`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
+            });
+            // Notify success, could show toast
+          } catch {}
+        };
+
+        const reloadMlEstimate = async () => {
+          try {
+            const res = await fetch(`/api/estimates/${encodeURIComponent(lead.id)}`);
+            if (res.ok) setMlEstimate(await res.json());
+          } catch {}
+        };
         required,
         type,
         options,
@@ -3078,6 +3144,96 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                         </div>
                       </div>
                     )}
+                    {/* ML Estimate panel */}
+                    <section className="mt-4 rounded-2xl border border-slate-200 bg-white/85 p-5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          <span aria-hidden>✨</span>
+                          ML Estimate
+                        </div>
+                        <div className="text-xs text-slate-500">Preview and confirm or amend</div>
+                      </div>
+
+                      {/* Totals */}
+                      <div className="mt-3 grid grid-cols-3 gap-3">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                          <div className="text-xs text-slate-600">Net total</div>
+                          <div className="text-lg font-semibold text-slate-900">£{Number(mlEstimate?.totalNet ?? 0).toFixed(2)}</div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                          <div className="text-xs text-slate-600">VAT (20%)</div>
+                          <div className="text-lg font-semibold text-slate-900">£{Number(mlEstimate?.totalVat ?? 0).toFixed(2)}</div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                          <div className="text-xs text-slate-600">Total</div>
+                          <div className="text-2xl font-bold text-slate-900">£{Number(mlEstimate?.totalGross ?? 0).toFixed(2)}</div>
+                        </div>
+                      </div>
+
+                      {/* Items with optional amend */}
+                      <div className="mt-4 space-y-2">
+                        {(mlEstimate?.items || []).map((item: any, idx: number) => (
+                          <div key={item.id || idx} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium text-slate-900">{item.description}</div>
+                              <div className="mt-1 text-xs text-slate-500">Net £{Number(item.netGBP ?? 0).toFixed(2)} • VAT £{Number(item.vatGBP ?? 0).toFixed(2)}</div>
+                            </div>
+                            <div className="flex-shrink-0 text-right">
+                              {isAmendingEstimate ? (
+                                <input
+                                  type="number"
+                                  defaultValue={Number(item.totalGBP ?? 0)}
+                                  onBlur={(e) => amendItemTotal(idx, Number(e.target.value))}
+                                  className="w-28 rounded border border-slate-300 px-2 py-1 text-sm"
+                                />
+                              ) : (
+                                <div className="font-semibold text-slate-900">£{Number(item.totalGBP ?? 0).toFixed(2)}</div>
+                              )}
+                              <div className="text-xs text-slate-500">inc. VAT</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {!isAmendingEstimate ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={confirmMlEstimate}
+                              className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+                            >
+                              Confirm Estimate
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsAmendingEstimate(true)}
+                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                            >
+                              Amend Estimate
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={saveAmendedEstimate}
+                              className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+                            >
+                              Save Changes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setIsAmendingEstimate(false); reloadMlEstimate(); }}
+                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </section>
                   </section>
                   {/* Client Fields (Unified) */}
                   {clientFields.length > 0 && (
