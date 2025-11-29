@@ -31,24 +31,24 @@ These fields are flagged with `isStandard: true` in the database.
 | Key | Label | Type | Required | ML Feature | Purpose |
 |-----|-------|------|----------|------------|---------|
 | `window_style` | Window Style | select | No | `window_style` | Casement/Sash/Fixed/etc. |
-| `num_windows` | Number of Windows | number | No | `quantity` | Count of window units |
+| `num_windows` | Number of Windows | number | No | `quantity` | Count of window units (deprecated) |
 
 ### Door-Specific Fields
 
 | Key | Label | Type | Required | ML Feature | Purpose |
 |-----|-------|------|----------|------------|---------|
 | `door_type` | Door Type | select | No | `door_type` | External/Internal/Bifold/French |
-| `door_height_mm` | Door Height (mm) | number | No | `door_height_mm` | Height in millimeters |
-| `door_width_mm` | Door Width (mm) | number | No | `door_width_mm` | Width in millimeters |
-| `num_doors` | Number of Doors | number | No | `quantity` | Count of door units |
+| `height_mm` | Height (mm) | number | No | `height_mm` | Height in millimeters |
+| `width_mm` | Width (mm) | number | No | `width_mm` | Width in millimeters |
+| `num_doors` | Number of Doors | number | No | `quantity` | Count of door units (deprecated) |
 
 ### Premium Features
 
 | Key | Label | Type | Required | ML Feature | Purpose |
 |-----|-------|------|----------|------------|---------|
-| `premium_hardware` | Premium Hardware | boolean | No | `premium_hardware` | Upgraded handles/locks/hinges |
+| `premium_hardware` | Premium Hardware | boolean | No | `premium_hardware` | Upgraded handles/locks/hinges (deprecated) |
 | `custom_finish` | Custom Finish | select | No | `custom_finish` | None/Paint/Stain/Lacquer |
-| `fire_rated` | Fire Rated | boolean | No | `fire_rated` | Fire door certification required |
+| `fire_rated` | Fire Rated | boolean | No | `fire_rated` | Fire door certification required (deprecated) |
 | `installation_required` | Installation Required | boolean | No | `installation_required` | Professional installation needed |
 
 ### Contact & Context
@@ -169,16 +169,16 @@ Standard fields can enable smart conditional display:
 ```typescript
 // Only show door fields if project_type includes "Doors"
 if (project_type === "Doors" || project_type === "French Doors") {
-  show: ["door_type", "door_height_mm", "door_width_mm", "num_doors"]
+  show: ["door_type", "height_mm", "width_mm", "quantity"]
 }
 
 // Only show window fields if project_type includes "Windows"
 if (project_type === "Windows" || project_type === "Sash Windows") {
-  show: ["window_style", "num_windows"]
+  show: ["window_style", "quantity"]
 }
 
 // Always show premium features
-show: ["glazing_type", "has_curves", "premium_hardware", "custom_finish"]
+show: ["glazing_type", "has_curves", "custom_finish"]
 ```
 
 ---

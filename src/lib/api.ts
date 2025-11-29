@@ -6,21 +6,21 @@ declare const process: { env?: Record<string, string | undefined> };
 /**
  * Single source of truth for the browser app to know the API base.
  * Rules:
- * - Prefer NEXT_PUBLIC_API_BASE (set per environment)
- * - If not set and running on localhost, use http://localhost:4000 (dev convenience only)
- * - Otherwise, empty string so fetches go to same-origin "/api" via rewrites/proxy
+ * - Prefer NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_API_BASE
+ * - If running on joineryai.app, talk to https://api.joineryai.app
+ * - Otherwise, default to "/api" so Next.js rewrites/proxy handle dev/local
  */
 export const API_BASE = (() => {
-  const fromEnv = (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_BASE) ||
-                  (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_API_URL);
+  const fromEnv = (typeof process !== "undefined" && (process?.env?.NEXT_PUBLIC_API_BASE_URL || process?.env?.NEXT_PUBLIC_API_BASE));
   if (fromEnv) return String(fromEnv).replace(/\/+$/g, "");
   if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") {
-      return "http://localhost:4000";
+    const host = window.location.hostname || "";
+    if (/\.?(joineryai)\.app$/i.test(host)) {
+      return "https://api.joineryai.app";
     }
   }
-  return "";
+  // Fallback: same-origin /api which is rewritten to the API server in dev
+  return "/api";
 })();
 
 export const AUTH_COOKIE_NAME = "jid";

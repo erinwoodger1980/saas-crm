@@ -162,7 +162,7 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
               className="w-full rounded border px-2 py-1 text-sm"
               value={costKey}
               onChange={(e) => setCostKey(e.target.value)}
-              placeholder="e.g. door_height_mm"
+              placeholder="e.g. height_mm"
             />
           </label>
         </div>

@@ -1842,45 +1842,39 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
     if (!lead?.id) return;
     setBusyTask(true);
     try {
-      // move to Info requested
+      // Delegate to backend to send an invite email with signed token + link
+      const resp = await apiFetch<{ ok: boolean; url: string }>(`/leads/${encodeURIComponent(lead.id)}/request-info`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+
+      // Move to Info Requested locally as well
       setUiStatus("INFO_REQUESTED");
-      const saved = await saveStatus("INFO_REQUESTED");
-      if (!saved) return;
-
-      // ensure follow-up from playbook
-      await ensureManualTask("questionnaire_followup");
-
-      // open mailto with public link if we have a slug
-      if (lead.email && settings?.slug) {
-        const link = `${window.location.origin}/q/${settings.slug}/${encodeURIComponent(lead.id)}`;
-        const contactName = (lead.contactName || "").trim();
-        const firstName = contactName.split(/\s+/)[0] || "";
-        const brandName = (settings?.brandName || "Our team").trim() || "Our team";
-        const subjectTemplate =
-          (settings?.questionnaireEmailSubject && settings.questionnaireEmailSubject.trim()) ||
-          DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT;
-        const bodyTemplate =
-          (settings?.questionnaireEmailBody && settings.questionnaireEmailBody.trim()) ||
-          DEFAULT_QUESTIONNAIRE_EMAIL_BODY;
-
-        const replacements = {
-          contactName: contactName || firstName || "there",
-          firstName: firstName || "there",
-          brandName,
-          company: brandName,
-          link,
-        } as Record<string, string>;
-
-        const subject = (renderTemplate(subjectTemplate, replacements).trim() || DEFAULT_QUESTIONNAIRE_EMAIL_SUBJECT).
-          replace(/\s+/g, " ");
-        let body = renderTemplate(bodyTemplate, replacements).trim();
-        if (!body.includes(link)) {
-          body = body ? `${body}\n\n${link}` : link;
-        }
-        openMailTo(lead.email, subject, body);
-      }
       await reloadTasks();
-      toast("Questionnaire sent. Follow-up added.");
+      toast("Questionnaire invite sent");
+    } finally {
+      setBusyTask(false);
+    }
+  }
+
+  async function copyInviteLink() {
+    if (!lead?.id) return;
+    setBusyTask(true);
+    try {
+      const resp = await apiFetch<{ ok: boolean; url: string }>(`/leads/${encodeURIComponent(lead.id)}/request-info`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const url = (resp as any)?.url || "";
+      if (url) {
+        await navigator.clipboard.writeText(url);
+        toast("Invite link copied to clipboard");
+      } else {
+        toast("Failed to get invite link");
+      }
+    } catch (e) {
+      console.error("copy invite link failed", e);
+      toast("Failed to copy invite link");
     } finally {
       setBusyTask(false);
     }
@@ -2791,6 +2785,16 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
           <Button
             variant="outline"
+            onClick={copyInviteLink}
+            disabled={busyTask || saving}
+            title="Copy the invite link to your clipboard"
+          >
+            <span aria-hidden="true">🔗</span>
+            Copy Invite Link
+          </Button>
+
+          <Button
+            variant="outline"
             onClick={openEstimator}
             disabled={busyTask || saving}
             title="Open the public estimator workflow (lead magnet view)"
@@ -3055,13 +3059,13 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 <div className="flex items-center justify-between">
                                   <div className="text-xs font-semibold text-slate-700">Item {idx + 1}</div>
                                   <div className="text-xs text-slate-500">
-                                    {(it.width || it.door_width_mm) && <span>W: {it.width || it.door_width_mm}mm</span>}
-                                    {(it.height || it.door_height_mm) && <span className="ml-2">H: {it.height || it.door_height_mm}mm</span>}
+                                    {(it.width_mm || it.width) && <span>W: {it.width_mm || it.width}mm</span>}
+                                    {(it.height_mm || it.height) && <span className="ml-2">H: {it.height_mm || it.height}mm</span>}
                                   </div>
                                 </div>
                                 <div className="mt-2 text-xs text-slate-600 space-y-1">
                                   {Object.entries(it).map(([k,v]) => {
-                                    if (["photos","inspiration_photos","width","height","door_width_mm","door_height_mm"].includes(k)) return null;
+                                    if (["photos","inspiration_photos","width","height","width_mm","height_mm","door_width_mm","door_height_mm"].includes(k)) return null;
                                     return (
                                       <div key={k} className="flex gap-2">
                                         <div className="w-28 text-slate-500">{String(k)}</div>

@@ -34,7 +34,6 @@ const WIDTH_FIELD_CANDIDATES = [
   "rough_width_mm",
   "approx_width_mm",
   "approx_width",
-  "door_width_mm",
   "width_mm",
   "width",
 ];
@@ -45,7 +44,6 @@ const HEIGHT_FIELD_CANDIDATES = [
   "rough_height_mm",
   "approx_height_mm",
   "approx_height",
-  "door_height_mm",
   "height_mm",
   "height",
 ];

@@ -139,6 +139,7 @@ export function EstimateSummaryStep({
                 onRemove={onRemoveItem}
                 onUpdateOpening={onUpdateOpening}
                 onTrackInteraction={onTrackInteraction}
+                hidePrices={hidePrices}
               />
             ))}
           </div>
@@ -176,6 +177,7 @@ export function EstimateSummaryStep({
                 onRemove={onRemoveItem}
                 onUpdateOpening={onUpdateOpening}
                 onTrackInteraction={onTrackInteraction}
+                hidePrices={hidePrices}
               />
             ))}
           </div>

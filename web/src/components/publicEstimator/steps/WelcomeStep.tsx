@@ -65,24 +65,24 @@ export function WelcomeStep({
             </div>
           </div>
 
-          {/* Trust signals */}
-          {reviewScore && reviewCount && (
+          {/* Trust signals (show when either metric is present) */}
+          {(typeof reviewScore === 'number' || typeof reviewCount === 'number') && (
             <div className="flex items-center gap-2 text-sm">
               <div className="flex items-center gap-1">
                 {[...Array(5)].map((_, i) => (
                   <span
                     key={i}
-                    className={i < Math.round(reviewScore) ? 'text-amber-400' : 'text-slate-300'}
+                    className={i < Math.round(Number(reviewScore || 0)) ? 'text-amber-400' : 'text-slate-300'}
                   >
                     ★
                   </span>
                 ))}
               </div>
               <span className="font-medium text-slate-700">
-                {reviewScore} / 5
+                {typeof reviewScore === 'number' ? reviewScore.toFixed(1) : '—'} / 5
               </span>
               <span className="text-slate-500">
-                ({reviewCount} {reviewSource || 'reviews'})
+                ({typeof reviewCount === 'number' ? reviewCount : 0} {reviewSource || 'reviews'})
               </span>
             </div>
           )}

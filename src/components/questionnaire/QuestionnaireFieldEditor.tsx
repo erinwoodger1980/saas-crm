@@ -259,7 +259,7 @@ export default function QuestionnaireFieldEditor() {
                 type="text"
                 value={formData.costingInputKey}
                 onChange={(e) => setFormData({ ...formData, costingInputKey: e.target.value })}
-                placeholder="e.g., door_height_mm"
+                placeholder="e.g., height_mm"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
               <p className="text-xs text-gray-500 mt-1">Map to costing engine input</p>

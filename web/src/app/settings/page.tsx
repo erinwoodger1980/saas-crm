@@ -53,6 +53,11 @@ type Settings = {
   questionnaireEmailSubject?: string | null;
   questionnaireEmailBody?: string | null;
   isFireDoorManufacturer?: boolean;
+  // Social proof / branding metrics
+  reviewScore?: number | null;
+  reviewCount?: number | null;
+  reviewSourceLabel?: string | null;
+  serviceArea?: string | null;
   emailTemplates?: {
     declineQuote?: { subject: string; body: string };
     requestSupplierQuote?: { subject: string; body: string };
@@ -439,6 +444,10 @@ export default function SettingsPage() {
         website: s.website,
         phone: s.phone,
         logoUrl: s.logoUrl,
+        reviewScore: s.reviewScore,
+        reviewCount: s.reviewCount,
+        reviewSourceLabel: s.reviewSourceLabel,
+        serviceArea: s.serviceArea,
         inbox,
         questionnaire: serializeQuestionnaire(qFields),
         taskPlaybook: playbook,
@@ -1172,6 +1181,46 @@ export default function SettingsPage() {
           value={s.quoteDefaults?.overview ?? ""}
           onChange={(e) => setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, overview: e.target.value } } : prev)}
           placeholder="We are a specialist in bespoke timber joinery..."
+        />
+      </Field>
+    </div>
+  </Section>
+
+  <Section title="Social Proof" description="Review metrics and local service area shown on public estimator and landing pages" right={<Button onClick={saveSettings} disabled={savingSettings}>{savingSettings ? "Saving…" : "Save Social Proof"}</Button>}>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <Field label="Average Review Score" hint="Typical range 4.5 – 5.0">
+        <input
+          type="number"
+          step="0.01"
+          className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+          value={s.reviewScore == null ? "" : s.reviewScore}
+          onChange={(e) => setS((prev) => prev ? { ...prev, reviewScore: e.target.value === "" ? null : Number(e.target.value) } : prev)}
+          placeholder="4.9"
+        />
+      </Field>
+      <Field label="Total Reviews" hint="Total count across the source">
+        <input
+          type="number"
+          className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+          value={s.reviewCount == null ? "" : s.reviewCount}
+          onChange={(e) => setS((prev) => prev ? { ...prev, reviewCount: e.target.value === "" ? null : Number(e.target.value) } : prev)}
+          placeholder="182"
+        />
+      </Field>
+      <Field label="Review Source Label" hint="e.g. Google Reviews, Trustpilot">
+        <input
+          className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+          value={s.reviewSourceLabel ?? ""}
+          onChange={(e) => setS((prev) => prev ? { ...prev, reviewSourceLabel: e.target.value } : prev)}
+          placeholder="Google Reviews"
+        />
+      </Field>
+      <Field label="Service Area" hint="Key cities / regions you cover">
+        <input
+          className="w-full rounded-2xl border bg-white/95 px-4 py-2 text-sm"
+          value={s.serviceArea ?? ""}
+          onChange={(e) => setS((prev) => prev ? { ...prev, serviceArea: e.target.value } : prev)}
+          placeholder="London • Surrey • Kent"
         />
       </Field>
     </div>

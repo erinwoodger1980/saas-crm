@@ -18,6 +18,7 @@ import { EstimateSummaryStep } from './steps/EstimateSummaryStep';
 import { ContactConversionStep } from './steps/ContactConversionStep';
 import { EstimatePreviewCard } from './EstimatePreviewCard';
 import { DecisionStep } from './steps/DecisionStep';
+import { Button } from '@/components/ui/button';
 
 interface PublicEstimatorStepperProps {
   tenantSlug: string;
@@ -80,6 +81,8 @@ export function PublicEstimatorStepper({
     tenantSlug,
     onError: (error) => console.error('Estimator error:', error),
   });
+
+  const isInviteMode = entryContext?.entryMode === 'INVITE';
 
   // Handle item removal from estimate summary
   const handleRemoveItem = (itemId: string) => {
@@ -187,9 +190,12 @@ export function PublicEstimatorStepper({
     }
 
     const safe = (v: number | undefined | null) => Number.isFinite(v as number) ? Number(v).toFixed(2) : '0.00';
+    const shareText = (entryContext?.entryMode === 'INVITE')
+      ? `My joinery estimate: £${safe(estimatePreview.totalGross)} for ${estimatePreview.items.length} items`
+      : `My joinery estimate for ${estimatePreview.items.length} items`;
     const shareData = {
       title: `${branding.name} - Estimate`,
-      text: `My joinery estimate: £${safe(estimatePreview.totalGross)} for ${estimatePreview.items.length} items`,
+      text: shareText,
       url: shareUrl,
     };
 
@@ -396,7 +402,7 @@ export function PublicEstimatorStepper({
               handleUpdateData({ openingDetails: updated });
             }}
             onTrackInteraction={trackInteraction}
-            hidePrices={!hasSubmitted}
+            hidePrices={!isInviteMode}
           />
         )}
 
@@ -416,29 +422,68 @@ export function PublicEstimatorStepper({
         )}
 
         {currentStep === 7 && (
-          <DecisionStep
-            totalGross={estimatePreview?.totalGross}
-            primaryColor={branding.primaryColor}
-            companyName={branding.name}
-            onDoOwnQuote={() => {
-              // Placeholder: implement PDF export of estimate
-              trackInteraction('DECISION_SELF_QUOTE');
-              alert('Download starting… (stub)');
-            }}
-            onSendMlEstimate={async () => {
-              try {
-                trackInteraction('DECISION_SEND_ML_ESTIMATE');
-                await saveProject();
-                alert('Estimate sent to company (stub).');
-              } catch (e) {
-                console.error(e);
-              }
-            }}
-            onFinish={() => {
-              trackInteraction('DECISION_FINISH');
-              window.location.href = `/q/thank-you?tenant=${branding.slug}`;
-            }}
-          />
+          isInviteMode ? (
+            <DecisionStep
+              totalGross={estimatePreview?.totalGross}
+              primaryColor={branding.primaryColor}
+              companyName={branding.name}
+              onDoOwnQuote={() => {
+                trackInteraction('DECISION_SELF_QUOTE');
+                alert('Download starting… (stub)');
+              }}
+              onSendMlEstimate={async () => {
+                try {
+                  trackInteraction('DECISION_SEND_ML_ESTIMATE');
+                  await saveProject();
+                  alert('Estimate sent to company (stub).');
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+              onFinish={() => {
+                trackInteraction('DECISION_FINISH');
+                window.location.href = `/q/thank-you?tenant=${branding.slug}`;
+              }}
+            />
+          ) : (
+            <div className="space-y-6">
+              <div className="text-center">
+                <div
+                  className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-opacity-10"
+                  style={{ backgroundColor: branding.primaryColor }}
+                >
+                  {/* Sparkles icon substitute to avoid extra import here */}
+                  <span className="text-xl" style={{ color: branding.primaryColor }}>✨</span>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900">Thanks — request received!</h2>
+                <p className="mt-2 text-slate-600">
+                  Our joiner will confirm your measurements and finalize your quote. We’ll email your confirmed price and next steps shortly.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border-2 border-slate-200 bg-white p-5">
+                <h3 className="text-lg font-semibold text-slate-900">What happens now?</h3>
+                <ul className="mt-3 space-y-2 text-sm text-slate-600">
+                  <li>1) We review your selections and photos</li>
+                  <li>2) If needed, we’ll arrange a quick call/site check</li>
+                  <li>3) We send your confirmed, itemized quote by email</li>
+                </ul>
+              </div>
+
+              <div className="flex justify-center pt-2">
+                <Button
+                  onClick={() => {
+                    trackInteraction('DECISION_FINISH');
+                    window.location.href = `/q/thank-you?tenant=${branding.slug}`;
+                  }}
+                  className="rounded-2xl text-white"
+                  style={{ backgroundColor: branding.primaryColor }}
+                >
+                  Finish
+                </Button>
+              </div>
+            </div>
+          )
         )}
           </div>
         </div>
@@ -456,7 +501,7 @@ export function PublicEstimatorStepper({
                     onShare={handleShare}
                     primaryColor={branding.primaryColor}
                     companyName={branding.name}
-                    hidePrices={!hasSubmitted}
+                    hidePrices={!isInviteMode}
                   />
               {/* Social Proof */}
               <div className="mt-4">

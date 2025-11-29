@@ -40,7 +40,7 @@ The test script verifies **(14 automated tests)**:
 ✅ **Tenant Exists** - Test tenant created and accessible  
 ✅ **Active Questionnaire** - Default questionnaire exists for tenant  
 ✅ **Standard Fields** - 24 ML-aligned standard fields seeded  
-✅ **Required ML Fields** - Core fields present: `door_width_mm`, `door_height_mm`, `quantity`  
+✅ **Required ML Fields** - Core fields present: `quantity`  
 ✅ **Scope Normalization** - All scopes are canonical (`client`, `public`, `internal`, `manufacturing`)  
 ✅ **Scope Distribution** - Fields distributed across scopes correctly  
 ✅ **Field Types** - All fields have valid `QuestionnaireFieldType` enum values  
@@ -208,14 +208,14 @@ pass("Standard fields", `${standardFields.length} fields found`); // Update expe
 Add to the `requiredKeys` array:
 ```typescript
 // Line ~109: Add new required field keys
-const requiredKeys = ["door_width_mm", "door_height_mm", "quantity", "your_new_field"];
+const requiredKeys = ["quantity", "your_new_field"];
 ```
 
 ### Adding New Costing Fields
 Update `requiredCostingKeys`:
 ```typescript
 // Line ~151: Add new costing field keys
-const requiredCostingKeys = ["door_width_mm", "door_height_mm", "quantity", "your_new_costing_field"];
+const requiredCostingKeys = ["quantity", "your_new_costing_field"];
 ```
 
 ### Adding New Scope Values

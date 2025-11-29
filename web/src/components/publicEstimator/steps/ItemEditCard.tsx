@@ -32,6 +32,7 @@ interface ItemEditCardProps {
   onRemove?: (id: string) => void;
   onUpdateOpening?: (id: string, updates: Partial<OpeningItem>) => void;
   onTrackInteraction?: (type: string, metadata?: Record<string, any>) => void;
+  hidePrices?: boolean;
 }
 
 export function ItemEditCard({
@@ -43,10 +44,12 @@ export function ItemEditCard({
   onRemove,
   onUpdateOpening,
   onTrackInteraction,
+  hidePrices = false,
 }: ItemEditCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<OpeningItem>>({});
+  const mask = (val: string) => (hidePrices ? '—' : val);
 
   const handleStartEdit = () => {
     if (opening) {
@@ -116,9 +119,9 @@ export function ItemEditCard({
               )}
             </button>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-              <span>Net: £{item.netGBP.toFixed(2)}</span>
+              <span>Net: £{mask(item.netGBP.toFixed(2))}</span>
               <span>•</span>
-              <span>VAT: £{item.vatGBP.toFixed(2)}</span>
+              <span>VAT: £{mask(item.vatGBP.toFixed(2))}</span>
             </div>
           </div>
 
@@ -128,7 +131,7 @@ export function ItemEditCard({
               className="text-lg font-bold"
               style={isFavourite ? { color: primaryColor } : {}}
             >
-              £{item.totalGBP.toFixed(2)}
+              £{mask(item.totalGBP.toFixed(2))}
             </p>
             <div className="flex gap-1">
               {opening && onUpdateOpening && !isEditing && (

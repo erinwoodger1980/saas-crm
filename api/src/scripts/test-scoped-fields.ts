@@ -100,8 +100,8 @@ async function testStandardFields(tenantId: string) {
 
     pass("Standard fields", `${standardFields.length} fields found`);
 
-    // Check for required ML fields
-    const requiredKeys = ["door_width_mm", "door_height_mm", "quantity"];
+    // Check for required ML fields (dimensions are captured via Opening Details, not standard fields)
+    const requiredKeys = ["quantity"];
     const foundKeys = new Set(standardFields.map((f) => f.key));
     const missingKeys = requiredKeys.filter((k) => !foundKeys.has(k));
 
@@ -221,8 +221,8 @@ async function testCostingInputKeys(tenantId: string) {
 
     pass("Costing input keys", `${costingFields.length} costing fields`);
 
-    // Check for required costing fields
-    const requiredCostingKeys = ["door_width_mm", "door_height_mm", "quantity"];
+    // Check for required costing fields (width/height are collected per-item, not as global standard fields)
+    const requiredCostingKeys = ["quantity"];
     const foundCostingKeys = new Set(
       costingFields.map((f) => f.costingInputKey).filter(Boolean)
     );

@@ -44,7 +44,7 @@ import { buildCostingInputs, calculateCost } from "@/lib/questionnaire/costing";
 
 // Extract costing inputs from questionnaire answers
 const inputs = await buildCostingInputs(quoteId, tenantId);
-// => { door_height_mm: 2100, door_width_mm: 900, quantity: 2 }
+// => { height_mm: 2100, width_mm: 900, quantity: 2 }
 
 // Run costing calculation
 const result = await calculateCost(inputs, tenantId);
@@ -91,7 +91,7 @@ router.post("/quotes/:id/calculate-price", requireAuth, async (req, res) => {
   const inputs = await buildCostingInputs(quoteId, tenantId);
 
   // Validate required inputs
-  const required = ["door_height_mm", "door_width_mm", "quantity"];
+  const required = ["height_mm", "width_mm", "quantity"];
   const missing = validateCostingInputs(inputs, required);
   if (missing.length > 0) {
     return res.status(400).json({ error: "missing_inputs", missing });
@@ -127,12 +127,12 @@ router.post("/quotes/:id/calculate-price", requireAuth, async (req, res) => {
 #### Number Field with Costing Mapping
 ```json
 {
-  "key": "door_height",
-  "label": "Door Height (mm)",
+  "key": "height_mm",
+  "label": "Height (mm)",
   "type": "number",
   "required": true,
   "placeholder": "2100",
-  "costingInputKey": "door_height_mm",
+  "costingInputKey": "height_mm",
   "helpText": "Standard height is 2100mm"
 }
 ```
@@ -167,8 +167,8 @@ router.post("/quotes/:id/calculate-price", requireAuth, async (req, res) => {
 
 Costing input keys are stable identifiers that map questionnaire answers to your pricing logic:
 
-- `door_height_mm` - Door height in millimeters
-- `door_width_mm` - Door width in millimeters  
+- `height_mm` - Height in millimeters
+- `width_mm` - Width in millimeters  
 - `quantity` - Number of units
 - `timber_type` - Selected timber species
 - `glazing_type` - Glazing specification

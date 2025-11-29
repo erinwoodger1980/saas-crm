@@ -1461,10 +1461,12 @@ router.post("/:id/request-info", async (req, res) => {
     if (!lead || lead.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
     if (!lead.email) return res.status(400).json({ error: "lead has no email" });
 
-  const WEB_ORIGIN = pickWebOrigin();
-  const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    const WEB_ORIGIN = pickWebOrigin();
+    const ts = await prisma.tenantSettings.findUnique({ where: { tenantId } });
     const slug = ts?.slug || ("tenant-" + tenantId.slice(0, 6));
-    const qUrl = `${WEB_ORIGIN}/q/${encodeURIComponent(slug)}/${encodeURIComponent(id)}`;
+    // Sign an invite token to switch estimator into INVITE mode
+    const token = jwt.sign({ t: tenantId, l: id, scope: "public-invite" }, env.APP_JWT_SECRET, { expiresIn: "90d" });
+    const qUrl = `${WEB_ORIGIN}/q/${encodeURIComponent(slug)}/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`;
 
     const fromHeader = fromEmail || "me";
     const subject = `More details needed – ${lead.contactName || "your enquiry"}`;
@@ -1497,7 +1499,7 @@ router.post("/:id/request-info", async (req, res) => {
     });
 
     // Task creation happens when questionnaire is actually submitted
-    return res.json({ ok: true, url: qUrl });
+    return res.json({ ok: true, url: qUrl, token });
   } catch (e: any) {
     console.error("[leads] request-info failed:", e);
     return res.status(500).json({ error: e?.message || "request-info failed" });
