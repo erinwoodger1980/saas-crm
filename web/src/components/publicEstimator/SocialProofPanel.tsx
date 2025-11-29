@@ -13,15 +13,19 @@ interface SocialProofPanelProps {
     reviewCount?: number;
     reviewSourceLabel?: string;
     serviceArea?: string;
+    guarantees?: Array<{ title: string; description: string }>;
+    certifications?: Array<{ name: string; description: string }>;
   } | null;
   primaryColor?: string;
 }
 
 export function SocialProofPanel({ branding, primaryColor = '#3b82f6' }: SocialProofPanelProps) {
   if (!branding) return null;
-  const { testimonials = [], galleryImageUrls = [], reviewScore, reviewCount, reviewSourceLabel, serviceArea } = branding;
+  const { testimonials = [], galleryImageUrls = [], reviewScore, reviewCount, reviewSourceLabel, serviceArea, guarantees = [], certifications = [] } = branding;
   const hasTestimonials = testimonials.length > 0;
   const hasGallery = galleryImageUrls.length > 0;
+  const hasGuarantees = guarantees.length > 0;
+  const hasCerts = certifications.length > 0;
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-md">
@@ -77,11 +81,41 @@ export function SocialProofPanel({ branding, primaryColor = '#3b82f6' }: SocialP
           </div>
         )}
 
-        {!hasGallery && !hasTestimonials && !(reviewScore || reviewCount) && (
+        {/* Guarantees */}
+        {hasGuarantees && (
+          <div>
+            <h4 className="mb-2 text-sm font-semibold text-slate-700">Our Guarantees</h4>
+            <ul className="space-y-2">
+              {guarantees.slice(0, 3).map((g, i) => (
+                <li key={i} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <p className="font-medium text-slate-800">{g.title}</p>
+                  {g.description && <p className="text-slate-600 text-xs mt-1">{g.description}</p>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Certifications */}
+        {hasCerts && (
+          <div>
+            <h4 className="mb-2 text-sm font-semibold text-slate-700">Certifications</h4>
+            <ul className="space-y-2">
+              {certifications.slice(0, 3).map((c, i) => (
+                <li key={i} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <p className="font-medium text-slate-800">{c.name}</p>
+                  {c.description && <p className="text-slate-600 text-xs mt-1">{c.description}</p>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {!hasGallery && !hasTestimonials && !hasGuarantees && !hasCerts && !(reviewScore || reviewCount) && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-medium text-slate-700 mb-2">💡 Configure social proof</p>
             <p className="text-xs text-slate-500">
-              Add testimonials, gallery images, and review scores in Settings → Company Info tab.
+              Add testimonials, guarantees, certifications, gallery images, and review scores in Settings → Company Info tab.
               This helps build trust with potential customers.
             </p>
           </div>

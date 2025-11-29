@@ -294,11 +294,13 @@ router.get("/tenant/:tenantSlug/branding", async (req, res) => {
       heroImageUrl: (s as any).heroImageUrl ?? null,
       galleryImageUrls: Array.isArray((s as any).galleryImageUrls) ? (s as any).galleryImageUrls : [],
       // Social proof
-      testimonials: (s as any).testimonials ?? null,
+      testimonials: ((s as any).testimonials ?? (s as any)?.quoteDefaults?.testimonials) ?? null,
       reviewScore: (s as any).reviewScore ?? null,
       reviewCount: (s as any).reviewCount ?? null,
       reviewSourceLabel: (s as any).reviewSourceLabel ?? null,
       serviceArea: (s as any).serviceArea ?? null,
+      guarantees: (s as any)?.quoteDefaults?.guarantees ?? null,
+      certifications: (s as any)?.quoteDefaults?.certifications ?? null,
       // Form structure
       questionnaire: normalizeQuestionnaire((s as any).questionnaire ?? []),
     });

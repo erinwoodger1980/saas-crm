@@ -69,6 +69,8 @@ export interface TenantBranding {
   reviewCount?: number;
   reviewSourceLabel?: string;
   serviceArea?: string;
+  guarantees?: Array<{ title: string; description: string }>;
+  certifications?: Array<{ name: string; description: string }>;
 }
 
 export interface UsePublicEstimatorOptions {
@@ -199,6 +201,8 @@ export function usePublicEstimator({
       reviewCount: undefined,
       reviewSourceLabel: undefined,
       serviceArea: undefined,
+      guarantees: [],
+      certifications: [],
     };
 
     const normalizeDecimal = (v: any): number | undefined => {
@@ -240,6 +244,8 @@ export function usePublicEstimator({
       reviewCount: normalizeInt(raw?.reviewCount),
       reviewSourceLabel: typeof raw?.reviewSourceLabel === 'string' ? raw.reviewSourceLabel : undefined,
       serviceArea: typeof raw?.serviceArea === 'string' ? raw.serviceArea : undefined,
+      guarantees: Array.isArray(raw?.guarantees) ? raw.guarantees : [],
+      certifications: Array.isArray(raw?.certifications) ? raw.certifications : [],
     });
 
     const loadOnce = async (attempt: number) => {

@@ -1949,6 +1949,13 @@ export default function SettingsPage() {
                   View Your Landing Page →
                 </a>
               )}
+              <a
+                href="/admin/example-photos"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-medium"
+                title="Manage curated inspiration photos for the public estimator"
+              >
+                Manage Example Photos →
+              </a>
             </div>
           </div>
         </Section>
