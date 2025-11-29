@@ -19,6 +19,7 @@ interface EstimatePreviewCardProps {
   primaryColor?: string;
   companyName?: string;
   className?: string;
+  hidePrices?: boolean; // when true, mask prices until submission
 }
 
 export function EstimatePreviewCard({
@@ -30,6 +31,7 @@ export function EstimatePreviewCard({
   primaryColor = '#3b82f6',
   companyName = 'Us',
   className = '',
+  hidePrices = false,
 }: EstimatePreviewCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showAllItems, setShowAllItems] = useState(false);
@@ -99,6 +101,7 @@ export function EstimatePreviewCard({
   }
 
   const safe = (v: number | undefined | null) => Number.isFinite(v as number) ? Number(v).toFixed(2) : '0.00';
+  const mask = (val: string) => hidePrices ? '—' : val;
   const visibleItems = showAllItems ? estimate.items : estimate.items.slice(0, 3);
   const hasMoreItems = estimate.items.length > 3;
   const favouritesCount = favouriteItemIds.length;
@@ -181,17 +184,17 @@ export function EstimatePreviewCard({
                       </p>
                       <div className="mt-1 flex items-baseline gap-2">
                         <span className="text-sm text-slate-500">
-                          Net: £{safe(item.netGBP)}
+                          Net: £{mask(safe(item.netGBP))}
                         </span>
                         <span className="text-xs text-slate-400">
-                          +VAT £{safe(item.vatGBP)}
+                          +VAT £{mask(safe(item.vatGBP))}
                         </span>
                       </div>
                     </div>
                     
                     <div className="flex-shrink-0 text-right">
                       <p className="font-semibold text-slate-900">
-                        £{safe(item.totalGBP)}
+                        £{mask(safe(item.totalGBP))}
                       </p>
                       <p className="text-xs text-slate-500">inc. VAT</p>
                     </div>
@@ -238,13 +241,13 @@ export function EstimatePreviewCard({
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-600">Net total</span>
                   <span className="font-medium text-slate-900">
-                    £{safe(estimate.totalNet)}
+                    £{mask(safe(estimate.totalNet))}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-600">VAT (20%)</span>
                   <span className="font-medium text-slate-900">
-                    £{safe(estimate.totalVat)}
+                    £{mask(safe(estimate.totalVat))}
                   </span>
                 </div>
                 <div className="flex items-center justify-between border-t border-slate-200 pt-2">
@@ -253,7 +256,7 @@ export function EstimatePreviewCard({
                     className="text-2xl font-bold"
                     style={{ color: primaryColor }}
                   >
-                    £{safe(estimate.totalGross)}
+                    £{mask(safe(estimate.totalGross))}
                   </span>
                 </div>
               </div>
@@ -286,7 +289,7 @@ export function EstimatePreviewCard({
               className="text-xl font-bold"
               style={{ color: primaryColor }}
             >
-              £{safe(estimate.totalGross)}
+              £{mask(safe(estimate.totalGross))}
             </span>
           </div>
         </div>

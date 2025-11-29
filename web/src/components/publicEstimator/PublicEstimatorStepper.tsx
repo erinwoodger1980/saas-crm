@@ -36,6 +36,7 @@ export function PublicEstimatorStepper({
   onComplete,
 }: PublicEstimatorStepperProps) {
   const [currentStep, setCurrentStep] = useState(1);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
   
   // Use the hook for state management, auto-save, and pricing
   const {
@@ -126,6 +127,7 @@ export function PublicEstimatorStepper({
     try {
       // Save final project state
       await saveProject();
+      setHasSubmitted(true);
       
       // Track completion
       await trackInteraction('QUESTIONNAIRE_COMPLETED');
@@ -343,6 +345,7 @@ export function PublicEstimatorStepper({
               handleUpdateData({ openingDetails: updated });
             }}
             onTrackInteraction={trackInteraction}
+            hidePrices={!hasSubmitted}
           />
         )}
 
@@ -376,6 +379,7 @@ export function PublicEstimatorStepper({
                     onShare={handleShare}
                     primaryColor={branding.primaryColor}
                     companyName={branding.name}
+                    hidePrices={!hasSubmitted}
                   />
               {/* Social Proof */}
               <div className="mt-4">

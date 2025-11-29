@@ -124,10 +124,10 @@ export function PropertyBasicsStep({
         )}
       </div>
 
-      {/* Item Count */}
+      {/* Quantity */}
       <div className="space-y-3">
         <Label htmlFor="itemCount" className="text-base font-semibold">
-          How many windows/doors? <span className="text-red-500">*</span>
+          Quantity <span className="text-red-500">*</span>
         </Label>
         <Select
           value={String(itemCount)}

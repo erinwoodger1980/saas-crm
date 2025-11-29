@@ -256,31 +256,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     isStandard: true,
   },
   {
-    key: "door_width_mm",
-    label: "Approx Width (mm)",
-    type: "NUMBER",
-    required: false,
-    costingInputKey: "door_width_mm",
-    helpText: "Approximate width",
-    placeholder: "e.g., 900",
-    sortOrder: 206,
-    group: "Public Questionnaire",
-    scope: "public",
-    isStandard: true,
-  },
-  {
-    key: "door_height_mm",
-    label: "Approx Height (mm)",
-    type: "NUMBER",
-    required: false,
-    costingInputKey: "door_height_mm",
-    helpText: "Approximate height",
-    placeholder: "e.g., 2100",
-    sortOrder: 207,
-    group: "Public Questionnaire",
-    scope: "public",
-    isStandard: true,
-  },
+    // Removed duplicate dimension questions; OpeningDetailsStep captures width/height
   
   // ============ MANUFACTURING (post-won final specs) ============
   {

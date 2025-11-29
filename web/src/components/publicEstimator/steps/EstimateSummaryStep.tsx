@@ -34,6 +34,7 @@ interface EstimateSummaryStepProps {
   openingDetails?: OpeningItem[]; // Source data for inline editing
   onUpdateOpening?: (id: string, updates: Partial<OpeningItem>) => void;
   onTrackInteraction?: (type: string, metadata?: Record<string, any>) => void;
+  hidePrices?: boolean; // mask pricing until submission
 }
 
 export function EstimateSummaryStep({
@@ -50,6 +51,7 @@ export function EstimateSummaryStep({
   openingDetails = [],
   onUpdateOpening,
   onTrackInteraction,
+  hidePrices = false,
 }: EstimateSummaryStepProps) {
   const favouritedItems = estimate?.items.filter(item => 
     favouriteItemIds.includes(item.id)
@@ -61,6 +63,7 @@ export function EstimateSummaryStep({
 
   const favouritesTotal = favouritedItems.reduce((sum, item) => sum + item.totalGBP, 0);
   const othersTotal = otherItems.reduce((sum, item) => sum + item.totalGBP, 0);
+  const mask = (val: string) => hidePrices ? '—' : val;
 
   // Loading state
   if (isLoading) {
@@ -145,7 +148,7 @@ export function EstimateSummaryStep({
             <div className="flex items-center justify-between">
               <span className="font-medium text-slate-700">Favourites subtotal</span>
               <span className="text-xl font-bold" style={{ color: primaryColor }}>
-                £{favouritesTotal.toFixed(2)}
+                £{mask(favouritesTotal.toFixed(2))}
               </span>
             </div>
           </div>
@@ -182,7 +185,7 @@ export function EstimateSummaryStep({
               <div className="flex items-center justify-between">
                 <span className="font-medium text-slate-700">Other items subtotal</span>
                 <span className="text-xl font-bold text-slate-900">
-                  £{othersTotal.toFixed(2)}
+                  £{mask(othersTotal.toFixed(2))}
                 </span>
               </div>
             </div>
@@ -195,17 +198,17 @@ export function EstimateSummaryStep({
         <div className="space-y-3">
           <div className="flex items-center justify-between text-slate-700">
             <span>Net total</span>
-            <span className="font-medium">£{estimate.totalNet.toFixed(2)}</span>
+            <span className="font-medium">£{mask(estimate.totalNet.toFixed(2))}</span>
           </div>
           <div className="flex items-center justify-between text-slate-700">
             <span>VAT (20%)</span>
-            <span className="font-medium">£{estimate.totalVat.toFixed(2)}</span>
+            <span className="font-medium">£{mask(estimate.totalVat.toFixed(2))}</span>
           </div>
           <div className="border-t-2 border-slate-200 pt-3">
             <div className="flex items-center justify-between">
               <span className="text-lg font-semibold text-slate-900">Total estimate</span>
               <span className="text-3xl font-bold" style={{ color: primaryColor }}>
-                £{estimate.totalGross.toFixed(2)}
+                £{mask(estimate.totalGross.toFixed(2))}
               </span>
             </div>
           </div>
