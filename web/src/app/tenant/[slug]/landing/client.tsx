@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 interface PublicLandingClientProps {
+  tenantSlug: string;
   tenant: any;
   headline: string;
   subheadline: string;
@@ -23,6 +24,7 @@ interface PublicLandingClientProps {
 }
 
 export function PublicLandingClient({
+  tenantSlug,
   tenant,
   headline,
   subheadline,
@@ -93,10 +95,18 @@ export function PublicLandingClient({
     message?: string;
   }) {
     try {
-      const res = await fetch('/api/leads/public', {
+      // Extract UTM params from URL for attribution
+      const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+      const utm: Record<string, string> = {};
+      ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach((k) => {
+        const v = params.get(k);
+        if (v) utm[k] = v;
+      });
+
+      const res = await fetch(`/api/public/tenant/${encodeURIComponent(tenantSlug)}/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ ...input, utm }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) {

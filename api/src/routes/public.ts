@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken";
 import { env } from "../env";
 import { prisma } from "../prisma";
 import { Prisma } from "@prisma/client";
+import { loadTaskPlaybook, ensureTaskFromRecipe, UiStatus } from "../task-playbook";
 
 const router = Router();
 import fetch from "node-fetch";
@@ -1245,3 +1246,170 @@ router.post("/interactions", async (req, res) => {
 });
 
 export default router;
+ 
+/* ---------- PUBLIC: create CRM Lead by tenant slug (for ads/landing) ---------- */
+/** POST /public/tenant/:slug/leads
+ * Body: {
+ *   source?: string,
+ *   name?: string,
+ *   email?: string,
+ *   phone?: string,
+ *   postcode?: string,
+ *   projectType?: string,
+ *   propertyType?: string,
+ *   message?: string,
+ *   recaptchaToken?: string,
+ *   utm?: { utm_source?, utm_medium?, utm_campaign?, utm_content?, utm_term? }
+ * }
+ */
+router.post("/tenant/:slug/leads", async (req, res) => {
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "slug_required" });
+
+    const settings = await prisma.tenantSettings.findUnique({ where: { slug } });
+    if (!settings) return res.status(404).json({ ok: false, error: "unknown_tenant" });
+    const tenantId = settings.tenantId;
+
+    const {
+      source = "unknown",
+      name = "",
+      email = "",
+      phone = "",
+      postcode = "",
+      projectType = "",
+      propertyType = "",
+      message = "",
+      recaptchaToken = "",
+      utm = {},
+    } = (req.body || {}) as any;
+
+    const s = (v: any) => String(v ?? "").trim().slice(0, 5000);
+    const src = s(source).toLowerCase();
+    const phoneClick = src.includes("phone_click") || src.includes("phone-click") || src.includes("landing-phone");
+    const guideDownload = src.includes("guide") || src.includes("exit-guide") || src.includes("lead_magnet");
+
+    // Validation rules mirroring /leads/public
+    if (phoneClick) {
+      if (!phone) return res.status(400).json({ ok: false, error: "phone_required" });
+    } else if (guideDownload) {
+      if (!email) return res.status(400).json({ ok: false, error: "email_required" });
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!emailOk) return res.status(400).json({ ok: false, error: "invalid_email" });
+    } else {
+      if (!name || !email || !phone || !postcode) {
+        return res.status(400).json({ ok: false, error: "missing_required_fields" });
+      }
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!emailOk) return res.status(400).json({ ok: false, error: "invalid_email" });
+    }
+
+    // Optional reCAPTCHA gate
+    if (recaptchaToken) {
+      try {
+        const { verifyRecaptcha } = await import("../lib/recaptcha");
+        const r = await verifyRecaptcha(recaptchaToken);
+        if (!r.ok && r.score < 0.4) {
+          return res.status(400).json({ ok: false, error: "recaptcha_failed" });
+        }
+      } catch (e) {
+        console.warn("[/public tenant leads] recaptcha skipped:", (e as any)?.message || e);
+      }
+    }
+
+    // 10-minute dedupe per tenant by email (when present)
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    if (email) {
+      const existing = await prisma.lead.findFirst({
+        where: { tenantId, email: s(email), capturedAt: { gte: tenMinAgo } },
+        select: { id: true },
+      });
+      if (existing) {
+        return res.json({ ok: true, deduped: true, id: existing.id });
+      }
+    }
+
+    const now = new Date();
+    const finalName = name || (phoneClick ? "Phone Enquiry" : name);
+
+    const custom: Record<string, any> = {
+      uiStatus: "NEW_ENQUIRY" as UiStatus,
+      enquiryDate: now.toISOString().split("T")[0],
+      dateReceived: now.toISOString().split("T")[0],
+      source: s(source),
+      phone: s(phone),
+      postcode: s(postcode),
+      projectType: s(projectType),
+      propertyType: s(propertyType),
+      message: s(message),
+    };
+    // Attach UTMs if provided
+    const utmKeys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
+    const utmClean: Record<string, string> = {};
+    utmKeys.forEach((k) => {
+      const v = (utm && typeof utm === "object" ? (utm as any)[k] : null);
+      if (v) utmClean[k] = s(v);
+    });
+    if (Object.keys(utmClean).length) custom.utm = utmClean;
+
+    // Determine creator (required field)
+    const creator = await prisma.user.findFirst({
+      where: { tenantId },
+      select: { id: true },
+    });
+    const createdById = creator?.id || (process.env.DEFAULT_PUBLIC_LEAD_USER_ID || "").trim();
+    if (!createdById) {
+      return res.status(500).json({ ok: false, error: 'no_user_for_tenant' });
+    }
+
+    const lead = await prisma.lead.create({
+      data: {
+        tenantId,
+        createdById,
+        contactName: s(finalName) || "New Enquiry",
+        email: s(email) || "",
+        status: uiStatusToDb("NEW_ENQUIRY"),
+        description: s(message) || null,
+        capturedAt: now,
+        custom,
+      },
+    });
+
+    // Optionally notify via email (fire-and-forget)
+    try {
+      const { sendLeadEmail } = await import("../lib/mailer");
+      sendLeadEmail({
+        source: s(source),
+        name: s(finalName),
+        email: s(email),
+        phone: s(phone),
+        postcode: s(postcode),
+        projectType: s(projectType),
+        propertyType: s(propertyType),
+        message: s(message),
+      }).catch(() => {});
+    } catch {}
+
+    // Seed initial follow-up task per tenant playbook
+    try {
+      const playbook = await loadTaskPlaybook(tenantId);
+      const recipe = playbook.manual?.new_enquiry_review ?? null;
+      if (recipe) {
+        await ensureTaskFromRecipe({
+          tenantId,
+          recipe,
+          relatedId: lead.id,
+          relatedType: recipe.relatedType ?? "LEAD",
+          uniqueKey: `manual:new_enquiry_review:${lead.id}`,
+        });
+      }
+    } catch (e) {
+      console.warn("[/public tenant leads] task seed failed:", (e as any)?.message || e);
+    }
+
+    return res.json({ ok: true, id: lead.id });
+  } catch (e: any) {
+    console.error("[/public tenant leads] create failed:", e);
+    return res.status(500).json({ ok: false, error: e?.message || "server_error" });
+  }
+});

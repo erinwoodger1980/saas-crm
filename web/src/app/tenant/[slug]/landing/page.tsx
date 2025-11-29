@@ -149,6 +149,7 @@ export default async function TenantLandingPage({ params, searchParams }: PagePr
   return (
     <Suspense fallback={<LoadingState />}>
       <PublicLandingClient
+        tenantSlug={slug}
         tenant={tenant}
         headline={headline}
         subheadline={subheadline}
