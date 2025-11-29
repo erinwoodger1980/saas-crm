@@ -16,7 +16,7 @@ export type StandardFieldDefinition = {
   placeholder?: string;
   sortOrder: number;
   group?: string;
-  scope: "client" | "item" | "internal"; // 'client' = lead-level, 'item' = line-item level, 'internal' = auto-calculated/hidden
+  scope: "client" | "public" | "internal" | "manufacturing"; // 'client' = contact info, 'public' = questionnaire, 'internal' = CRM/tracking, 'manufacturing' = post-won
   isStandard: true;
 };
 
@@ -177,7 +177,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     isStandard: true,
   },
 
-  // ============ ITEM SPECIFICATION (asked per item) ============
+  // ============ PUBLIC QUESTIONNAIRE (asked per item in estimator) ============
   {
     key: "materials_grade",
     label: "Materials Grade",
@@ -187,8 +187,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     costingInputKey: "materials_grade",
     helpText: "Quality tier of materials",
     sortOrder: 200,
-    group: "Item Specification",
-    scope: "item",
+    group: "Public Questionnaire",
+    scope: "public",
     isStandard: true,
   },
   {
@@ -200,8 +200,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     costingInputKey: "glazing_type",
     helpText: "Glass specification",
     sortOrder: 201,
-    group: "Item Specification",
-    scope: "item",
+    group: "Public Questionnaire",
+    scope: "public",
     isStandard: true,
   },
   {
@@ -212,8 +212,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     costingInputKey: "has_curves",
     helpText: "Includes curved or arched elements",
     sortOrder: 202,
-    group: "Item Specification",
-    scope: "item",
+    group: "Public Questionnaire",
+    scope: "public",
     isStandard: true,
   },
   {
@@ -225,8 +225,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     costingInputKey: "ironmongery_level",
     helpText: "Quality / complexity of ironmongery",
     sortOrder: 203,
-    group: "Item Specification",
-    scope: "item",
+    group: "Public Questionnaire",
+    scope: "public",
     isStandard: true,
   },
   {
@@ -238,8 +238,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     costingInputKey: "door_type",
     helpText: "Primary item type",
     sortOrder: 204,
-    group: "Item Specification",
-    scope: "item",
+    group: "Public Questionnaire",
+    scope: "public",
     isStandard: true,
   },
   {
@@ -251,8 +251,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Total count of identical items",
     placeholder: "e.g., 2",
     sortOrder: 205,
-    group: "Item Specification",
-    scope: "item",
+    group: "Public Questionnaire",
+    scope: "public",
     isStandard: true,
   },
   {
@@ -264,8 +264,8 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Approximate width",
     placeholder: "e.g., 900",
     sortOrder: 206,
-    group: "Item Specification",
-    scope: "item",
+    group: "Public Questionnaire",
+    scope: "public",
     isStandard: true,
   },
   {
@@ -277,8 +277,57 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     helpText: "Approximate height",
     placeholder: "e.g., 2100",
     sortOrder: 207,
-    group: "Item Specification",
-    scope: "item",
+    group: "Public Questionnaire",
+    scope: "public",
+    isStandard: true,
+  },
+  
+  // ============ MANUFACTURING (post-won final specs) ============
+  {
+    key: "final_width_mm",
+    label: "Final Width (mm)",
+    type: "NUMBER",
+    required: false,
+    helpText: "Exact measured width for production",
+    placeholder: "e.g., 900",
+    sortOrder: 300,
+    group: "Manufacturing",
+    scope: "manufacturing",
+    isStandard: true,
+  },
+  {
+    key: "final_height_mm",
+    label: "Final Height (mm)",
+    type: "NUMBER",
+    required: false,
+    helpText: "Exact measured height for production",
+    placeholder: "e.g., 2100",
+    sortOrder: 301,
+    group: "Manufacturing",
+    scope: "manufacturing",
+    isStandard: true,
+  },
+  {
+    key: "installation_date",
+    label: "Installation Date",
+    type: "DATE",
+    required: false,
+    helpText: "Scheduled installation date",
+    sortOrder: 302,
+    group: "Manufacturing",
+    scope: "manufacturing",
+    isStandard: true,
+  },
+  {
+    key: "production_notes",
+    label: "Production Notes",
+    type: "TEXTAREA",
+    required: false,
+    helpText: "Special instructions for manufacturing",
+    placeholder: "Any specific details for workshop...",
+    sortOrder: 303,
+    group: "Manufacturing",
+    scope: "manufacturing",
     isStandard: true,
   },
 ];
@@ -295,8 +344,15 @@ export function getFieldsByGroup(group: string): StandardFieldDefinition[] {
  */
 export function getFieldGroups(): string[] {
   const groups = [...new Set(STANDARD_FIELDS.map((f) => f.group).filter(Boolean))];
-  const order = ["Client Profile", "Item Specification", "Internal"];
+  const order = ["Client Profile", "Public Questionnaire", "Internal", "Manufacturing"];
   return order.filter((g) => groups.includes(g));
+}
+
+/**
+ * Get fields by scope for context-specific rendering
+ */
+export function getFieldsByScope(scope: "client" | "public" | "internal" | "manufacturing"): StandardFieldDefinition[] {
+  return STANDARD_FIELDS.filter((f) => f.scope === scope);
 }
 
 /**

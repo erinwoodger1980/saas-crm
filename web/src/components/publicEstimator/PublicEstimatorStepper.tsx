@@ -43,6 +43,9 @@ export function PublicEstimatorStepper({
     data,
     estimatePreview,
     entryContext,
+    clientFields,
+    publicFields,
+    isLoadingFields,
     isLoadingBranding,
     isLoadingEstimate,
     isSaving,
@@ -311,6 +314,8 @@ export function PublicEstimatorStepper({
           <GlobalSpecsStep
             globalSpecs={data.globalSpecs}
             primaryColor={branding.primaryColor}
+            fields={publicFields}
+            isLoadingFields={isLoadingFields}
             onChange={handleUpdateData}
             onNext={handleNext}
             onBack={handleBack}
@@ -348,6 +353,8 @@ export function PublicEstimatorStepper({
             isInviteMode={entryContext?.entryMode === 'INVITE'}
             primaryColor={branding.primaryColor}
             companyName={branding.name}
+            fields={clientFields}
+            isLoadingFields={isLoadingFields}
             onChange={handleUpdateData}
             onSubmit={handleFinalSubmit}
             onBack={handleBack}

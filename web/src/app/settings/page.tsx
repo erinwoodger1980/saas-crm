@@ -242,6 +242,7 @@ export default function SettingsPage() {
   const [qSearch, setQSearch] = useState("");
   const [qHideInternal, setQHideInternal] = useState(true);
   const [qOnlyPublic, setQOnlyPublic] = useState(false);
+  const [qScopeTab, setQScopeTab] = useState<"client" | "public" | "internal" | "manufacturing">("public");
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingFireDoor, setSavingFireDoor] = useState(false);
   const [enrichingWebsite, setEnrichingWebsite] = useState(false);
@@ -1507,9 +1508,28 @@ export default function SettingsPage() {
       {currentStage === "questionnaire" && (
       <Section 
         title="Questionnaire Fields" 
-        description="Configure the fields shown in your client questionnaire. Drag to reorder, click to edit inline."
+        description="Configure fields across scopes. Drag to reorder, click to edit inline."
       >
-        <AdminQuestionnaireFieldsTable apiBase={API_BASE} />
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {([
+              { key: "client", label: "Client Info" },
+              { key: "public", label: "Public Questionnaire" },
+              { key: "internal", label: "Internal" },
+              { key: "manufacturing", label: "Manufacturing" },
+            ] as const).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setQScopeTab(key)}
+                className={`px-3 py-1 rounded-full text-xs border ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <AdminQuestionnaireFieldsTable apiBase={API_BASE} scope={qScopeTab} />
+        </div>
       </Section>
       )}
 

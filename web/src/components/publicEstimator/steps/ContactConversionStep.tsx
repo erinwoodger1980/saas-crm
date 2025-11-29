@@ -1,6 +1,6 @@
 /**
  * ContactConversionStep - Capture or confirm contact details
- * Adapts for AD mode (new lead) vs INVITE mode (pre-filled from lead)
+ * Now dynamically renders fields from QuestionnaireField with scope='client'
  */
 
 'use client';
@@ -8,12 +8,15 @@
 import { useState } from 'react';
 import { User, Mail, Phone, MessageSquare, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { UnifiedFieldRenderer } from '@/components/fields/UnifiedFieldRenderer';
+import type { QuestionnaireField } from '@/lib/questionnaireFields';
 
 interface ContactDetails {
   name?: string;
   email?: string;
   phone?: string;
   preferredContact?: string;
+  [key: string]: any; // Support dynamic fields
 }
 
 interface ContactConversionStepProps {
@@ -22,6 +25,8 @@ interface ContactConversionStepProps {
   isInviteMode?: boolean;
   primaryColor?: string;
   companyName?: string;
+  fields?: QuestionnaireField[];
+  isLoadingFields?: boolean;
   onChange: (data: { contactDetails: ContactDetails }) => void;
   onSubmit: () => void;
   onBack: () => void;
@@ -39,6 +44,8 @@ export function ContactConversionStep({
   isInviteMode = false,
   primaryColor = '#3b82f6',
   companyName = 'us',
+  fields = [],
+  isLoadingFields = false,
   onChange,
   onSubmit,
   onBack,
@@ -48,7 +55,7 @@ export function ContactConversionStep({
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleUpdate = (field: keyof ContactDetails, value: string) => {
+  const handleUpdate = (field: string, value: any) => {
     const updated = { ...details, [field]: value };
     setDetails(updated);
     onChange({ contactDetails: updated });
@@ -59,15 +66,19 @@ export function ContactConversionStep({
     }
   };
 
-  const handleBlur = (field: keyof ContactDetails) => {
+  const handleBlur = (field: string) => {
     setTouched(prev => ({ ...prev, [field]: true }));
     validateField(field, details[field]);
   };
 
-  const validateField = (field: keyof ContactDetails, value?: string) => {
+  const validateField = (field: string, value?: any) => {
     const newErrors = { ...errors };
 
-    if (field === 'name') {
+    // Find field definition
+    const fieldDef = fields.find(f => f.key === field);
+    if (!fieldDef) {
+      // Legacy hardcoded validation
+      if (field === 'name') {
       if (!value || value.trim().length === 0) {
         newErrors.name = 'Name is required';
       } else if (value.trim().length < 2) {
@@ -96,23 +107,45 @@ export function ContactConversionStep({
         delete newErrors.phone;
       }
     }
+      return;
+    }
+
+    // Dynamic field validation
+    if (fieldDef.required && (!value || (typeof value === 'string' && value.trim().length === 0))) {
+      newErrors[field] = `${fieldDef.label} is required`;
+    } else {
+      delete newErrors[field];
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const validateAll = () => {
-    const allTouched = {
-      name: true,
-      email: true,
-      phone: true,
-    };
+    // Mark all required fields as touched
+    const requiredFields = fields.filter(f => f.required).map(f => f.key);
+    const allTouched: Record<string, boolean> = {};
+    requiredFields.forEach(key => { allTouched[key] = true; });
+    // Include legacy fields if no dynamic fields
+    if (fields.length === 0) {
+      allTouched.name = true;
+      allTouched.email = true;
+      allTouched.phone = true;
+    }
     setTouched(allTouched);
 
     let isValid = true;
-    isValid = validateField('name', details.name) && isValid;
-    isValid = validateField('email', details.email) && isValid;
-    isValid = validateField('phone', details.phone) && isValid;
+    // Validate all required fields
+    requiredFields.forEach(key => {
+      const fieldValid = validateField(key, details[key]);
+      if (!fieldValid) isValid = false;
+    });
+    // Legacy validation if no dynamic fields
+    if (fields.length === 0) {
+      if (!validateField('name', details.name)) isValid = false;
+      if (!validateField('email', details.email)) isValid = false;
+      if (!validateField('phone', details.phone)) isValid = false;
+    }
 
     return isValid;
   };
@@ -147,7 +180,45 @@ export function ContactConversionStep({
 
       {/* Form */}
       <div className="space-y-4">
-        {/* Name */}
+        {isLoadingFields && (
+          <div className="flex items-center justify-center py-8">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
+          </div>
+        )}
+
+        {fields.length > 0 && !isLoadingFields && (
+          <div className="space-y-4">
+            {fields.map(field => (
+              <div key={field.id}>
+                <UnifiedFieldRenderer
+                  field={{
+                    key: field.key,
+                    label: field.label,
+                    type: field.type.toLowerCase(),
+                    required: field.required,
+                    options: field.options,
+                    placeholder: field.placeholder,
+                    helpText: field.helpText,
+                    readOnly: isInviteMode && !!contactDetails[field.key],
+                  }}
+                  value={details[field.key]}
+                  onChange={(value) => handleUpdate(field.key, value)}
+                />
+                {errors[field.key] && touched[field.key] && (
+                  <p className="mt-1 flex items-center gap-1 text-sm text-red-600">
+                    <AlertCircle className="h-4 w-4" />
+                    {errors[field.key]}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {fields.length === 0 && !isLoadingFields && (
+          <>
+            {/* Fallback to hardcoded fields */}
+            {/* Name */}
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700">
             <User className="mb-1 inline h-4 w-4" /> Full name <span className="text-red-500">*</span>
@@ -259,6 +330,8 @@ export function ContactConversionStep({
             })}
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {/* Privacy notice */}

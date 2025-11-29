@@ -7,22 +7,32 @@ export interface NewFieldPayload {
   required: boolean;
   costingInputKey?: string;
   options?: string[]; // only for select
+  scope?: "client" | "public" | "internal" | "manufacturing";
 }
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onCreate: (data: NewFieldPayload) => Promise<void> | void;
+  defaultScope?: "client" | "public" | "internal" | "manufacturing";
 }
 
 const TYPES = ["text", "number", "select", "boolean"] as const;
 
-export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, onCreate }) => {
+const SCOPE_OPTIONS: Array<NonNullable<NewFieldPayload["scope"]>> = [
+  "client",
+  "public",
+  "internal",
+  "manufacturing",
+];
+
+export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, onCreate, defaultScope = "public" }) => {
   const [label, setLabel] = useState("");
   const [type, setType] = useState<NewFieldPayload["type"]>("text");
   const [required, setRequired] = useState(false);
   const [costKey, setCostKey] = useState("");
   const [optionsText, setOptionsText] = useState("[") // encourage JSON entry
+  const [scope, setScope] = useState<NonNullable<NewFieldPayload["scope"]>>(defaultScope);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +42,7 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
     setRequired(false);
     setCostKey("");
     setOptionsText("[");
+    setScope(defaultScope);
     setError(null);
   }
 
@@ -58,7 +69,7 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
     }
     setSaving(true);
     try {
-      await onCreate({ label: label.trim(), type, required, costingInputKey: costKey.trim() || undefined, options });
+      await onCreate({ label: label.trim(), type, required, costingInputKey: costKey.trim() || undefined, options, scope });
       reset();
       onClose();
     } finally {
@@ -105,6 +116,20 @@ export const CreateQuestionnaireFieldModal: React.FC<Props> = ({ open, onClose, 
             {TYPES.map((t) => (
               <option key={t} value={t}>
                 {t}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-xs space-y-1">
+          <span className="font-medium">Scope</span>
+          <select
+            className="w-full rounded border px-2 py-1 text-sm bg-white"
+            value={scope}
+            onChange={(e) => setScope(e.target.value as any)}
+          >
+            {SCOPE_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
               </option>
             ))}
           </select>

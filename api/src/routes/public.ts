@@ -320,6 +320,42 @@ router.get("/tenant/:tenantSlug/branding", async (req, res) => {
   }
 });
 
+/** GET /public/tenant/:tenantSlug/questionnaire-fields
+ *  Fetch questionnaire fields (including standard) for the public estimator.
+ */
+router.get("/tenant/:tenantSlug/questionnaire-fields", async (req, res) => {
+  const slug = String(req.params.tenantSlug || "").trim();
+  if (!slug) return res.status(400).json({ error: "slug_required" });
+
+  try {
+    // Resolve tenant from slug
+    const settings = await prisma.tenantSettings.findUnique({ where: { slug } });
+    if (!settings) return res.status(404).json({ error: "unknown_tenant" });
+
+    const includeStandard = req.query.includeStandard === "true";
+
+    // Fetch fields for this tenant
+    const fields = await prisma.questionnaireField.findMany({
+      where: {
+        tenantId: settings.tenantId,
+        ...(includeStandard ? {} : { isStandard: false }),
+      },
+      orderBy: { sortOrder: "asc" },
+    });
+
+    // Normalize legacy 'item' scope to 'public'
+    const normalized = fields.map((f) => ({
+      ...f,
+      scope: f.scope === "item" ? "public" : f.scope,
+    }));
+
+    return res.json(normalized);
+  } catch (err: any) {
+    console.error("[public questionnaire-fields] failed", err);
+    return res.status(500).json({ error: "fetch_failed" });
+  }
+});
+
 /* ---------- PUBLIC: read minimal lead for form ---------- */
 /** GET /public/leads/:id */
 router.get("/leads/:id", async (req, res) => {

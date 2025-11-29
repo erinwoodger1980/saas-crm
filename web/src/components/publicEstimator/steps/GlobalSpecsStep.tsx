@@ -1,6 +1,6 @@
 /**
  * GlobalSpecsStep - Global specifications for all items
- * Timber type, glass specifications, finish, accessibility
+ * Now dynamically renders fields from QuestionnaireField with scope='public'
  */
 
 'use client';
@@ -8,17 +8,22 @@
 import { useState } from 'react';
 import { Trees, Sparkles, Palette, Accessibility } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { UnifiedFieldRenderer } from '@/components/fields/UnifiedFieldRenderer';
+import type { QuestionnaireField } from '@/lib/questionnaireFields';
 
 interface GlobalSpecs {
   timberType?: string;
   glassType?: string;
   finish?: string;
   accessibility?: string[];
+  [key: string]: any; // Support dynamic fields
 }
 
 interface GlobalSpecsStepProps {
   globalSpecs?: GlobalSpecs;
   primaryColor?: string;
+  fields?: QuestionnaireField[];
+  isLoadingFields?: boolean;
   onChange: (data: { globalSpecs: GlobalSpecs }) => void;
   onNext: () => void;
   onBack: () => void;
@@ -63,13 +68,15 @@ const ACCESSIBILITY_OPTIONS = [
 export function GlobalSpecsStep({
   globalSpecs = {},
   primaryColor = '#3b82f6',
+  fields = [],
+  isLoadingFields = false,
   onChange,
   onNext,
   onBack,
 }: GlobalSpecsStepProps) {
   const [specs, setSpecs] = useState<GlobalSpecs>(globalSpecs);
 
-  const handleUpdate = (field: keyof GlobalSpecs, value: string | string[]) => {
+  const handleUpdate = (field: string, value: any) => {
     const updated = { ...specs, [field]: value };
     setSpecs(updated);
     onChange({ globalSpecs: updated });
@@ -83,6 +90,9 @@ export function GlobalSpecsStep({
     handleUpdate('accessibility', updated);
   };
 
+  // If we have dynamic fields, render those; otherwise fall back to hardcoded specs
+  const useDynamicFields = fields && fields.length > 0;
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -93,7 +103,37 @@ export function GlobalSpecsStep({
         </p>
       </div>
 
-      {/* Timber type */}
+      {isLoadingFields && (
+        <div className="flex items-center justify-center py-8">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
+        </div>
+      )}
+
+      {useDynamicFields && !isLoadingFields && (
+        <div className="space-y-6">
+          {fields.map(field => (
+            <div key={field.id}>
+              <UnifiedFieldRenderer
+                field={{
+                  key: field.key,
+                  label: field.label,
+                  type: field.type.toLowerCase(),
+                  required: field.required,
+                  options: field.options,
+                  placeholder: field.placeholder,
+                  helpText: field.helpText,
+                }}
+                value={specs[field.key]}
+                onChange={(value) => handleUpdate(field.key, value)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!useDynamicFields && !isLoadingFields && (
+        <>
+          {/* Timber type */}
       <div>
         <div className="mb-4 flex items-center gap-2">
           <Trees className="h-5 w-5" style={{ color: primaryColor }} />
@@ -235,6 +275,8 @@ export function GlobalSpecsStep({
           <strong>Not sure what to choose?</strong> These selections help us provide an accurate estimate, but we'll discuss all options in detail during your consultation. You can always change your mind later.
         </p>
       </div>
+        </>
+      )}
 
       {/* Navigation */}
       <div className="flex gap-3 pt-4">

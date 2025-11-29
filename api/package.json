@@ -33,6 +33,10 @@
     "images:bootstrap": "tsx scripts/bootstrap_tenant_from_url.ts",
     "keywords:sync": "tsx scripts/update_keywords_from_ads.ts",
     "seo:tune": "tsx scripts/seo_tune.ts",
+    "fields:migrate-scopes": "tsx src/scripts/migrateQuestionnaireScopes.ts",
+    "seed:standard-fields": "tsx src/scripts/seed-standard-questionnaire-fields.ts",
+    "seed:tenant": "tsx src/scripts/seed-dev-tenant.ts",
+    "test:scoped-fields": "tsx src/scripts/test-scoped-fields.ts",
     "studio": "prisma studio"
   },
   "dependencies": {

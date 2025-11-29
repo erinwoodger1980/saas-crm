@@ -238,7 +238,7 @@ export default function AutomationSettingsPage() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {rules.map((rule) => (
+              {rules.map((rule) => (
               <Card key={rule.id} className="p-5">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -276,6 +276,16 @@ export default function AutomationSettingsPage() {
                               Auto-reschedule
                             </span>
                           )}
+                          {/* Show linked field if configured on action */}
+                          {((action as any).taskMeta?.linkedField?.linkId) && (() => {
+                            const linkId = (action as any).taskMeta.linkedField.linkId;
+                            const link = links.find(l => l.id === linkId);
+                            return (
+                              <span className="text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded">
+                                Linked: {link ? (link.label || `${link.model}.${link.fieldPath}`) : `Link ${linkId}`}
+                              </span>
+                            );
+                          })()}
                         </div>
                       ))}
                     </div>
@@ -356,6 +366,7 @@ export default function AutomationSettingsPage() {
           tenantId={tenantId}
           userId={userId}
           users={users}
+          links={links}
         />
       )}
 
@@ -380,6 +391,7 @@ function RuleEditor({
   tenantId,
   userId,
   users,
+  links,
 }: {
   open: boolean;
   onClose: () => void;
@@ -388,6 +400,7 @@ function RuleEditor({
   tenantId: string;
   userId: string;
   users: User[];
+  links: any[];
 }) {
   const [name, setName] = useState(rule?.name || "");
   const [enabled, setEnabled] = useState(rule?.enabled !== false);
@@ -407,6 +420,7 @@ function RuleEditor({
   const [reschedule, setReschedule] = useState(rule?.actions[0]?.rescheduleOnTriggerChange !== false);
   
   const [saving, setSaving] = useState(false);
+  const [linkId, setLinkId] = useState<string>(((rule as any)?.actions?.[0]?.taskMeta?.linkedField?.linkId) || "");
 
   const handleSave = async () => {
     if (!name.trim() || !taskTitle.trim()) {
@@ -440,6 +454,7 @@ function RuleEditor({
             },
             rescheduleOnTriggerChange: reschedule,
             taskInstanceKey: `auto_${entityType}_{${entityType.toLowerCase()}Id}_${taskTitle.replace(/\s+/g, '_')}`,
+            ...(linkId ? { taskMeta: { linkedField: { type: 'fieldLink', linkId } } } : {}),
           },
         ],
       };
@@ -720,6 +735,30 @@ function RuleEditor({
                         Auto-reschedule if date changes
                       </label>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Link task to field */}
+              <div className="border-t border-purple-200 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-slate-800 mb-3">🔗 Link this task to a field</h4>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Field Link</label>
+                    <Select value={linkId} onValueChange={setLinkId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        <SelectItem value="">None</SelectItem>
+                        {links.map((l) => (
+                          <SelectItem key={l.id} value={l.id}>
+                            {l.label || `${l.model}.${l.fieldPath}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-slate-500 mt-1">If set, the created task will be linked to this field and auto-complete / write-back based on the link configuration.</p>
                   </div>
                 </div>
               </div>

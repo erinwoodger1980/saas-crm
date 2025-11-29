@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { detectEntryMode, type EntryContext } from './entryMode';
+import { fetchQuestionnaireFields, type QuestionnaireField } from '../questionnaireFields';
 
 // Types matching the database schema
 export interface PublicProjectPayload {
@@ -82,6 +83,11 @@ export interface UsePublicEstimatorReturn {
   data: PublicProjectPayload;
   estimatePreview: EstimatePreview | null;
   
+  // Questionnaire fields
+  clientFields: QuestionnaireField[];
+  publicFields: QuestionnaireField[];
+  isLoadingFields: boolean;
+  
   // Loading states
   isLoadingBranding: boolean;
   isLoadingProject: boolean;
@@ -110,6 +116,11 @@ export function usePublicEstimator({
   const [projectId, setProjectId] = useState<string | null>(null);
   const [data, setData] = useState<PublicProjectPayload>({});
   const [estimatePreview, setEstimatePreview] = useState<EstimatePreview | null>(null);
+  
+  // Questionnaire fields
+  const [clientFields, setClientFields] = useState<QuestionnaireField[]>([]);
+  const [publicFields, setPublicFields] = useState<QuestionnaireField[]>([]);
+  const [isLoadingFields, setIsLoadingFields] = useState(false);
   
   // Loading states
   const [isLoadingBranding, setIsLoadingBranding] = useState(true);
@@ -231,6 +242,38 @@ export function usePublicEstimator({
     loadOnce(0);
     return () => { cancelled = true; };
   }, [tenantSlug]);
+
+  // Load questionnaire fields once branding is ready
+  useEffect(() => {
+    if (!branding || isLoadingBranding) return;
+
+    let cancelled = false;
+
+    const loadFields = async () => {
+      try {
+        setIsLoadingFields(true);
+
+        // Fetch client and public fields in parallel
+        const [client, public_] = await Promise.all([
+          fetchQuestionnaireFields({ tenantSlug: branding.slug, scope: 'client', includeStandard: true }),
+          fetchQuestionnaireFields({ tenantSlug: branding.slug, scope: 'public', includeStandard: true }),
+        ]);
+
+        if (!cancelled) {
+          setClientFields(client);
+          setPublicFields(public_);
+        }
+      } catch (error) {
+        console.error('Failed to load questionnaire fields:', error);
+        onErrorRef.current?.(error as Error);
+      } finally {
+        if (!cancelled) setIsLoadingFields(false);
+      }
+    };
+
+    loadFields();
+    return () => { cancelled = true; };
+  }, [branding, isLoadingBranding]);
   
   // Load saved project if projectId is present
   useEffect(() => {
@@ -484,6 +527,9 @@ export function usePublicEstimator({
     projectId,
     data,
     estimatePreview,
+    clientFields,
+    publicFields,
+    isLoadingFields,
     isLoadingBranding,
     isLoadingProject,
     isSaving,

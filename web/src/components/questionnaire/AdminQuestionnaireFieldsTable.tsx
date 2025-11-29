@@ -17,11 +17,16 @@ export interface QuestionnaireFieldRow {
   order: number; // local ordering (maps to backend sortOrder or order)
   options?: string[] | null;
   isStandard?: boolean; // true for built-in fields
-  scope?: "client" | "item" | "internal"; // where field is used
+  scope?: "client" | "public" | "internal" | "manufacturing"; // where field is used
 }
 
 const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
-const SCOPE_OPTIONS = ["client", "item", "internal"];
+const SCOPE_OPTIONS: Array<NonNullable<QuestionnaireFieldRow["scope"]>> = [
+  "client",
+  "public",
+  "internal",
+  "manufacturing",
+];
 
 const fetcher = (url: string) => fetch(url, { credentials: 'include' }).then((r) => r.json());
 
@@ -56,9 +61,9 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
             onSave={async (next) => onChange({ type: next })}
           />
         </td>
-        <td className="w-24">
+        <td className="w-28">
           <InlineEditableCell
-            value={field.scope || "item"}
+            value={field.scope || "public"}
             type="select"
             selectOptions={SCOPE_OPTIONS}
             onSave={async (next) => onChange({ scope: next as any })}
@@ -128,7 +133,10 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
 
 
 
-export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "" }) => {
+export const AdminQuestionnaireFieldsTable: React.FC<{
+  apiBase?: string;
+  scope?: "client" | "public" | "internal" | "manufacturing";
+}> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "", scope }) => {
   const listUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields?includeStandard=true";
   const { data, mutate, isLoading } = useSWR<QuestionnaireFieldRow[]>(listUrl, fetcher);
   const [rows, setRows] = useState<QuestionnaireFieldRow[]>([]);
@@ -149,7 +157,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
         order: f.order ?? f.sortOrder ?? 0,
         options: f.options || (Array.isArray(f.config?.options) ? f.config.options : null),
         isStandard: f.isStandard || false,
-        scope: f.scope || "item",
+        scope: f.scope === "item" ? "public" : (f.scope || "public"),
       })) as QuestionnaireFieldRow[];
       normalized.sort((a, b) => a.order - b.order);
       setRows(normalized);
@@ -212,6 +220,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
       costingInputKey: payload.costingInputKey,
       options: payload.options,
       sortOrder: rows.length ? Math.max(...rows.map((r) => r.order)) + 1 : 0,
+      scope: payload.scope || scope || "public",
     };
     try {
       const resp = await fetch(listUrl, {
@@ -275,8 +284,9 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
       );
     }
     
-    const standardFields = rows.filter(r => r.isStandard);
-    const customFields = rows.filter(r => !r.isStandard);
+    const filtered = scope ? rows.filter(r => (r.scope || "public") === scope) : rows;
+    const standardFields = filtered.filter(r => r.isStandard);
+    const customFields = filtered.filter(r => !r.isStandard);
     
     return (
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -363,7 +373,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h1 className="text-sm font-semibold">Questionnaire Fields</h1>
+        <h1 className="text-sm font-semibold">Questionnaire Fields{scope ? ` — ${scope}` : ''}</h1>
         <div className="flex items-center gap-2">
           {savingOrder && <span className="text-[10px] text-slate-400">Saving order…</span>}
           <button
@@ -382,6 +392,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{ apiBase?: string }> = ({ 
         onCreate={async (payload) => {
           await createField(payload);
         }}
+        defaultScope={scope || "public"}
       />
     </div>
   );
