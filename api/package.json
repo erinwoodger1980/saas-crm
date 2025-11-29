@@ -10,6 +10,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "prebuild": "pnpm run prisma:generate",
     "build": "tsc",
+    "prepush": "pnpm run build",
     "test": "jest",
     "self:check-parse": "node dist/scripts/self_check_parse.js",
     "start": "node dist/server.js",
