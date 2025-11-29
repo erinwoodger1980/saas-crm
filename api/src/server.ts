@@ -121,6 +121,7 @@ import materialDebugRouter from "./routes/material-debug";
 import doorCoresRouter from "./routes/door-cores";
 import ironmongeryItemsRouter from "./routes/ironmongery-items";
 import rfisRouter from "./routes/rfis";
+import estimatesRouter from "./routes/estimates";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -581,6 +582,7 @@ app.use("/customer-portal", customerPortalRouter);
 /* ---------------- Protected Routers ---------------- */
 app.use("/auth", authRouter);
 app.use("/leads", leadsRouter);
+app.use("/estimates", requireAuth, estimatesRouter);
 app.use("/ai", aiRouter);
 app.use("/reports", reportsRouter);
 app.use("/mail", mailRouter);

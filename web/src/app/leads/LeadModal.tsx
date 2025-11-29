@@ -553,15 +553,14 @@ export default function LeadModal({
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(`/api/estimates/${encodeURIComponent(lead?.id || '')}`);
-        if (res.ok) {
-          const data = await res.json();
-          setMlEstimate(data);
-        }
+        const data = await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(lead?.id || '')}`, {
+          headers: authHeaders,
+        });
+        setMlEstimate(data);
       } catch {}
     };
     if (lead?.id) load();
-  }, [lead?.id]);
+  }, [lead?.id, authHeaders]);
 
   const amendItemTotal = (index: number, newTotal: number) => {
     setMlEstimate((prev: any) => {
@@ -586,9 +585,9 @@ export default function LeadModal({
 
   const saveAmendedEstimate = async () => {
     try {
-      await fetch(`/api/estimates/${encodeURIComponent(lead?.id || '')}/update`, {
+      await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(lead?.id || '')}/update`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
       });
       setIsAmendingEstimate(false);
@@ -598,19 +597,25 @@ export default function LeadModal({
 
   const confirmMlEstimate = async () => {
     try {
-      await fetch(`/api/estimates/${encodeURIComponent(lead?.id || '')}/confirm`, {
+      await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(lead?.id || '')}/confirm`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify({ estimate: mlEstimate, tenant: settings?.slug }),
       });
       // Notify success, could show toast
-    } catch {}
+      alert('Estimate confirmed and sent to client!');
+    } catch (err) {
+      console.error('Failed to confirm estimate:', err);
+      alert('Failed to confirm estimate. Please try again.');
+    }
   };
 
   const reloadMlEstimate = async () => {
     try {
-      const res = await fetch(`/api/estimates/${encodeURIComponent(lead?.id || '')}`);
-      if (res.ok) setMlEstimate(await res.json());
+      const data = await apiFetch(`${API_BASE}/estimates/${encodeURIComponent(lead?.id || '')}`, {
+        headers: authHeaders,
+      });
+      setMlEstimate(data);
     } catch {}
   };
 
