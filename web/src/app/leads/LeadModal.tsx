@@ -2956,6 +2956,129 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </div>
                   </section>
 
+                  {/* Quote Workspace: combined questionnaire + quote details */}
+                  <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur mt-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                      <span aria-hidden>🧰</span>
+                      Quote Workspace
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Everything needed to prepare the quote, in one place.</p>
+
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      {/* Items & Measurements */}
+                      <div className="rounded-xl border border-slate-200/70 bg-white/80 p-4">
+                        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          <span aria-hidden>📐</span>
+                          Openings & Measurements
+                        </div>
+                        {questionnaireItems.length === 0 ? (
+                          <div className="text-xs text-slate-500">No itemized questionnaire entries</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {questionnaireItems.map((it: any, idx: number) => (
+                              <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-xs font-semibold text-slate-700">Item {idx + 1}</div>
+                                  <div className="text-xs text-slate-500">
+                                    {(it.width || it.door_width_mm) && <span>W: {it.width || it.door_width_mm}mm</span>}
+                                    {(it.height || it.door_height_mm) && <span className="ml-2">H: {it.height || it.door_height_mm}mm</span>}
+                                  </div>
+                                </div>
+                                <div className="mt-2 text-xs text-slate-600 space-y-1">
+                                  {Object.entries(it).map(([k,v]) => {
+                                    if (["photos","inspiration_photos","width","height","door_width_mm","door_height_mm"].includes(k)) return null;
+                                    return (
+                                      <div key={k} className="flex gap-2">
+                                        <div className="w-28 text-slate-500">{String(k)}</div>
+                                        <div className="flex-1 text-slate-700 break-words">{formatAnswer(v) ?? ""}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {(Array.isArray(it.photos) && it.photos.length > 0) && (
+                                  <div className="mt-2">
+                                    <div className="text-xs text-slate-500">Photos</div>
+                                    <div className="mt-1 flex flex-wrap gap-2">
+                                      {it.photos.map((p: any, pidx: number) => {
+                                        const dataUrl = p?.base64 ? `data:${p.mimeType||"image/jpeg"};base64,${p.base64}` : null;
+                                        return (
+                                          <a key={pidx} href={dataUrl||"#"} download={p?.filename||`photo-${pidx+1}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm">
+                                            <span aria-hidden>📷</span>{p?.filename || `photo-${pidx+1}`}
+                                          </a>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Specs & Finishes */}
+                      <div className="rounded-xl border border-slate-200/70 bg-white/80 p-4">
+                        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          <span aria-hidden>🎨</span>
+                          Specifications & Finish
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                          {/* Unified public fields */}
+                          {(publicFields || []).length > 0 ? (
+                            publicFields.map((field) => {
+                              const key = field.key;
+                              if (!key) return null;
+                              const value = (customData as any)?.[key] ?? "";
+                              return (
+                                <UnifiedFieldRenderer
+                                  key={key}
+                                  field={field as any}
+                                  value={value}
+                                  onChange={(val: any) => {
+                                    const strVal = typeof val === "string" ? val : String(val ?? "");
+                                    setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
+                                    saveCustomField(field as any, strVal);
+                                  }}
+                                />
+                              );
+                            })
+                          ) : (
+                            <div className="text-xs text-slate-500">No dynamic specification fields</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Internal tracking & notes */}
+                    {internalFields.length > 0 && (
+                      <div className="mt-4 rounded-xl border border-slate-200/70 bg-white/80 p-4">
+                        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          <span aria-hidden>🔒</span>
+                          Internal Tracking
+                          <span className="ml-2 text-xs text-slate-500 font-normal">(visible only in CRM)</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {internalFields.map((field) => {
+                            const key = field.key;
+                            if (!key) return null;
+                            const value = (customData as any)?.[key] ?? "";
+                            return (
+                              <UnifiedFieldRenderer
+                                key={key}
+                                field={field as any}
+                                value={value}
+                                onChange={(val: any) => {
+                                  const strVal = typeof val === "string" ? val : String(val ?? "");
+                                  setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
+                                  saveCustomField(field as any, strVal);
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </section>
                   {/* Client Fields (Unified) */}
                   {clientFields.length > 0 && (
                     <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
