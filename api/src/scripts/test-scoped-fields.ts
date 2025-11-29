@@ -250,8 +250,8 @@ async function testAPIEndpoint(tenantSlug: string) {
       // Try to get error details
       let errorMsg = `${publicRes.status} ${publicRes.statusText}`;
       try {
-        const errorData = await publicRes.json();
-        if (errorData.error) errorMsg += ` - ${errorData.error}`;
+        const errorData = await publicRes.json() as any;
+        if (errorData?.error) errorMsg += ` - ${errorData.error}`;
       } catch {}
       fail("Public API endpoint", errorMsg);
       return;

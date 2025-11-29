@@ -29,7 +29,7 @@ async function main() {
           questionnaireId: questionnaire.id,
           key: f.key,
             label: f.label,
-            type: f.type.toLowerCase(),
+            type: f.type,
             required: f.required,
             placeholder: f.placeholder || null,
             helpText: f.helpText || null,

@@ -3168,6 +3168,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                 )}
 
                 {(settings?.slug || questionnaireFields.length > 0) && (
+                  <>
                   <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                       <span aria-hidden="true">🧾</span>
@@ -3300,40 +3301,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                   </a>
                                   {typeof file.sizeKB === "number" && (
                                     <span className="text-xs text-slate-500">
-
-                              {/* Internal Tracking (Unified) */}
-                              {internalFields.length > 0 && (
-                                <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                                  <details>
-                                    <summary className="cursor-pointer list-none">
-                                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-2">
-                                        <span aria-hidden="true">🔒</span>
-                                        Internal Tracking
-                                        <span className="ml-2 text-xs text-slate-500 font-normal">(visible only in CRM)</span>
-                                      </div>
-                                    </summary>
-                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mt-3">
-                                      {internalFields.map((field) => {
-                                        const key = field.key;
-                                        if (!key) return null;
-                                        const value = (customData as any)?.[key] ?? "";
-                                        return (
-                                          <UnifiedFieldRenderer
-                                            key={key}
-                                            field={field as any}
-                                            value={value}
-                                            onChange={(val: any) => {
-                                              const strVal = typeof val === "string" ? val : String(val ?? "");
-                                              setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                                              saveCustomField(field as any, strVal);
-                                            }}
-                                          />
-                                        );
-                                      })}
-                                    </div>
-                                  </details>
-                                </section>
-                              )}
                                       {file.sizeKB.toLocaleString()} KB
                                     </span>
                                   )}
@@ -3354,33 +3321,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                             Items
                           </div>
-                                      {/* Unified public fields */}
-                                      {publicFields.length > 0 ? (
-                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                          {publicFields.map((field) => {
-                                            const key = field.key;
-                                            if (!key) return null;
-                                            const value = (customData as any)?.[key] ?? "";
-                                            return (
-                                              <UnifiedFieldRenderer
-                                                key={key}
-                                                field={field as any}
-                                                value={value}
-                                                onChange={(val: any) => {
-                                                  const strVal = typeof val === "string" ? val : String(val ?? "");
-                                                  setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                                                  saveCustomField(field as any, strVal);
-                                                }}
-                                              />
-                                            );
-                                          })}
-                                        </div>
-                                      ) : (
-                                        <div className="text-sm text-slate-600">
-                                          No dynamic questionnaire fields seeded yet. Using legacy view below.
-                                        </div>
-                                      )}
-                            {questionnaireItems.map((it: any, idx: number) => (
+                          {questionnaireItems.map((it: any, idx: number) => (
                               <div
                                 key={idx}
                                 className="rounded-xl border border-slate-200/70 bg-white/70 p-3"
@@ -3407,34 +3348,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
 
                                   {Array.isArray(it.photos) && it.photos.length > 0 && (
                                     <div className="mt-2">
-                                            {/* Manufacturing Fields (WON only) */}
-                                            {uiStatus === "WON" && manufacturingFields.length > 0 && (
-                                              <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                                                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                                                  <span aria-hidden="true">🏭</span>
-                                                  Manufacturing Fields
-                                                </div>
-                                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                                  {manufacturingFields.map((field) => {
-                                                    const key = field.key;
-                                                    if (!key) return null;
-                                                    const value = (customData as any)?.[key] ?? "";
-                                                    return (
-                                                      <UnifiedFieldRenderer
-                                                        key={key}
-                                                        field={field as any}
-                                                        value={value}
-                                                        onChange={(val: any) => {
-                                                          const strVal = typeof val === "string" ? val : String(val ?? "");
-                                                          setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                                                          saveCustomField(field as any, strVal);
-                                                        }}
-                                                      />
-                                                    );
-                                                  })}
-                                                </div>
-                                              </section>
-                                            )}
                                       <div className="text-xs text-slate-500">Photos</div>
                                       <div className="flex flex-wrap items-center gap-2 mt-1">
                                         {it.photos.map((p: any, pidx: number) => {
@@ -3487,7 +3400,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                                 </div>
                               </div>
                             ))}
-                          </div>
                         </div>
                       )}
 
@@ -3707,6 +3619,70 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       </div>
                     )}
                   </section>
+
+                  {/* Internal Tracking (Unified) */}
+                  {internalFields.length > 0 && (
+                    <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                      <details>
+                        <summary className="cursor-pointer list-none">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-2">
+                            <span aria-hidden="true">🔒</span>
+                            Internal Tracking
+                            <span className="ml-2 text-xs text-slate-500 font-normal">(visible only in CRM)</span>
+                          </div>
+                        </summary>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mt-3">
+                          {internalFields.map((field) => {
+                            const key = field.key;
+                            if (!key) return null;
+                            const value = (customData as any)?.[key] ?? "";
+                            return (
+                              <UnifiedFieldRenderer
+                                key={key}
+                                field={field as any}
+                                value={value}
+                                onChange={(val: any) => {
+                                  const strVal = typeof val === "string" ? val : String(val ?? "");
+                                  setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
+                                  saveCustomField(field as any, strVal);
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </details>
+                    </section>
+                  )}
+
+                  {/* Manufacturing Fields (WON only) */}
+                  {uiStatus === "WON" && manufacturingFields.length > 0 && (
+                    <section className="rounded-2xl border border-green-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                        <span aria-hidden="true">🏭</span>
+                        Manufacturing Fields
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {manufacturingFields.map((field) => {
+                          const key = field.key;
+                          if (!key) return null;
+                          const value = (customData as any)?.[key] ?? "";
+                          return (
+                            <UnifiedFieldRenderer
+                              key={key}
+                              field={field as any}
+                              value={value}
+                              onChange={(val: any) => {
+                                const strVal = typeof val === "string" ? val : String(val ?? "");
+                                setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
+                                saveCustomField(field as any, strVal);
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+                  </>
                 )}
               </div>
             </div>

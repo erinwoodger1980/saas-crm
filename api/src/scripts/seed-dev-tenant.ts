@@ -9,8 +9,8 @@ async function main() {
     return argv[idx + 1] && !argv[idx + 1].startsWith("-") ? argv[idx + 1] : def;
   };
 
-  const slug = getArg("slug", "dev-tenant");
-  const name = getArg("name", "Dev Tenant");
+  const slug = getArg("slug", "dev-tenant") || "dev-tenant";
+  const name = getArg("name", "Dev Tenant") || "Dev Tenant";
   console.log(`[seed-tenant] Using slug=${slug} name=${name}`);
 
   // Upsert Tenant
@@ -27,7 +27,7 @@ async function main() {
     update: { brandName: name },
     create: {
       tenantId: tenant.id,
-      slug: slug,
+      slug,
       brandName: name,
       introHtml: null,
       website: null,
