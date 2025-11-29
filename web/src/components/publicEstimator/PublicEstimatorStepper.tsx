@@ -16,6 +16,7 @@ import { GlobalSpecsStep } from './steps/GlobalSpecsStep';
 import { EstimateSummaryStep } from './steps/EstimateSummaryStep';
 import { ContactConversionStep } from './steps/ContactConversionStep';
 import { EstimatePreviewCard } from './EstimatePreviewCard';
+import { DecisionStep } from './steps/DecisionStep';
 
 interface PublicEstimatorStepperProps {
   tenantSlug: string;
@@ -29,6 +30,7 @@ const STEP_LABELS = [
   'Specifications',
   'Your estimate',
   'Contact details',
+  'Next steps',
 ];
 
 export function PublicEstimatorStepper({
@@ -132,6 +134,8 @@ export function PublicEstimatorStepper({
       // Track completion
       await trackInteraction('QUESTIONNAIRE_COMPLETED');
       
+      // Advance to decision step
+      setCurrentStep(7);
       // Call parent completion handler
       onComplete?.();
     } catch (error) {
@@ -361,6 +365,32 @@ export function PublicEstimatorStepper({
             onChange={handleUpdateData}
             onSubmit={handleFinalSubmit}
             onBack={handleBack}
+          />
+        )}
+
+        {currentStep === 7 && (
+          <DecisionStep
+            totalGross={estimatePreview?.totalGross}
+            primaryColor={branding.primaryColor}
+            companyName={branding.name}
+            onDoOwnQuote={() => {
+              // Placeholder: implement PDF export of estimate
+              trackInteraction('DECISION_SELF_QUOTE');
+              alert('Download starting… (stub)');
+            }}
+            onSendMlEstimate={async () => {
+              try {
+                trackInteraction('DECISION_SEND_ML_ESTIMATE');
+                await saveProject();
+                alert('Estimate sent to company (stub).');
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+            onFinish={() => {
+              trackInteraction('DECISION_FINISH');
+              window.location.href = `/q/thank-you?tenant=${branding.slug}`;
+            }}
           />
         )}
           </div>
