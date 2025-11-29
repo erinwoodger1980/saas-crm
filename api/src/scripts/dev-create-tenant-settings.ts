@@ -24,7 +24,7 @@ async function main() {
       questionnaire: [],
     },
   });
-  console.log("Created tenantSettings", created.id, "for slug", slugBase);
+  console.log("Created tenantSettings for slug", slugBase);
 }
 
 main().catch((e) => {
