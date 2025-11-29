@@ -1,8 +1,84 @@
-// api/src/routes/analytics.ts
+// api/src/routes/analytics.ts (merged summary + marketing ROI endpoints)
 import { Router } from "express";
 import { prisma } from "../prisma";
 
 const router = Router();
+
+// GET /analytics/summary — protected per-tenant funnel + source metrics
+router.get('/summary', async (req: any, res) => {
+  const tenantId = req.auth?.tenantId;
+  if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // last 90 days
+  const rows = await prisma.analyticsEvent.findMany({
+    where: { tenantId, timestamp: { gte: since } },
+    select: { type: true, source: true, stepIndex: true },
+  });
+
+  const counts = {
+    impressions: rows.filter(r => r.type === 'ad_impression').length,
+    landings: rows.filter(r => r.type === 'landing').length,
+    estimatorStart: rows.filter(r => r.type === 'estimator_start').length,
+    estimatorComplete: rows.filter(r => r.type === 'estimator_complete').length,
+  };
+
+  const sourceBreakdown: Record<string, number> = {};
+  for (const r of rows) {
+    const key = r.source || 'other';
+    sourceBreakdown[key] = (sourceBreakdown[key] || 0) + 1;
+  }
+
+  const stepCounts: Record<string, number> = {};
+  for (const r of rows) {
+    if (r.type === 'estimator_step' && typeof r.stepIndex === 'number') {
+      const key = String(r.stepIndex);
+      stepCounts[key] = (stepCounts[key] || 0) + 1;
+    }
+  }
+
+  return res.json({ counts, sourceBreakdown, stepCounts, totalEvents: rows.length });
+});
+
+// GET /analytics/daily?days=30 — protected per-tenant daily funnel counts
+router.get('/daily', async (req: any, res) => {
+  const tenantId = req.auth?.tenantId;
+  if (!tenantId) return res.status(401).json({ error: 'unauthorized' });
+  const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 180);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const events = await prisma.analyticsEvent.findMany({
+    where: { tenantId, timestamp: { gte: since } },
+    select: { type: true, timestamp: true },
+    orderBy: { timestamp: 'asc' }
+  });
+
+  const byDay: Record<string, { landing: number; start: number; complete: number; impressions: number }> = {};
+  const dayKey = (d: Date) => d.toISOString().slice(0,10); // YYYY-MM-DD
+  for (let i = 0; i < days; i++) {
+    const d = new Date(Date.now() - (days - 1 - i) * 24*60*60*1000);
+    byDay[dayKey(d)] = { landing: 0, start: 0, complete: 0, impressions: 0 };
+  }
+  for (const e of events) {
+    const k = dayKey(new Date(e.timestamp));
+    if (!byDay[k]) continue;
+    switch (e.type) {
+      case 'landing': byDay[k].landing++; break;
+      case 'estimator_start': byDay[k].start++; break;
+      case 'estimator_complete': byDay[k].complete++; break;
+      case 'ad_impression': byDay[k].impressions++; break;
+    }
+  }
+
+  const series = Object.entries(byDay).map(([date, v]) => ({ date, ...v }));
+  const totals = series.reduce((acc, r) => {
+    acc.landing += r.landing; acc.start += r.start; acc.complete += r.complete; acc.impressions += r.impressions; return acc;
+  }, { landing:0, start:0, complete:0, impressions:0 });
+  const conversion = {
+    landingToStart: totals.landing ? totals.start / totals.landing : null,
+    startToComplete: totals.start ? totals.complete / totals.start : null,
+    landingToComplete: totals.landing ? totals.complete / totals.landing : null,
+  };
+  res.json({ days, series, totals, conversion });
+});
 
 function getAuth(req: any) {
   return { tenantId: req.auth?.tenantId as string | undefined };

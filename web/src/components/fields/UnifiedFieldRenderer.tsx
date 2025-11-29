@@ -25,6 +25,8 @@ export function UnifiedFieldRenderer({
 
   const baseInput = "w-full rounded-2xl border bg-white/95 px-3 py-2 text-sm disabled:opacity-60";
 
+  // Per-field estimator_step events removed to reduce noise; step events now emitted at step transitions.
+
   return (
     <label className="block text-xs">
       <div className="mb-1 font-medium text-slate-700">
@@ -39,7 +41,7 @@ export function UnifiedFieldRenderer({
                 className={`${baseInput} min-h-[80px]`}
                 value={value ?? ""}
                 placeholder={placeholder ?? ""}
-                onChange={(e) => onChange(e.target.value)}
+                onChange={(e) => { onChange(e.target.value); }}
                 disabled={readOnly}
               />
             );
@@ -50,7 +52,7 @@ export function UnifiedFieldRenderer({
                 className={baseInput}
                 value={value ?? ""}
                 placeholder={placeholder ?? ""}
-                onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                onChange={(e) => { const next = e.target.value === "" ? undefined : Number(e.target.value); onChange(next); }}
                 disabled={readOnly}
               />
             );
@@ -59,7 +61,7 @@ export function UnifiedFieldRenderer({
               <select
                 className={`${baseInput} bg-white`}
                 value={value ?? ""}
-                onChange={(e) => onChange(e.target.value || undefined)}
+                onChange={(e) => { const next = e.target.value || undefined; onChange(next); }}
                 disabled={readOnly}
               >
                 <option value="">Select…</option>
@@ -77,7 +79,7 @@ export function UnifiedFieldRenderer({
                   type="checkbox"
                   className="h-4 w-4"
                   checked={!!value}
-                  onChange={(e) => onChange(e.target.checked)}
+                  onChange={(e) => { onChange(e.target.checked); }}
                   disabled={readOnly}
                 />
                 <span className="text-slate-600">{label}</span>
@@ -89,7 +91,7 @@ export function UnifiedFieldRenderer({
                 type="date"
                 className={baseInput}
                 value={value ?? ""}
-                onChange={(e) => onChange(e.target.value || undefined)}
+                onChange={(e) => { const next = e.target.value || undefined; onChange(next); }}
                 disabled={readOnly}
               />
             );
@@ -101,7 +103,7 @@ export function UnifiedFieldRenderer({
                 className={baseInput}
                 value={value ?? ""}
                 placeholder={placeholder ?? ""}
-                onChange={(e) => onChange(e.target.value)}
+                onChange={(e) => { onChange(e.target.value); }}
                 disabled={readOnly}
               />
             );

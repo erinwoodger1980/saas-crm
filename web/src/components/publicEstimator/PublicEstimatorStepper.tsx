@@ -5,7 +5,8 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { parseUtmParams, emitPublicAnalyticsEvent } from '@/lib/analytics';
 import { usePublicEstimator } from '@/lib/publicEstimator/usePublicEstimator';
 import { ProgressBar } from './ProgressBar';
 import { WelcomeStep } from './steps/WelcomeStep';
@@ -39,6 +40,25 @@ export function PublicEstimatorStepper({
 }: PublicEstimatorStepperProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const startedRef = useRef(false);
+  const landingRef = useRef(false);
+
+  const tenantId = (() => {
+    if (typeof window === 'undefined') return 'demo';
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get('tenantId') || localStorage.getItem('tenantId') || 'demo';
+  })();
+
+  // Emit landing once
+  useEffect(() => {
+    if (landingRef.current) return;
+    landingRef.current = true;
+    if (typeof window !== 'undefined') {
+      const utm = parseUtmParams(window.location.search);
+      const source = (utm.utm_source as any) || 'other';
+      emitPublicAnalyticsEvent({ tenantId, type: 'landing', source, utm });
+    }
+  }, [tenantId]);
   
   // Use the hook for state management, auto-save, and pricing
   const {
@@ -133,6 +153,13 @@ export function PublicEstimatorStepper({
       
       // Track completion
       await trackInteraction('QUESTIONNAIRE_COMPLETED');
+
+      // Emit estimator_complete
+      if (typeof window !== 'undefined') {
+        const utm = parseUtmParams(window.location.search);
+        const source = (utm.utm_source as any) || 'other';
+        emitPublicAnalyticsEvent({ tenantId, type: 'estimator_complete', source, utm });
+      }
       
       // Advance to decision step
       setCurrentStep(7);
@@ -214,6 +241,7 @@ export function PublicEstimatorStepper({
     if (currentStep < STEP_LABELS.length) {
       const fromStep = currentStep;
       const fromStepName = STEP_LABELS[fromStep - 1];
+      const nextStep = fromStep + 1;
       
       setCurrentStep((prev) => prev + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -223,6 +251,25 @@ export function PublicEstimatorStepper({
         step: fromStep, 
         stepName: fromStepName 
       });
+
+      // Emit estimator_start when leaving welcome step first time
+      if (!startedRef.current && fromStep === 1) {
+        startedRef.current = true;
+        if (typeof window !== 'undefined') {
+          const utm = parseUtmParams(window.location.search);
+          const source = (utm.utm_source as any) || 'other';
+          emitPublicAnalyticsEvent({ tenantId, type: 'estimator_start', source, utm });
+        }
+      }
+
+      // Emit consolidated estimator_step event on step transition (after welcome)
+      if (typeof window !== 'undefined' && fromStep >= 1) {
+        try {
+          const utm = parseUtmParams(window.location.search);
+          const source = (utm.utm_source as any) || 'other';
+          emitPublicAnalyticsEvent({ tenantId, type: 'estimator_step', source, utm, stepIndex: nextStep });
+        } catch {}
+      }
     }
   };
 

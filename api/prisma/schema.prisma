@@ -101,6 +101,7 @@ model Tenant {
   weightLookups              WeightLookup[]
   workshopProcessDefinitions WorkshopProcessDefinition[]
   taskFieldLinks             TaskFieldLink[]
+  analyticsEvents            AnalyticsEvent[]
 }
 
 model FeatureRequest {
@@ -3215,4 +3216,19 @@ model TaskFieldLink {
   tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, model, fieldPath])
+}
+
+/// Marketing analytics for public estimator funnel
+model AnalyticsEvent {
+  id         String   @id @default(cuid())
+  tenantId   String
+  type       String   // ad_impression | landing | estimator_start | estimator_step | estimator_complete
+  source     String?  // facebook | instagram | other
+  utm        Json?
+  stepIndex  Int?
+  timestamp  DateTime @default(now())
+  createdAt  DateTime @default(now())
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, type, timestamp])
 }

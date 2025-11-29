@@ -50,6 +50,7 @@ import measurementsRouter from "./routes/measurements";
 import settingsInboxRouter from "./routes/settings-inbox";
 import sourceCostsRouter from "./routes/source-costs";
 import analyticsRouter from "./routes/analytics";
+import analyticsPublicRouter from "./routes/analytics-public";
 import quotesRouter from "./routes/quotes";
 import quotePricingRouter from "./routes/quote-pricing";
 import authSetupRouter from "./routes/auth-setup";
@@ -121,7 +122,6 @@ import materialDebugRouter from "./routes/material-debug";
 import doorCoresRouter from "./routes/door-cores";
 import ironmongeryItemsRouter from "./routes/ironmongery-items";
 import rfisRouter from "./routes/rfis";
-import estimatesRouter from "./routes/estimates";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -582,7 +582,6 @@ app.use("/customer-portal", customerPortalRouter);
 /* ---------------- Protected Routers ---------------- */
 app.use("/auth", authRouter);
 app.use("/leads", leadsRouter);
-app.use("/estimates", requireAuth, estimatesRouter);
 app.use("/ai", aiRouter);
 app.use("/reports", reportsRouter);
 app.use("/mail", mailRouter);
@@ -594,6 +593,7 @@ app.use("/opportunities", opportunitiesRouter);
 app.use("/settings/inbox", requireAuth, settingsInboxRouter);
 app.use("/source-costs", requireAuth, sourceCostsRouter);
 app.use("/analytics", requireAuth, analyticsRouter);
+app.use("/public/analytics", analyticsPublicRouter);
 app.use("/analytics/business", requireAuth, analyticsBusinessRouter);
 app.use("/tenant", requireAuth, tenantsRouter);
 app.use("/landing-tenants", landingTenantsRouter); // Public + admin with x-admin-key
