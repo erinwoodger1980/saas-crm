@@ -38,7 +38,11 @@
     "seed:standard-fields": "tsx src/scripts/seed-standard-questionnaire-fields.ts",
     "seed:tenant": "tsx src/scripts/seed-dev-tenant.ts",
     "test:scoped-fields": "tsx src/scripts/test-scoped-fields.ts",
-    "studio": "prisma studio"
+    "studio": "prisma studio",
+    "migrate:local": "./scripts/migrate-local.sh",
+    "migrate:prod": "./scripts/apply-migration-prod.sh",
+    "migrate:status": "prisma migrate status",
+    "db:push": "prisma db push"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.926.0",
