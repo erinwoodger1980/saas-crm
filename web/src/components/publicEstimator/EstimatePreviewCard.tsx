@@ -20,6 +20,7 @@ interface EstimatePreviewCardProps {
   companyName?: string;
   className?: string;
   hidePrices?: boolean; // when true, mask prices until submission
+  globalSpecs?: Record<string, any>;
 }
 
 export function EstimatePreviewCard({
@@ -32,6 +33,7 @@ export function EstimatePreviewCard({
   companyName = 'Us',
   className = '',
   hidePrices = false,
+  globalSpecs = {},
 }: EstimatePreviewCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showAllItems, setShowAllItems] = useState(false);
@@ -259,6 +261,12 @@ export function EstimatePreviewCard({
                     £{mask(safe(estimate.totalGross))}
                   </span>
                 </div>
+                {globalSpecs?.inspirationExamplePrice && (
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className="text-slate-500">Inspired example approx</span>
+                    <span className="text-slate-700 font-medium">£{mask(safe(globalSpecs.inspirationExamplePrice))}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}

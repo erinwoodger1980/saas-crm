@@ -366,6 +366,11 @@ export function PublicEstimatorStepper({
             onBack={handleBack}
             inspirationImages={data.inspirationImages || []}
             onInspirationChange={(images) => handleUpdateData({ inspirationImages: images })}
+            tenantId={branding.tenantId}
+            onPrefillGlobalSpecs={(specs) => handleUpdateData({ globalSpecs: { ...(data.globalSpecs || {}), ...specs } })}
+            publicFields={publicFields}
+            onTrackInteraction={(event, metadata) => trackInteraction(event, metadata)}
+            currentGlobalSpecs={data.globalSpecs || {}}
           />
         )}
 
@@ -502,6 +507,7 @@ export function PublicEstimatorStepper({
                     primaryColor={branding.primaryColor}
                     companyName={branding.name}
                     hidePrices={!isInviteMode}
+                    globalSpecs={data.globalSpecs}
                   />
               {/* Social Proof */}
               <div className="mt-4">

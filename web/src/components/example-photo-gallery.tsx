@@ -43,13 +43,15 @@ interface ExamplePhoto {
 }
 
 interface ExamplePhotoGalleryProps {
+  tenantId: string;
   tags?: string[];
   productType?: string;
-  onSelect?: (specs: any) => void;
+  onSelect?: (payload: { specifications: any; photo: ExamplePhoto }) => void;
   onClose?: () => void;
 }
 
 export default function ExamplePhotoGallery({
+  tenantId,
   tags = [],
   productType,
   onSelect,
@@ -61,7 +63,7 @@ export default function ExamplePhotoGallery({
   const [showDetails, setShowDetails] = useState(false);
   
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-  const tenantId = "demo-tenant-id"; // TODO: Get from context
+  // tenantId provided by parent (branding.tenantId)
 
   useEffect(() => {
     loadPhotos();
@@ -117,10 +119,9 @@ export default function ExamplePhotoGallery({
       if (!resp.ok) throw new Error("Failed to select");
       
       const { specifications } = await resp.json();
-      
-      // Call parent callback with specs
+      // Provide both specifications and selected photo metadata
       if (onSelect) {
-        onSelect(specifications);
+        onSelect({ specifications, photo });
       }
       
       // Close gallery

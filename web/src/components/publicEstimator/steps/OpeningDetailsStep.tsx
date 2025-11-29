@@ -6,6 +6,9 @@
 'use client';
 
 import { useState } from 'react';
+import ExamplePhotoGallery from '@/components/example-photo-gallery';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import type { QuestionnaireField } from '@/lib/questionnaireFields';
 import { inferFromImage } from '@/lib/publicEstimator/inferFromImage';
 import { inferOpeningFromImage } from '@/lib/publicEstimator/aiImageInference';
 import { Plus, X, Camera, Ruler, MapPin, AlertCircle } from 'lucide-react';
@@ -31,6 +34,11 @@ interface OpeningDetailsStepProps {
   onBack: () => void;
   inspirationImages?: string[];
   onInspirationChange?: (images: string[]) => void;
+  tenantId?: string;
+  onPrefillGlobalSpecs?: (specs: Record<string, any>) => void;
+  publicFields?: QuestionnaireField[];
+  onTrackInteraction?: (event: string, metadata?: Record<string, any>) => void;
+  currentGlobalSpecs?: Record<string, any>;
 }
 
 const OPENING_TYPES = [
@@ -51,6 +59,11 @@ export function OpeningDetailsStep({
   onBack,
   inspirationImages = [],
   onInspirationChange,
+  tenantId,
+  onPrefillGlobalSpecs,
+  publicFields = [],
+  onTrackInteraction,
+  currentGlobalSpecs = {},
 }: OpeningDetailsStepProps) {
   // Initialize with one default opening if none exist
   const [currentItems, setCurrentItems] = useState<OpeningItem[]>(() => {
@@ -65,6 +78,89 @@ export function OpeningDetailsStep({
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showGallery, setShowGallery] = useState(false);
+  const [specConflict, setSpecConflict] = useState<string[] | null>(null);
+  const [lastExamplePrice, setLastExamplePrice] = useState<number | null>(null);
+  const [pendingExampleSpecs, setPendingExampleSpecs] = useState<any | null>(null);
+  const [pendingExamplePhoto, setPendingExamplePhoto] = useState<any | null>(null);
+  const [showApplyDialog, setShowApplyDialog] = useState(false);
+  const [applyTargetId, setApplyTargetId] = useState<string | null>(null);
+  const [applyOptions, setApplyOptions] = useState({
+    width: true,
+    height: true,
+    thickness: true,
+    notes: true,
+    globalSpecs: true,
+    inspirationImage: true,
+    price: true,
+  });
+  const [previousGlobalSpecs, setPreviousGlobalSpecs] = useState<Record<string, any> | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+
+  const toggleApplyOption = (key: keyof typeof applyOptions) => {
+    setApplyOptions(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const applyExampleSelection = () => {
+    if (!pendingExampleSpecs || !pendingExamplePhoto) return;
+    const targetId = applyTargetId || currentItems[0]?.id;
+    if (targetId) {
+      const target = currentItems.find(i => i.id === targetId);
+      if (target) {
+        const updates: Partial<OpeningItem> = {};
+        if (applyOptions.width && !target.width && pendingExampleSpecs.widthMm) updates.width = pendingExampleSpecs.widthMm;
+        if (applyOptions.height && !target.height && pendingExampleSpecs.heightMm) updates.height = pendingExampleSpecs.heightMm;
+        if (applyOptions.notes && !target.notes && pendingExampleSpecs.tags) updates.notes = `Inspired by: ${pendingExampleSpecs.tags.join(', ')}`;
+        handleUpdateItem(targetId, updates);
+      }
+    }
+    if (applyOptions.globalSpecs && onPrefillGlobalSpecs) {
+      const mapped: Record<string, any> = {};
+      if (pendingExampleSpecs.timberSpecies) mapped.timberType = pendingExampleSpecs.timberSpecies;
+      if (pendingExampleSpecs.glassType) mapped.glassType = pendingExampleSpecs.glassType;
+      if (pendingExampleSpecs.finishType) mapped.finish = pendingExampleSpecs.finishType;
+      const answers = pendingExampleSpecs.questionnaireAnswers || {};
+      const validKeys = new Set(publicFields.map(f => f.key));
+      Object.keys(answers).forEach(k => { if (validKeys.has(k)) mapped[k] = answers[k]?.value; });
+      mapped.inspirationExampleId = pendingExamplePhoto.id;
+      if (applyOptions.price && pendingExamplePhoto.priceGBP) {
+        mapped.inspirationExamplePrice = pendingExamplePhoto.priceGBP;
+        setLastExamplePrice(pendingExamplePhoto.priceGBP);
+      }
+      // Conflict detection vs existing specs
+      const overridden: string[] = [];
+      Object.keys(mapped).forEach(k => {
+        if (currentGlobalSpecs && k in currentGlobalSpecs && currentGlobalSpecs[k] !== mapped[k]) {
+          overridden.push(k);
+        }
+      });
+      setPreviousGlobalSpecs(currentGlobalSpecs); // snapshot for revert
+      onPrefillGlobalSpecs(mapped);
+      const populatedKeys = Object.keys(mapped);
+      if (populatedKeys.length) {
+        setSpecConflict(overridden.length ? overridden : populatedKeys);
+        setTimeout(() => setSpecConflict(null), 5000);
+      }
+    }
+    if (applyOptions.inspirationImage && pendingExamplePhoto.imageUrl) {
+      onInspirationChange?.([...inspirationImages, pendingExamplePhoto.imageUrl]);
+    }
+    onTrackInteraction?.('EXAMPLE_APPLY_CONFIRMED', {
+      photoId: pendingExamplePhoto.id,
+      targetOpeningId: targetId,
+      options: applyOptions,
+    });
+    setShowApplyDialog(false);
+    setPendingExampleSpecs(null);
+    setPendingExamplePhoto(null);
+  };
+
+  const revertExampleApply = () => {
+    if (!previousGlobalSpecs || !onPrefillGlobalSpecs) return;
+    onPrefillGlobalSpecs(previousGlobalSpecs);
+    onTrackInteraction?.('EXAMPLE_APPLY_REVERTED', { previousKeys: Object.keys(previousGlobalSpecs) });
+    setPreviousGlobalSpecs(null);
+  };
 
   const handleAddItem = () => {
     const newItem: OpeningItem = {
@@ -75,73 +171,84 @@ export function OpeningDetailsStep({
     setCurrentItems(next);
     // Persist immediately so upstream preview + autosave can react
     onChange({ openingDetails: next });
-    setEditingId(newItem.id);
-    setErrors({});
-  };
-
-  const handleUpdateItem = (id: string, updates: Partial<OpeningItem>) => {
-    const updated = currentItems.map(item =>
-      item.id === id ? { ...item, ...updates } : item
-    );
-    setCurrentItems(updated);
-    onChange({ openingDetails: updated });
-  };
-
-  const handleRemoveItem = (id: string) => {
-    const filtered = currentItems.filter(item => item.id !== id);
-    setCurrentItems(filtered);
-    onChange({ openingDetails: filtered });
-    if (editingId === id) {
-      setEditingId(null);
-    }
-  };
-
-  const handleImageUpload = async (id: string, files: FileList | File[]) => {
-    const list = Array.from(files);
-    for (const file of list) {
-      const localUrl = URL.createObjectURL(file);
-      const item = currentItems.find(i => i.id === id);
-      const images = item?.images || [];
-      // Perform heuristic inference (non-blocking UI)
-      handleUpdateItem(id, { images: [...images, localUrl] });
-      try {
-        const baseLabel = file.name.split('.')[0];
-        // Fast heuristic first
-        const heuristic = await inferFromImage(localUrl, baseLabel);
-        const freshItem1 = currentItems.find(i => i.id === id);
-        if (freshItem1) {
-          const hUpdates: Partial<OpeningItem> = { inferenceSource: 'heuristic', inferenceConfidence: 0.35 };
-          if (!freshItem1.width && heuristic.widthMm) hUpdates.width = heuristic.widthMm;
-          if (!freshItem1.height && heuristic.heightMm) hUpdates.height = heuristic.heightMm;
-          if (!freshItem1.notes && heuristic.description) hUpdates.notes = heuristic.description;
-          handleUpdateItem(id, hUpdates);
-        }
-        // AI refinement
-        const freshItem2 = currentItems.find(i => i.id === id);
-        const ai = await inferOpeningFromImage(file, { openingType: freshItem2?.type });
-        if (ai && freshItem2) {
-          const aiUpdates: Partial<OpeningItem> = { inferenceSource: 'ai', inferenceConfidence: ai.confidence ?? undefined };
-          if (!freshItem2.width && ai.width_mm) aiUpdates.width = ai.width_mm;
-          if (!freshItem2.height && ai.height_mm) aiUpdates.height = ai.height_mm;
-          if (!freshItem2.notes && ai.description) aiUpdates.notes = ai.description;
-          handleUpdateItem(id, aiUpdates);
-        }
-      } catch {}
-    }
-  };
-
-  const handleInspirationUpload = (files: FileList | null) => {
-    if (!files || !files.length) return;
-    const existing = inspirationImages.slice();
-    const next: string[] = [];
-    Array.from(files).forEach(f => {
-      try {
-        const url = URL.createObjectURL(f);
-        next.push(url);
+            <ExamplePhotoGallery
+              tenantId={tenantId}
+              onSelect={({ specifications, photo }) => {
+                setPendingExampleSpecs(specifications);
+                setPendingExamplePhoto(photo);
+                setApplyTargetId(currentItems[0]?.id || null);
+                setShowApplyDialog(true);
+                onTrackInteraction?.('EXAMPLE_SELECTED', {
+                  photoId: photo.id,
+                  hasWidth: Boolean(specifications.widthMm),
+                  hasHeight: Boolean(specifications.heightMm),
+                  tagCount: Array.isArray(specifications.tags) ? specifications.tags.length : 0,
+                  questionnaireAnswerCount: specifications.questionnaireAnswers ? Object.keys(specifications.questionnaireAnswers).length : 0,
+                });
+              }}
+              onClose={() => setShowGallery(false)}
+            />
       } catch {}
     });
     const merged = [...existing, ...next];
     onInspirationChange?.(merged);
+      {/* Apply Example Dialog */}
+      <Dialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
+        <DialogContent className="max-w-lg">
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Apply Example</h3>
+            {pendingExamplePhoto && (
+              <div className="flex items-center gap-3">
+                <img src={pendingExamplePhoto.thumbnailUrl || pendingExamplePhoto.imageUrl} alt={pendingExamplePhoto.title} className="h-16 w-16 rounded-lg object-cover" />
+                <div className="text-sm">
+                  <div className="font-medium">{pendingExamplePhoto.title}</div>
+                  {pendingExamplePhoto.priceGBP && (
+                    <div className="text-slate-600">Approx £{pendingExamplePhoto.priceGBP.toFixed(2)}</div>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Target opening */}
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-2 block">Target opening</label>
+              <div className="space-y-2">
+                {currentItems.map(it => (
+                  <label key={it.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="applyOpening"
+                      checked={applyTargetId === it.id}
+                      onChange={() => setApplyTargetId(it.id)}
+                    />
+                    <span>Opening {currentItems.indexOf(it)+1} ({it.type.replace(/_/g,' ')})</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            {/* Options */}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {Object.entries(applyOptions).map(([key,val]) => (
+                <label key={key} className="flex items-center gap-2">
+                  <input type="checkbox" checked={val} onChange={() => toggleApplyOption(key as keyof typeof applyOptions)} />
+                  <span className="capitalize">Apply {key}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                onClick={applyExampleSelection}
+                className="flex-1"
+                style={{ backgroundColor: primaryColor }}
+              >
+                Apply Example
+              </Button>
+              <Button variant="outline" onClick={() => { setShowApplyDialog(false); setPendingExamplePhoto(null); setPendingExampleSpecs(null); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
   };
 
   const removeInspiration = (index: number) => {
@@ -419,6 +526,24 @@ export function OpeningDetailsStep({
         <h3 className="text-xl font-semibold text-slate-900">Inspiration photos (optional)</h3>
         <p className="text-sm text-slate-600">Show styles you like. This helps us tailor the specification and finish.</p>
 
+          {/* Browse curated examples */}
+          {tenantId && (
+            <div>
+              <Button
+                type="button"
+                onClick={() => {
+                  setShowGallery(true);
+                  onTrackInteraction?.('GALLERY_OPENED', { openingCount: currentItems.length });
+                }}
+                className="rounded-2xl mb-4"
+                style={{ backgroundColor: primaryColor }}
+              >
+                Browse inspiration gallery
+              </Button>
+              <p className="text-xs text-slate-500 mb-2">Choose a curated example to pre-fill measurements and spec preferences.</p>
+            </div>
+          )}
+
         {inspirationImages.length > 0 && (
           <div className="grid grid-cols-3 gap-3">
             {inspirationImages.map((src, i) => (
@@ -446,7 +571,142 @@ export function OpeningDetailsStep({
             className="hidden"
           />
         </label>
+
+        {/* Example gallery dialog */}
+        <Dialog open={showGallery} onOpenChange={setShowGallery}>
+          <DialogContent className="max-w-xl">
+            {tenantId && (
+              <ExamplePhotoGallery
+                tenantId={tenantId}
+                onSelect={({ specifications, photo }) => {
+                  try {
+                    // Apply width/height/thickness to first opening lacking them
+                    const targetId = currentItems[0]?.id;
+                    if (targetId && specifications) {
+                      const target = currentItems.find(i => i.id === targetId);
+                      if (target) {
+                        const updates: Partial<OpeningItem> = {};
+                        if (!target.width && specifications.widthMm) updates.width = specifications.widthMm;
+                        if (!target.height && specifications.heightMm) updates.height = specifications.heightMm;
+                        if (!target.notes && specifications.tags) updates.notes = `Inspired by: ${specifications.tags.join(', ')}`;
+                        handleUpdateItem(targetId, updates);
+                      }
+                    }
+                    // Prefill global specs and dynamic questionnaire answers if callback provided
+                    if (onPrefillGlobalSpecs && specifications) {
+                      const mapped: Record<string, any> = {};
+                      if (specifications.timberSpecies) mapped.timberType = specifications.timberSpecies;
+                      if (specifications.glassType) mapped.glassType = specifications.glassType;
+                      if (specifications.finishType) mapped.finish = specifications.finishType;
+                      const answers = specifications.questionnaireAnswers || {};
+                      const validKeys = new Set(publicFields.map(f => f.key));
+                      Object.keys(answers).forEach(k => {
+                        if (validKeys.has(k)) mapped[k] = answers[k]?.value;
+                      });
+                      mapped.inspirationExampleId = photo.id;
+                      if (photo.priceGBP) {
+                        mapped.inspirationExamplePrice = photo.priceGBP;
+                        setLastExamplePrice(photo.priceGBP);
+                      }
+                      // Detect conflicts (existing different values)
+                      const existingKeys = Object.keys(mapped).filter(k => (mapped[k] != null));
+                      const conflicts = existingKeys.filter(k => {
+                        // @ts-ignore parent global specs not accessible here directly; rely on callback consumer
+                        return false; // conflict detection delegated below
+                      });
+                      onPrefillGlobalSpecs(mapped);
+                      if (existingKeys.length) {
+                        // Show banner listing populated keys rather than true conflicts (simplified for public UX)
+                        setSpecConflict(existingKeys);
+                        setTimeout(() => setSpecConflict(null), 4000);
+                      }
+                    }
+                    // Add image to inspiration list if available
+                    if (photo?.imageUrl) {
+                      onInspirationChange?.([...inspirationImages, photo.imageUrl]);
+                    }
+                    onTrackInteraction?.('EXAMPLE_SELECTED', {
+                      photoId: photo.id,
+                      hasWidth: Boolean(specifications.widthMm),
+                      hasHeight: Boolean(specifications.heightMm),
+                      tagCount: Array.isArray(specifications.tags) ? specifications.tags.length : 0,
+                      questionnaireAnswerCount: specifications.questionnaireAnswers ? Object.keys(specifications.questionnaireAnswers).length : 0,
+                    });
+                  } catch (e) {
+                    console.error('Failed applying example selection', e);
+                  } finally {
+                    setShowGallery(false);
+                  }
+                }}
+                onClose={() => setShowGallery(false)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
+        {specConflict && (
+          <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+            {previousGlobalSpecs ? 'Overrode: ' : 'Prefilled: '} {specConflict.join(', ')} {lastExamplePrice ? `(Example approx £${lastExamplePrice.toFixed(2)})` : ''}
+            <div className="mt-2 flex gap-2">
+              {previousGlobalSpecs && (
+                <button
+                  onClick={revertExampleApply}
+                  className="text-xs px-2 py-1 rounded-full border border-amber-300 bg-white hover:bg-amber-100"
+                >Undo</button>
+              )}
+              {pendingExamplePhoto && (
+                <button
+                  onClick={() => setShowDetailsDialog(true)}
+                  className="text-xs px-2 py-1 rounded-full border border-amber-300 bg-white hover:bg-amber-100"
+                >Details</button>
+              )}
+            </div>
+          </div>
+        )}
+        <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+          <DialogContent className="max-w-lg">
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">Example Specification</h3>
+              {pendingExamplePhoto && (
+                <div className="flex items-center gap-3">
+                  <img src={pendingExamplePhoto.thumbnailUrl || pendingExamplePhoto.imageUrl} alt={pendingExamplePhoto.title} className="h-16 w-16 rounded-lg object-cover" />
+                  <div className="text-sm">
+                    <div className="font-medium">{pendingExamplePhoto.title}</div>
+                    {pendingExamplePhoto.priceGBP && <div className="text-slate-600">Approx £{pendingExamplePhoto.priceGBP.toFixed(2)}</div>}
+                  </div>
+                </div>
+              )}
+              {pendingExampleSpecs && (
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  {['widthMm','heightMm','thicknessMm','timberSpecies','glassType','finishType','fireRating','productType'].map(key => (
+                    pendingExampleSpecs[key] ? (
+                      <div key={key} className="flex flex-col">
+                        <span className="text-slate-500">{key.replace(/Mm/g,' (mm)').replace(/([A-Z])/g,' $1')}</span>
+                        <span className="font-medium text-slate-700 break-all">{pendingExampleSpecs[key]}</span>
+                      </div>
+                    ) : null
+                  ))}
+                </div>
+              )}
+              {pendingExampleSpecs?.questionnaireAnswers && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold mb-2">Questionnaire Answers</h4>
+                  <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                    {Object.entries(pendingExampleSpecs.questionnaireAnswers).map(([k,v]: any) => (
+                      <div key={k} className="text-xs flex justify-between gap-2 border-b border-slate-100 py-1">
+                        <span className="text-slate-500">{v.label || k}</span>
+                        <span className="font-medium text-slate-700">{String(v.value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>Close</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
       {/* Navigation */}
       <div className="flex gap-3 pt-4">

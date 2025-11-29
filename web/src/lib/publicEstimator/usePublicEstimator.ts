@@ -54,6 +54,7 @@ export interface EstimatePreview {
 export interface TenantBranding {
   name: string;
   slug: string;
+  tenantId?: string;
   logoUrl?: string;
   primaryColor?: string;
   secondaryColor?: string;
@@ -187,6 +188,7 @@ export function usePublicEstimator({
     const fallbackBranding: TenantBranding = {
       name: 'Your Company',
       slug: tenantSlug,
+      tenantId: undefined,
       logoUrl: undefined,
       primaryColor: undefined,
       secondaryColor: undefined,
@@ -199,19 +201,45 @@ export function usePublicEstimator({
       serviceArea: undefined,
     };
 
+    const normalizeDecimal = (v: any): number | undefined => {
+      if (v == null) return undefined;
+      if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+      if (typeof v === 'string') {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : undefined;
+      }
+      if (typeof v === 'object') {
+        // Prisma Decimal has toNumber()
+        const toNum = (v as any).toNumber;
+        if (typeof toNum === 'function') {
+          const n = toNum.call(v);
+          return Number.isFinite(n) ? n : undefined;
+        }
+        // It might already be a plain object with 'd' or similar internal representation; ignore if unknown.
+      }
+      return undefined;
+    };
+
+    const normalizeInt = (v: any): number | undefined => {
+      if (v == null) return undefined;
+      const n = typeof v === 'number' ? v : Number(String(v));
+      return Number.isInteger(n) && n >= 0 ? n : undefined;
+    };
+
     const mapApiBranding = (raw: any): TenantBranding => ({
       name: raw?.brandName || raw?.name || 'Your Company',
       slug: raw?.slug || tenantSlug,
+      tenantId: raw?.tenantId || undefined,
       logoUrl: raw?.logoUrl || undefined,
       primaryColor: raw?.primaryColor || undefined,
       secondaryColor: raw?.secondaryColor || undefined,
       heroImageUrl: raw?.heroImageUrl || undefined,
       galleryImageUrls: Array.isArray(raw?.galleryImageUrls) ? raw.galleryImageUrls : [],
       testimonials: Array.isArray(raw?.testimonials) ? raw.testimonials : [],
-      reviewScore: raw?.reviewScore || undefined,
-      reviewCount: raw?.reviewCount || undefined,
-      reviewSourceLabel: raw?.reviewSourceLabel || undefined,
-      serviceArea: raw?.serviceArea || undefined,
+      reviewScore: normalizeDecimal(raw?.reviewScore),
+      reviewCount: normalizeInt(raw?.reviewCount),
+      reviewSourceLabel: typeof raw?.reviewSourceLabel === 'string' ? raw.reviewSourceLabel : undefined,
+      serviceArea: typeof raw?.serviceArea === 'string' ? raw.serviceArea : undefined,
     });
 
     const loadOnce = async (attempt: number) => {
