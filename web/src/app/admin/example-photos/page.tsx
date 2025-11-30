@@ -189,7 +189,8 @@ export default function ExamplePhotosAdminPage() {
   const [questionnaireFields, setQuestionnaireFields] = useState<any[]>([]);
   
   // Resolve API base (fallback to same-origin /api proxy)
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "/api";
+  // Use NEXT_PUBLIC_API_BASE which is set in Render for production/staging
+  const apiBase = (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || "/api");
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [tenantLoading, setTenantLoading] = useState(true);
   const [tenantError, setTenantError] = useState<string | null>(null);
@@ -224,7 +225,7 @@ export default function ExamplePhotosAdminPage() {
   async function loadPhotos() {
     if (!tenantId) return;
     try {
-      const resp = await fetch(`${apiBase}/example-photos/${tenantId}`);
+      const resp = await fetch(`${apiBase}/example-photos/${tenantId}`, { credentials: 'include' });
       if (!resp.ok) throw new Error("Failed to load");
       const data = await resp.json();
       setPhotos(data);
@@ -243,6 +244,7 @@ export default function ExamplePhotosAdminPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ photoIds: next.map(p => p.id) }),
+        credentials: 'include',
       });
       if (!resp.ok) throw new Error('Reorder failed');
       setPhotos(next);
@@ -273,7 +275,7 @@ export default function ExamplePhotosAdminPage() {
   async function loadAnalytics() {
     if (!tenantId) return;
     try {
-      const resp = await fetch(`${apiBase}/example-photos/${tenantId}/analytics`);
+      const resp = await fetch(`${apiBase}/example-photos/${tenantId}/analytics`, { credentials: 'include' });
       if (!resp.ok) throw new Error("Failed to load analytics");
       const data = await resp.json();
       setAnalytics(data);
