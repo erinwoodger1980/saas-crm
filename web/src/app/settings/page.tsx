@@ -90,7 +90,7 @@ type Settings = {
     businessHours?: string;
     guaranteeTitle?: string;
     guarantees?: Array<{ title: string; description: string }>;
-    testimonials?: Array<{ quote: string; client: string; role?: string }>;
+    testimonials?: Array<{ quote: string; client: string; role?: string; photoDataUrl?: string; photoUrl?: string }>;
     certifications?: Array<{ name: string; description: string }>;
   } | null;
 };
@@ -249,6 +249,17 @@ export default function SettingsPage() {
   const [qOnlyPublic, setQOnlyPublic] = useState(false);
   const [qScopeTab, setQScopeTab] = useState<"client" | "public" | "internal" | "manufacturing">("public");
   const [savingSettings, setSavingSettings] = useState(false);
+    // Seed placeholder testimonials if none exist on initial load
+    useEffect(() => {
+      if (s && (s.quoteDefaults?.testimonials || []).length === 0) {
+        const placeholders = [
+          { quote: 'Outstanding craftsmanship and attention to detail.', client: 'Sarah W.', role: 'Interior Designer' },
+          { quote: 'Delivered on time and the quality exceeded expectations.', client: 'Mark R.', role: 'Property Developer' },
+          { quote: 'Professional, responsive, and superb finish.', client: 'Helen T.', role: 'Homeowner' },
+        ];
+        setS(prev => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: placeholders } } : prev);
+      }
+    }, [s]);
   const [savingFireDoor, setSavingFireDoor] = useState(false);
   const [enrichingWebsite, setEnrichingWebsite] = useState(false);
   const [uploadingQuotePdf, setUploadingQuotePdf] = useState(false);
@@ -1412,21 +1423,34 @@ export default function SettingsPage() {
     </div>
   </Section>
 
-  <Section title="Testimonials" description="Customer testimonials shown on proposals">
+  <Section title="Testimonials" description="Customer testimonials shown on proposals and public estimator">
     <div className="space-y-3">
       {(s.quoteDefaults?.testimonials || []).map((t, idx) => (
-        <div key={idx} className="border rounded-lg p-3 bg-white/50">
-          <textarea
-            className="w-full rounded-2xl border bg-white/95 px-3 py-2 text-sm mb-2 min-h-[60px]"
-            placeholder="Testimonial quote"
-            value={t.quote}
-            onChange={(e) => {
-              const updated = [...(s.quoteDefaults?.testimonials || [])];
-              updated[idx] = { ...updated[idx], quote: e.target.value };
-              setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
-            }}
-          />
-          <div className="flex gap-2">
+        <div key={idx} className="border rounded-xl p-3 bg-white/60 flex flex-col gap-2">
+          <div className="flex items-start gap-3">
+            <div className="w-14 h-14 rounded-xl border bg-slate-100 overflow-hidden flex items-center justify-center text-xs text-slate-500">
+              {t.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={t.photoUrl} alt={t.client || 'photo'} className="w-full h-full object-cover" />
+              ) : t.photoDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={t.photoDataUrl} alt={t.client || 'photo'} className="w-full h-full object-cover" />
+              ) : (
+                <span>{(t.client || 'Client').slice(0,1)}</span>
+              )}
+            </div>
+            <textarea
+              className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm min-h-[60px]"
+              placeholder="Testimonial quote"
+              value={t.quote}
+              onChange={(e) => {
+                const updated = [...(s.quoteDefaults?.testimonials || [])];
+                updated[idx] = { ...updated[idx], quote: e.target.value };
+                setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+              }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
             <input
               className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
               placeholder="Client name"
@@ -1447,6 +1471,50 @@ export default function SettingsPage() {
                 setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
               }}
             />
+            <label className="inline-flex items-center gap-2 text-xs font-medium">
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  // Attempt upload to backend storage; fallback to base64 inline
+                  try {
+                    const form = new FormData();
+                    form.append('photo', file, file.name);
+                    const uploadUrl = `${API_BASE || '/api'}/tenant/settings/testimonials/${idx}/photo`;
+                    const resp = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' as RequestCredentials });
+                    const data = await resp.json();
+                    if (!resp.ok || !data.photoUrl) throw new Error(data.error || 'upload_failed');
+                    const updated = [...(s.quoteDefaults?.testimonials || [])];
+                    updated[idx] = { ...updated[idx], photoUrl: data.photoUrl };
+                    delete (updated[idx] as any).photoDataUrl;
+                    setS(prev => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+                  } catch (err) {
+                    console.error('testimonial photo upload failed, falling back to base64', err);
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const updated = [...(s.quoteDefaults?.testimonials || [])];
+                      updated[idx] = { ...updated[idx], photoDataUrl: reader.result as string };
+                      setS(prev => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={(ev) => {
+                  const input = (ev.currentTarget.parentElement?.querySelector('input[type=file]')) as HTMLInputElement | null;
+                  input?.click();
+                }}
+              >
+                {t.photoUrl || t.photoDataUrl ? 'Change Photo' : 'Add Photo'}
+              </Button>
+            </label>
             <Button
               size="sm"
               variant="destructive"
@@ -1457,19 +1525,89 @@ export default function SettingsPage() {
             >
               Remove
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const url = `${API_BASE || '/api'}/tenant/settings/testimonials/${idx}/clear-photo`;
+                  const resp = await fetch(url, { method: 'POST', credentials: 'include' as RequestCredentials });
+                  const data = await resp.json();
+                  if (!resp.ok) throw new Error(data?.error || 'Clear failed');
+                  const updated = [...(s.quoteDefaults?.testimonials || [])];
+                  const next = { ...updated[idx] } as any;
+                  delete next.photoUrl;
+                  delete next.photoDataUrl;
+                  updated[idx] = next;
+                  setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+                  toast({ title: 'Photo removed', description: 'Testimonial will show initials fallback' });
+                } catch (e: any) {
+                  toast({ title: 'Failed to remove photo', description: e?.message || '', variant: 'destructive' });
+                }
+              }}
+            >
+              Remove Photo
+            </Button>
           </div>
         </div>
       ))}
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => {
-          const updated = [...(s.quoteDefaults?.testimonials || []), { quote: "", client: "", role: "" }];
-          setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
-        }}
-      >
-        Add Testimonial
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            const updated = [...(s.quoteDefaults?.testimonials || []), { quote: "", client: "", role: "" }];
+            setS((prev) => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+          }}
+        >
+          Add Testimonial
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            const updated = [
+              { quote: 'Outstanding craftsmanship and attention to detail.', client: 'Sarah W.', role: 'Interior Designer' },
+              { quote: 'Delivered on time and the quality exceeded expectations.', client: 'Mark R.', role: 'Property Developer' },
+              { quote: 'Professional, responsive, and superb finish.', client: 'Helen T.', role: 'Homeowner' },
+            ];
+            setS(prev => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, testimonials: updated } } : prev);
+          }}
+        >
+          Reset Placeholders
+        </Button>
+        <Button
+          size="sm"
+          onClick={async () => {
+            try {
+              const url = `${API_BASE || '/api'}/tenant/settings/testimonials/migrate-photos`;
+              const resp = await fetch(url, { method: 'POST', credentials: 'include' as RequestCredentials });
+              const data = await resp.json();
+              if (!resp.ok) throw new Error(data?.error || 'Migration failed');
+              setS(prev => prev ? { ...prev, quoteDefaults: { ...prev.quoteDefaults, ...(data.quoteDefaults || {}) } } : prev);
+              toast({ title: 'Migrated testimonial photos', description: `${data.migrated || 0} item(s) converted to stored photos` });
+            } catch (e: any) {
+              toast({ title: 'Migration failed', description: e?.message || '', variant: 'destructive' });
+            }
+          }}
+        >
+          Migrate Photos to Storage
+        </Button>
+        <Button
+          size="sm"
+          onClick={async () => {
+            try {
+              const resp = await apiFetch<Settings>("/tenant/settings", { method: 'PATCH', json: { quoteDefaults: { ...(s.quoteDefaults || {}), testimonials: s.quoteDefaults?.testimonials || [] } } });
+              setS(resp);
+              toast({ title: 'Testimonials saved' });
+            } catch (e: any) {
+              toast({ title: 'Save failed', description: e?.message || '', variant: 'destructive' });
+            }
+          }}
+        >
+          Save Testimonials
+        </Button>
+      </div>
     </div>
   </Section>
 

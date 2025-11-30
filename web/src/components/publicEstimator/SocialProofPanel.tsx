@@ -8,7 +8,7 @@ interface SocialProofPanelProps {
     logoUrl?: string;
     primaryColor?: string;
     galleryImageUrls?: string[];
-    testimonials?: Array<{ author: string; text: string; rating?: number }>;
+    testimonials?: Array<{ author?: string; text?: string; rating?: number; quote?: string; client?: string; role?: string; photoDataUrl?: string; photoUrl?: string }>;
     reviewScore?: number;
     reviewCount?: number;
     reviewSourceLabel?: string;
@@ -71,12 +71,29 @@ export function SocialProofPanel({ branding, primaryColor = '#3b82f6' }: SocialP
           <div>
             <h4 className="mb-2 text-sm font-semibold text-slate-700">What clients say</h4>
             <div className="space-y-3">
-              {testimonials.slice(0, 3).map((t, i) => (
-                <blockquote key={i} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
-                  <p className="text-slate-700">“{t.text}”</p>
-                  <footer className="mt-1 text-xs font-medium text-slate-600">— {t.author}{typeof t.rating === 'number' ? ` • ${t.rating.toFixed(1)}/5` : ''}</footer>
-                </blockquote>
-              ))}
+              {testimonials.slice(0, 3).map((t, i) => {
+                const quote = t.text || t.quote || '';
+                const author = t.author || t.client || 'Client';
+                const role = t.role; // may be undefined
+                const rating = typeof t.rating === 'number' ? t.rating.toFixed(1) : null;
+                const photo = t.photoDataUrl || t.photoUrl;
+                return (
+                  <blockquote key={i} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm flex gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-white border flex items-center justify-center overflow-hidden shrink-0">
+                      {photo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={photo} alt={author} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-xs font-medium text-slate-500">{author.slice(0,1)}</span>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-slate-700">“{quote}”</p>
+                      <footer className="mt-1 text-xs font-medium text-slate-600">— {author}{role ? `, ${role}` : ''}{rating ? ` • ${rating}/5` : ''}</footer>
+                    </div>
+                  </blockquote>
+                );
+              })}
             </div>
           </div>
         )}

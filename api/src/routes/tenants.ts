@@ -1113,6 +1113,130 @@ router.post("/settings/upload-logo", upload.single("logo"), async (req, res) => 
   }
 });
 
+/**
+ * POST /tenant/settings/testimonials/:index/photo
+ * Multipart: field name 'photo'
+ * Stores a testimonial photo and updates quoteDefaults.testimonials[index].photoUrl
+ */
+router.post("/settings/testimonials/:index/photo", upload.single("photo"), async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+  const rawIndex = String(req.params.index || "").trim();
+  const idx = Number(rawIndex);
+  if (!Number.isInteger(idx) || idx < 0) return res.status(400).json({ error: "invalid_index" });
+  if (!req.file || !req.file.buffer) return res.status(400).json({ error: "photo_required" });
+  try {
+    // Resolve tenant slug for storage path
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, id: true } });
+    if (!tenant) return res.status(404).json({ error: 'tenant_not_found' });
+    const settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!settings) return res.status(404).json({ error: 'settings_not_found' });
+    const quoteDefaults = (settings as any).quoteDefaults || {};
+    const testimonials: any[] = Array.isArray(quoteDefaults.testimonials) ? quoteDefaults.testimonials : [];
+    if (idx >= testimonials.length) return res.status(404).json({ error: 'testimonial_not_found' });
+
+    // Derive extension
+    const original = req.file.originalname || 'photo.jpg';
+    const ext = original.split('.').pop()?.toLowerCase() || 'jpg';
+    if (!['jpg','jpeg','png','webp','gif'].includes(ext)) return res.status(400).json({ error: 'unsupported_type' });
+
+    // Store object (re-use existing storage abstraction)
+    const { publicUrl } = await putObject({ tenantSlug: tenant.slug, buffer: req.file.buffer, ext });
+
+    // Update testimonial entry
+    const updatedEntry = { ...testimonials[idx] }; // preserve existing fields
+    delete (updatedEntry as any).photoDataUrl; // Remove inline base64 if present
+    updatedEntry.photoUrl = publicUrl;
+    testimonials[idx] = updatedEntry;
+    const nextQuoteDefaults = { ...quoteDefaults, testimonials };
+
+    const saved = await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: { quoteDefaults: nextQuoteDefaults, updatedAt: new Date() },
+    });
+    return res.json({ ok: true, photoUrl: publicUrl, testimonial: updatedEntry, quoteDefaults: nextQuoteDefaults });
+  } catch (e: any) {
+    console.error('[testimonial photo upload] failed', e);
+    return res.status(500).json({ error: e?.message || 'upload_failed' });
+  }
+});
+
+/**
+ * POST /tenant/settings/testimonials/:index/clear-photo
+ * Clears photoUrl/photoDataUrl for a given testimonial index and persists.
+ */
+router.post("/settings/testimonials/:index/clear-photo", async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+  const rawIndex = String(req.params.index || "").trim();
+  const idx = Number(rawIndex);
+  if (!Number.isInteger(idx) || idx < 0) return res.status(400).json({ error: "invalid_index" });
+  try {
+    const settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!settings) return res.status(404).json({ error: 'settings_not_found' });
+    const quoteDefaults = (settings as any).quoteDefaults || {};
+    const testimonials: any[] = Array.isArray(quoteDefaults.testimonials) ? quoteDefaults.testimonials : [];
+    if (idx >= testimonials.length) return res.status(404).json({ error: 'testimonial_not_found' });
+    const entry = { ...testimonials[idx] } as any;
+    delete entry.photoUrl;
+    delete entry.photoDataUrl;
+    testimonials[idx] = entry;
+    const nextQuoteDefaults = { ...quoteDefaults, testimonials };
+    await prisma.tenantSettings.update({ where: { tenantId }, data: { quoteDefaults: nextQuoteDefaults, updatedAt: new Date() } });
+    return res.json({ ok: true, testimonial: entry });
+  } catch (e: any) {
+    console.error('[testimonial clear-photo] failed', e);
+    return res.status(500).json({ error: e?.message || 'clear_failed' });
+  }
+});
+
+/**
+ * POST /tenant/settings/testimonials/migrate-photos
+ * Converts any testimonials with photoDataUrl (base64) to stored objects with photoUrl.
+ */
+router.post("/settings/testimonials/migrate-photos", async (req, res) => {
+  const tenantId = authTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "unauthorized" });
+  try {
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } });
+    if (!tenant) return res.status(404).json({ error: 'tenant_not_found' });
+    const settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!settings) return res.status(404).json({ error: 'settings_not_found' });
+    const quoteDefaults = (settings as any).quoteDefaults || {};
+    const testimonials: any[] = Array.isArray(quoteDefaults.testimonials) ? quoteDefaults.testimonials : [];
+    const updated: any[] = [...testimonials];
+    let migrated = 0;
+
+    for (let i = 0; i < updated.length; i++) {
+      const t = updated[i] || {};
+      const dataUrl: string | undefined = t.photoDataUrl;
+      if (dataUrl && typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
+        // Parse base64 data URL
+        const m = dataUrl.match(/^data:(.+);base64,(.*)$/);
+        if (!m) continue;
+        const mime = m[1];
+        const b64 = m[2];
+        const buffer = Buffer.from(b64, 'base64');
+        // ext from mime
+        const ext = mime.includes('jpeg') ? 'jpg' : mime.split('/').pop() || 'jpg';
+        const { publicUrl } = await putObject({ tenantSlug: tenant.slug, buffer, ext });
+        const next = { ...t };
+        delete (next as any).photoDataUrl;
+        next.photoUrl = publicUrl;
+        updated[i] = next;
+        migrated++;
+      }
+    }
+
+    const nextQuoteDefaults = { ...quoteDefaults, testimonials: updated };
+    const saved = await prisma.tenantSettings.update({ where: { tenantId }, data: { quoteDefaults: nextQuoteDefaults, updatedAt: new Date() } });
+    return res.json({ ok: true, migrated, quoteDefaults: nextQuoteDefaults });
+  } catch (e: any) {
+    console.error('[migrate testimonial photos] failed', e);
+    return res.status(500).json({ error: e?.message || 'migrate_failed' });
+  }
+});
+
 /* ============================================================
    INBOX WATCH
 ============================================================ */

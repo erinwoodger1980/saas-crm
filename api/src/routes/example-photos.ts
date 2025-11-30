@@ -384,6 +384,59 @@ router.patch("/:photoId", async (req: Request, res: Response) => {
   }
 });
 
+// ADMIN: Replace a photo image (upload new image, regenerate thumbnail, update URLs)
+router.post("/:photoId/replace-image", upload.single("image"), async (req: Request, res: Response) => {
+  try {
+    const { photoId } = req.params;
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No image file provided" });
+
+    const existing = await prisma.examplePhoto.findUnique({
+      where: { id: photoId },
+      select: { imageUrl: true, thumbnailUrl: true },
+    });
+    if (!existing) return res.status(404).json({ error: "Photo not found" });
+
+    // Generate thumbnail for new image
+    const thumbPath = file.path + "_thumb.jpg";
+    await sharp(file.path)
+      .resize(400, 300, { fit: "cover", position: "center" })
+      .jpeg({ quality: 85 })
+      .toFile(thumbPath);
+
+    const newImageUrl = `/uploads/examples/${path.basename(file.path)}`;
+    const newThumbUrl = `/uploads/examples/${path.basename(thumbPath)}`;
+
+    // Archive old files
+    if (existing.imageUrl) {
+      try {
+        const oldImagePath = path.join(process.cwd(), existing.imageUrl.replace(/^\//, ""));
+        await fs.rename(oldImagePath, oldImagePath + "_replaced");
+      } catch (e) {
+        console.warn("Archive old image failed", e);
+      }
+    }
+    if (existing.thumbnailUrl) {
+      try {
+        const oldThumbPath = path.join(process.cwd(), existing.thumbnailUrl.replace(/^\//, ""));
+        await fs.rename(oldThumbPath, oldThumbPath + "_replaced");
+      } catch (e) {
+        console.warn("Archive old thumbnail failed", e);
+      }
+    }
+
+    const updated = await prisma.examplePhoto.update({
+      where: { id: photoId },
+      data: { imageUrl: newImageUrl, thumbnailUrl: newThumbUrl },
+    });
+
+    res.json({ success: true, photo: updated });
+  } catch (err: any) {
+    console.error("Failed to replace image", err);
+    res.status(500).json({ error: "Failed to replace image" });
+  }
+});
+
 // ADMIN: Delete example photo
 router.delete("/:photoId", async (req: Request, res: Response) => {
   try {

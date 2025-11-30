@@ -281,6 +281,16 @@ router.get("/tenant/:tenantSlug/branding", async (req, res) => {
     const s = await prisma.tenantSettings.findUnique({ where: { slug } });
     if (!s) return res.status(404).json({ error: "unknown_tenant" });
 
+    // Normalize testimonials to prefer photoUrl and include base64 only if URL missing
+    const rawTestimonials: any[] = ((s as any).testimonials ?? (s as any)?.quoteDefaults?.testimonials) ?? [];
+    const testimonials = Array.isArray(rawTestimonials)
+      ? rawTestimonials.map((t) => {
+          const photoUrl = (t as any)?.photoUrl || null;
+          const photoDataUrl = photoUrl ? null : ((t as any)?.photoDataUrl || null);
+          return { ...t, photoUrl, photoDataUrl };
+        })
+      : null;
+
     return res.json({
       tenantId: s.tenantId,
       slug: s.slug,
@@ -294,7 +304,7 @@ router.get("/tenant/:tenantSlug/branding", async (req, res) => {
       heroImageUrl: (s as any).heroImageUrl ?? null,
       galleryImageUrls: Array.isArray((s as any).galleryImageUrls) ? (s as any).galleryImageUrls : [],
       // Social proof
-      testimonials: ((s as any).testimonials ?? (s as any)?.quoteDefaults?.testimonials) ?? null,
+      testimonials,
       reviewScore: (s as any).reviewScore ?? null,
       reviewCount: (s as any).reviewCount ?? null,
       reviewSourceLabel: (s as any).reviewSourceLabel ?? null,

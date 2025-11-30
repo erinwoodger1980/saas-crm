@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import ExamplePhotoGallery from '@/components/example-photo-gallery';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import type { QuestionnaireField } from '@/lib/questionnaireFields';
 import { inferFromImage } from '@/lib/publicEstimator/inferFromImage';
 import { inferOpeningFromImage } from '@/lib/publicEstimator/aiImageInference';
@@ -20,6 +20,7 @@ interface OpeningItem {
   location?: string;
   width?: number;
   height?: number;
+  thickness?: number;
   images?: string[];
   notes?: string;
   inferenceSource?: 'heuristic' | 'ai' | 'depth';
@@ -79,7 +80,8 @@ export function OpeningDetailsStep({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showGallery, setShowGallery] = useState(false);
-  const [specConflict, setSpecConflict] = useState<string[] | null>(null);
+  // Rich conflict reporting: separate added vs overridden global spec keys
+  const [specConflictDetail, setSpecConflictDetail] = useState<{ added: string[]; overridden: string[]; examplePrice?: number } | null>(null);
   const [lastExamplePrice, setLastExamplePrice] = useState<number | null>(null);
   const [pendingExampleSpecs, setPendingExampleSpecs] = useState<any | null>(null);
   const [pendingExamplePhoto, setPendingExamplePhoto] = useState<any | null>(null);
@@ -110,6 +112,7 @@ export function OpeningDetailsStep({
         const updates: Partial<OpeningItem> = {};
         if (applyOptions.width && !target.width && pendingExampleSpecs.widthMm) updates.width = pendingExampleSpecs.widthMm;
         if (applyOptions.height && !target.height && pendingExampleSpecs.heightMm) updates.height = pendingExampleSpecs.heightMm;
+        if (applyOptions.thickness && !target.thickness && pendingExampleSpecs.thicknessMm) updates.thickness = pendingExampleSpecs.thicknessMm;
         if (applyOptions.notes && !target.notes && pendingExampleSpecs.tags) updates.notes = `Inspired by: ${pendingExampleSpecs.tags.join(', ')}`;
         handleUpdateItem(targetId, updates);
       }
@@ -127,19 +130,21 @@ export function OpeningDetailsStep({
         mapped.inspirationExamplePrice = pendingExamplePhoto.priceGBP;
         setLastExamplePrice(pendingExamplePhoto.priceGBP);
       }
-      // Conflict detection vs existing specs
+      // Conflict detection vs existing specs (added vs overridden)
+      const added: string[] = [];
       const overridden: string[] = [];
       Object.keys(mapped).forEach(k => {
-        if (currentGlobalSpecs && k in currentGlobalSpecs && currentGlobalSpecs[k] !== mapped[k]) {
-          overridden.push(k);
+        if (currentGlobalSpecs && k in currentGlobalSpecs) {
+          if (currentGlobalSpecs[k] !== mapped[k]) overridden.push(k);
+        } else {
+          added.push(k);
         }
       });
       setPreviousGlobalSpecs(currentGlobalSpecs); // snapshot for revert
       onPrefillGlobalSpecs(mapped);
-      const populatedKeys = Object.keys(mapped);
-      if (populatedKeys.length) {
-        setSpecConflict(overridden.length ? overridden : populatedKeys);
-        setTimeout(() => setSpecConflict(null), 5000);
+      if (added.length || overridden.length) {
+        setSpecConflictDetail({ added, overridden, examplePrice: pendingExamplePhoto.priceGBP });
+        setTimeout(() => setSpecConflictDetail(null), 6000);
       }
     }
     if (applyOptions.inspirationImage && pendingExamplePhoto.imageUrl) {
@@ -160,6 +165,7 @@ export function OpeningDetailsStep({
     onPrefillGlobalSpecs(previousGlobalSpecs);
     onTrackInteraction?.('EXAMPLE_APPLY_REVERTED', { previousKeys: Object.keys(previousGlobalSpecs) });
     setPreviousGlobalSpecs(null);
+    setSpecConflictDetail(null);
   };
 
   const handleAddItem = () => {
@@ -549,68 +555,28 @@ export function OpeningDetailsStep({
         {/* Example gallery dialog */}
         <Dialog open={showGallery} onOpenChange={setShowGallery}>
           <DialogContent className="max-w-xl">
+            <DialogTitle>Browse Inspiration Gallery</DialogTitle>
+            <DialogDescription>
+              Choose a curated example to help pre-fill specifications.
+            </DialogDescription>
             {tenantId && (
               <ExamplePhotoGallery
                 tenantId={tenantId}
                 onSelect={({ specifications, photo }) => {
-                  try {
-                    // Apply width/height/thickness to first opening lacking them
-                    const targetId = currentItems[0]?.id;
-                    if (targetId && specifications) {
-                      const target = currentItems.find(i => i.id === targetId);
-                      if (target) {
-                        const updates: Partial<OpeningItem> = {};
-                        if (!target.width && specifications.widthMm) updates.width = specifications.widthMm;
-                        if (!target.height && specifications.heightMm) updates.height = specifications.heightMm;
-                        if (!target.notes && specifications.tags) updates.notes = `Inspired by: ${specifications.tags.join(', ')}`;
-                        handleUpdateItem(targetId, updates);
-                      }
-                    }
-                    // Prefill global specs and dynamic questionnaire answers if callback provided
-                    if (onPrefillGlobalSpecs && specifications) {
-                      const mapped: Record<string, any> = {};
-                      if (specifications.timberSpecies) mapped.timberType = specifications.timberSpecies;
-                      if (specifications.glassType) mapped.glassType = specifications.glassType;
-                      if (specifications.finishType) mapped.finish = specifications.finishType;
-                      const answers = specifications.questionnaireAnswers || {};
-                      const validKeys = new Set(publicFields.map(f => f.key));
-                      Object.keys(answers).forEach(k => {
-                        if (validKeys.has(k)) mapped[k] = answers[k]?.value;
-                      });
-                      mapped.inspirationExampleId = photo.id;
-                      if (photo.priceGBP) {
-                        mapped.inspirationExamplePrice = photo.priceGBP;
-                        setLastExamplePrice(photo.priceGBP);
-                      }
-                      // Detect conflicts (existing different values)
-                      const existingKeys = Object.keys(mapped).filter(k => (mapped[k] != null));
-                      const conflicts = existingKeys.filter(k => {
-                        // @ts-ignore parent global specs not accessible here directly; rely on callback consumer
-                        return false; // conflict detection delegated below
-                      });
-                      onPrefillGlobalSpecs(mapped);
-                      if (existingKeys.length) {
-                        // Show banner listing populated keys rather than true conflicts (simplified for public UX)
-                        setSpecConflict(existingKeys);
-                        setTimeout(() => setSpecConflict(null), 4000);
-                      }
-                    }
-                    // Add image to inspiration list if available
-                    if (photo?.imageUrl) {
-                      onInspirationChange?.([...inspirationImages, photo.imageUrl]);
-                    }
-                    onTrackInteraction?.('EXAMPLE_SELECTED', {
-                      photoId: photo.id,
-                      hasWidth: Boolean(specifications.widthMm),
-                      hasHeight: Boolean(specifications.heightMm),
-                      tagCount: Array.isArray(specifications.tags) ? specifications.tags.length : 0,
-                      questionnaireAnswerCount: specifications.questionnaireAnswers ? Object.keys(specifications.questionnaireAnswers).length : 0,
-                    });
-                  } catch (e) {
-                    console.error('Failed applying example selection', e);
-                  } finally {
-                    setShowGallery(false);
-                  }
+                  // Defer actual application; open Apply Example dialog with options
+                  setPendingExampleSpecs(specifications);
+                  setPendingExamplePhoto(photo);
+                  setApplyTargetId(currentItems[0]?.id || null);
+                  onTrackInteraction?.('EXAMPLE_SELECTED', {
+                    photoId: photo.id,
+                    hasWidth: Boolean(specifications.widthMm),
+                    hasHeight: Boolean(specifications.heightMm),
+                    hasThickness: Boolean(specifications.thicknessMm),
+                    tagCount: Array.isArray(specifications.tags) ? specifications.tags.length : 0,
+                    questionnaireAnswerCount: specifications.questionnaireAnswers ? Object.keys(specifications.questionnaireAnswers).length : 0,
+                  });
+                  setShowGallery(false);
+                  setShowApplyDialog(true);
                 }}
                 onClose={() => setShowGallery(false)}
               />
@@ -618,27 +584,98 @@ export function OpeningDetailsStep({
           </DialogContent>
         </Dialog>
       </div>
-        {specConflict && (
-          <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
-            {previousGlobalSpecs ? 'Overrode: ' : 'Prefilled: '} {specConflict.join(', ')} {lastExamplePrice ? `(Example approx £${lastExamplePrice.toFixed(2)})` : ''}
-            <div className="mt-2 flex gap-2">
+        {specConflictDetail && (
+          <div className="mt-4 rounded-2xl border border-slate-300 bg-slate-50 p-4 text-sm">
+            {specConflictDetail.added.length > 0 && (
+              <div className="mb-1">
+                <span className="font-medium text-green-700">Added:</span> <span className="text-slate-700">{specConflictDetail.added.join(', ')}</span>
+              </div>
+            )}
+            {specConflictDetail.overridden.length > 0 && (
+              <div className="mb-1">
+                <span className="font-medium text-amber-700">Overridden:</span> <span className="text-slate-700">{specConflictDetail.overridden.join(', ')}</span>
+              </div>
+            )}
+            {specConflictDetail.examplePrice && (
+              <div className="text-xs text-slate-600">Example approx £{specConflictDetail.examplePrice.toFixed(2)}</div>
+            )}
+            <div className="mt-2 flex flex-wrap gap-2">
               {previousGlobalSpecs && (
                 <button
                   onClick={revertExampleApply}
-                  className="text-xs px-2 py-1 rounded-full border border-amber-300 bg-white hover:bg-amber-100"
+                  className="text-xs px-2 py-1 rounded-full border border-slate-300 bg-white hover:bg-slate-100"
                 >Undo</button>
               )}
               {pendingExamplePhoto && (
                 <button
                   onClick={() => setShowDetailsDialog(true)}
-                  className="text-xs px-2 py-1 rounded-full border border-amber-300 bg-white hover:bg-amber-100"
+                  className="text-xs px-2 py-1 rounded-full border border-slate-300 bg-white hover:bg-slate-100"
                 >Details</button>
               )}
             </div>
           </div>
         )}
+        {/* Apply Example Dialog */}
+        <Dialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
+          <DialogContent className="max-w-md">
+            <DialogTitle>Apply Example</DialogTitle>
+            <DialogDescription>
+              Select target opening and which values to apply.
+            </DialogDescription>
+            <div className="space-y-5">
+              <h3 className="text-lg font-semibold">Apply Example</h3>
+              {pendingExamplePhoto && (
+                <div className="flex items-center gap-3">
+                  <img src={pendingExamplePhoto.thumbnailUrl || pendingExamplePhoto.imageUrl} alt={pendingExamplePhoto.title} className="h-14 w-14 rounded-lg object-cover" />
+                  <div className="text-sm">
+                    <div className="font-medium line-clamp-1">{pendingExamplePhoto.title}</div>
+                    {pendingExamplePhoto.priceGBP && <div className="text-slate-600">Approx £{pendingExamplePhoto.priceGBP.toFixed(2)}</div>}
+                  </div>
+                </div>
+              )}
+              {/* Target opening */}
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Target Opening</label>
+                <div className="space-y-1">
+                  {currentItems.map(it => (
+                    <label key={it.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input
+                        type="radio"
+                        name="applyTarget"
+                        checked={applyTargetId === it.id}
+                        onChange={() => setApplyTargetId(it.id)}
+                      />
+                      <span>Opening {currentItems.indexOf(it) + 1} ({it.type.replace(/_/g,' ')})</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {/* Options */}
+              <div className="grid grid-cols-2 gap-2">
+                {(['width','height','thickness','notes','globalSpecs','inspirationImage','price'] as (keyof typeof applyOptions)[]).map(k => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => toggleApplyOption(k)}
+                    className={`text-xs px-3 py-2 rounded-xl border flex items-center gap-2 justify-start ${applyOptions[k] ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 hover:border-slate-400'}`}
+                  >
+                    <span className="capitalize">{k.replace(/globalSpecs/,'specs').replace(/inspirationImage/,'image')}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => { setShowApplyDialog(false); setPendingExampleSpecs(null); setPendingExamplePhoto(null); }}>Cancel</Button>
+                <Button onClick={applyExampleSelection} style={{ backgroundColor: primaryColor }}>Apply</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
           <DialogContent className="max-w-lg">
+            <DialogTitle>Example Details</DialogTitle>
+            <DialogDescription>
+              Review the example specifications and answers.
+            </DialogDescription>
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Example Specification</h3>
               {pendingExamplePhoto && (
