@@ -87,6 +87,21 @@ export default function ExamplePhotosAdminPage() {
   const [filterActive, setFilterActive] = useState<string>("all"); // all | active | inactive
   const [filterProductType, setFilterProductType] = useState<string>("");
 
+  // Safely normalize field options from JSON or CSV strings
+  function normalizeOptions(raw: any): string[] {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.map((v) => String(v)).filter(Boolean);
+    const text = String(raw);
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) return parsed.map((v) => String(v)).filter(Boolean);
+    } catch {}
+    return text
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
   function toggleSelect(id: string) {
     setSelectedPhotoIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
@@ -730,7 +745,7 @@ export default function ExamplePhotosAdminPage() {
                           }))}
                         >
                           <option value="">-- Select --</option>
-                          {(JSON.parse(field.options as any) as string[]).map((opt: string) => (
+                          {normalizeOptions(field.options).map((opt: string) => (
                             <option key={opt} value={opt}>{opt}</option>
                           ))}
                         </select>
@@ -1280,7 +1295,7 @@ export default function ExamplePhotosAdminPage() {
                           onChange={e => setEditingFieldAnswers(prev => ({ ...prev, [f.key]: e.target.value }))}
                         >
                           <option value="">--</option>
-                          {(JSON.parse(f.options as any) as string[]).map(opt => (
+                          {normalizeOptions(f.options).map(opt => (
                             <option key={opt} value={opt}>{opt}</option>
                           ))}
                         </select>
