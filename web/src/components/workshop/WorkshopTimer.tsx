@@ -120,7 +120,7 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
     
     setLoading(true);
     try {
-      const response = await apiFetch<{ ok: boolean; timeEntry: any; hours: number }>("/workshop/timer/stop", {
+      const response = await apiFetch<{ ok: boolean; timeEntry: any; hours: number | string }>("/workshop/timer/stop", {
         method: "POST",
       });
       
@@ -130,7 +130,17 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
         if (onTimerChange) onTimerChange();
         
         // Show success message with hours logged
-        alert(`Timer stopped. Logged ${response.hours.toFixed(2)} hours.`);
+        const logged = Number((response as any).hours);
+        if (!isNaN(logged)) {
+          alert(`Timer stopped. Logged ${logged.toFixed(2)} hours.`);
+        } else if (activeTimer?.startedAt) {
+          // Fallback: compute locally if API sent a non-number (e.g., Decimal serialized as string)
+          const diffHrs = (Date.now() - new Date(activeTimer.startedAt).getTime()) / (1000 * 60 * 60);
+          const rounded = Math.round(diffHrs * 4) / 4;
+          alert(`Timer stopped. Logged ${Math.max(0.25, rounded).toFixed(2)} hours.`);
+        } else {
+          alert(`Timer stopped.`);
+        }
       }
     } catch (e: any) {
       alert("Failed to stop timer: " + (e?.message || "Unknown error"));
@@ -184,11 +194,18 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
           <div className="space-y-1 pt-2 border-t">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Project:</span>
-              <span className="font-medium text-sm">{activeTimer.project.title}</span>
+              <span className="font-medium text-sm">
+                {activeTimer.project?.title ||
+                  projects.find((p) => p.id === activeTimer.projectId)?.title ||
+                  "—"}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Process:</span>
-              <span className="font-medium text-sm">{formatProcess(activeTimer.process)}</span>
+              <span className="font-medium text-sm">
+                {processes.find((p) => p.code === activeTimer.process)?.name ||
+                  formatProcess(activeTimer.process)}
+              </span>
             </div>
             {activeTimer.notes && (
               <div className="text-xs text-muted-foreground pt-1">
