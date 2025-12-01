@@ -319,7 +319,7 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
 
                 <div>
                   <label className="text-sm font-medium mb-1 block">Process</label>
-                  <Select value={process} onValueChange={(v) => { setProcess(v); setProjectId(""); }}>
+                  <Select value={process} onValueChange={(v) => { setProcess(v); setProjectId(""); setProjectSearch(""); }}>
                     <SelectTrigger className="h-12 text-base">
                       <SelectValue placeholder="Select process" />
                     </SelectTrigger>
@@ -335,15 +335,14 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
 
                 {!swapIsGeneric && (
                   <>
-                    <Input
-                      value={projectSearch}
-                      onChange={(e) => setProjectSearch(e.target.value)}
-                      placeholder="Search projects..."
-                      className="h-10"
-                    />
-
                     <div>
                       <label className="text-sm font-medium mb-1 block">Project</label>
+                      <Input
+                        value={projectSearch}
+                        onChange={(e) => setProjectSearch(e.target.value)}
+                        placeholder="Search projects..."
+                        className="h-10 mb-2"
+                      />
                       <Select value={projectId} onValueChange={setProjectId}>
                         <SelectTrigger className="h-12 text-base">
                           <SelectValue placeholder="Select project" />
@@ -411,7 +410,7 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
           <div className="space-y-3">
             <div>
               <label className="text-sm font-medium mb-1 block">Process</label>
-              <Select value={process} onValueChange={(v) => { setProcess(v); setProjectId(""); }}>
+              <Select value={process} onValueChange={(v) => { setProcess(v); setProjectId(""); setProjectSearch(""); }}>
                 <SelectTrigger className="h-12 text-base">
                   <SelectValue placeholder="Select process" />
                 </SelectTrigger>
@@ -427,14 +426,14 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
 
             {!isGenericProcess && (
               <>
-                <Input
-                  value={projectSearch}
-                  onChange={(e) => setProjectSearch(e.target.value)}
-                  placeholder="Search projects..."
-                  className="h-10"
-                />
                 <div>
                   <label className="text-sm font-medium mb-1 block">Project</label>
+                  <Input
+                    value={projectSearch}
+                    onChange={(e) => setProjectSearch(e.target.value)}
+                    placeholder="Search projects..."
+                    className="h-10 mb-2"
+                  />
                   <Select value={projectId} onValueChange={setProjectId}>
                     <SelectTrigger className="h-12 text-base">
                       <SelectValue placeholder="Select project" />
