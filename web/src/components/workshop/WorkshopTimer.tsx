@@ -25,23 +25,9 @@ interface Timer {
 
 interface WorkshopTimerProps {
   projects: Project[];
-  processes: readonly string[];
+  processes: Array<{ code: string; name: string }>;
   onTimerChange?: () => void;
 }
-
-const PROCESSES = [
-  "MACHINING",
-  "ASSEMBLY",
-  "SANDING",
-  "SPRAYING",
-  "FINAL_ASSEMBLY",
-  "GLAZING",
-  "IRONMONGERY",
-  "INSTALLATION",
-  "CLEANING",
-  "ADMIN",
-  "HOLIDAY",
-] as const;
 
 function formatProcess(p: string) {
   return p.replace(/_/g, " ");
@@ -276,9 +262,9 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
                   <SelectValue placeholder="Select process" />
                 </SelectTrigger>
                 <SelectContent>
-                  {PROCESSES.map((p) => (
-                    <SelectItem key={p} value={p} className="text-base py-3">
-                      {formatProcess(p)}
+                  {processes.map((p) => (
+                    <SelectItem key={p.code} value={p.code} className="text-base py-3">
+                      {p.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
