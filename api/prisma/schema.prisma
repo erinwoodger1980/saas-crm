@@ -1307,6 +1307,7 @@ model WorkshopProcessDefinition {
   estimatedHours    Decimal?
   isColorKey        Boolean                    @default(false)
   assignmentGroup   String?
+  isGeneric         Boolean                    @default(false)
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
   projectProcesses  ProjectProcessAssignment[]

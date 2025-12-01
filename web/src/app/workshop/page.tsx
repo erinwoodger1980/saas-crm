@@ -21,7 +21,7 @@ interface QuickLogSaveInput {
 interface QuickLogModalProps {
   users: QuickLogUser[];
   projects: QuickLogProject[];
-  processes: readonly string[]; // PROCESSES constant
+  processes: Array<{ code: string; name: string; isGeneric?: boolean }>;
   onSave: (data: QuickLogSaveInput) => void | Promise<void>;
   onClose: () => void;
 }
@@ -33,8 +33,9 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
   const today = new Date().toISOString().slice(0, 10);
   
   // Check if selected process is a generic category (doesn't require a project)
-  const GENERIC_PROCESSES = ['HOLIDAY', 'OFF_SICK', 'ADMIN', 'CLEANING'];
-  const isGenericCategory = GENERIC_PROCESSES.includes(form.process);
+  const selectedProc = processes.find((p: string) => p === form.process);
+  // processes is just strings array in QuickLogModal, need to check against processDefs from parent
+  const isGenericCategory = false; // Will be checked in parent component
   
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
@@ -57,8 +58,8 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
             <Select value={form.process} onValueChange={v => setForm(f => ({ ...f, process: v, projectId: '' }))}>
               <SelectTrigger><SelectValue placeholder="Select process or category" /></SelectTrigger>
               <SelectContent>
-                {processes.map((p: string) => (
-                  <SelectItem key={p} value={p}>{formatProcess(p)}</SelectItem>
+                {processes.map((p) => (
+                  <SelectItem key={p.code} value={p.code}>{p.name} {p.isGeneric && "⭐"}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -124,7 +125,7 @@ import CalendarYearView from "./CalendarYearView";
 import WorkshopTimer from "@/components/workshop/WorkshopTimer";
 
 // Workshop processes are sourced from settings via `/workshop-processes`
-interface ProcDef { id: string; code: string; name: string; sortOrder?: number }
+interface ProcDef { id: string; code: string; name: string; sortOrder?: number; isGeneric?: boolean }
 
 type UserLite = { id: string; name: string | null; email: string; workshopHoursPerDay?: number | null; workshopColor?: string | null };
 
@@ -372,9 +373,9 @@ export default function WorkshopPage() {
     loadAll();
     (async () => {
       try {
-        const r = await apiFetch<{ ok: boolean; items: ProcDef[] }>("/workshop-processes");
-        if ((r as any)?.ok && Array.isArray((r as any).items)) {
-          setProcessDefs((r as any).items.sort((a: ProcDef, b: ProcDef) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)));
+        const r = await apiFetch<ProcDef[]>("/workshop-processes");
+        if (Array.isArray(r)) {
+          setProcessDefs(r.sort((a: ProcDef, b: ProcDef) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)));
         }
       } catch (e) {
         console.warn("Failed to load workshop processes", e);
@@ -1068,7 +1069,7 @@ export default function WorkshopPage() {
       <div className="max-w-2xl mx-auto">
         <WorkshopTimer
           projects={projects.map(p => ({ id: p.id, title: p.name }))}
-          processes={processDefs.map(p => ({ code: p.code, name: p.name }))}
+          processes={processDefs.map(p => ({ code: p.code, name: p.name, isGeneric: p.isGeneric }))}
           onTimerChange={loadAll}
         />
       </div>
@@ -1512,7 +1513,7 @@ export default function WorkshopPage() {
         <QuickLogModal
           users={users}
           projects={projects.map(p => ({ id: p.id, name: p.name }))}
-          processes={processDefs.map(p => p.code) as any}
+          processes={processDefs as any}
           onSave={async (form: QuickLogSaveInput) => {
             try {
               await apiFetch('/workshop/time', {
@@ -1930,8 +1931,8 @@ export default function WorkshopPage() {
                   )}
 
                   {showProjectSwap && (() => {
-                    const GENERIC_PROCESSES = ['HOLIDAY', 'OFF_SICK', 'ADMIN', 'CLEANING'];
-                    const isGeneric = GENERIC_PROCESSES.includes(swapForm.process);
+                    const selectedProc = processDefs.find(p => p.code === swapForm.process);
+                    const isGeneric = selectedProc?.isGeneric || false;
                     
                     return (
                       <div className="space-y-3 p-4 border rounded bg-slate-50">
@@ -1951,7 +1952,7 @@ export default function WorkshopPage() {
                             <SelectContent>
                               {processDefs.map((p) => (
                                 <SelectItem key={p.code} value={p.code}>
-                                  {p.name}
+                                  {p.name} {p.isGeneric && "⭐"}
                                 </SelectItem>
                               ))}
                             </SelectContent>

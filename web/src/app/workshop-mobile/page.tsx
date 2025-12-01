@@ -26,6 +26,7 @@ type ProcessDef = {
   code: string;
   name: string;
   sortOrder: number;
+  isGeneric?: boolean;
 };
 
 type UserLite = {
@@ -66,7 +67,7 @@ export default function MobileWorkshopPage() {
 
       const [schedR, procsR, usersR] = await Promise.allSettled([
         apiFetch<{ ok: boolean; projects: Project[] }>("/workshop/schedule?weeks=4"),
-        apiFetch<{ ok: boolean; items: ProcessDef[] }>("/workshop-processes"),
+        apiFetch<ProcessDef[]>("/workshop-processes"),
         apiFetch<{ ok: boolean; items: UserLite[] }>("/workshop/users"),
       ]);
 
@@ -77,9 +78,8 @@ export default function MobileWorkshopPage() {
         setProjects(Array.from(byId.values()));
       }
 
-      if (procsR.status === 'fulfilled' && procsR.value?.ok) {
-        const normalized = Array.isArray(procsR.value.items) ? procsR.value.items : [];
-        setProcesses(normalized.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)));
+      if (procsR.status === 'fulfilled' && Array.isArray(procsR.value)) {
+        setProcesses(procsR.value.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)));
       }
 
       if (usersR.status === 'fulfilled' && usersR.value?.ok) {
@@ -187,7 +187,7 @@ export default function MobileWorkshopPage() {
         <div className="p-4 max-w-2xl mx-auto">
           <WorkshopTimer
             projects={projects.map(p => ({ id: p.id, title: p.title }))}
-            processes={processes.map(p => ({ code: p.code, name: p.name }))}
+            processes={processes.map(p => ({ code: p.code, name: p.name, isGeneric: p.isGeneric }))}
             onTimerChange={loadAll}
           />
         </div>

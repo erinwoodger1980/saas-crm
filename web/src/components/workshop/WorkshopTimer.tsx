@@ -25,12 +25,9 @@ interface Timer {
 
 interface WorkshopTimerProps {
   projects: Project[];
-  processes: Array<{ code: string; name: string }>;
+  processes: Array<{ code: string; name: string; isGeneric?: boolean }>;
   onTimerChange?: () => void;
 }
-
-// Generic processes that don't require a project
-const GENERIC_PROCESSES = ["HOLIDAY", "OFF_SICK", "ADMIN", "CLEANING"];
 
 function formatProcess(p: string) {
   return p.replace(/_/g, " ");
@@ -57,13 +54,16 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
   const [loading, setLoading] = useState(false);
   const [showStart, setShowStart] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
-  const [showGenericStart, setShowGenericStart] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   
   // Start timer form state
   const [projectId, setProjectId] = useState("");
   const [process, setProcess] = useState("");
   const [notes, setNotes] = useState("");
+  
+  // Check if selected process is generic
+  const selectedProcess = processes.find(p => p.code === process);
+  const isGenericProcess = selectedProcess?.isGeneric || false;
 
   // Load active timer on mount
   useEffect(() => {
@@ -97,14 +97,16 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
 
   async function startTimer() {
     if (!process) return;
-    // For project timers, projectId is required
-    if (!GENERIC_PROCESSES.includes(process) && !projectId) return;
+    const procDef = processes.find(p => p.code === process);
+    const isGeneric = procDef?.isGeneric || false;
+    // For non-generic timers, projectId is required
+    if (!isGeneric && !projectId) return;
     
     setLoading(true);
     try {
       const payload: any = { process, notes: notes || undefined };
       // Only include projectId for non-generic processes
-      if (!GENERIC_PROCESSES.includes(process)) {
+      if (!isGeneric) {
         payload.projectId = projectId;
       }
       
@@ -116,7 +118,6 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
       if (response.ok && response.timer) {
         setActiveTimer(response.timer);
         setShowStart(false);
-        setShowGenericStart(false);
         setProjectId("");
         setProcess("");
         setNotes("");
@@ -133,8 +134,10 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
   async function swapTimer() {
     if (!activeTimer) return;
     if (!process) return;
-    // For project timers, projectId is required
-    if (!GENERIC_PROCESSES.includes(process) && !projectId) return;
+    const procDef = processes.find(p => p.code === process);
+    const isGeneric = procDef?.isGeneric || false;
+    // For non-generic timers, projectId is required
+    if (!isGeneric && !projectId) return;
     
     setLoading(true);
     try {
@@ -143,7 +146,7 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
       
       // Start new timer
       const payload: any = { process, notes: notes || undefined };
-      if (!GENERIC_PROCESSES.includes(process)) {
+      if (!isGeneric) {
         payload.projectId = projectId;
       }
       
@@ -302,80 +305,88 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
             </Button>
           </div>
 
-          {showSwap && (
-            <div className="pt-4 border-t mt-2 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Swop to New Project & Process</h3>
-                <Button variant="ghost" size="sm" onClick={() => setShowSwap(false)}>
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
+          {showSwap && (() => {
+            const swapIsGeneric = processes.find(p => p.code === process)?.isGeneric || false;
+            
+            return (
+              <div className="pt-4 border-t mt-2 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">Swop Timer</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setShowSwap(false)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
 
-              <Input
-                value={projectSearch}
-                onChange={(e) => setProjectSearch(e.target.value)}
-                placeholder="Search projects..."
-                className="h-10"
-              />
-
-              <div>
-                <label className="text-sm font-medium mb-1 block">Project</label>
-                <Select value={projectId} onValueChange={setProjectId}>
-                  <SelectTrigger className="h-12 text-base">
-                    <SelectValue placeholder="Select project" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects
-                      .filter((p) =>
-                        projectSearch
-                          ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
-                          : true
-                      )
-                      .map((p) => (
-                        <SelectItem key={p.id} value={p.id} className="text-base py-3">
-                          {p.title}
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Process</label>
+                  <Select value={process} onValueChange={(v) => { setProcess(v); setProjectId(""); }}>
+                    <SelectTrigger className="h-12 text-base">
+                      <SelectValue placeholder="Select process" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {processes.map((p) => (
+                        <SelectItem key={p.code} value={p.code} className="text-base py-3">
+                          {p.name} {p.isGeneric && "⭐"}
                         </SelectItem>
                       ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div>
-                <label className="text-sm font-medium mb-1 block">Process</label>
-                <Select value={process} onValueChange={setProcess}>
-                  <SelectTrigger className="h-12 text-base">
-                    <SelectValue placeholder="Select process" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {processes.map((p) => (
-                      <SelectItem key={p.code} value={p.code} className="text-base py-3">
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                {!swapIsGeneric && (
+                  <>
+                    <Input
+                      value={projectSearch}
+                      onChange={(e) => setProjectSearch(e.target.value)}
+                      placeholder="Search projects..."
+                      className="h-10"
+                    />
 
-              <div>
-                <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
-                <Input
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add a note..."
-                  className="h-12 text-base"
-                />
-              </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Project</label>
+                      <Select value={projectId} onValueChange={setProjectId}>
+                        <SelectTrigger className="h-12 text-base">
+                          <SelectValue placeholder="Select project" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projects
+                            .filter((p) =>
+                              projectSearch
+                                ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
+                                : true
+                            )
+                            .map((p) => (
+                              <SelectItem key={p.id} value={p.id} className="text-base py-3">
+                                {p.title}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
 
-              <Button
-                onClick={swapTimer}
-                disabled={!projectId || !process || loading}
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                size="lg"
-              >
-                Swop & Start New Timer
-              </Button>
-            </div>
-          )}
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
+                  <Input
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Add a note..."
+                    className="h-12 text-base"
+                  />
+                </div>
+
+                <Button
+                  onClick={swapTimer}
+                  disabled={!process || (!swapIsGeneric && !projectId) || loading}
+                  className="w-full bg-blue-600 hover:bg-blue-700"
+                  size="lg"
+                >
+                  Swop & Start New Timer
+                </Button>
+              </div>
+            );
+          })()}
         </div>
       </Card>
     );
@@ -398,49 +409,53 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
           </div>
           
           <div className="space-y-3">
-            <Input
-              value={projectSearch}
-              onChange={(e) => setProjectSearch(e.target.value)}
-              placeholder="Search projects..."
-              className="h-10"
-            />
-            <div>
-              <label className="text-sm font-medium mb-1 block">Project</label>
-              <Select value={projectId} onValueChange={setProjectId}>
-                <SelectTrigger className="h-12 text-base">
-                  <SelectValue placeholder="Select project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects
-                    .filter((p) =>
-                      projectSearch
-                        ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
-                        : true
-                    )
-                    .map((p) => (
-                    <SelectItem key={p.id} value={p.id} className="text-base py-3">
-                      {p.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
             <div>
               <label className="text-sm font-medium mb-1 block">Process</label>
-              <Select value={process} onValueChange={setProcess}>
+              <Select value={process} onValueChange={(v) => { setProcess(v); setProjectId(""); }}>
                 <SelectTrigger className="h-12 text-base">
                   <SelectValue placeholder="Select process" />
                 </SelectTrigger>
                 <SelectContent>
                   {processes.map((p) => (
                     <SelectItem key={p.code} value={p.code} className="text-base py-3">
-                      {p.name}
+                      {p.name} {p.isGeneric && "⭐"}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {!isGenericProcess && (
+              <>
+                <Input
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                  placeholder="Search projects..."
+                  className="h-10"
+                />
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Project</label>
+                  <Select value={projectId} onValueChange={setProjectId}>
+                    <SelectTrigger className="h-12 text-base">
+                      <SelectValue placeholder="Select project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects
+                        .filter((p) =>
+                          projectSearch
+                            ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
+                            : true
+                        )
+                        .map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-base py-3">
+                          {p.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
             
             <div>
               <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
@@ -455,7 +470,7 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
           
           <Button
             onClick={startTimer}
-            disabled={!projectId || !process || loading}
+            disabled={!process || (!isGenericProcess && !projectId) || loading}
             className="w-full bg-blue-600 hover:bg-blue-700"
             size="lg"
           >
@@ -467,100 +482,15 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
     );
   }
 
-  // Generic process start UI
-  if (showGenericStart) {
-    const genericProcesses = processes.filter((p) =>
-      GENERIC_PROCESSES.includes(p.code)
-    );
-
-    return (
-      <Card className="bg-white border-2">
-        <div className="p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Start Generic Timer</h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowGenericStart(false)}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Process</label>
-              <Select value={process} onValueChange={setProcess}>
-                <SelectTrigger className="h-12 text-base">
-                  <SelectValue placeholder="Select process" />
-                </SelectTrigger>
-                <SelectContent>
-                  {genericProcesses.map((p) => (
-                    <SelectItem key={p.code} value={p.code} className="text-base py-3">
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
-              <Input
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add a note..."
-                className="h-12 text-base"
-              />
-            </div>
-          </div>
-
-          <Button
-            onClick={startTimer}
-            disabled={!process || loading}
-            className="w-full bg-purple-600 hover:bg-purple-700"
-            size="lg"
-          >
-            <Play className="w-4 h-4 mr-2" />
-            Start Timer
-          </Button>
-        </div>
-      </Card>
-    );
-  }
-
-  // Idle state - show start buttons
+  // Idle state - show single start button
   return (
-    <div className="space-y-3">
-      <Button
-        onClick={() => setShowStart(true)}
-        className="w-full bg-blue-600 hover:bg-blue-700"
-        size="lg"
-      >
-        <Play className="w-4 h-4 mr-2" />
-        Start Project Timer
-      </Button>
-      
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">or</span>
-        </div>
-      </div>
-
-      <Button
-        onClick={() => setShowGenericStart(true)}
-        className="w-full bg-purple-600 hover:bg-purple-700"
-        size="lg"
-      >
-        <Play className="w-4 h-4 mr-2" />
-        Start Generic Timer
-      </Button>
-      <p className="text-xs text-center text-muted-foreground">
-        Generic: Holiday, Off Sick, Admin, Cleaning
-      </p>
-    </div>
+    <Button
+      onClick={() => setShowStart(true)}
+      className="w-full bg-blue-600 hover:bg-blue-700"
+      size="lg"
+    >
+      <Play className="w-4 h-4 mr-2" />
+      Start Timer
+    </Button>
   );
 }

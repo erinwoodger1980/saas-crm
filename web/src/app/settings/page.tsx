@@ -274,12 +274,13 @@ export default function SettingsPage() {
     requiredByDefault: boolean;
     estimatedHours?: number | null;
     isColorKey?: boolean;
+    isGeneric?: boolean;
     assignmentGroup?: string | null;
   };
   const [processes, setProcesses] = useState<ProcessDef[]>([]);
   const [procLoading, setProcLoading] = useState(false);
   const [procSavingId, setProcSavingId] = useState<string | "new" | null>(null);
-  const [newProcess, setNewProcess] = useState<Omit<ProcessDef, "id">>({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1, isColorKey: false, assignmentGroup: null });
+  const [newProcess, setNewProcess] = useState<Omit<ProcessDef, "id">>({ code: "", name: "", sortOrder: 0, requiredByDefault: true, estimatedHours: 1, isColorKey: false, isGeneric: false, assignmentGroup: null });
 
   useEffect(() => {
     (async () => {
@@ -2200,7 +2201,7 @@ export default function SettingsPage() {
             {/* New row */}
             <div className="rounded-xl border bg-white/80 p-3 overflow-x-auto">
               <div className="mb-2 text-sm font-semibold text-slate-800">Add process</div>
-              <div className="min-w-[1200px] grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_180px] items-center gap-2">
+              <div className="min-w-[1300px] grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_120px_180px] items-center gap-2">
                 <input
                   className="rounded-xl border bg-white/95 px-3 py-2 text-sm uppercase tracking-wide"
                   placeholder="CODE"
@@ -2243,6 +2244,14 @@ export default function SettingsPage() {
                   />
                   Color key
                 </label>
+                <label className="inline-flex items-center gap-2 text-sm" title="Generic processes don't require a project (e.g., Holiday, Sick Leave)">
+                  <input
+                    type="checkbox"
+                    checked={!!newProcess.isGeneric}
+                    onChange={(e) => setNewProcess((p) => ({ ...p, isGeneric: e.target.checked }))}
+                  />
+                  Generic
+                </label>
                 <input
                   className="rounded-xl border bg-white/95 px-3 py-2 text-sm"
                   placeholder="Group"
@@ -2258,14 +2267,15 @@ export default function SettingsPage() {
 
             {/* List */}
             <div className="rounded-xl border bg-white/80 overflow-x-auto">
-              <div className="min-w-[1200px]">
-                <div className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_180px] items-center gap-2 px-3 py-2 border-b text-[12px] text-slate-600 font-medium">
+              <div className="min-w-[1300px]">
+                <div className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_120px_180px] items-center gap-2 px-3 py-2 border-b text-[12px] text-slate-600 font-medium">
                   <div>Code</div>
                   <div>Name</div>
                   <div>Sort</div>
                   <div>Required by default</div>
                   <div>Est. hours</div>
                   <div>Color key</div>
+                  <div>Generic</div>
                   <div>Group</div>
                   <div className="text-right">Actions</div>
                 </div>
@@ -2276,7 +2286,7 @@ export default function SettingsPage() {
                 ) : (
                   <div className="divide-y">
                     {processes.map((p, idx) => (
-                      <div key={p.id} className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_180px] items-center gap-2 px-3 py-2">
+                      <div key={p.id} className="grid grid-cols-[140px_1fr_80px_140px_100px_120px_120px_120px_180px] items-center gap-2 px-3 py-2">
                       <input
                         className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm uppercase"
                         value={p.code}
@@ -2314,6 +2324,14 @@ export default function SettingsPage() {
                           onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, isColorKey: e.target.checked } : it)))}
                         />
                         Color key
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-sm" title="Generic processes don't require a project">
+                        <input
+                          type="checkbox"
+                          checked={!!p.isGeneric}
+                          onChange={(e) => setProcesses((prev) => prev.map((it) => (it.id === p.id ? { ...it, isGeneric: e.target.checked } : it)))}
+                        />
+                        Generic
                       </label>
                       <input
                         className="rounded-xl border bg-white/95 px-3 py-1.5 text-sm"
