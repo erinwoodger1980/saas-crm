@@ -783,4 +783,117 @@ router.patch("/project/:projectId/materials", async (req: any, res) => {
   res.json({ ok: true, project: updated });
 });
 
+// GET /workshop/timer - Get active timer for current user
+router.get("/timer", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = req.auth.userId as string;
+
+  const timer = await (prisma as any).workshopTimer.findFirst({
+    where: { tenantId, userId },
+    include: {
+      project: { select: { id: true, title: true } },
+      user: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { startedAt: 'desc' },
+  });
+
+  res.json({ ok: true, timer });
+});
+
+// POST /workshop/timer/start - Start a new timer
+// Body: { projectId, process, notes? }
+router.post("/timer/start", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = req.auth.userId as string;
+  const { projectId, process, notes } = req.body || {};
+
+  if (!projectId || !process) {
+    return res.status(400).json({ error: "project_and_process_required" });
+  }
+
+  // Verify project exists and belongs to this tenant
+  const project = await prisma.opportunity.findUnique({
+    where: { id: String(projectId) },
+  });
+  if (!project || project.tenantId !== tenantId) {
+    return res.status(404).json({ error: "project_not_found" });
+  }
+
+  // Stop any existing timer for this user
+  await (prisma as any).workshopTimer.deleteMany({
+    where: { tenantId, userId },
+  });
+
+  // Create new timer
+  const timer = await (prisma as any).workshopTimer.create({
+    data: {
+      tenantId,
+      userId,
+      projectId: String(projectId),
+      process: String(process),
+      notes: notes ? String(notes) : null,
+    },
+    include: {
+      project: { select: { id: true, title: true } },
+      user: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  res.json({ ok: true, timer });
+});
+
+// POST /workshop/timer/stop - Stop active timer and create time entry
+router.post("/timer/stop", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = req.auth.userId as string;
+
+  // Find active timer
+  const timer = await (prisma as any).workshopTimer.findFirst({
+    where: { tenantId, userId },
+    orderBy: { startedAt: 'desc' },
+  });
+
+  if (!timer) {
+    return res.status(404).json({ error: "no_active_timer" });
+  }
+
+  // Calculate hours worked
+  const now = new Date();
+  const startedAt = new Date(timer.startedAt);
+  const hoursWorked = (now.getTime() - startedAt.getTime()) / (1000 * 60 * 60);
+  const roundedHours = Math.round(hoursWorked * 4) / 4; // Round to nearest 0.25
+
+  // Create time entry
+  const timeEntry = await (prisma as any).timeEntry.create({
+    data: {
+      tenantId,
+      projectId: timer.projectId,
+      process: timer.process,
+      userId,
+      date: startedAt,
+      hours: Math.max(0.25, roundedHours), // Minimum 0.25 hours
+      notes: timer.notes,
+    },
+  });
+
+  // Delete timer
+  await (prisma as any).workshopTimer.delete({
+    where: { id: timer.id },
+  });
+
+  res.json({ ok: true, timeEntry, hours: timeEntry.hours });
+});
+
+// DELETE /workshop/timer - Cancel active timer without creating time entry
+router.delete("/timer", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = req.auth.userId as string;
+
+  const result = await (prisma as any).workshopTimer.deleteMany({
+    where: { tenantId, userId },
+  });
+
+  res.json({ ok: true, deleted: result.count });
+});
+
 export default router;

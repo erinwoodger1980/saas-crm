@@ -118,6 +118,7 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-reac
 import WorkshopSwimlaneTimeline from "./WorkshopSwimlaneTimeline";
 import CalendarWeekView from "./CalendarWeekView";
 import CalendarYearView from "./CalendarYearView";
+import WorkshopTimer from "@/components/workshop/WorkshopTimer";
 
 // Mirror of schema enum
 const PROCESSES = [
@@ -1059,6 +1060,15 @@ export default function WorkshopPage() {
             </Button>
           )}
         </div>
+      </div>
+
+      {/* Timer Widget - Mobile optimized */}
+      <div className="max-w-2xl mx-auto">
+        <WorkshopTimer
+          projects={projects.map(p => ({ id: p.id, title: p.name }))}
+          processes={PROCESSES}
+          onTimerChange={loadAll}
+        />
       </div>
 
       {/* Connection/Config hints when nothing is visible */}
