@@ -293,7 +293,7 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
               className="flex-1 bg-blue-600 hover:bg-blue-700"
               size="lg"
             >
-              Swop
+              Swap
             </Button>
             <Button
               onClick={cancelTimer}
@@ -311,7 +311,7 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
             return (
               <div className="pt-4 border-t mt-2 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">Swop Timer</h3>
+                  <h3 className="font-semibold">Swap Timer</h3>
                   <Button variant="ghost" size="sm" onClick={() => setShowSwap(false)}>
                     <X className="w-4 h-4" />
                   </Button>
@@ -381,7 +381,7 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
                   className="w-full bg-blue-600 hover:bg-blue-700"
                   size="lg"
                 >
-                  Swop & Start New Timer
+                  Swap & Start New Timer
                 </Button>
               </div>
             );

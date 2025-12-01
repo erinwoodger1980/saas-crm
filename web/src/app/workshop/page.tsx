@@ -33,9 +33,8 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
   const today = new Date().toISOString().slice(0, 10);
   
   // Check if selected process is a generic category (doesn't require a project)
-  const selectedProc = processes.find((p: string) => p === form.process);
-  // processes is just strings array in QuickLogModal, need to check against processDefs from parent
-  const isGenericCategory = false; // Will be checked in parent component
+  const selectedProc = processes.find((p: any) => p.code === form.process);
+  const isGenericCategory = selectedProc?.isGeneric || false;
   
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
@@ -1922,7 +1921,7 @@ export default function WorkshopPage() {
                           setSwapForm({ projectId: project.id, process: processDefs[0]?.code || '', notes: '', search: '' });
                         }}
                       >
-                        Swop
+                        Swap
                       </Button>
                       <Button variant="ghost" onClick={() => setShowProjectDetails(null)}>
                         Close
@@ -1937,7 +1936,7 @@ export default function WorkshopPage() {
                     return (
                       <div className="space-y-3 p-4 border rounded bg-slate-50">
                         <div className="flex items-center justify-between">
-                          <h3 className="font-semibold">Swop to New Project & Process</h3>
+                          <h3 className="font-semibold">Swap to New Project & Process</h3>
                           <Button variant="ghost" size="sm" onClick={() => setShowProjectSwap(false)}>
                             Cancel
                           </Button>
@@ -2022,15 +2021,15 @@ export default function WorkshopPage() {
                               setShowProjectSwap(false);
                               setSwapForm({ projectId: '', process: '', notes: '', search: '' });
                               await loadAll();
-                              alert("Timer swopped successfully");
+                              alert("Timer swapped successfully");
                             } catch (e: any) {
-                              alert("Failed to swop timer: " + (e?.message || "Unknown error"));
+                              alert("Failed to swap timer: " + (e?.message || "Unknown error"));
                           }
                         }}
                         disabled={!swapForm.process || (!isGeneric && !swapForm.projectId)}
                         className="w-full"
                       >
-                        Swop & Start New Timer
+                        Swap & Start New Timer
                       </Button>
                     </div>
                     );
