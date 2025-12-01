@@ -828,6 +828,15 @@ router.post("/timer/start", async (req: any, res) => {
   });
 
   // Create new timer
+  const includeClause: any = {
+    user: { select: { id: true, name: true, email: true } },
+  };
+  
+  // Only include project relation if projectId is provided
+  if (projectId) {
+    includeClause.project = { select: { id: true, title: true } };
+  }
+
   const timer = await (prisma as any).workshopTimer.create({
     data: {
       tenantId,
@@ -836,10 +845,7 @@ router.post("/timer/start", async (req: any, res) => {
       process: String(process),
       notes: notes ? String(notes) : null,
     },
-    include: {
-      project: projectId ? { select: { id: true, title: true } } : false,
-      user: { select: { id: true, name: true, email: true } },
-    },
+    include: includeClause,
   });
 
   res.json({ ok: true, timer });
