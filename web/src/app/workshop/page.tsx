@@ -107,6 +107,7 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
 
 import { useEffect, useState } from "react";
 import { apiFetch, ensureDemoAuth, API_BASE } from "@/lib/api";
+
 import { useCurrentUser } from "@/lib/use-current-user";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -116,32 +117,19 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 import WorkshopSwimlaneTimeline from "./WorkshopSwimlaneTimeline";
+
 import CalendarWeekView from "./CalendarWeekView";
 import CalendarYearView from "./CalendarYearView";
 import WorkshopTimer from "@/components/workshop/WorkshopTimer";
 
-// Mirror of schema enum
-const PROCESSES = [
-  "MACHINING",
-  "ASSEMBLY",
-  "SANDING",
-  "SPRAYING",
-  "FINAL_ASSEMBLY",
-  "GLAZING",
-  "IRONMONGERY",
-  "INSTALLATION",
-  "CLEANING",
-  "ADMIN",
-  "HOLIDAY",
-] as const;
-
-type WorkshopProcess = typeof PROCESSES[number];
+// Workshop processes are sourced from settings via `/workshop-processes`
+interface ProcDef { id: string; code: string; name: string; sortOrder?: number }
 
 type UserLite = { id: string; name: string | null; email: string; workshopHoursPerDay?: number | null; workshopColor?: string | null };
 
 type Plan = {
   id: string;
-  process: WorkshopProcess;
+  process: string;
   plannedWeek: number;
   assignedUser: { id: string; name: string | null } | null;
   notes?: string | null;
@@ -202,9 +190,9 @@ type ScheduleResponse = { ok: boolean; weeks: number; projects: Project[] };
 
 type UsersResponse = { ok: boolean; items: UserLite[] };
 
-type NewPlan = { projectId: string; process: WorkshopProcess | ""; plannedWeek: number | ""; assignedUserId?: string | "" };
+type NewPlan = { projectId: string; process: string; plannedWeek: number | ""; assignedUserId?: string | "" };
 
-type LogForm = { projectId: string; process: WorkshopProcess | ""; userId: string | ""; date: string; hours: string; notes?: string };
+type LogForm = { projectId: string; process: string; userId: string | ""; date: string; hours: string; notes?: string };
 
 type Holiday = {
   id: string;
@@ -293,11 +281,14 @@ export default function WorkshopPage() {
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showHolidayModal, setShowHolidayModal] = useState(false);
   const [showProjectDetails, setShowProjectDetails] = useState<string | null>(null);
+  const [showProjectSwap, setShowProjectSwap] = useState(false);
+  const [swapForm, setSwapForm] = useState({ projectId: '', process: '', notes: '', search: '' });
   const [showUserColors, setShowUserColors] = useState(false);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-  const [hoursForm, setHoursForm] = useState<{ process: WorkshopProcess | ""; userId: string; hours: string; date: string }>({
+  const [processDefs, setProcessDefs] = useState<ProcDef[]>([]);
+  const [hoursForm, setHoursForm] = useState<{ process: string; userId: string; hours: string; date: string }>({
     process: "",
     userId: "",
     hours: "",
@@ -378,6 +369,16 @@ export default function WorkshopPage() {
 
   useEffect(() => {
     loadAll();
+    (async () => {
+      try {
+        const r = await apiFetch<{ ok: boolean; items: ProcDef[] }>("/workshop-processes");
+        if ((r as any)?.ok && Array.isArray((r as any).items)) {
+          setProcessDefs((r as any).items.sort((a: ProcDef, b: ProcDef) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)));
+        }
+      } catch (e) {
+        console.warn("Failed to load workshop processes", e);
+      }
+    })();
   }, []);
 
   // Auto-refresh in fullscreen mode every 5 minutes
@@ -1066,7 +1067,7 @@ export default function WorkshopPage() {
       <div className="max-w-2xl mx-auto">
         <WorkshopTimer
           projects={projects.map(p => ({ id: p.id, title: p.name }))}
-          processes={PROCESSES.map(p => ({ code: p, name: p.replace(/_/g, " ") }))}
+          processes={processDefs.map(p => ({ code: p.code, name: p.name }))}
           onTimerChange={loadAll}
         />
       </div>
@@ -1434,95 +1435,7 @@ export default function WorkshopPage() {
             </div>
           </div>
 
-          {/* Week Summary below calendar */}
-          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${visibleWeeks.length}, minmax(0, 1fr))` }}>
-            {visibleWeeks.map((week) => {
-              const projectsInWeek = getProjectsForWeek(week.weekNum);
-              const weekTotal = getWeekTotal(week.weekNum);
-              const weekLabel = `Week ${week.isoWeek}`;
-              const dateRange = `${week.startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${week.endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
-              
-              return (
-                <Card key={week.weekNum} className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="font-semibold">{weekLabel}</div>
-                      <div className="text-xs text-muted-foreground">{dateRange}</div>
-                    </div>
-                    {showValues && !isWorkshopOnly && (
-                      <div className="text-sm font-bold text-green-600">
-                        {formatCurrency(weekTotal)}
-                      </div>
-                    )}
-                  </div>
-                  {/* Capacity vs Demand */}
-                  <div className="text-xs mb-3">
-                    {(() => {
-                      const cap = getWeekCapacity(week.weekNum);
-                      const dem = getWeekDemand(week.weekNum);
-                      const free = Math.round(cap - dem);
-                      const freeColor = free < 0 ? 'text-red-600' : 'text-emerald-700';
-                      // Holiday day counts in this week
-                      const weekdayList = eachDay(week.startDate, week.endDate).filter(isWeekday);
-                      let holidayDays = 0;
-                      for (const u of users) {
-                        const userHols = holidays.filter(h => h.userId === u.id);
-                        holidayDays += weekdayList.filter(d => userHols.some(h => dayInHoliday(d, h))).length;
-                      }
-                      const holidayInfo = holidayDays > 0 ? `Holiday weekdays: ${holidayDays}` : 'No holidays';
-                      return (
-                        <div className="flex flex-wrap gap-3 items-center">
-                          <span>Capacity: <strong>{cap}h</strong></span>
-                          <span>Demand: <strong>{dem}h</strong></span>
-                          <span className={freeColor + (free < 0 ? ' font-semibold' : '')}>Free: <strong>{free}h</strong></span>
-                          <span className="text-slate-500">{holidayInfo}</span>
-                          {free < 0 && (
-                            <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-medium">Overbooked</span>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <div className="text-sm text-muted-foreground mb-3">
-                    {projectsInWeek.length} project{projectsInWeek.length !== 1 ? 's' : ''}
-                  </div>
-                  <div className="space-y-2">
-                    {projectsInWeek.slice(0, 3).map(proj => {
-                      const progress = getProjectProgress(proj);
-                      return (
-                      <div key={proj.id} className="text-sm">
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium truncate flex-1" title={proj.name}>{proj.name}</div>
-                          {proj.startDate && proj.deliveryDate && (
-                            <span className={`text-xs px-2 py-0.5 rounded ${getProgressColor(progress)}`}>
-                              {progress}%
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                          {showValues && !isWorkshopOnly && proj.valueGBP && (
-                            <span>{formatCurrency(Number(proj.valueGBP))}</span>
-                          )}
-                          {proj.startDate && proj.deliveryDate && (
-                            <span className="text-xs">
-                              {new Date(proj.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - 
-                              {new Date(proj.deliveryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      );
-                    })}
-                    {projectsInWeek.length > 3 && (
-                      <div className="text-xs text-muted-foreground">
-                        +{projectsInWeek.length - 3} more
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+          {/* Week Summary below calendar - Removed per request */}
               </div>
             </TabsContent>
 
@@ -1598,7 +1511,7 @@ export default function WorkshopPage() {
         <QuickLogModal
           users={users}
           projects={projects.map(p => ({ id: p.id, name: p.name }))}
-          processes={PROCESSES}
+          processes={processDefs.map(p => p.code) as any}
           onSave={async (form: QuickLogSaveInput) => {
             try {
               await apiFetch('/workshop/time', {
@@ -1666,14 +1579,14 @@ export default function WorkshopPage() {
                 <label className="text-sm font-medium mb-1 block">Process</label>
                 <Select 
                   value={hoursForm.process} 
-                  onValueChange={(v) => setHoursForm(prev => ({ ...prev, process: v as WorkshopProcess }))}
+                  onValueChange={(v) => setHoursForm(prev => ({ ...prev, process: v }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select process" />
                   </SelectTrigger>
                   <SelectContent>
-                    {PROCESSES.map((p) => (
-                      <SelectItem key={p} value={p}>{formatProcess(p)}</SelectItem>
+                    {processDefs.map((p) => (
+                      <SelectItem key={p.code} value={p.code}>{p.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1963,18 +1876,146 @@ export default function WorkshopPage() {
                 </div>
                 
                 {/* Quick Actions */}
-                <div className="flex gap-2 pt-4 border-t">
-                  <Button 
-                    onClick={() => {
-                      setShowProjectDetails(null);
-                      openHoursModal(project.id, project.name);
-                    }}
-                  >
-                    Log Hours
-                  </Button>
-                  <Button variant="ghost" onClick={() => setShowProjectDetails(null)}>
-                    Close
-                  </Button>
+                <div className="space-y-4 pt-4 border-t">
+                  {!showProjectSwap && (
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={() => {
+                          setShowProjectDetails(null);
+                          openHoursModal(project.id, project.name);
+                        }}
+                      >
+                        Log Hours
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await apiFetch("/workshop/timer/start", { method: "POST", json: { projectId: project.id, process: processDefs[0]?.code } });
+                            await loadAll();
+                            alert("Timer started");
+                          } catch (e: any) {
+                            alert("Failed to start timer: " + (e?.message || "Unknown error"));
+                          }
+                        }}
+                      >
+                        Start Timer
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await apiFetch("/workshop/timer/stop", { method: "POST" });
+                            await loadAll();
+                          } catch (e: any) {
+                            alert("Failed to stop timer: " + (e?.message || "Unknown error"));
+                          }
+                        }}
+                      >
+                        Stop & Log
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setShowProjectSwap(true);
+                          setSwapForm({ projectId: project.id, process: processDefs[0]?.code || '', notes: '', search: '' });
+                        }}
+                      >
+                        Swop
+                      </Button>
+                      <Button variant="ghost" onClick={() => setShowProjectDetails(null)}>
+                        Close
+                      </Button>
+                    </div>
+                  )}
+
+                  {showProjectSwap && (
+                    <div className="space-y-3 p-4 border rounded bg-slate-50">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold">Swop to New Project & Process</h3>
+                        <Button variant="ghost" size="sm" onClick={() => setShowProjectSwap(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+
+                      <Input
+                        value={swapForm.search}
+                        onChange={(e) => setSwapForm(f => ({ ...f, search: e.target.value }))}
+                        placeholder="Search projects..."
+                        className="h-10"
+                      />
+
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Project</label>
+                        <Select value={swapForm.projectId} onValueChange={(v) => setSwapForm(f => ({ ...f, projectId: v }))}>
+                          <SelectTrigger className="h-12">
+                            <SelectValue placeholder="Select project" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projects
+                              .filter((p) =>
+                                swapForm.search
+                                  ? p.name.toLowerCase().includes(swapForm.search.toLowerCase())
+                                  : true
+                              )
+                              .map((p) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  {p.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Process</label>
+                        <Select value={swapForm.process} onValueChange={(v) => setSwapForm(f => ({ ...f, process: v }))}>
+                          <SelectTrigger className="h-12">
+                            <SelectValue placeholder="Select process" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {processDefs.map((p) => (
+                              <SelectItem key={p.code} value={p.code}>
+                                {p.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
+                        <Input
+                          value={swapForm.notes}
+                          onChange={(e) => setSwapForm(f => ({ ...f, notes: e.target.value }))}
+                          placeholder="Add a note..."
+                          className="h-12"
+                        />
+                      </div>
+
+                      <Button
+                        onClick={async () => {
+                          if (!swapForm.projectId || !swapForm.process) return;
+                          try {
+                            await apiFetch("/workshop/timer/stop", { method: "POST" });
+                            await apiFetch("/workshop/timer/start", {
+                              method: "POST",
+                              json: { projectId: swapForm.projectId, process: swapForm.process, notes: swapForm.notes || undefined },
+                            });
+                            setShowProjectSwap(false);
+                            setSwapForm({ projectId: '', process: '', notes: '', search: '' });
+                            await loadAll();
+                            alert("Timer swopped successfully");
+                          } catch (e: any) {
+                            alert("Failed to swop timer: " + (e?.message || "Unknown error"));
+                          }
+                        }}
+                        disabled={!swapForm.projectId || !swapForm.process}
+                        className="w-full"
+                      >
+                        Swop & Start New Timer
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </Card>
