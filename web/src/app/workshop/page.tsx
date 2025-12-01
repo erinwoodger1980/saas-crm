@@ -1892,7 +1892,13 @@ export default function WorkshopPage() {
                         variant="outline"
                         onClick={async () => {
                           try {
-                            await apiFetch("/workshop/timer/start", { method: "POST", json: { projectId: project.id, process: processDefs[0]?.code } });
+                            const firstProcess = processDefs[0];
+                            const payload: any = { process: firstProcess?.code };
+                            // Only include projectId if the process is not generic
+                            if (firstProcess && !firstProcess.isGeneric) {
+                              payload.projectId = project.id;
+                            }
+                            await apiFetch("/workshop/timer/start", { method: "POST", json: payload });
                             await loadAll();
                             alert("Timer started");
                           } catch (e: any) {
