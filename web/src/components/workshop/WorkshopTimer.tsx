@@ -53,6 +53,8 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
   const [elapsed, setElapsed] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [showStart, setShowStart] = useState(false);
+  const [showSwap, setShowSwap] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
   
   // Start timer form state
   const [projectId, setProjectId] = useState("");
@@ -109,6 +111,34 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
       }
     } catch (e: any) {
       alert("Failed to start timer: " + (e?.message || "Unknown error"));
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function swapTimer() {
+    if (!activeTimer) return;
+    if (!projectId || !process) return;
+    setLoading(true);
+    try {
+      // Stop current timer first
+      await apiFetch<{ ok: boolean; timeEntry: any; hours: number | string }>("/workshop/timer/stop", { method: "POST" });
+      // Start new timer
+      const response = await apiFetch<{ ok: boolean; timer: Timer }>("/workshop/timer/start", {
+        method: "POST",
+        json: { projectId, process, notes: notes || undefined },
+      });
+      if (response.ok && response.timer) {
+        setActiveTimer(response.timer);
+        setShowSwap(false);
+        setProjectId("");
+        setProcess("");
+        setNotes("");
+        if (onTimerChange) onTimerChange();
+      }
+    } catch (e: any) {
+      alert("Failed to swap timer: " + (e?.message || "Unknown error"));
       console.error(e);
     } finally {
       setLoading(false);
@@ -226,6 +256,14 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
               Stop & Log Time
             </Button>
             <Button
+              onClick={() => setShowSwap(true)}
+              disabled={loading}
+              className="flex-1 bg-blue-600 hover:bg-blue-700"
+              size="lg"
+            >
+              Swop
+            </Button>
+            <Button
               onClick={cancelTimer}
               disabled={loading}
               variant="outline"
@@ -234,6 +272,81 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
               <X className="w-4 h-4" />
             </Button>
           </div>
+
+          {showSwap && (
+            <div className="pt-4 border-t mt-2 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Swop to New Project & Process</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowSwap(false)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <Input
+                value={projectSearch}
+                onChange={(e) => setProjectSearch(e.target.value)}
+                placeholder="Search projects..."
+                className="h-10"
+              />
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">Project</label>
+                <Select value={projectId} onValueChange={setProjectId}>
+                  <SelectTrigger className="h-12 text-base">
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects
+                      .filter((p) =>
+                        projectSearch
+                          ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
+                          : true
+                      )
+                      .map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-base py-3">
+                          {p.title}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">Process</label>
+                <Select value={process} onValueChange={setProcess}>
+                  <SelectTrigger className="h-12 text-base">
+                    <SelectValue placeholder="Select process" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {processes.map((p) => (
+                      <SelectItem key={p.code} value={p.code} className="text-base py-3">
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
+                <Input
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add a note..."
+                  className="h-12 text-base"
+                />
+              </div>
+
+              <Button
+                onClick={swapTimer}
+                disabled={!projectId || !process || loading}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+                size="lg"
+              >
+                Swop & Start New Timer
+              </Button>
+            </div>
+          )}
         </div>
       </Card>
     );
@@ -256,6 +369,12 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
           </div>
           
           <div className="space-y-3">
+            <Input
+              value={projectSearch}
+              onChange={(e) => setProjectSearch(e.target.value)}
+              placeholder="Search projects..."
+              className="h-10"
+            />
             <div>
               <label className="text-sm font-medium mb-1 block">Project</label>
               <Select value={projectId} onValueChange={setProjectId}>
@@ -263,7 +382,13 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
                   <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.map((p) => (
+                  {projects
+                    .filter((p) =>
+                      projectSearch
+                        ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
+                        : true
+                    )
+                    .map((p) => (
                     <SelectItem key={p.id} value={p.id} className="text-base py-3">
                       {p.title}
                     </SelectItem>

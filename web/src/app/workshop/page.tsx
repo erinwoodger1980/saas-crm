@@ -1066,7 +1066,7 @@ export default function WorkshopPage() {
       <div className="max-w-2xl mx-auto">
         <WorkshopTimer
           projects={projects.map(p => ({ id: p.id, title: p.name }))}
-          processes={PROCESSES}
+          processes={PROCESSES.map(p => ({ code: p, name: p.replace(/_/g, " ") }))}
           onTimerChange={loadAll}
         />
       </div>
