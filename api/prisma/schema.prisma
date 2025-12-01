@@ -1396,13 +1396,13 @@ model WorkshopTimer {
   id        String          @id @default(cuid())
   tenantId  String
   userId    String
-  projectId String
+  projectId String?
   process   WorkshopProcess
   startedAt DateTime        @default(now())
   notes     String?
   tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project   Opportunity     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Opportunity?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId])
   @@index([userId])

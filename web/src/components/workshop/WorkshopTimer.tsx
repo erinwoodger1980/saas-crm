@@ -15,11 +15,11 @@ interface Project {
 
 interface Timer {
   id: string;
-  projectId: string;
+  projectId: string | null;
   process: string;
   startedAt: string;
   notes?: string | null;
-  project: { id: string; title: string };
+  project?: { id: string; title: string } | null;
   user: { id: string; name: string | null; email: string };
 }
 
@@ -28,6 +28,9 @@ interface WorkshopTimerProps {
   processes: Array<{ code: string; name: string }>;
   onTimerChange?: () => void;
 }
+
+// Generic processes that don't require a project
+const GENERIC_PROCESSES = ["HOLIDAY", "OFF_SICK", "ADMIN", "CLEANING"];
 
 function formatProcess(p: string) {
   return p.replace(/_/g, " ");
@@ -54,6 +57,7 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
   const [loading, setLoading] = useState(false);
   const [showStart, setShowStart] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
+  const [showGenericStart, setShowGenericStart] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   
   // Start timer form state
@@ -92,18 +96,27 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
   }
 
   async function startTimer() {
-    if (!projectId || !process) return;
+    if (!process) return;
+    // For project timers, projectId is required
+    if (!GENERIC_PROCESSES.includes(process) && !projectId) return;
     
     setLoading(true);
     try {
+      const payload: any = { process, notes: notes || undefined };
+      // Only include projectId for non-generic processes
+      if (!GENERIC_PROCESSES.includes(process)) {
+        payload.projectId = projectId;
+      }
+      
       const response = await apiFetch<{ ok: boolean; timer: Timer }>("/workshop/timer/start", {
         method: "POST",
-        json: { projectId, process, notes: notes || undefined },
+        json: payload,
       });
       
       if (response.ok && response.timer) {
         setActiveTimer(response.timer);
         setShowStart(false);
+        setShowGenericStart(false);
         setProjectId("");
         setProcess("");
         setNotes("");
@@ -119,15 +132,24 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
 
   async function swapTimer() {
     if (!activeTimer) return;
-    if (!projectId || !process) return;
+    if (!process) return;
+    // For project timers, projectId is required
+    if (!GENERIC_PROCESSES.includes(process) && !projectId) return;
+    
     setLoading(true);
     try {
       // Stop current timer first
       await apiFetch<{ ok: boolean; timeEntry: any; hours: number | string }>("/workshop/timer/stop", { method: "POST" });
+      
       // Start new timer
+      const payload: any = { process, notes: notes || undefined };
+      if (!GENERIC_PROCESSES.includes(process)) {
+        payload.projectId = projectId;
+      }
+      
       const response = await apiFetch<{ ok: boolean; timer: Timer }>("/workshop/timer/start", {
         method: "POST",
-        json: { projectId, process, notes: notes || undefined },
+        json: payload,
       });
       if (response.ok && response.timer) {
         setActiveTimer(response.timer);
@@ -222,14 +244,16 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
           
           {/* Project and process info */}
           <div className="space-y-1 pt-2 border-t">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Project:</span>
-              <span className="font-medium text-sm">
-                {activeTimer.project?.title ||
-                  projects.find((p) => p.id === activeTimer.projectId)?.title ||
-                  "—"}
-              </span>
-            </div>
+            {activeTimer.projectId && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Project:</span>
+                <span className="font-medium text-sm">
+                  {activeTimer.project?.title ||
+                    projects.find((p) => p.id === activeTimer.projectId)?.title ||
+                    "—"}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Process:</span>
               <span className="font-medium text-sm">
@@ -237,6 +261,11 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
                   formatProcess(activeTimer.process)}
               </span>
             </div>
+            {!activeTimer.projectId && (
+              <div className="text-xs text-muted-foreground">
+                Generic time entry (no project)
+              </div>
+            )}
             {activeTimer.notes && (
               <div className="text-xs text-muted-foreground pt-1">
                 Note: {activeTimer.notes}
@@ -438,15 +467,100 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
     );
   }
 
-  // Idle state - show start button
+  // Generic process start UI
+  if (showGenericStart) {
+    const genericProcesses = processes.filter((p) =>
+      GENERIC_PROCESSES.includes(p.code)
+    );
+
+    return (
+      <Card className="bg-white border-2">
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">Start Generic Timer</h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowGenericStart(false)}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Process</label>
+              <Select value={process} onValueChange={setProcess}>
+                <SelectTrigger className="h-12 text-base">
+                  <SelectValue placeholder="Select process" />
+                </SelectTrigger>
+                <SelectContent>
+                  {genericProcesses.map((p) => (
+                    <SelectItem key={p.code} value={p.code} className="text-base py-3">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
+              <Input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add a note..."
+                className="h-12 text-base"
+              />
+            </div>
+          </div>
+
+          <Button
+            onClick={startTimer}
+            disabled={!process || loading}
+            className="w-full bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            <Play className="w-4 h-4 mr-2" />
+            Start Timer
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  // Idle state - show start buttons
   return (
-    <Button
-      onClick={() => setShowStart(true)}
-      className="w-full bg-blue-600 hover:bg-blue-700"
-      size="lg"
-    >
-      <Play className="w-4 h-4 mr-2" />
-      Start Timer
-    </Button>
+    <div className="space-y-3">
+      <Button
+        onClick={() => setShowStart(true)}
+        className="w-full bg-blue-600 hover:bg-blue-700"
+        size="lg"
+      >
+        <Play className="w-4 h-4 mr-2" />
+        Start Project Timer
+      </Button>
+      
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-background px-2 text-muted-foreground">or</span>
+        </div>
+      </div>
+
+      <Button
+        onClick={() => setShowGenericStart(true)}
+        className="w-full bg-purple-600 hover:bg-purple-700"
+        size="lg"
+      >
+        <Play className="w-4 h-4 mr-2" />
+        Start Generic Timer
+      </Button>
+      <p className="text-xs text-center text-muted-foreground">
+        Generic: Holiday, Off Sick, Admin, Cleaning
+      </p>
+    </div>
   );
 }

@@ -801,22 +801,25 @@ router.get("/timer", async (req: any, res) => {
 });
 
 // POST /workshop/timer/start - Start a new timer
-// Body: { projectId, process, notes? }
+// Body: { projectId?, process, notes? }
+// projectId is optional for generic processes like HOLIDAY, ADMIN, CLEANING
 router.post("/timer/start", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const userId = req.auth.userId as string;
   const { projectId, process, notes } = req.body || {};
 
-  if (!projectId || !process) {
-    return res.status(400).json({ error: "project_and_process_required" });
+  if (!process) {
+    return res.status(400).json({ error: "process_required" });
   }
 
-  // Verify project exists and belongs to this tenant
-  const project = await prisma.opportunity.findUnique({
-    where: { id: String(projectId) },
-  });
-  if (!project || project.tenantId !== tenantId) {
-    return res.status(404).json({ error: "project_not_found" });
+  // If projectId is provided, verify project exists and belongs to this tenant
+  if (projectId) {
+    const project = await prisma.opportunity.findUnique({
+      where: { id: String(projectId) },
+    });
+    if (!project || project.tenantId !== tenantId) {
+      return res.status(404).json({ error: "project_not_found" });
+    }
   }
 
   // Stop any existing timer for this user
@@ -829,12 +832,12 @@ router.post("/timer/start", async (req: any, res) => {
     data: {
       tenantId,
       userId,
-      projectId: String(projectId),
+      projectId: projectId ? String(projectId) : null,
       process: String(process),
       notes: notes ? String(notes) : null,
     },
     include: {
-      project: { select: { id: true, title: true } },
+      project: projectId ? { select: { id: true, title: true } } : false,
       user: { select: { id: true, name: true, email: true } },
     },
   });

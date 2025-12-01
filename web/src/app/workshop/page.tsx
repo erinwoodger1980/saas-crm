@@ -32,8 +32,9 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
   });
   const today = new Date().toISOString().slice(0, 10);
   
-  // Check if selected process is a generic category (CLEANING, ADMIN, HOLIDAY)
-  const isGenericCategory = ['CLEANING', 'ADMIN', 'HOLIDAY'].includes(form.process);
+  // Check if selected process is a generic category (doesn't require a project)
+  const GENERIC_PROCESSES = ['HOLIDAY', 'OFF_SICK', 'ADMIN', 'CLEANING'];
+  const isGenericCategory = GENERIC_PROCESSES.includes(form.process);
   
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
@@ -1928,94 +1929,111 @@ export default function WorkshopPage() {
                     </div>
                   )}
 
-                  {showProjectSwap && (
-                    <div className="space-y-3 p-4 border rounded bg-slate-50">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold">Swop to New Project & Process</h3>
-                        <Button variant="ghost" size="sm" onClick={() => setShowProjectSwap(false)}>
-                          Cancel
-                        </Button>
-                      </div>
+                  {showProjectSwap && (() => {
+                    const GENERIC_PROCESSES = ['HOLIDAY', 'OFF_SICK', 'ADMIN', 'CLEANING'];
+                    const isGeneric = GENERIC_PROCESSES.includes(swapForm.process);
+                    
+                    return (
+                      <div className="space-y-3 p-4 border rounded bg-slate-50">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-semibold">Swop to New Project & Process</h3>
+                          <Button variant="ghost" size="sm" onClick={() => setShowProjectSwap(false)}>
+                            Cancel
+                          </Button>
+                        </div>
 
-                      <Input
-                        value={swapForm.search}
-                        onChange={(e) => setSwapForm(f => ({ ...f, search: e.target.value }))}
-                        placeholder="Search projects..."
-                        className="h-10"
-                      />
-
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">Project</label>
-                        <Select value={swapForm.projectId} onValueChange={(v) => setSwapForm(f => ({ ...f, projectId: v }))}>
-                          <SelectTrigger className="h-12">
-                            <SelectValue placeholder="Select project" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {projects
-                              .filter((p) =>
-                                swapForm.search
-                                  ? p.name.toLowerCase().includes(swapForm.search.toLowerCase())
-                                  : true
-                              )
-                              .map((p) => (
-                                <SelectItem key={p.id} value={p.id}>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Process</label>
+                          <Select value={swapForm.process} onValueChange={(v) => setSwapForm(f => ({ ...f, process: v, projectId: '' }))}>
+                            <SelectTrigger className="h-12">
+                              <SelectValue placeholder="Select process" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {processDefs.map((p) => (
+                                <SelectItem key={p.code} value={p.code}>
                                   {p.name}
                                 </SelectItem>
                               ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">Process</label>
-                        <Select value={swapForm.process} onValueChange={(v) => setSwapForm(f => ({ ...f, process: v }))}>
-                          <SelectTrigger className="h-12">
-                            <SelectValue placeholder="Select process" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {processDefs.map((p) => (
-                              <SelectItem key={p.code} value={p.code}>
-                                {p.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                        {!isGeneric && (
+                          <>
+                            <Input
+                              value={swapForm.search}
+                              onChange={(e) => setSwapForm(f => ({ ...f, search: e.target.value }))}
+                              placeholder="Search projects..."
+                              className="h-10"
+                            />
 
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
-                        <Input
-                          value={swapForm.notes}
-                          onChange={(e) => setSwapForm(f => ({ ...f, notes: e.target.value }))}
-                          placeholder="Add a note..."
-                          className="h-12"
-                        />
-                      </div>
+                            <div>
+                              <label className="text-sm font-medium mb-1 block">Project</label>
+                              <Select value={swapForm.projectId} onValueChange={(v) => setSwapForm(f => ({ ...f, projectId: v }))}>
+                                <SelectTrigger className="h-12">
+                                  <SelectValue placeholder="Select project" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {projects
+                                    .filter((p) =>
+                                      swapForm.search
+                                        ? p.name.toLowerCase().includes(swapForm.search.toLowerCase())
+                                        : true
+                                    )
+                                    .map((p) => (
+                                      <SelectItem key={p.id} value={p.id}>
+                                        {p.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </>
+                        )}
 
-                      <Button
-                        onClick={async () => {
-                          if (!swapForm.projectId || !swapForm.process) return;
-                          try {
-                            await apiFetch("/workshop/timer/stop", { method: "POST" });
-                            await apiFetch("/workshop/timer/start", {
-                              method: "POST",
-                              json: { projectId: swapForm.projectId, process: swapForm.process, notes: swapForm.notes || undefined },
-                            });
-                            setShowProjectSwap(false);
-                            setSwapForm({ projectId: '', process: '', notes: '', search: '' });
-                            await loadAll();
-                            alert("Timer swopped successfully");
-                          } catch (e: any) {
-                            alert("Failed to swop timer: " + (e?.message || "Unknown error"));
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
+                          <Input
+                            value={swapForm.notes}
+                            onChange={(e) => setSwapForm(f => ({ ...f, notes: e.target.value }))}
+                            placeholder="Add a note..."
+                            className="h-12"
+                          />
+                        </div>
+
+                        <Button
+                          onClick={async () => {
+                            if (!swapForm.process) return;
+                            if (!isGeneric && !swapForm.projectId) return;
+                            
+                            try {
+                              await apiFetch("/workshop/timer/stop", { method: "POST" });
+                              
+                              const payload: any = { process: swapForm.process, notes: swapForm.notes || undefined };
+                              if (!isGeneric) {
+                                payload.projectId = swapForm.projectId;
+                              }
+                              
+                              await apiFetch("/workshop/timer/start", {
+                                method: "POST",
+                                json: payload,
+                              });
+                              setShowProjectSwap(false);
+                              setSwapForm({ projectId: '', process: '', notes: '', search: '' });
+                              await loadAll();
+                              alert("Timer swopped successfully");
+                            } catch (e: any) {
+                              alert("Failed to swop timer: " + (e?.message || "Unknown error"));
                           }
                         }}
-                        disabled={!swapForm.projectId || !swapForm.process}
+                        disabled={!swapForm.process || (!isGeneric && !swapForm.projectId)}
                         className="w-full"
                       >
                         Swop & Start New Timer
                       </Button>
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             </Card>
