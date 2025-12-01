@@ -1381,7 +1381,7 @@ export default function SettingsPage() {
           <input
             className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
             placeholder="Guarantee title"
-            value={g.title}
+            value={String(g.title || "")}
             onChange={(e) => {
               const updated = [...(s.quoteDefaults?.guarantees || [])];
               updated[idx] = { ...updated[idx], title: e.target.value };
@@ -1391,7 +1391,7 @@ export default function SettingsPage() {
           <input
             className="flex-[2] rounded-2xl border bg-white/95 px-3 py-2 text-sm"
             placeholder="Description"
-            value={g.description}
+            value={String(g.description || "")}
             onChange={(e) => {
               const updated = [...(s.quoteDefaults?.guarantees || [])];
               updated[idx] = { ...updated[idx], description: e.target.value };
@@ -1431,18 +1431,18 @@ export default function SettingsPage() {
             <div className="w-14 h-14 rounded-xl border bg-slate-100 overflow-hidden flex items-center justify-center text-xs text-slate-500">
               {t.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={t.photoUrl} alt={t.client || 'photo'} className="w-full h-full object-cover" />
+                <img src={t.photoUrl} alt={String(t.client || 'photo')} className="w-full h-full object-cover" />
               ) : t.photoDataUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={t.photoDataUrl} alt={t.client || 'photo'} className="w-full h-full object-cover" />
+                <img src={t.photoDataUrl} alt={String(t.client || 'photo')} className="w-full h-full object-cover" />
               ) : (
-                <span>{(t.client || 'Client').slice(0,1)}</span>
+                <span>{String(t.client || 'Client').slice(0,1)}</span>
               )}
             </div>
             <textarea
               className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm min-h-[60px]"
               placeholder="Testimonial quote"
-              value={t.quote}
+              value={String(t.quote || "")}
               onChange={(e) => {
                 const updated = [...(s.quoteDefaults?.testimonials || [])];
                 updated[idx] = { ...updated[idx], quote: e.target.value };
@@ -1454,7 +1454,7 @@ export default function SettingsPage() {
             <input
               className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
               placeholder="Client name"
-              value={t.client}
+              value={String(t.client || "")}
               onChange={(e) => {
                 const updated = [...(s.quoteDefaults?.testimonials || [])];
                 updated[idx] = { ...updated[idx], client: e.target.value };
@@ -1464,7 +1464,7 @@ export default function SettingsPage() {
             <input
               className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
               placeholder="Role (optional)"
-              value={t.role || ""}
+              value={String(t.role || "")}
               onChange={(e) => {
                 const updated = [...(s.quoteDefaults?.testimonials || [])];
                 updated[idx] = { ...updated[idx], role: e.target.value };
@@ -1618,7 +1618,7 @@ export default function SettingsPage() {
           <input
             className="flex-1 rounded-2xl border bg-white/95 px-3 py-2 text-sm"
             placeholder="Certification name"
-            value={c.name}
+            value={String(c.name || "")}
             onChange={(e) => {
               const updated = [...(s.quoteDefaults?.certifications || [])];
               updated[idx] = { ...updated[idx], name: e.target.value };
@@ -1628,7 +1628,7 @@ export default function SettingsPage() {
           <input
             className="flex-[2] rounded-2xl border bg-white/95 px-3 py-2 text-sm"
             placeholder="Description"
-            value={c.description}
+            value={String(c.description || "")}
             onChange={(e) => {
               const updated = [...(s.quoteDefaults?.certifications || [])];
               updated[idx] = { ...updated[idx], description: e.target.value };
