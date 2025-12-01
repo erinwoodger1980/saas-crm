@@ -683,7 +683,7 @@ export default function SettingsPage() {
   }
 
   async function enrichFromWebsite() {
-    if (!s?.website?.trim()) {
+    if (!(typeof s?.website === 'string' && s.website.trim())) {
       toast({ title: "Website required", description: "Please enter a website URL first", variant: "destructive" });
       return;
     }
@@ -1019,7 +1019,7 @@ export default function SettingsPage() {
           />
           <Button 
             onClick={enrichFromWebsite}
-            disabled={enrichingWebsite || !s.website?.trim()}
+            disabled={enrichingWebsite || !(typeof s.website === 'string' && s.website.trim())}
             className="w-full"
           >
             {enrichingWebsite ? "Importing..." : "Import from Website"}
@@ -1066,14 +1066,14 @@ export default function SettingsPage() {
     {/* Missing info highlights */}
     {(() => {
       const missing: string[] = [];
-      if (!s.brandName?.trim()) missing.push('Company name');
-      if (!s.phone?.trim()) missing.push('Phone');
-      if (!s.quoteDefaults?.email?.trim()) missing.push('Quote email');
-      if (!s.quoteDefaults?.address?.trim()) missing.push('Address');
+      if (!(typeof s.brandName === 'string' && s.brandName.trim())) missing.push('Company name');
+      if (!(typeof s.phone === 'string' && s.phone.trim())) missing.push('Phone');
+      if (!(typeof s.quoteDefaults?.email === 'string' && s.quoteDefaults.email.trim())) missing.push('Quote email');
+      if (!(typeof s.quoteDefaults?.address === 'string' && s.quoteDefaults.address.trim())) missing.push('Address');
       if (s.quoteDefaults?.defaultMargin == null) missing.push('Default margin');
       if (s.quoteDefaults?.vatRate == null) missing.push('VAT rate');
-      if (!s.quoteDefaults?.tagline?.trim()) missing.push('Tagline');
-      if (!s.quoteDefaults?.overview?.trim()) missing.push('Company overview');
+      if (!(typeof s.quoteDefaults?.tagline === 'string' && s.quoteDefaults.tagline.trim())) missing.push('Tagline');
+      if (!(typeof s.quoteDefaults?.overview === 'string' && s.quoteDefaults.overview.trim())) missing.push('Company overview');
       if (!(s.quoteDefaults?.guarantees || []).length) missing.push('Guarantees');
       if (!(s.quoteDefaults?.testimonials || []).length) missing.push('Testimonials');
       return missing.length ? (
