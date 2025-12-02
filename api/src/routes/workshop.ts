@@ -1244,6 +1244,8 @@ router.post("/timer/stop", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const userId = req.auth.userId as string;
 
+  console.log(`[timer/stop] Request from user ${userId}, tenant ${tenantId}`);
+
   // Find active timer
   const timer = await (prisma as any).workshopTimer.findFirst({
     where: { tenantId, userId },
@@ -1251,8 +1253,11 @@ router.post("/timer/stop", async (req: any, res) => {
   });
 
   if (!timer) {
-    return res.status(404).json({ error: "no_active_timer" });
+    console.error(`[timer/stop] No active timer found for user ${userId}`);
+    return res.status(404).json({ error: "no_active_timer", details: "No active timer found" });
   }
+
+  console.log(`[timer/stop] Found timer ${timer.id}, projectId=${timer.projectId}, process=${timer.process}`);
 
   // Calculate hours worked
   const now = new Date();
@@ -1278,6 +1283,7 @@ router.post("/timer/stop", async (req: any, res) => {
     where: { id: timer.id },
   });
 
+  console.log(`[timer/stop] Timer ${timer.id} deleted successfully, logged ${timeEntry.hours} hours`);
   res.json({ ok: true, timeEntry, hours: timeEntry.hours });
 });
 
@@ -1304,6 +1310,8 @@ router.patch("/process-status", async (req: any, res) => {
   }
 
   try {
+    console.log(`[process-status] Request: projectId=${projectId}, processCode=${processCode}, status=${status}`);
+    
     // Find the process definition
     const processDef = await prisma.workshopProcessDefinition.findFirst({
       where: { tenantId, code: processCode },
@@ -1311,8 +1319,28 @@ router.patch("/process-status", async (req: any, res) => {
 
     if (!processDef) {
       console.error(`[process-status] Process definition not found: ${processCode} for tenant ${tenantId}`);
-      return res.status(404).json({ error: "process_not_found" });
+      return res.status(404).json({ error: "process_not_found", details: `Process ${processCode} not found` });
     }
+
+    console.log(`[process-status] Found process definition: ${processDef.id} (${processDef.name})`);
+
+    // Verify the project exists
+    const project = await prisma.opportunity.findUnique({
+      where: { id: projectId },
+      select: { id: true, tenantId: true },
+    });
+
+    if (!project) {
+      console.error(`[process-status] Project not found: ${projectId}`);
+      return res.status(404).json({ error: "project_not_found", details: `Project ${projectId} not found` });
+    }
+
+    if (project.tenantId !== tenantId) {
+      console.error(`[process-status] Project tenant mismatch: ${project.tenantId} vs ${tenantId}`);
+      return res.status(403).json({ error: "forbidden", details: "Project belongs to different tenant" });
+    }
+
+    console.log(`[process-status] Upserting assignment for project ${projectId} and process ${processDef.id}`);
 
     // Update or create the assignment
     const assignment = await prisma.projectProcessAssignment.upsert({
@@ -1340,14 +1368,16 @@ router.patch("/process-status", async (req: any, res) => {
       },
     });
 
+    console.log(`[process-status] Assignment ${assignment.id} updated successfully`);
+
     // If marking as completed and this is the last manufacturing or installation process, update project status
     if (status === 'completed' && (processDef.isLastManufacturing || processDef.isLastInstallation)) {
-      const project = await prisma.opportunity.findUnique({
+      const projectFull = await prisma.opportunity.findUnique({
         where: { id: projectId },
       });
 
-      if (project) {
-        let newStage = project.stage;
+      if (projectFull) {
+        let newStage = projectFull.stage;
         
         if (processDef.isLastManufacturing && !processDef.isLastInstallation) {
           // Last manufacturing process - mark as complete not installed
@@ -1357,7 +1387,8 @@ router.patch("/process-status", async (req: any, res) => {
           newStage = 'COMPLETE' as any;
         }
 
-        if (newStage !== project.stage) {
+        if (newStage !== projectFull.stage) {
+          console.log(`[process-status] Updating project stage from ${projectFull.stage} to ${newStage}`);
           await prisma.opportunity.update({
             where: { id: projectId },
             data: { stage: newStage },
@@ -1366,10 +1397,12 @@ router.patch("/process-status", async (req: any, res) => {
       }
     }
 
+    console.log(`[process-status] Success, returning assignment`);
     res.json({ ok: true, assignment });
   } catch (e: any) {
     console.error("[process-status] Error:", e);
-    return res.status(500).json({ error: "internal_error", message: e.message });
+    console.error("[process-status] Stack:", e.stack);
+    return res.status(500).json({ error: "internal_error", message: e.message, details: e.stack });
   }
 });
 

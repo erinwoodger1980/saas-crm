@@ -230,7 +230,9 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
       }
     } catch (e: any) {
       console.error("[handleSwapTimerComplete] Error:", e);
-      alert("Failed to swap timer: " + (e?.message || "Unknown error"));
+      const errorDetails = e?.details || e?.body || e?.message || "Unknown error";
+      const errorMsg = typeof errorDetails === 'string' ? errorDetails : JSON.stringify(errorDetails);
+      alert("Failed to swap timer: " + errorMsg);
     } finally {
       setLoading(false);
     }
@@ -329,7 +331,9 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
       }
     } catch (e: any) {
       console.error("[handleStopTimerComplete] Error:", e);
-      alert("Failed to stop timer: " + (e?.message || "Unknown error"));
+      const errorDetails = e?.details || e?.body || e?.message || "Unknown error";
+      const errorMsg = typeof errorDetails === 'string' ? errorDetails : JSON.stringify(errorDetails);
+      alert("Failed to stop timer: " + errorMsg);
     } finally {
       setLoading(false);
     }
