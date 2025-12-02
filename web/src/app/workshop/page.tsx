@@ -3,6 +3,7 @@
 import { useRef, useState as useReactState } from "react";
 import MaterialLinkDialog from "@/components/workshop/MaterialLinkDialog";
 import MaterialReceivedDialog from "@/components/workshop/MaterialReceivedDialog";
+import MaterialOrderDialog from "@/components/workshop/MaterialOrderDialog";
 // Type definitions for QuickLogModal
 interface QuickLogUser {
   id: string;
@@ -340,7 +341,7 @@ export default function WorkshopPage() {
   const [workshopTasks, setWorkshopTasks] = useState<any[]>([]);
   const [tasksFilter, setTasksFilter] = useState<'open' | 'in_progress' | 'all'>('open');
   const [showMaterialLink, setShowMaterialLink] = useState<{taskId: string; taskTitle: string} | null>(null);
-  const [showMaterialReceived, setShowMaterialReceived] = useState<{taskId: string; taskTitle: string; materialType?: string; opportunityId?: string} | null>(null);
+  const [showMaterialOrder, setShowMaterialOrder] = useState<{taskId: string; taskTitle: string; materialType: string; opportunityId: string} | null>(null);
   const [myTasksCount, setMyTasksCount] = useState(0);
 
   async function loadWorkshopTasks() {
@@ -1730,8 +1731,8 @@ export default function WorkshopPage() {
                                 const opportunityId = task.meta?.linkedOpportunityId;
                                 
                                 if (materialType && opportunityId) {
-                                  // Show material received dialog
-                                  setShowMaterialReceived({
+                                  // Show material order dialog to collect dates
+                                  setShowMaterialOrder({
                                     taskId: task.id,
                                     taskTitle: task.title,
                                     materialType,
@@ -1823,50 +1824,38 @@ export default function WorkshopPage() {
         />
       )}
 
-      {/* Material Received Dialog */}
-      {showMaterialReceived && (
-        <MaterialReceivedDialog
-          taskTitle={showMaterialReceived.taskTitle}
-          linkedMaterialType={showMaterialReceived.materialType}
-          onConfirmReceived={async (receivedDate, notes) => {
+      {/* Material Order Dialog */}
+      {showMaterialOrder && (
+        <MaterialOrderDialog
+          taskTitle={showMaterialOrder.taskTitle}
+          materialType={showMaterialOrder.materialType}
+          onSave={async (dates) => {
             try {
               // Mark task as complete
-              await apiFetch(`/tasks/${showMaterialReceived.taskId}/complete`, {
+              await apiFetch(`/tasks/${showMaterialOrder.taskId}/complete`, {
                 method: 'POST',
               });
               
-              // Update material received date if linked
-              if (showMaterialReceived.materialType && showMaterialReceived.opportunityId) {
-                await apiFetch(`/materials/${showMaterialReceived.opportunityId}/received`, {
-                  method: 'PATCH',
-                  json: {
-                    materialType: showMaterialReceived.materialType,
-                    receivedDate,
-                    notes
-                  }
-                });
-              }
+              // Update material dates
+              const materialType = showMaterialOrder.materialType.toLowerCase();
+              const updates: any = {};
+              if (dates.orderedDate) updates[`${materialType}OrderedAt`] = dates.orderedDate;
+              if (dates.expectedDate) updates[`${materialType}ExpectedAt`] = dates.expectedDate;
+              if (dates.receivedDate) updates[`${materialType}ReceivedAt`] = dates.receivedDate;
               
-              setShowMaterialReceived(null);
+              await apiFetch(`/workshop/project/${showMaterialOrder.opportunityId}/materials`, {
+                method: 'PATCH',
+                json: updates
+              });
+              
+              setShowMaterialOrder(null);
               await loadWorkshopTasks();
               await loadAll();
             } catch (e: any) {
               alert('Failed to update: ' + (e?.message || 'Unknown error'));
             }
           }}
-          onSkip={async () => {
-            try {
-              // Just mark task as complete without updating material
-              await apiFetch(`/tasks/${showMaterialReceived.taskId}/complete`, {
-                method: 'POST',
-              });
-              setShowMaterialReceived(null);
-              await loadWorkshopTasks();
-              await loadAll();
-            } catch (e: any) {
-              alert('Failed to complete task: ' + (e?.message || 'Unknown error'));
-            }
-          }}
+          onCancel={() => setShowMaterialOrder(null)}
         />
       )}
 
