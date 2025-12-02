@@ -1142,7 +1142,15 @@ export default function WorkshopPage() {
 
       {/* Timer Widget - Mobile optimized */}
       <div className="max-w-2xl mx-auto space-y-4">
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-3">
+          <Button 
+            variant={viewMode === 'calendar' ? 'default' : 'outline'} 
+            size="lg"
+            onClick={() => setViewMode('calendar')}
+            className="font-bold"
+          >
+            📅 Schedule
+          </Button>
           <Button 
             variant={viewMode === 'tasks' ? 'default' : 'outline'} 
             size="lg"
@@ -1605,17 +1613,7 @@ export default function WorkshopPage() {
           {/* Filter Controls */}
           <Card className="p-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setViewMode('calendar')}
-                  className="font-medium"
-                >
-                  ← Back to Schedule
-                </Button>
-                <h2 className="text-lg font-semibold">My Workshop Tasks</h2>
-              </div>
+              <h2 className="text-lg font-semibold">My Workshop Tasks</h2>
               <div className="flex gap-2">
                 <Button
                   variant={tasksFilter === 'open' ? 'default' : 'outline'}
