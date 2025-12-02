@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useImperativeHandle, forwardRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,6 +29,10 @@ interface WorkshopTimerProps {
   onTimerChange?: () => void;
 }
 
+export interface WorkshopTimerHandle {
+  openWithProject: (projectId: string) => void;
+}
+
 function formatProcess(p: string) {
   return p.replace(/_/g, " ");
 }
@@ -48,7 +52,7 @@ function formatDuration(startedAt: string): string {
   return `${mins}m`;
 }
 
-export default function WorkshopTimer({ projects, processes, onTimerChange }: WorkshopTimerProps) {
+const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ projects, processes, onTimerChange }, ref) => {
   const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
   const [elapsed, setElapsed] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -64,6 +68,15 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
   // Check if selected process is generic
   const selectedProcess = processes.find(p => p.code === process);
   const isGenericProcess = selectedProcess?.isGeneric || false;
+
+  // Expose method to open timer with a specific project
+  useImperativeHandle(ref, () => ({
+    openWithProject: (projectId: string) => {
+      setShowStart(true);
+      setProjectId(projectId);
+      setProjectSearch("");
+    },
+  }));
 
   // Load active timer on mount
   useEffect(() => {
@@ -307,6 +320,11 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
 
           {showSwap && (() => {
             const swapIsGeneric = processes.find(p => p.code === process)?.isGeneric || false;
+            const filteredProjects = projects.filter((p) =>
+              projectSearch
+                ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
+                : true
+            );
             
             return (
               <div className="pt-4 border-t mt-2 space-y-3">
@@ -317,9 +335,43 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
                   </Button>
                 </div>
 
+                {!swapIsGeneric && (
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Search Projects</label>
+                    <Input
+                      value={projectSearch}
+                      onChange={(e) => setProjectSearch(e.target.value)}
+                      placeholder="Type to filter projects..."
+                      className="h-10"
+                    />
+                  </div>
+                )}
+
+                {!swapIsGeneric && (
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Project</label>
+                    <Select value={projectId} onValueChange={setProjectId}>
+                      <SelectTrigger className="h-12 text-base">
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredProjects.length === 0 ? (
+                          <div className="px-2 py-3 text-sm text-muted-foreground">No projects found</div>
+                        ) : (
+                          filteredProjects.map((p) => (
+                            <SelectItem key={p.id} value={p.id} className="text-base py-3">
+                              {p.title}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div>
                   <label className="text-sm font-medium mb-1 block">Process</label>
-                  <Select value={process} onValueChange={(v) => { setProcess(v); setProjectId(""); setProjectSearch(""); }}>
+                  <Select value={process} onValueChange={(v) => { setProcess(v); }}>
                     <SelectTrigger className="h-12 text-base">
                       <SelectValue placeholder="Select process" />
                     </SelectTrigger>
@@ -332,38 +384,6 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
                     </SelectContent>
                   </Select>
                 </div>
-
-                {!swapIsGeneric && (
-                  <>
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">Project</label>
-                      <Input
-                        value={projectSearch}
-                        onChange={(e) => setProjectSearch(e.target.value)}
-                        placeholder="Search projects..."
-                        className="h-10 mb-2"
-                      />
-                      <Select value={projectId} onValueChange={setProjectId}>
-                        <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select project" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {projects
-                            .filter((p) =>
-                              projectSearch
-                                ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
-                                : true
-                            )
-                            .map((p) => (
-                              <SelectItem key={p.id} value={p.id} className="text-base py-3">
-                                {p.title}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
 
                 <div>
                   <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
@@ -393,6 +413,12 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
 
   // Start timer UI
   if (showStart) {
+    const filteredProjects = projects.filter((p) =>
+      projectSearch
+        ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
+        : true
+    );
+
     return (
       <Card className="bg-white border-2">
         <div className="p-4 space-y-4">
@@ -408,9 +434,43 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
           </div>
           
           <div className="space-y-3">
+            {!isGenericProcess && (
+              <div>
+                <label className="text-sm font-medium mb-1 block">Search Projects</label>
+                <Input
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                  placeholder="Type to filter projects..."
+                  className="h-10"
+                />
+              </div>
+            )}
+
+            {!isGenericProcess && (
+              <div>
+                <label className="text-sm font-medium mb-1 block">Project</label>
+                <Select value={projectId} onValueChange={setProjectId}>
+                  <SelectTrigger className="h-12 text-base">
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredProjects.length === 0 ? (
+                      <div className="px-2 py-3 text-sm text-muted-foreground">No projects found</div>
+                    ) : (
+                      filteredProjects.map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-base py-3">
+                          {p.title}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div>
               <label className="text-sm font-medium mb-1 block">Process</label>
-              <Select value={process} onValueChange={(v) => { setProcess(v); setProjectId(""); setProjectSearch(""); }}>
+              <Select value={process} onValueChange={(v) => { setProcess(v); }}>
                 <SelectTrigger className="h-12 text-base">
                   <SelectValue placeholder="Select process" />
                 </SelectTrigger>
@@ -423,38 +483,6 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
                 </SelectContent>
               </Select>
             </div>
-
-            {!isGenericProcess && (
-              <>
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Project</label>
-                  <Input
-                    value={projectSearch}
-                    onChange={(e) => setProjectSearch(e.target.value)}
-                    placeholder="Search projects..."
-                    className="h-10 mb-2"
-                  />
-                  <Select value={projectId} onValueChange={setProjectId}>
-                    <SelectTrigger className="h-12 text-base">
-                      <SelectValue placeholder="Select project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projects
-                        .filter((p) =>
-                          projectSearch
-                            ? p.title.toLowerCase().includes(projectSearch.toLowerCase())
-                            : true
-                        )
-                        .map((p) => (
-                        <SelectItem key={p.id} value={p.id} className="text-base py-3">
-                          {p.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
             
             <div>
               <label className="text-sm font-medium mb-1 block">Notes (optional)</label>
@@ -492,4 +520,8 @@ export default function WorkshopTimer({ projects, processes, onTimerChange }: Wo
       Start Timer
     </Button>
   );
-}
+});
+
+WorkshopTimer.displayName = "WorkshopTimer";
+
+export default WorkshopTimer;

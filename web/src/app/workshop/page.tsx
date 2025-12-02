@@ -1,5 +1,6 @@
 
 "use client";
+import { useRef } from "react";
 // Type definitions for QuickLogModal
 interface QuickLogUser {
   id: string;
@@ -121,7 +122,7 @@ import WorkshopSwimlaneTimeline from "./WorkshopSwimlaneTimeline";
 
 import CalendarWeekView from "./CalendarWeekView";
 import CalendarYearView from "./CalendarYearView";
-import WorkshopTimer from "@/components/workshop/WorkshopTimer";
+import WorkshopTimer, { WorkshopTimerHandle } from "@/components/workshop/WorkshopTimer";
 
 // Workshop processes are sourced from settings via `/workshop-processes`
 interface ProcDef { id: string; code: string; name: string; sortOrder?: number; isGeneric?: boolean }
@@ -259,6 +260,7 @@ function getMaterialColor(status: MaterialStatus): string {
 export default function WorkshopPage() {
   const { user } = useCurrentUser();
   const isWorkshopOnly = user?.role === 'workshop';
+  const timerRef = useRef<WorkshopTimerHandle>(null);
   
   const [viewMode, setViewMode] = useState<'calendar' | 'timeline'>('calendar');
   const [calendarViewMode, setCalendarViewMode] = useState<'week' | 'month' | 'year'>('month'); // New state for calendar sub-views
@@ -1067,6 +1069,7 @@ export default function WorkshopPage() {
       {/* Timer Widget - Mobile optimized */}
       <div className="max-w-2xl mx-auto">
         <WorkshopTimer
+          ref={timerRef}
           projects={projects.map(p => ({ id: p.id, title: p.name }))}
           processes={processDefs.map(p => ({ code: p.code, name: p.name, isGeneric: p.isGeneric }))}
           onTimerChange={loadAll}
@@ -1892,9 +1895,11 @@ export default function WorkshopPage() {
                         variant="outline"
                         onClick={() => {
                           setShowProjectDetails(null);
-                          // Scroll to the WorkshopTimer component
+                          // Scroll to the WorkshopTimer component and open it with this project
                           window.scrollTo({ top: 0, behavior: 'smooth' });
-                          // User can use the timer widget at the top of the page
+                          setTimeout(() => {
+                            timerRef.current?.openWithProject(project.id);
+                          }, 300);
                         }}
                       >
                         Start Timer

@@ -346,6 +346,7 @@ export default function SettingsPage() {
         requiredByDefault: !!newProcess.requiredByDefault,
         estimatedHours: newProcess.estimatedHours == null || newProcess.estimatedHours === undefined ? null : Number(newProcess.estimatedHours),
         isColorKey: !!newProcess.isColorKey,
+        isGeneric: !!newProcess.isGeneric,
         assignmentGroup: newProcess.assignmentGroup?.trim() || null,
       };
       await apiFetch<ProcessDef>("/workshop-processes", { method: "POST", json: payload });
@@ -370,6 +371,7 @@ export default function SettingsPage() {
         requiredByDefault: !!p.requiredByDefault,
         estimatedHours: p.estimatedHours == null || p.estimatedHours === undefined ? null : Number(p.estimatedHours),
         isColorKey: !!p.isColorKey,
+        isGeneric: !!p.isGeneric,
         assignmentGroup: p.assignmentGroup?.trim() || null,
       };
       await apiFetch(`/workshop-processes/${p.id}`, { method: "PATCH", json: payload });
