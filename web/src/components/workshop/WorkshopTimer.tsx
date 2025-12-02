@@ -445,7 +445,10 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
           {/* Action buttons */}
           <div className="flex gap-2 pt-2">
             <Button
-              onClick={stopTimer}
+              onClick={() => {
+                console.log("[Button] Stop & Log Time clicked");
+                stopTimer();
+              }}
               disabled={loading}
               className="flex-1 bg-green-600 hover:bg-green-700"
               size="lg"
@@ -454,7 +457,10 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
               Stop & Log Time
             </Button>
             <Button
-              onClick={() => setShowSwap(true)}
+              onClick={() => {
+                console.log("[Button] Swap clicked");
+                setShowSwap(true);
+              }}
               disabled={loading}
               className="flex-1 bg-blue-600 hover:bg-blue-700"
               size="lg"
@@ -462,7 +468,10 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
               Swap
             </Button>
             <Button
-              onClick={cancelTimer}
+              onClick={() => {
+                console.log("[Button] Cancel clicked");
+                cancelTimer();
+              }}
               disabled={loading}
               variant="outline"
               size="lg"
@@ -549,7 +558,16 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
                 </div>
 
                 <Button
-                  onClick={swapTimer}
+                  onClick={() => {
+                    console.log("[Button] Swap & Start New Timer clicked", {
+                      process,
+                      projectId,
+                      swapIsGeneric,
+                      loading,
+                      disabled: !process || (!swapIsGeneric && !projectId) || loading
+                    });
+                    swapTimer();
+                  }}
                   disabled={!process || (!swapIsGeneric && !projectId) || loading}
                   className="w-full bg-blue-600 hover:bg-blue-700"
                   size="lg"
