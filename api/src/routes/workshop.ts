@@ -1011,68 +1011,74 @@ router.patch("/process-status", async (req: any, res) => {
     return res.status(400).json({ error: "invalid_payload" });
   }
 
-  // Find the process definition
-  const processDef = await prisma.workshopProcessDefinition.findFirst({
-    where: { tenantId, code: processCode },
-  });
-
-  if (!processDef) {
-    return res.status(404).json({ error: "process_not_found" });
-  }
-
-  // Update or create the assignment
-  const assignment = await prisma.projectProcessAssignment.upsert({
-    where: {
-      opportunityId_processDefinitionId: {
-        opportunityId: projectId,
-        processDefinitionId: processDef.id,
-      },
-    },
-    create: {
-      tenantId,
-      opportunityId: projectId,
-      processDefinitionId: processDef.id,
-      status,
-      completedAt: status === 'completed' ? new Date() : null,
-      completionComments: completionComments || null,
-    },
-    update: {
-      status,
-      completedAt: status === 'completed' ? new Date() : undefined,
-      completionComments: status === 'completed' ? (completionComments || null) : undefined,
-    },
-    include: {
-      processDefinition: true,
-    },
-  });
-
-  // If marking as completed and this is the last manufacturing or installation process, update project status
-  if (status === 'completed' && (processDef.isLastManufacturing || processDef.isLastInstallation)) {
-    const project = await prisma.opportunity.findUnique({
-      where: { id: projectId },
+  try {
+    // Find the process definition
+    const processDef = await prisma.workshopProcessDefinition.findFirst({
+      where: { tenantId, code: processCode },
     });
 
-    if (project) {
-      let newStage = project.stage;
-      
-      if (processDef.isLastManufacturing && !processDef.isLastInstallation) {
-        // Last manufacturing process - mark as complete not installed
-        newStage = 'COMPLETE_NOT_INSTALLED' as any;
-      } else if (processDef.isLastInstallation) {
-        // Last installation process - mark as complete
-        newStage = 'COMPLETE' as any;
-      }
+    if (!processDef) {
+      console.error(`[process-status] Process definition not found: ${processCode} for tenant ${tenantId}`);
+      return res.status(404).json({ error: "process_not_found" });
+    }
 
-      if (newStage !== project.stage) {
-        await prisma.opportunity.update({
-          where: { id: projectId },
-          data: { stage: newStage },
-        });
+    // Update or create the assignment
+    const assignment = await prisma.projectProcessAssignment.upsert({
+      where: {
+        opportunityId_processDefinitionId: {
+          opportunityId: projectId,
+          processDefinitionId: processDef.id,
+        },
+      },
+      create: {
+        tenantId,
+        opportunityId: projectId,
+        processDefinitionId: processDef.id,
+        status,
+        completedAt: status === 'completed' ? new Date() : null,
+        completionComments: completionComments || null,
+      },
+      update: {
+        status,
+        completedAt: status === 'completed' ? new Date() : undefined,
+        completionComments: status === 'completed' ? (completionComments || null) : undefined,
+      },
+      include: {
+        processDefinition: true,
+      },
+    });
+
+    // If marking as completed and this is the last manufacturing or installation process, update project status
+    if (status === 'completed' && (processDef.isLastManufacturing || processDef.isLastInstallation)) {
+      const project = await prisma.opportunity.findUnique({
+        where: { id: projectId },
+      });
+
+      if (project) {
+        let newStage = project.stage;
+        
+        if (processDef.isLastManufacturing && !processDef.isLastInstallation) {
+          // Last manufacturing process - mark as complete not installed
+          newStage = 'COMPLETE_NOT_INSTALLED' as any;
+        } else if (processDef.isLastInstallation) {
+          // Last installation process - mark as complete
+          newStage = 'COMPLETE' as any;
+        }
+
+        if (newStage !== project.stage) {
+          await prisma.opportunity.update({
+            where: { id: projectId },
+            data: { stage: newStage },
+          });
+        }
       }
     }
-  }
 
-  res.json({ ok: true, assignment });
+    res.json({ ok: true, assignment });
+  } catch (e: any) {
+    console.error("[process-status] Error:", e);
+    return res.status(500).json({ error: "internal_error", message: e.message });
+  }
 });
 
 export default router;
