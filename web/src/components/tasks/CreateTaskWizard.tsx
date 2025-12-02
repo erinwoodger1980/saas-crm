@@ -1,7 +1,7 @@
 // web/src/components/tasks/CreateTaskWizard.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -245,6 +245,21 @@ function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving, related
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
   const [dueAt, setDueAt] = useState("");
+  const [assignToUserId, setAssignToUserId] = useState(userId || "");
+  const [users, setUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Load users for assignment
+  useEffect(() => {
+    if (!tenantId) return;
+    setLoadingUsers(true);
+    apiFetch<Array<{ id: string; name: string | null; email: string }>>("/tenant/users", {
+      headers: { "x-tenant-id": tenantId }
+    })
+      .then(setUsers)
+      .catch(err => console.error("Failed to load users:", err))
+      .finally(() => setLoadingUsers(false));
+  }, [tenantId]);
 
   const handleCreate = async () => {
     if (!title.trim()) return;
@@ -262,7 +277,7 @@ function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving, related
           taskType: "MANUAL",
           relatedType: relatedType || "OTHER",
           relatedId: relatedId,
-          assignees: userId ? [{ userId, role: "OWNER" }] : undefined,
+          assignees: assignToUserId ? [{ userId: assignToUserId, role: "OWNER" }] : undefined,
           status: "OPEN",
           dueAt: isoDueAt
         }
@@ -322,6 +337,23 @@ function BasicTaskForm({ tenantId, userId, onCreated, setSaving, saving, related
             onChange={(e) => setDueAt(e.target.value)}
           />
         </div>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium mb-2 block">Assign To</label>
+        <Select value={assignToUserId} onValueChange={setAssignToUserId} disabled={loadingUsers}>
+          <SelectTrigger>
+            <SelectValue placeholder={loadingUsers ? "Loading users..." : "Select user"} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Unassigned</SelectItem>
+            {users.map((user) => (
+              <SelectItem key={user.id} value={user.id}>
+                {user.name || user.email}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex justify-end gap-2 pt-4">
