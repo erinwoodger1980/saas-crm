@@ -19,6 +19,7 @@ import {
 import { extractGlobalSpecsFromAnswers, specsToPrismaData } from "../lib/globalSpecs";
 import { linkLeadToClientAccount, linkOpportunityToClientAccount } from "../lib/clientAccount";
 import { completeTasksOnRecordChangeByLinks } from "../services/field-link";
+import { evaluateAutomationRules } from "./automation-rules";
 
 const router = Router();
 
@@ -655,8 +656,10 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
               // Get dates from customData (they're stored there, not in leadData)
               const startDateStr = customData.startDate;
               const deliveryDateStr = customData.deliveryDate;
+              const installationStartDateStr = customData.installationStartDate;
+              const installationEndDateStr = customData.installationEndDate;
               
-              await prisma.opportunity.create({
+              const opportunity = await prisma.opportunity.create({
                 data: {
                   tenantId,
                   leadId: lead.id,
@@ -668,8 +671,33 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
                   valueGBP: leadData.quotedValue || leadData.estimatedValue || null,
                   ...(startDateStr ? { startDate: new Date(startDateStr) } : {}),
                   ...(deliveryDateStr ? { deliveryDate: new Date(deliveryDateStr) } : {}),
+                  ...(installationStartDateStr ? { installationStartDate: new Date(installationStartDateStr) } : {}),
+                  ...(installationEndDateStr ? { installationEndDate: new Date(installationEndDateStr) } : {}),
                 }
               });
+
+              // Trigger automation rules for the newly created opportunity
+              // This will create any scheduled tasks based on date fields (e.g., material ordering)
+              try {
+                const fieldsSet = [];
+                if (startDateStr) fieldsSet.push('startDate');
+                if (deliveryDateStr) fieldsSet.push('deliveryDate');
+                if (installationStartDateStr) fieldsSet.push('installationStartDate');
+                if (installationEndDateStr) fieldsSet.push('installationEndDate');
+
+                await evaluateAutomationRules({
+                  tenantId,
+                  entityType: 'OPPORTUNITY',
+                  entityId: opportunity.id,
+                  entity: opportunity,
+                  changedFields: fieldsSet,
+                  userId,
+                });
+                console.log(`[Import] Triggered automation rules for opportunity ${opportunity.id}`);
+              } catch (autoError) {
+                console.error('[Import] Failed to trigger automation rules:', autoError);
+                // Don't fail the import if automation fails
+              }
             }
           } catch (oppError: any) {
             console.error('Failed to create opportunity for lead', lead.id, oppError);

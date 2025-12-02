@@ -516,9 +516,48 @@ function calculateRelevanceScore(query: string, fields: string[]): number {
   return score;
 }
 
-// User manual knowledge base
+// User manual knowledge base with comprehensive feature guide
 function getUserManualKnowledge() {
   return [
+    // ========== ONBOARDING & SETUP ==========
+    {
+      keywords: ['setup', 'onboarding', 'getting started', 'new user', 'how to start', 'initial setup'],
+      question: 'How do I get started with the app?',
+      answer: 'Let me guide you through initial setup! First, configure your company details (logo, VAT), then set up your questionnaires for customer info gathering, import any existing leads, and configure email integration. Would you like a step-by-step walkthrough?',
+      action: {
+        label: 'Start Setup Wizard',
+        action: {
+          type: 'modal' as const,
+          target: '/settings',
+          params: { wizard: 'onboarding' }
+        }
+      }
+    },
+    {
+      keywords: ['workshop schedule', 'workshop setup', 'production schedule', 'job schedule', 'workshop management'],
+      question: 'How do I set up my workshop schedule?',
+      answer: 'To set up workshop scheduling: 1) Go to Workshop page, 2) Import your existing projects via CSV or create them manually, 3) Set delivery dates and installation dates, 4) The system will automatically create production tasks. You can also import fire door schedules if applicable.',
+      action: {
+        label: 'Go to Workshop',
+        action: {
+          type: 'navigate' as const,
+          target: '/workshop'
+        }
+      }
+    },
+    {
+      keywords: ['import orders', 'import projects', 'bulk import', 'import existing', 'migrate data'],
+      question: 'How do I import existing orders into the app?',
+      answer: 'You can import existing data: 1) For leads: Leads page → Import CSV with customer contact info, 2) For fire door schedules: Fire Door Schedule → Import with MJS numbers and specifications, 3) For opportunities: Create via leads or import CSV. Map your columns to our fields during import.',
+      action: {
+        label: 'View Import Options',
+        action: {
+          type: 'modal' as const,
+          target: '/settings',
+          params: { wizard: 'import-data' }
+        }
+      }
+    },
     {
       keywords: ['company logo', 'update logo', 'change logo', 'upload logo', 'logo'],
       question: 'How do I update my company logo?',
@@ -660,6 +699,166 @@ function getUserManualKnowledge() {
         action: {
           type: 'navigate' as const,
           target: '/dashboard?tab=tasks'
+        }
+      }
+    },
+    // ========== WORKSHOP & PRODUCTION ==========
+    {
+      keywords: ['fire door schedule', 'fire doors', 'door schedule', 'production tracking'],
+      question: 'How do I manage fire door production?',
+      answer: 'Fire Door Schedule tracks all your door projects from quote to completion. Import MJS schedules, track production status, manage material ordering (timber, glass, ironmongery), and monitor installation dates. View by location or filter by status.',
+      action: {
+        label: 'Open Fire Door Schedule',
+        action: {
+          type: 'navigate' as const,
+          target: '/fire-door-schedule'
+        }
+      }
+    },
+    {
+      keywords: ['material ordering', 'paint order', 'timber order', 'materials', 'procurement'],
+      question: 'How do I track material ordering?',
+      answer: 'Material ordering is tracked per project with three key dates: Ordered, Expected, and Received. You can set these dates when completing tasks, or use automation rules to create "Order Materials" tasks automatically based on delivery dates.',
+      action: {
+        label: 'View Workshop',
+        action: {
+          type: 'navigate' as const,
+          target: '/workshop'
+        }
+      }
+    },
+    {
+      keywords: ['automation', 'automatic tasks', 'task automation', 'workflow automation'],
+      question: 'How do I automate task creation?',
+      answer: 'Automation Rules let you automatically create tasks based on field changes. For example, create "Order Paint" task 20 days before delivery date. Use our AI assistant to describe automations in plain English, or build them manually.',
+      action: {
+        label: 'Setup Automation',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings/automation'
+        }
+      }
+    },
+    // ========== LEAD MANAGEMENT ==========
+    {
+      keywords: ['lead capture', 'new leads', 'lead generation', 'landing page'],
+      question: 'How do I capture new leads?',
+      answer: 'Leads can come from: 1) Custom landing pages (tenant-specific URLs), 2) Email integration (auto-creates leads from inquiries), 3) CSV import, 4) Manual creation, 5) Public estimator forms. Each lead goes through stages: New → Info Requested → Ready to Quote → Quote Sent → Won/Lost.',
+      action: {
+        label: 'View Leads',
+        action: {
+          type: 'navigate' as const,
+          target: '/leads'
+        }
+      }
+    },
+    {
+      keywords: ['landing page', 'public form', 'customer form', 'lead form', 'quote request'],
+      question: 'How do I create a landing page for customers?',
+      answer: 'Your tenant has a custom landing page at /tenant/[your-slug]/landing. Customers can submit project details via the public estimator. Configure branding, questionnaire fields, and examples in Settings. The page automatically creates leads with attached photos and specifications.',
+      action: {
+        label: 'Landing Page Settings',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings'
+        }
+      }
+    },
+    {
+      keywords: ['ai follow up', 'email follow up', 'automated email', 'customer communication'],
+      question: 'How do I send automated follow-up emails?',
+      answer: 'AI Follow-ups analyze lead context (stage, previous communications, quotes sent) and generate personalized emails. Go to a lead, click "AI Follow-up", review the generated email, and send. The system tracks engagement and updates lead status.',
+      action: {
+        label: 'View Leads',
+        action: {
+          type: 'navigate' as const,
+          target: '/leads'
+        }
+      }
+    },
+    // ========== QUOTING ==========
+    {
+      keywords: ['quote builder', 'create quote', 'pricing', 'proposal', 'estimate builder'],
+      question: 'How do I create quotes?',
+      answer: 'Quote Builder: 1) Select a lead and move to "Quote" stage, 2) Add line items manually or parse supplier PDFs, 3) Apply markup percentage, 4) Generate PDF proposal with your branding, 5) Send to customer via email. Track quote status and customer responses.',
+      action: {
+        label: 'View Quotes',
+        action: {
+          type: 'navigate' as const,
+          target: '/quotes'
+        }
+      }
+    },
+    {
+      keywords: ['parse pdf', 'supplier pdf', 'pdf extraction', 'import supplier quote'],
+      question: 'How do I parse supplier PDF quotes?',
+      answer: 'In Quote Builder: 1) Upload supplier PDFs (supports multiple formats), 2) Click "Parse PDFs" - AI extracts line items, descriptions, quantities, prices, 3) Review and edit extracted items, 4) Apply your markup, 5) Generate customer-facing quote.',
+      action: {
+        label: 'Quote Builder',
+        action: {
+          type: 'navigate' as const,
+          target: '/quotes'
+        }
+      }
+    },
+    {
+      keywords: ['fire door pricing', 'door calculator', 'fire door quote', 'door costing'],
+      question: 'How do I price fire doors?',
+      answer: 'Fire Door Calculator uses material costs and labour rates to generate accurate quotes. Configure material pricing (timber, glass, ironmongery, paint) and labour rates in Settings. The calculator applies fire rating premiums, bespoke charges, and installation costs automatically.',
+      action: {
+        label: 'Fire Door Calculator',
+        action: {
+          type: 'navigate' as const,
+          target: '/fire-door-calculator'
+        }
+      }
+    },
+    // ========== ADVANCED FEATURES ==========
+    {
+      keywords: ['field links', 'linked fields', 'field sync', 'bidirectional sync'],
+      question: 'What are field links?',
+      answer: 'Field Links create bidirectional sync between fields and tasks. Example: Link "paintOrderedAt" field to task completion - when you mark "Order Paint" task as done, it automatically updates the paintOrderedAt date, and vice versa. Set up in Settings → Automation.',
+      action: {
+        label: 'Setup Field Links',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings/automation'
+        }
+      }
+    },
+    {
+      keywords: ['ai training', 'ml training', 'pdf training', 'improve accuracy'],
+      question: 'How do I train the AI for better PDF parsing?',
+      answer: 'AI Training improves PDF extraction accuracy: 1) Go to Settings → AI Training, 2) Review parsed quotes, 3) Correct any mistakes, 4) Mark as "Good" or "Needs Review", 5) System learns from corrections to improve future parsing.',
+      action: {
+        label: 'AI Training',
+        action: {
+          type: 'navigate' as const,
+          target: '/settings/ai-training'
+        }
+      }
+    },
+    {
+      keywords: ['timesheets', 'time tracking', 'workshop hours', 'labour tracking'],
+      question: 'How do I track workshop time?',
+      answer: 'Timesheets track workshop hours per project. Workers can log time against specific jobs, tasks, or activities. View reports by project, worker, or date range. Use for costing analysis and payroll.',
+      action: {
+        label: 'View Timesheets',
+        action: {
+          type: 'navigate' as const,
+          target: '/timesheets'
+        }
+      }
+    },
+    {
+      keywords: ['supplier requests', 'rfq', 'request for quote', 'supplier portal'],
+      question: 'How do I request quotes from suppliers?',
+      answer: 'Supplier RFQ system: 1) Create request with project details and specifications, 2) Send to multiple suppliers via unique links, 3) Suppliers submit quotes through portal (no login needed), 4) Compare responses, 5) Accept winning quote and track deadline.',
+      action: {
+        label: 'Supplier Requests',
+        action: {
+          type: 'navigate' as const,
+          target: '/supplier-requests'
         }
       }
     }

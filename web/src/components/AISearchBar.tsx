@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import OnboardingWizard from "@/components/OnboardingWizard";
 
 interface SearchResult {
   id: string;
@@ -37,6 +38,8 @@ export default function AISearchBar() {
   const [isMounted, setIsMounted] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskData, setTaskData] = useState<any>(null);
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardType, setWizardType] = useState<'onboarding' | 'import-data' | 'workshop-setup' | 'automation-setup'>('onboarding');
   
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -141,8 +144,13 @@ export default function AISearchBar() {
           break;
           
         case 'modal':
+          // Check if this is a wizard modal
+          if (action.params && action.params.wizard) {
+            setWizardType(action.params.wizard as any);
+            setShowWizard(true);
+          }
           // Check if this is a task creation modal
-          if (action.params && action.params.action === 'create' && action.target === '/tasks/center') {
+          else if (action.params && action.params.action === 'create' && action.target === '/tasks/center') {
             setTaskData(action.params);
             setShowTaskModal(true);
           } else if (action.params) {
@@ -355,6 +363,13 @@ export default function AISearchBar() {
           initialData={taskData}
         />
       )}
+
+      {/* Onboarding Wizard */}
+      <OnboardingWizard
+        open={showWizard}
+        onClose={() => setShowWizard(false)}
+        wizardType={wizardType}
+      />
     </div>
   );
 }
@@ -367,15 +382,22 @@ function TaskCreationModal({ open, onClose, initialData }: { open: boolean; onCl
   const [priority, setPriority] = useState(initialData.priority || "MEDIUM");
   const [assignedTo, setAssignedTo] = useState(initialData.assignedToUserId || "");
   const [dueDate, setDueDate] = useState(initialData.dueDate || "");
+  const [relatedType, setRelatedType] = useState(initialData.relatedType || "OTHER");
   const [saving, setSaving] = useState(false);
-  const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
   const router = useRouter();
 
   useEffect(() => {
     if (open) {
-      apiFetch<Array<{ id: string; name: string }>>('/tenant/users')
-        .then(setUsers)
-        .catch(console.error);
+      apiFetch<Array<{ id: string; name: string; email: string }>>('/tenant/users')
+        .then((data) => {
+          console.log('Loaded users:', data);
+          setUsers(Array.isArray(data) ? data : []);
+        })
+        .catch((err) => {
+          console.error('Failed to load users:', err);
+          setUsers([]);
+        });
     }
   }, [open]);
 
@@ -387,17 +409,24 @@ function TaskCreationModal({ open, onClose, initialData }: { open: boolean; onCl
 
     setSaving(true);
     try {
+      const taskData: any = {
+        title,
+        description: description || undefined,
+        taskType: type,
+        relatedType,
+        priority,
+        dueAt: dueDate ? new Date(dueDate).toISOString() : undefined,
+        status: 'OPEN'
+      };
+
+      // Add assignee if selected
+      if (assignedTo) {
+        taskData.assignees = [{ userId: assignedTo, role: 'OWNER' }];
+      }
+
       await apiFetch('/tasks', {
         method: 'POST',
-        json: {
-          title,
-          description,
-          type,
-          priority,
-          assignedToUserId: assignedTo || undefined,
-          dueAt: dueDate ? new Date(dueDate).toISOString() : undefined,
-          status: 'PENDING'
-        }
+        json: taskData
       });
 
       onClose();
@@ -456,7 +485,7 @@ function TaskCreationModal({ open, onClose, initialData }: { open: boolean; onCl
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2">Type</label>
               <select
@@ -484,6 +513,23 @@ function TaskCreationModal({ open, onClose, initialData }: { open: boolean; onCl
                 <option value="MEDIUM">Medium</option>
                 <option value="HIGH">High</option>
                 <option value="URGENT">Urgent</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Related To</label>
+              <select
+                value={relatedType}
+                onChange={(e) => setRelatedType(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="OTHER">General</option>
+                <option value="LEAD">Lead</option>
+                <option value="PROJECT">Project</option>
+                <option value="QUOTE">Quote</option>
+                <option value="EMAIL">Email</option>
+                <option value="QUESTIONNAIRE">Questionnaire</option>
+                <option value="WORKSHOP">Workshop</option>
               </select>
             </div>
           </div>
