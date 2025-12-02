@@ -74,6 +74,73 @@ router.get("/team-activity", async (req: any, res) => {
   res.json({ ok: true, from, to, users: Object.values(userActivity) });
 });
 
+// GET /workshop/projects - List all active projects with time totals (JobSheet view)
+router.get("/projects", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+
+  // Get all WON opportunities
+  const rawProjects = await (prisma as any).opportunity.findMany({
+    where: { tenantId, stage: "WON" },
+    select: {
+      id: true,
+      title: true,
+      valueGBP: true,
+      startDate: true,
+      deliveryDate: true,
+      wonAt: true,
+      leadId: true,
+      createdAt: true,
+    },
+    orderBy: [{ startDate: "desc" }, { title: "asc" }],
+  });
+
+  // Deduplicate by leadId (prefer records with dates set)
+  const byLead: Record<string, any[]> = {};
+  for (const p of rawProjects) {
+    const key = String(p.leadId || p.id);
+    (byLead[key] ||= []).push(p);
+  }
+  const projects = Object.values(byLead).map((group) => {
+    return group.reduce((best, cur) => {
+      const bestScore = (best.startDate ? 1 : 0) + (best.deliveryDate ? 1 : 0);
+      const curScore = (cur.startDate ? 1 : 0) + (cur.deliveryDate ? 1 : 0);
+      if (curScore !== bestScore) return curScore > bestScore ? cur : best;
+      return new Date(cur.createdAt || 0).getTime() > new Date(best.createdAt || 0).getTime() ? cur : best;
+    }, group[0]);
+  });
+
+  if (projects.length === 0) {
+    return res.json({ ok: true, projects: [] });
+  }
+
+  const projectIds = projects.map((p: any) => p.id);
+
+  // Get time entry totals per project
+  const totals = await (prisma as any).timeEntry.groupBy({
+    by: ["projectId"],
+    where: { tenantId, projectId: { in: projectIds } },
+    _sum: { hours: true },
+  });
+
+  const totalsByProject: Record<string, number> = {};
+  for (const row of totals) {
+    totalsByProject[row.projectId] = Number(row._sum.hours || 0);
+  }
+
+  // Return project list with totals
+  const result = projects.map((p: any) => ({
+    id: p.id,
+    name: p.title,
+    startDate: p.startDate,
+    deliveryDate: p.deliveryDate,
+    wonAt: p.wonAt,
+    totalHours: totalsByProject[p.id] || 0,
+    status: p.deliveryDate && new Date(p.deliveryDate) < new Date() ? "completed" : "active",
+  }));
+
+  res.json({ ok: true, projects: result });
+});
+
 // PATCH /workshop/users/:userId/hours { hoursPerDay: number }
 router.patch("/users/:userId/hours", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;

@@ -56,6 +56,16 @@ type UserActivity = {
   days: Record<string, TimeEntry[]>;
 };
 
+type Project = {
+  id: string;
+  name: string;
+  startDate: string | null;
+  deliveryDate: string | null;
+  wonAt: string | null;
+  totalHours: number;
+  status: string;
+};
+
 export default function TimesheetsPage() {
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
@@ -74,6 +84,10 @@ export default function TimesheetsPage() {
   });
   const [activityTo, setActivityTo] = useState<Date>(new Date());
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+  // Projects state
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
 
   async function loadTimesheets() {
     setLoading(true);
@@ -169,6 +183,18 @@ export default function TimesheetsPage() {
     }
   }
 
+  async function loadProjects() {
+    setProjectsLoading(true);
+    try {
+      const res = await apiFetch<{ projects: Project[] }>("/workshop/projects");
+      setProjects(res.projects || []);
+    } catch (e) {
+      console.error("Failed to load projects:", e);
+    } finally {
+      setProjectsLoading(false);
+    }
+  }
+
   function shiftWeek(direction: number) {
     const days = 7 * direction;
     setActivityFrom((prev) => {
@@ -199,6 +225,9 @@ export default function TimesheetsPage() {
   useEffect(() => {
     if (activeTab === "activity" || activeTab === "overview") {
       loadTeamActivity();
+    }
+    if (activeTab === "projects") {
+      loadProjects();
     }
   }, [activeTab, activityFrom, activityTo]);
 
@@ -312,6 +341,10 @@ export default function TimesheetsPage() {
           <TabsTrigger value="overview">
             <Users className="w-4 h-4 mr-2" />
             Overview
+          </TabsTrigger>
+          <TabsTrigger value="projects">
+            <Calendar className="w-4 h-4 mr-2" />
+            Projects
           </TabsTrigger>
           <TabsTrigger value="timesheets">
             <Clock className="w-4 h-4 mr-2" />
@@ -604,6 +637,75 @@ export default function TimesheetsPage() {
               </table>
             </div>
             )
+          )}
+        </TabsContent>
+
+        <TabsContent value="projects" className="space-y-6 mt-6">
+          {projectsLoading ? (
+            <div className="text-center py-12 text-muted-foreground">Loading projects...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left p-3 font-semibold bg-muted">NAME</th>
+                    <th className="text-center p-3 font-semibold bg-muted">STARTED</th>
+                    <th className="text-center p-3 font-semibold bg-muted">FINISHED</th>
+                    <th className="text-right p-3 font-semibold bg-muted">HRS</th>
+                    <th className="text-center p-3 font-semibold bg-muted">STATUS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map((project) => {
+                    const formatProjectDate = (dateStr: string | null) => {
+                      if (!dateStr) return "-";
+                      return new Date(dateStr).toLocaleDateString("en-GB", {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      });
+                    };
+
+                    return (
+                      <tr key={project.id} className="border-b border-border hover:bg-muted/50">
+                        <td className="p-3">
+                          <div className="font-medium text-primary">{project.name}</div>
+                        </td>
+                        <td className="p-3 text-center text-sm">
+                          {formatProjectDate(project.startDate)}
+                        </td>
+                        <td className="p-3 text-center text-sm">
+                          {project.deliveryDate ? formatProjectDate(project.deliveryDate) : (
+                            <span className="text-muted-foreground">Close This Job</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right font-semibold text-blue-600">
+                          {project.totalHours.toFixed(1)}
+                        </td>
+                        <td className="p-3 text-center">
+                          {project.status === "completed" ? (
+                            <Badge variant="secondary" className="bg-gray-200 text-gray-700">
+                              Completed
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              Active
+                            </Badge>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {projects.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-12 text-center text-muted-foreground">
+                        No active projects found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           )}
         </TabsContent>
 
