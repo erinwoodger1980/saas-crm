@@ -22,6 +22,58 @@ router.get("/users", async (req: any, res) => {
   res.json({ ok: true, items: users });
 });
 
+// GET /workshop/team-activity?from=YYYY-MM-DD&to=YYYY-MM-DD – view all users and their daily logged work
+router.get("/team-activity", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const from = req.query.from ? new Date(String(req.query.from)) : new Date(new Date().setDate(new Date().getDate() - 7));
+  const to = req.query.to ? new Date(String(req.query.to)) : new Date();
+
+  // Get all users
+  const users = await prisma.user.findMany({
+    where: { tenantId },
+    select: { id: true, name: true, email: true, workshopColor: true },
+    orderBy: { name: "asc" },
+  });
+
+  // Get time entries for the period
+  const entries = await (prisma as any).timeEntry.findMany({
+    where: {
+      tenantId,
+      date: { gte: from, lte: to },
+    },
+    include: {
+      user: { select: { id: true, name: true } },
+      project: { select: { id: true, title: true } },
+    },
+    orderBy: [{ date: "desc" }, { userId: "asc" }],
+  });
+
+  // Group by user and date
+  const userActivity: Record<string, any> = {};
+  for (const u of users) {
+    userActivity[u.id] = {
+      user: { id: u.id, name: u.name, email: u.email, workshopColor: u.workshopColor },
+      days: {} as Record<string, any[]>,
+    };
+  }
+
+  for (const e of entries) {
+    const uid = e.userId;
+    if (!userActivity[uid]) continue;
+    const dateKey = new Date(e.date).toISOString().split('T')[0];
+    if (!userActivity[uid].days[dateKey]) userActivity[uid].days[dateKey] = [];
+    userActivity[uid].days[dateKey].push({
+      id: e.id,
+      process: e.process,
+      hours: Number(e.hours || 0),
+      notes: e.notes,
+      project: e.project ? { id: e.project.id, title: e.project.title } : null,
+    });
+  }
+
+  res.json({ ok: true, from, to, users: Object.values(userActivity) });
+});
+
 // PATCH /workshop/users/:userId/hours { hoursPerDay: number }
 router.patch("/users/:userId/hours", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
@@ -779,6 +831,71 @@ router.post("/backfill", async (req: any, res) => {
   res.json({ ok: true, created: created.length, details: created });
 });
 
+// POST /workshop/backfill-assignments
+// Create default process assignments for WON opportunities that have none yet.
+router.post("/backfill-assignments", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+
+  // Find WON projects without any assignments
+  const projects = await prisma.opportunity.findMany({
+    where: {
+      tenantId,
+      stage: 'WON' as any,
+    },
+    select: { id: true },
+  });
+
+  if (!projects.length) return res.json({ ok: true, updated: 0 });
+
+  const projectIds = projects.map(p => p.id);
+
+  const existingAssignments = await prisma.projectProcessAssignment.findMany({
+    where: { tenantId, opportunityId: { in: projectIds } },
+    select: { opportunityId: true },
+  });
+
+  const projectsWithAssignments = new Set(existingAssignments.map(a => a.opportunityId));
+  const targets = projectIds.filter(id => !projectsWithAssignments.has(id));
+
+  if (!targets.length) return res.json({ ok: true, updated: 0 });
+
+  // Load tenant process definitions
+  const defs = await prisma.workshopProcessDefinition.findMany({
+    where: { tenantId },
+    orderBy: { sortOrder: 'asc' },
+  });
+
+  if (!defs.length) return res.json({ ok: true, updated: 0 });
+
+  // Create assignments for requiredByDefault processes
+  const requiredDefs = defs.filter(d => d.requiredByDefault !== false);
+
+  let createdCount = 0;
+  for (const pid of targets) {
+    for (const d of requiredDefs) {
+      try {
+        await prisma.projectProcessAssignment.create({
+          data: {
+            tenantId,
+            opportunityId: pid,
+            processDefinitionId: d.id,
+            status: 'pending' as any,
+            estimatedHours: d.estimatedHours ?? null,
+            required: true,
+            isColorKey: d.isColorKey ?? false,
+            assignmentGroup: d.assignmentGroup || null,
+          },
+        });
+        createdCount++;
+      } catch (e: any) {
+        // Ignore duplicates
+        if (e?.code !== 'P2002') throw e;
+      }
+    }
+  }
+
+  res.json({ ok: true, updated: createdCount, projectsUpdated: targets.length });
+});
 // POST /workshop/repair-won-stages
 // For tenants where imported WON leads created opportunities with a non-WON stage,
 // update opportunities to stage WON so they appear in the schedule.

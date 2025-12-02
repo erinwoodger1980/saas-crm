@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Clock, Check, X, Download, Calendar } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Clock, Check, X, Download, Calendar, Users, ChevronLeft, ChevronRight } from "lucide-react";
 
 type Timesheet = {
   id: string;
@@ -42,12 +43,36 @@ type User = {
   email: string;
 };
 
+type TimeEntry = {
+  id: string;
+  process: string;
+  hours: number;
+  notes: string | null;
+  project: { id: string; title: string } | null;
+};
+
+type UserActivity = {
+  user: { id: string; name: string; email: string; workshopColor: string | null };
+  days: Record<string, TimeEntry[]>;
+};
+
 export default function TimesheetsPage() {
+  const [activeTab, setActiveTab] = useState<string>("timesheets");
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterUser, setFilterUser] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+
+  // Team activity state
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [userActivity, setUserActivity] = useState<UserActivity[]>([]);
+  const [activityFrom, setActivityFrom] = useState<Date>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return d;
+  });
+  const [activityTo, setActivityTo] = useState<Date>(new Date());
 
   async function loadTimesheets() {
     setLoading(true);
@@ -127,10 +152,57 @@ export default function TimesheetsPage() {
     }
   }
 
+  async function loadTeamActivity() {
+    setActivityLoading(true);
+    try {
+      const res = await apiFetch("/workshop/team-activity", {
+        params: {
+          from: activityFrom.toISOString().split("T")[0],
+          to: activityTo.toISOString().split("T")[0],
+        },
+      });
+      if (res.ok) {
+        setUserActivity(res.users || []);
+      }
+    } catch (e) {
+      console.error("Failed to load team activity:", e);
+    } finally {
+      setActivityLoading(false);
+    }
+  }
+
+  function shiftWeek(direction: number) {
+    const days = 7 * direction;
+    setActivityFrom((prev) => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + days);
+      return d;
+    });
+    setActivityTo((prev) => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + days);
+      return d;
+    });
+  }
+
+  function goToToday() {
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - 6);
+    setActivityFrom(weekStart);
+    setActivityTo(today);
+  }
+
   useEffect(() => {
     loadTimesheets();
     loadUsers();
   }, [filterUser, filterStatus]);
+
+  useEffect(() => {
+    if (activeTab === "activity") {
+      loadTeamActivity();
+    }
+  }, [activeTab, activityFrom, activityTo]);
 
   function formatDate(date: string) {
     return new Date(date).toLocaleDateString("en-GB", {
@@ -138,6 +210,24 @@ export default function TimesheetsPage() {
       month: "short",
       year: "numeric"
     });
+  }
+
+  function formatActivityDate(d: Date) {
+    const options: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" };
+    return d.toLocaleDateString("en-GB", options);
+  }
+
+  function isToday(d: Date) {
+    const today = new Date();
+    return (
+      d.getDate() === today.getDate() &&
+      d.getMonth() === today.getMonth() &&
+      d.getFullYear() === today.getFullYear()
+    );
+  }
+
+  function getTotalHoursForDay(entries: TimeEntry[]) {
+    return entries.reduce((sum, e) => sum + e.hours, 0);
   }
 
   function getStatusBadge(status: string) {
@@ -153,23 +243,60 @@ export default function TimesheetsPage() {
     }
   }
 
+  // Generate date range for activity view
+  const dateRange: Date[] = [];
+  const current = new Date(activityFrom);
+  while (current <= activityTo) {
+    dateRange.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Clock className="w-8 h-8" />
-            Timesheets
+            Timesheets & Team Activity
           </h1>
           <p className="text-muted-foreground mt-1">
-            Review and sign off workshop hours for payroll
+            Review workshop hours, sign off timesheets, and monitor team activity
           </p>
         </div>
-        <Button onClick={exportPayroll} variant="outline">
-          <Download className="w-4 h-4 mr-2" />
-          Export Payroll CSV
-        </Button>
+        {activeTab === "timesheets" && (
+          <Button onClick={exportPayroll} variant="outline">
+            <Download className="w-4 h-4 mr-2" />
+            Export Payroll CSV
+          </Button>
+        )}
+        {activeTab === "activity" && (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => shiftWeek(-1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={goToToday}>
+              Today
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => shiftWeek(1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="timesheets">
+            <Clock className="w-4 h-4 mr-2" />
+            Timesheets
+          </TabsTrigger>
+          <TabsTrigger value="activity">
+            <Users className="w-4 h-4 mr-2" />
+            Team Activity
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="timesheets" className="space-y-6 mt-6">
 
       {/* Filters */}
       <Card className="p-4">
@@ -279,6 +406,108 @@ export default function TimesheetsPage() {
           ))}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="activity" className="space-y-6 mt-6">
+          <div className="text-sm text-muted-foreground flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            {formatActivityDate(activityFrom)} – {formatActivityDate(activityTo)}
+          </div>
+
+          {activityLoading ? (
+            <div className="text-center py-12 text-muted-foreground">Loading team activity...</div>
+          ) : (
+            <div className="space-y-4">
+              {userActivity.map((ua) => {
+                const totalHours = Object.values(ua.days).reduce(
+                  (sum, entries) => sum + getTotalHoursForDay(entries),
+                  0
+                );
+
+                return (
+                  <Card key={ua.user.id}>
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
+                          />
+                          <div>
+                            <h3 className="text-lg font-semibold">{ua.user.name || ua.user.email}</h3>
+                            <p className="text-sm text-muted-foreground">{ua.user.email}</p>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="text-sm">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {totalHours.toFixed(1)}h total
+                        </Badge>
+                      </div>
+                      <div className="space-y-3">
+                        {dateRange.map((date) => {
+                          const dateKey = date.toISOString().split("T")[0];
+                          const entries = ua.days[dateKey] || [];
+                          const dayHours = getTotalHoursForDay(entries);
+
+                          if (entries.length === 0) return null;
+
+                          return (
+                            <div
+                              key={dateKey}
+                              className={`border rounded-lg p-3 ${
+                                isToday(date) ? "border-primary bg-primary/5" : "border-border"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="font-medium text-sm">{formatActivityDate(date)}</div>
+                                <Badge variant="outline" className="text-xs">
+                                  {dayHours.toFixed(1)}h
+                                </Badge>
+                              </div>
+                              <div className="space-y-2">
+                                {entries.map((entry) => (
+                                  <div
+                                    key={entry.id}
+                                    className="flex items-start gap-2 text-sm bg-background/50 rounded p-2"
+                                  >
+                                    <div className="flex-1">
+                                      <div className="font-medium">
+                                        {entry.project ? (
+                                          <span className="text-primary">{entry.project.title}</span>
+                                        ) : (
+                                          <span className="text-muted-foreground capitalize">
+                                            {entry.process.toLowerCase().replace(/_/g, " ")}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {entry.process.replace(/_/g, " ")}
+                                        {entry.notes && ` • ${entry.notes}`}
+                                      </div>
+                                    </div>
+                                    <Badge variant="secondary" className="text-xs shrink-0">
+                                      {entry.hours}h
+                                    </Badge>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {dateRange.every((d) => !ua.days[d.toISOString().split("T")[0]]) && (
+                          <div className="text-sm text-muted-foreground text-center py-4">
+                            No logged time in this period
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

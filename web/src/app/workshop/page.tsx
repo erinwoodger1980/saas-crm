@@ -1083,6 +1083,9 @@ export default function WorkshopPage() {
               <Button variant="outline" size="sm" onClick={() => window.location.href = '/timesheets'}>
                 📋 View Timesheets
               </Button>
+              <Button variant="outline" size="sm" onClick={() => window.location.href = '/workshop/team-activity'}>
+                👥 Team Activity
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setShowQuickLog(true)}>
                 Quick Log Hours
               </Button>
