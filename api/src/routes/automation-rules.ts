@@ -73,8 +73,8 @@ type DateCalculation = z.infer<typeof DateCalculationSchema>;
  */
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const tenantId = req.headers["x-tenant-id"] as string;
-    if (!tenantId) return res.status(400).json({ error: "Missing x-tenant-id" });
+    const tenantId = (req as any).auth?.tenantId;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const rules = await prisma.automationRule.findMany({
       where: { tenantId },
@@ -94,7 +94,8 @@ router.get("/", async (req: Request, res: Response) => {
  */
 router.get("/:id", async (req: Request, res: Response) => {
   try {
-    const tenantId = req.headers["x-tenant-id"] as string;
+    const tenantId = (req as any).auth?.tenantId;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
     const { id } = req.params;
 
     const rule = await prisma.automationRule.findFirst({
@@ -116,9 +117,9 @@ router.get("/:id", async (req: Request, res: Response) => {
  */
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const tenantId = req.headers["x-tenant-id"] as string;
-    const userId = req.headers["x-user-id"] as string;
-    if (!tenantId) return res.status(400).json({ error: "Missing x-tenant-id" });
+    const tenantId = (req as any).auth?.tenantId;
+    const userId = (req as any).auth?.userId;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const validated = AutomationRuleSchema.parse(req.body);
 
@@ -150,8 +151,9 @@ router.post("/", async (req: Request, res: Response) => {
  */
 router.patch("/:id", async (req: Request, res: Response) => {
   try {
-    const tenantId = req.headers["x-tenant-id"] as string;
-    const userId = req.headers["x-user-id"] as string;
+    const tenantId = (req as any).auth?.tenantId;
+    const userId = (req as any).auth?.userId;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
     const { id } = req.params;
 
     const existing = await prisma.automationRule.findFirst({
@@ -189,8 +191,8 @@ router.patch("/:id", async (req: Request, res: Response) => {
  */
 router.post("/generate", async (req: Request, res: Response) => {
   try {
-    const tenantId = req.headers["x-tenant-id"] as string;
-    if (!tenantId) return res.status(400).json({ error: "Missing x-tenant-id" });
+    const tenantId = (req as any).auth?.tenantId;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
     const { prompt } = req.body;
     if (!prompt || typeof prompt !== 'string') {
@@ -334,7 +336,8 @@ Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
  */
 router.delete("/:id", async (req: Request, res: Response) => {
   try {
-    const tenantId = req.headers["x-tenant-id"] as string;
+    const tenantId = (req as any).auth?.tenantId;
+    if (!tenantId) return res.status(401).json({ error: "unauthorized" });
     const { id } = req.params;
 
     const existing = await prisma.automationRule.findFirst({

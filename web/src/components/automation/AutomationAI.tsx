@@ -65,8 +65,7 @@ export default function AutomationAI({ tenantId, onRuleGenerated, onCancel }: Au
     try {
       const response = await apiFetch<{ rule: AutomationRule }>("/automation-rules/generate", {
         method: "POST",
-        headers: { "x-tenant-id": tenantId },
-        body: JSON.stringify({ prompt }),
+        json: { prompt },
       });
 
       setGeneratedRule(response.rule);
