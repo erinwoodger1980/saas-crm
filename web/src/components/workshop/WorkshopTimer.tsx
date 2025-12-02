@@ -337,33 +337,33 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
 
                 {!swapIsGeneric && (
                   <div>
-                    <label className="text-sm font-medium mb-1 block">Search Projects</label>
-                    <Input
-                      value={projectSearch}
-                      onChange={(e) => setProjectSearch(e.target.value)}
-                      placeholder="Type to filter projects..."
-                      className="h-10"
-                    />
-                  </div>
-                )}
-
-                {!swapIsGeneric && (
-                  <div>
                     <label className="text-sm font-medium mb-1 block">Project</label>
                     <Select value={projectId} onValueChange={setProjectId}>
                       <SelectTrigger className="h-12 text-base">
-                        <SelectValue placeholder="Select project" />
+                        <SelectValue placeholder="Search or select project..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {filteredProjects.length === 0 ? (
-                          <div className="px-2 py-3 text-sm text-muted-foreground">No projects found</div>
-                        ) : (
-                          filteredProjects.map((p) => (
-                            <SelectItem key={p.id} value={p.id} className="text-base py-3">
-                              {p.title}
-                            </SelectItem>
-                          ))
-                        )}
+                        <div className="sticky top-0 bg-white z-10 p-2 border-b">
+                          <Input
+                            value={projectSearch}
+                            onChange={(e) => setProjectSearch(e.target.value)}
+                            placeholder="Type to search projects..."
+                            className="h-9"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        <div className="max-h-[300px] overflow-y-auto">
+                          {filteredProjects.length === 0 ? (
+                            <div className="px-2 py-3 text-sm text-muted-foreground">No projects found</div>
+                          ) : (
+                            filteredProjects.map((p) => (
+                              <SelectItem key={p.id} value={p.id} className="text-base py-3">
+                                {p.title}
+                              </SelectItem>
+                            ))
+                          )}
+                        </div>
                       </SelectContent>
                     </Select>
                   </div>
@@ -436,33 +436,33 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
           <div className="space-y-3">
             {!isGenericProcess && (
               <div>
-                <label className="text-sm font-medium mb-1 block">Search Projects</label>
-                <Input
-                  value={projectSearch}
-                  onChange={(e) => setProjectSearch(e.target.value)}
-                  placeholder="Type to filter projects..."
-                  className="h-10"
-                />
-              </div>
-            )}
-
-            {!isGenericProcess && (
-              <div>
                 <label className="text-sm font-medium mb-1 block">Project</label>
                 <Select value={projectId} onValueChange={setProjectId}>
                   <SelectTrigger className="h-12 text-base">
-                    <SelectValue placeholder="Select project" />
+                    <SelectValue placeholder="Search or select project..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {filteredProjects.length === 0 ? (
-                      <div className="px-2 py-3 text-sm text-muted-foreground">No projects found</div>
-                    ) : (
-                      filteredProjects.map((p) => (
-                        <SelectItem key={p.id} value={p.id} className="text-base py-3">
-                          {p.title}
-                        </SelectItem>
-                      ))
-                    )}
+                    <div className="sticky top-0 bg-white z-10 p-2 border-b">
+                      <Input
+                        value={projectSearch}
+                        onChange={(e) => setProjectSearch(e.target.value)}
+                        placeholder="Type to search projects..."
+                        className="h-9"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <div className="max-h-[300px] overflow-y-auto">
+                      {filteredProjects.length === 0 ? (
+                        <div className="px-2 py-3 text-sm text-muted-foreground">No projects found</div>
+                      ) : (
+                        filteredProjects.map((p) => (
+                          <SelectItem key={p.id} value={p.id} className="text-base py-3">
+                            {p.title}
+                          </SelectItem>
+                        ))
+                      )}
+                    </div>
                   </SelectContent>
                 </Select>
               </div>
