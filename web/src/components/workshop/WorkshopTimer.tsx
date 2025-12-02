@@ -578,6 +578,16 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
             );
           })()}
         </div>
+        
+        {/* Completion dialog for active timer */}
+        {showCompletionDialog && (
+          <ProcessCompletionDialog
+            processName={activeTimerProcess?.name || formatProcess(activeTimer.process)}
+            onComplete={completionMode === "stop" ? handleStopTimerComplete : handleSwapTimerComplete}
+            onSkip={completionMode === "stop" ? handleStopTimerSkip : handleSwapTimerSkip}
+            isLastProcess={isLastProcess}
+          />
+        )}
       </Card>
     );
   }
