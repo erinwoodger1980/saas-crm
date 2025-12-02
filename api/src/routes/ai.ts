@@ -143,6 +143,82 @@ r.post("/search", async (req, res) => {
       }
     }
 
+    // Handle task creation requests
+    const taskCreationPattern = /create.*task|new.*task|add.*task|task.*for/i;
+    if (taskCreationPattern.test(query)) {
+      try {
+        // Get users for name matching
+        const users = await prisma.user.findMany({
+          where: { tenantId: auth.tenantId },
+          select: { id: true, name: true, email: true }
+        });
+
+        const systemPrompt = `You are a task creation assistant. Parse the user's request to create a task.
+
+AVAILABLE USERS:
+${users.map(u => `- ${u.id}: ${u.name} (${u.email})`).join('\n')}
+
+USER REQUEST: "${query}"
+
+Extract task details and return ONLY valid JSON (no markdown, no explanation):
+{
+  "title": "Task title",
+  "description": "Optional description",
+  "type": "MANUAL",
+  "priority": "MEDIUM",
+  "assignedToUserId": "user-id-if-mentioned",
+  "assignedToName": "User Name if mentioned",
+  "dueDate": "YYYY-MM-DD if mentioned"
+}
+
+TASK TYPES: MANUAL, COMMUNICATION, FOLLOW_UP, SCHEDULED, FORM, CHECKLIST
+PRIORITIES: LOW, MEDIUM, HIGH, URGENT
+
+If no specific user is mentioned, omit assignedToUserId. If a user name is mentioned, match it to the user list above.`;
+
+        const resp = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: query }
+          ],
+          temperature: 0.2,
+          max_tokens: 300
+        });
+
+        let taskData: any;
+        try {
+          let jsonText = resp.choices[0]?.message?.content?.trim() ?? '{}';
+          if (jsonText.startsWith('```')) {
+            jsonText = jsonText.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
+          }
+          taskData = JSON.parse(jsonText);
+        } catch {
+          taskData = {
+            title: query.replace(/create|new|add|task|for/gi, '').trim(),
+            type: 'MANUAL',
+            priority: 'MEDIUM'
+          };
+        }
+
+        directAnswer = `I've prepared a task${taskData.assignedToName ? ` for ${taskData.assignedToName}` : ''}. Click below to review and create it.`;
+        suggestedAction = {
+          label: "Create Task",
+          action: {
+            type: 'modal' as const,
+            target: '/tasks/center',
+            params: {
+              action: 'create',
+              ...taskData
+            }
+          }
+        };
+      } catch (err) {
+        console.error("Task creation parsing error:", err);
+        directAnswer = "I can help you create a task. Please provide more details about what you'd like to create.";
+      }
+    }
+
     // Handle specific questions with OpenAI
     const questionPatterns = [
       { pattern: /how.*set.*year.*end/i, type: 'year-end-setting' },

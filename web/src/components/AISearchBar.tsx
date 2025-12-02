@@ -35,6 +35,8 @@ export default function AISearchBar() {
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskData, setTaskData] = useState<any>(null);
   
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -139,8 +141,12 @@ export default function AISearchBar() {
           break;
           
         case 'modal':
-          // For modal actions, we'll navigate to the page with URL params
-          if (action.params) {
+          // Check if this is a task creation modal
+          if (action.params && action.params.action === 'create' && action.target === '/tasks/center') {
+            setTaskData(action.params);
+            setShowTaskModal(true);
+          } else if (action.params) {
+            // For other modal actions, navigate to the page with URL params
             const url = new URL(action.target, window.location.origin);
             Object.entries(action.params).forEach(([key, value]) => {
               url.searchParams.set(key, String(value));
@@ -337,6 +343,196 @@ export default function AISearchBar() {
           )}
         </div>
       )}
+
+      {/* Task Creation Modal */}
+      {showTaskModal && taskData && (
+        <TaskCreationModal
+          open={showTaskModal}
+          onClose={() => {
+            setShowTaskModal(false);
+            setTaskData(null);
+          }}
+          initialData={taskData}
+        />
+      )}
+    </div>
+  );
+}
+
+// Task Creation Modal Component
+function TaskCreationModal({ open, onClose, initialData }: { open: boolean; onClose: () => void; initialData: any }) {
+  const [title, setTitle] = useState(initialData.title || "");
+  const [description, setDescription] = useState(initialData.description || "");
+  const [type, setType] = useState(initialData.type || "MANUAL");
+  const [priority, setPriority] = useState(initialData.priority || "MEDIUM");
+  const [assignedTo, setAssignedTo] = useState(initialData.assignedToUserId || "");
+  const [dueDate, setDueDate] = useState(initialData.dueDate || "");
+  const [saving, setSaving] = useState(false);
+  const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (open) {
+      apiFetch<Array<{ id: string; name: string }>>('/tenant/users')
+        .then(setUsers)
+        .catch(console.error);
+    }
+  }, [open]);
+
+  const handleCreate = async () => {
+    if (!title.trim()) {
+      alert('Please enter a task title');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await apiFetch('/tasks', {
+        method: 'POST',
+        json: {
+          title,
+          description,
+          type,
+          priority,
+          assignedToUserId: assignedTo || undefined,
+          dueAt: dueDate ? new Date(dueDate).toISOString() : undefined,
+          status: 'PENDING'
+        }
+      });
+
+      onClose();
+      router.push('/tasks/center');
+    } catch (err: any) {
+      console.error('Failed to create task:', err);
+      alert(err.message || 'Failed to create task');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">✨</span>
+            <h2 className="text-xl font-bold">Create Task</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {initialData.assignedToName && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+            <strong>AI Suggestion:</strong> Task for {initialData.assignedToName}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Task Title *</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g., Order materials for Wealden project"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={3}
+              placeholder="Optional details..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Type</label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="MANUAL">Manual Task</option>
+                <option value="COMMUNICATION">Communication</option>
+                <option value="FOLLOW_UP">Follow Up</option>
+                <option value="SCHEDULED">Scheduled</option>
+                <option value="FORM">Form</option>
+                <option value="CHECKLIST">Checklist</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Assign To</label>
+              <select
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Unassigned</option>
+                {users.map(user => (
+                  <option key={user.id} value={user.id}>{user.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreate}
+            disabled={saving || !title.trim()}
+            className="flex-1"
+          >
+            {saving ? 'Creating...' : 'Create Task'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
