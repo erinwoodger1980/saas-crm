@@ -835,7 +835,7 @@ router.post("/timer/start", async (req: any, res) => {
     
     // Only include project relation if projectId is provided
     if (projectId) {
-      includeClause.project = { select: { id: true, number: true, description: true } };
+      includeClause.project = { select: { id: true, title: true, number: true, description: true } };
     }
 
     const timer = await (prisma as any).workshopTimer.create({
