@@ -2291,7 +2291,6 @@ router.get("/workshop", async (req: any, res) => {
     const tasks = await prisma.task.findMany({
       where: {
         tenantId,
-        relatedType: "WORKSHOP",
         status: { in: statusFilter as any },
         assignees: {
           some: {
