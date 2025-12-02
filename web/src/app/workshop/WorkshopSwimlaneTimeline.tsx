@@ -53,6 +53,8 @@ export type ProcessAssignment = {
 export type Project = {
   id: string;
   name: string;
+  number?: string | null;
+  description?: string | null;
   startDate?: string | null; // ISO
   deliveryDate?: string | null; // ISO
   valueGBP?: number | string | null;
@@ -167,8 +169,8 @@ export default function WorkshopSwimlaneTimeline({ projects, users, visibleWeeks
                 <div className="sticky left-0 z-10 bg-white border-r flex flex-col gap-2 px-3 py-3 shadow-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-slate-900 truncate leading-tight" title={proj.name}>
-                        {proj.name}
+                      <div className="text-sm font-semibold text-slate-900 truncate leading-tight" title={proj.number && proj.description ? `${proj.number} - ${proj.description}` : proj.description || proj.name}>
+                        {proj.number && proj.description ? `${proj.number} - ${proj.description}` : proj.description || proj.name}
                       </div>
                       {(proj.startDate || proj.deliveryDate) && (
                         <div className="text-[11px] text-slate-600 mt-0.5 font-medium">

@@ -185,13 +185,14 @@ model Lead {
   createdById           String
   contactName           String
   email                 String?
+  number                String?
+  description           String?
   status                LeadStatus                @default(NEW)
   capturedAt            DateTime                  @default(now())
   nextActionAt          DateTime?
   nextAction            String?
   briefJson             Json?
   custom                Json?
-  description           String?
   estimatedValue        Decimal?
   quotedValue           Decimal?
   dateQuoteSent         DateTime?
@@ -252,6 +253,8 @@ model Opportunity {
   tenantId                 String
   leadId                   String                     @unique
   title                    String
+  number                   String?
+  description              String?
   startDate                DateTime?
   deliveryDate             DateTime?
   valueGBP                 Decimal?

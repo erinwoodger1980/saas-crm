@@ -881,7 +881,7 @@ router.patch("/:id", async (req: any, res: any) => {
   }
   
   // String fields
-  const stringFields = ['title', 'stage', 'clientAccountId'];
+  const stringFields = ['title', 'stage', 'clientAccountId', 'number', 'description'];
   
   for (const field of stringFields) {
     if (field in updates) {

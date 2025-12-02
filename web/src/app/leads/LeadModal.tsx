@@ -31,6 +31,7 @@ import { fetchQuestionnaireFields } from "@/lib/questionnaireFields";
 
 export type Lead = {
   id: string;
+  number?: string | null;
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -387,6 +388,7 @@ export default function LeadModal({
   }, [showFollowUp]);
 
   // Form inputs
+  const [numberInput, setNumberInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
@@ -744,6 +746,7 @@ export default function LeadModal({
         communicationLog: (leadPreview.custom?.communicationLog || []) as Lead['communicationLog'],
       };
 
+      setNumberInput(normalized.number ?? "");
       setNameInput(normalized.contactName ?? "");
       setEmailInput(normalized.email ?? "");
       setPhoneInput(normalized.phone ?? "");
@@ -831,6 +834,7 @@ export default function LeadModal({
         setUiStatus(sUi);
 
         // seed inputs
+        setNumberInput((row as any)?.number || "");
         setNameInput(contactName || "");
         setEmailInput(email || "");
         setPhoneInput((row as any)?.phone || "");
@@ -1353,6 +1357,9 @@ export default function LeadModal({
         setLead((current) => {
           if (!current) return current;
           const next: Lead = { ...current };
+          if (Object.prototype.hasOwnProperty.call(patch, "number")) {
+            next.number = patch.number ?? null;
+          }
           if (Object.prototype.hasOwnProperty.call(patch, "contactName")) {
             next.contactName = patch.contactName ?? null;
           }
@@ -2906,6 +2913,22 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </div>
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className="text-sm">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                            Number
+                          </span>
+                          <input
+                            className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow-inner"
+                            value={numberInput}
+                            onChange={(e) => setNumberInput(e.target.value)}
+                            onBlur={() => {
+                              setLead((l) => (l ? { ...l, number: numberInput || null } : l));
+                              savePatch({ number: numberInput || null });
+                            }}
+                            placeholder="Lead number"
+                          />
+                        </label>
+
                         <label className="text-sm">
                           <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
                             Name

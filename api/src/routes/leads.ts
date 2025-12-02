@@ -778,6 +778,7 @@ router.post("/", async (req, res) => {
       email,
       status,
       custom = {},
+      number,
       description,
       assignedUserId,
     }: {
@@ -785,6 +786,7 @@ router.post("/", async (req, res) => {
       email?: string;
       status?: UiStatus;
       custom?: any;
+      number?: string;
       description?: string;
       assignedUserId?: string;
     } = req.body || {};
@@ -823,6 +825,7 @@ router.post("/", async (req, res) => {
         contactName: String(contactName),
         email: email ?? "",
         status: uiToDb(uiStatus),
+        number: number ?? null,
         description: description ?? null,
         capturedAt: now,
         dateQuoteSent: dateQuoteSent,
@@ -911,6 +914,7 @@ router.patch("/:id", async (req, res) => {
   if (!existing || existing.tenantId !== tenantId) return res.status(404).json({ error: "not found" });
 
   const body = (req.body ?? {}) as {
+    number?: string | null;
     contactName?: string | null;
     email?: string | null;
     status?: UiStatus;
@@ -956,6 +960,7 @@ router.patch("/:id", async (req, res) => {
     }
   };
 
+  if (body.number !== undefined) data.number = body.number || null;
   if (body.contactName !== undefined) data.contactName = body.contactName || null;
   if (body.email !== undefined) data.email = body.email || null;
   if (body.description !== undefined) data.description = body.description || null;

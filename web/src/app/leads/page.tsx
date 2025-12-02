@@ -405,9 +405,9 @@ function LeadsPageContent() {
   }, [grouped, tab, manualOnly]);
 
   async function handleCreateLead() {
-    const input = prompt("Enter lead name:");
-    const contactName = input?.trim();
-    if (!contactName) return;
+    const input = prompt("Enter lead description:");
+    const description = input?.trim();
+    if (!description) return;
     
     let leadCreated = false;
     let leadId: string | null = null;
@@ -416,7 +416,7 @@ function LeadsPageContent() {
       const lead = await apiFetch<any>("/leads", {
         method: "POST",
         headers: buildAuthHeaders(),
-        json: { contactName, email: "", custom: { provider: "manual" } },
+        json: { contactName: "", email: "", description, custom: { provider: "manual" } },
       });
       
       leadCreated = true;
@@ -447,7 +447,7 @@ function LeadsPageContent() {
       
       toast({
         title: "Lead created",
-        description: `${lead?.contactName ?? contactName} added to your inbox.`,
+        description: `${description} added to your inbox.`,
       });
     } catch (e: any) {
       console.error("Lead creation error:", e);
@@ -456,7 +456,7 @@ function LeadsPageContent() {
       if (leadCreated) {
         toast({
           title: "Lead created",
-          description: `${contactName} added to your inbox.`,
+          description: `${description} added to your inbox.`,
         });
         await refreshGrouped();
         return;
@@ -1073,7 +1073,7 @@ function LeadCard({
             </span>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-slate-900">
-                {lead.contactName || "Lead"}
+                {lead.number && lead.description ? `${lead.number} - ${lead.description}` : lead.description || lead.contactName || "Lead"}
               </div>
               {lead.email && <div className="truncate text-xs text-slate-500">{lead.email}</div>}
             </div>
