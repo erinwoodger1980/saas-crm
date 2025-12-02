@@ -107,7 +107,7 @@ export function CreateTaskWizard({ open, onClose, tenantId, userId, onCreated, r
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent 
-        className="max-w-4xl max-h-[90vh] overflow-y-auto z-[70]" 
+        className="max-w-4xl max-h-[90vh] overflow-y-auto" 
         aria-describedby="task-wizard-desc"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >

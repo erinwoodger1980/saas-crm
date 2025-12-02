@@ -183,6 +183,7 @@ type ProcessAssignment = {
     name: string | null;
     email: string;
   } | null;
+  completedAt?: string | null; // Date when process was completed
 };
 
 type Project = {
@@ -1897,9 +1898,19 @@ export default function WorkshopPage() {
                     <SelectValue placeholder="Select process" />
                   </SelectTrigger>
                   <SelectContent>
-                    {processDefs.map((p) => (
-                      <SelectItem key={p.code} value={p.code}>{p.name}</SelectItem>
-                    ))}
+                    {(() => {
+                      const proj = projects.find(p => p.id === showHoursModal?.projectId);
+                      const completedCodes = new Set(
+                        (proj?.processAssignments || [])
+                          .filter(pa => pa.completedAt)
+                          .map(pa => pa.processCode)
+                      );
+                      return processDefs.map((p) => (
+                        <SelectItem key={p.code} value={p.code}>
+                          {completedCodes.has(p.code) && '✓ '}{p.name}
+                        </SelectItem>
+                      ));
+                    })()}
                   </SelectContent>
                 </Select>
               </div>
@@ -2176,7 +2187,14 @@ export default function WorkshopPage() {
                         return (
                           <div key={pa.id} className="p-3 border rounded flex justify-between items-center">
                             <div className="flex-1">
-                              <div className="font-medium">{pa.processName}</div>
+                              <div className="flex items-center gap-2">
+                                <div className="font-medium">{pa.processName}</div>
+                                {pa.completedAt && (
+                                  <Badge variant="default" className="bg-green-600">
+                                    ✓ Completed {new Date(pa.completedAt).toLocaleDateString()}
+                                  </Badge>
+                                )}
+                              </div>
                               <div className="text-sm text-gray-600">
                                 {pa.assignedUser 
                                   ? (pa.assignedUser.name || pa.assignedUser.email)
