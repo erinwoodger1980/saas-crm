@@ -335,6 +335,7 @@ export default function WorkshopPage() {
   const [tasksFilter, setTasksFilter] = useState<'open' | 'in_progress' | 'all'>('open');
   const [showMaterialLink, setShowMaterialLink] = useState<{taskId: string; taskTitle: string} | null>(null);
   const [showMaterialReceived, setShowMaterialReceived] = useState<{taskId: string; taskTitle: string; materialType?: string; opportunityId?: string} | null>(null);
+  const [myTasksCount, setMyTasksCount] = useState(0);
 
   async function loadWorkshopTasks() {
     if (!user?.id) return;
@@ -346,6 +347,16 @@ export default function WorkshopPage() {
       }
     } catch (e) {
       console.error("Failed to load workshop tasks:", e);
+    }
+  }
+
+  async function loadMyTasksCount() {
+    if (!user?.id) return;
+    try {
+      const response = await apiFetch<{ items: any[] }>(`/tasks/workshop?status=NOT_STARTED,IN_PROGRESS&assignedToUserId=${user.id}`);
+      setMyTasksCount(response.items?.length || 0);
+    } catch (e) {
+      console.error("Failed to load tasks count:", e);
     }
   }
 
@@ -424,6 +435,7 @@ export default function WorkshopPage() {
   useEffect(() => {
     loadAll();
     loadWorkshopTasks();
+    loadMyTasksCount();
     (async () => {
       try {
         const r = await apiFetch<ProcDef[]>("/workshop-processes");
@@ -440,6 +452,7 @@ export default function WorkshopPage() {
   useEffect(() => {
     if (user?.id) {
       loadWorkshopTasks();
+      loadMyTasksCount();
     }
   }, [tasksFilter, user?.id]);
 
@@ -449,6 +462,7 @@ export default function WorkshopPage() {
     
     const interval = setInterval(() => {
       loadAll();
+      loadMyTasksCount();
     }, 5 * 60 * 1000); // 5 minutes
     
     return () => clearInterval(interval);
@@ -1048,14 +1062,6 @@ export default function WorkshopPage() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sm text-muted-foreground">{projects.length} project{projects.length !== 1 ? 's' : ''}</span>
-          <Button 
-            variant={viewMode === 'tasks' ? 'default' : 'outline'} 
-            size="sm" 
-            onClick={() => setViewMode('tasks')}
-            className="font-bold"
-          >
-            📋 My Tasks
-          </Button>
           {!isWorkshopOnly && (
             <>
               <Button variant="outline" size="sm" onClick={() => window.location.href = '/timesheets'}>
@@ -1134,7 +1140,22 @@ export default function WorkshopPage() {
       </div>
 
       {/* Timer Widget - Mobile optimized */}
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="flex justify-center">
+          <Button 
+            variant={viewMode === 'tasks' ? 'default' : 'outline'} 
+            size="lg"
+            onClick={() => setViewMode('tasks')}
+            className="font-bold relative"
+          >
+            📋 My Tasks
+            {myTasksCount > 0 && (
+              <Badge variant="destructive" className="ml-2 px-2 py-0.5 text-xs">
+                {myTasksCount}
+              </Badge>
+            )}
+          </Button>
+        </div>
         <WorkshopTimer
           ref={timerRef}
           projects={projects.map(p => ({ id: p.id, title: p.name }))}

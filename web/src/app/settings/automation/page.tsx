@@ -454,7 +454,7 @@ function RuleEditor({
             },
             rescheduleOnTriggerChange: reschedule,
             taskInstanceKey: `auto_${entityType}_{${entityType.toLowerCase()}Id}_${taskTitle.replace(/\s+/g, '_')}`,
-            ...(linkId ? { taskMeta: { linkedField: { type: 'fieldLink', linkId } } } : {}),
+            ...(linkId && linkId !== '__NONE__' ? { taskMeta: { linkedField: { type: 'fieldLink', linkId } } } : {}),
           },
         ],
       };
@@ -750,7 +750,7 @@ function RuleEditor({
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent className="max-h-[300px]">
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="__NONE__">None</SelectItem>
                         {links.map((l) => (
                           <SelectItem key={l.id} value={l.id}>
                             {l.label || `${l.model}.${l.fieldPath}`}
