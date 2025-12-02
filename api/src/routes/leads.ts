@@ -666,7 +666,8 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
                   title: oppTitle,
                   number: leadData.number || null,
                   description: leadData.description || null,
-                  stage: 'QUALIFY',
+                  // Ensure imported WON leads create WON-stage opportunities so they appear in Workshop
+                  stage: 'WON' as any,
                   wonAt: new Date(),
                   valueGBP: leadData.quotedValue || leadData.estimatedValue || null,
                   ...(startDateStr ? { startDate: new Date(startDateStr) } : {}),

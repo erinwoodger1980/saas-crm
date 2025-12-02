@@ -779,6 +779,32 @@ router.post("/backfill", async (req: any, res) => {
   res.json({ ok: true, created: created.length, details: created });
 });
 
+// POST /workshop/repair-won-stages
+// For tenants where imported WON leads created opportunities with a non-WON stage,
+// update opportunities to stage WON so they appear in the schedule.
+router.post("/repair-won-stages", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  // Find opportunities not marked WON but whose lead is WON
+  const affected = await prisma.opportunity.findMany({
+    where: {
+      tenantId,
+      NOT: { stage: 'WON' as any },
+      lead: { status: 'WON' as any },
+    },
+    select: { id: true },
+  });
+
+  if (!affected.length) return res.json({ ok: true, updated: 0 });
+
+  const ids = affected.map(a => a.id);
+  await prisma.opportunity.updateMany({
+    where: { id: { in: ids }, tenantId },
+    data: { stage: 'WON' as any, wonAt: new Date() },
+  });
+
+  res.json({ ok: true, updated: ids.length });
+});
+
 // PATCH /workshop/project/:projectId/materials - Update material tracking
 router.patch("/project/:projectId/materials", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
