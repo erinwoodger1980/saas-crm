@@ -2272,4 +2272,156 @@ router.post("/:id/actions/reject-enquiry", async (req, res) => {
   }
 });
 
+// GET /tasks/workshop - Get workshop tasks for current user
+router.get("/workshop", async (req: any, res) => {
+  const tenantId = resolveTenantId(req);
+  const userId = resolveUserId(req);
+  const status = req.query.status as string | undefined;
+
+  if (!tenantId || !userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  try {
+    // Build status filter
+    const statusFilter = status
+      ? status.split(",").filter((s: string) => ["OPEN", "IN_PROGRESS", "DONE", "BLOCKED", "CANCELLED"].includes(s.toUpperCase()))
+      : ["OPEN", "IN_PROGRESS"];
+
+    const tasks = await prisma.task.findMany({
+      where: {
+        tenantId,
+        relatedType: "WORKSHOP",
+        status: { in: statusFilter as any },
+        assignees: {
+          some: {
+            userId,
+          },
+        },
+      },
+      include: {
+        assignees: true,
+      },
+      orderBy: [
+        { dueAt: "asc" },
+        { priority: "desc" },
+        { createdAt: "desc" },
+      ],
+    });
+
+    return res.json({ ok: true, tasks });
+  } catch (e: any) {
+    console.error("[tasks/workshop]", e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// PATCH /tasks/:id/link-material - Link task to material order
+router.patch("/:id/link-material", async (req: any, res) => {
+  const tenantId = resolveTenantId(req);
+  const userId = resolveUserId(req);
+  const taskId = req.params.id;
+  const { materialType, opportunityId } = req.body;
+
+  if (!tenantId || !userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  if (!materialType || !["timber", "glass", "ironmongery", "paint"].includes(materialType)) {
+    return res.status(400).json({ error: "invalid_material_type" });
+  }
+
+  if (!opportunityId) {
+    return res.status(400).json({ error: "opportunity_id_required" });
+  }
+
+  try {
+    // Verify task exists and belongs to tenant
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, tenantId },
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: "task_not_found" });
+    }
+
+    // Verify opportunity exists
+    const opportunity = await prisma.opportunity.findFirst({
+      where: { id: opportunityId, tenantId },
+    });
+
+    if (!opportunity) {
+      return res.status(404).json({ error: "opportunity_not_found" });
+    }
+
+    // Update task metadata with material link
+    const updatedTask = await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        meta: {
+          ...(task.meta as any || {}),
+          linkedMaterial: materialType,
+          linkedOpportunityId: opportunityId,
+        },
+      },
+    });
+
+    return res.json({ ok: true, task: updatedTask });
+  } catch (e: any) {
+    console.error("[tasks/:id/link-material]", e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// PATCH /materials/:opportunityId/received - Mark material as received
+router.patch("/materials/:opportunityId/received", async (req: any, res) => {
+  const tenantId = resolveTenantId(req);
+  const userId = resolveUserId(req);
+  const opportunityId = req.params.opportunityId;
+  const { materialType, receivedDate, notes } = req.body;
+
+  if (!tenantId || !userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  if (!materialType || !["timber", "glass", "ironmongery", "paint"].includes(materialType)) {
+    return res.status(400).json({ error: "invalid_material_type" });
+  }
+
+  try {
+    // Verify opportunity exists
+    const opportunity = await prisma.opportunity.findFirst({
+      where: { id: opportunityId, tenantId },
+    });
+
+    if (!opportunity) {
+      return res.status(404).json({ error: "opportunity_not_found" });
+    }
+
+    // Update the appropriate received date field
+    const updateData: any = {};
+    const fieldMap: Record<string, string> = {
+      timber: "timberReceivedAt",
+      glass: "glassReceivedAt",
+      ironmongery: "ironmongeryReceivedAt",
+      paint: "paintReceivedAt",
+    };
+
+    const receivedField = fieldMap[materialType];
+    if (receivedField) {
+      updateData[receivedField] = receivedDate ? new Date(receivedDate) : new Date();
+    }
+
+    const updated = await prisma.opportunity.update({
+      where: { id: opportunityId },
+      data: updateData,
+    });
+
+    return res.json({ ok: true, opportunity: updated });
+  } catch (e: any) {
+    console.error("[materials/:opportunityId/received]", e);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
 export default router;

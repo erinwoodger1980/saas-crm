@@ -1,6 +1,8 @@
 
 "use client";
-import { useRef } from "react";
+import { useRef, useState as useReactState } from "react";
+import MaterialLinkDialog from "@/components/workshop/MaterialLinkDialog";
+import MaterialReceivedDialog from "@/components/workshop/MaterialReceivedDialog";
 // Type definitions for QuickLogModal
 interface QuickLogUser {
   id: string;
@@ -18,6 +20,8 @@ interface QuickLogSaveInput {
   hours: string; // kept as string until converted on save
   notes?: string;
   date: string; // ISO date yyyy-mm-dd
+  markComplete?: boolean;
+  completionComments?: string;
 }
 interface QuickLogModalProps {
   users: QuickLogUser[];
@@ -28,8 +32,8 @@ interface QuickLogModalProps {
 }
 // Quick log modal for staff to log hours for today
 function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLogModalProps) {
-  const [form, setForm] = useState<{ projectId: string; userId: string; process: string; hours: string; notes: string }>({ 
-    projectId: '', userId: '', process: '', hours: '', notes: '' 
+  const [form, setForm] = useState<{ projectId: string; userId: string; process: string; hours: string; notes: string; markComplete: boolean; completionComments: string }>({ 
+    projectId: '', userId: '', process: '', hours: '', notes: '', markComplete: false, completionComments: '' 
   });
   const today = new Date().toISOString().slice(0, 10);
   
@@ -85,6 +89,33 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
             <label className="text-sm font-medium mb-1 block">Notes</label>
             <Input type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
+          
+          {!isGenericCategory && form.projectId && (
+            <div className="space-y-2 pt-2 border-t">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.markComplete}
+                  onChange={e => setForm(f => ({ ...f, markComplete: e.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <span className="text-sm font-medium">Mark this process as complete</span>
+              </label>
+              
+              {form.markComplete && (
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Completion Comments (optional)</label>
+                  <textarea
+                    value={form.completionComments}
+                    onChange={e => setForm(f => ({ ...f, completionComments: e.target.value }))}
+                    placeholder="Add completion notes..."
+                    className="w-full border rounded-md p-2 min-h-[60px] text-sm"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          
           <div className="flex gap-2 pt-2">
             <Button 
               onClick={() => onSave({ 
@@ -93,8 +124,9 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
                 process: form.process,
                 hours: form.hours,
                 notes: form.notes,
-                date: today 
-              })} 
+                date: today,
+                ...(form.markComplete && { markComplete: true, completionComments: form.completionComments })
+              } as any)} 
               disabled={!form.userId || !form.process || !form.hours || (!isGenericCategory && !form.projectId)}
             >
               Log Hours
@@ -262,7 +294,7 @@ export default function WorkshopPage() {
   const isWorkshopOnly = user?.role === 'workshop';
   const timerRef = useRef<WorkshopTimerHandle>(null);
   
-  const [viewMode, setViewMode] = useState<'calendar' | 'timeline'>('calendar');
+  const [viewMode, setViewMode] = useState<'calendar' | 'timeline' | 'tasks'>('calendar');
   const [calendarViewMode, setCalendarViewMode] = useState<'week' | 'month' | 'year'>('month'); // New state for calendar sub-views
   const [showValues, setShowValues] = useState(false); // Toggle between workshop view (false) and management view (true)
   const [timelineViewFilter, setTimelineViewFilter] = useState<'both' | 'manufacturing' | 'installation'>('both'); // Filter for timeline bars
@@ -297,6 +329,25 @@ export default function WorkshopPage() {
     hours: "",
     date: new Date().toISOString().split('T')[0]
   });
+  
+  // Workshop tasks state
+  const [workshopTasks, setWorkshopTasks] = useState<any[]>([]);
+  const [tasksFilter, setTasksFilter] = useState<'open' | 'in_progress' | 'all'>('open');
+  const [showMaterialLink, setShowMaterialLink] = useState<{taskId: string; taskTitle: string} | null>(null);
+  const [showMaterialReceived, setShowMaterialReceived] = useState<{taskId: string; taskTitle: string; materialType?: string; opportunityId?: string} | null>(null);
+
+  async function loadWorkshopTasks() {
+    if (!user?.id) return;
+    try {
+      const statusParam = tasksFilter === 'all' ? 'open,in_progress,done' : tasksFilter === 'open' ? 'open' : 'in_progress';
+      const response = await apiFetch<{ ok: boolean; tasks: any[] }>(`/tasks/workshop?status=${statusParam}`);
+      if (response.ok) {
+        setWorkshopTasks(response.tasks || []);
+      }
+    } catch (e) {
+      console.error("Failed to load workshop tasks:", e);
+    }
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -372,6 +423,7 @@ export default function WorkshopPage() {
 
   useEffect(() => {
     loadAll();
+    loadWorkshopTasks();
     (async () => {
       try {
         const r = await apiFetch<ProcDef[]>("/workshop-processes");
@@ -383,6 +435,13 @@ export default function WorkshopPage() {
       }
     })();
   }, []);
+  
+  // Reload tasks when filter changes
+  useEffect(() => {
+    if (user?.id) {
+      loadWorkshopTasks();
+    }
+  }, [tasksFilter, user?.id]);
 
   // Auto-refresh in fullscreen mode every 5 minutes
   useEffect(() => {
@@ -1012,6 +1071,13 @@ export default function WorkshopPage() {
               >
                 Timeline (Swimlane)
               </Button>
+              <Button 
+                variant={viewMode === 'tasks' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => setViewMode('tasks')}
+              >
+                My Tasks
+              </Button>
               <div className="h-6 w-px bg-border" />
               <Button 
                 variant={showValues ? 'default' : 'outline'} 
@@ -1510,6 +1576,155 @@ export default function WorkshopPage() {
         </div>
       )}
 
+      {/* Tasks View */}
+      {viewMode === 'tasks' && (
+        <div className="space-y-4">
+          {/* Filter Controls */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">My Workshop Tasks</h2>
+              <div className="flex gap-2">
+                <Button
+                  variant={tasksFilter === 'open' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setTasksFilter('open')}
+                >
+                  Open
+                </Button>
+                <Button
+                  variant={tasksFilter === 'in_progress' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setTasksFilter('in_progress')}
+                >
+                  In Progress
+                </Button>
+                <Button
+                  variant={tasksFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setTasksFilter('all')}
+                >
+                  All
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Tasks List */}
+          <div className="space-y-3">
+            {workshopTasks.length === 0 ? (
+              <Card className="p-8 text-center text-muted-foreground">
+                <p>No tasks found for the selected filter.</p>
+              </Card>
+            ) : (
+              workshopTasks.map((task) => {
+                const project = projects.find(p => p.id === task.relatedId);
+                const dueDate = task.dueAt ? new Date(task.dueAt) : null;
+                const isOverdue = dueDate && dueDate < new Date();
+                const priorityColors = {
+                  URGENT: 'bg-red-100 text-red-800 border-red-200',
+                  HIGH: 'bg-orange-100 text-orange-800 border-orange-200',
+                  MEDIUM: 'bg-blue-100 text-blue-800 border-blue-200',
+                  LOW: 'bg-gray-100 text-gray-800 border-gray-200',
+                };
+                
+                return (
+                  <Card key={task.id} className="p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-semibold text-lg">{task.title}</h3>
+                          <Badge className={priorityColors[task.priority as keyof typeof priorityColors] || priorityColors.MEDIUM}>
+                            {task.priority}
+                          </Badge>
+                          {isOverdue && (
+                            <Badge variant="destructive">Overdue</Badge>
+                          )}
+                        </div>
+                        
+                        {task.description && (
+                          <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
+                        )}
+                        
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          {project && (
+                            <div className="flex items-center gap-1">
+                              <span className="font-medium">Project:</span>
+                              <span>{project.name}</span>
+                            </div>
+                          )}
+                          {dueDate && (
+                            <div className="flex items-center gap-1">
+                              <span className="font-medium">Due:</span>
+                              <span className={isOverdue ? 'text-red-600 font-medium' : ''}>
+                                {dueDate.toLocaleDateString()}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium">Status:</span>
+                            <span>{task.status.replace('_', ' ')}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col gap-2">
+                        {task.status !== 'DONE' && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setShowMaterialLink({taskId: task.id, taskTitle: task.title})}
+                            >
+                              Link Material
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={async () => {
+                                // Check if task has linked material
+                                const materialType = task.meta?.linkedMaterialType;
+                                const opportunityId = task.meta?.linkedOpportunityId;
+                                
+                                if (materialType && opportunityId) {
+                                  // Show material received dialog
+                                  setShowMaterialReceived({
+                                    taskId: task.id,
+                                    taskTitle: task.title,
+                                    materialType,
+                                    opportunityId
+                                  });
+                                } else {
+                                  // Just mark done without material prompt
+                                  try {
+                                    await apiFetch(`/tasks/${task.id}/complete`, {
+                                      method: 'POST',
+                                    });
+                                    await loadWorkshopTasks();
+                                    await loadAll();
+                                  } catch (e: any) {
+                                    alert('Failed to complete task: ' + (e?.message || 'Unknown error'));
+                                  }
+                                }
+                              }}
+                            >
+                              Mark Done
+                            </Button>
+                          </>
+                        )}
+                        {task.meta?.linkedMaterialType && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            🔗 {task.meta.linkedMaterialType}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Hours Tracking Modal */}
       {showQuickLog && (
         <QuickLogModal
@@ -1527,6 +1742,8 @@ export default function WorkshopPage() {
                   date: form.date,
                   hours: Number(form.hours),
                   notes: form.notes,
+                  markComplete: form.markComplete,
+                  completionComments: form.completionComments,
                 },
               });
               setShowQuickLog(false);
@@ -1539,6 +1756,75 @@ export default function WorkshopPage() {
           onClose={() => setShowQuickLog(false)}
         />
       )}
+      {/* Material Link Dialog */}
+      {showMaterialLink && (
+        <MaterialLinkDialog
+          taskId={showMaterialLink.taskId}
+          taskTitle={showMaterialLink.taskTitle}
+          projects={projects.map(p => ({ id: p.id, name: p.name }))}
+          onLink={async (materialType, opportunityId) => {
+            try {
+              await apiFetch(`/tasks/${showMaterialLink.taskId}/link-material`, {
+                method: 'PATCH',
+                json: { materialType, opportunityId }
+              });
+              setShowMaterialLink(null);
+              await loadWorkshopTasks();
+            } catch (e: any) {
+              alert('Failed to link material: ' + (e?.message || 'Unknown error'));
+            }
+          }}
+          onCancel={() => setShowMaterialLink(null)}
+        />
+      )}
+
+      {/* Material Received Dialog */}
+      {showMaterialReceived && (
+        <MaterialReceivedDialog
+          taskTitle={showMaterialReceived.taskTitle}
+          linkedMaterialType={showMaterialReceived.materialType}
+          onConfirmReceived={async (receivedDate, notes) => {
+            try {
+              // Mark task as complete
+              await apiFetch(`/tasks/${showMaterialReceived.taskId}/complete`, {
+                method: 'POST',
+              });
+              
+              // Update material received date if linked
+              if (showMaterialReceived.materialType && showMaterialReceived.opportunityId) {
+                await apiFetch(`/materials/${showMaterialReceived.opportunityId}/received`, {
+                  method: 'PATCH',
+                  json: {
+                    materialType: showMaterialReceived.materialType,
+                    receivedDate,
+                    notes
+                  }
+                });
+              }
+              
+              setShowMaterialReceived(null);
+              await loadWorkshopTasks();
+              await loadAll();
+            } catch (e: any) {
+              alert('Failed to update: ' + (e?.message || 'Unknown error'));
+            }
+          }}
+          onSkip={async () => {
+            try {
+              // Just mark task as complete without updating material
+              await apiFetch(`/tasks/${showMaterialReceived.taskId}/complete`, {
+                method: 'POST',
+              });
+              setShowMaterialReceived(null);
+              await loadWorkshopTasks();
+              await loadAll();
+            } catch (e: any) {
+              alert('Failed to complete task: ' + (e?.message || 'Unknown error'));
+            }
+          }}
+        />
+      )}
+
       {/* Holiday Management Modal */}
       {showHolidayModal && (
         <HolidayModal
@@ -1756,6 +2042,9 @@ export default function WorkshopPage() {
                             <div>Ordered: {project.timberOrderedAt ? new Date(project.timberOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
                             <div>Expected: {project.timberExpectedAt ? new Date(project.timberExpectedAt).toLocaleDateString() : '-'}</div>
                             <div>Received: {project.timberReceivedAt ? new Date(project.timberReceivedAt).toLocaleDateString() : '-'}</div>
+                            {workshopTasks.some(t => t.meta?.linkedMaterialType === 'timber' && t.meta?.linkedOpportunityId === project.id) && (
+                              <div className="text-blue-600 font-medium">🔗 Linked to task</div>
+                            )}
                           </>
                         )}
                       </div>
@@ -1781,6 +2070,9 @@ export default function WorkshopPage() {
                             <div>Ordered: {project.glassOrderedAt ? new Date(project.glassOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
                             <div>Expected: {project.glassExpectedAt ? new Date(project.glassExpectedAt).toLocaleDateString() : '-'}</div>
                             <div>Received: {project.glassReceivedAt ? new Date(project.glassReceivedAt).toLocaleDateString() : '-'}</div>
+                            {workshopTasks.some(t => t.meta?.linkedMaterialType === 'glass' && t.meta?.linkedOpportunityId === project.id) && (
+                              <div className="text-blue-600 font-medium">🔗 Linked to task</div>
+                            )}
                           </>
                         )}
                       </div>
@@ -1806,6 +2098,9 @@ export default function WorkshopPage() {
                             <div>Ordered: {project.ironmongeryOrderedAt ? new Date(project.ironmongeryOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
                             <div>Expected: {project.ironmongeryExpectedAt ? new Date(project.ironmongeryExpectedAt).toLocaleDateString() : '-'}</div>
                             <div>Received: {project.ironmongeryReceivedAt ? new Date(project.ironmongeryReceivedAt).toLocaleDateString() : '-'}</div>
+                            {workshopTasks.some(t => t.meta?.linkedMaterialType === 'ironmongery' && t.meta?.linkedOpportunityId === project.id) && (
+                              <div className="text-blue-600 font-medium">🔗 Linked to task</div>
+                            )}
                           </>
                         )}
                       </div>
@@ -1831,6 +2126,9 @@ export default function WorkshopPage() {
                             <div>Ordered: {project.paintOrderedAt ? new Date(project.paintOrderedAt).toLocaleDateString() : 'Not ordered'}</div>
                             <div>Expected: {project.paintExpectedAt ? new Date(project.paintExpectedAt).toLocaleDateString() : '-'}</div>
                             <div>Received: {project.paintReceivedAt ? new Date(project.paintReceivedAt).toLocaleDateString() : '-'}</div>
+                            {workshopTasks.some(t => t.meta?.linkedMaterialType === 'paint' && t.meta?.linkedOpportunityId === project.id) && (
+                              <div className="text-blue-600 font-medium">🔗 Linked to task</div>
+                            )}
                           </>
                         )}
                       </div>
