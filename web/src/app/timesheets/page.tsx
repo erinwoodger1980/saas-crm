@@ -88,6 +88,8 @@ export default function TimesheetsPage() {
   // Projects state
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [projectDetail, setProjectDetail] = useState<any>(null);
 
   async function loadTimesheets() {
     setLoading(true);
@@ -190,6 +192,19 @@ export default function TimesheetsPage() {
       setProjects(res.projects || []);
     } catch (e) {
       console.error("Failed to load projects:", e);
+    } finally {
+      setProjectsLoading(false);
+    }
+  }
+
+  async function loadProjectDetail(projectId: string) {
+    setProjectsLoading(true);
+    try {
+      const res = await apiFetch<any>(`/workshop/projects/${projectId}`);
+      setProjectDetail(res);
+      setSelectedProjectId(projectId);
+    } catch (e) {
+      console.error("Failed to load project detail:", e);
     } finally {
       setProjectsLoading(false);
     }
@@ -641,9 +656,100 @@ export default function TimesheetsPage() {
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-6 mt-6">
+          {selectedProjectId && projectDetail && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSelectedProjectId(null);
+                setProjectDetail(null);
+              }}
+              className="mb-4"
+            >
+              ← Back to Projects
+            </Button>
+          )}
+
           {projectsLoading ? (
             <div className="text-center py-12 text-muted-foreground">Loading projects...</div>
+          ) : selectedProjectId && projectDetail ? (
+            // Project Detail View (Screenshot 3 style)
+            <div className="space-y-4">
+              <Card className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold">{projectDetail.project.name}</h2>
+                    <p className="text-muted-foreground">
+                      {projectDetail.project.startDate &&
+                        new Date(projectDetail.project.startDate).toLocaleDateString("en-GB", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })}{" "}
+                      -{" "}
+                      {projectDetail.project.deliveryDate &&
+                        new Date(projectDetail.project.deliveryDate).toLocaleDateString("en-GB", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-blue-600">
+                      {projectDetail.project.totalHours.toFixed(1)} HOURS
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <div className="space-y-4">
+                  {projectDetail.breakdown.map((item: any) => (
+                    <div key={item.user.id} className="border-b border-border pb-4 last:border-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-10 h-10 rounded-full flex items-center justify-center text-white text-lg font-bold"
+                            style={{ backgroundColor: item.user.workshopColor || "#6b7280" }}
+                          >
+                            {item.user.name[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-lg">{item.user.name}</div>
+                            <div className="text-sm text-muted-foreground">{item.user.email}</div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xl font-bold text-blue-600">{item.total.toFixed(1)}h</div>
+                        </div>
+                      </div>
+                      <div className="ml-14 space-y-1">
+                        {item.processes.map((proc: any) => (
+                          <div
+                            key={proc.process}
+                            className="flex items-center justify-between text-sm bg-muted/50 rounded px-3 py-2"
+                          >
+                            <div className="text-muted-foreground italic">
+                              - {proc.process.toLowerCase().replace(/_/g, " ")}
+                            </div>
+                            <div className="font-medium">{proc.hours.toFixed(1)}h</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {projectDetail.breakdown.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No time entries logged yet
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </div>
           ) : (
+            // Projects List View
+            (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
@@ -667,7 +773,11 @@ export default function TimesheetsPage() {
                     };
 
                     return (
-                      <tr key={project.id} className="border-b border-border hover:bg-muted/50">
+                      <tr
+                        key={project.id}
+                        className="border-b border-border hover:bg-muted/50 cursor-pointer"
+                        onClick={() => loadProjectDetail(project.id)}
+                      >
                         <td className="p-3">
                           <div className="font-medium text-primary">{project.name}</div>
                         </td>
@@ -706,6 +816,7 @@ export default function TimesheetsPage() {
                 </tbody>
               </table>
             </div>
+            )
           )}
         </TabsContent>
 

@@ -141,6 +141,90 @@ router.get("/projects", async (req: any, res) => {
   res.json({ ok: true, projects: result });
 });
 
+// GET /workshop/projects/:projectId - Project detail with person/process breakdown
+router.get("/projects/:projectId", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const projectId = req.params.projectId;
+
+  const project = await (prisma as any).opportunity.findUnique({
+    where: { id: projectId },
+    select: {
+      id: true,
+      title: true,
+      valueGBP: true,
+      startDate: true,
+      deliveryDate: true,
+      wonAt: true,
+      tenantId: true,
+    },
+  });
+
+  if (!project || project.tenantId !== tenantId) {
+    return res.status(404).json({ error: "project_not_found" });
+  }
+
+  // Get all time entries for this project grouped by user and process
+  const entries = await (prisma as any).timeEntry.findMany({
+    where: { tenantId, projectId },
+    include: {
+      user: { select: { id: true, name: true, email: true, workshopColor: true } },
+    },
+    orderBy: [{ userId: "asc" }, { process: "asc" }],
+  });
+
+  // Group by user, then by process
+  const userMap = new Map<string, any>();
+  for (const entry of entries) {
+    if (!userMap.has(entry.userId)) {
+      userMap.set(entry.userId, {
+        user: {
+          id: entry.user.id,
+          name: entry.user.name || entry.user.email,
+          email: entry.user.email,
+          workshopColor: entry.user.workshopColor,
+        },
+        processes: new Map<string, number>(),
+        total: 0,
+      });
+    }
+    const userData = userMap.get(entry.userId)!;
+    const hours = Number(entry.hours || 0);
+    userData.processes.set(
+      entry.process,
+      (userData.processes.get(entry.process) || 0) + hours
+    );
+    userData.total += hours;
+  }
+
+  // Convert to array format
+  const breakdown = Array.from(userMap.values()).map((ud) => {
+    const processesArray: { process: string; hours: number }[] = [];
+    ud.processes.forEach((hours: number, process: string) => {
+      processesArray.push({ process, hours });
+    });
+    return {
+      user: ud.user,
+      processes: processesArray,
+      total: ud.total,
+    };
+  });
+
+  // Calculate project total
+  const projectTotal = breakdown.reduce((sum, b) => sum + b.total, 0);
+
+  res.json({
+    ok: true,
+    project: {
+      id: project.id,
+      name: project.title,
+      startDate: project.startDate,
+      deliveryDate: project.deliveryDate,
+      totalHours: projectTotal,
+    },
+    breakdown,
+  });
+});
+
 // PATCH /workshop/users/:userId/hours { hoursPerDay: number }
 router.patch("/users/:userId/hours", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
