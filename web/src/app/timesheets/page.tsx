@@ -57,7 +57,7 @@ type UserActivity = {
 };
 
 export default function TimesheetsPage() {
-  const [activeTab, setActiveTab] = useState<string>("timesheets");
+  const [activeTab, setActiveTab] = useState<string>("overview");
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -155,15 +155,12 @@ export default function TimesheetsPage() {
   async function loadTeamActivity() {
     setActivityLoading(true);
     try {
-      const res = await apiFetch("/workshop/team-activity", {
-        params: {
-          from: activityFrom.toISOString().split("T")[0],
-          to: activityTo.toISOString().split("T")[0],
-        },
-      });
-      if (res.ok) {
-        setUserActivity(res.users || []);
-      }
+      const fromStr = activityFrom.toISOString().split("T")[0];
+      const toStr = activityTo.toISOString().split("T")[0];
+      const res = await apiFetch<{ users: UserActivity[] }>(
+        `/workshop/team-activity?from=${fromStr}&to=${toStr}`
+      );
+      setUserActivity(res.users || []);
     } catch (e) {
       console.error("Failed to load team activity:", e);
     } finally {
@@ -199,7 +196,7 @@ export default function TimesheetsPage() {
   }, [filterUser, filterStatus]);
 
   useEffect(() => {
-    if (activeTab === "activity") {
+    if (activeTab === "activity" || activeTab === "overview") {
       loadTeamActivity();
     }
   }, [activeTab, activityFrom, activityTo]);
@@ -269,7 +266,7 @@ export default function TimesheetsPage() {
             Export Payroll CSV
           </Button>
         )}
-        {activeTab === "activity" && (
+        {(activeTab === "activity" || activeTab === "overview") && (
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => shiftWeek(-1)}>
               <ChevronLeft className="h-4 w-4" />
@@ -286,6 +283,10 @@ export default function TimesheetsPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
+          <TabsTrigger value="overview">
+            <Users className="w-4 h-4 mr-2" />
+            Overview
+          </TabsTrigger>
           <TabsTrigger value="timesheets">
             <Clock className="w-4 h-4 mr-2" />
             Timesheets
@@ -295,6 +296,134 @@ export default function TimesheetsPage() {
             Team Activity
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 mt-6">
+          <div className="text-sm text-muted-foreground flex items-center gap-2 mb-4">
+            <Calendar className="h-4 w-4" />
+            {formatActivityDate(activityFrom)} – {formatActivityDate(activityTo)}
+          </div>
+
+          {activityLoading ? (
+            <div className="text-center py-12 text-muted-foreground">Loading overview...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="border border-border p-3 bg-muted text-left font-semibold sticky left-0 bg-muted z-10">
+                      PERSON
+                    </th>
+                    {dateRange.map((date) => {
+                      const dayName = date.toLocaleDateString("en-GB", { weekday: "short" });
+                      const dayDate = date.getDate();
+                      return (
+                        <th
+                          key={date.toISOString()}
+                          className={`border border-border p-3 text-center font-semibold min-w-[80px] ${
+                            isToday(date) ? "bg-primary/10" : "bg-muted"
+                          }`}
+                        >
+                          <div className="text-xs">{dayName.charAt(0)}</div>
+                          <div className="text-sm">{dayDate}</div>
+                        </th>
+                      );
+                    })}
+                    <th className="border border-border p-3 bg-muted text-right font-semibold sticky right-0 bg-muted z-10">
+                      TOTAL
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {userActivity.map((ua) => {
+                    const userTotal = Object.values(ua.days).reduce(
+                      (sum, entries) => sum + getTotalHoursForDay(entries),
+                      0
+                    );
+
+                    return (
+                      <tr key={ua.user.id} className="hover:bg-muted/50">
+                        <td className="border border-border p-3 sticky left-0 bg-background z-10">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                              style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
+                            >
+                              {(ua.user.name || ua.user.email)[0].toUpperCase()}
+                            </div>
+                            <span className="font-medium">{ua.user.name || ua.user.email}</span>
+                          </div>
+                        </td>
+                        {dateRange.map((date) => {
+                          const dateKey = date.toISOString().split("T")[0];
+                          const entries = ua.days[dateKey] || [];
+                          const dayHours = getTotalHoursForDay(entries);
+
+                          // Color code based on hours (similar to Timedock)
+                          const getColorClass = (hours: number) => {
+                            if (hours === 0) return "bg-background";
+                            if (hours < 4) return "bg-green-100 text-green-900";
+                            if (hours < 8) return "bg-green-200 text-green-900";
+                            if (hours <= 9) return "bg-green-300 text-green-900";
+                            if (hours > 9) return "bg-red-200 text-red-900"; // Overtime
+                            return "bg-gray-100";
+                          };
+
+                          return (
+                            <td
+                              key={dateKey}
+                              className={`border border-border p-3 text-center font-semibold ${getColorClass(
+                                dayHours
+                              )} ${isToday(date) ? "ring-2 ring-primary ring-inset" : ""}`}
+                            >
+                              {dayHours > 0 ? dayHours.toFixed(1) : ""}
+                            </td>
+                          );
+                        })}
+                        <td className="border border-border p-3 text-right font-bold sticky right-0 bg-background z-10">
+                          {userTotal.toFixed(1)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-muted font-bold">
+                    <td className="border border-border p-3 sticky left-0 bg-muted z-10">TOTAL</td>
+                    {dateRange.map((date) => {
+                      const dateKey = date.toISOString().split("T")[0];
+                      const dayTotal = userActivity.reduce((sum, ua) => {
+                        const entries = ua.days[dateKey] || [];
+                        return sum + getTotalHoursForDay(entries);
+                      }, 0);
+
+                      return (
+                        <td
+                          key={dateKey}
+                          className={`border border-border p-3 text-center ${
+                            isToday(date) ? "bg-primary/10" : ""
+                          }`}
+                        >
+                          {dayTotal > 0 ? dayTotal.toFixed(1) : ""}
+                        </td>
+                      );
+                    })}
+                    <td className="border border-border p-3 text-right sticky right-0 bg-muted z-10">
+                      {userActivity
+                        .reduce((sum, ua) => {
+                          return (
+                            sum +
+                            Object.values(ua.days).reduce(
+                              (daySum, entries) => daySum + getTotalHoursForDay(entries),
+                              0
+                            )
+                          );
+                        }, 0)
+                        .toFixed(1)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="timesheets" className="space-y-6 mt-6">
 
