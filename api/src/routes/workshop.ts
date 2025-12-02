@@ -882,8 +882,6 @@ router.post("/backfill-assignments", async (req: any, res) => {
             status: 'pending' as any,
             estimatedHours: d.estimatedHours ?? null,
             required: true,
-            isColorKey: d.isColorKey ?? false,
-            assignmentGroup: d.assignmentGroup || null,
           },
         });
         createdCount++;
