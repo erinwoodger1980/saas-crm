@@ -134,8 +134,7 @@ function LeadsPageContent() {
   const [tab, setTab] = useState<LeadStatus>("NEW_ENQUIRY");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // Filter toggle for showing only leads flagged for manual quotes
-  const [manualOnly, setManualOnly] = useState(false);
+  // Removed: manual quotes filter toggle (unused)
 
   // modal
   const [open, setOpen] = useState(false);
@@ -398,11 +397,8 @@ function LeadsPageContent() {
       seen.add(l.id);
       return true;
     });
-    if (manualOnly) {
-      filtered = filtered.filter(l => Boolean(l.custom?.needsManualQuote));
-    }
     return filtered;
-  }, [grouped, tab, manualOnly]);
+  }, [grouped, tab]);
 
   async function handleCreateLead() {
     const input = prompt("Enter lead description:");
@@ -428,7 +424,7 @@ function LeadsPageContent() {
         try {
           openLead({
             id: lead.id,
-            contactName: lead.contactName ?? contactName,
+            contactName: lead.contactName ?? "",
             email: lead.email ?? "",
             status: (lead.status as LeadStatus) ?? "NEW_ENQUIRY",
             custom: lead.custom ?? { provider: "manual" },
@@ -733,21 +729,7 @@ function LeadsPageContent() {
                 </button>
               );
             })}
-          <button
-            onClick={() => setManualOnly(v => !v)}
-            className={`group inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
-              manualOnly
-                ? 'border-transparent bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-[0_14px_34px_-18px_rgba(245,158,11,0.55)]'
-                : 'border-amber-300/70 bg-amber-50/70 text-amber-800 hover:border-amber-400 hover:bg-amber-100'
-            }`}
-            type="button"
-            title="Toggle to show only leads flagged for manual quotes"
-          >
-            <span>{manualOnly ? 'Manual Quotes • On' : 'Manual Quotes'}</span>
-            <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${manualOnly ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700 group-hover:bg-amber-200'}`}>
-              {Object.values(grouped).flat().filter(l => l.custom?.needsManualQuote).length}
-            </span>
-          </button>
+          {/* Removed manual quotes toggle */}
         </div>
 
         <SectionCard

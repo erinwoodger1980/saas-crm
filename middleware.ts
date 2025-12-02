@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const AUTH_COOKIE_NAME = "jid";
 const APP_HOME_PATH = "/dashboard";
+const DEV_NO_AUTH = process.env.NEXT_PUBLIC_DEV_NO_AUTH === '1' || process.env.NEXT_PUBLIC_DEV_NO_AUTH === 'true';
 
 const PUBLIC_EXACT = new Set([
   "/",
@@ -56,6 +57,9 @@ export function middleware(req: NextRequest) {
   }
 
   if (!authToken && requiresAuth(pathname)) {
+    if (DEV_NO_AUTH) {
+      return NextResponse.next();
+    }
     const loginUrl = req.nextUrl.clone();
     loginUrl.pathname = "/login";
     if (pathname) {
