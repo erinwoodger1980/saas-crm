@@ -35,6 +35,8 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
   const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [defaultStatus, setDefaultStatus] = useState<string>('NEW_ENQUIRY');
+  const [createOpportunities, setCreateOpportunities] = useState(false);
 
   const resetState = useCallback(() => {
     setStep('upload');
@@ -43,6 +45,8 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
     setFieldMapping({});
     setImportResult(null);
     setLoading(false);
+    setDefaultStatus('NEW_ENQUIRY');
+    setCreateOpportunities(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -160,6 +164,10 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
       const formData = new FormData();
       formData.append('csvFile', file);
       formData.append('fieldMapping', JSON.stringify(fieldMapping));
+      formData.append('defaultStatus', defaultStatus);
+      if (createOpportunities) {
+        formData.append('createOpportunities', 'true');
+      }
       
       const result = await apiFetch<ImportResult>('/leads/import/execute', {
         method: 'POST',
@@ -257,9 +265,11 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                 <h4 className="font-medium text-blue-900 mb-2">CSV Format Requirements:</h4>
                 <ul className="text-sm text-blue-700 space-y-1">
                   <li>• First row should contain column headers</li>
-                  <li>• Contact Name column is required</li>
-                  <li>• Supported columns: Name, Email, Phone, Company, Description, Source, Status</li>
+                  <li>• Contact Name or Number column is required</li>
+                  <li>• <strong>Basic fields:</strong> Number, Name, Email, Phone, Company, Description, Source, Status</li>
+                  <li>• <strong>Production fields:</strong> Start Date, Delivery Date, Quoted Value, Customer Date</li>
                   <li>• <strong>Questionnaire fields:</strong> Import directly into any of your questionnaire questions</li>
+                  <li>• <strong>Dates:</strong> Use DD/MM/YYYY format (e.g., 24/12/2025)</li>
                   <li>• Use comma separation, quotes for text containing commas</li>
                 </ul>
               </div>
@@ -274,6 +284,43 @@ export default function CsvImportModal({ open, onClose, onImportComplete }: CsvI
                 <p className="text-sm text-gray-500">
                   Found {preview.totalRows} rows. Map your CSV columns to the appropriate lead fields.
                 </p>
+              </div>
+
+              {/* Import Options */}
+              <div className="bg-gray-50 p-4 rounded-lg space-y-4">
+                <h4 className="font-medium text-gray-900">Import Options</h4>
+                
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Default Status (if not specified in CSV)
+                  </label>
+                  <select
+                    value={defaultStatus}
+                    onChange={(e) => setDefaultStatus(e.target.value)}
+                    className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg"
+                  >
+                    <option value="NEW_ENQUIRY">New Enquiry</option>
+                    <option value="INFO_REQUESTED">Info Requested</option>
+                    <option value="READY_TO_QUOTE">Ready to Quote</option>
+                    <option value="QUOTE_SENT">Quote Sent</option>
+                    <option value="WON">Won</option>
+                    <option value="LOST">Lost</option>
+                    <option value="REJECTED">Rejected</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="createOpportunities"
+                    checked={createOpportunities}
+                    onChange={(e) => setCreateOpportunities(e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor="createOpportunities" className="text-sm text-gray-700">
+                    Create opportunities for Won leads (converts to projects automatically)
+                  </label>
+                </div>
               </div>
 
               {/* Field Mapping */}

@@ -425,13 +425,19 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
     
     // Build available fields including basic fields and questionnaire questions
     const availableFields = [
-      { key: 'contactName', label: 'Contact Name', required: true },
+      { key: 'number', label: 'Number', required: false },
+      { key: 'contactName', label: 'Contact Name', required: false },
       { key: 'email', label: 'Email', required: false },
       { key: 'phone', label: 'Phone', required: false },
       { key: 'company', label: 'Company', required: false },
       { key: 'description', label: 'Description', required: false },
       { key: 'source', label: 'Source', required: false },
       { key: 'status', label: 'Status', required: false },
+      { key: 'startDate', label: 'Start Date (Production)', required: false },
+      { key: 'deliveryDate', label: 'Delivery Date', required: false },
+      { key: 'quotedValue', label: 'Quoted Value', required: false },
+      { key: 'estimatedValue', label: 'Estimated Value', required: false },
+      { key: 'dateQuoteSent', label: 'Date Quote Sent', required: false },
       // Add questionnaire questions
       ...leadFieldDefs.map(field => ({
         key: `custom.${field.key}`,
@@ -460,7 +466,7 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
     return res.status(400).json({ error: "CSV file is required" });
   }
   
-  const { fieldMapping } = req.body;
+  const { fieldMapping, defaultStatus, createOpportunities } = req.body;
   if (!fieldMapping) {
     return res.status(400).json({ error: "Field mapping is required" });
   }
@@ -471,6 +477,9 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
   } catch {
     return res.status(400).json({ error: "Invalid field mapping format" });
   }
+  
+  const defaultUiStatus: UiStatus = (defaultStatus as UiStatus) || "NEW_ENQUIRY";
+  const shouldCreateOpportunities = createOpportunities === 'true' || createOpportunities === true;
   
   try {
     const csvText = req.file.buffer.toString('utf-8');
@@ -578,19 +587,24 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
       }
       
       try {
-        // Determine status
-        let uiStatus: UiStatus = "NEW_ENQUIRY";
+        // Determine status - use from CSV if provided, otherwise use default from import options
+        let uiStatus: UiStatus = defaultUiStatus;
         if (leadData.status) {
           const statusMap: Record<string, UiStatus> = {
             'new': 'NEW_ENQUIRY',
+            'new_enquiry': 'NEW_ENQUIRY',
             'contacted': 'INFO_REQUESTED',
+            'info_requested': 'INFO_REQUESTED',
             'qualified': 'READY_TO_QUOTE',
+            'ready_to_quote': 'READY_TO_QUOTE',
             'quote_sent': 'QUOTE_SENT',
             'won': 'WON',
             'lost': 'LOST',
-            'rejected': 'REJECTED'
+            'rejected': 'REJECTED',
+            'disqualified': 'DISQUALIFIED'
           };
-          uiStatus = statusMap[leadData.status.toLowerCase()] || "NEW_ENQUIRY";
+          const statusLower = leadData.status.toLowerCase().trim();
+          uiStatus = statusMap[statusLower] || defaultUiStatus;
         }
         
         // Create custom data object with standard fields and questionnaire responses
@@ -612,7 +626,8 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
           data: {
             tenantId,
             createdById: userId,
-            contactName: leadData.contactName,
+            number: leadData.number || null,
+            contactName: leadData.contactName || null,
             email: leadData.email || "",
             status: uiToDb(uiStatus),
             description: leadData.description || null,
@@ -623,6 +638,44 @@ router.post("/import/execute", upload.single('csvFile'), async (req, res) => {
             custom,
           },
         });
+        
+        // Create opportunity if requested and status is WON
+        if (shouldCreateOpportunities && uiStatus === 'WON') {
+          try {
+            // Check if opportunity already exists
+            const existingOpp = await prisma.opportunity.findUnique({
+              where: { leadId: lead.id }
+            });
+            
+            if (!existingOpp) {
+              const oppTitle = leadData.number && leadData.description 
+                ? `${leadData.number} - ${leadData.description}`
+                : leadData.description || leadData.contactName || 'Imported Project';
+              
+              // Get dates from customData (they're stored there, not in leadData)
+              const startDateStr = customData.startDate;
+              const deliveryDateStr = customData.deliveryDate;
+              
+              await prisma.opportunity.create({
+                data: {
+                  tenantId,
+                  leadId: lead.id,
+                  title: oppTitle,
+                  number: leadData.number || null,
+                  description: leadData.description || null,
+                  stage: 'QUALIFY',
+                  wonAt: new Date(),
+                  valueGBP: leadData.quotedValue || leadData.estimatedValue || null,
+                  ...(startDateStr ? { startDate: new Date(startDateStr) } : {}),
+                  ...(deliveryDateStr ? { deliveryDate: new Date(deliveryDateStr) } : {}),
+                }
+              });
+            }
+          } catch (oppError: any) {
+            console.error('Failed to create opportunity for lead', lead.id, oppError);
+            // Don't fail the entire import if opportunity creation fails
+          }
+        }
         
         // Create initial tasks
         await handleStatusTransition({
