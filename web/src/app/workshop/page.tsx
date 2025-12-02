@@ -1890,28 +1890,11 @@ export default function WorkshopPage() {
                       </Button>
                       <Button
                         variant="outline"
-                        onClick={async () => {
-                          try {
-                            console.log("processDefs:", processDefs);
-                            const firstProcess = processDefs[0];
-                            console.log("firstProcess:", firstProcess);
-                            if (!firstProcess) {
-                              alert("No processes defined. Please set up process definitions first.");
-                              return;
-                            }
-                            const payload: any = { process: firstProcess.code };
-                            // Only include projectId if the process is not generic
-                            if (!firstProcess.isGeneric) {
-                              payload.projectId = project.id;
-                            }
-                            console.log("Sending payload:", payload);
-                            await apiFetch("/workshop/timer/start", { method: "POST", json: payload });
-                            await loadAll();
-                            alert("Timer started");
-                          } catch (e: any) {
-                            console.error("Timer start error:", e);
-                            alert("Failed to start timer: " + (e?.message || "Unknown error"));
-                          }
+                        onClick={() => {
+                          setShowProjectDetails(null);
+                          // Scroll to the WorkshopTimer component
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                          // User can use the timer widget at the top of the page
                         }}
                       >
                         Start Timer
