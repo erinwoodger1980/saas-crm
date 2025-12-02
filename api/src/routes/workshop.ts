@@ -817,6 +817,7 @@ router.post("/timer/start", async (req: any, res) => {
     if (projectId) {
       const project = await prisma.opportunity.findUnique({
         where: { id: String(projectId) },
+        select: { id: true, tenantId: true },
       });
       if (!project || project.tenantId !== tenantId) {
         return res.status(404).json({ error: "project_not_found" });
@@ -852,9 +853,13 @@ router.post("/timer/start", async (req: any, res) => {
     res.json({ ok: true, timer });
   } catch (error: any) {
     console.error('Error starting timer:', error);
+    console.error('Error name:', error?.name);
+    console.error('Error code:', error?.code);
+    console.error('Prisma error meta:', error?.meta);
     res.status(500).json({ 
       error: "internal_error", 
       message: error?.message || "Failed to start timer",
+      code: error?.code,
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
