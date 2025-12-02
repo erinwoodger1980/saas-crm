@@ -7,7 +7,7 @@ services:
     branch: main  # Only deploy from main branch
     buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
     startCommand: pnpm run start
-    preDeployCommand: npx prisma db push --accept-data-loss && pnpm tsx scripts/update-wealden-landing-prod.ts || true
+    preDeployCommand: npx prisma migrate deploy --schema=./prisma/schema.prisma && pnpm tsx scripts/update-wealden-landing-prod.ts || true
     healthCheckPath: /health
     plan: starter
     autoDeploy: false  # Disable auto-deploy - only deploy via GitHub Actions when both CI pass
