@@ -297,9 +297,8 @@ export default function TimesheetsPage() {
   }, [filterUser, filterStatus]);
 
   useEffect(() => {
-    if (activeTab === "activity" || activeTab === "overview") {
-      loadTeamActivity();
-    }
+    // Always load overview activity within timesheets view
+    loadTeamActivity();
     if (activeTab === "projects") {
       loadProjects();
     }
@@ -391,13 +390,13 @@ export default function TimesheetsPage() {
             Review workshop hours, sign off timesheets, and monitor team activity
           </p>
         </div>
-        {activeTab === "timesheets" && (
+        {activeTab === "overview" && (
           <Button onClick={exportPayroll} variant="outline">
             <Download className="w-4 h-4 mr-2" />
             Export Payroll CSV
           </Button>
         )}
-        {(activeTab === "activity" || activeTab === "overview") && (
+        {activeTab === "overview" && (
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => shiftWeek(-1)}>
               <ChevronLeft className="h-4 w-4" />
@@ -422,14 +421,7 @@ export default function TimesheetsPage() {
             <Calendar className="w-4 h-4 mr-2" />
             Projects
           </TabsTrigger>
-          <TabsTrigger value="timesheets" className="rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white">
-            <Clock className="w-4 h-4 mr-2" />
-            Timesheets
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white">
-            <Users className="w-4 h-4 mr-2" />
-            Team Activity
-          </TabsTrigger>
+          {/* Keep activity inside timesheets view: remove separate tab */}
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-6">

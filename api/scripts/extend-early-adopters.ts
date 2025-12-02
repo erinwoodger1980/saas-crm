@@ -9,30 +9,12 @@ async function main() {
   try {
     const targetDate = new Date("2026-01-31T23:59:59.999Z");
 
-    // Find tenants that have at least one early adopter user
-    const tenants = await prisma.tenant.findMany({
-      where: {
-        clientAccounts: { some: {} }, // keep select light; we'll cross-check via users
-      },
-      select: { id: true, trialEndsAt: true },
+    // Extend all tenants to end of January 2026
+    const result = await prisma.tenant.updateMany({
+      data: { trialEndsAt: targetDate },
     });
 
-    let updatedCount = 0;
-    for (const t of tenants) {
-      const hasEarly = await prisma.user.findFirst({
-        where: { tenantId: t.id, isEarlyAdopter: true },
-        select: { id: true },
-      });
-      if (hasEarly) {
-        await prisma.tenant.update({
-          where: { id: t.id },
-          data: { trialEndsAt: targetDate },
-        });
-        updatedCount++;
-      }
-    }
-
-    console.log(`Extended trials for ${updatedCount} tenants to ${targetDate.toISOString()}`);
+    console.log(`Extended trials for ${result.count} tenants to ${targetDate.toISOString()}`);
   } catch (e) {
     console.error("Failed to extend early adopter trials:", e);
     process.exitCode = 1;
