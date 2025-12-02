@@ -155,6 +155,8 @@ import WorkshopSwimlaneTimeline from "./WorkshopSwimlaneTimeline";
 import CalendarWeekView from "./CalendarWeekView";
 import CalendarYearView from "./CalendarYearView";
 import WorkshopTimer, { WorkshopTimerHandle } from "@/components/workshop/WorkshopTimer";
+import { useTaskNotifications } from "@/hooks/useTaskNotifications";
+import { NotificationPrompt, NotificationToggle } from "@/components/notifications/NotificationPrompt";
 
 // Workshop processes are sourced from settings via `/workshop-processes`
 interface ProcDef { id: string; code: string; name: string; sortOrder?: number; isGeneric?: boolean }
@@ -294,6 +296,9 @@ export default function WorkshopPage() {
   const { user } = useCurrentUser();
   const isWorkshopOnly = user?.role === 'workshop';
   const timerRef = useRef<WorkshopTimerHandle>(null);
+  
+  // Task notifications
+  const { permission, requestPermission, isEnabled } = useTaskNotifications(user?.id ? Number(user.id) : null);
   
   const [viewMode, setViewMode] = useState<'calendar' | 'timeline' | 'tasks'>('calendar');
   const [calendarViewMode, setCalendarViewMode] = useState<'week' | 'month' | 'year'>('month'); // New state for calendar sub-views
@@ -1051,6 +1056,11 @@ export default function WorkshopPage() {
 
   return (
     <div className={`space-y-6 ${isWorkshopOnly ? 'p-4' : ''} ${isFullscreen ? 'p-8 bg-slate-50 min-h-screen' : ''}`}>
+      <NotificationPrompt 
+        onEnable={requestPermission}
+        permission={permission}
+      />
+      
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Workshop</h1>
@@ -1062,6 +1072,10 @@ export default function WorkshopPage() {
           )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <NotificationToggle 
+            permission={permission}
+            onEnable={requestPermission}
+          />
           <span className="text-sm text-muted-foreground">{projects.length} project{projects.length !== 1 ? 's' : ''}</span>
           {!isWorkshopOnly && (
             <>
