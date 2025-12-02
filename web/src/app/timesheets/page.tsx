@@ -73,6 +73,7 @@ export default function TimesheetsPage() {
     return d;
   });
   const [activityTo, setActivityTo] = useState<Date>(new Date());
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   async function loadTimesheets() {
     setLoading(true);
@@ -227,6 +228,31 @@ export default function TimesheetsPage() {
     return entries.reduce((sum, e) => sum + e.hours, 0);
   }
 
+  // Group entries by project/job for user detail view
+  function groupEntriesByProject(days: Record<string, TimeEntry[]>) {
+    const projectMap = new Map<string, { name: string; process: string; entries: Record<string, number> }>();
+    
+    Object.entries(days).forEach(([dateKey, entries]) => {
+      entries.forEach((entry) => {
+        const projectId = entry.project?.id || `process_${entry.process}`;
+        const projectName = entry.project?.title || entry.process.replace(/_/g, " ");
+        
+        if (!projectMap.has(projectId)) {
+          projectMap.set(projectId, {
+            name: projectName,
+            process: entry.process,
+            entries: {},
+          });
+        }
+        
+        const project = projectMap.get(projectId)!;
+        project.entries[dateKey] = (project.entries[dateKey] || 0) + entry.hours;
+      });
+    });
+    
+    return Array.from(projectMap.values());
+  }
+
   function getStatusBadge(status: string) {
     switch (status) {
       case "pending":
@@ -298,6 +324,12 @@ export default function TimesheetsPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-6">
+          {selectedUserId && (
+            <Button variant="ghost" size="sm" onClick={() => setSelectedUserId(null)} className="mb-4">
+              ← Back to Overview
+            </Button>
+          )}
+          
           <div className="text-sm text-muted-foreground flex items-center gap-2 mb-4">
             <Calendar className="h-4 w-4" />
             {formatActivityDate(activityFrom)} – {formatActivityDate(activityTo)}
@@ -305,7 +337,156 @@ export default function TimesheetsPage() {
 
           {activityLoading ? (
             <div className="text-center py-12 text-muted-foreground">Loading overview...</div>
+          ) : selectedUserId ? (
+            // User Detail View (Screenshot 1 style)
+            (() => {
+              const selectedUser = userActivity.find((ua) => ua.user.id === selectedUserId);
+              if (!selectedUser) return <div>User not found</div>;
+
+              const projects = groupEntriesByProject(selectedUser.days);
+              const userTotal = Object.values(selectedUser.days).reduce(
+                (sum, entries) => sum + getTotalHoursForDay(entries),
+                0
+              );
+
+              return (
+                <div className="space-y-4">
+                  {/* User header */}
+                  <Card className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="w-16 h-16 rounded-lg flex items-center justify-center text-white text-2xl font-bold"
+                        style={{ backgroundColor: selectedUser.user.workshopColor || "#6b7280" }}
+                      >
+                        {(selectedUser.user.name || selectedUser.user.email)[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold">{selectedUser.user.name || selectedUser.user.email}</h2>
+                        <p className="text-muted-foreground">{selectedUser.user.email}</p>
+                      </div>
+                      <div className="ml-auto text-right">
+                        <div className="text-3xl font-bold text-blue-600">{userTotal.toFixed(1)} HOURS</div>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Projects/Jobs grid */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="border border-border p-3 bg-muted text-left font-semibold sticky left-0 bg-muted z-10 min-w-[200px]">
+                            DESCRIPTION / JOB NAME
+                          </th>
+                          {dateRange.map((date) => {
+                            const dayName = date.toLocaleDateString("en-GB", { weekday: "short" });
+                            return (
+                              <th
+                                key={date.toISOString()}
+                                className={`border border-border p-3 text-center font-semibold min-w-[80px] ${
+                                  isToday(date) ? "bg-primary/10" : "bg-muted"
+                                }`}
+                              >
+                                <div className="text-xs">{dayName.charAt(0)}</div>
+                              </th>
+                            );
+                          })}
+                          <th className="border border-border p-3 bg-muted text-right font-semibold sticky right-0 bg-muted z-10">
+                            TOTAL ↓
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projects.map((project, idx) => {
+                          const projectTotal = Object.values(project.entries).reduce((sum, h) => sum + h, 0);
+
+                          return (
+                            <tr key={idx} className="hover:bg-muted/50">
+                              <td className="border border-border p-3 sticky left-0 bg-background z-10">
+                                <div className="font-medium">{project.name}</div>
+                                <div className="text-xs text-muted-foreground italic">
+                                  - {project.process.toLowerCase().replace(/_/g, " ")}
+                                </div>
+                              </td>
+                              {dateRange.map((date) => {
+                                const dateKey = date.toISOString().split("T")[0];
+                                const hours = project.entries[dateKey] || 0;
+
+                                const getColorClass = (hours: number) => {
+                                  if (hours === 0) return "bg-background";
+                                  if (hours < 3) return "bg-green-100 text-green-900";
+                                  if (hours < 6) return "bg-green-200 text-green-900";
+                                  if (hours <= 9) return "bg-green-300 text-green-900";
+                                  return "bg-green-400 text-green-900";
+                                };
+
+                                return (
+                                  <td
+                                    key={dateKey}
+                                    className={`border border-border p-3 text-center font-semibold ${getColorClass(
+                                      hours
+                                    )} ${isToday(date) ? "ring-2 ring-primary ring-inset" : ""}`}
+                                  >
+                                    {hours > 0 ? hours.toFixed(1) : ""}
+                                  </td>
+                                );
+                              })}
+                              <td className="border border-border p-3 text-right font-bold sticky right-0 bg-background z-10">
+                                {projectTotal.toFixed(1)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        
+                        {/* Non-assigned hours row */}
+                        <tr className="bg-muted/30">
+                          <td className="border border-border p-3 sticky left-0 bg-muted/30 z-10 font-medium">
+                            Non-assigned hours
+                          </td>
+                          {dateRange.map((date) => {
+                            const dateKey = date.toISOString().split("T")[0];
+                            return (
+                              <td key={dateKey} className="border border-border p-3 text-center">
+                                0
+                              </td>
+                            );
+                          })}
+                          <td className="border border-border p-3 text-right sticky right-0 bg-muted/30 z-10">
+                            0
+                          </td>
+                        </tr>
+
+                        {/* Total row */}
+                        <tr className="bg-muted font-bold">
+                          <td className="border border-border p-3 sticky left-0 bg-muted z-10">TOTAL</td>
+                          {dateRange.map((date) => {
+                            const dateKey = date.toISOString().split("T")[0];
+                            const dayTotal = projects.reduce((sum, p) => sum + (p.entries[dateKey] || 0), 0);
+
+                            return (
+                              <td
+                                key={dateKey}
+                                className={`border border-border p-3 text-center ${
+                                  isToday(date) ? "bg-primary/10" : ""
+                                }`}
+                              >
+                                {dayTotal > 0 ? dayTotal.toFixed(1) : ""}
+                              </td>
+                            );
+                          })}
+                          <td className="border border-border p-3 text-right sticky right-0 bg-muted z-10">
+                            {userTotal.toFixed(1)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()
           ) : (
+            // Overview Grid (Screenshot 4 style)
+            (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
@@ -341,7 +522,7 @@ export default function TimesheetsPage() {
                     );
 
                     return (
-                      <tr key={ua.user.id} className="hover:bg-muted/50">
+                      <tr key={ua.user.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => setSelectedUserId(ua.user.id)}>
                         <td className="border border-border p-3 sticky left-0 bg-background z-10">
                           <div className="flex items-center gap-2">
                             <div
@@ -422,6 +603,7 @@ export default function TimesheetsPage() {
                 </tbody>
               </table>
             </div>
+            )
           )}
         </TabsContent>
 
