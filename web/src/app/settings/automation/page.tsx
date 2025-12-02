@@ -9,8 +9,9 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Edit, Trash2, Play, Pause, Zap } from "lucide-react";
+import { Plus, Edit, Trash2, Play, Pause, Zap, Sparkles } from "lucide-react";
 import { X } from "lucide-react";
+import AutomationAI from "@/components/automation/AutomationAI";
 
 type AutomationRule = {
   id: string;
@@ -58,6 +59,8 @@ export default function AutomationSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
   const [editingRule, setEditingRule] = useState<AutomationRule | null>(null);
+  const [showAI, setShowAI] = useState(false);
+  const [editorMode, setEditorMode] = useState<'manual' | 'ai'>('manual');
 
   // Field ↔ Task Links
   const [links, setLinks] = useState<any[]>([]);
@@ -168,19 +171,32 @@ export default function AutomationSettingsPage() {
     }
   };
 
-  const openEditor = (rule?: AutomationRule) => {
+  const openEditor = (rule?: AutomationRule, mode: 'manual' | 'ai' = 'manual') => {
     setEditingRule(rule || null);
+    setEditorMode(mode);
     setShowEditor(true);
   };
 
   const closeEditor = () => {
     setShowEditor(false);
     setEditingRule(null);
+    setEditorMode('manual');
   };
 
   const handleSaved = () => {
     closeEditor();
     loadRules();
+  };
+
+  const handleAIRuleGenerated = (rule: Omit<AutomationRule, 'id' | 'createdAt' | 'updatedAt'>) => {
+    // Pre-fill the manual editor with the AI-generated rule
+    setEditingRule({
+      id: '',
+      ...rule,
+      createdAt: '',
+      updatedAt: '',
+    });
+    setEditorMode('manual');
   };
 
   return (
@@ -197,10 +213,16 @@ export default function AutomationSettingsPage() {
               Automatically create and schedule tasks based on field changes
             </p>
           </div>
-          <Button onClick={() => openEditor()} className="gap-2">
-            <Plus className="h-4 w-4" />
-            New Rule
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => openEditor(undefined, 'ai')} variant="outline" className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50">
+              <Sparkles className="h-4 w-4" />
+              AI Assistant
+            </Button>
+            <Button onClick={() => openEditor()} className="gap-2">
+              <Plus className="h-4 w-4" />
+              New Rule
+            </Button>
+          </div>
         </div>
 
         {/* Quick Start Guide */}
@@ -357,7 +379,26 @@ export default function AutomationSettingsPage() {
       </div>
 
       {/* Editor Dialog */}
-      {showEditor && (
+      {showEditor && editorMode === 'ai' ? (
+        <Dialog open={showEditor} onOpenChange={closeEditor}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-purple-600" />
+                Create Automation with AI
+              </DialogTitle>
+              <DialogDescription>
+                Describe what you want to automate in plain English, and AI will create the rule for you
+              </DialogDescription>
+            </DialogHeader>
+            <AutomationAI
+              tenantId={tenantId}
+              onRuleGenerated={handleAIRuleGenerated}
+              onCancel={closeEditor}
+            />
+          </DialogContent>
+        </Dialog>
+      ) : showEditor ? (
         <RuleEditor
           open={showEditor}
           onClose={closeEditor}
@@ -368,7 +409,7 @@ export default function AutomationSettingsPage() {
           users={users}
           links={links}
         />
-      )}
+      ) : null}
 
       {showLinkEditor && (
         <FieldLinkEditor

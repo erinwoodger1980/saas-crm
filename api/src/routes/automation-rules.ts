@@ -2,6 +2,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../prisma";
 import { z } from "zod";
+import { send } from "../services/ai/openai";
 
 const router = Router();
 
@@ -179,6 +180,151 @@ router.patch("/:id", async (req: Request, res: Response) => {
     }
     console.error("[AutomationRules PATCH] Error:", error);
     res.status(500).json({ error: "Failed to update automation rule" });
+  }
+});
+
+/**
+ * POST /automation-rules/generate
+ * Generate an automation rule from natural language using AI
+ */
+router.post("/generate", async (req: Request, res: Response) => {
+  try {
+    const tenantId = req.headers["x-tenant-id"] as string;
+    if (!tenantId) return res.status(400).json({ error: "Missing x-tenant-id" });
+
+    const { prompt } = req.body;
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: "Missing or invalid 'prompt' field" });
+    }
+
+    // Get available users for the tenant
+    const users = await prisma.user.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, email: true },
+    });
+
+    const systemPrompt = `You are an automation assistant for a CRM system. Convert user requests into automation rules.
+
+AVAILABLE ENTITIES:
+- OPPORTUNITY: A potential sale/project
+- LEAD: An incoming inquiry
+- PROJECT: A won opportunity (in production)
+- QUOTE: A price quote sent to customer
+
+AVAILABLE TRIGGERS:
+- FIELD_UPDATED: When a specific field changes
+- STATUS_CHANGED: When record status changes
+- RECORD_CREATED: When a new record is created
+- DATE_REACHED: When a date is reached
+
+AVAILABLE FIELDS BY ENTITY:
+- OPPORTUNITY: deliveryDate, installationStartDate, stage, value, probability, customerName, contactEmail, contactPhone, status, paintOrderedAt, paintExpectedAt, paintReceivedAt, timbersOrderedAt, timbersExpectedAt, timbersReceivedAt, glassOrderedAt, glassExpectedAt, glassReceivedAt, ironmongeryOrderedAt, ironmongeryExpectedAt, ironmongeryReceivedAt
+- LEAD: status, source, assignedTo, customerName, contactEmail, contactPhone, notes
+- PROJECT: deliveryDate, installationStartDate, status, actualStartDate, actualEndDate, progress
+- QUOTE: dateQuoteSent, dateQuoteExpires, totalValue, status, customerName
+
+AVAILABLE TASK TYPES:
+- MANUAL: Generic manual task
+- COMMUNICATION: Phone call, email, meeting
+- FOLLOW_UP: Follow up with customer
+- SCHEDULED: Scheduled appointment
+- FORM: Fill out a form
+- CHECKLIST: Complete checklist items
+
+TASK PRIORITIES:
+- LOW: Not urgent
+- MEDIUM: Normal priority (default)
+- HIGH: Important
+- URGENT: Critical/time-sensitive
+
+AVAILABLE USERS:
+${users.map(u => \`- \${u.id}: \${u.name} (\${u.email})\`).join('\\n')}
+
+DUE DATE CALCULATION:
+- For relative dates: use "RELATIVE_TO_FIELD" with fieldName and offsetDays (negative for before, positive for after)
+  Example: 20 days before delivery = { type: "RELATIVE_TO_FIELD", fieldName: "deliveryDate", offsetDays: -20 }
+- For fixed dates: use "FIXED_DATE" with fixedDate as ISO string
+
+IMPORTANT RULES:
+1. taskInstanceKey should be unique per automation to prevent duplicate tasks
+   Format: "auto_{entityType}_{entityId}_description" (use lowercase entityType in the key)
+   Example: "auto_OPPORTUNITY_{opportunityId}_order_materials"
+2. rescheduleOnTriggerChange: true means if the trigger field changes again, update the task due date
+3. Always include a clear, descriptive name for the rule
+4. Use appropriate task types (MANUAL for ordering, COMMUNICATION for calls, etc.)
+5. If user mentions assigning to someone, match their name/email to a user ID
+
+OUTPUT FORMAT:
+Return ONLY valid JSON matching this exact schema (no markdown, no explanation):
+{
+  "name": "Descriptive rule name",
+  "enabled": true,
+  "trigger": {
+    "type": "FIELD_UPDATED",
+    "entityType": "OPPORTUNITY",
+    "fieldName": "deliveryDate"
+  },
+  "actions": [{
+    "type": "CREATE_TASK",
+    "taskTitle": "Task name",
+    "taskDescription": "Optional description",
+    "taskType": "MANUAL",
+    "priority": "MEDIUM",
+    "assignToUserId": "user-id-or-omit",
+    "relatedTo": "OPPORTUNITY",
+    "dueAtCalculation": {
+      "type": "RELATIVE_TO_FIELD",
+      "fieldName": "deliveryDate",
+      "offsetDays": -20
+    },
+    "rescheduleOnTriggerChange": true,
+    "taskInstanceKey": "auto_OPPORTUNITY_{opportunityId}_unique_key"
+  }]
+}`;
+
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: prompt },
+    ];
+
+    const result = await send("gpt-4o", messages, { temperature: 0.2, max_tokens: 2000 });
+    
+    // Parse the AI response
+    let automationRule: any;
+    try {
+      // Remove markdown code blocks if present
+      let jsonText = result.text.trim();
+      if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '');
+      }
+      automationRule = JSON.parse(jsonText);
+    } catch (parseError) {
+      console.error("[AutomationRules Generate] Failed to parse AI response:", result.text);
+      return res.status(500).json({ error: "Failed to parse AI response", details: result.text.slice(0, 500) });
+    }
+
+    // Validate against schema
+    try {
+      const validated = AutomationRuleSchema.parse(automationRule);
+      res.json({ 
+        rule: validated,
+        usage: result.usage,
+        rawResponse: result.text 
+      });
+    } catch (validationError) {
+      if (validationError instanceof z.ZodError) {
+        console.error("[AutomationRules Generate] Validation failed:", validationError.errors);
+        return res.status(400).json({ 
+          error: "Generated rule failed validation", 
+          details: validationError.errors,
+          generated: automationRule 
+        });
+      }
+      throw validationError;
+    }
+  } catch (error) {
+    console.error("[AutomationRules Generate] Error:", error);
+    res.status(500).json({ error: "Failed to generate automation rule" });
   }
 });
 
