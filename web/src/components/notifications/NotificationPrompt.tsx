@@ -47,34 +47,34 @@ export function NotificationPrompt({ onEnable, permission }: NotificationPromptP
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-in slide-in-from-bottom-5">
-      <Card>
-        <CardHeader className="pb-3">
+    <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-in slide-in-from-bottom-5 touch-auto">
+      <Card className="bg-white border-2 border-slate-200 shadow-2xl">
+        <CardHeader className="pb-3 bg-white">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
               <Bell className="h-5 w-5 text-blue-600" />
-              <CardTitle className="text-lg">Enable Task Notifications</CardTitle>
+              <CardTitle className="text-lg text-slate-900">Enable Task Notifications</CardTitle>
             </div>
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0"
+              className="h-6 w-6 p-0 touch-auto"
               onClick={handleDismiss}
             >
               <X className="h-4 w-4" />
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          <CardDescription className="mb-4">
+        <CardContent className="bg-white">
+          <CardDescription className="mb-4 text-slate-700">
             Get notified with sound and vibration when new tasks are assigned to you. Stay on top of your work!
           </CardDescription>
           <div className="flex gap-2">
-            <Button onClick={handleEnable} className="flex-1">
+            <Button onClick={handleEnable} className="flex-1 touch-auto">
               <Bell className="mr-2 h-4 w-4" />
               Enable Notifications
             </Button>
-            <Button variant="outline" onClick={handleDismiss}>
+            <Button variant="outline" onClick={handleDismiss} className="touch-auto">
               Not Now
             </Button>
           </div>
