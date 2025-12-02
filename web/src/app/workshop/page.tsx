@@ -1893,9 +1893,13 @@ export default function WorkshopPage() {
                         onClick={async () => {
                           try {
                             const firstProcess = processDefs[0];
-                            const payload: any = { process: firstProcess?.code };
+                            if (!firstProcess) {
+                              alert("No processes defined. Please set up process definitions first.");
+                              return;
+                            }
+                            const payload: any = { process: firstProcess.code };
                             // Only include projectId if the process is not generic
-                            if (firstProcess && !firstProcess.isGeneric) {
+                            if (!firstProcess.isGeneric) {
                               payload.projectId = project.id;
                             }
                             await apiFetch("/workshop/timer/start", { method: "POST", json: payload });
