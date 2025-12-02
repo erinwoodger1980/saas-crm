@@ -1196,6 +1196,8 @@ router.post("/timer/start", async (req: any, res) => {
     const userId = req.auth.userId as string;
     const { projectId, process, notes } = req.body || {};
 
+    console.log(`[timer/start] tenant=${tenantId} user=${userId} projectId=${projectId} process=${process}`);
+
     if (!process) {
       return res.status(400).json({ error: "process_required" });
     }
@@ -1262,11 +1264,28 @@ router.post("/timer/start", async (req: any, res) => {
 
     // Mark process as in_progress if projectId is provided
     if (projectId) {
-      const processDef = await prisma.workshopProcessDefinition.findFirst({
-        where: { tenantId, code: String(process) },
-      });
+      try {
+        // Resolve process by code or name fallback
+        let processDef = await prisma.workshopProcessDefinition.findFirst({
+          where: { tenantId, code: String(process) },
+        });
+        if (!processDef) {
+          processDef = await prisma.workshopProcessDefinition.findFirst({
+            where: {
+              tenantId,
+              name: { equals: String(process), mode: 'insensitive' } as any,
+            },
+          });
+          if (processDef) {
+            console.warn(`[timer/start] Process code not found; matched by name ${processDef.name} (${processDef.code})`);
+          }
+        }
 
-      if (processDef) {
+        if (!processDef) {
+          console.error(`[timer/start] process_not_found for tenant=${tenantId} codeOrName=${process}`);
+          return res.status(404).json({ error: 'process_not_found', details: `Process ${String(process)} not defined` });
+        }
+
         await prisma.projectProcessAssignment.upsert({
           where: {
             opportunityId_processDefinitionId: {
@@ -1284,8 +1303,9 @@ router.post("/timer/start", async (req: any, res) => {
             status: 'in_progress',
           },
         });
-      } else {
-        return res.status(404).json({ error: 'process_not_found', details: `Process ${String(process)} not defined` });
+      } catch (upErr: any) {
+        console.error('[timer/start] upsert assignment failed:', upErr?.message || upErr);
+        // Don't fail timer start for assignment issues; include warning in response
       }
     }
 
