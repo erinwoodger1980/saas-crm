@@ -1046,14 +1046,15 @@ export default function WorkshopPage() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sm text-muted-foreground">{projects.length} project{projects.length !== 1 ? 's' : ''}</span>
           <Button 
             variant={viewMode === 'tasks' ? 'default' : 'outline'} 
             size="sm" 
             onClick={() => setViewMode('tasks')}
+            className="font-bold"
           >
-            My Tasks
+            📋 My Tasks
           </Button>
           {!isWorkshopOnly && (
             <>
