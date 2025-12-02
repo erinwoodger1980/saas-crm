@@ -1605,7 +1605,17 @@ export default function WorkshopPage() {
           {/* Filter Controls */}
           <Card className="p-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">My Workshop Tasks</h2>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setViewMode('calendar')}
+                  className="font-medium"
+                >
+                  ← Back to Schedule
+                </Button>
+                <h2 className="text-lg font-semibold">My Workshop Tasks</h2>
+              </div>
               <div className="flex gap-2">
                 <Button
                   variant={tasksFilter === 'open' ? 'default' : 'outline'}
