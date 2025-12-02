@@ -238,7 +238,7 @@ TASK PRIORITIES:
 - URGENT: Critical/time-sensitive
 
 AVAILABLE USERS:
-${users.map(u => \`- \${u.id}: \${u.name} (\${u.email})\`).join('\\n')}
+${users.map(u => `- ${u.id}: ${u.name} (${u.email})`).join('\n')}
 
 DUE DATE CALCULATION:
 - For relative dates: use "RELATIVE_TO_FIELD" with fieldName and offsetDays (negative for before, positive for after)
