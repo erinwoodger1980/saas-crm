@@ -1301,20 +1301,22 @@ model UserPreference {
 }
 
 model WorkshopProcessDefinition {
-  id                String                     @id @default(cuid())
-  tenantId          String
-  code              String
-  name              String
-  sortOrder         Int                        @default(0)
-  requiredByDefault Boolean                    @default(true)
-  estimatedHours    Decimal?
-  isColorKey        Boolean                    @default(false)
-  assignmentGroup   String?
-  isGeneric         Boolean                    @default(false)
-  createdAt         DateTime                   @default(now())
-  updatedAt         DateTime                   @updatedAt
-  projectProcesses  ProjectProcessAssignment[]
-  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                   String                     @id @default(cuid())
+  tenantId             String
+  code                 String
+  name                 String
+  sortOrder            Int                        @default(0)
+  requiredByDefault    Boolean                    @default(true)
+  estimatedHours       Decimal?
+  isColorKey           Boolean                    @default(false)
+  assignmentGroup      String?
+  isGeneric            Boolean                    @default(false)
+  isLastManufacturing  Boolean                    @default(false)
+  isLastInstallation   Boolean                    @default(false)
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  projectProcesses     ProjectProcessAssignment[]
+  tenant               Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, code])
   @@index([tenantId, sortOrder])
@@ -1328,7 +1330,9 @@ model ProjectProcessAssignment {
   required            Boolean                   @default(true)
   assignedUserId      String?
   estimatedHours      Decimal?
+  status              String                    @default("pending") // pending, in_progress, completed
   completedAt         DateTime?
+  completionComments  String?
   createdAt           DateTime                  @default(now())
   updatedAt           DateTime                  @updatedAt
   assignedUser        User?                     @relation(fields: [assignedUserId], references: [id])

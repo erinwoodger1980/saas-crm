@@ -565,15 +565,13 @@ router.post("/time", async (req: any, res) => {
     },
   });
 
-  // If markComplete is true and we have a projectId, mark the process as complete
-  if (markComplete && projectId) {
-    // Find the process definition for this process type (code matches the process enum value)
+  // If we have a projectId, mark process as in_progress (unless it's being marked complete)
+  if (projectId && !markComplete) {
     const processDef = await prisma.workshopProcessDefinition.findFirst({
       where: { tenantId, code: String(process) },
     });
 
     if (processDef) {
-      // Find or create the assignment and mark it complete
       await prisma.projectProcessAssignment.upsert({
         where: {
           opportunityId_processDefinitionId: {
@@ -585,12 +583,69 @@ router.post("/time", async (req: any, res) => {
           tenantId,
           opportunityId: String(projectId),
           processDefinitionId: processDef.id,
-          completedAt: new Date() as any,
+          status: 'in_progress',
         },
         update: {
-          completedAt: new Date() as any,
+          status: 'in_progress',
         },
       });
+    }
+  }
+
+  // If markComplete is true and we have a projectId, mark the process as complete
+  if (markComplete && projectId) {
+    // Find the process definition for this process type (code matches the process enum value)
+    const processDef = await prisma.workshopProcessDefinition.findFirst({
+      where: { tenantId, code: String(process) },
+    });
+
+    if (processDef) {
+      // Find or create the assignment and mark it complete
+      const assignment = await prisma.projectProcessAssignment.upsert({
+        where: {
+          opportunityId_processDefinitionId: {
+            opportunityId: String(projectId),
+            processDefinitionId: processDef.id,
+          },
+        },
+        create: {
+          tenantId,
+          opportunityId: String(projectId),
+          processDefinitionId: processDef.id,
+          status: 'completed',
+          completedAt: new Date() as any,
+          completionComments: req.body.completionComments || null,
+        },
+        update: {
+          status: 'completed',
+          completedAt: new Date() as any,
+          completionComments: req.body.completionComments || null,
+        },
+      });
+
+      // Check if this is the last manufacturing or installation process
+      if (processDef.isLastManufacturing || processDef.isLastInstallation) {
+        const project = await prisma.opportunity.findUnique({
+          where: { id: String(projectId) },
+        });
+
+        if (project) {
+          let newStatus = project.status;
+          
+          if (processDef.isLastManufacturing && !processDef.isLastInstallation) {
+            newStatus = 'complete_not_installed' as any;
+          } else if (processDef.isLastInstallation) {
+            newStatus = 'complete' as any;
+          }
+
+          if (newStatus !== project.status) {
+            await prisma.opportunity.update({
+              where: { id: String(projectId) },
+              data: { status: newStatus },
+            });
+          }
+        }
+      }
     }
   }
 
@@ -850,6 +905,33 @@ router.post("/timer/start", async (req: any, res) => {
       include: includeClause,
     });
 
+    // Mark process as in_progress if projectId is provided
+    if (projectId) {
+      const processDef = await prisma.workshopProcessDefinition.findFirst({
+        where: { tenantId, code: String(process) },
+      });
+
+      if (processDef) {
+        await prisma.projectProcessAssignment.upsert({
+          where: {
+            opportunityId_processDefinitionId: {
+              opportunityId: String(projectId),
+              processDefinitionId: processDef.id,
+            },
+          },
+          create: {
+            tenantId,
+            opportunityId: String(projectId),
+            processDefinitionId: processDef.id,
+            status: 'in_progress',
+          },
+          update: {
+            status: 'in_progress',
+          },
+        });
+      }
+    }
+
     res.json({ ok: true, timer });
   } catch (error: any) {
     console.error('Error starting timer:', error);
@@ -917,6 +999,80 @@ router.delete("/timer", async (req: any, res) => {
   });
 
   res.json({ ok: true, deleted: result.count });
+});
+
+// PATCH /workshop/process-status - Update process status and optionally mark complete
+// Body: { projectId, processCode, status: 'in_progress' | 'completed', completionComments? }
+router.patch("/process-status", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const { projectId, processCode, status, completionComments } = req.body || {};
+  
+  if (!projectId || !processCode || !status) {
+    return res.status(400).json({ error: "invalid_payload" });
+  }
+
+  // Find the process definition
+  const processDef = await prisma.workshopProcessDefinition.findFirst({
+    where: { tenantId, code: processCode },
+  });
+
+  if (!processDef) {
+    return res.status(404).json({ error: "process_not_found" });
+  }
+
+  // Update or create the assignment
+  const assignment = await prisma.projectProcessAssignment.upsert({
+    where: {
+      opportunityId_processDefinitionId: {
+        opportunityId: projectId,
+        processDefinitionId: processDef.id,
+      },
+    },
+    create: {
+      tenantId,
+      opportunityId: projectId,
+      processDefinitionId: processDef.id,
+      status,
+      completedAt: status === 'completed' ? new Date() : null,
+      completionComments: completionComments || null,
+    },
+    update: {
+      status,
+      completedAt: status === 'completed' ? new Date() : undefined,
+      completionComments: status === 'completed' ? (completionComments || null) : undefined,
+    },
+    include: {
+      processDefinition: true,
+    },
+  });
+
+  // If marking as completed and this is the last manufacturing or installation process, update project status
+  if (status === 'completed' && (processDef.isLastManufacturing || processDef.isLastInstallation)) {
+    const project = await prisma.opportunity.findUnique({
+      where: { id: projectId },
+    });
+
+    if (project) {
+      let newStatus = project.status;
+      
+      if (processDef.isLastManufacturing && !processDef.isLastInstallation) {
+        // Last manufacturing process - mark as complete not installed
+        newStatus = 'complete_not_installed' as any;
+      } else if (processDef.isLastInstallation) {
+        // Last installation process - mark as complete
+        newStatus = 'complete' as any;
+      }
+
+      if (newStatus !== project.status) {
+        await prisma.opportunity.update({
+          where: { id: projectId },
+          data: { status: newStatus },
+        });
+      }
+    }
+  }
+
+  res.json({ ok: true, assignment });
 });
 
 export default router;

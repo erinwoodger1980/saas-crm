@@ -18,7 +18,7 @@ router.get("/", async (req: any, res) => {
 // POST /workshop-processes - Create a new process definition
 router.post("/", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
-  const { code, name, sortOrder, requiredByDefault, estimatedHours, isColorKey, assignmentGroup, isGeneric } = req.body;
+  const { code, name, sortOrder, requiredByDefault, estimatedHours, isColorKey, assignmentGroup, isGeneric, isLastManufacturing, isLastInstallation } = req.body;
   
   if (!code || !name) {
     return res.status(400).json({ error: "code and name are required" });
@@ -36,6 +36,8 @@ router.post("/", async (req: any, res) => {
         isColorKey: isColorKey ?? false,
         assignmentGroup: assignmentGroup || null,
         isGeneric: isGeneric ?? false,
+        isLastManufacturing: isLastManufacturing ?? false,
+        isLastInstallation: isLastInstallation ?? false,
       },
     });
     
@@ -52,7 +54,7 @@ router.post("/", async (req: any, res) => {
 router.patch("/:id", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const id = req.params.id;
-  const { name, sortOrder, requiredByDefault, estimatedHours, isColorKey, assignmentGroup, isGeneric } = req.body;
+  const { name, sortOrder, requiredByDefault, estimatedHours, isColorKey, assignmentGroup, isGeneric, isLastManufacturing, isLastInstallation } = req.body;
   
   const existing = await prisma.workshopProcessDefinition.findFirst({
     where: { id, tenantId },
@@ -72,6 +74,8 @@ router.patch("/:id", async (req: any, res) => {
   if (isColorKey !== undefined) updates.isColorKey = isColorKey;
   if (assignmentGroup !== undefined) updates.assignmentGroup = assignmentGroup || null;
   if (isGeneric !== undefined) updates.isGeneric = isGeneric;
+  if (isLastManufacturing !== undefined) updates.isLastManufacturing = isLastManufacturing;
+  if (isLastInstallation !== undefined) updates.isLastInstallation = isLastInstallation;
   
   const process = await prisma.workshopProcessDefinition.update({
     where: { id },
