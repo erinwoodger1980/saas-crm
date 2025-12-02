@@ -142,6 +142,7 @@ model User {
   signupCompleted           Boolean                    @default(false)
   workshopHoursPerDay       Decimal?                   @default(8)
   workshopColor             String?
+  profilePictureUrl         String?
   isDeveloper               Boolean                    @default(false)
   workshopProcessCodes      String[]
   examplePhotos             ExamplePhoto[]

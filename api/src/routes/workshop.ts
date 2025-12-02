@@ -31,7 +31,7 @@ router.get("/team-activity", async (req: any, res) => {
   // Get all users
   const users = await prisma.user.findMany({
     where: { tenantId },
-    select: { id: true, name: true, email: true, workshopColor: true },
+    select: { id: true, name: true, email: true, workshopColor: true, profilePictureUrl: true },
     orderBy: { name: "asc" },
   });
 
@@ -52,7 +52,7 @@ router.get("/team-activity", async (req: any, res) => {
   const userActivity: Record<string, any> = {};
   for (const u of users) {
     userActivity[u.id] = {
-      user: { id: u.id, name: u.name, email: u.email, workshopColor: u.workshopColor },
+      user: { id: u.id, name: u.name, email: u.email, workshopColor: u.workshopColor, profilePictureUrl: u.profilePictureUrl },
       days: {} as Record<string, any[]>,
     };
   }
@@ -248,6 +248,34 @@ router.patch("/users/:userId/hours", async (req: any, res) => {
     where: { id: userId },
     data: { workshopHoursPerDay: Number(hoursPerDay) },
     select: { id: true, name: true, email: true, workshopHoursPerDay: true, workshopColor: true },
+  });
+  
+  res.json({ ok: true, user: updated });
+});
+
+// PATCH /workshop/users/:userId/profile-picture { profilePictureUrl: string }
+router.patch("/users/:userId/profile-picture", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+  const userId = String(req.params.userId);
+  const { profilePictureUrl } = req.body || {};
+  
+  if (!profilePictureUrl || typeof profilePictureUrl !== 'string') {
+    return res.status(400).json({ error: "invalid_profile_picture_url" });
+  }
+  
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, tenantId: true },
+  });
+  
+  if (!user || user.tenantId !== tenantId) {
+    return res.status(404).json({ error: "not_found" });
+  }
+  
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { profilePictureUrl },
+    select: { id: true, name: true, email: true, profilePictureUrl: true },
   });
   
   res.json({ ok: true, user: updated });
@@ -1128,6 +1156,18 @@ router.patch("/project/:projectId/materials", async (req: any, res) => {
   });
 
   res.json({ ok: true, project: updated });
+});
+
+// GET /workshop/timers/active - Get all active timers for tenant (for showing who's working)
+router.get("/timers/active", async (req: any, res) => {
+  const tenantId = req.auth.tenantId as string;
+
+  const timers = await (prisma as any).workshopTimer.findMany({
+    where: { tenantId },
+    select: { userId: true },
+  });
+
+  res.json({ ok: true, timers });
 });
 
 // GET /workshop/timer - Get active timer for current user

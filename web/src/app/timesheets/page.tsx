@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, Check, X, Download, Calendar, Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { Clock, Check, X, Download, Calendar, Users, ChevronLeft, ChevronRight, Upload } from "lucide-react";
 
 type Timesheet = {
   id: string;
@@ -52,8 +52,9 @@ type TimeEntry = {
 };
 
 type UserActivity = {
-  user: { id: string; name: string; email: string; workshopColor: string | null };
+  user: { id: string; name: string; email: string; workshopColor: string | null; profilePictureUrl?: string | null };
   days: Record<string, TimeEntry[]>;
+  hasActiveTimer?: boolean;
 };
 
 type Project = {
@@ -78,12 +79,27 @@ export default function TimesheetsPage() {
   const [activityLoading, setActivityLoading] = useState(false);
   const [userActivity, setUserActivity] = useState<UserActivity[]>([]);
   const [activityFrom, setActivityFrom] = useState<Date>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 6);
-    return d;
+    // Get Monday of current week
+    const today = new Date();
+    const day = today.getDay();
+    const diff = day === 0 ? -6 : 1 - day; // If Sunday, go back 6 days, else go to Monday
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + diff);
+    monday.setHours(0, 0, 0, 0);
+    return monday;
   });
-  const [activityTo, setActivityTo] = useState<Date>(new Date());
+  const [activityTo, setActivityTo] = useState<Date>(() => {
+    // Get Sunday of current week
+    const today = new Date();
+    const day = today.getDay();
+    const diff = day === 0 ? 0 : 7 - day; // If Sunday, stay, else go to Sunday
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() + diff);
+    sunday.setHours(23, 59, 59, 999);
+    return sunday;
+  });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [activeTimers, setActiveTimers] = useState<Record<string, boolean>>({});
 
   // Projects state
   const [projects, setProjects] = useState<Project[]>([]);
@@ -169,6 +185,26 @@ export default function TimesheetsPage() {
     }
   }
 
+  async function uploadProfilePicture(userId: string, file: File) {
+    try {
+      // Convert to data URL for simplicity
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const dataUrl = reader.result as string;
+        await apiFetch(`/workshop/users/${userId}/profile-picture`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profilePictureUrl: dataUrl }),
+        });
+        // Reload activity to show new picture
+        await loadTeamActivity();
+      };
+      reader.readAsDataURL(file);
+    } catch (e: any) {
+      alert("Failed to upload: " + (e?.message || "Unknown error"));
+    }
+  }
+
   async function loadTeamActivity() {
     setActivityLoading(true);
     try {
@@ -178,6 +214,18 @@ export default function TimesheetsPage() {
         `/workshop/team-activity?from=${fromStr}&to=${toStr}`
       );
       setUserActivity(res.users || []);
+      
+      // Load active timers
+      try {
+        const timersRes = await apiFetch<{ timers: Array<{ userId: string }> }>("/workshop/timers/active");
+        const timersMap: Record<string, boolean> = {};
+        (timersRes.timers || []).forEach((t) => {
+          timersMap[t.userId] = true;
+        });
+        setActiveTimers(timersMap);
+      } catch (e) {
+        console.error("Failed to load active timers:", e);
+      }
     } catch (e) {
       console.error("Failed to load team activity:", e);
     } finally {
@@ -226,10 +274,21 @@ export default function TimesheetsPage() {
 
   function goToToday() {
     const today = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - 6);
-    setActivityFrom(weekStart);
-    setActivityTo(today);
+    // Get Monday of current week
+    const day = today.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+    
+    // Get Sunday of current week
+    const diffToSunday = day === 0 ? 0 : 7 - day;
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() + diffToSunday);
+    sunday.setHours(23, 59, 59, 999);
+    
+    setActivityFrom(monday);
+    setActivityTo(sunday);
   }
 
   useEffect(() => {
@@ -319,14 +378,16 @@ export default function TimesheetsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-8 space-y-6 bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Clock className="w-8 h-8" />
+          <h1 className="text-3xl font-bold flex items-center gap-3 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-xl text-white">
+              <Clock className="w-7 h-7" />
+            </div>
             Timesheets & Team Activity
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-slate-600 mt-2 text-sm">
             Review workshop hours, sign off timesheets, and monitor team activity
           </p>
         </div>
@@ -352,20 +413,20 @@ export default function TimesheetsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="overview">
+        <TabsList className="bg-white/80 border border-indigo-200/70 shadow-sm rounded-xl p-1">
+          <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white">
             <Users className="w-4 h-4 mr-2" />
             Overview
           </TabsTrigger>
-          <TabsTrigger value="projects">
+          <TabsTrigger value="projects" className="rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white">
             <Calendar className="w-4 h-4 mr-2" />
             Projects
           </TabsTrigger>
-          <TabsTrigger value="timesheets">
+          <TabsTrigger value="timesheets" className="rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white">
             <Clock className="w-4 h-4 mr-2" />
             Timesheets
           </TabsTrigger>
-          <TabsTrigger value="activity">
+          <TabsTrigger value="activity" className="rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white">
             <Users className="w-4 h-4 mr-2" />
             Team Activity
           </TabsTrigger>
@@ -373,7 +434,12 @@ export default function TimesheetsPage() {
 
         <TabsContent value="overview" className="space-y-6 mt-6">
           {selectedUserId && (
-            <Button variant="ghost" size="sm" onClick={() => setSelectedUserId(null)} className="mb-4">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setSelectedUserId(null)} 
+              className="mb-4 bg-white/80 border-indigo-200/70 shadow-sm hover:bg-gradient-to-r hover:from-blue-500 hover:to-purple-500 hover:text-white transition-all"
+            >
               ← Back to Overview
             </Button>
           )}
@@ -400,13 +466,38 @@ export default function TimesheetsPage() {
               return (
                 <div className="space-y-4">
                   {/* User header */}
-                  <Card className="p-6">
+                  <Card className="p-6 bg-white/80 border-indigo-200/70 shadow-lg rounded-xl backdrop-blur-sm">
                     <div className="flex items-center gap-4">
-                      <div
-                        className="w-16 h-16 rounded-lg flex items-center justify-center text-white text-2xl font-bold"
-                        style={{ backgroundColor: selectedUser.user.workshopColor || "#6b7280" }}
-                      >
-                        {(selectedUser.user.name || selectedUser.user.email)[0].toUpperCase()}
+                      <div className="relative group">
+                        {selectedUser.user.profilePictureUrl ? (
+                          <img
+                            src={selectedUser.user.profilePictureUrl}
+                            alt={selectedUser.user.name || selectedUser.user.email}
+                            className="w-16 h-16 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div
+                            className="w-16 h-16 rounded-lg flex items-center justify-center text-white text-2xl font-bold"
+                            style={{ backgroundColor: selectedUser.user.workshopColor || "#6b7280" }}
+                          >
+                            {(selectedUser.user.name || selectedUser.user.email)[0].toUpperCase()}
+                          </div>
+                        )}
+                        {selectedUser.hasActiveTimer && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white" title="Timer running" />
+                        )}
+                        <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                          <Upload className="w-6 h-6 text-white" />
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) uploadProfilePicture(selectedUser.user.id, file);
+                            }}
+                          />
+                        </label>
                       </div>
                       <div>
                         <h2 className="text-2xl font-bold">{selectedUser.user.name || selectedUser.user.email}</h2>
@@ -419,7 +510,7 @@ export default function TimesheetsPage() {
                   </Card>
 
                   {/* Projects/Jobs grid */}
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto bg-white/80 rounded-xl shadow-lg border border-indigo-200/70 backdrop-blur-sm">
                     <table className="w-full border-collapse">
                       <thead>
                         <tr>
@@ -535,7 +626,7 @@ export default function TimesheetsPage() {
           ) : (
             // Overview Grid (Screenshot 4 style)
             (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto bg-white/80 rounded-xl shadow-lg border border-indigo-200/70 backdrop-blur-sm">
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
@@ -573,11 +664,24 @@ export default function TimesheetsPage() {
                       <tr key={ua.user.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => setSelectedUserId(ua.user.id)}>
                         <td className="border border-border p-3 sticky left-0 bg-background z-10">
                           <div className="flex items-center gap-2">
-                            <div
-                              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                              style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
-                            >
-                              {(ua.user.name || ua.user.email)[0].toUpperCase()}
+                            <div className="relative">
+                              {ua.user.profilePictureUrl ? (
+                                <img
+                                  src={ua.user.profilePictureUrl}
+                                  alt={ua.user.name || ua.user.email}
+                                  className="w-8 h-8 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div
+                                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                                  style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
+                                >
+                                  {(ua.user.name || ua.user.email)[0].toUpperCase()}
+                                </div>
+                              )}
+                              {ua.hasActiveTimer && (
+                                <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" title="Timer running" />
+                              )}
                             </div>
                             <span className="font-medium">{ua.user.name || ua.user.email}</span>
                           </div>
