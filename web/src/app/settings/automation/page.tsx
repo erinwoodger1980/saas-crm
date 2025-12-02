@@ -532,7 +532,7 @@ function RuleEditor({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto z-[70]">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{rule ? "Edit Automation Rule" : "Create Automation Rule"}</DialogTitle>
           <DialogDescription>
@@ -921,7 +921,7 @@ function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boo
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl z-[70]">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{link ? "Edit Field ↔ Task Link" : "Create Field ↔ Task Link"}</DialogTitle>
           <DialogDescription>
