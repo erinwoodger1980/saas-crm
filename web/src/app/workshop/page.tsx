@@ -1048,6 +1048,13 @@ export default function WorkshopPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{projects.length} project{projects.length !== 1 ? 's' : ''}</span>
+          <Button 
+            variant={viewMode === 'tasks' ? 'default' : 'outline'} 
+            size="sm" 
+            onClick={() => setViewMode('tasks')}
+          >
+            My Tasks
+          </Button>
           {!isWorkshopOnly && (
             <>
               <Button variant="outline" size="sm" onClick={() => window.location.href = '/timesheets'}>
@@ -1070,13 +1077,6 @@ export default function WorkshopPage() {
                 onClick={() => setViewMode('timeline')}
               >
                 Timeline (Swimlane)
-              </Button>
-              <Button 
-                variant={viewMode === 'tasks' ? 'default' : 'outline'} 
-                size="sm" 
-                onClick={() => setViewMode('tasks')}
-              >
-                My Tasks
               </Button>
               <div className="h-6 w-px bg-border" />
               <Button 
