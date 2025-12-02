@@ -576,7 +576,7 @@ function RuleEditor({
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[60]">
                     <SelectItem value="OPPORTUNITY">Opportunity</SelectItem>
                     <SelectItem value="LEAD">Lead</SelectItem>
                     <SelectItem value="PROJECT">Project (Won Opportunity)</SelectItem>
@@ -591,7 +591,7 @@ function RuleEditor({
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[60]">
                     <SelectItem value="FIELD_UPDATED">Field Updated</SelectItem>
                     <SelectItem value="STATUS_CHANGED">Status Changed</SelectItem>
                   </SelectContent>
@@ -605,7 +605,7 @@ function RuleEditor({
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[60]">
                       {availableFields[entityType]?.map((field) => (
                         <SelectItem key={field} value={field}>
                           {field}
@@ -638,7 +638,7 @@ function RuleEditor({
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[60]">
                       <SelectItem value="MANUAL">Manual Task</SelectItem>
                       <SelectItem value="COMMUNICATION">Communication</SelectItem>
                       <SelectItem value="CHECKLIST">Checklist</SelectItem>
@@ -664,7 +664,7 @@ function RuleEditor({
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[60]">
                       <SelectItem value="LOW">Low</SelectItem>
                       <SelectItem value="MEDIUM">Medium</SelectItem>
                       <SelectItem value="HIGH">High</SelectItem>
@@ -679,7 +679,7 @@ function RuleEditor({
                     <SelectTrigger>
                       <SelectValue placeholder="Unassigned" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[60]">
                       <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
                       {users.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
@@ -701,7 +701,7 @@ function RuleEditor({
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[60]">
                         {availableFields[entityType]?.map((field) => (
                           <SelectItem key={field} value={field}>
                             {field}
@@ -942,7 +942,7 @@ function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boo
                 }
               }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[60]">
                   {models.map(m => (
                     <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                   ))}
@@ -954,7 +954,7 @@ function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boo
               <label className="text-sm font-medium mb-2 block">Field Path</label>
               <Select value={fieldPath} onValueChange={setFieldPath}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent className="max-h-[300px]">
+                <SelectContent className="max-h-[300px] z-[60]">
                   {(modelFields[model] || []).map((field) => (
                     <SelectItem key={field} value={field}>{field}</SelectItem>
                   ))}
@@ -975,7 +975,7 @@ function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boo
                 <label className="text-sm font-medium mb-2 block">Condition</label>
                 <Select value={condKind} onValueChange={setCondKind}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[60]">
                     <SelectItem value="NON_NULL">Field is set</SelectItem>
                     <SelectItem value="EQUALS">Field equals value</SelectItem>
                     <SelectItem value="DATE_SET">Field is a date</SelectItem>
@@ -998,7 +998,7 @@ function FieldLinkEditor({ open, onClose, onSaved, tenantId, link }: { open: boo
                 <label className="text-sm font-medium mb-2 block">Action</label>
                 <Select value={actionKind} onValueChange={setActionKind}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[60]">
                     <SelectItem value="SET_NOW">Set to current date</SelectItem>
                     <SelectItem value="SET_VALUE">Set to specific value</SelectItem>
                     <SelectItem value="SET_TRUE">Set to true</SelectItem>
