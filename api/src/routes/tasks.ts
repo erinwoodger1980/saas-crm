@@ -2285,7 +2285,7 @@ router.get("/workshop", async (req: any, res) => {
   try {
     // Build status filter
     const statusFilter = status
-      ? status.split(",").filter((s: string) => ["OPEN", "IN_PROGRESS", "DONE", "BLOCKED", "CANCELLED"].includes(s.toUpperCase()))
+      ? status.split(",").map((s: string) => s.toUpperCase()).filter((s: string) => ["OPEN", "IN_PROGRESS", "DONE", "BLOCKED", "CANCELLED"].includes(s))
       : ["OPEN", "IN_PROGRESS"];
 
     const tasks = await prisma.task.findMany({
