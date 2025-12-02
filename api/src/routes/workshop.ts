@@ -630,18 +630,18 @@ router.post("/time", async (req: any, res) => {
         });
 
         if (project) {
-          let newStatus = project.status;
+          let newStage = project.stage;
           
           if (processDef.isLastManufacturing && !processDef.isLastInstallation) {
-            newStatus = 'complete_not_installed' as any;
+            newStage = 'COMPLETE_NOT_INSTALLED' as any;
           } else if (processDef.isLastInstallation) {
-            newStatus = 'complete' as any;
+            newStage = 'COMPLETE' as any;
           }
 
-          if (newStatus !== project.status) {
+          if (newStage !== project.stage) {
             await prisma.opportunity.update({
               where: { id: String(projectId) },
-              data: { status: newStatus },
+              data: { stage: newStage },
             });
           }
         }
@@ -1053,20 +1053,20 @@ router.patch("/process-status", async (req: any, res) => {
     });
 
     if (project) {
-      let newStatus = project.status;
+      let newStage = project.stage;
       
       if (processDef.isLastManufacturing && !processDef.isLastInstallation) {
         // Last manufacturing process - mark as complete not installed
-        newStatus = 'complete_not_installed' as any;
+        newStage = 'COMPLETE_NOT_INSTALLED' as any;
       } else if (processDef.isLastInstallation) {
         // Last installation process - mark as complete
-        newStatus = 'complete' as any;
+        newStage = 'COMPLETE' as any;
       }
 
-      if (newStatus !== project.status) {
+      if (newStage !== project.stage) {
         await prisma.opportunity.update({
           where: { id: projectId },
-          data: { status: newStatus },
+          data: { stage: newStage },
         });
       }
     }
