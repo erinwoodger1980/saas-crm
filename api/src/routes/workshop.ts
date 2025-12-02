@@ -1211,9 +1211,32 @@ router.post("/timer/start", async (req: any, res) => {
       }
     }
 
-    // Stop any existing timer for this user
-    await (prisma as any).workshopTimer.deleteMany({
-      where: { tenantId, userId },
+    // Atomically stop any existing timer for this user by creating a time entry first
+    await prisma.$transaction(async (tx) => {
+      const existing = await (tx as any).workshopTimer.findFirst({
+        where: { tenantId, userId },
+        orderBy: { startedAt: 'desc' },
+      });
+      if (existing) {
+        const startedAt = new Date(existing.startedAt);
+        const now = new Date();
+        const hoursWorked = (now.getTime() - startedAt.getTime()) / (1000 * 60 * 60);
+        const roundedHours = Math.round(hoursWorked * 4) / 4;
+        if (roundedHours > 0) {
+          await (tx as any).timeEntry.create({
+            data: {
+              tenantId,
+              userId,
+              projectId: existing.projectId,
+              process: existing.process,
+              hours: roundedHours,
+              notes: existing.notes || null,
+              date: new Date(),
+            },
+          });
+        }
+        await (tx as any).workshopTimer.delete({ where: { id: existing.id } });
+      }
     });
 
     // Create new timer
@@ -1261,6 +1284,8 @@ router.post("/timer/start", async (req: any, res) => {
             status: 'in_progress',
           },
         });
+      } else {
+        return res.status(404).json({ error: 'process_not_found', details: `Process ${String(process)} not defined` });
       }
     }
 
