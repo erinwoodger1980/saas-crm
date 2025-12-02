@@ -152,31 +152,50 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
   }
 
   async function swapTimer() {
-    if (!activeTimer) return;
-    if (!process) return;
+    if (!activeTimer) {
+      console.error("[swapTimer] No active timer");
+      return;
+    }
+    if (!process) {
+      console.error("[swapTimer] No process selected");
+      return;
+    }
     const procDef = processes.find(p => p.code === process);
     const isGeneric = procDef?.isGeneric || false;
     // For non-generic timers, projectId is required
-    if (!isGeneric && !projectId) return;
+    if (!isGeneric && !projectId) {
+      console.error("[swapTimer] No project selected for non-generic process");
+      return;
+    }
     
+    console.log("[swapTimer] Showing completion dialog");
     // Show completion dialog for old process
     setCompletionMode("swap");
     setShowCompletionDialog(true);
   }
   
   async function handleSwapTimerComplete(comments: string) {
-    if (!activeTimer) return;
-    if (!process) return;
+    if (!activeTimer) {
+      console.error("[handleSwapTimerComplete] No active timer");
+      return;
+    }
+    if (!process) {
+      console.error("[handleSwapTimerComplete] No process selected");
+      return;
+    }
     const procDef = processes.find(p => p.code === process);
     const isGeneric = procDef?.isGeneric || false;
     
+    console.log("[handleSwapTimerComplete] Starting timer swap with completion");
     setLoading(true);
     try {
       // Stop current timer
+      console.log("[handleSwapTimerComplete] Stopping current timer");
       await apiFetch<{ ok: boolean; timeEntry: any; hours: number | string }>("/workshop/timer/stop", { method: "POST" });
       
       // Mark old process as complete if we have a project
       if (activeTimer.projectId && activeTimer.process) {
+        console.log("[handleSwapTimerComplete] Marking old process as complete");
         await apiFetch("/workshop/process-status", {
           method: "PATCH",
           json: {
@@ -194,6 +213,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         payload.projectId = projectId;
       }
       
+      console.log("[handleSwapTimerComplete] Starting new timer");
       const response = await apiFetch<{ ok: boolean; timer: Timer }>("/workshop/timer/start", {
         method: "POST",
         json: payload,
@@ -205,12 +225,12 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         setProjectId("");
         setProcess("");
         setNotes("");
-        if (onTimerChange) onTimerChange();
+        if (onTimerChange) await onTimerChange();
         alert("Process marked complete and timer swapped.");
       }
     } catch (e: any) {
+      console.error("[handleSwapTimerComplete] Error:", e);
       alert("Failed to swap timer: " + (e?.message || "Unknown error"));
-      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -255,16 +275,24 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
   }
 
   async function stopTimer() {
-    if (!activeTimer) return;
+    if (!activeTimer) {
+      console.error("[stopTimer] No active timer");
+      return;
+    }
     
+    console.log("[stopTimer] Showing completion dialog");
     // Show completion dialog
     setCompletionMode("stop");
     setShowCompletionDialog(true);
   }
   
   async function handleStopTimerComplete(comments: string) {
-    if (!activeTimer) return;
+    if (!activeTimer) {
+      console.error("[handleStopTimerComplete] No active timer");
+      return;
+    }
     
+    console.log("[handleStopTimerComplete] Starting timer stop with completion");
     setLoading(true);
     try {
       const response = await apiFetch<{ ok: boolean; timeEntry: any; hours: number | string }>("/workshop/timer/stop", {
@@ -274,6 +302,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
       if (response.ok) {
         // Mark process as complete if we have a project
         if (activeTimer.projectId && activeTimer.process) {
+          console.log("[handleStopTimerComplete] Marking process as complete");
           await apiFetch("/workshop/process-status", {
             method: "PATCH",
             json: {
@@ -288,7 +317,7 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         setActiveTimer(null);
         setElapsed("");
         setShowCompletionDialog(false);
-        if (onTimerChange) onTimerChange();
+        if (onTimerChange) await onTimerChange();
         
         // Show success message with hours logged
         const logged = Number((response as any).hours);
@@ -299,8 +328,8 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         }
       }
     } catch (e: any) {
+      console.error("[handleStopTimerComplete] Error:", e);
       alert("Failed to stop timer: " + (e?.message || "Unknown error"));
-      console.error(e);
     } finally {
       setLoading(false);
     }
