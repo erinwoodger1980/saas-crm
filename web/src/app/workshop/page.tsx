@@ -1892,7 +1892,9 @@ export default function WorkshopPage() {
                         variant="outline"
                         onClick={async () => {
                           try {
+                            console.log("processDefs:", processDefs);
                             const firstProcess = processDefs[0];
+                            console.log("firstProcess:", firstProcess);
                             if (!firstProcess) {
                               alert("No processes defined. Please set up process definitions first.");
                               return;
@@ -1902,10 +1904,12 @@ export default function WorkshopPage() {
                             if (!firstProcess.isGeneric) {
                               payload.projectId = project.id;
                             }
+                            console.log("Sending payload:", payload);
                             await apiFetch("/workshop/timer/start", { method: "POST", json: payload });
                             await loadAll();
                             alert("Timer started");
                           } catch (e: any) {
+                            console.error("Timer start error:", e);
                             alert("Failed to start timer: " + (e?.message || "Unknown error"));
                           }
                         }}
