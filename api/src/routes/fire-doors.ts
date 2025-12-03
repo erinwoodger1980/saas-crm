@@ -117,6 +117,74 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
     // 8. Create import and line items in transaction
     const result = await prisma.$transaction(async (tx) => {
+      // Extract MJS number and client name from first row if available
+      const firstRow = parsedRows[0];
+      const mjsNumber = firstRow.code || sourceName.replace('.csv', '');
+      const clientName = firstRow.location || 'New Fire Door Customer';
+      
+      // Create Fire Door Schedule Project if this is a new order (no projectId provided)
+      let fireDoorProjectId = projectId;
+      if (!projectId) {
+        // Check if project already exists with this MJS number
+        const existingProject = await tx.fireDoorScheduleProject.findFirst({
+          where: { tenantId, mjsNumber },
+        });
+        
+        if (!existingProject) {
+          // Create new Fire Door Schedule Project
+          const fireDoorProject = await tx.fireDoorScheduleProject.create({
+            data: {
+              tenantId,
+              mjsNumber,
+              clientName,
+              jobName: `${clientName} - ${mjsNumber}`,
+              dateReceived: new Date(), // Current date when put in red folder
+              jobLocation: 'RED FOLDER', // Set to RED FOLDER status
+              signOffStatus: 'NOT LOOKED AT',
+              lastUpdatedBy: userId,
+              lastUpdatedAt: new Date(),
+            },
+          });
+          fireDoorProjectId = fireDoorProject.id;
+          
+          // Create lead for this client if doesn't exist
+          let lead = await tx.lead.findFirst({
+            where: { tenantId, contactName: clientName },
+          });
+          
+          if (!lead) {
+            lead = await tx.lead.create({
+              data: {
+                tenantId,
+                createdById: userId,
+                contactName: clientName,
+                capturedAt: new Date(),
+                status: 'INFO_REQUESTED',
+              },
+            });
+          }
+          
+          // Create opportunity for this project
+          const opportunity = await tx.opportunity.create({
+            data: {
+              tenantId,
+              leadId: lead.id,
+              title: `${clientName} - ${mjsNumber}`,
+              stage: 'READY_TO_QUOTE',
+              createdAt: new Date(),
+            },
+          });
+          
+          // Link opportunity to fire door project
+          await tx.fireDoorScheduleProject.update({
+            where: { id: fireDoorProject.id },
+            data: { projectId: opportunity.id },
+          });
+        } else {
+          fireDoorProjectId = existingProject.id;
+        }
+      }
+      
       // Create import record
       const importRecord = await tx.fireDoorImport.create({
         data: {
@@ -127,7 +195,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
           totalValue,
           currency: 'GBP',
           rowCount,
-          projectId,
+          projectId: fireDoorProjectId,
           orderId,
         },
       });

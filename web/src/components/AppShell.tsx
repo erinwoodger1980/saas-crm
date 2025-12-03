@@ -231,24 +231,39 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="text-sm text-slate-600">
             <span className="font-medium text-[rgb(var(--brand))]">Joinery AI</span> · Ask about sales, pipeline, timecards…
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-2 rounded-md hover:bg-slate-100 px-2 py-1">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>U</AvatarFallback>
-              </Avatar>
-              <span className="text-sm text-slate-700">Account</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => {
-                  localStorage.removeItem("jwt");
-                  location.href = "/login";
-                }}
-              >
-                Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                localStorage.removeItem("jwt");
+                document.cookie = 'jauth=; path=/; max-age=0';
+                location.href = "/login";
+              }}
+              className="text-sm"
+            >
+              Log out
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex items-center gap-2 rounded-md hover:bg-slate-100 px-2 py-1">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback>U</AvatarFallback>
+                </Avatar>
+                <span className="text-sm text-slate-700">Account</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    localStorage.removeItem("jwt");
+                    document.cookie = 'jauth=; path=/; max-age=0';
+                    location.href = "/login";
+                  }}
+                >
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </header>
 
         <main className="p-6 max-w-7xl w-full mx-auto">{children}</main>
