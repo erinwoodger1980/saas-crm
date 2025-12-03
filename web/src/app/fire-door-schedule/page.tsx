@@ -1133,14 +1133,42 @@ export default function FireDoorSchedulePage() {
               </p>
             </div>
             <div className="flex gap-3">
-              <Button 
-                variant="outline" 
-                className="bg-white/50 border-slate-200 hover:bg-white"
-                onClick={() => router.push("/fire-doors/imports")}
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Import CSV
-              </Button>
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    
+                    try {
+                      setLoading(true);
+                      const csvContent = await file.text();
+                      const result = await apiFetch<any>('/fire-door-schedule/trigger-bom-import', {
+                        method: 'POST',
+                        json: { csvContent }
+                      });
+                      
+                      alert(`Import complete!\nCreated: ${result.summary.created}\nUpdated: ${result.summary.updated}\nSkipped: ${result.summary.skipped}\nErrors: ${result.summary.errors}`);
+                      loadData();
+                    } catch (error: any) {
+                      alert(`Import failed: ${error.message || 'Unknown error'}`);
+                    } finally {
+                      setLoading(false);
+                      e.target.value = ''; // Reset file input
+                    }
+                  }}
+                />
+                <Button 
+                  variant="outline" 
+                  className="bg-white/50 border-slate-200 hover:bg-white"
+                  as="span"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Import CSV
+                </Button>
+              </label>
               <Button
                 variant="outline"
                 className="bg-white/50 border-2 border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:border-blue-500/50"

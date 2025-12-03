@@ -113,6 +113,7 @@ import fireDoorsRouter from "./routes/fire-doors";
 import fireDoorScheduleRouter from "./routes/fire-door-schedule";
 import fireDoorScheduleSyncRouter from "./routes/fire-door-schedule-sync";
 import fireDoorImportBomRouter from "./routes/fire-door-import-bom";
+import fireDoorImportTriggerRouter from "./routes/fire-door-import-trigger";
 import fireDoorEnableRouter from "./routes/fire-door-enable";
 import fireDoorProductionRouter from "./routes/fire-door-production";
 import fireDoorQuotesRouter from "./routes/fire-door-quotes";
@@ -666,6 +667,7 @@ app.use("/fire-doors", requireAuth, fireDoorsRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorScheduleRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorScheduleSyncRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorImportBomRouter);
+app.use("/fire-door-schedule", requireAuth, fireDoorImportTriggerRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorEnableRouter);
 app.use("/fire-door-production", requireAuth, fireDoorProductionRouter);
 // Fire door quotes (dedicated quote builder for fire doors)
