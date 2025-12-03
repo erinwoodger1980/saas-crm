@@ -166,6 +166,48 @@ export default function FireDoorSchedulePage() {
     try { localStorage.setItem("fds:columnFilters", JSON.stringify(columnFilters)); } catch {}
   }, [columnFilters]);
 
+  // Load dropdown options from localStorage
+  useEffect(() => {
+    const savedJobLocations = localStorage.getItem("fds:jobLocationOptions");
+    const savedSignOff = localStorage.getItem("fds:signOffOptions");
+    const savedScheduledBy = localStorage.getItem("fds:scheduledByOptions");
+    const savedMaterialStatus = localStorage.getItem("fds:materialStatusOptions");
+    const savedIronmongeryStatus = localStorage.getItem("fds:ironmongeryStatusOptions");
+    const savedPaperworkStatus = localStorage.getItem("fds:paperworkStatusOptions");
+    const savedTransport = localStorage.getItem("fds:transportOptions");
+
+    if (savedJobLocations) setJobLocationOptions(JSON.parse(savedJobLocations));
+    if (savedSignOff) setSignOffOptions(JSON.parse(savedSignOff));
+    if (savedScheduledBy) setScheduledByOptions(JSON.parse(savedScheduledBy));
+    if (savedMaterialStatus) setMaterialStatusOptions(JSON.parse(savedMaterialStatus));
+    if (savedIronmongeryStatus) setIronmongeryStatusOptions(JSON.parse(savedIronmongeryStatus));
+    if (savedPaperworkStatus) setPaperworkStatusOptions(JSON.parse(savedPaperworkStatus));
+    if (savedTransport) setTransportOptions(JSON.parse(savedTransport));
+  }, []);
+
+  // Save dropdown options to localStorage
+  useEffect(() => {
+    try { localStorage.setItem("fds:jobLocationOptions", JSON.stringify(jobLocationOptions)); } catch {}
+  }, [jobLocationOptions]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:signOffOptions", JSON.stringify(signOffOptions)); } catch {}
+  }, [signOffOptions]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:scheduledByOptions", JSON.stringify(scheduledByOptions)); } catch {}
+  }, [scheduledByOptions]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:materialStatusOptions", JSON.stringify(materialStatusOptions)); } catch {}
+  }, [materialStatusOptions]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:ironmongeryStatusOptions", JSON.stringify(ironmongeryStatusOptions)); } catch {}
+  }, [ironmongeryStatusOptions]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:paperworkStatusOptions", JSON.stringify(paperworkStatusOptions)); } catch {}
+  }, [paperworkStatusOptions]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:transportOptions", JSON.stringify(transportOptions)); } catch {}
+  }, [transportOptions]);
+
   async function loadData() {
     setLoading(true);
     try {
@@ -1503,7 +1545,7 @@ export default function FireDoorSchedulePage() {
                   else if (editingConfigField === 'transportStatus') { currentOptions = transportOptions; currentSetter = setTransportOptions; }
                   
                   return currentOptions.map((opt, idx) => (
-                    <div key={opt + idx} className="flex items-center gap-2 text-xs">
+                    <div key={idx} className="flex items-center gap-2 text-xs">
                       <input
                         className="flex-1 px-2 py-1 border rounded bg-white"
                         value={opt}
