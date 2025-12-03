@@ -27,26 +27,39 @@ router.get("/team-activity", async (req: any, res) => {
   const tenantId = req.auth.tenantId as string;
   const from = req.query.from ? new Date(String(req.query.from)) : new Date(new Date().setDate(new Date().getDate() - 7));
   const to = req.query.to ? new Date(String(req.query.to)) : new Date();
+  let users = [];
+  let entries = [];
+  let errorWarning = null;
+  try {
+    // Get all users
+    users = await prisma.user.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, email: true, workshopColor: true, profilePictureUrl: true },
+      orderBy: { name: "asc" },
+    });
+  } catch (userErr: any) {
+    console.error('[team-activity] Failed to load users:', userErr?.message || userErr);
+    return res.status(500).json({ error: 'internal_error', message: 'Failed to load users', details: userErr?.message });
+  }
 
-  // Get all users
-  const users = await prisma.user.findMany({
-    where: { tenantId },
-    select: { id: true, name: true, email: true, workshopColor: true, profilePictureUrl: true },
-    orderBy: { name: "asc" },
-  });
-
-  // Get time entries for the period
-  const entries = await (prisma as any).timeEntry.findMany({
-    where: {
-      tenantId,
-      date: { gte: from, lte: to },
-    },
-    include: {
-      user: { select: { id: true, name: true } },
-      project: { select: { id: true, title: true } },
-    },
-    orderBy: [{ date: "desc" }, { userId: "asc" }],
-  });
+  try {
+    // Get time entries for the period
+    entries = await (prisma as any).timeEntry.findMany({
+      where: {
+        tenantId,
+        date: { gte: from, lte: to },
+      },
+      include: {
+        user: { select: { id: true, name: true } },
+        project: { select: { id: true, title: true } },
+      },
+      orderBy: [{ date: "desc" }, { userId: "asc" }],
+    });
+  } catch (entryErr: any) {
+    console.error('[team-activity] Failed to load time entries:', entryErr?.message || entryErr);
+    errorWarning = 'Failed to load time entries.';
+    entries = [];
+  }
 
   // Group by user and date
   const userActivity: Record<string, any> = {};
@@ -71,7 +84,7 @@ router.get("/team-activity", async (req: any, res) => {
     });
   }
 
-  res.json({ ok: true, from, to, users: Object.values(userActivity) });
+  res.json({ ok: true, from, to, users: Object.values(userActivity), warning: errorWarning });
 });
 
 // GET /workshop/projects - List all active projects with time totals (JobSheet view)
@@ -1191,6 +1204,7 @@ router.get("/timer", async (req: any, res) => {
 // Body: { projectId?, process, notes? }
 // projectId is optional for generic processes like HOLIDAY, ADMIN, CLEANING
 router.post("/timer/start", async (req: any, res) => {
+  let assignmentWarning = null;
   try {
     const tenantId = req.auth.tenantId as string;
     const userId = req.auth.userId as string;
@@ -1214,53 +1228,62 @@ router.post("/timer/start", async (req: any, res) => {
     }
 
     // Atomically stop any existing timer for this user by creating a time entry first
-    await prisma.$transaction(async (tx) => {
-      const existing = await (tx as any).workshopTimer.findFirst({
-        where: { tenantId, userId },
-        orderBy: { startedAt: 'desc' },
-      });
-      if (existing) {
-        const startedAt = new Date(existing.startedAt);
-        const now = new Date();
-        const hoursWorked = (now.getTime() - startedAt.getTime()) / (1000 * 60 * 60);
-        const roundedHours = Math.round(hoursWorked * 4) / 4;
-        if (roundedHours > 0) {
-          await (tx as any).timeEntry.create({
-            data: {
-              tenantId,
-              userId,
-              projectId: existing.projectId,
-              process: existing.process,
-              hours: roundedHours,
-              notes: existing.notes || null,
-              date: new Date(),
-            },
-          });
+    try {
+      await prisma.$transaction(async (tx) => {
+        const existing = await (tx as any).workshopTimer.findFirst({
+          where: { tenantId, userId },
+          orderBy: { startedAt: 'desc' },
+        });
+        if (existing) {
+          const startedAt = new Date(existing.startedAt);
+          const now = new Date();
+          const hoursWorked = (now.getTime() - startedAt.getTime()) / (1000 * 60 * 60);
+          const roundedHours = Math.round(hoursWorked * 4) / 4;
+          if (roundedHours > 0) {
+            await (tx as any).timeEntry.create({
+              data: {
+                tenantId,
+                userId,
+                projectId: existing.projectId,
+                process: existing.process,
+                hours: roundedHours,
+                notes: existing.notes || null,
+                date: new Date(),
+              },
+            });
+          }
+          await (tx as any).workshopTimer.delete({ where: { id: existing.id } });
         }
-        await (tx as any).workshopTimer.delete({ where: { id: existing.id } });
-      }
-    });
+      });
+    } catch (txErr: any) {
+      console.error('[timer/start] transaction failed:', txErr?.message || txErr);
+      assignmentWarning = 'Failed to stop previous timer or create time entry.';
+    }
 
     // Create new timer
     const includeClause: any = {
       user: { select: { id: true, name: true, email: true } },
     };
-    
-    // Only include project relation if projectId is provided
     if (projectId) {
       includeClause.project = { select: { id: true, title: true, number: true, description: true } };
     }
 
-    const timer = await (prisma as any).workshopTimer.create({
-      data: {
-        tenantId,
-        userId,
-        projectId: projectId ? String(projectId) : null,
-        process: String(process),
-        notes: notes ? String(notes) : null,
-      },
-      include: includeClause,
-    });
+    let timer = null;
+    try {
+      timer = await (prisma as any).workshopTimer.create({
+        data: {
+          tenantId,
+          userId,
+          projectId: projectId ? String(projectId) : null,
+          process: String(process),
+          notes: notes ? String(notes) : null,
+        },
+        include: includeClause,
+      });
+    } catch (timerErr: any) {
+      console.error('[timer/start] failed to create new timer:', timerErr?.message || timerErr);
+      return res.status(500).json({ error: "internal_error", message: timerErr?.message || "Failed to create timer" });
+    }
 
     // Mark process as in_progress if projectId is provided
     if (projectId) {
@@ -1283,33 +1306,33 @@ router.post("/timer/start", async (req: any, res) => {
 
         if (!processDef) {
           console.error(`[timer/start] process_not_found for tenant=${tenantId} codeOrName=${process}`);
-          return res.status(404).json({ error: 'process_not_found', details: `Process ${String(process)} not defined` });
-        }
-
-        await prisma.projectProcessAssignment.upsert({
-          where: {
-            opportunityId_processDefinitionId: {
+          assignmentWarning = `Process ${String(process)} not defined.`;
+        } else {
+          await prisma.projectProcessAssignment.upsert({
+            where: {
+              opportunityId_processDefinitionId: {
+                opportunityId: String(projectId),
+                processDefinitionId: processDef.id,
+              },
+            },
+            create: {
+              tenantId,
               opportunityId: String(projectId),
               processDefinitionId: processDef.id,
+              status: 'in_progress',
             },
-          },
-          create: {
-            tenantId,
-            opportunityId: String(projectId),
-            processDefinitionId: processDef.id,
-            status: 'in_progress',
-          },
-          update: {
-            status: 'in_progress',
-          },
-        });
+            update: {
+              status: 'in_progress',
+            },
+          });
+        }
       } catch (upErr: any) {
         console.error('[timer/start] upsert assignment failed:', upErr?.message || upErr);
-        // Don't fail timer start for assignment issues; include warning in response
+        assignmentWarning = 'Failed to update process assignment.';
       }
     }
 
-    res.json({ ok: true, timer });
+    res.json({ ok: true, timer, warning: assignmentWarning });
   } catch (error: any) {
     console.error('Error starting timer:', error);
     console.error('Error name:', error?.name);
