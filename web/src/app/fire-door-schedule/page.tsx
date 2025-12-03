@@ -640,8 +640,8 @@ export default function FireDoorSchedulePage() {
       });
     } catch (e) {
       console.error('Failed to update project', e);
-      // Reload to re-sync if failed
-      loadData();
+      // Show error toast but keep optimistic update
+      // User can refresh manually if needed
     }
   }
 

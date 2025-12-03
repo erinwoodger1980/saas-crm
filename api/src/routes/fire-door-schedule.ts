@@ -248,7 +248,7 @@ router.post("/", async (req: any, res: Response) => {
 // PATCH /fire-door-schedule/:id
 // Update an existing project (partial update)
 // ============================================================================
-router.put("/:id", async (req: any, res: Response) => {
+const updateProjectHandler = async (req: any, res: Response) => {
   try {
     const tenantId = req.auth?.tenantId;
     const userId = req.auth?.userId || req.auth?.id;
@@ -315,7 +315,10 @@ router.put("/:id", async (req: any, res: Response) => {
     console.error("Error updating project:", error);
     res.status(500).json({ error: "Failed to update project" });
   }
-});
+};
+
+router.put("/:id", updateProjectHandler);
+router.patch("/:id", updateProjectHandler);
 
 // ============================================================================
 // DELETE /fire-door-schedule/:id

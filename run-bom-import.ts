@@ -47,7 +47,7 @@ function parseDate(dateStr: string | undefined | null): Date | null {
       }
     }
     
-    // Try DD/MM/YYYY format
+    // Try DD/MM/YYYY or DD/MM/YY format
     if (dateStr.includes('/')) {
       const parts = dateStr.split('/');
       if (parts.length === 3) {
@@ -61,7 +61,8 @@ function parseDate(dateStr: string | undefined | null): Date | null {
         
         const date = new Date(year, month, day);
         if (!isNaN(date.getTime())) {
-          return date;
+          // Ensure we're creating date at midnight UTC to avoid timezone issues
+          return new Date(Date.UTC(year, month, day));
         }
       }
     }
@@ -149,10 +150,13 @@ async function importBOM() {
         
         console.log(`Processing MJS ${mjsNumber} - ${customer}`);
         
-        // Parse dates
+        // Parse dates with debug output
+        const dateReceivedRaw = row['DATE RECEIVED IN RED FOLDER'];
+        const dateReceived = parseDate(dateReceivedRaw);
+        console.log(`  📅 Date Received: "${dateReceivedRaw}" → ${dateReceived?.toISOString().slice(0, 10) || 'null'}`);
+        
         const deliveryDate = parseDate(row['APPROX DATE ( AUTO ADDS LEAD TIME WEEKS ) TO SIGNED OFF DATE']);
         const startDate = deliveryDate ? new Date(deliveryDate.getTime() - (4 * 7 * 24 * 60 * 60 * 1000)) : null;
-        const dateReceived = parseDate(row['DATE RECEIVED IN RED FOLDER']);
         const signOffDate = parseDate(row['DATE SIGNED OFF']);
         
         // Parse material dates
