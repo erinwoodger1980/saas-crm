@@ -170,7 +170,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
               tenantId,
               leadId: lead.id,
               title: `${clientName} - ${mjsNumber}`,
-              stage: 'READY_TO_QUOTE',
+              stage: 'QUALIFY',
               createdAt: new Date(),
             },
           });
