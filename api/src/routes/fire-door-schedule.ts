@@ -380,7 +380,10 @@ router.get("/stats/summary", async (req: any, res: Response) => {
         where: { tenantId, jobLocation: "IN PROGRESS" },
       }),
       prisma.fireDoorScheduleProject.count({
-        where: { tenantId, jobLocation: "COMPLETE" },
+        where: { 
+          tenantId, 
+          jobLocation: { in: ["COMPLETE IN FACTORY", "COMPLETE & DELIVERED"] } 
+        },
       }),
       prisma.fireDoorScheduleProject.count({
         where: {

@@ -67,7 +67,7 @@ export default function FireDoorSchedulePage() {
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [showColumnFreezeModal, setShowColumnFreezeModal] = useState(false);
   const headerRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
-  const ACTIONS_WIDTH = 140; // widen actions column to fit button comfortably
+  const ACTIONS_WIDTH = 100; // Actions column width for frozen column calculations
   const headerRowRef = useRef<HTMLTableRowElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
   
@@ -499,6 +499,7 @@ export default function FireDoorSchedulePage() {
       label: 'BOM & Materials',
       columns: [
         'mjsNumber',
+        'clientName',
         'jobName',
         'blanksStatus',
         'blanksDateOrdered',
@@ -534,6 +535,7 @@ export default function FireDoorSchedulePage() {
       label: 'Paperwork',
       columns: [
         'mjsNumber',
+        'clientName',
         'jobName',
         'doorPaperworkStatus',
         'finalCncSheetStatus',
@@ -547,6 +549,7 @@ export default function FireDoorSchedulePage() {
       label: 'Production',
       columns: [
         'mjsNumber',
+        'clientName',
         'jobName',
         'blanksCutPercent',
         'edgebandPercent',
@@ -1134,6 +1137,19 @@ export default function FireDoorSchedulePage() {
       return <span className="text-xs text-slate-500">{value ? new Date(value).toLocaleString() : '—'}</span>;
     }
 
+    // Job name with text wrapping
+    if (field === 'jobName') {
+      return (
+        <textarea
+          className="bg-transparent outline-none w-full text-sm resize-none min-h-[40px]"
+          value={value || ''}
+          placeholder="—"
+          rows={2}
+          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+        />
+      );
+    }
+
     // Text fields (default)
     return (
       <input
@@ -1650,7 +1666,7 @@ export default function FireDoorSchedulePage() {
                 <thead>
                   <tr ref={headerRowRef} className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
                     {/* Sticky header cells at top of scroll container */}
-                    <th className="sticky top-0 left-0 px-4 py-3 text-left z-[200] bg-white bg-clip-padding border-r border-slate-200 w-[140px] min-w-[140px] max-w-[140px]">
+                    <th className="sticky top-0 left-0 px-4 py-3 text-left z-[200] bg-white bg-clip-padding border-r border-slate-200 w-[100px] min-w-[100px] max-w-[100px]">
                       <span className="text-xs uppercase tracking-wider">Actions</span>
                     </th>
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
@@ -1702,7 +1718,7 @@ export default function FireDoorSchedulePage() {
                   <tr className="bg-white border-b border-slate-200">
                     {/* Filter row sticks directly under header using combined offset */}
                     <th
-                      className="sticky top-[${headerHeight}px] left-0 px-4 py-2 z-[150] bg-white bg-clip-padding border-r border-slate-200 w-[140px] min-w-[140px] max-w-[140px]"
+                      className="sticky top-[${headerHeight}px] left-0 px-4 py-2 z-[150] bg-white bg-clip-padding border-r border-slate-200 w-[100px] min-w-[100px] max-w-[100px]"
                     >
                       <button
                         onClick={() => setColumnFilters({})}
@@ -1748,7 +1764,7 @@ export default function FireDoorSchedulePage() {
                       key={project.id}
                       className="group hover:bg-blue-50/40 transition-colors border-b border-slate-100"
                     >
-                      <td className="sticky left-0 px-4 py-3 z-[160] bg-white bg-clip-padding border-r border-slate-200 shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] w-[140px] min-w-[140px] max-w-[140px]">
+                      <td className="sticky left-0 px-4 py-3 z-[160] bg-white bg-clip-padding border-r border-slate-200 shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] w-[100px] min-w-[100px] max-w-[100px]">
                         <Button
                           variant="outline"
                           size="sm"
