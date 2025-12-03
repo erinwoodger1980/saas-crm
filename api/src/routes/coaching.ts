@@ -349,10 +349,10 @@ router.get("/notes", async (req: any, res) => {
   
   const notes = await prisma.coachingNote.findMany({
     where: {
-      goalPlan: { tenantId }
+      plan: { tenantId }
     },
     include: {
-      goalPlan: {
+      plan: {
         select: { id: true, title: true }
       }
     },
@@ -368,11 +368,11 @@ router.get("/notes/summary", async (req: any, res) => {
   
   const recentNote = await prisma.coachingNote.findFirst({
     where: {
-      goalPlan: { tenantId }
+      plan: { tenantId }
     },
     orderBy: { sessionDate: "desc" },
     include: {
-      goalPlan: {
+      plan: {
         select: { id: true, title: true }
       }
     }
@@ -380,7 +380,7 @@ router.get("/notes/summary", async (req: any, res) => {
   
   const totalNotes = await prisma.coachingNote.count({
     where: {
-      goalPlan: { tenantId }
+      plan: { tenantId }
     }
   });
   
@@ -435,7 +435,7 @@ router.post("/notes", async (req: any, res) => {
       commitments: commitments || []
     },
     include: {
-      goalPlan: {
+      plan: {
         select: { id: true, title: true }
       }
     }
