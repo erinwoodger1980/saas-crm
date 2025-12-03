@@ -214,9 +214,9 @@ export default function FinancePlanPage() {
     );
   }
 
-  const oneYearTarget = plan.targets.find((t) => t.horizon === "ONE_YEAR");
-  const fiveYearTarget = plan.targets.find((t) => t.horizon === "FIVE_YEAR");
-  const currentYear = plan.financialYears[0];
+  const oneYearTarget = (plan.targets ?? []).find((t) => t.horizon === "ONE_YEAR");
+  const fiveYearTarget = (plan.targets ?? []).find((t) => t.horizon === "FIVE_YEAR");
+  const currentYear = (plan.financialYears ?? [])[0];
 
   return (
     <div className="container mx-auto px-6 py-12">

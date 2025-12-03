@@ -42,8 +42,8 @@ export default function FinancePlansPage() {
 
   const loadPlans = async () => {
     try {
-      const data = await apiFetch<{ plans: FinancialPlan[] }>("/coaching/financial-plans");
-      setPlans(data.plans || []);
+      const data = await apiFetch<{ ok?: boolean; plans?: FinancialPlan[] }>("/coaching/financial-plans");
+      setPlans(data.plans ?? []);
     } catch (error) {
       console.error("Failed to load financial plans:", error);
     } finally {
@@ -59,13 +59,20 @@ export default function FinancePlansPage() {
       const created = await apiFetch<{ ok: boolean; plan: FinancialPlan }>("/coaching/financial-plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startYear, durationYears }),
+        body: JSON.stringify({ title: newPlanTitle.trim(), startYear, durationYears }),
       });
       setShowCreateDialog(false);
       setNewPlanTitle("");
       setStartYear(new Date().getFullYear());
       setDurationYears(1);
-      router.push(`/coaching/finance/${created.plan.id}`);
+      const newId = (created.plan as any)?.id ?? (created.plan as any)?.planId;
+      if (newId) {
+        router.push(`/coaching/finance/${newId}`);
+      } else {
+        console.error("Created plan missing id:", created.plan);
+        alert("Plan created but missing id; please refresh.");
+        await loadPlans();
+      }
     } catch (error) {
       console.error("Failed to create financial plan:", error);
       alert("Failed to create financial plan");
@@ -116,9 +123,17 @@ export default function FinancePlansPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {plans.map((plan) => (
             <Card
-              key={plan.id}
+              key={(plan as any).id ?? (plan as any).planId ?? Math.random().toString(36)}
               className="group cursor-pointer transition-all hover:shadow-lg"
-              onClick={() => router.push(`/coaching/finance/${plan.id}`)}
+              onClick={() => {
+                const safeId = (plan as any)?.id ?? (plan as any)?.planId;
+                if (safeId) {
+                  router.push(`/coaching/finance/${safeId}`);
+                } else {
+                  console.error("Plan missing id:", plan);
+                  alert("This plan is missing an id. Try refreshing.");
+                }
+              }}
             >
               <CardHeader>
                 <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-green-100 transition-colors group-hover:bg-green-200">
