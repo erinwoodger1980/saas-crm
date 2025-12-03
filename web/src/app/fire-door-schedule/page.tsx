@@ -96,6 +96,37 @@ export default function FireDoorSchedulePage() {
   const [ironmongeryStatusOptions, setIronmongeryStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received", "Received from TBS", "Received from Customer"]);
   const [paperworkStatusOptions, setPaperworkStatusOptions] = useState<string[]>(["Not Started", "Working On", "Ready to Print", "Part Complete", "Printed in Office", "In Factory", "N/A"]);
   const [transportOptions, setTransportOptions] = useState<string[]>(["TBC", "By Customer", "By LAJ", "Collect", "Not Booked", "Booked"]);
+  
+  // Color maps for dropdowns (consistent per choice)
+  const MATERIAL_STATUS_COLORS: Record<string, string> = {
+    "Not in BOM": "bg-slate-100 text-slate-600",
+    "In BOM TBC": "bg-orange-100 text-orange-700",
+    "Ordered Call Off": "bg-cyan-100 text-cyan-700",
+    "In BOM": "bg-blue-100 text-blue-700",
+    "Stock": "bg-emerald-100 text-emerald-700",
+    "Ordered": "bg-purple-100 text-purple-700",
+    "N/A": "bg-slate-100 text-slate-600",
+    "Received": "bg-green-100 text-green-700",
+    "Received from TBS": "bg-green-100 text-green-700",
+    "Received from Customer": "bg-green-100 text-green-700",
+  };
+  const PAPERWORK_STATUS_COLORS: Record<string, string> = {
+    "Not Started": "bg-slate-100 text-slate-600",
+    "Working On": "bg-blue-100 text-blue-700",
+    "Ready to Print": "bg-cyan-100 text-cyan-700",
+    "Part Complete": "bg-orange-100 text-orange-700",
+    "Printed in Office": "bg-emerald-100 text-emerald-700",
+    "In Factory": "bg-emerald-100 text-emerald-700",
+    "N/A": "bg-slate-100 text-slate-600",
+  };
+  const TRANSPORT_STATUS_COLORS: Record<string, string> = {
+    "TBC": "bg-slate-100 text-slate-600",
+    "By Customer": "bg-blue-100 text-blue-700",
+    "By LAJ": "bg-purple-100 text-purple-700",
+    "Collect": "bg-cyan-100 text-cyan-700",
+    "Not Booked": "bg-orange-100 text-orange-700",
+    "Booked": "bg-green-100 text-green-700",
+  };
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   
   // Production logging state
@@ -533,7 +564,6 @@ export default function FireDoorSchedulePage() {
         'timbersDateOrdered',
         'timbersDateExpected',
         'timbersDateReceived',
-        'ironmongeryStatus',
         'ironmongeryDateOrdered',
         'ironmongeryDateExpected',
         'ironmongeryDateReceived'
@@ -546,7 +576,6 @@ export default function FireDoorSchedulePage() {
         'clientName',
         'jobName',
         'doorPaperworkStatus',
-        'finalCncSheetStatus',
         'finalChecksSheetStatus',
         'deliveryChecklistStatus',
         'framesPaperworkStatus',
@@ -559,12 +588,10 @@ export default function FireDoorSchedulePage() {
         'mjsNumber',
         'clientName',
         'jobName',
-        'blanksCutPercent',
         'edgebandPercent',
         'calibratePercent',
         'facingsPercent',
         'sprayPercent',
-        'buildPercent',
         'overallProgress',
         'transportStatus',
         'doorSets',
@@ -572,12 +599,10 @@ export default function FireDoorSchedulePage() {
         'deliveryNotes'
       ]
     },
-    ALL: {
       label: 'All',
       columns: [
         'mjsNumber',
         'clientName',
-        'jobName',
         'dateReceived',
         'jobLocation',
         'signOffStatus',
@@ -1669,6 +1694,14 @@ export default function FireDoorSchedulePage() {
           <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg overflow-hidden">
             <div
               className="relative z-0 overflow-auto max-h-[calc(100vh-260px)]"
+              ref={(el) => {
+                // attach to ref to sync with bottom scroller
+                // store on window for simple linkage without adding more state
+                if (el) {
+                  // @ts-ignore
+                  window.__fdsTableScrollEl = el;
+                }
+              }}
             >
               <table className="min-w-full text-sm border-separate">
                 <thead>
@@ -1811,6 +1844,29 @@ export default function FireDoorSchedulePage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            {/* Persistent bottom scroll bar */}
+            <div className="sticky bottom-0 bg-white/80 backdrop-blur-sm border-t border-slate-200">
+              <div
+                className="overflow-x-auto"
+                style={{ height: 16 }}
+                ref={(bar) => {
+                  if (!bar) return;
+                  const content = bar.firstElementChild as HTMLDivElement | null;
+                  const tableEl = (window as any).__fdsTableScrollEl as HTMLElement | undefined;
+                  if (!content || !tableEl) return;
+                  // Create a wide spacer to force scrollbar
+                  const width = tableEl.scrollWidth;
+                  content.style.width = width + "px";
+                  // Sync scroll positions
+                  const onBarScroll = () => { tableEl.scrollLeft = bar.scrollLeft; };
+                  const onTableScroll = () => { bar.scrollLeft = tableEl.scrollLeft; };
+                  bar.addEventListener("scroll", onBarScroll);
+                  tableEl.addEventListener("scroll", onTableScroll);
+                }}
+              >
+                <div />
+              </div>
             </div>
           </div>
         ) : (
