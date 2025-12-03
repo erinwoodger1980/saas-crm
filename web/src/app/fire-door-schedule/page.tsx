@@ -70,6 +70,48 @@ export default function FireDoorSchedulePage() {
   const ACTIONS_WIDTH = 140; // widen actions column to fit button comfortably
   const headerRowRef = useRef<HTMLTableRowElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
+  
+  // Dropdown options state - must be declared before useEffect hooks that reference them
+  const [jobLocationOptions, setJobLocationOptions] = useState<string[]>([
+    "ASSIGNED MJS",
+    "RED FOLDER",
+    "IN PROGRESS",
+    "COMPLETE IN FACTORY",
+    "COMPLETE & DELIVERED",
+    "N/A",
+    "NOT LOOKED AT",
+    "NO JOB ASSIGNED",
+    "JOB IN DISPUTE / ISSUES",
+    "CANCELLED",
+  ]);
+  const [signOffOptions, setSignOffOptions] = useState<string[]>([
+    "AWAITING SCHEDULE",
+    "WORKING ON SCHEDULE",
+    "SCHEDULE SENT FOR SIGN OFF",
+    "SCHEDULE SIGNED OFF",
+    "NOT LOOKED AT",
+  ]);
+  const [scheduledByOptions, setScheduledByOptions] = useState<string[]>(["DAVE", "DARREN", "OFFICE"]);
+  const [materialStatusOptions, setMaterialStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received"]);
+  const [ironmongeryStatusOptions, setIronmongeryStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received", "Received from TBS", "Received from Customer"]);
+  const [paperworkStatusOptions, setPaperworkStatusOptions] = useState<string[]>(["Not Started", "Working On", "Ready to Print", "Part Complete", "Printed in Office", "In Factory", "N/A"]);
+  const [transportOptions, setTransportOptions] = useState<string[]>(["TBC", "By Customer", "By LAJ", "Collect", "Not Booked", "Booked"]);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
+  
+  // Production logging state
+  const [productionModal, setProductionModal] = useState<{
+    show: boolean;
+    projectId: string;
+    projectName: string;
+    process: string;
+    processLabel: string;
+    currentPercent: number;
+  } | null>(null);
+  const [monthlyValue, setMonthlyValue] = useState<{
+    totalManufacturingValue: string;
+    logCount: number;
+    projectCount: number;
+  } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -670,47 +712,6 @@ export default function FireDoorSchedulePage() {
       // User can refresh manually if needed
     }
   }
-
-  const [jobLocationOptions, setJobLocationOptions] = useState<string[]>([
-    "ASSIGNED MJS",
-    "RED FOLDER",
-    "IN PROGRESS",
-    "COMPLETE IN FACTORY",
-    "COMPLETE & DELIVERED",
-    "N/A",
-    "NOT LOOKED AT",
-    "NO JOB ASSIGNED",
-    "JOB IN DISPUTE / ISSUES",
-    "CANCELLED",
-  ]);
-  const [signOffOptions, setSignOffOptions] = useState<string[]>([
-    "AWAITING SCHEDULE",
-    "WORKING ON SCHEDULE",
-    "SCHEDULE SENT FOR SIGN OFF",
-    "SCHEDULE SIGNED OFF",
-    "NOT LOOKED AT",
-  ]);
-  const [scheduledByOptions, setScheduledByOptions] = useState<string[]>(["DAVE", "DARREN", "OFFICE"]);
-  const [materialStatusOptions, setMaterialStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received"]);
-  const [ironmongeryStatusOptions, setIronmongeryStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received", "Received from TBS", "Received from Customer"]);
-  const [paperworkStatusOptions, setPaperworkStatusOptions] = useState<string[]>(["Not Started", "Working On", "Ready to Print", "Part Complete", "Printed in Office", "In Factory", "N/A"]);
-  const [transportOptions, setTransportOptions] = useState<string[]>(["TBC", "By Customer", "By LAJ", "Collect", "Not Booked", "Booked"]);
-  const [showFiltersModal, setShowFiltersModal] = useState(false);
-  
-  // Production logging state
-  const [productionModal, setProductionModal] = useState<{
-    show: boolean;
-    projectId: string;
-    projectName: string;
-    process: string;
-    processLabel: string;
-    currentPercent: number;
-  } | null>(null);
-  const [monthlyValue, setMonthlyValue] = useState<{
-    totalManufacturingValue: string;
-    logCount: number;
-    projectCount: number;
-  } | null>(null);
 
   // Render cell based on field type
   function renderCell(project: FireDoorProject, field: string) {
