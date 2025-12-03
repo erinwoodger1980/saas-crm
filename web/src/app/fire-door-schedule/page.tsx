@@ -120,23 +120,8 @@ export default function FireDoorSchedulePage() {
           const parsed = JSON.parse(savedLocations);
           // Validate that parsed is a valid array with recognized locations
           if (Array.isArray(parsed) && parsed.length > 0) {
-            // Check if the saved selection includes "COMPLETE & DELIVERED" - remove it if present
-            const filteredLocations = parsed.filter(loc => loc !== "COMPLETE & DELIVERED");
-            
-            if (filteredLocations.length === 0) {
-              // If filtering removed everything, use defaults
-              console.log("Clearing broken filter state - resetting to defaults");
-              localStorage.setItem("fds:selectedLocations", JSON.stringify(defaultLocations));
-              setSelectedLocations(defaultLocations);
-            } else if (filteredLocations.length !== parsed.length) {
-              // If we removed "COMPLETE & DELIVERED", save the cleaned version
-              console.log("Removing COMPLETE & DELIVERED from saved filter");
-              localStorage.setItem("fds:selectedLocations", JSON.stringify(filteredLocations));
-              setSelectedLocations(filteredLocations);
-            } else {
-              // Saved state is valid, use it
-              setSelectedLocations(parsed);
-            }
+            // Saved state is valid, use it
+            setSelectedLocations(parsed);
           } else {
             // If saved but empty, use defaults
             setSelectedLocations(defaultLocations);
@@ -164,9 +149,8 @@ export default function FireDoorSchedulePage() {
   }, [activeTab]);
   useEffect(() => {
     try { 
-      // Always filter out "COMPLETE & DELIVERED" before saving
-      const filtered = selectedLocations.filter(loc => loc !== "COMPLETE & DELIVERED");
-      localStorage.setItem("fds:selectedLocations", JSON.stringify(filtered)); 
+      // Save selected locations
+      localStorage.setItem("fds:selectedLocations", JSON.stringify(selectedLocations)); 
     } catch {}
   }, [selectedLocations]);
   useEffect(() => {
@@ -1441,10 +1425,7 @@ export default function FireDoorSchedulePage() {
                             checked={isChecked}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                // Don't allow adding "COMPLETE & DELIVERED"
-                                if (opt !== "COMPLETE & DELIVERED") {
-                                  setSelectedLocations([...selectedLocations, opt]);
-                                }
+                                setSelectedLocations([...selectedLocations, opt]);
                               } else {
                                 setSelectedLocations(selectedLocations.filter(l => l !== opt));
                               }
@@ -1462,7 +1443,7 @@ export default function FireDoorSchedulePage() {
                     variant="outline" 
                     size="sm"
                     onClick={() => {
-                      setSelectedLocations(jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED"));
+                      setSelectedLocations(jobLocationOptions);
                     }}
                   >
                     Select All
@@ -1480,7 +1461,7 @@ export default function FireDoorSchedulePage() {
                     variant="outline" 
                     size="sm"
                     onClick={() => {
-                      const defaultLocations = jobLocationOptions.filter(loc => loc !== "COMPLETE & DELIVERED");
+                      const defaultLocations = jobLocationOptions;
                       setSelectedLocations(defaultLocations);
                       setSearchTerm("");
                     }}

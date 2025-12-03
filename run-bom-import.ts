@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { prisma } from './api/src/prisma';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -116,16 +117,23 @@ async function importBOM() {
     const fileContent = fs.readFileSync(csvPath, 'utf-8');
     const lines = fileContent.split('\n').filter(l => l.trim());
     
-    // Skip first header row (Column1, Column2, etc.) and use second row with actual field names
-    const headers = lines[1].split(',').map(h => h.trim());
-    console.log(`Found ${headers.length} columns\n`);
+    // Use both header rows: row 1 for generic Column## names, row 2 for descriptive names
+    const headers1 = lines[0].split(',').map(h => h.trim());
+    const headers2 = lines[1].split(',').map(h => h.trim());
+    console.log(`Found ${headers2.length} columns\n`);
     
     const records: any[] = [];
     for (let i = 2; i < lines.length; i++) {
       const values = lines[i].split(',');
       const row: any = {};
-      headers.forEach((header, idx) => {
+      headers2.forEach((header, idx) => {
         row[header] = values[idx] || '';
+      });
+      // Also add row 1 column names for columns where row 2 is empty
+      headers1.forEach((header, idx) => {
+        if (header && (!headers2[idx] || headers2[idx] === '')) {
+          row[header] = values[idx] || '';
+        }
       });
       records.push(row);
     }
