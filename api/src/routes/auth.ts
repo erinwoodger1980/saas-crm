@@ -397,6 +397,7 @@ router.get("/me", async (req, res) => {
         name: true,
         isEarlyAdopter: true,
         isDeveloper: true,
+        isOwner: true,
       },
     });
 
