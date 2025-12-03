@@ -111,38 +111,30 @@ router.post('/import', upload.single('file'), async (req, res) => {
     const totalValue = calculateTotalValue(parsedRows);
     const rowCount = parsedRows.length;
 
-    // 7. Extract optional linkage
-      const projectId = req.body.projectId || null;
-      const orderId = req.body.orderId || null;
-      const mjsNumberFromForm = (req.body.mjsNumber as string) || null;
-      const customerNameFromForm = (req.body.customerName as string) || null;
-      const jobDescriptionFromForm = (req.body.jobDescription as string) || null;
-      const netValueFromForm = req.body.netValue ? Number(req.body.netValue) : null;
-    const mjsNumberFromForm = req.body.mjsNumber || null;
-    const customerNameFromForm = req.body.customerName || null;
-    const jobDescriptionFromForm = req.body.jobDescription || null;
-    const netValueFromForm = req.body.netValue ? parseFloat(req.body.netValue) : null;
+    // 7. Extract optional linkage and derive metadata
+    const projectId = (req.body.projectId as string) || null;
+    const orderId = (req.body.orderId as string) || null;
+    const mjsNumberFromForm = (req.body.mjsNumber as string) || null;
+    const customerNameFromForm = (req.body.customerName as string) || null;
+    const jobDescriptionFromForm = (req.body.jobDescription as string) || null;
+    const netValueFromForm = req.body.netValue ? Number(req.body.netValue) : null;
+    const firstRow = parsedRows[0];
+    const mjsNumber = mjsNumberFromForm || firstRow.code || sourceName.replace('.csv', '');
+    const clientName = customerNameFromForm || firstRow.location || 'New Fire Door Customer';
+    const jobDescription = jobDescriptionFromForm || `${clientName} - ${mjsNumber}`;
+    const netValue = netValueFromForm ?? totalValue;
 
-        const mjsNumber = mjsNumberFromForm || firstRow.code || sourceName.replace('.csv', '');
-        const clientName = customerNameFromForm || firstRow.location || 'New Fire Door Customer';
-        const jobDescription = jobDescriptionFromForm || `${clientName} - ${mjsNumber}`;
-        const netValue = netValueFromForm || totalValue;
-      const firstRow = parsedRows[0];
-      const mjsNumber = mjsNumberFromForm || firstRow.code || sourceName.replace('.csv', '');
-      const clientName = customerNameFromForm || firstRow.location || 'New Fire Door Customer';
-      const jobDescription = jobDescriptionFromForm || `${clientName} - ${mjsNumber}`;
-      const netValue = netValueFromForm || totalValue;
-      
-      // Create Fire Door Schedule Project if this is a new order (no projectId provided)
+    // 8. Persist using a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Ensure project exists
       let fireDoorProjectId = projectId;
-      if (!projectId) {
-        // Check if project already exists with this MJS number
+      if (!fireDoorProjectId) {
         const existingProject = await tx.fireDoorScheduleProject.findFirst({
           where: { tenantId, mjsNumber },
         });
-        
-        if (!existingProject) {
-          // Create new Fire Door Schedule Project
+        if (existingProject) {
+          fireDoorProjectId = existingProject.id;
+        } else {
           const fireDoorProject = await tx.fireDoorScheduleProject.create({
             data: {
               tenantId,
@@ -150,20 +142,17 @@ router.post('/import', upload.single('file'), async (req, res) => {
               clientName,
               jobName: jobDescription,
               netValue: netValue as any,
-              dateReceived: new Date(), // Current date when put in red folder
-              jobLocation: 'RED FOLDER', // Set to RED FOLDER status
+              dateReceived: new Date(),
+              jobLocation: 'RED FOLDER',
               signOffStatus: 'NOT LOOKED AT',
               lastUpdatedBy: userId,
               lastUpdatedAt: new Date(),
             },
           });
           fireDoorProjectId = fireDoorProject.id;
-          
-          // Create lead for this client if doesn't exist
-          let lead = await tx.lead.findFirst({
-            where: { tenantId, contactName: clientName },
-          });
-          
+
+          // Create/ensure lead and opportunity
+          let lead = await tx.lead.findFirst({ where: { tenantId, contactName: clientName } });
           if (!lead) {
             lead = await tx.lead.create({
               data: {
@@ -175,8 +164,6 @@ router.post('/import', upload.single('file'), async (req, res) => {
               },
             });
           }
-          
-          // Create opportunity for this project
           const opportunity = await tx.opportunity.create({
             data: {
               tenantId,
@@ -186,17 +173,13 @@ router.post('/import', upload.single('file'), async (req, res) => {
               createdAt: new Date(),
             },
           });
-          
-          // Link opportunity to fire door project
           await tx.fireDoorScheduleProject.update({
-            where: { id: fireDoorProject.id },
+            where: { id: fireDoorProjectId },
             data: { projectId: opportunity.id },
           });
-        } else {
-          fireDoorProjectId = existingProject.id;
         }
       }
-      
+
       // Create import record
       const importRecord = await tx.fireDoorImport.create({
         data: {
@@ -212,7 +195,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
         },
       });
 
-      // Create all line items
+      // Create line items
       const lineItems = await Promise.all(
         parsedRows.map((row, idx) =>
           tx.fireDoorLineItem.create({
@@ -220,34 +203,23 @@ router.post('/import', upload.single('file'), async (req, res) => {
               fireDoorImportId: importRecord.id,
               tenantId,
               rowIndex: idx,
-              
-              // Core fields
               itemType: row.itemType,
               code: row.code,
               quantity: row.quantity,
-
-              // Door identification
               doorRef: row.doorRef,
               location: row.location,
               doorsetType: row.doorSetType,
               rating: row.fireRating,
               acousticRatingDb: row.acousticRatingDb,
-              // handing: row.handing, // TODO: Map to handingFinish or handingFinal
-
-              // Colors & finishes
               internalColour: row.internalColour,
               externalColour: row.externalColour,
               frameFinish: row.frameFinish,
-
-              // Leaf geometry
               leafHeight: row.leafHeight,
               masterLeafWidth: row.masterLeafWidth,
               slaveLeafWidth: row.slaveLeafWidth,
               leafThickness: row.leafThickness,
               leafConfiguration: row.leafConfiguration,
               ifSplitMasterSize: row.ifSplitMasterSize,
-
-              // Finishes & edges
               doorFinishSide1: row.doorFinishSide1,
               doorFinishSide2: row.doorFinishSide2,
               doorFacing: row.doorFacing,
@@ -256,27 +228,19 @@ router.post('/import', upload.single('file'), async (req, res) => {
               doorEdgeProtPos: row.doorEdgeProtPos,
               doorUndercut: row.doorUndercut,
               doorUndercutMm: row.doorUndercutMm,
-
-              // Vision panels (Leaf 1)
               visionQtyLeaf1: row.visionQtyLeaf1,
               vp1WidthLeaf1: row.vp1WidthLeaf1,
               vp1HeightLeaf1: row.vp1HeightLeaf1,
               vp2WidthLeaf1: row.vp2WidthLeaf1,
               vp2HeightLeaf1: row.vp2HeightLeaf1,
-
-              // Vision panels (Leaf 2)
               visionQtyLeaf2: row.visionQtyLeaf2,
               vp1WidthLeaf2: row.vp1WidthLeaf2,
               vp1HeightLeaf2: row.vp1HeightLeaf2,
               vp2WidthLeaf2: row.vp2WidthLeaf2,
               vp2HeightLeaf2: row.vp2HeightLeaf2,
-
-              // Total glazing
               totalGlazedAreaMaster: row.totalGlazedAreaMaster,
               fanlightSidelightGlz: row.fanlightSidelightGlz,
               glazingTape: row.glazingTape,
-
-              // Ironmongery
               ironmongeryPackRef: row.ironmongeryPackRef,
               closerOrFloorSpring: row.closerOrFloorSpring,
               spindleFacePrep: row.spindleFacePrep,
@@ -296,18 +260,12 @@ router.post('/import', upload.single('file'), async (req, res) => {
               doorViewersQty: row.doorViewersQty,
               doorChainFactoryFit: row.doorChainFactoryFit,
               doorViewersFactoryFit: row.doorViewersFactoryFit,
-
-              // Additional notes
               additionNote1: row.additionNote1,
               additionNote1Qty: row.additionNote1Qty,
-
-              // Pricing
               unitValue: row.unitValue,
               labourCost: row.labourCost,
               materialCost: row.materialCost,
               lineTotal: row.lineTotal,
-
-              // Raw data
               rawRowJson: row.rawRowJson as any,
             },
           })
