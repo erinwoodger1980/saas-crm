@@ -380,6 +380,14 @@ router.post("/dev-seed", async (req, res) => {
 });
 
 router.get("/me", async (req, res) => {
+      // Log CORS debugging info  
+      console.log('[auth/me] Request from origin:', req.headers.origin);
+      console.log('[auth/me] Request headers:', {
+        origin: req.headers.origin,
+        cookie: req.headers.cookie ? 'present' : 'missing',
+        authorization: req.headers.authorization ? 'present' : 'missing'
+      });
+    
   try {
     const auth = (req as any).auth;
     if (!auth?.userId) {
