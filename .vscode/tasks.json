@@ -12,6 +12,18 @@
 			"type": "shell",
 			"command": "pnpm build",
 			"group": "build"
+		},
+		{
+			"label": "Build API after coaching access change",
+			"type": "shell",
+			"command": "pnpm -w --filter api build && pnpm -w --filter web build",
+			"group": "build"
+		},
+		{
+			"label": "Build full workspace",
+			"type": "shell",
+			"command": "pnpm build",
+			"group": "build"
 		}
 	]
 }

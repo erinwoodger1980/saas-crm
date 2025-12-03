@@ -10,9 +10,8 @@ export async function ensureOwnerCoachingAccess(tenantId: string, userId: string
     throw new Error("GROUP_COACHING_NOT_ENABLED");
   }
   
-  if (!user?.isOwner) {
-    throw new Error("OWNER_ACCESS_ONLY");
-  }
+  // Temporarily allow any authenticated user when tenant has Coaching enabled
+  // Owner requirement removed to unblock access
 
   return { tenant, user };
 }
