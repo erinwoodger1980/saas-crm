@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Save, Trash2, Sparkles, FileCheck, Upload, Info, Table } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { getApiBase } from "@/lib/api-base";
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import FireDoorSpreadsheet from "@/components/FireDoorSpreadsheet";
@@ -262,7 +263,7 @@ export default function FireDoorScheduleDetailPage() {
       formData.append("file", file);
       formData.append("projectId", id);
       
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? window.location.origin + '/api' : 'http://localhost:4000');
+      const apiBase = getApiBase();
       const response = await fetch(`${apiBase}/fire-doors/import`, {
         method: "POST",
         headers: {
