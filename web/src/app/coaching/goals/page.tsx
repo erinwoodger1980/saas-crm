@@ -55,9 +55,11 @@ interface MonthlyGoal {
 interface GoalPlan {
   id: string;
   title: string;
-  year: number;
+  description?: string;
+  year?: number;
   createdAt: string;
-  monthlyGoals: MonthlyGoal[];
+  monthlyGoals?: MonthlyGoal[];
+  months?: MonthlyGoal[];
 }
 
 const MONTHS = [
@@ -98,12 +100,12 @@ export default function GoalsPage() {
 
     try {
       setLoading(true);
-      const created = await apiFetch<GoalPlan>("/coaching/goal-plans", {
+      const response = await apiFetch<{ ok: boolean; plan: GoalPlan }>("/coaching/goal-plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: newPlanTitle, description: newPlanDescription }),
       });
-      setGoalPlan(created);
+      setGoalPlan(response.plan);
       setShowCreateDialog(false);
       setNewPlanTitle("");
       setNewPlanDescription("");
@@ -258,21 +260,22 @@ export default function GoalsPage() {
     );
   }
 
-  const totalTasks = goalPlan.monthlyGoals.reduce(
+  const monthlyGoals = goalPlan.monthlyGoals || goalPlan.months || [];
+  const totalTasks = monthlyGoals.reduce(
     (sum, month) =>
-      sum + month.weeklyGoals.reduce((wsum, week) => wsum + week.tasks.length, 0),
+      sum + (month.weeklyGoals || []).reduce((wsum, week) => wsum + (week.tasks || []).length, 0),
     0
   );
-  const completedTasks = goalPlan.monthlyGoals.reduce(
+  const completedTasks = monthlyGoals.reduce(
     (sum, month) =>
       sum +
-      month.weeklyGoals.reduce(
-        (wsum, week) => wsum + week.tasks.filter((t) => t.status === "DONE").length,
+      (month.weeklyGoals || []).reduce(
+        (wsum, week) => wsum + (week.tasks || []).filter((t) => t.status === "DONE").length,
         0
       ),
     0
   );
-  const completedMonths = goalPlan.monthlyGoals.filter((m) => m.completedAt).length;
+  const completedMonths = monthlyGoals.filter((m) => m.completedAt).length;
 
   return (
     <div className="container mx-auto px-6 py-12">
@@ -285,7 +288,7 @@ export default function GoalsPage() {
         </div>
         <Button
           onClick={handleGenerateWithAI}
-          disabled={generating || goalPlan.monthlyGoals.length > 0}
+          disabled={generating || monthlyGoals.length > 0}
         >
           {generating ? (
             <>
@@ -301,7 +304,7 @@ export default function GoalsPage() {
         </Button>
       </div>
 
-      {goalPlan.monthlyGoals.length === 0 && (
+      {monthlyGoals.length === 0 && (
         <Alert>
           <Sparkles className="h-4 w-4" />
           <AlertDescription>
@@ -311,16 +314,17 @@ export default function GoalsPage() {
       )}
 
       <div className="space-y-4">
-        {goalPlan.monthlyGoals
+        {monthlyGoals
           .sort((a, b) => a.month - b.month)
           .map((monthGoal) => {
             const isExpanded = expandedMonths.has(monthGoal.id);
-            const monthTasks = monthGoal.weeklyGoals.reduce(
-              (sum, week) => sum + week.tasks.length,
+            const weeklyGoals = monthGoal.weeklyGoals || [];
+            const monthTasks = weeklyGoals.reduce(
+              (sum, week) => sum + (week.tasks || []).length,
               0
             );
-            const monthCompleted = monthGoal.weeklyGoals.reduce(
-              (sum, week) => sum + week.tasks.filter((t) => t.status === "DONE").length,
+            const monthCompleted = weeklyGoals.reduce(
+              (sum, week) => sum + (week.tasks || []).filter((t) => t.status === "DONE").length,
               0
             );
             const progress = monthTasks > 0 ? (monthCompleted / monthTasks) * 100 : 0;
@@ -363,11 +367,11 @@ export default function GoalsPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-slate-900">
-                        {MONTHS[monthGoal.month - 1]} {goalPlan.year}
+                        {MONTHS[monthGoal.month - 1]} {goalPlan.year || new Date().getFullYear()}
                       </h3>
                       <p className="text-sm text-slate-600">{monthGoal.description}</p>
                       <p className="text-xs text-slate-500">
-                        {monthCompleted} of {monthTasks} tasks · {monthGoal.weeklyGoals.length} weeks
+                        {monthCompleted} of {monthTasks} tasks · {weeklyGoals.length} weeks
                       </p>
                     </div>
                   </div>
@@ -381,11 +385,12 @@ export default function GoalsPage() {
                 {isExpanded && (
                   <div className="border-t border-slate-200 bg-slate-50 p-6">
                     <div className="space-y-4">
-                      {monthGoal.weeklyGoals
+                      {weeklyGoals
                         .sort((a, b) => a.weekNumber - b.weekNumber)
                         .map((weekGoal) => {
-                          const weekCompleted = weekGoal.tasks.filter((t) => t.status === "DONE").length;
-                          const weekTotal = weekGoal.tasks.length;
+                          const tasks = weekGoal.tasks || [];
+                          const weekCompleted = tasks.filter((t) => t.status === "DONE").length;
+                          const weekTotal = tasks.length;
 
                           return (
                             <Card key={weekGoal.id}>
@@ -402,7 +407,7 @@ export default function GoalsPage() {
                               </CardHeader>
                               <CardContent>
                                 <div className="space-y-2">
-                                  {weekGoal.tasks
+                                  {tasks
                                     .sort((a, b) => a.sortOrder - b.sortOrder)
                                     .map((task) => (
                                       <div
