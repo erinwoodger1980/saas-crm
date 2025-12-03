@@ -343,7 +343,108 @@ router.post("/weekly-goals/:id/tasks", async (req: any, res) => {
 // COACHING NOTES
 // ======================
 
-// POST /coaching/goal-plans/:id/notes - Add coaching note
+// GET /coaching/notes - List all coaching notes for tenant
+router.get("/notes", async (req: any, res) => {
+  const tenantId = req.auth.tenantId;
+  
+  const notes = await prisma.coachingNote.findMany({
+    where: {
+      goalPlan: { tenantId }
+    },
+    include: {
+      goalPlan: {
+        select: { id: true, title: true }
+      }
+    },
+    orderBy: { sessionDate: "desc" }
+  });
+  
+  res.json({ ok: true, notes });
+});
+
+// GET /coaching/notes/summary - Get summary of recent notes
+router.get("/notes/summary", async (req: any, res) => {
+  const tenantId = req.auth.tenantId;
+  
+  const recentNote = await prisma.coachingNote.findFirst({
+    where: {
+      goalPlan: { tenantId }
+    },
+    orderBy: { sessionDate: "desc" },
+    include: {
+      goalPlan: {
+        select: { id: true, title: true }
+      }
+    }
+  });
+  
+  const totalNotes = await prisma.coachingNote.count({
+    where: {
+      goalPlan: { tenantId }
+    }
+  });
+  
+  res.json({
+    ok: true,
+    summary: {
+      totalNotes,
+      lastSession: recentNote?.sessionDate || null,
+      recentNote: recentNote || null
+    }
+  });
+});
+
+// POST /coaching/notes - Create coaching note (standalone or for active plan)
+router.post("/notes", async (req: any, res) => {
+  const tenantId = req.auth.tenantId;
+  const { sessionDate, notes, commitments, goalPlanId } = req.body;
+  
+  if (!sessionDate || !notes) {
+    return res.status(400).json({ error: "missing_required_fields" });
+  }
+  
+  // If no goalPlanId provided, find or create a default plan
+  let planId = goalPlanId;
+  if (!planId) {
+    const activePlan = await prisma.goalPlan.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: "desc" }
+    });
+    
+    if (activePlan) {
+      planId = activePlan.id;
+    } else {
+      // Create a default plan for notes
+      const newPlan = await prisma.goalPlan.create({
+        data: {
+          tenantId,
+          ownerUserId: req.auth.userId,
+          title: "Coaching Sessions",
+          description: "General coaching notes and commitments"
+        }
+      });
+      planId = newPlan.id;
+    }
+  }
+  
+  const note = await prisma.coachingNote.create({
+    data: {
+      goalPlanId: planId,
+      sessionDate: new Date(sessionDate),
+      notes,
+      commitments: commitments || []
+    },
+    include: {
+      goalPlan: {
+        select: { id: true, title: true }
+      }
+    }
+  });
+  
+  res.json({ ok: true, note });
+});
+
+// POST /coaching/goal-plans/:id/notes - Add coaching note to specific plan
 router.post("/goal-plans/:id/notes", async (req: any, res) => {
   const planId = req.params.id;
   const { sessionDate, notes, commitments, autoAddToTasks } = req.body;
