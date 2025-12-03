@@ -74,6 +74,7 @@ export default function GoalsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newPlanTitle, setNewPlanTitle] = useState("");
   const [newPlanYear, setNewPlanYear] = useState(new Date().getFullYear());
+  const [newPlanDescription, setNewPlanDescription] = useState("");
 
   useEffect(() => {
     loadGoalPlan();
@@ -93,18 +94,19 @@ export default function GoalsPage() {
   };
 
   const handleCreatePlan = async () => {
-    if (!newPlanTitle.trim()) return;
+    if (!newPlanTitle.trim() || !newPlanDescription.trim()) return;
 
     try {
       setLoading(true);
       const created = await apiFetch<GoalPlan>("/coaching/goal-plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newPlanTitle, year: newPlanYear }),
+        body: JSON.stringify({ title: newPlanTitle, description: newPlanDescription }),
       });
       setGoalPlan(created);
       setShowCreateDialog(false);
       setNewPlanTitle("");
+      setNewPlanDescription("");
     } catch (error) {
       console.error("Failed to create goal plan:", error);
       alert("Failed to create goal plan");
@@ -224,6 +226,15 @@ export default function GoalsPage() {
                 />
               </div>
               <div>
+                <Label htmlFor="description">Plan Description</Label>
+                <Input
+                  id="description"
+                  value={newPlanDescription}
+                  onChange={(e) => setNewPlanDescription(e.target.value)}
+                  placeholder="Overall focus and objectives for the year"
+                />
+              </div>
+              <div>
                 <Label htmlFor="year">Year</Label>
                 <Input
                   id="year"
@@ -237,7 +248,7 @@ export default function GoalsPage() {
               <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreatePlan} disabled={!newPlanTitle.trim()}>
+              <Button onClick={handleCreatePlan} disabled={!newPlanTitle.trim() || !newPlanDescription.trim()}>
                 Create
               </Button>
             </DialogFooter>
