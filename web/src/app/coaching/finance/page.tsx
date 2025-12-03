@@ -56,7 +56,7 @@ export default function FinancePlansPage() {
 
     try {
       setLoading(true);
-      const created = await apiFetch<FinancialPlan>("/coaching/financial-plans", {
+      const created = await apiFetch<{ ok: boolean; plan: FinancialPlan }>("/coaching/financial-plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ startYear, durationYears }),
@@ -65,7 +65,7 @@ export default function FinancePlansPage() {
       setNewPlanTitle("");
       setStartYear(new Date().getFullYear());
       setDurationYears(1);
-      router.push(`/coaching/finance/${created.id}`);
+      router.push(`/coaching/finance/${created.plan.id}`);
     } catch (error) {
       console.error("Failed to create financial plan:", error);
       alert("Failed to create financial plan");
@@ -134,24 +134,24 @@ export default function FinancePlansPage() {
                   <div className="flex justify-between">
                     <span className="text-slate-600">Total Revenue</span>
                     <span className="font-semibold text-slate-900">
-                      ${plan.totalRevenue.toLocaleString()}
+                      ${(plan.totalRevenue ?? 0).toLocaleString()}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-600">Avg Gross Margin</span>
                     <span className="font-semibold text-slate-900">
-                      {plan.avgGrossMargin.toFixed(1)}%
+                      {(plan.avgGrossMargin ?? 0).toFixed(1)}%
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-600">Avg Net Margin</span>
                     <span className="font-semibold text-slate-900">
-                      {plan.avgNetMargin.toFixed(1)}%
+                      {(plan.avgNetMargin ?? 0).toFixed(1)}%
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-600">Years Tracked</span>
-                    <span className="font-semibold text-slate-900">{plan.yearCount}</span>
+                    <span className="font-semibold text-slate-900">{plan.yearCount ?? 0}</span>
                   </div>
                 </div>
               </CardContent>
