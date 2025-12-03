@@ -1,27 +1,8 @@
-/**
- * Import Lewis Aldridge Joinery BOM December 2025
- * 
- * This script:
- * 1. Reads the CSV file
- * 2. Creates/updates fire door schedule projects
- * 3. Creates WON opportunities for each project
- * 4. Sets delivery date from "APPROX DATE" column
- * 5. Sets start date as 4 weeks prior to delivery date
- * 6. Updates lead status to WON
- */
-
+import { prisma } from './api/src/prisma';
 import * as fs from 'fs';
 import * as path from 'path';
-import { PrismaClient } from './api/node_modules/@prisma/client';
-
-// Set the DATABASE_URL environment variable
-process.env.DATABASE_URL = 'postgresql://joineryai_db_user:prBIH2Iho6o8Q1mMiDzVMoEzQjeJTPkQ@dpg-d3mfk6mr433s73ajvdg0-a.oregon-postgres.render.com/joineryai_db?sslmode=require';
-
-// Connect directly to production database
-const prisma = new PrismaClient();
 
 interface BOMRow {
-  DATE: string;
   MJS: string;
   CUSTOMER: string;
   'JOB DESCRIPTION': string;
@@ -30,37 +11,35 @@ interface BOMRow {
   'SIGN OFF STATUS': string;
   'LAJ SCHEDULER': string;
   'DATE SIGNED OFF': string;
-  'LEAD TIME IN WEEKS': string;
   'APPROX DATE ( AUTO ADDS LEAD TIME WEEKS ) TO SIGNED OFF DATE': string;
-  'APPROX WORKING DAYS REMAINING': string;
-  BLANKS: string;
-  Column42: string; // BLANKS date
-  LIPPINGS: string;
-  Column52: string; // LIPPINGS date
-  FACINGS: string;
-  Column62: string; // FACINGS date
-  GLASS: string;
-  Column72: string; // GLASS date
-  CASSETTES: string;
-  Column82: string; // CASSETTES date
-  TIMBERS: string;
-  Column92: string; // TIMBERS date
-  IRONMONGERY: string;
-  Column112: string; // IRONMONGERY date
+  'BLANKS': string;
+  'Column42': string;
+  'LIPPINGS': string;
+  'Column52': string;
+  'FACINGS': string;
+  'Column62': string;
+  'GLASS': string;
+  'Column72': string;
+  'CASSETTES': string;
+  'Column82': string;
+  'TIMBERS': string;
+  'Column92': string;
+  'IRONMONGERY': string;
+  'Column112': string;
   'DOOR SETS': string;
-  LEAVES: string;
-  NOTES: string;
+  'LEAVES': string;
+  'NOTES': string;
 }
 
 function parseDate(dateStr: string | undefined | null): Date | null {
   if (!dateStr || dateStr.trim() === '' || dateStr === '00-Jan-00') return null;
   
   try {
-    // Handle Excel date format like "21-Mar-25"
+    // Try parsing DD-MMM-YY format (21-Mar-25)
     if (dateStr.includes('-')) {
       const parsed = new Date(dateStr);
       if (!isNaN(parsed.getTime())) {
-        // If year is 2-digit, assume 2000s
+        // Fix two-digit years
         if (parsed.getFullYear() < 100) {
           parsed.setFullYear(2000 + parsed.getFullYear());
         }
@@ -68,15 +47,14 @@ function parseDate(dateStr: string | undefined | null): Date | null {
       }
     }
     
-    // Handle DD/MM/YYYY format
+    // Try DD/MM/YYYY format
     if (dateStr.includes('/')) {
       const parts = dateStr.split('/');
       if (parts.length === 3) {
         const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
+        const month = parseInt(parts[1], 10) - 1;
         let year = parseInt(parts[2], 10);
         
-        // Convert 2-digit year to 4-digit
         if (year < 100) {
           year = year < 50 ? 2000 + year : 1900 + year;
         }
@@ -88,13 +66,13 @@ function parseDate(dateStr: string | undefined | null): Date | null {
       }
     }
     
-    // Try generic date parsing
+    // Try standard parsing
     const parsed = new Date(dateStr);
     if (!isNaN(parsed.getTime())) {
       return parsed;
     }
   } catch (e) {
-    console.warn(`Failed to parse date: ${dateStr}`);
+    // Ignore parse errors
   }
   
   return null;
@@ -108,20 +86,20 @@ function cleanString(value: string | undefined | null): string | null {
 
 async function importBOM() {
   try {
-    console.log('🔥 Starting Lewis Aldridge Joinery BOM Import (December 2025)...\n');
+    console.log('🔥 Starting Lewis Aldridge Joinery BOM Import...\n');
     
-    // Find Lewis Aldridge tenant
+    // Find the LAJ Joinery tenant
     const tenant = await prisma.tenant.findFirst({
-      where: { name: { contains: 'Lewis Aldridge', mode: 'insensitive' } }
+      where: { name: { contains: 'LAJ', mode: 'insensitive' } }
     });
     
     if (!tenant) {
-      throw new Error('Lewis Aldridge Joinery tenant not found!');
+      throw new Error('LAJ Joinery tenant not found!');
     }
     
     console.log(`✅ Found tenant: ${tenant.name} (${tenant.id})\n`);
     
-    // Find a user for this tenant to use as createdBy
+    // Get a user for creating records
     const user = await prisma.user.findFirst({
       where: { tenantId: tenant.id }
     });
@@ -130,20 +108,19 @@ async function importBOM() {
       throw new Error('No user found for Lewis Aldridge tenant!');
     }
     
-    // Read CSV file
+    // Read the CSV file
     const csvPath = path.join(process.env.HOME || '', 'Desktop', 'DEC 2025 BOM.csv');
     console.log(`📄 Reading CSV from: ${csvPath}\n`);
     
     const fileContent = fs.readFileSync(csvPath, 'utf-8');
     const lines = fileContent.split('\n').filter(l => l.trim());
     
-    // Parse headers (first line)
-    const headers = lines[0].split(',').map(h => h.trim());
+    // Skip first header row (Column1, Column2, etc.) and use second row with actual field names
+    const headers = lines[1].split(',').map(h => h.trim());
     console.log(`Found ${headers.length} columns\n`);
     
-    // Parse rows
     const records: any[] = [];
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = 2; i < lines.length; i++) {
       const values = lines[i].split(',');
       const row: any = {};
       headers.forEach((header, idx) => {
@@ -165,17 +142,16 @@ async function importBOM() {
         const customer = cleanString(row.CUSTOMER);
         const jobDescription = cleanString(row['JOB DESCRIPTION']);
         
-        // Skip empty rows
         if (!mjsNumber || !customer) {
           skipped++;
           continue;
         }
         
-        console.log(`\n📦 Processing MJS ${mjsNumber} - ${customer} - ${jobDescription || 'N/A'}`);
+        console.log(`Processing MJS ${mjsNumber} - ${customer}`);
         
         // Parse dates
         const deliveryDate = parseDate(row['APPROX DATE ( AUTO ADDS LEAD TIME WEEKS ) TO SIGNED OFF DATE']);
-        const startDate = deliveryDate ? new Date(deliveryDate.getTime() - (4 * 7 * 24 * 60 * 60 * 1000)) : null; // 4 weeks before
+        const startDate = deliveryDate ? new Date(deliveryDate.getTime() - (4 * 7 * 24 * 60 * 60 * 1000)) : null;
         const dateReceived = parseDate(row['DATE RECEIVED IN RED FOLDER']);
         const signOffDate = parseDate(row['DATE SIGNED OFF']);
         
@@ -188,21 +164,17 @@ async function importBOM() {
         const timbersDateOrdered = parseDate(row.Column92);
         const ironmongeryDateOrdered = parseDate(row.Column112);
         
-        // Parse status values
+        // Parse other fields
         const jobLocation = cleanString(row['JOB LOCATION']) || 'NOT LOOKED AT';
         const signOffStatus = cleanString(row['SIGN OFF STATUS']) || 'NOT LOOKED AT';
         const scheduledBy = cleanString(row['LAJ SCHEDULER']);
         
-        // Parse door counts
         const doorSets = row['DOOR SETS'] ? parseInt(row['DOOR SETS'], 10) : null;
         const leaves = row.LEAVES ? parseInt(row.LEAVES, 10) : null;
         
-        // Check if project already exists
+        // Check if project exists
         const existingProject = await prisma.fireDoorScheduleProject.findFirst({
-          where: {
-            tenantId: tenant.id,
-            mjsNumber: mjsNumber,
-          }
+          where: { tenantId: tenant.id, mjsNumber: mjsNumber }
         });
         
         const projectData: any = {
@@ -218,8 +190,6 @@ async function importBOM() {
           scheduledBy: scheduledBy,
           lastUpdatedBy: user.id,
           lastUpdatedAt: new Date(),
-          
-          // Material dates
           blanksDateOrdered: blanksDateOrdered,
           lippingsDateOrdered: lippingsDateOrdered,
           facingsDateOrdered: facingsDateOrdered,
@@ -227,12 +197,8 @@ async function importBOM() {
           cassettesDateOrdered: cassettesDateOrdered,
           timbersDateOrdered: timbersDateOrdered,
           ironmongeryDateOrdered: ironmongeryDateOrdered,
-          
-          // Door counts
           doorSets: doorSets,
           leaves: leaves,
-          
-          // Notes
           deliveryNotes: cleanString(row.NOTES),
         };
         
@@ -246,53 +212,79 @@ async function importBOM() {
           });
           updated++;
         } else {
-          console.log(`  ✨ Creating new project`);
+          console.log('  ✨ Creating new project');
           project = await prisma.fireDoorScheduleProject.create({
             data: projectData,
           });
           created++;
         }
         
-        // Now create/update the opportunity and lead
+        // Find or create client
+        let client = await prisma.client.findFirst({
+          where: { 
+            tenantId: tenant.id, 
+            name: customer 
+          }
+        });
+        
+        if (!client) {
+          console.log(`  👤 Creating client: ${customer}`);
+          client = await prisma.client.create({
+            data: {
+              tenantId: tenant.id,
+              name: customer,
+              createdAt: dateReceived || new Date(),
+            },
+          });
+        }
+        
+        // Find or create lead for this client
         let lead = await prisma.lead.findFirst({
-          where: {
-            tenantId: tenant.id,
-            contactName: customer,
-          },
+          where: { 
+            tenantId: tenant.id, 
+            clientId: client.id,
+            contactName: customer 
+          }
         });
         
         if (!lead) {
-          console.log(`  👤 Creating lead for ${customer}`);
+          console.log(`  📋 Creating lead for ${customer}`);
           lead = await prisma.lead.create({
             data: {
               tenantId: tenant.id,
               createdById: user.id,
+              clientId: client.id,
               contactName: customer,
               capturedAt: dateReceived || new Date(),
               status: 'WON' as any,
             },
           });
         } else {
-          // Update lead status to WON
           await prisma.lead.update({
             where: { id: lead.id },
             data: { status: 'WON' as any },
           });
         }
         
-        // Check if opportunity exists
+        // Find or create opportunity
         let opportunity = project.projectId
-          ? await prisma.opportunity.findFirst({
-              where: { id: project.projectId, tenantId: tenant.id },
-            })
+          ? await prisma.opportunity.findFirst({ where: { id: project.projectId, tenantId: tenant.id } })
           : null;
         
+        // If no opportunity linked to project, check if lead already has an opportunity
         if (!opportunity) {
-          console.log(`  💼 Creating WON opportunity`);
+          opportunity = await prisma.opportunity.findFirst({
+            where: { leadId: lead.id, tenantId: tenant.id }
+          });
+        }
+        
+        if (!opportunity) {
+          console.log('  💼 Creating WON opportunity');
           opportunity = await prisma.opportunity.create({
             data: {
               tenantId: tenant.id,
               leadId: lead.id,
+              clientId: client.id,
               title: jobDescription || `${customer} - ${mjsNumber}`,
               stage: 'WON' as any,
               startDate: startDate,
@@ -302,7 +294,6 @@ async function importBOM() {
             },
           });
           
-          // Link back to project
           await prisma.fireDoorScheduleProject.update({
             where: { id: project.id },
             data: { projectId: opportunity.id },
@@ -312,6 +303,7 @@ async function importBOM() {
           await prisma.opportunity.update({
             where: { id: opportunity.id },
             data: {
+              clientId: client.id,
               stage: 'WON' as any,
               startDate: startDate,
               deliveryDate: deliveryDate,
@@ -319,12 +311,20 @@ async function importBOM() {
               wonAt: signOffDate || opportunity.wonAt || new Date(),
             },
           });
+          
+          // Link the project to the opportunity if not already linked
+          if (project.projectId !== opportunity.id) {
+            await prisma.fireDoorScheduleProject.update({
+              where: { id: project.id },
+              data: { projectId: opportunity.id },
+            });
+          }
         }
         
         console.log(`  ✅ Success! Project: ${project.id}, Opportunity: ${opportunity.id}`);
         
       } catch (error) {
-        console.error(`  ❌ Error processing row:`, error);
+        console.error('  ❌ Error:', error);
         errors++;
       }
     }
@@ -344,13 +344,4 @@ async function importBOM() {
   }
 }
 
-// Run the import
-importBOM()
-  .then(() => {
-    console.log('✅ Import completed successfully');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('❌ Import failed:', error);
-    process.exit(1);
-  });
+importBOM().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });

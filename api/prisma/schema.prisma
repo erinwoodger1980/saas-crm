@@ -31,6 +31,7 @@ model Tenant {
   isGroupCoachingMember      Boolean                     @default(false)
   activityLogs               ActivityLog[]
   automationRules            AutomationRule[]
+  clients                    Client[]
   clientAccounts             ClientAccount[]
   doorCores                  DoorCore[]
   emailIngests               EmailIngest[]
@@ -185,10 +186,37 @@ model SignupToken {
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model Client {
+  id            String        @id @default(cuid())
+  tenantId      String
+  name          String
+  email         String?
+  phone         String?
+  address       String?
+  city          String?
+  postcode      String?
+  country       String?       @default("UK")
+  contactPerson String?
+  companyName   String?
+  isActive      Boolean       @default(true)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads         Lead[]
+  opportunities Opportunity[]
+
+  @@unique([tenantId, name, email])
+  @@index([tenantId])
+  @@index([tenantId, name])
+  @@index([tenantId, email])
+}
+
 model Lead {
   id                    String                    @id @default(cuid())
   tenantId              String
   createdById           String
+  clientId              String?
   contactName           String
   email                 String?
   number                String?
@@ -212,6 +240,7 @@ model Lead {
   emailThreads          EmailThread[]
   followUpEvents        FollowUpEvent[]
   followUpLogs          FollowUpLog[]
+  client                Client?                   @relation(fields: [clientId], references: [id])
   clientAccount         ClientAccount?            @relation(fields: [clientAccountId], references: [id])
   tenant                Tenant                    @relation(fields: [tenantId], references: [id])
   interactions          LeadInteraction[]
@@ -222,7 +251,9 @@ model Lead {
   questionnaireMatches  QuoteQuestionnaireMatch[] @relation("LeadQuestionnaireMatches")
   supplierQuoteRequests SupplierQuoteRequest[]
 
+  @@index([clientId])
   @@index([clientAccountId])
+  @@index([tenantId, clientId])
 }
 
 model LeadInteraction {
@@ -258,6 +289,7 @@ model Opportunity {
   id                       String                     @id @default(cuid())
   tenantId                 String
   leadId                   String                     @unique
+  clientId                 String?
   title                    String
   number                   String?
   description              String?
@@ -289,6 +321,7 @@ model Opportunity {
   installationStartDate    DateTime?
   emailMessages            EmailMessage[]
   emailThreads             EmailThread[]
+  client                   Client?                    @relation(fields: [clientId], references: [id])
   clientAccount            ClientAccount?             @relation(fields: [clientAccountId], references: [id])
   lead                     Lead                       @relation(fields: [leadId], references: [id])
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id])
@@ -299,7 +332,9 @@ model Opportunity {
   workshopTimers           WorkshopTimer[]
 
   @@index([tenantId, stage])
+  @@index([clientId])
   @@index([clientAccountId])
+  @@index([tenantId, clientId])
 }
 
 model EmailIngest {
