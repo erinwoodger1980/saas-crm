@@ -52,6 +52,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
     console.log("[AppShell] Fire Door Manufacturer state changed to:", isFireDoorManufacturer);
   }, [isFireDoorManufacturer]);
 
+  // Debug log whenever user changes
+  useEffect(() => {
+    console.log("[AppShell] User changed:", user ? {
+      id: user.id,
+      email: user.email,
+      isOwner: user.isOwner,
+      role: user.role
+    } : null);
+  }, [user]);
+
+  // Debug log whenever coaching flag changes
+  useEffect(() => {
+    console.log("[AppShell] isGroupCoachingMember changed to:", isGroupCoachingMember);
+  }, [isGroupCoachingMember]);
+
   useEffect(() => {
 
     // Check if we're impersonating by reading the JWT token
