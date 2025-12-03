@@ -105,8 +105,8 @@ export default function FinancePlanPage() {
 
   const loadPlan = async () => {
     try {
-      const data = await apiFetch<FinancialPlan>(`/coaching/financial-plans/${planId}`);
-      setPlan(data);
+      const data = await apiFetch<{ ok?: boolean; plan?: FinancialPlan }>(`/coaching/financial-plans/${planId}`);
+      setPlan(data.plan ?? (data as any));
     } catch (error) {
       console.error("Failed to load financial plan:", error);
     } finally {
@@ -146,7 +146,8 @@ export default function FinancePlanPage() {
     if (!plan) return;
 
     try {
-      await apiFetch(`/coaching/financial-plans/${plan.id}/targets`, {
+      const targetPlanId = plan?.id ?? planId;
+      await apiFetch(`/coaching/financial-plans/${targetPlanId}/targets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
