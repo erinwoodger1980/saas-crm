@@ -6,6 +6,12 @@
 			"type": "shell",
 			"command": "pnpm build",
 			"group": "build"
+		},
+		{
+			"label": "Build after AppShell (app) change",
+			"type": "shell",
+			"command": "pnpm build",
+			"group": "build"
 		}
 	]
 }

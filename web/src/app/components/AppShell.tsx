@@ -369,8 +369,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   </>
                 )}
                 
-                {/* Coaching Hub - only for owners in Group Coaching */}
-                {user?.isOwner && isGroupCoachingMember && (
+                {/* Coaching Hub - show when Coaching is enabled for tenant */}
+                {isGroupCoachingMember && (
                   <Link
                     href="/coaching"
                     title={sidebarCollapsed ? "Coaching Hub - Goals, notes & financials" : undefined}
