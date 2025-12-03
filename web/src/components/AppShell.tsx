@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame, ChevronLeft, ChevronRight, Package, Upload } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import Image from "next/image";
@@ -162,20 +162,46 @@ export default function AppShell({ children }: { children: ReactNode }) {
             );
           })}
           
-          {/* Fire Door Calculator - only for fire door manufacturers */}
+          {/* Fire Door section - only for fire door manufacturers */}
           {isFireDoorManufacturer && (
-            <Link
-              href="/fire-door-calculator"
-              title={sidebarCollapsed ? "Fire Door Calculator" : undefined}
-              className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
-                pathname?.startsWith("/fire-door-calculator")
-                  ? "bg-[rgb(var(--brand))]/10 text-[rgb(var(--brand))] font-medium"
-                  : "hover:bg-slate-100 text-slate-700"
-              } ${sidebarCollapsed ? 'justify-center' : ''}`}
-            >
-              <Flame size={16} className="shrink-0" />
-              {!sidebarCollapsed && <span className="whitespace-nowrap overflow-hidden">Fire Door Calculator</span>}
-            </Link>
+            <>
+              <Link
+                href="/fire-door-schedule"
+                title={sidebarCollapsed ? "Fire Door Schedule" : undefined}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
+                  pathname?.startsWith("/fire-door-schedule")
+                    ? "bg-[rgb(var(--brand))]/10 text-[rgb(var(--brand))] font-medium"
+                    : "hover:bg-slate-100 text-slate-700"
+                } ${sidebarCollapsed ? 'justify-center' : ''}`}
+              >
+                <Package size={16} className="shrink-0" />
+                {!sidebarCollapsed && <span className="whitespace-nowrap overflow-hidden">Fire Door Schedule</span>}
+              </Link>
+              <Link
+                href="/fire-doors/imports"
+                title={sidebarCollapsed ? "Import Fire Doors" : undefined}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
+                  pathname?.startsWith("/fire-doors/imports")
+                    ? "bg-[rgb(var(--brand))]/10 text-[rgb(var(--brand))] font-medium"
+                    : "hover:bg-slate-100 text-slate-700"
+                } ${sidebarCollapsed ? 'justify-center' : ''}`}
+              >
+                <Upload size={16} className="shrink-0" />
+                {!sidebarCollapsed && <span className="whitespace-nowrap overflow-hidden">Import Fire Doors</span>}
+              </Link>
+              <Link
+                href="/fire-door-calculator"
+                title={sidebarCollapsed ? "Fire Door Calculator" : undefined}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
+                  pathname?.startsWith("/fire-door-calculator")
+                    ? "bg-[rgb(var(--brand))]/10 text-[rgb(var(--brand))] font-medium"
+                    : "hover:bg-slate-100 text-slate-700"
+                } ${sidebarCollapsed ? 'justify-center' : ''}`}
+              >
+                <Flame size={16} className="shrink-0" />
+                {!sidebarCollapsed && <span className="whitespace-nowrap overflow-hidden">Fire Door Calculator</span>}
+              </Link>
+            </>
           )}
         </nav>
 
