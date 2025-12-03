@@ -516,11 +516,13 @@ export default function SettingsPage() {
     setS((prev) => (prev ? { ...prev, isGroupCoachingMember: nextValue } : prev));
     setSavingCoaching(true);
     try {
+      // Persist to backend TenantSettings so backend flags are in sync
       const updated = await apiFetch<Settings>("/tenant/settings", {
-        method: "PATCH",
+        method: "PUT",
         json: { isGroupCoachingMember: nextValue },
       });
       setS(updated);
+      // Emit event so AppShell updates sidebar immediately
       emitTenantSettingsUpdate({ isGroupCoachingMember: updated?.isGroupCoachingMember });
       toast({ title: nextValue ? "Coaching Hub enabled" : "Coaching Hub disabled" });
     } catch (e: any) {

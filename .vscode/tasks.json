@@ -30,6 +30,12 @@
 			"type": "shell",
 			"command": "pnpm build",
 			"group": "build"
+		},
+		{
+			"label": "Build settings change",
+			"type": "shell",
+			"command": "pnpm build",
+			"group": "build"
 		}
 	]
 }
