@@ -48,7 +48,8 @@ export default function CoachingHubPage() {
         // Try to fetch tenant settings to check flags
         const settings = await apiFetch<{ isGroupCoachingMember?: boolean }>("/tenant/settings");
         
-        if (!settings?.isGroupCoachingMember || !user?.isOwner) {
+        // Allow access when tenant has Coaching Hub enabled; owner not required for now
+        if (!settings?.isGroupCoachingMember) {
           setHasAccess(false);
           setLoading(false);
           return;
@@ -101,9 +102,7 @@ export default function CoachingHubPage() {
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            {!user?.isOwner
-              ? "Only business owners can access the Coaching Hub."
-              : "Your business is not enrolled in Group Coaching. Contact us to learn more."}
+          "Coaching Hub is disabled for this tenant."
           </AlertDescription>
         </Alert>
       </div>

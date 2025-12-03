@@ -185,16 +185,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
           })}
 
           {/* Coaching Hub - only for coaching members or owners */}
-          {(() => {
-            const shouldShow = isGroupCoachingMember || user?.isOwner;
-            console.log("[AppShell] Coaching visibility check:", { 
-              isGroupCoachingMember, 
-              isOwner: user?.isOwner, 
-              shouldShow,
-              user: user ? { id: user.id, email: user.email, isOwner: user.isOwner } : null
-            });
-            return shouldShow;
-          })() && (
+            {/* Coaching Hub - show when Coaching is enabled for tenant */}
+            {(() => {
+              const shouldShow = isGroupCoachingMember;
+              console.log("[AppShell] Coaching Hub visibility check:", {
+                isGroupCoachingMember,
+                shouldShow,
+              });
+              return shouldShow;
+            })() && (
             <Link
               href="/coaching"
               title={sidebarCollapsed ? "Coaching Hub" : undefined}
