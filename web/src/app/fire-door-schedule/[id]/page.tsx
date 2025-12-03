@@ -262,7 +262,8 @@ export default function FireDoorScheduleDetailPage() {
       formData.append("file", file);
       formData.append("projectId", id);
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/fire-doors/import`, {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? window.location.origin + '/api' : 'http://localhost:4000');
+      const response = await fetch(`${apiBase}/fire-doors/import`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("jwt")}`,
@@ -485,7 +486,7 @@ export default function FireDoorScheduleDetailPage() {
                 </div>
                 <h2 className="text-xl font-bold text-slate-800">Production Progress</h2>
               </div>
-              <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-6">
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Blanks Cut</label>
                   <ProgressBar value={project.blanksCutPercent || 0} />
