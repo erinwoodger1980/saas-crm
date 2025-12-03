@@ -599,6 +599,7 @@ export default function FireDoorSchedulePage() {
         'deliveryNotes'
       ]
     },
+    ALL: {
       label: 'All',
       columns: [
         'mjsNumber',
@@ -1236,14 +1237,10 @@ export default function FireDoorSchedulePage() {
                     }
                   }}
                 />
-                <Button 
-                  variant="outline" 
-                  className="bg-white/50 border-slate-200 hover:bg-white"
-                  as="span"
-                >
+                <span className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none border border-slate-200 bg-white/50 hover:bg-white h-10 py-2 px-4 cursor-pointer">
                   <Download className="w-4 h-4 mr-2" />
                   Import CSV
-                </Button>
+                </span>
               </label>
               <Button
                 variant="outline"
