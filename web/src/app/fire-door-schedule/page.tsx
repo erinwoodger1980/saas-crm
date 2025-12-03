@@ -1716,7 +1716,7 @@ export default function FireDoorSchedulePage() {
                       return (
                       <th
                         key={field}
-                        className={`px-4 py-3 text-left group sticky top-0 ${isFrozen ? `z-[210] bg-white bg-clip-padding min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-[200] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                        className={`px-4 py-3 text-left group sticky top-0 ${isFrozen ? `z-[210] bg-white bg-clip-padding min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-[190] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                         style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : undefined}
                         ref={(el) => { headerRefs.current[field] = el }}
                       >
@@ -1777,7 +1777,7 @@ export default function FireDoorSchedulePage() {
                       return (
                         <th
                           key={field}
-                          className={`px-4 py-2 sticky ${isFrozen ? `z-[200] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-[100] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                          className={`px-4 py-2 sticky ${isFrozen ? `z-[200] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-[90] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                             style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, top: `${headerHeight}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : { top: `${headerHeight}px` }}
                         >
                           <Input
@@ -1828,7 +1828,7 @@ export default function FireDoorSchedulePage() {
                         return (
                         <td
                           key={field}
-                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-0 group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-[1] group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                           style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : undefined}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
