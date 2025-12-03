@@ -33,6 +33,8 @@ export default function FinancePlansPage() {
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newPlanTitle, setNewPlanTitle] = useState("");
+  const [startYear, setStartYear] = useState(new Date().getFullYear());
+  const [durationYears, setDurationYears] = useState(1);
 
   useEffect(() => {
     loadPlans();
@@ -50,17 +52,19 @@ export default function FinancePlansPage() {
   };
 
   const handleCreatePlan = async () => {
-    if (!newPlanTitle.trim()) return;
+    if (!newPlanTitle.trim() || !startYear || !durationYears) return;
 
     try {
       setLoading(true);
       const created = await apiFetch<FinancialPlan>("/coaching/financial-plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newPlanTitle }),
+        body: JSON.stringify({ startYear, durationYears }),
       });
       setShowCreateDialog(false);
       setNewPlanTitle("");
+      setStartYear(new Date().getFullYear());
+      setDurationYears(1);
       router.push(`/coaching/finance/${created.id}`);
     } catch (error) {
       console.error("Failed to create financial plan:", error);
@@ -172,12 +176,32 @@ export default function FinancePlansPage() {
                 placeholder="e.g., 2025 Financial Plan"
               />
             </div>
+            <div>
+              <Label htmlFor="startYear">Start Year</Label>
+              <Input
+                id="startYear"
+                type="number"
+                value={startYear}
+                onChange={(e) => setStartYear(parseInt(e.target.value))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="durationYears">Duration (years)</Label>
+              <Input
+                id="durationYears"
+                type="number"
+                min={1}
+                max={5}
+                value={durationYears}
+                onChange={(e) => setDurationYears(parseInt(e.target.value))}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreatePlan} disabled={!newPlanTitle.trim()}>
+            <Button onClick={handleCreatePlan} disabled={!newPlanTitle.trim() || !startYear || !durationYears}>
               Create
             </Button>
           </DialogFooter>
