@@ -1550,9 +1550,19 @@ export default function FireDoorSchedulePage() {
                         className="flex-1 px-2 py-1 border rounded bg-white"
                         value={opt}
                         onChange={(e) => {
+                          const oldValue = opt;
+                          const newValue = e.target.value;
                           const next = [...currentOptions];
-                          next[idx] = e.target.value;
+                          next[idx] = newValue;
                           currentSetter(next);
+                          
+                          // If this option had a custom color, rename the key
+                          if (showColorPicker && customColors[oldValue]) {
+                            const updatedColors = { ...customColors };
+                            updatedColors[newValue] = updatedColors[oldValue];
+                            delete updatedColors[oldValue];
+                            setCustomColors(updatedColors);
+                          }
                         }}
                       />
                       {showColorPicker && (
@@ -1577,6 +1587,13 @@ export default function FireDoorSchedulePage() {
                         onClick={() => {
                           const next = currentOptions.filter((_, i) => i !== idx);
                           currentSetter(next);
+                          
+                          // Remove custom color for this option
+                          if (showColorPicker && customColors[opt]) {
+                            const updatedColors = { ...customColors };
+                            delete updatedColors[opt];
+                            setCustomColors(updatedColors);
+                          }
                         }}
                       >
                         Remove
