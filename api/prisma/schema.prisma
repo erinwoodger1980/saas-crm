@@ -491,6 +491,7 @@ model TenantSettings {
   createdAt                 DateTime  @default(now())
   beta                      Json      @default("{}")
   isFireDoorManufacturer    Boolean   @default(false)
+  isGroupCoachingMember     Boolean   @default(false)
   galleryImageUrls          String[]  @default([])
   heroImageUrl              String?
   primaryColor              String?
