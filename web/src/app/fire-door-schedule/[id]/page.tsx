@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Save, Trash2, Sparkles, FileCheck } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeft, Save, Trash2, Sparkles, FileCheck, Upload, Info, Table } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
@@ -138,6 +139,9 @@ export default function FireDoorScheduleDetailPage() {
   const [imports, setImports] = useState<Array<{ id: string; sourceName: string; totalValue: number; currency: string; rowCount: number; createdAt: string }>>([]);
   const [selectedImportId, setSelectedImportId] = useState<string | null>(null);
   const [netValueInput, setNetValueInput] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
     if (!isNew && id) {
@@ -247,6 +251,44 @@ export default function FireDoorScheduleDetailPage() {
     setAutoSaveTimeout(setTimeout(() => { if (!isNew) saveProject(); }, 800));
   }
 
+  async function handleCSVImport(file: File) {
+    if (isNew || !id) {
+      toast({ title: "Error", description: "Please save the project first before importing line items", variant: "destructive" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("projectId", id);
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/fire-doors/import`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("jwt")}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Import failed");
+      }
+
+      const result = await response.json();
+      toast({ title: "Success", description: `Imported ${result.rowCount} line items successfully` });
+      
+      // Reload imports list
+      await loadImportsForProject();
+    } catch (error: any) {
+      console.error("Error importing CSV:", error);
+      toast({ title: "Error", description: error.message || "Failed to import CSV", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
@@ -295,10 +337,31 @@ export default function FireDoorScheduleDetailPage() {
             </div>
             <div className="flex gap-2">
               {!isNew && (
-                <Button variant="outline" onClick={deleteProject} className="border-red-200 text-red-600 hover:bg-red-50">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </Button>
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleCSVImport(file);
+                    }}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="border-green-200 text-green-600 hover:bg-green-50"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    {uploading ? "Importing..." : "Import Line Items"}
+                  </Button>
+                  <Button variant="outline" onClick={deleteProject} className="border-red-200 text-red-600 hover:bg-red-50">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </Button>
+                </>
               )}
               <Button onClick={saveProject} disabled={saving} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">
                 <Save className="w-4 h-4 mr-2" />
@@ -314,40 +377,52 @@ export default function FireDoorScheduleDetailPage() {
         </div>
       </div>
 
-      <div className="container mx-auto px-6 py-8 space-y-6">
-        {!isNew && (
-          <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-                <FileCheck className="w-5 h-5 text-white" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-800">Order Imports</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Select Import</label>
-                <select className="h-9 w-full border border-slate-300 rounded-md bg-white px-3" value={selectedImportId || ""} onChange={(e) => setSelectedImportId(e.target.value)}>
-                  {imports.map((imp) => (
-                    <option key={imp.id} value={imp.id}>
-                      {imp.sourceName} • {new Date(imp.createdAt).toLocaleDateString("en-GB")} • {imp.rowCount} items
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Calculated Import Total</label>
-                <Input readOnly value={(imports.find((i) => i.id === selectedImportId)?.totalValue || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
-              </div>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Net Value (Override)</label>
-                  <Input value={netValueInput} onChange={(e) => setNetValueInput(e.target.value)} placeholder="e.g. 15000.00" />
+      <div className="container mx-auto px-6 py-8">
+        {!isNew ? (
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="grid w-full max-w-md grid-cols-2 bg-white/60 backdrop-blur-sm">
+              <TabsTrigger value="overview" className="flex items-center gap-2">
+                <Info className="w-4 h-4" />
+                Project Overview
+              </TabsTrigger>
+              <TabsTrigger value="lineitems" className="flex items-center gap-2">
+                <Table className="w-4 h-4" />
+                Line Items
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-6">
+              <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                    <FileCheck className="w-5 h-5 text-white" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-800">Order Imports</h2>
                 </div>
-                <Button onClick={saveNetValueOverride}>Save</Button>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Select Import</label>
+                    <select className="h-9 w-full border border-slate-300 rounded-md bg-white px-3" value={selectedImportId || ""} onChange={(e) => setSelectedImportId(e.target.value)}>
+                      {imports.map((imp) => (
+                        <option key={imp.id} value={imp.id}>
+                          {imp.sourceName} • {new Date(imp.createdAt).toLocaleDateString("en-GB")} • {imp.rowCount} items
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Calculated Import Total</label>
+                    <Input readOnly value={(imports.find((i) => i.id === selectedImportId)?.totalValue || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Net Value (Override)</label>
+                      <Input value={netValueInput} onChange={(e) => setNetValueInput(e.target.value)} placeholder="e.g. 15000.00" />
+                    </div>
+                    <Button onClick={saveNetValueOverride}>Save</Button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
 
         <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
           <div className="flex items-center gap-2 mb-6">
@@ -402,12 +477,339 @@ export default function FireDoorScheduleDetailPage() {
         </div>
 
         {!isNew && (
-          <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
-            {selectedImportId ? (
-              <FireDoorSpreadsheet importId={selectedImportId} />
-            ) : (
-              <div className="text-slate-600 text-sm">Select an import to view line items.</div>
-            )}
+          <>
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800">Production Progress</h2>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Blanks Cut</label>
+                  <ProgressBar value={project.blanksCutPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.blanksCutPercent || 0} onChange={(e) => updateField("blanksCutPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Edgeband</label>
+                  <ProgressBar value={project.edgebandPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.edgebandPercent || 0} onChange={(e) => updateField("edgebandPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Calibrate</label>
+                  <ProgressBar value={project.calibratePercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.calibratePercent || 0} onChange={(e) => updateField("calibratePercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Facings</label>
+                  <ProgressBar value={project.facingsPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.facingsPercent || 0} onChange={(e) => updateField("facingsPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Final CNC</label>
+                  <ProgressBar value={project.finalCncPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.finalCncPercent || 0} onChange={(e) => updateField("finalCncPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Finish</label>
+                  <ProgressBar value={project.finishPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.finishPercent || 0} onChange={(e) => updateField("finishPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Sand</label>
+                  <ProgressBar value={project.sandPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.sandPercent || 0} onChange={(e) => updateField("sandPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Spray</label>
+                  <ProgressBar value={project.sprayPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.sprayPercent || 0} onChange={(e) => updateField("sprayPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Cut</label>
+                  <ProgressBar value={project.cutPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.cutPercent || 0} onChange={(e) => updateField("cutPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">CNC</label>
+                  <ProgressBar value={project.cncPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.cncPercent || 0} onChange={(e) => updateField("cncPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-2 block">Build</label>
+                  <ProgressBar value={project.buildPercent || 0} />
+                  <Input type="number" min={0} max={100} value={project.buildPercent || 0} onChange={(e) => updateField("buildPercent", Number(e.target.value))} className="mt-2 w-32" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                  <FileCheck className="w-5 h-5 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800">BOM & Materials</h2>
+              </div>
+              <div className="space-y-6">
+                {[
+                  { name: "Blanks", statusField: "blanksStatus", orderedField: "blanksOrdered", receivedField: "blanksReceived", checkedField: "blanksChecked" },
+                  { name: "Lippings", statusField: "lippingsStatus", orderedField: "lippingsOrdered", receivedField: "lippingsReceived", checkedField: "lippingsChecked" },
+                  { name: "Facings", statusField: "facingsStatus", orderedField: "facingsOrdered", receivedField: "facingsReceived", checkedField: "facingsChecked" },
+                  { name: "Glass", statusField: "glassStatus", orderedField: "glassOrdered", receivedField: "glassReceived", checkedField: "glassChecked" },
+                  { name: "Cassettes", statusField: "cassettesStatus", orderedField: "cassettesOrdered", receivedField: "cassettesReceived", checkedField: "cassettesChecked" },
+                  { name: "Timbers", statusField: "timbersStatus", orderedField: "timbersOrdered", receivedField: "timbersReceived", checkedField: "timbersChecked" },
+                  { name: "Ironmongery", statusField: "ironmongeryStatus", orderedField: "ironmongeryOrdered", receivedField: "ironmongeryReceived", checkedField: "ironmongeryChecked" },
+                ].map((material) => (
+                  <div key={material.name} className="border-b border-slate-200 pb-4 last:border-0">
+                    <h3 className="text-sm font-semibold text-slate-700 mb-3">{material.name}</h3>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Status</label>
+                        <Select value={(project as any)[material.statusField] || ""} onValueChange={(v) => updateField(material.statusField, v)}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Select..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="NOT_ORDERED">Not Ordered</SelectItem>
+                            <SelectItem value="ORDERED">Ordered</SelectItem>
+                            <SelectItem value="RECEIVED">Received</SelectItem>
+                            <SelectItem value="CHECKED">Checked</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Ordered Date</label>
+                        <EditableCell type="date" value={(project as any)[material.orderedField]} onChange={(v) => updateField(material.orderedField, v)} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Received Date</label>
+                        <EditableCell type="date" value={(project as any)[material.receivedField]} onChange={(v) => updateField(material.receivedField, v)} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Checked Date</label>
+                        <EditableCell type="date" value={(project as any)[material.checkedField]} onChange={(v) => updateField(material.checkedField, v)} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                  <FileCheck className="w-5 h-5 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800">Paperwork</h2>
+              </div>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Door Paperwork</label>
+                  <Select value={(project as any).doorPaperwork || ""} onValueChange={(v) => updateField("doorPaperwork", v)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
+                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                      <SelectItem value="COMPLETE">Complete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Final CNC Sheet</label>
+                  <Select value={(project as any).finalCncSheet || ""} onValueChange={(v) => updateField("finalCncSheet", v)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
+                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                      <SelectItem value="COMPLETE">Complete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Final Checks</label>
+                  <Select value={(project as any).finalChecks || ""} onValueChange={(v) => updateField("finalChecks", v)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
+                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                      <SelectItem value="COMPLETE">Complete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Delivery Checklist</label>
+                  <Select value={(project as any).deliveryChecklist || ""} onValueChange={(v) => updateField("deliveryChecklist", v)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
+                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                      <SelectItem value="COMPLETE">Complete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Frames Paperwork</label>
+                  <Select value={(project as any).framesPaperwork || ""} onValueChange={(v) => updateField("framesPaperwork", v)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
+                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                      <SelectItem value="COMPLETE">Complete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Comments</label>
+                <EditableCell type="textarea" value={project.paperworkComments} onChange={(v) => updateField("paperworkComments", v)} placeholder="Additional notes..." />
+              </div>
+            </div>
+
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
+                  <FileCheck className="w-5 h-5 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800">Transport, Delivery & Installation</h2>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Transport Status</label>
+                  <Select value={project.transportStatus || ""} onValueChange={(v) => updateField("transportStatus", v)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NOT_SCHEDULED">Not Scheduled</SelectItem>
+                      <SelectItem value="SCHEDULED">Scheduled</SelectItem>
+                      <SelectItem value="IN_TRANSIT">In Transit</SelectItem>
+                      <SelectItem value="DELIVERED">Delivered</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Door Sets</label>
+                  <EditableCell type="number" value={project.doorSets} onChange={(v) => updateField("doorSets", v)} placeholder="0" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Leaves</label>
+                  <EditableCell type="number" value={project.leaves} onChange={(v) => updateField("leaves", v)} placeholder="0" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Delivery Date</label>
+                  <EditableCell type="date" value={project.deliveryDate} onChange={(v) => updateField("deliveryDate", v)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Install Start</label>
+                  <EditableCell type="date" value={project.installStart} onChange={(v) => updateField("installStart", v)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Install End</label>
+                  <EditableCell type="date" value={project.installEnd} onChange={(v) => updateField("installEnd", v)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Snagging Status</label>
+                  <Select value={project.snaggingStatus || ""} onValueChange={(v) => updateField("snaggingStatus", v)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
+                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                      <SelectItem value="COMPLETE">Complete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="mt-4">
+                <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Delivery Notes</label>
+                <EditableCell type="textarea" value={project.deliveryNotes} onChange={(v) => updateField("deliveryNotes", v)} placeholder="Special instructions..." />
+              </div>
+            </div>
+          </>
+        )}
+            </TabsContent>
+
+            <TabsContent value="lineitems" className="space-y-6">
+              <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                    <Table className="w-5 h-5 text-white" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-800">Fire Door Line Items (144 Columns)</h2>
+                </div>
+                {selectedImportId ? (
+                  <FireDoorSpreadsheet importId={selectedImportId} />
+                ) : (
+                  <div className="text-slate-600 text-sm">Select an import in the Project Overview tab to view line items.</div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="space-y-6">
+            <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                  <FileCheck className="w-5 h-5 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-800">Project Overview</h2>
+              </div>
+              <div className="grid grid-cols-4 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">MJS Number</label>
+                  <EditableCell value={project.mjsNumber} onChange={(v) => updateField("mjsNumber", v)} placeholder="e.g. 1234" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Job Name</label>
+                  <EditableCell value={project.jobName} onChange={(v) => updateField("jobName", v)} placeholder="Project name" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Client Name</label>
+                  <EditableCell value={project.clientName} onChange={(v) => updateField("clientName", v)} placeholder="Company name" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">PO Number</label>
+                  <EditableCell value={project.poNumber} onChange={(v) => updateField("poNumber", v)} placeholder="Purchase order" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">LAQ Number</label>
+                  <EditableCell value={project.laqNumber} onChange={(v) => updateField("laqNumber", v)} placeholder="LAQ reference" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Date Received</label>
+                  <EditableCell type="date" value={project.dateReceived} onChange={(v) => updateField("dateReceived", v)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Date Required</label>
+                  <EditableCell type="date" value={project.dateRequired} onChange={(v) => updateField("dateRequired", v)} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Job Location</label>
+                  <Select value={project.jobLocation || ""} onValueChange={(v) => updateField("jobLocation", v)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="RED FOLDER">🔴 Red Folder</SelectItem>
+                      <SelectItem value="IN PROGRESS">⚙️ In Progress</SelectItem>
+                      <SelectItem value="COMPLETE">✅ Complete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

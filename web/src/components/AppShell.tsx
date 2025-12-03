@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame, ChevronLeft, ChevronRight, Package, Upload } from "lucide-react";
+import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame, ChevronLeft, ChevronRight, Package, Upload, Target } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import Image from "next/image";
@@ -31,6 +31,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedTenant, setImpersonatedTenant] = useState<string | null>(null);
   const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
+  const [isGroupCoachingMember, setIsGroupCoachingMember] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Load sidebar state from localStorage
@@ -80,22 +81,28 @@ export default function AppShell({ children }: { children: ReactNode }) {
       }
     }
 
-    // Fetch tenant settings to check for fire door manufacturer flag
-    apiFetch<{ isFireDoorManufacturer?: boolean }>("/tenant/settings")
+    // Fetch tenant settings to check for fire door manufacturer and coaching flags
+    apiFetch<{ isFireDoorManufacturer?: boolean; isGroupCoachingMember?: boolean }>("/tenant/settings")
       .then((data) => {
         console.log("[AppShell] Fire door flag from API:", data?.isFireDoorManufacturer);
+        console.log("[AppShell] Coaching flag from API:", data?.isGroupCoachingMember);
         setIsFireDoorManufacturer(Boolean(data?.isFireDoorManufacturer));
+        setIsGroupCoachingMember(Boolean(data?.isGroupCoachingMember));
       })
       .catch((error) => {
         console.error("[AppShell] Failed to fetch settings:", error);
         // Failed to fetch settings, default to false
       });
     const handleTenantSettingsUpdate = (event: Event) => {
-      const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean; isGroupCoachingMember?: boolean }>).detail;
       console.log("[AppShell] Received tenant-settings:updated event:", detail);
       if (detail && Object.prototype.hasOwnProperty.call(detail, "isFireDoorManufacturer")) {
         console.log("[AppShell] Updating fire door flag to:", detail.isFireDoorManufacturer);
         setIsFireDoorManufacturer(Boolean(detail.isFireDoorManufacturer));
+      }
+      if (detail && Object.prototype.hasOwnProperty.call(detail, "isGroupCoachingMember")) {
+        console.log("[AppShell] Updating coaching flag to:", detail.isGroupCoachingMember);
+        setIsGroupCoachingMember(Boolean(detail.isGroupCoachingMember));
       }
     };
 
@@ -161,6 +168,22 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+
+          {/* Coaching Hub - only for coaching members and owners */}
+          {isGroupCoachingMember && user?.isOwner && (
+            <Link
+              href="/coaching"
+              title={sidebarCollapsed ? "Coaching Hub" : undefined}
+              className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm ${
+                pathname?.startsWith("/coaching")
+                  ? "bg-[rgb(var(--brand))]/10 text-[rgb(var(--brand))] font-medium"
+                  : "hover:bg-slate-100 text-slate-700"
+              } ${sidebarCollapsed ? 'justify-center' : ''}`}
+            >
+              <Target size={16} className="shrink-0" />
+              {!sidebarCollapsed && <span className="whitespace-nowrap overflow-hidden">Coaching Hub</span>}
+            </Link>
+          )}
           
           {/* Fire Door section - only for fire door manufacturers */}
           {isFireDoorManufacturer && (
