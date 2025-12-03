@@ -94,6 +94,12 @@ router.post("/sync-to-opportunities", async (req: any, res: Response) => {
             },
           });
 
+          // Update lead status to WON
+          await prisma.lead.update({
+            where: { id: lead.id },
+            data: { status: 'WON' as any },
+          });
+
           // Link the fire door project to the opportunity
           await prisma.fireDoorScheduleProject.update({
             where: { id: project.id },
@@ -120,6 +126,14 @@ router.post("/sync-to-opportunities", async (req: any, res: Response) => {
               title: project.jobName || opportunity.title,
             },
           });
+
+          // Also update lead status to WON
+          if (opportunity.leadId) {
+            await prisma.lead.update({
+              where: { id: opportunity.leadId },
+              data: { status: 'WON' as any },
+            });
+          }
 
           console.log(`  🔄 Updated opportunity ${opportunity.id} for ${project.mjsNumber || project.jobName}`);
           updated++;
