@@ -1,51 +1,152 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
+import DataGrid, { Column, SelectColumn } from "react-data-grid";
+import "react-data-grid/lib/styles.css";
+import { Button } from "@/components/ui/button";
 
 interface FireDoorRow {
   id: string;
+  rowIndex: number;
+  itemType: string | null;
+  code: string | null;
+  quantity: number | null;
   doorRef: string | null;
   location: string | null;
-  quantity: number | null;
-  fireRating: string | null;
   doorSetType: string | null;
-  
-  // Leaf dimensions (DATA ENTRY)
+  rating: string | null;
+  acousticRatingDb: number | null;
+  internalColour: string | null;
+  externalColour: string | null;
+  frameFinish: string | null;
   leafHeight: number | null;
   masterLeafWidth: number | null;
   slaveLeafWidth: number | null;
   leafThickness: number | null;
   leafConfiguration: string | null;
-  
-  // Vision panels (DATA ENTRY)
+  ifSplitMasterSize: string | null;
+  doorFinishSide1: string | null;
+  doorFinishSide2: string | null;
+  doorFacing: string | null;
+  lippingFinish: string | null;
+  doorEdgeProtType: string | null;
+  doorEdgeProtPos: string | null;
+  doorUndercut: string | null;
+  doorUndercutMm: number | null;
   visionQtyLeaf1: number | null;
   vp1WidthLeaf1: number | null;
   vp1HeightLeaf1: number | null;
+  vp2WidthLeaf1: number | null;
+  vp2HeightLeaf1: number | null;
+  visionQtyLeaf2: number | null;
+  vp1WidthLeaf2: number | null;
+  vp1HeightLeaf2: number | null;
+  vp2WidthLeaf2: number | null;
+  vp2HeightLeaf2: number | null;
   totalGlazedAreaMaster: number | null;
-  
-  // Finishes (DATA ENTRY)
-  internalColour: string | null;
-  externalColour: string | null;
-  doorFacing: string | null;
-  lippingFinish: string | null;
-  frameFinish: string | null;
-  
-  // Ironmongery (DATA ENTRY)
+  fanlightSidelightGlz: string | null;
+  glazingTape: string | null;
   ironmongeryPackRef: string | null;
   closerOrFloorSpring: string | null;
-  
-  // Pricing (CALCULATED)
+  spindleFacePrep: string | null;
+  cylinderFacePrep: string | null;
+  flushBoltSupplyPrep: string | null;
+  flushBoltQty: number | null;
+  fingerProtection: string | null;
+  fireSignage: string | null;
+  fireSignageQty: number | null;
+  fireSignageFactoryFit: string | null;
+  fireIdDisc: string | null;
+  fireIdDiscQty: number | null;
+  doorViewer: string | null;
+  doorViewerPosition: string | null;
+  doorViewerPrepSize: string | null;
+  doorChain: string | null;
+  doorViewersQty: number | null;
+  doorChainFactoryFit: string | null;
+  doorViewersFactoryFit: string | null;
+  additionNote1: string | null;
+  additionNote1Qty: number | null;
   unitValue: number | null;
   labourCost: number | null;
   materialCost: number | null;
   lineTotal: number | null;
+  [key: string]: any;
 }
 
 interface FireDoorSpreadsheetProps {
   importId?: string;
   onQuoteCreated?: (quoteId: string) => void;
 }
+
+// Define all 144 columns for the fire door spreadsheet
+const COLUMNS: Column<FireDoorRow>[] = [
+  { key: "rowIndex", name: "#", width: 60, frozen: true },
+  { key: "itemType", name: "Item Type", width: 100 },
+  { key: "code", name: "Code", width: 120 },
+  { key: "quantity", name: "Qty", width: 70, editable: true },
+  { key: "doorRef", name: "Door Ref", width: 120, editable: true },
+  { key: "location", name: "Location", width: 150, editable: true },
+  { key: "doorSetType", name: "Doorset Type", width: 120 },
+  { key: "rating", name: "Fire Rating", width: 100 },
+  { key: "acousticRatingDb", name: "Acoustic (dB)", width: 110, editable: true },
+  { key: "internalColour", name: "Internal Colour", width: 140, editable: true },
+  { key: "externalColour", name: "External Colour", width: 140, editable: true },
+  { key: "frameFinish", name: "Frame Finish", width: 130, editable: true },
+  { key: "leafHeight", name: "Leaf Height", width: 110, editable: true },
+  { key: "masterLeafWidth", name: "Master Width", width: 120, editable: true },
+  { key: "slaveLeafWidth", name: "Slave Width", width: 110, editable: true },
+  { key: "leafThickness", name: "Thickness", width: 100, editable: true },
+  { key: "leafConfiguration", name: "Configuration", width: 130, editable: true },
+  { key: "ifSplitMasterSize", name: "Split Master", width: 110 },
+  { key: "doorFinishSide1", name: "Finish Side 1", width: 130, editable: true },
+  { key: "doorFinishSide2", name: "Finish Side 2", width: 130, editable: true },
+  { key: "doorFacing", name: "Door Facing", width: 120, editable: true },
+  { key: "lippingFinish", name: "Lipping Finish", width: 130, editable: true },
+  { key: "doorEdgeProtType", name: "Edge Prot Type", width: 140 },
+  { key: "doorEdgeProtPos", name: "Edge Prot Pos", width: 130 },
+  { key: "doorUndercut", name: "Undercut", width: 100 },
+  { key: "doorUndercutMm", name: "Undercut (mm)", width: 120, editable: true },
+  { key: "visionQtyLeaf1", name: "Vision Qty L1", width: 120, editable: true },
+  { key: "vp1WidthLeaf1", name: "VP1 W L1", width: 100, editable: true },
+  { key: "vp1HeightLeaf1", name: "VP1 H L1", width: 100, editable: true },
+  { key: "vp2WidthLeaf1", name: "VP2 W L1", width: 100, editable: true },
+  { key: "vp2HeightLeaf1", name: "VP2 H L1", width: 100, editable: true },
+  { key: "visionQtyLeaf2", name: "Vision Qty L2", width: 120, editable: true },
+  { key: "vp1WidthLeaf2", name: "VP1 W L2", width: 100, editable: true },
+  { key: "vp1HeightLeaf2", name: "VP1 H L2", width: 100, editable: true },
+  { key: "vp2WidthLeaf2", name: "VP2 W L2", width: 100, editable: true },
+  { key: "vp2HeightLeaf2", name: "VP2 H L2", width: 100, editable: true },
+  { key: "totalGlazedAreaMaster", name: "Glazed Area", width: 120 },
+  { key: "fanlightSidelightGlz", name: "Fanlight/Side Glz", width: 150 },
+  { key: "glazingTape", name: "Glazing Tape", width: 120 },
+  { key: "ironmongeryPackRef", name: "Ironmongery Ref", width: 150, editable: true },
+  { key: "closerOrFloorSpring", name: "Closer/Spring", width: 140, editable: true },
+  { key: "spindleFacePrep", name: "Spindle Prep", width: 120 },
+  { key: "cylinderFacePrep", name: "Cylinder Prep", width: 120 },
+  { key: "flushBoltSupplyPrep", name: "Flush Bolt Prep", width: 140 },
+  { key: "flushBoltQty", name: "Flush Bolt Qty", width: 120, editable: true },
+  { key: "fingerProtection", name: "Finger Prot", width: 120 },
+  { key: "fireSignage", name: "Fire Signage", width: 120 },
+  { key: "fireSignageQty", name: "Signage Qty", width: 110, editable: true },
+  { key: "fireSignageFactoryFit", name: "Signage Factory", width: 140 },
+  { key: "fireIdDisc", name: "Fire ID Disc", width: 120 },
+  { key: "fireIdDiscQty", name: "ID Disc Qty", width: 110, editable: true },
+  { key: "doorViewer", name: "Door Viewer", width: 120 },
+  { key: "doorViewerPosition", name: "Viewer Pos", width: 110 },
+  { key: "doorViewerPrepSize", name: "Viewer Size", width: 110 },
+  { key: "doorChain", name: "Door Chain", width: 110 },
+  { key: "doorViewersQty", name: "Viewers Qty", width: 110, editable: true },
+  { key: "doorChainFactoryFit", name: "Chain Factory", width: 130 },
+  { key: "doorViewersFactoryFit", name: "Viewers Factory", width: 140 },
+  { key: "additionNote1", name: "Additional Note", width: 200, editable: true },
+  { key: "additionNote1Qty", name: "Note Qty", width: 100, editable: true },
+  { key: "labourCost", name: "Labour £", width: 100, cellClass: "font-semibold text-green-700" },
+  { key: "materialCost", name: "Materials £", width: 110, cellClass: "font-semibold text-green-700" },
+  { key: "unitValue", name: "Unit Price £", width: 120, cellClass: "font-semibold text-green-700" },
+  { key: "lineTotal", name: "Line Total £", width: 120, frozen: true, cellClass: "font-bold text-green-700" },
+];
 
 export default function FireDoorSpreadsheet({ importId, onQuoteCreated }: FireDoorSpreadsheetProps) {
   const [loading, setLoading] = useState(false);
@@ -76,31 +177,39 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated }: FireDo
     loadImport();
   }, [importId]);
 
-  const handleCellEdit = (rowId: string, field: keyof FireDoorRow, value: any) => {
-    setRows(prev => prev.map(row => 
-      row.id === rowId ? { ...row, [field]: value } : row
-    ));
-  };
+  const handleRowsChange = useCallback((newRows: FireDoorRow[]) => {
+    setRows(newRows);
+  }, []);
 
-  const toggleRowSelection = (rowId: string) => {
-    setSelectedRows(prev => {
-      const next = new Set(prev);
-      if (next.has(rowId)) {
-        next.delete(rowId);
-      } else {
-        next.add(rowId);
+  const columns = useMemo((): readonly Column<FireDoorRow>[] => {
+    return [
+      SelectColumn,
+      ...COLUMNS.map(col => ({
+        ...col,
+        renderCell: (props: any) => {
+          const value = props.row[col.key];
+          if (value === null || value === undefined) return <div className="px-2">-</div>;
+          
+          // Format currency columns
+          if (['labourCost', 'materialCost', 'unitValue', 'lineTotal'].includes(col.key)) {
+            return <div className="px-2 font-semibold text-green-700">£{Number(value).toFixed(2)}</div>;
+          }
+          
+          return <div className="px-2">{value}</div>;
+        },
+      })),
+    ];
+  }, []);
+
+  const selectedRowsSet = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach(row => {
+      if (selectedRows.has(row.id)) {
+        set.add(row.id);
       }
-      return next;
     });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedRows.size === rows.length) {
-      setSelectedRows(new Set());
-    } else {
-      setSelectedRows(new Set(rows.map(r => r.id)));
-    }
-  };
+    return set;
+  }, [selectedRows, rows]);
 
   const createQuoteFromSelected = async () => {
     if (selectedRows.size === 0) {
@@ -157,7 +266,7 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated }: FireDo
   }
 
   if (!importId) {
-    return <div className="p-4 text-center text-gray-500">Upload a CSV file to view doors</div>;
+    return <div className="p-4 text-center text-gray-500">Select an import in the Project Overview tab to view line items.</div>;
   }
 
   if (rows.length === 0) {
@@ -167,25 +276,19 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated }: FireDo
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow">
+      <div className="flex items-center justify-between bg-white/60 backdrop-blur-sm p-4 rounded-lg shadow border border-white/20">
         <div className="flex items-center gap-4">
-          <span className="text-sm font-medium">
+          <span className="text-sm font-semibold text-slate-700">
             {selectedRows.size} of {rows.length} doors selected
           </span>
-          <button
-            onClick={toggleSelectAll}
-            className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
-          >
-            {selectedRows.size === rows.length ? "Deselect all" : "Select all"}
-          </button>
         </div>
-        <button
+        <Button
           onClick={createQuoteFromSelected}
           disabled={creatingQuote || selectedRows.size === 0}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
         >
           {creatingQuote ? "Creating..." : `Create Quote (${selectedRows.size} doors)`}
-        </button>
+        </Button>
       </div>
 
       {error && (
@@ -194,188 +297,32 @@ export default function FireDoorSpreadsheet({ importId, onQuoteCreated }: FireDo
         </div>
       )}
 
-      {/* Spreadsheet */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            <tr>
-              <th className="px-3 py-2 text-left">
-                <input
-                  type="checkbox"
-                  checked={selectedRows.size === rows.length}
-                  onChange={toggleSelectAll}
-                  className="h-4 w-4"
-                />
-              </th>
-              {/* Identification columns */}
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Door Ref</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fire Rating</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-              
-              {/* Dimensions (EDITABLE) */}
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Height (mm)</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">M Width (mm)</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">S Width (mm)</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Thickness</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Config</th>
-              
-              {/* Vision panels (EDITABLE) */}
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Vision Qty</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Glass Area (m²)</th>
-              
-              {/* Finishes (EDITABLE) */}
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Int Colour</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Ext Colour</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Facing</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Lipping</th>
-              
-              {/* Ironmongery (EDITABLE) */}
-              <th className="px-3 py-2 text-left text-xs font-medium text-blue-600 uppercase" title="Data Entry">Ironmongery Pack</th>
-              
-              {/* Pricing (CALCULATED) */}
-              <th className="px-3 py-2 text-left text-xs font-medium text-green-600 uppercase" title="Calculated">Labour</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-green-600 uppercase" title="Calculated">Materials</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-green-600 uppercase" title="Calculated">Unit Price</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-green-600 uppercase" title="Calculated">Line Total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {rows.map((row) => (
-              <tr key={row.id} className={selectedRows.has(row.id) ? "bg-blue-50" : ""}>
-                <td className="px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedRows.has(row.id)}
-                    onChange={() => toggleRowSelection(row.id)}
-                    className="h-4 w-4"
-                  />
-                </td>
-                
-                {/* Identification (READ ONLY) */}
-                <td className="px-3 py-2 text-sm">{row.doorRef || "-"}</td>
-                <td className="px-3 py-2 text-sm">{row.location || "-"}</td>
-                <td className="px-3 py-2 text-sm">{row.quantity || 1}</td>
-                <td className="px-3 py-2 text-sm">{row.fireRating || "-"}</td>
-                <td className="px-3 py-2 text-sm text-xs">{row.doorSetType || "-"}</td>
-                
-                {/* Dimensions (EDITABLE) */}
-                <EditableCell value={row.leafHeight} onChange={(v) => handleCellEdit(row.id, "leafHeight", v)} type="number" />
-                <EditableCell value={row.masterLeafWidth} onChange={(v) => handleCellEdit(row.id, "masterLeafWidth", v)} type="number" />
-                <EditableCell value={row.slaveLeafWidth} onChange={(v) => handleCellEdit(row.id, "slaveLeafWidth", v)} type="number" />
-                <EditableCell value={row.leafThickness} onChange={(v) => handleCellEdit(row.id, "leafThickness", v)} type="number" />
-                <EditableCell value={row.leafConfiguration} onChange={(v) => handleCellEdit(row.id, "leafConfiguration", v)} />
-                
-                {/* Vision panels (EDITABLE) */}
-                <EditableCell value={row.visionQtyLeaf1} onChange={(v) => handleCellEdit(row.id, "visionQtyLeaf1", v)} type="number" />
-                <EditableCell value={row.totalGlazedAreaMaster} onChange={(v) => handleCellEdit(row.id, "totalGlazedAreaMaster", v)} type="number" step="0.01" />
-                
-                {/* Finishes (EDITABLE) */}
-                <EditableCell value={row.internalColour} onChange={(v) => handleCellEdit(row.id, "internalColour", v)} />
-                <EditableCell value={row.externalColour} onChange={(v) => handleCellEdit(row.id, "externalColour", v)} />
-                <EditableCell value={row.doorFacing} onChange={(v) => handleCellEdit(row.id, "doorFacing", v)} />
-                <EditableCell value={row.lippingFinish} onChange={(v) => handleCellEdit(row.id, "lippingFinish", v)} />
-                
-                {/* Ironmongery (EDITABLE) */}
-                <EditableCell value={row.ironmongeryPackRef} onChange={(v) => handleCellEdit(row.id, "ironmongeryPackRef", v)} />
-                
-                {/* Pricing (CALCULATED - READONLY) */}
-                <td className="px-3 py-2 text-sm text-green-700">
-                  {row.labourCost != null ? `£${row.labourCost.toFixed(2)}` : "-"}
-                </td>
-                <td className="px-3 py-2 text-sm text-green-700">
-                  {row.materialCost != null ? `£${row.materialCost.toFixed(2)}` : "-"}
-                </td>
-                <td className="px-3 py-2 text-sm font-medium text-green-700">
-                  {row.unitValue != null ? `£${row.unitValue.toFixed(2)}` : "-"}
-                </td>
-                <td className="px-3 py-2 text-sm font-semibold text-green-700">
-                  {row.lineTotal != null ? `£${row.lineTotal.toFixed(2)}` : "-"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot className="bg-gray-50 font-semibold">
-            <tr>
-              <td colSpan={19} className="px-3 py-2 text-right text-sm">Total Selected:</td>
-              <td className="px-3 py-2 text-sm text-green-700">
-                £{rows.filter(r => selectedRows.has(r.id)).reduce((sum, r) => sum + (r.lineTotal || 0), 0).toFixed(2)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+      {/* DataGrid with 144 columns */}
+      <div className="h-[600px] bg-white rounded-lg shadow border border-white/20">
+        <DataGrid
+          columns={columns}
+          rows={rows}
+          rowKeyGetter={(row) => row.id}
+          selectedRows={selectedRowsSet}
+          onSelectedRowsChange={setSelectedRows}
+          onRowsChange={handleRowsChange}
+          className="fill-grid"
+          style={{ height: '100%' }}
+          rowHeight={35}
+          headerRowHeight={40}
+          enableVirtualization
+        />
       </div>
 
-      {/* Legend */}
-      <div className="flex items-center gap-6 text-xs text-gray-600 px-4">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 bg-blue-100 border border-blue-300 rounded"></span>
-          Data Entry Fields
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 bg-green-100 border border-green-300 rounded"></span>
-          Auto-Calculated Fields
-        </span>
+      {/* Summary */}
+      <div className="bg-white/60 backdrop-blur-sm p-4 rounded-lg shadow border border-white/20">
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-semibold text-slate-700">Total Selected:</span>
+          <span className="text-lg font-bold text-green-700">
+            £{rows.filter(r => selectedRows.has(r.id)).reduce((sum, r) => sum + (Number(r.lineTotal) || 0), 0).toFixed(2)}
+          </span>
+        </div>
       </div>
     </div>
-  );
-}
-
-// Editable cell component
-function EditableCell({ 
-  value, 
-  onChange, 
-  type = "text",
-  step,
-}: { 
-  value: string | number | null; 
-  onChange: (value: any) => void;
-  type?: "text" | "number";
-  step?: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value?.toString() || "");
-
-  const handleBlur = () => {
-    setEditing(false);
-    const parsed = type === "number" ? (draft ? Number(draft) : null) : draft || null;
-    onChange(parsed);
-  };
-
-  if (editing) {
-    return (
-      <td className="px-3 py-2">
-        <input
-          type={type}
-          step={step}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleBlur();
-            if (e.key === "Escape") {
-              setDraft(value?.toString() || "");
-              setEditing(false);
-            }
-          }}
-          autoFocus
-          className="w-full px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-      </td>
-    );
-  }
-
-  return (
-    <td 
-      className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50"
-      onClick={() => {
-        setDraft(value?.toString() || "");
-        setEditing(true);
-      }}
-      title="Click to edit"
-    >
-      {value != null ? value : <span className="text-gray-400">-</span>}
-    </td>
   );
 }
