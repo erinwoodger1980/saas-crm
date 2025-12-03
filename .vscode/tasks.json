@@ -24,6 +24,12 @@
 			"type": "shell",
 			"command": "pnpm build",
 			"group": "build"
+		},
+		{
+			"label": "Build and deploy with coaching debug logs",
+			"type": "shell",
+			"command": "pnpm build",
+			"group": "build"
 		}
 	]
 }
