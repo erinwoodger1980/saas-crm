@@ -299,6 +299,14 @@ export default function FireDoorSchedulePage() {
 
   // Using stable constant-based left offsets for frozen columns
 
+  // Auto-refresh schedule data every 3 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadData();
+    }, 180000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Apply search + tab filters + column filters
   const filteredProjects = projects
     .filter((project) => {
@@ -1719,7 +1727,8 @@ export default function FireDoorSchedulePage() {
                   <tr className="bg-white border-b border-slate-200">
                     {/* Filter row sticks directly under header using combined offset */}
                     <th
-                      className="sticky top-[${headerHeight}px] left-0 px-4 py-2 z-[200] bg-white bg-clip-padding border-r border-slate-200 w-[140px] min-w-[140px] max-w-[140px]"
+                      className="sticky left-0 px-4 py-2 z-[200] bg-white bg-clip-padding border-r border-slate-200 w-[140px] min-w-[140px] max-w-[140px]"
+                      style={{ top: `${headerHeight}px` }}
                     >
                       <button
                         onClick={() => setColumnFilters({})}
