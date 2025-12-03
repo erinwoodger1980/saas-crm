@@ -112,15 +112,26 @@ router.post('/import', upload.single('file'), async (req, res) => {
     const rowCount = parsedRows.length;
 
     // 7. Extract optional linkage
-    const projectId = req.body.projectId || null;
-    const orderId = req.body.orderId || null;
+      const projectId = req.body.projectId || null;
+      const orderId = req.body.orderId || null;
+      const mjsNumberFromForm = (req.body.mjsNumber as string) || null;
+      const customerNameFromForm = (req.body.customerName as string) || null;
+      const jobDescriptionFromForm = (req.body.jobDescription as string) || null;
+      const netValueFromForm = req.body.netValue ? Number(req.body.netValue) : null;
+    const mjsNumberFromForm = req.body.mjsNumber || null;
+    const customerNameFromForm = req.body.customerName || null;
+    const jobDescriptionFromForm = req.body.jobDescription || null;
+    const netValueFromForm = req.body.netValue ? parseFloat(req.body.netValue) : null;
 
-    // 8. Create import and line items in transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Extract MJS number and client name from first row if available
+        const mjsNumber = mjsNumberFromForm || firstRow.code || sourceName.replace('.csv', '');
+        const clientName = customerNameFromForm || firstRow.location || 'New Fire Door Customer';
+        const jobDescription = jobDescriptionFromForm || `${clientName} - ${mjsNumber}`;
+        const netValue = netValueFromForm || totalValue;
       const firstRow = parsedRows[0];
-      const mjsNumber = firstRow.code || sourceName.replace('.csv', '');
-      const clientName = firstRow.location || 'New Fire Door Customer';
+      const mjsNumber = mjsNumberFromForm || firstRow.code || sourceName.replace('.csv', '');
+      const clientName = customerNameFromForm || firstRow.location || 'New Fire Door Customer';
+      const jobDescription = jobDescriptionFromForm || `${clientName} - ${mjsNumber}`;
+      const netValue = netValueFromForm || totalValue;
       
       // Create Fire Door Schedule Project if this is a new order (no projectId provided)
       let fireDoorProjectId = projectId;
@@ -137,7 +148,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
               tenantId,
               mjsNumber,
               clientName,
-              jobName: `${clientName} - ${mjsNumber}`,
+              jobName: jobDescription,
+              netValue: netValue as any,
               dateReceived: new Date(), // Current date when put in red folder
               jobLocation: 'RED FOLDER', // Set to RED FOLDER status
               signOffStatus: 'NOT LOOKED AT',
@@ -405,6 +417,38 @@ router.get('/imports', async (req, res) => {
   } catch (error: any) {
     console.error('[fire-door-import] List error:', error);
     return res.status(500).json({ error: 'Failed to list imports' });
+  }
+});
+
+/**
+ * GET /api/fire-doors/imports/by-project/:projectId
+ * List all imports associated with a specific Fire Door Schedule project
+ */
+router.get('/imports/by-project/:projectId', async (req, res) => {
+  try {
+    const tenantId = req.auth?.tenantId as string | undefined;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const projectId = req.params.projectId as string;
+    const imports = await prisma.fireDoorImport.findMany({
+      where: { tenantId, projectId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        sourceName: true,
+        totalValue: true,
+        currency: true,
+        rowCount: true,
+        createdAt: true,
+      },
+    });
+
+    return res.json({ imports: imports.map(i => ({ ...i, totalValue: Number(i.totalValue) })) });
+  } catch (error: any) {
+    console.error('[fire-door-import] List by project error:', error);
+    return res.status(500).json({ error: 'Failed to list imports for project' });
   }
 });
 

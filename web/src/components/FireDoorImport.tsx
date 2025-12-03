@@ -53,6 +53,12 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
   const [previousImports, setPreviousImports] = useState<ImportListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showPreviousImports, setShowPreviousImports] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showDetailsForm, setShowDetailsForm] = useState(false);
+  const [mjsNumber, setMjsNumber] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [netValue, setNetValue] = useState("");
 
   // Load previous imports on mount
   const loadPreviousImports = async () => {
@@ -65,16 +71,35 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    setSelectedFile(file);
+    setShowDetailsForm(true);
+    setError(null);
+  };
+
+  const handleUploadWithDetails = async () => {
+    if (!selectedFile) return;
+
+    if (!mjsNumber || !customerName || !jobDescription) {
+      setError("Please fill in all required fields (MJS Number, Customer Name, Job Description)");
+      return;
+    }
 
     setUploading(true);
     setError(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", selectedFile);
+      formData.append("mjsNumber", mjsNumber);
+      formData.append("customerName", customerName);
+      formData.append("jobDescription", jobDescription);
+      if (netValue) {
+        formData.append("netValue", netValue);
+      }
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/fire-doors/import`, {
         method: "POST",
@@ -97,13 +122,19 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
       if (showPreviousImports) {
         await loadPreviousImports();
       }
+
+      // Reset form
+      setShowDetailsForm(false);
+      setSelectedFile(null);
+      setMjsNumber("");
+      setCustomerName("");
+      setJobDescription("");
+      setNetValue("");
     } catch (err: any) {
       console.error("Import error:", err);
       setError(err.message || "Failed to import CSV file");
     } finally {
       setUploading(false);
-      // Reset file input
-      event.target.value = "";
     }
   };
 
@@ -136,42 +167,140 @@ export default function FireDoorImportSection({ onImportComplete }: FireDoorImpo
 
         <div className="space-y-4">
           {/* File upload */}
-          <div>
-            <label
-              htmlFor="fire-door-csv-upload"
-              className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
-            >
-              <div className="text-center">
-                <svg
-                  className="mx-auto h-8 w-8 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+          {!showDetailsForm ? (
+            <div>
+              <label
+                htmlFor="fire-door-csv-upload"
+                className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+              >
+                <div className="text-center">
+                  <svg
+                    className="mx-auto h-8 w-8 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  <span className="mt-2 block text-sm font-medium text-gray-900">
+                    {uploading ? "Uploading..." : "Click to upload CSV"}
+                  </span>
+                  <span className="mt-1 block text-xs text-gray-500">
+                    CSV files up to 10MB
+                  </span>
+                </div>
+                <input
+                  id="fire-door-csv-upload"
+                  type="file"
+                  accept=".csv,text/csv,application/vnd.ms-excel"
+                  onChange={handleFileSelect}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          ) : (
+            <div className="border border-gray-300 rounded-lg p-6 space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-md font-semibold text-gray-900">Order Details</h4>
+                <button
+                  onClick={() => {
+                    setShowDetailsForm(false);
+                    setSelectedFile(null);
+                  }}
+                  className="text-sm text-gray-600 hover:text-gray-800"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-                <span className="mt-2 block text-sm font-medium text-gray-900">
-                  {uploading ? "Uploading..." : "Click to upload CSV"}
-                </span>
-                <span className="mt-1 block text-xs text-gray-500">
-                  CSV files up to 10MB
-                </span>
+                  Cancel
+                </button>
               </div>
-              <input
-                id="fire-door-csv-upload"
-                type="file"
-                accept=".csv,text/csv,application/vnd.ms-excel"
-                onChange={handleFileUpload}
-                disabled={uploading}
-                className="hidden"
-              />
-            </label>
-          </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Selected file:</strong> {selectedFile?.name}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    MJS Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={mjsNumber}
+                    onChange={(e) => setMjsNumber(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. 2024-123"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Customer Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. ABC Construction"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Job Description <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={jobDescription}
+                  onChange={(e) => setJobDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. School refurbishment - Fire doors for main building"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Net Value (£) <span className="text-gray-500 text-xs">(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  value={netValue}
+                  onChange={(e) => setNetValue(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. 15000.00"
+                  step="0.01"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowDetailsForm(false);
+                    setSelectedFile(null);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                  disabled={uploading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUploadWithDetails}
+                  disabled={uploading || !mjsNumber || !customerName || !jobDescription}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {uploading ? "Uploading..." : "Upload & Import"}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Error message */}
           {error && (

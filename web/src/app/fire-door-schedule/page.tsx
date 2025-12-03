@@ -1809,7 +1809,7 @@ export default function FireDoorSchedulePage() {
             {filteredProjects.map((project) => (
               <div
                 key={project.id}
-                onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
+                          onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                 className="group backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg hover:shadow-2xl transition-all cursor-pointer overflow-hidden"
               >
                 <div className="relative h-2 bg-slate-100">
