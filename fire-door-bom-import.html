@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fire Door BOM Import</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin-top: 0;
+      color: #333;
+    }
+    .upload-area {
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      margin: 20px 0;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .upload-area:hover {
+      border-color: #4CAF50;
+      background: #f9f9f9;
+    }
+    .upload-area.dragover {
+      border-color: #4CAF50;
+      background: #e8f5e9;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .progress {
+      margin-top: 20px;
+      display: none;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background: #f0f0f0;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #4CAF50;
+      transition: width 0.3s;
+    }
+    .results {
+      margin-top: 20px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 4px;
+      display: none;
+    }
+    .results.show {
+      display: block;
+    }
+    .results h3 {
+      margin-top: 0;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .summary-item {
+      padding: 15px;
+      background: white;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .summary-item .number {
+      font-size: 32px;
+      font-weight: bold;
+      color: #4CAF50;
+    }
+    .summary-item .label {
+      color: #666;
+      font-size: 14px;
+    }
+    .error {
+      color: #f44336;
+    }
+    .success {
+      color: #4CAF50;
+    }
+    pre {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔥 Fire Door BOM Import</h1>
+    <p>Upload the December 2025 BOM CSV file to import fire door projects for Lewis Aldridge Joinery.</p>
+    
+    <div class="upload-area" id="uploadArea">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+      </svg>
+      <p><strong>Click to browse</strong> or drag and drop CSV file here</p>
+      <p style="color: #999; font-size: 14px;">DEC 2025 BOM.csv</p>
+      <input type="file" id="fileInput" accept=".csv">
+    </div>
+    
+    <div id="fileInfo" style="display:none; margin: 20px 0;">
+      <strong>Selected file:</strong> <span id="fileName"></span> (<span id="fileSize"></span>)
+    </div>
+    
+    <button id="importBtn" disabled>Import Projects</button>
+    
+    <div class="progress" id="progress">
+      <p>Importing...</p>
+      <div class="progress-bar">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+    </div>
+    
+    <div class="results" id="results">
+      <h3>Import Results</h3>
+      <div class="summary">
+        <div class="summary-item">
+          <div class="number" id="totalCount">0</div>
+          <div class="label">Total Rows</div>
+        </div>
+        <div class="summary-item">
+          <div class="number success" id="createdCount">0</div>
+          <div class="label">Created</div>
+        </div>
+        <div class="summary-item">
+          <div class="number" id="updatedCount">0</div>
+          <div class="label">Updated</div>
+        </div>
+        <div class="summary-item">
+          <div class="number" id="skippedCount">0</div>
+          <div class="label">Skipped</div>
+        </div>
+        <div class="summary-item">
+          <div class="number error" id="errorCount">0</div>
+          <div class="label">Errors</div>
+        </div>
+      </div>
+      <details>
+        <summary>View detailed results</summary>
+        <pre id="detailedResults"></pre>
+      </details>
+    </div>
+  </div>
+
+  <script>
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const importBtn = document.getElementById('importBtn');
+    const progress = document.getElementById('progress');
+    const results = document.getElementById('results');
+    const fileInfo = document.getElementById('fileInfo');
+    
+    let csvData = null;
+
+    // File upload handling
+    uploadArea.addEventListener('click', () => fileInput.click());
+    
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+    
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    function handleFile(file) {
+      if (!file.name.endsWith('.csv')) {
+        alert('Please select a CSV file');
+        return;
+      }
+      
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('fileSize').textContent = formatBytes(file.size);
+      fileInfo.style.display = 'block';
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        csvData = parseCSV(e.target.result);
+        importBtn.disabled = false;
+      };
+      reader.readAsText(file);
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    function parseCSV(text) {
+      const lines = text.split('\n').filter(l => l.trim());
+      const headers = lines[0].split(',').map(h => h.trim());
+      
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',');
+        const row = {};
+        headers.forEach((header, idx) => {
+          row[header] = values[idx] || '';
+        });
+        rows.push(row);
+      }
+      
+      return rows;
+    }
+
+    importBtn.addEventListener('click', async () => {
+      if (!csvData) return;
+      
+      importBtn.disabled = true;
+      progress.style.display = 'block';
+      results.classList.remove('show');
+      
+      try {
+        const response = await fetch('/fire-door-schedule/import-bom', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ rows: csvData }),
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        // Update UI with results
+        document.getElementById('totalCount').textContent = result.summary.total;
+        document.getElementById('createdCount').textContent = result.summary.created;
+        document.getElementById('updatedCount').textContent = result.summary.updated;
+        document.getElementById('skippedCount').textContent = result.summary.skipped;
+        document.getElementById('errorCount').textContent = result.summary.errors;
+        document.getElementById('detailedResults').textContent = JSON.stringify(result.results, null, 2);
+        
+        results.classList.add('show');
+        
+      } catch (error) {
+        alert('Import failed: ' + error.message);
+        console.error(error);
+      } finally {
+        progress.style.display = 'none';
+        importBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
