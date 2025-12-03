@@ -43,6 +43,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const { brandName, shortName, logoUrl, initials, ownerFirstName, ownerLastName } = useTenantBrand();
   const { user } = useCurrentUser();
   const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
+  const [isGroupCoachingMember, setIsGroupCoachingMember] = useState(false);
   const [tenantSlug, setTenantSlug] = useState<string>("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -59,12 +60,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
     localStorage.setItem("sidebar-collapsed", String(newState));
   };
 
-  // Fetch fire door manufacturer flag and tenant slug
+  // Fetch fire door manufacturer flag, group coaching flag, and tenant slug
   useEffect(() => {
-    apiFetch<{ isFireDoorManufacturer?: boolean; slug?: string }>("/tenant/settings")
+    apiFetch<{ isFireDoorManufacturer?: boolean; isGroupCoachingMember?: boolean; slug?: string }>("/tenant/settings")
       .then((data) => {
         console.log("[AppShell] Fire door flag from API:", data?.isFireDoorManufacturer);
+        console.log("[AppShell] Group coaching flag from API:", data?.isGroupCoachingMember);
         setIsFireDoorManufacturer(Boolean(data?.isFireDoorManufacturer));
+        setIsGroupCoachingMember(Boolean(data?.isGroupCoachingMember));
         setTenantSlug(data?.slug || "");
       })
       .catch((error) => {
@@ -360,6 +363,39 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       )}
                     </a>
                   </>
+                )}
+                
+                {/* Coaching Hub - only for owners in Group Coaching */}
+                {user?.isOwner && isGroupCoachingMember && (
+                  <Link
+                    href="/coaching"
+                    title={sidebarCollapsed ? "Coaching Hub - Goals, notes & financials" : undefined}
+                    className={clsx(
+                      "group relative flex items-center overflow-hidden rounded-2xl text-sm transition-all",
+                      sidebarCollapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
+                      pathname === "/coaching" || pathname?.startsWith("/coaching/")
+                        ? "bg-slate-900 text-white shadow-[0_22px_45px_-30px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70"
+                        : "bg-white/90 text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50 hover:text-slate-900 hover:ring-slate-300"
+                    )}
+                  >
+                    <span
+                      className={clsx(
+                        "flex items-center justify-center rounded-xl text-slate-500 transition-colors",
+                        sidebarCollapsed ? "h-8 w-8" : "h-9 w-9",
+                        pathname === "/coaching" || pathname?.startsWith("/coaching/")
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-100 group-hover:bg-slate-200 group-hover:text-slate-900"
+                      )}
+                    >
+                      <Target className="h-4 w-4" />
+                    </span>
+                    {!sidebarCollapsed && (
+                      <span className="flex flex-col leading-tight">
+                        <span className="font-semibold">Coaching Hub</span>
+                        <span className="text-xs text-slate-400">Goals, notes & financials</span>
+                      </span>
+                    )}
+                  </Link>
                 )}
               </nav>
             </div>

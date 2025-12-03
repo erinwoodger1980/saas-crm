@@ -122,6 +122,7 @@ import materialDebugRouter from "./routes/material-debug";
 import doorCoresRouter from "./routes/door-cores";
 import ironmongeryItemsRouter from "./routes/ironmongery-items";
 import rfisRouter from "./routes/rfis";
+import coachingRouter from "./routes/coaching";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -651,6 +652,7 @@ app.use("/measurements", measurementsRouter);
 app.use("/workshop", requireAuth, workshopRouter);
 app.use("/workshop-processes", requireAuth, workshopProcessesRouter);
 app.use("/timesheets", requireAuth, timesheetsRouter);
+app.use("/coaching", requireAuth, coachingRouter);
 app.use("/auth", makeMeAdminRouter);
 // ML trust and approval workflows
 app.use("/quote-approval", requireAuth, quoteApprovalRouter);
