@@ -76,11 +76,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
     // Listen for settings updates
     const handleTenantSettingsUpdate = (event: Event) => {
-      const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean; isGroupCoachingMember?: boolean }>).detail;
       console.log("[AppShell] Received tenant-settings:updated event:", detail);
       if (detail && Object.prototype.hasOwnProperty.call(detail, "isFireDoorManufacturer")) {
         console.log("[AppShell] Updating fire door flag to:", detail.isFireDoorManufacturer);
         setIsFireDoorManufacturer(Boolean(detail.isFireDoorManufacturer));
+      }
+      if (detail && Object.prototype.hasOwnProperty.call(detail, "isGroupCoachingMember")) {
+        console.log("[AppShell] Updating group coaching flag to:", detail.isGroupCoachingMember);
+        setIsGroupCoachingMember(Boolean(detail.isGroupCoachingMember));
       }
     };
 

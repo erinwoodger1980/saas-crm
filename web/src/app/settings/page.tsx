@@ -53,6 +53,7 @@ type Settings = {
   questionnaireEmailSubject?: string | null;
   questionnaireEmailBody?: string | null;
   isFireDoorManufacturer?: boolean;
+  isGroupCoachingMember?: boolean;
   // Social proof / branding metrics
   reviewScore?: number | null;
   reviewCount?: number | null;
@@ -261,6 +262,7 @@ export default function SettingsPage() {
       }
     }, [s]);
   const [savingFireDoor, setSavingFireDoor] = useState(false);
+  const [savingCoaching, setSavingCoaching] = useState(false);
   const [enrichingWebsite, setEnrichingWebsite] = useState(false);
   const [uploadingQuotePdf, setUploadingQuotePdf] = useState(false);
   const [playbook, setPlaybook] = useState<TaskPlaybook>(normalizeTaskPlaybook(DEFAULT_TASK_PLAYBOOK));
@@ -505,6 +507,27 @@ export default function SettingsPage() {
       toast({ title: "Failed to update Fire Door setting", description: e?.message, variant: "destructive" });
     } finally {
       setSavingFireDoor(false);
+    }
+  }
+
+  async function handleCoachingToggle(nextValue: boolean) {
+    if (!s || savingCoaching) return;
+    const previousValue = !!s.isGroupCoachingMember;
+    setS((prev) => (prev ? { ...prev, isGroupCoachingMember: nextValue } : prev));
+    setSavingCoaching(true);
+    try {
+      const updated = await apiFetch<Settings>("/tenant/settings", {
+        method: "PATCH",
+        json: { isGroupCoachingMember: nextValue },
+      });
+      setS(updated);
+      emitTenantSettingsUpdate({ isGroupCoachingMember: updated?.isGroupCoachingMember });
+      toast({ title: nextValue ? "Coaching Hub enabled" : "Coaching Hub disabled" });
+    } catch (e: any) {
+      setS((prev) => (prev ? { ...prev, isGroupCoachingMember: previousValue } : prev));
+      toast({ title: "Failed to update Coaching Hub setting", description: e?.message, variant: "destructive" });
+    } finally {
+      setSavingCoaching(false);
     }
   }
 
@@ -1696,6 +1719,24 @@ export default function SettingsPage() {
     )}
     <p className="text-xs text-slate-600 mt-2">
       When enabled, a "Fire Door Calculator" link will appear in the main navigation for quick access to the fire door pricing tool.
+    </p>
+  </Section>
+
+  <Section title="Group Coaching Hub" description="Enable access to the coaching and planning features">
+    <label className="flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={!!s?.isGroupCoachingMember}
+        disabled={savingCoaching}
+        onChange={(e) => handleCoachingToggle(e.target.checked)}
+      />
+      <span>Enable Coaching Hub feature</span>
+    </label>
+    {savingCoaching && (
+      <p className="text-xs text-slate-500 mt-1">Saving…</p>
+    )}
+    <p className="text-xs text-slate-600 mt-2">
+      When enabled, a "Coaching Hub" link will appear in the main navigation for owners to access goal planning, coaching notes, and financial planning tools.
     </p>
   </Section>
   </>

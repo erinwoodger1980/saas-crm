@@ -364,6 +364,7 @@ async function updateSettings(req: any, res: any) {
     ownerLastName,
     aiFollowupLearning,
     isFireDoorManufacturer,
+    isGroupCoachingMember,
   } = req.body || {};
 
   try {
@@ -439,6 +440,9 @@ async function updateSettings(req: any, res: any) {
     }
     if (isFireDoorManufacturer !== undefined) {
       update.isFireDoorManufacturer = !!isFireDoorManufacturer;
+    }
+    if (isGroupCoachingMember !== undefined) {
+      update.isGroupCoachingMember = !!isGroupCoachingMember;
     }
 
     if (ownerFirstName !== undefined) {
