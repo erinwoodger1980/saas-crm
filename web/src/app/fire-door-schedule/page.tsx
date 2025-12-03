@@ -1284,6 +1284,23 @@ export default function FireDoorSchedulePage() {
             </Button>
             <Button
               variant="outline"
+              className="h-12 bg-white/50 border-green-300 text-green-700 hover:bg-green-50"
+              onClick={async () => {
+                if (!confirm("This will create/update WON opportunities for all fire door projects. Continue?")) return;
+                try {
+                  const result = await apiFetch<any>("/fire-door-schedule/sync-to-opportunities", { method: "POST" });
+                  alert(`Sync complete!\nCreated: ${result.summary.created}\nUpdated: ${result.summary.updated}\nSkipped: ${result.summary.skipped}\n\nYou can now set dates in the Opportunities tab.`);
+                  loadData(); // Reload to show any changes
+                } catch (error: any) {
+                  alert(`Sync failed: ${error.message || "Unknown error"}`);
+                }
+              }}
+            >
+              <TrendingUp className="w-4 h-4 mr-2" />
+              Sync to Opportunities
+            </Button>
+            <Button
+              variant="outline"
               className="h-12 bg-white/50"
               onClick={() => setShowTable((v) => !v)}
             >
