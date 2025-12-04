@@ -277,6 +277,28 @@ const updateProjectHandler = async (req: any, res: Response) => {
     delete updateData.id;
     delete updateData.tenantId;
     delete updateData.createdAt;
+    
+    // Convert date strings to Date objects for date fields
+    const dateFields = [
+      'dateReceived', 'dateRequired', 'signOffDate', 'approxDeliveryDate',
+      'deliveryDate', 'installStart', 'installEnd',
+      'blanksOrdered', 'blanksReceived', 'blanksChecked',
+      'lippingsOrdered', 'lippingsReceived', 'lippingsChecked',
+      'facingsOrdered', 'facingsReceived', 'facingsChecked',
+      'glassOrdered', 'glassReceived', 'glassChecked',
+      'cassettesOrdered', 'cassettesReceived', 'cassettesChecked',
+      'timbersOrdered', 'timbersReceived', 'timbersChecked',
+      'ironmongeryOrdered', 'ironmongeryReceived', 'ironmongeryChecked'
+    ];
+    
+    for (const field of dateFields) {
+      if (updateData[field] !== undefined && updateData[field] !== null) {
+        const val = updateData[field];
+        if (typeof val === 'string') {
+          updateData[field] = new Date(val);
+        }
+      }
+    }
 
     // Calculate progress percentages based on updated data
     const mergedData = { ...existing, ...updateData };
@@ -312,8 +334,12 @@ const updateProjectHandler = async (req: any, res: Response) => {
 
     res.json(project);
   } catch (error) {
-    console.error("Error updating project:", error);
-    res.status(500).json({ error: "Failed to update project" });
+    console.error("Error updating fire door project:", error);
+    console.error("Error details:", (error as any)?.message, (error as any)?.stack);
+    res.status(500).json({ 
+      error: "Failed to update project",
+      details: process.env.NODE_ENV === 'development' ? (error as any)?.message : undefined
+    });
   }
 };
 
