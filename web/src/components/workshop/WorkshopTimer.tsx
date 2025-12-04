@@ -130,7 +130,26 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         payload.projectId = projectId;
       }
       
-      const response = await apiFetch<{ ok: boolean; timer: Timer }>("/workshop/timer/start", {
+      // Attempt to capture geolocation
+      if ("geolocation" in navigator) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { 
+              timeout: 5000,
+              enableHighAccuracy: false 
+            });
+          });
+          
+          payload.latitude = position.coords.latitude;
+          payload.longitude = position.coords.longitude;
+          payload.accuracy = position.coords.accuracy;
+        } catch (geoError: any) {
+          console.warn("Could not capture location:", geoError.message);
+          // Continue without location - it's optional
+        }
+      }
+      
+      const response = await apiFetch<{ ok: boolean; timer: Timer; warning?: string; outsideGeofence?: boolean }>("/workshop/timer/start", {
         method: "POST",
         json: payload,
       });
@@ -142,6 +161,11 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         setProcess("");
         setNotes("");
         if (onTimerChange) onTimerChange();
+        
+        // Show geofence warning if outside designated area
+        if (response.warning) {
+          alert(response.warning);
+        }
       }
     } catch (e: any) {
       alert("Failed to start timer: " + (e?.message || "Unknown error"));
@@ -207,14 +231,33 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         });
       }
       
-      // Start new timer
+      // Start new timer with location
       const payload: any = { process, notes: notes || undefined };
       if (!isGeneric) {
         payload.projectId = projectId;
       }
       
+      // Attempt to capture geolocation
+      if ("geolocation" in navigator) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { 
+              timeout: 5000,
+              enableHighAccuracy: false 
+            });
+          });
+          
+          payload.latitude = position.coords.latitude;
+          payload.longitude = position.coords.longitude;
+          payload.accuracy = position.coords.accuracy;
+        } catch (geoError: any) {
+          console.warn("Could not capture location:", geoError.message);
+          // Continue without location - it's optional
+        }
+      }
+      
       console.log("[handleSwapTimerComplete] Starting new timer");
-      const response = await apiFetch<{ ok: boolean; timer: Timer }>("/workshop/timer/start", {
+      const response = await apiFetch<{ ok: boolean; timer: Timer; warning?: string; outsideGeofence?: boolean }>("/workshop/timer/start", {
         method: "POST",
         json: payload,
       });
@@ -226,7 +269,13 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         setProcess("");
         setNotes("");
         if (onTimerChange) await onTimerChange();
-        alert("Process marked complete and timer swapped.");
+        
+        // Show geofence warning if outside designated area
+        if (response.warning) {
+          alert(response.warning);
+        } else {
+          alert("Process marked complete and timer swapped.");
+        }
       }
     } catch (e: any) {
       console.error("[handleSwapTimerComplete] Error:", e);
@@ -249,13 +298,32 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
       // Stop current timer first
       await apiFetch<{ ok: boolean; timeEntry: any; hours: number | string }>("/workshop/timer/stop", { method: "POST" });
       
-      // Start new timer
+      // Start new timer with location
       const payload: any = { process, notes: notes || undefined };
       if (!isGeneric) {
         payload.projectId = projectId;
       }
       
-      const response = await apiFetch<{ ok: boolean; timer: Timer }>("/workshop/timer/start", {
+      // Attempt to capture geolocation
+      if ("geolocation" in navigator) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { 
+              timeout: 5000,
+              enableHighAccuracy: false 
+            });
+          });
+          
+          payload.latitude = position.coords.latitude;
+          payload.longitude = position.coords.longitude;
+          payload.accuracy = position.coords.accuracy;
+        } catch (geoError: any) {
+          console.warn("Could not capture location:", geoError.message);
+          // Continue without location - it's optional
+        }
+      }
+      
+      const response = await apiFetch<{ ok: boolean; timer: Timer; warning?: string; outsideGeofence?: boolean }>("/workshop/timer/start", {
         method: "POST",
         json: payload,
       });
@@ -267,6 +335,11 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         setProcess("");
         setNotes("");
         if (onTimerChange) onTimerChange();
+        
+        // Show geofence warning if outside designated area
+        if (response.warning) {
+          alert(response.warning);
+        }
       }
     } catch (e: any) {
       alert("Failed to swap timer: " + (e?.message || "Unknown error"));

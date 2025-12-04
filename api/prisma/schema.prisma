@@ -29,6 +29,10 @@ model Tenant {
   targetCPL                  Decimal?                    @default(50)
   slug                       String                      @unique
   isGroupCoachingMember      Boolean                     @default(false)
+  geofenceEnabled            Boolean                     @default(false)
+  geofenceLatitude           Float?
+  geofenceLongitude          Float?
+  geofenceRadiusMeters       Float?                      @default(100)
   activityLogs               ActivityLog[]
   automationRules            AutomationRule[]
   clients                    Client[]
@@ -147,6 +151,7 @@ model User {
   workshopHoursPerDay       Decimal?                   @default(8)
   workshopColor             String?
   profilePictureUrl         String?
+  isInstaller               Boolean                    @default(false)
   isDeveloper               Boolean                    @default(false)
   isOwner                   Boolean                    @default(false)
   workshopProcessCodes      String[]
@@ -1443,19 +1448,25 @@ model Holiday {
 }
 
 model WorkshopTimer {
-  id        String          @id @default(cuid())
-  tenantId  String
-  userId    String
-  projectId String?
-  process   WorkshopProcess
-  startedAt DateTime        @default(now())
-  notes     String?
-  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project   Opportunity?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id               String          @id @default(cuid())
+  tenantId         String
+  userId           String
+  projectId        String?
+  process          WorkshopProcess
+  startedAt        DateTime        @default(now())
+  notes            String?
+  latitude         Float?
+  longitude        Float?
+  locationAccuracy Float?
+  locationCaptured DateTime?
+  outsideGeofence  Boolean         @default(false)
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project          Opportunity?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId])
   @@index([userId])
+  @@index([tenantId, outsideGeofence])
 }
 
 model Target {

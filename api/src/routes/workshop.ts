@@ -9,6 +9,22 @@ function requireAuth(req: any, res: any, next: any) {
   next();
 }
 
+// Calculate distance between two lat/lng points in meters using Haversine formula
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth's radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
 router.use(requireAuth);
 
 // GET /workshop/users – simple list for assignment dropdown
@@ -1201,19 +1217,56 @@ router.get("/timer", async (req: any, res) => {
 });
 
 // POST /workshop/timer/start - Start a new timer
-// Body: { projectId?, process, notes? }
+// Body: { projectId?, process, notes?, latitude?, longitude?, accuracy? }
 // projectId is optional for generic processes like HOLIDAY, ADMIN, CLEANING
 router.post("/timer/start", async (req: any, res) => {
   let assignmentWarning = null;
   try {
     const tenantId = req.auth.tenantId as string;
     const userId = req.auth.userId as string;
-    const { projectId, process, notes } = req.body || {};
+    const { projectId, process, notes, latitude, longitude, accuracy } = req.body || {};
 
-    console.log(`[timer/start] tenant=${tenantId} user=${userId} projectId=${projectId} process=${process}`);
+    console.log(`[timer/start] tenant=${tenantId} user=${userId} projectId=${projectId} process=${process} location=${latitude},${longitude}`);
 
     if (!process) {
       return res.status(400).json({ error: "process_required" });
+    }
+
+    // Get user to check if they're an installer (bypasses geofence)
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isInstaller: true }
+    });
+
+    // Get tenant geofence settings
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { 
+        geofenceEnabled: true,
+        geofenceLatitude: true,
+        geofenceLongitude: true,
+        geofenceRadiusMeters: true
+      }
+    });
+
+    let outsideGeofence = false;
+    let geofenceWarning = null;
+
+    // Check geofence if enabled and user is not an installer
+    if (tenant?.geofenceEnabled && !user?.isInstaller && latitude && longitude && tenant.geofenceLatitude && tenant.geofenceLongitude) {
+      const distance = calculateDistance(
+        latitude,
+        longitude,
+        tenant.geofenceLatitude,
+        tenant.geofenceLongitude
+      );
+      const radiusMeters = tenant.geofenceRadiusMeters || 100;
+      
+      if (distance > radiusMeters) {
+        outsideGeofence = true;
+        geofenceWarning = `Clocked in ${Math.round(distance)}m from workshop (allowed: ${Math.round(radiusMeters)}m)`;
+        console.warn(`[timer/start] User ${userId} outside geofence: ${distance}m vs ${radiusMeters}m`);
+      }
     }
 
     // If projectId is provided, verify project exists and belongs to this tenant
@@ -1277,6 +1330,11 @@ router.post("/timer/start", async (req: any, res) => {
           projectId: projectId ? String(projectId) : null,
           process: String(process),
           notes: notes ? String(notes) : null,
+          latitude: latitude || null,
+          longitude: longitude || null,
+          locationAccuracy: accuracy || null,
+          locationCaptured: (latitude && longitude) ? new Date() : null,
+          outsideGeofence,
         },
         include: includeClause,
       });
@@ -1332,7 +1390,11 @@ router.post("/timer/start", async (req: any, res) => {
       }
     }
 
-    res.json({ ok: true, timer, warning: assignmentWarning });
+    // Combine warnings
+    const warnings = [assignmentWarning, geofenceWarning].filter(Boolean);
+    const warning = warnings.length > 0 ? warnings.join('; ') : null;
+
+    res.json({ ok: true, timer, warning, outsideGeofence });
   } catch (error: any) {
     console.error('Error starting timer:', error);
     console.error('Error name:', error?.name);

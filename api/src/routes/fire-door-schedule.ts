@@ -279,6 +279,7 @@ const updateProjectHandler = async (req: any, res: Response) => {
     delete updateData.createdAt;
     
     // Convert date strings to Date objects for date fields
+    // Also handle clearing dates (empty string -> null)
     const dateFields = [
       'dateReceived', 'dateRequired', 'signOffDate', 'approxDeliveryDate',
       'deliveryDate', 'installStart', 'installEnd',
@@ -292,11 +293,22 @@ const updateProjectHandler = async (req: any, res: Response) => {
     ];
     
     for (const field of dateFields) {
-      if (updateData[field] !== undefined && updateData[field] !== null) {
+      if (updateData[field] !== undefined) {
         const val = updateData[field];
-        if (typeof val === 'string') {
-          updateData[field] = new Date(val);
+        if (val === null || val === '') {
+          // Clear the date field
+          updateData[field] = null;
+        } else if (typeof val === 'string') {
+          // Convert date string to Date object
+          const parsed = new Date(val);
+          if (!isNaN(parsed.getTime())) {
+            updateData[field] = parsed;
+          } else {
+            // Invalid date string, set to null
+            updateData[field] = null;
+          }
         }
+        // If it's already a Date object, leave it as is
       }
     }
 

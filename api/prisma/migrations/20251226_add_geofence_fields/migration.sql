@@ -1,0 +1,15 @@
+-- Add geofence support to WorkshopTimer
+ALTER TABLE "WorkshopTimer" ADD COLUMN IF NOT EXISTS "latitude" DOUBLE PRECISION;
+ALTER TABLE "WorkshopTimer" ADD COLUMN IF NOT EXISTS "longitude" DOUBLE PRECISION;
+ALTER TABLE "WorkshopTimer" ADD COLUMN IF NOT EXISTS "locationAccuracy" DOUBLE PRECISION;
+ALTER TABLE "WorkshopTimer" ADD COLUMN IF NOT EXISTS "locationCaptured" TIMESTAMP(3);
+ALTER TABLE "WorkshopTimer" ADD COLUMN IF NOT EXISTS "outsideGeofence" BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Add installer bypass flag to User
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isInstaller" BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Add geofence configuration to Tenant
+ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "geofenceEnabled" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "geofenceLatitude" DOUBLE PRECISION;
+ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "geofenceLongitude" DOUBLE PRECISION;
+ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "geofenceRadiusMeters" DOUBLE PRECISION DEFAULT 100;
