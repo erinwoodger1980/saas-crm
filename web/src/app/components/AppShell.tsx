@@ -133,9 +133,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   <Image
                     src={logoUrl}
                     alt={`${brandName} logo`}
-                    fill
+                    width={96}
+                    height={96}
                     className="object-contain p-3"
-                    sizes="96px"
                     priority
                     unoptimized
                   />

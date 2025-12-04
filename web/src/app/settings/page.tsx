@@ -1095,7 +1095,7 @@ export default function SettingsPage() {
   <Section 
     title="Company Details" 
     description="Core business information shown on quotes and throughout the system"
-    right={<Button onClick={saveProfile} disabled={savingProfile}>{savingProfile ? "Saving…" : "Save Company"}</Button>}
+    right={<Button onClick={saveSettings} disabled={savingSettings}>{savingSettings ? "Saving…" : "Save Company"}</Button>}
   >
     {/* Missing info highlights */}
     {(() => {
