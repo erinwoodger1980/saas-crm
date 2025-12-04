@@ -735,6 +735,24 @@ export default function FireDoorSchedulePage() {
     lastUpdatedAt: 'Updated At'
   };
 
+  // Calculate column width based on field type
+  const getColumnWidth = (field: string): number => {
+    // Narrow columns for status/select fields
+    if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus', 'jobLocation', 'signOffStatus', 'scheduledBy', 'snaggingStatus', 'snaggingComplete'].includes(field)) {
+      return 85;
+    }
+    // Small columns for numbers and short fields
+    if (['mjsNumber', 'poNumber', 'leadTimeWeeks', 'doorSets', 'leaves', 'overallProgress', 'bomPercent', 'paperworkPercent', 'productionPercent', 'blanksCutPercent', 'edgebandPercent', 'calibratePercent', 'facingsPercent', 'sprayPercent', 'buildPercent', 'netValue'].includes(field)) {
+      return 75;
+    }
+    // Medium columns for dates
+    if (field.includes('Date')) {
+      return 90;
+    }
+    // Regular columns for other text
+    return 120;
+  };
+
   async function updateProject(projectId: string, patch: Partial<FireDoorProject>) {
     try {
       // Optimistic UI update
@@ -1719,8 +1737,8 @@ export default function FireDoorSchedulePage() {
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
                       const isFrozen = frozenColumns.includes(field);
                       const frozenIndex = frozenColumns.indexOf(field);
-                      const fieldWidth = field === 'mjsNumber' ? 100 : 150;
-                      const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + (col === 'mjsNumber' ? 100 : 150), 0)) : undefined;
+                      const fieldWidth = getColumnWidth(field);
+                      const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + getColumnWidth(col), 0)) : undefined;
                       const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                       return (
                       <th
@@ -1732,7 +1750,7 @@ export default function FireDoorSchedulePage() {
                         <div className="flex flex-col gap-1">
                           <button
                             type="button"
-                            className={`inline-flex items-center gap-1 text-left whitespace-nowrap ${
+                            className={`inline-flex items-center gap-1 text-left whitespace-normal text-xs leading-snug ${
                               (field === 'jobLocation' || field === 'signOffStatus') 
                                 ? 'px-3 py-1.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 font-semibold shadow-sm transition-colors' 
                                 : ['scheduledBy', 'blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus'].includes(field)
@@ -1780,8 +1798,8 @@ export default function FireDoorSchedulePage() {
                     {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
                       const isFrozen = frozenColumns.includes(field);
                       const frozenIndex = frozenColumns.indexOf(field);
-                      const fieldWidth = field === 'mjsNumber' ? 100 : 150;
-                      const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + (col === 'mjsNumber' ? 100 : 150), 0)) : undefined;
+                      const fieldWidth = getColumnWidth(field);
+                      const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + getColumnWidth(col), 0)) : undefined;
                       const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                       return (
                         <th
@@ -1831,8 +1849,8 @@ export default function FireDoorSchedulePage() {
                       {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
                         const isFrozen = frozenColumns.includes(field);
                         const frozenIndex = frozenColumns.indexOf(field);
-                        const fieldWidth = field === 'mjsNumber' ? 100 : 150;
-                        const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + (col === 'mjsNumber' ? 100 : 150), 0)) : undefined;
+                        const fieldWidth = getColumnWidth(field);
+                        const leftOffset = frozenIndex >= 0 ? ACTIONS_WIDTH + (frozenColumns.slice(0, frozenIndex).reduce((sum, col) => sum + getColumnWidth(col), 0)) : undefined;
                         const isLastFrozen = isFrozen && frozenIndex === frozenColumns.length - 1;
                         return (
                         <td
