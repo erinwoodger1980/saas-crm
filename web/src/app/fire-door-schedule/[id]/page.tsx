@@ -53,6 +53,35 @@ interface FireDoorProject {
   buildPercent?: number;
   overallProgress?: number;
   netValue?: number | null;
+  // BOM & Materials fields
+  blanksStatus?: string;
+  blanksDateOrdered?: Date | null;
+  blanksDateExpected?: Date | null;
+  blanksDateReceived?: Date | null;
+  lippingsStatus?: string;
+  lippingsDateOrdered?: Date | null;
+  lippingsDateExpected?: Date | null;
+  lippingsDateReceived?: Date | null;
+  facingsStatus?: string;
+  facingsDateOrdered?: Date | null;
+  facingsDateExpected?: Date | null;
+  facingsDateReceived?: Date | null;
+  glassStatus?: string;
+  glassDateOrdered?: Date | null;
+  glassDateExpected?: Date | null;
+  glassDateReceived?: Date | null;
+  cassettesStatus?: string;
+  cassettesDateOrdered?: Date | null;
+  cassettesDateExpected?: Date | null;
+  cassettesDateReceived?: Date | null;
+  timbersStatus?: string;
+  timbersDateOrdered?: Date | null;
+  timbersDateExpected?: Date | null;
+  timbersDateReceived?: Date | null;
+  ironmongeryStatus?: string;
+  ironmongeryDateOrdered?: Date | null;
+  ironmongeryDateExpected?: Date | null;
+  ironmongeryDateReceived?: Date | null;
 }
 
 function ProgressBar({ value, className = "" }: { value: number; className?: string }) {
@@ -408,10 +437,14 @@ export default function FireDoorScheduleDetailPage() {
       <div className="container mx-auto px-6 py-8">
         {!isNew ? (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full max-w-md grid-cols-2 bg-white/60 backdrop-blur-sm">
+            <TabsList className="grid w-full max-w-3xl grid-cols-3 bg-white/60 backdrop-blur-sm">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <Info className="w-4 h-4" />
                 Project Overview
+              </TabsTrigger>
+              <TabsTrigger value="bom" className="flex items-center gap-2">
+                <FileCheck className="w-4 h-4" />
+                BOM & Materials
               </TabsTrigger>
               <TabsTrigger value="lineitems" className="flex items-center gap-2">
                 <Table className="w-4 h-4" />
@@ -581,13 +614,13 @@ export default function FireDoorScheduleDetailPage() {
               </div>
               <div className="space-y-6">
                 {[
-                  { name: "Blanks", statusField: "blanksStatus", orderedField: "blanksOrdered", receivedField: "blanksReceived", checkedField: "blanksChecked" },
-                  { name: "Lippings", statusField: "lippingsStatus", orderedField: "lippingsOrdered", receivedField: "lippingsReceived", checkedField: "lippingsChecked" },
-                  { name: "Facings", statusField: "facingsStatus", orderedField: "facingsOrdered", receivedField: "facingsReceived", checkedField: "facingsChecked" },
-                  { name: "Glass", statusField: "glassStatus", orderedField: "glassOrdered", receivedField: "glassReceived", checkedField: "glassChecked" },
-                  { name: "Cassettes", statusField: "cassettesStatus", orderedField: "cassettesOrdered", receivedField: "cassettesReceived", checkedField: "cassettesChecked" },
-                  { name: "Timbers", statusField: "timbersStatus", orderedField: "timbersOrdered", receivedField: "timbersReceived", checkedField: "timbersChecked" },
-                  { name: "Ironmongery", statusField: "ironmongeryStatus", orderedField: "ironmongeryOrdered", receivedField: "ironmongeryReceived", checkedField: "ironmongeryChecked" },
+                  { name: "Blanks", statusField: "blanksStatus", orderedField: "blanksDateOrdered", expectedField: "blanksDateExpected", receivedField: "blanksDateReceived" },
+                  { name: "Lippings", statusField: "lippingsStatus", orderedField: "lippingsDateOrdered", expectedField: "lippingsDateExpected", receivedField: "lippingsDateReceived" },
+                  { name: "Facings", statusField: "facingsStatus", orderedField: "facingsDateOrdered", expectedField: "facingsDateExpected", receivedField: "facingsDateReceived" },
+                  { name: "Glass", statusField: "glassStatus", orderedField: "glassDateOrdered", expectedField: "glassDateExpected", receivedField: "glassDateReceived" },
+                  { name: "Cassettes", statusField: "cassettesStatus", orderedField: "cassettesDateOrdered", expectedField: "cassettesDateExpected", receivedField: "cassettesDateReceived" },
+                  { name: "Timbers", statusField: "timbersStatus", orderedField: "timbersDateOrdered", expectedField: "timbersDateExpected", receivedField: "timbersDateReceived" },
+                  { name: "Ironmongery", statusField: "ironmongeryStatus", orderedField: "ironmongeryDateOrdered", expectedField: "ironmongeryDateExpected", receivedField: "ironmongeryDateReceived" },
                 ].map((material) => (
                   <div key={material.name} className="border-b border-slate-200 pb-4 last:border-0">
                     <h3 className="text-sm font-semibold text-slate-700 mb-3">{material.name}</h3>
@@ -599,10 +632,14 @@ export default function FireDoorScheduleDetailPage() {
                             <SelectValue placeholder="Select..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="NOT_ORDERED">Not Ordered</SelectItem>
-                            <SelectItem value="ORDERED">Ordered</SelectItem>
-                            <SelectItem value="RECEIVED">Received</SelectItem>
-                            <SelectItem value="CHECKED">Checked</SelectItem>
+                            <SelectItem value="Not in BOM">Not in BOM</SelectItem>
+                            <SelectItem value="In BOM TBC">In BOM TBC</SelectItem>
+                            <SelectItem value="Ordered Call Off">Ordered Call Off</SelectItem>
+                            <SelectItem value="In BOM">In BOM</SelectItem>
+                            <SelectItem value="Stock">Stock</SelectItem>
+                            <SelectItem value="Ordered">Ordered</SelectItem>
+                            <SelectItem value="N/A">N/A</SelectItem>
+                            <SelectItem value="Received">Received</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -611,12 +648,12 @@ export default function FireDoorScheduleDetailPage() {
                         <EditableCell type="date" value={(project as any)[material.orderedField]} onChange={(v) => updateField(material.orderedField, v)} />
                       </div>
                       <div>
-                        <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Received Date</label>
-                        <EditableCell type="date" value={(project as any)[material.receivedField]} onChange={(v) => updateField(material.receivedField, v)} />
+                        <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Expected Date</label>
+                        <EditableCell type="date" value={(project as any)[material.expectedField]} onChange={(v) => updateField(material.expectedField, v)} />
                       </div>
                       <div>
-                        <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Checked Date</label>
-                        <EditableCell type="date" value={(project as any)[material.checkedField]} onChange={(v) => updateField(material.checkedField, v)} />
+                        <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Received Date</label>
+                        <EditableCell type="date" value={(project as any)[material.receivedField]} onChange={(v) => updateField(material.receivedField, v)} />
                       </div>
                     </div>
                   </div>

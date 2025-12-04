@@ -564,6 +564,7 @@ export default function FireDoorSchedulePage() {
         'timbersDateOrdered',
         'timbersDateExpected',
         'timbersDateReceived',
+        'ironmongeryStatus',
         'ironmongeryDateOrdered',
         'ironmongeryDateExpected',
         'ironmongeryDateReceived'
