@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ type InviteResponse = { ok: true; userId: string; email: string; role: string; s
 type ProcessDef = { code: string; name: string };
 
 export default function UsersSettingsPage() {
+  const { user: currentUser, mutate: mutateCurrentUser } = useCurrentUser();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [processes, setProcesses] = useState<ProcessDef[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,6 +146,12 @@ export default function UsersSettingsPage() {
         },
       });
       await loadUsers();
+      
+      // If the current user edited their own profile, refresh the AppShell
+      if (currentUser?.id === userId) {
+        await mutateCurrentUser();
+      }
+      
       setEditingProfile(prev => {
         const next = { ...prev };
         delete next[userId];
