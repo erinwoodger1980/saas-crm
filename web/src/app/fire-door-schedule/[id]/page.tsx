@@ -261,13 +261,13 @@ export default function FireDoorScheduleDetailPage() {
         const dateFields = [
           'dateReceived', 'dateRequired', 'signOffDate', 'approxDeliveryDate',
           'deliveryDate', 'installStart', 'installEnd',
-          'blanksOrdered', 'blanksReceived', 'blanksChecked',
-          'lippingsOrdered', 'lippingsReceived', 'lippingsChecked',
-          'facingsOrdered', 'facingsReceived', 'facingsChecked',
-          'glassOrdered', 'glassReceived', 'glassChecked',
-          'cassettesOrdered', 'cassettesReceived', 'cassettesChecked',
-          'timbersOrdered', 'timbersReceived', 'timbersChecked',
-          'ironmongeryOrdered', 'ironmongeryReceived', 'ironmongeryChecked'
+          'blanksDateOrdered', 'blanksDateExpected', 'blanksDateReceived',
+          'lippingsDateOrdered', 'lippingsDateExpected', 'lippingsDateReceived',
+          'facingsDateOrdered', 'facingsDateExpected', 'facingsDateReceived',
+          'glassDateOrdered', 'glassDateExpected', 'glassDateReceived',
+          'cassettesDateOrdered', 'cassettesDateExpected', 'cassettesDateReceived',
+          'timbersDateOrdered', 'timbersDateExpected', 'timbersDateReceived',
+          'ironmongeryDateOrdered', 'ironmongeryDateExpected', 'ironmongeryDateReceived'
         ];
         
         for (const field of dateFields) {
