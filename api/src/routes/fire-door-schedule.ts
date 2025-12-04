@@ -292,20 +292,26 @@ const updateProjectHandler = async (req: any, res: Response) => {
       'ironmongeryOrdered', 'ironmongeryReceived', 'ironmongeryChecked'
     ];
     
+    console.log('[fire-door-schedule] PATCH request data:', JSON.stringify(updateData, null, 2));
+    
     for (const field of dateFields) {
       if (updateData[field] !== undefined) {
         const val = updateData[field];
+        console.log(`[fire-door-schedule] Processing date field ${field}:`, val, typeof val);
         if (val === null || val === '') {
           // Clear the date field
           updateData[field] = null;
+          console.log(`[fire-door-schedule] Cleared ${field} to null`);
         } else if (typeof val === 'string') {
           // Convert date string to Date object
           const parsed = new Date(val);
           if (!isNaN(parsed.getTime())) {
             updateData[field] = parsed;
+            console.log(`[fire-door-schedule] Converted ${field} to Date:`, parsed);
           } else {
             // Invalid date string, set to null
             updateData[field] = null;
+            console.log(`[fire-door-schedule] Invalid date for ${field}, set to null`);
           }
         }
         // If it's already a Date object, leave it as is
@@ -321,10 +327,14 @@ const updateProjectHandler = async (req: any, res: Response) => {
     updateData.productionPercent = productionPercent;
     updateData.overallProgress = productionPercent; // Keep overallProgress for backwards compatibility
 
+    console.log('[fire-door-schedule] Final updateData before Prisma:', JSON.stringify(updateData, null, 2));
+    
     const project = await prisma.fireDoorScheduleProject.update({
       where: { id },
       data: updateData,
     });
+
+    console.log('[fire-door-schedule] Project updated successfully');
 
     // After updating, auto-complete any tasks linked to changed fields
     try {
