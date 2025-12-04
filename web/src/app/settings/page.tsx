@@ -964,7 +964,7 @@ export default function SettingsPage() {
   if (loading || !s) return <div className="p-6 text-sm text-slate-600">Loading…</div>;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
+    <div className="mx-auto max-w-5xl px-4 py-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Settings</h1>
         <div className="flex items-center gap-2">
