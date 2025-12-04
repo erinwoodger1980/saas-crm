@@ -14,6 +14,19 @@ import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import FireDoorSpreadsheet from "@/components/FireDoorSpreadsheet";
 
+const ironmongeryStatusOptions = [
+  "Not in BOM",
+  "In BOM TBC",
+  "Ordered Call Off",
+  "In BOM",
+  "Stock",
+  "Ordered",
+  "N/A",
+  "Received",
+  "Received from TBS",
+  "Received from Customer"
+];
+
 interface FireDoorProject {
   id: string;
   mjsNumber?: string;
@@ -620,7 +633,7 @@ export default function FireDoorScheduleDetailPage() {
                   { name: "Glass", statusField: "glassStatus", orderedField: "glassDateOrdered", expectedField: "glassDateExpected", receivedField: "glassDateReceived" },
                   { name: "Cassettes", statusField: "cassettesStatus", orderedField: "cassettesDateOrdered", expectedField: "cassettesDateExpected", receivedField: "cassettesDateReceived" },
                   { name: "Timbers", statusField: "timbersStatus", orderedField: "timbersDateOrdered", expectedField: "timbersDateExpected", receivedField: "timbersDateReceived" },
-                  { name: "Ironmongery", statusField: "ironmongeryStatus", orderedField: "ironmongeryDateOrdered", expectedField: "ironmongeryDateExpected", receivedField: "ironmongeryDateReceived" },
+                  { name: "Ironmongery", statusField: "ironmongeryStatus", orderedField: "ironmongeryDateOrdered", expectedField: "ironmongeryDateExpected", receivedField: "ironmongeryDateReceived", options: ironmongeryStatusOptions },
                 ].map((material) => (
                   <div key={material.name} className="border-b border-slate-200 pb-4 last:border-0">
                     <h3 className="text-sm font-semibold text-slate-700 mb-3">{material.name}</h3>
@@ -632,14 +645,9 @@ export default function FireDoorScheduleDetailPage() {
                             <SelectValue placeholder="Select..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Not in BOM">Not in BOM</SelectItem>
-                            <SelectItem value="In BOM TBC">In BOM TBC</SelectItem>
-                            <SelectItem value="Ordered Call Off">Ordered Call Off</SelectItem>
-                            <SelectItem value="In BOM">In BOM</SelectItem>
-                            <SelectItem value="Stock">Stock</SelectItem>
-                            <SelectItem value="Ordered">Ordered</SelectItem>
-                            <SelectItem value="N/A">N/A</SelectItem>
-                            <SelectItem value="Received">Received</SelectItem>
+                            {(material.options || ["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received"]).map((o: string) => (
+                              <SelectItem key={o} value={o}>{o}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
