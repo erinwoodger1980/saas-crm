@@ -283,13 +283,14 @@ const updateProjectHandler = async (req: any, res: Response) => {
     const dateFields = [
       'dateReceived', 'dateRequired', 'signOffDate', 'approxDeliveryDate',
       'deliveryDate', 'installStart', 'installEnd',
-      'blanksOrdered', 'blanksReceived', 'blanksChecked',
-      'lippingsOrdered', 'lippingsReceived', 'lippingsChecked',
-      'facingsOrdered', 'facingsReceived', 'facingsChecked',
-      'glassOrdered', 'glassReceived', 'glassChecked',
-      'cassettesOrdered', 'cassettesReceived', 'cassettesChecked',
-      'timbersOrdered', 'timbersReceived', 'timbersChecked',
-      'ironmongeryOrdered', 'ironmongeryReceived', 'ironmongeryChecked'
+      'blanksDateOrdered', 'blanksDateExpected', 'blanksDateReceived',
+      'lippingsDateOrdered', 'lippingsDateExpected', 'lippingsDateReceived',
+      'facingsDateOrdered', 'facingsDateExpected', 'facingsDateReceived',
+      'glassDateOrdered', 'glassDateExpected', 'glassDateReceived',
+      'cassettesDateOrdered', 'cassettesDateExpected', 'cassettesDateReceived',
+      'timbersDateOrdered', 'timbersDateExpected', 'timbersDateReceived',
+      'ironmongeryDateOrdered', 'ironmongeryDateExpected', 'ironmongeryDateReceived',
+      'signOffDate'
     ];
     
     console.log('[fire-door-schedule] PATCH request data:', JSON.stringify(updateData, null, 2));

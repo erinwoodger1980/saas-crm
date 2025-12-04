@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Save, Trash2, Sparkles, FileCheck, Upload, Info, Table } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Sparkles, FileCheck, Upload, Info, Table, RotateCw } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { getApiBase } from "@/lib/api-base";
 import { useToast } from "@/components/ui/use-toast";
@@ -185,6 +185,7 @@ export default function FireDoorScheduleDetailPage() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState("overview");
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (!isNew && id) {
@@ -193,6 +194,15 @@ export default function FireDoorScheduleDetailPage() {
       setProject({ id: "new", jobLocation: "RED FOLDER", signOffStatus: "AWAITING SCHEDULE", overallProgress: 0 } as FireDoorProject);
     }
   }, [id, isNew]);
+
+  // Auto-refresh every 3 minutes to sync with schedule updates
+  useEffect(() => {
+    if (isNew) return;
+    const interval = setInterval(() => {
+      loadProject();
+    }, 180000);
+    return () => clearInterval(interval);
+  }, [isNew, id]);
 
   async function loadProject() {
     try {
@@ -204,6 +214,18 @@ export default function FireDoorScheduleDetailPage() {
       toast({ title: "Error", description: "Failed to load project", variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshProject() {
+    setRefreshing(true);
+    try {
+      await loadProject();
+      toast({ title: "Refreshed", description: "Project data updated" });
+    } catch (error) {
+      console.error("Error refreshing project:", error);
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -433,6 +455,10 @@ export default function FireDoorScheduleDetailPage() {
                   </Button>
                 </>
               )}
+              <Button onClick={refreshProject} disabled={refreshing} variant="outline" className="hover:bg-blue-50">
+                <RotateCw className="w-4 h-4 mr-2" />
+                {refreshing ? "Refreshing..." : "Refresh"}
+              </Button>
               <Button onClick={saveProject} disabled={saving} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">
                 <Save className="w-4 h-4 mr-2" />
                 {saving ? "Saving..." : "Save Now"}
