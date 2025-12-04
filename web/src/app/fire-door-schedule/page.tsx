@@ -1036,11 +1036,13 @@ export default function FireDoorSchedulePage() {
 
     // Material status fields
     if (field === 'ironmongeryStatus') {
+      const customColor = customColors[value as string];
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
+          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${!customColor ? 'border-slate-300 bg-white hover:bg-slate-50' : ''}`}
+          style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
           {ironmongeryStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1049,11 +1051,13 @@ export default function FireDoorSchedulePage() {
     }
 
     if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus'].includes(field)) {
+      const customColor = customColors[value as string];
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
+          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${!customColor ? 'border-slate-300 bg-white hover:bg-slate-50' : ''}`}
+          style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
           {materialStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1063,11 +1067,13 @@ export default function FireDoorSchedulePage() {
 
     // Paperwork status fields
     if (['doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus'].includes(field)) {
+      const customColor = customColors[value as string];
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
+          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${!customColor ? 'border-slate-300 bg-white hover:bg-slate-50' : ''}`}
+          style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
           {paperworkStatusOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1077,11 +1083,13 @@ export default function FireDoorSchedulePage() {
 
     // Transport status
     if (field === 'transportStatus') {
+      const customColor = customColors[value as string];
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className="text-[11px] font-medium px-3 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 cursor-pointer"
+          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${!customColor ? 'border-slate-300 bg-white hover:bg-slate-50' : ''}`}
+          style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
           {transportOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1829,11 +1837,11 @@ export default function FireDoorSchedulePage() {
                         return (
                         <td
                           key={field}
-                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-[1] group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-0 group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                           style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : undefined}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
-                          <div onClick={(e) => e.stopPropagation()} className="relative z-50">
+                          <div onClick={(e) => e.stopPropagation()} className="relative z-40">
                             {renderCell(project, field)}
                           </div>
                         </td>
