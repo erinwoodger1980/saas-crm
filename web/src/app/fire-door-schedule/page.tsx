@@ -1581,7 +1581,8 @@ export default function FireDoorSchedulePage() {
                 {(() => {
                   let currentOptions: string[] = [];
                   let currentSetter: (opts: string[]) => void = () => {};
-                  const showColorPicker = editingConfigField === 'jobLocation' || editingConfigField === 'signOffStatus';
+                  // Show color picker for ALL dropdown fields
+                  const showColorPicker = true;
                   
                   if (editingConfigField === 'jobLocation') { currentOptions = jobLocationOptions; currentSetter = setJobLocationOptions; }
                   else if (editingConfigField === 'signOffStatus') { currentOptions = signOffOptions; currentSetter = setSignOffOptions; }
