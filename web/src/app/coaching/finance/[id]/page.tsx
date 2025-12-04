@@ -151,10 +151,17 @@ export default function FinancePlanPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          horizon: targetHorizon,
-          targetRevenue: parseFloat(targetRevenue) || 0,
-          targetGrossMargin: parseFloat(targetGrossMargin) || 0,
-          targetNetMargin: parseFloat(targetNetMargin) || 0,
+          horizon: targetHorizon === "ONE_YEAR" ? "YEAR" : "FIVE_YEAR",
+          year: (plan.financialYears ?? [])[0]?.year ?? new Date().getFullYear(),
+          revenueTarget: parseFloat(targetRevenue) || 0,
+          grossProfitTarget: 0,
+          netProfitTarget: 0,
+          grossMarginTarget: parseFloat(targetGrossMargin) || 0,
+          netMarginTarget: parseFloat(targetNetMargin) || 0,
+          labourPctTarget: 0,
+          materialsPctTarget: 0,
+          marketingPctTarget: 0,
+          overheadsPctTarget: 0,
         }),
       });
       
