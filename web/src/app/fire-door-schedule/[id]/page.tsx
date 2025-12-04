@@ -190,7 +190,33 @@ export default function FireDoorScheduleDetailPage() {
         toast({ title: "Success", description: "Project created successfully" });
         router.push(`/fire-door-schedule/${created.id}`);
       } else {
-        await apiFetch(`/fire-door-schedule/${id}`, { method: "PATCH", json: project });
+        // Convert Date objects to ISO strings and clean up data before sending
+        const cleanData: any = { ...project };
+        
+        // Convert Date objects to ISO strings or null
+        const dateFields = [
+          'dateReceived', 'dateRequired', 'signOffDate', 'approxDeliveryDate',
+          'deliveryDate', 'installStart', 'installEnd',
+          'blanksOrdered', 'blanksReceived', 'blanksChecked',
+          'lippingsOrdered', 'lippingsReceived', 'lippingsChecked',
+          'facingsOrdered', 'facingsReceived', 'facingsChecked',
+          'glassOrdered', 'glassReceived', 'glassChecked',
+          'cassettesOrdered', 'cassettesReceived', 'cassettesChecked',
+          'timbersOrdered', 'timbersReceived', 'timbersChecked',
+          'ironmongeryOrdered', 'ironmongeryReceived', 'ironmongeryChecked'
+        ];
+        
+        for (const field of dateFields) {
+          if (cleanData[field] !== undefined) {
+            if (cleanData[field] instanceof Date) {
+              cleanData[field] = cleanData[field].toISOString();
+            } else if (cleanData[field] === '' || cleanData[field] === null) {
+              cleanData[field] = null;
+            }
+          }
+        }
+        
+        await apiFetch(`/fire-door-schedule/${id}`, { method: "PATCH", json: cleanData });
         toast({ title: "Saved", description: "Changes saved automatically" });
       }
     } catch (error) {
