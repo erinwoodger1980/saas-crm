@@ -73,7 +73,13 @@ export async function putObject({
       createWriteStream(fullPath)
     );
 
-    const publicUrl = `/tenants/${tenantSlug}/${finalFilename}`;
+    // For local storage, use PUBLIC_BASE_URL if available to generate absolute URLs
+    // This is important when API and web are on different domains (api.domain.com vs domain.com)
+    const webPublicUrl = process.env.WEB_PUBLIC_URL || process.env.PUBLIC_BASE_URL || '';
+    const publicUrl = webPublicUrl 
+      ? `${webPublicUrl}/tenants/${tenantSlug}/${finalFilename}`
+      : `/tenants/${tenantSlug}/${finalFilename}`;
+    
     return { publicUrl, pathRelative };
   }
 }
