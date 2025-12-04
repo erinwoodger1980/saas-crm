@@ -589,10 +589,17 @@ export default function FireDoorSchedulePage() {
         'mjsNumber',
         'clientName',
         'jobName',
+        'blanksCutPercent',
         'edgebandPercent',
         'calibratePercent',
         'facingsPercent',
+        'finalCncPercent',
+        'finishPercent',
+        'sandPercent',
         'sprayPercent',
+        'cutPercent',
+        'cncPercent',
+        'buildPercent',
         'overallProgress',
         'transportStatus',
         'doorSets',
@@ -650,7 +657,12 @@ export default function FireDoorSchedulePage() {
         'edgebandPercent',
         'calibratePercent',
         'facingsPercent',
+        'finalCncPercent',
+        'finishPercent',
+        'sandPercent',
         'sprayPercent',
+        'cutPercent',
+        'cncPercent',
         'buildPercent',
         'overallProgress',
         'transportStatus',
@@ -719,7 +731,12 @@ export default function FireDoorSchedulePage() {
     edgebandPercent: 'Edgeband %',
     calibratePercent: 'Calibrate %',
     facingsPercent: 'Facings %',
+    finalCncPercent: 'Final CNC %',
+    finishPercent: 'Finish %',
+    sandPercent: 'Sand %',
     sprayPercent: 'Spray %',
+    cutPercent: 'Cut %',
+    cncPercent: 'CNC %',
     buildPercent: 'Build %',
     transportStatus: 'Transport',
     doorSets: 'Door Sets',
@@ -743,7 +760,7 @@ export default function FireDoorSchedulePage() {
       return 85;
     }
     // Small columns for numbers and short fields
-    if (['mjsNumber', 'poNumber', 'leadTimeWeeks', 'doorSets', 'leaves', 'overallProgress', 'bomPercent', 'paperworkPercent', 'productionPercent', 'blanksCutPercent', 'edgebandPercent', 'calibratePercent', 'facingsPercent', 'sprayPercent', 'buildPercent', 'netValue'].includes(field)) {
+    if (['mjsNumber', 'poNumber', 'leadTimeWeeks', 'doorSets', 'leaves', 'overallProgress', 'bomPercent', 'paperworkPercent', 'productionPercent', 'blanksCutPercent', 'edgebandPercent', 'calibratePercent', 'facingsPercent', 'finalCncPercent', 'finishPercent', 'sandPercent', 'sprayPercent', 'cutPercent', 'cncPercent', 'buildPercent', 'netValue'].includes(field)) {
       return 75;
     }
     // Medium columns for dates
