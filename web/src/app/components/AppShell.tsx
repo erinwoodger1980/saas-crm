@@ -114,7 +114,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const userLastName = user?.lastName?.trim() || null;
   const ownerDisplayName = [ownerFirstName, ownerLastName].filter(Boolean).join(" ").trim();
   const userDisplayName = [userFirstName, userLastName].filter(Boolean).join(" ").trim();
-  const greetingName = ownerDisplayName || userFirstName || userDisplayName || shortName || brandName;
+  const greetingName = userDisplayName || userFirstName || ownerDisplayName || shortName || brandName;
 
   return (
     <div className="relative min-h-screen bg-slate-50">
@@ -134,7 +134,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     src={logoUrl}
                     alt={`${brandName} logo`}
                     fill
-                    className="object-cover"
+                    className="object-contain p-2"
                     sizes="96px"
                     priority
                     unoptimized
