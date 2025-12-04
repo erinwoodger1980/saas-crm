@@ -59,7 +59,7 @@ export default function FireDoorSchedulePage() {
   // Location filter (multi-select checkboxes) - exclude COMPLETE & DELIVERED by default
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [showTable, setShowTable] = useState<boolean>(true); // consolidated table view toggle
-  const [sortField, setSortField] = useState<string>("dateRequired");
+  const [sortField, setSortField] = useState<string>("mjsNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingConfigField, setEditingConfigField] = useState<string | null>(null);
   const [customColors, setCustomColors] = useState<Record<string, {bg: string, text: string}>>({});
