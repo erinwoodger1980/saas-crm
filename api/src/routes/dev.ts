@@ -519,7 +519,7 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
       // Fetch the selected recipient user
       recipientUser = await prisma.user.findUnique({
         where: { id: recipientUserId },
-        select: { email: true, name: true }
+        select: { id: true, email: true, name: true }
       });
     }
 
