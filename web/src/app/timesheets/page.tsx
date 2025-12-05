@@ -776,138 +776,71 @@ export default function TimesheetsPage() {
         </TabsContent>
 
         <TabsContent value="team-activity" className="space-y-6 mt-6">
-          {/* Team Activity Grid (same as overview, but for future expansion) */}
-          {activityLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Loading team activity...</div>
+          {/* Timesheets List */}
+          {loading ? (
+            <div className="text-center py-12 text-muted-foreground">Loading timesheets...</div>
+          ) : timesheets.length === 0 ? (
+            <Card className="p-12 text-center">
+              <Calendar className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-lg text-muted-foreground">No timesheets found</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Timesheets are automatically created when users log workshop hours
+              </p>
+            </Card>
           ) : (
-            <div className="overflow-x-auto bg-white/80 rounded-xl shadow-lg border border-indigo-200/70 backdrop-blur-sm">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className="border border-border p-3 bg-muted text-left font-semibold sticky left-0 bg-muted z-10">
-                      PERSON
-                    </th>
-                    {dateRange.map((date) => {
-                      const dayName = date.toLocaleDateString("en-GB", { weekday: "short" });
-                      const dayDate = date.getDate();
-                      return (
-                        <th
-                          key={date.toISOString()}
-                          className={`border border-border p-3 text-center font-semibold min-w-[80px] ${
-                            isToday(date) ? "bg-primary/10" : "bg-muted"
-                          }`}
-                        >
-                          <div className="text-xs">{dayName.charAt(0)}</div>
-                          <div className="text-sm">{dayDate}</div>
-                        </th>
-                      );
-                    })}
-                    <th className="border border-border p-3 bg-muted text-right font-semibold sticky right-0 bg-muted z-10">
-                      TOTAL
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {userActivity.map((ua) => {
-                    const userTotal = Object.values(ua.days).reduce(
-                      (sum, entries) => sum + getTotalHoursForDay(entries),
-                      0
-                    );
+            <div className="space-y-4">
+              {timesheets.map((ts) => (
+                <Card key={ts.id} className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg"
+                        style={{ backgroundColor: ts.user.workshopColor || "#3b82f6" }}
+                      >
+                        {(ts.user.name || ts.user.email)[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold">{ts.user.name || ts.user.email}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Week: {formatDate(ts.weekStartDate)} - {formatDate(ts.weekEndDate)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {getStatusBadge(ts.status)}
+                      <div className="text-right">
+                        <div className="text-3xl font-bold text-blue-600">{ts.totalHours}h</div>
+                        <div className="text-xs text-muted-foreground">Total Hours</div>
+                      </div>
+                    </div>
+                  </div>
 
-                    return (
-                      <tr key={ua.user.id} className="hover:bg-muted/50 cursor-pointer">
-                        <td className="border border-border p-3 sticky left-0 bg-background z-10">
-                          <div className="flex items-center gap-2">
-                            <div className="relative">
-                              {ua.user.profilePictureUrl ? (
-                                <img
-                                  src={ua.user.profilePictureUrl}
-                                  alt={ua.user.name || ua.user.email}
-                                  className="w-8 h-8 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div
-                                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                                  style={{ backgroundColor: ua.user.workshopColor || "#6b7280" }}
-                                >
-                                  {(ua.user.name || ua.user.email)[0].toUpperCase()}
-                                </div>
-                              )}
-                              {ua.hasActiveTimer && (
-                                <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" title="Timer running" />
-                              )}
-                            </div>
-                            <span className="font-medium">{ua.user.name || ua.user.email}</span>
-                          </div>
-                        </td>
-                        {dateRange.map((date) => {
-                          const dateKey = date.toISOString().split("T")[0];
-                          const entries = ua.days[dateKey] || [];
-                          const dayHours = getTotalHoursForDay(entries);
+                  {ts.signedOffBy && (
+                    <div className="text-sm text-muted-foreground mb-4">
+                      Signed off by {ts.signedOffBy.name} on {formatDate(ts.signedOffAt!)}
+                    </div>
+                  )}
 
-                          // Color code based on hours (similar to Timedock)
-                          const getColorClass = (hours: number) => {
-                            if (hours === 0) return "bg-background";
-                            if (hours < 4) return "bg-green-100 text-green-900";
-                            if (hours < 8) return "bg-green-200 text-green-900";
-                            if (hours <= 9) return "bg-green-300 text-green-900";
-                            if (hours > 9) return "bg-red-200 text-red-900"; // Overtime
-                            return "bg-gray-100";
-                          };
+                  {ts.notes && (
+                    <div className="text-sm bg-slate-50 p-3 rounded mb-4">
+                      <strong>Notes:</strong> {ts.notes}
+                    </div>
+                  )}
 
-                          return (
-                            <td
-                              key={dateKey}
-                              className={`border border-border p-3 text-center font-semibold ${getColorClass(
-                                dayHours
-                              )} ${isToday(date) ? "ring-2 ring-primary ring-inset" : ""}`}
-                            >
-                              {dayHours > 0 ? dayHours.toFixed(1) : ""}
-                            </td>
-                          );
-                        })}
-                        <td className="border border-border p-3 text-right font-bold sticky right-0 bg-background z-10">
-                          {userTotal.toFixed(1)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  <tr className="bg-muted font-bold">
-                    <td className="border border-border p-3 sticky left-0 bg-muted z-10">TOTAL</td>
-                    {dateRange.map((date) => {
-                      const dateKey = date.toISOString().split("T")[0];
-                      const dayTotal = userActivity.reduce((sum, ua) => {
-                        const entries = ua.days[dateKey] || [];
-                        return sum + getTotalHoursForDay(entries);
-                      }, 0);
-
-                      return (
-                        <td
-                          key={dateKey}
-                          className={`border border-border p-3 text-center ${
-                            isToday(date) ? "bg-primary/10" : ""
-                          }`}
-                        >
-                          {dayTotal > 0 ? dayTotal.toFixed(1) : ""}
-                        </td>
-                      );
-                    })}
-                    <td className="border border-border p-3 text-right sticky right-0 bg-muted z-10">
-                      {userActivity
-                        .reduce((sum, ua) => {
-                          return (
-                            sum +
-                            Object.values(ua.days).reduce(
-                              (daySum, entries) => daySum + getTotalHoursForDay(entries),
-                              0
-                            )
-                          );
-                        }, 0)
-                        .toFixed(1)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                  {ts.status === "pending" && (
+                    <div className="flex gap-2">
+                      <Button onClick={() => signOff(ts.id)} size="sm" className="bg-green-600 hover:bg-green-700">
+                        <Check className="w-4 h-4 mr-2" />
+                        Sign Off
+                      </Button>
+                      <Button onClick={() => reject(ts.id)} size="sm" variant="outline">
+                        <X className="w-4 h-4 mr-2" />
+                        Reject
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              ))}
             </div>
           )}
         </TabsContent>
