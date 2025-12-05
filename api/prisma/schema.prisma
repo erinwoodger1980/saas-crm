@@ -111,6 +111,9 @@ model Tenant {
   analyticsEvents            AnalyticsEvent[]
   goalPlans                  GoalPlan[]
   financialPlans             FinancialPlan[]
+  fireDoorProcessQRConfigs   FireDoorProcessQRConfig[]   @relation("FireDoorProcessQRConfigs")
+  fireDoorQRScans            FireDoorQRScan[]            @relation("FireDoorQRScans")
+  fireDoorMaintenanceRecords FireDoorMaintenanceRecord[] @relation("FireDoorMaintenanceRecords")
 }
 
 model FeatureRequest {
@@ -176,6 +179,8 @@ model User {
   signedOffTimesheets       Timesheet[]                @relation("TimesheetSignedOffBy")
   timesheets                Timesheet[]                @relation("TimesheetUser")
   workshopTimers            WorkshopTimer[]
+  fireDoorQRScans           FireDoorQRScan[]           @relation("FireDoorQRScans")
+  fireDoorMaintenanceRecords FireDoorMaintenanceRecord[] @relation("FireDoorMaintenanceRecords")
   supplier                  Supplier?                  @relation(fields: [supplierId], references: [id])
   tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
 }
@@ -2581,9 +2586,10 @@ model FireDoorLineItem {
   materialCost            Decimal?
   lineTotal               Decimal?
   rawRowJson              Json
-  createdAt               DateTime       @default(now())
-  updatedAt               DateTime       @updatedAt
-  import                  FireDoorImport @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  import                  FireDoorImport   @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)
+  qrScans                 FireDoorQRScan[]
 
   @@index([tenantId, fireDoorImportId])
   @@index([tenantId, rating])
@@ -2797,6 +2803,7 @@ model FireDoorClientJob {
   clientAccount       ClientAccount            @relation(fields: [clientAccountId], references: [id], onDelete: Cascade)
   tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rfis                FireDoorClientRFI[]
+  qrScans             FireDoorQRScan[]
 
   @@index([tenantId])
   @@index([clientAccountId])
@@ -2806,7 +2813,7 @@ model FireDoorClientJob {
 }
 
 model FireDoorClientDoorItem {
-  id                           String            @id @default(cuid())
+  id                           String                       @id @default(cuid())
   tenantId                     String
   fireDoorClientJobId          String
   rowNumber                    Int?
@@ -2883,9 +2890,17 @@ model FireDoorClientDoorItem {
   unitPrice                    Decimal?
   lineTotal                    Decimal?
   rawRowJson                   Json?
-  createdAt                    DateTime          @default(now())
-  updatedAt                    DateTime          @updatedAt
-  job                          FireDoorClientJob @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
+  installationDate             DateTime?
+  lastMaintenanceDate          DateTime?
+  nextMaintenanceDate          DateTime?
+  maintenanceNotes             String?
+  fittingInstructions          String?
+  installerNotes               String?
+  createdAt                    DateTime                     @default(now())
+  updatedAt                    DateTime                     @updatedAt
+  job                          FireDoorClientJob            @relation(fields: [fireDoorClientJobId], references: [id], onDelete: Cascade)
+  qrScans                      FireDoorQRScan[]
+  maintenanceRecords           FireDoorMaintenanceRecord[]
 
   @@index([fireDoorClientJobId])
   @@index([tenantId])
@@ -2911,6 +2926,67 @@ model FireDoorClientRFI {
   @@index([fireDoorClientJobId])
   @@index([tenantId])
   @@index([status])
+}
+
+model FireDoorProcessQRConfig {
+  id            String   @id @default(cuid())
+  tenantId      String
+  processName   String
+  displayFields Json     @default("[]")
+  instructions  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  tenant        Tenant   @relation("FireDoorProcessQRConfigs", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, processName])
+  @@index([tenantId])
+}
+
+model FireDoorQRScan {
+  id           String                    @id @default(cuid())
+  tenantId     String
+  lineItemId   String?
+  clientJobId  String?
+  doorItemId   String?
+  scanType     String
+  processName  String?
+  scannedBy    String?
+  scannedAt    DateTime                  @default(now())
+  deviceInfo   String?
+  notes        String?
+  tenant       Tenant                    @relation("FireDoorQRScans", fields: [tenantId], references: [id], onDelete: Cascade)
+  lineItem     FireDoorLineItem?         @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
+  clientJob    FireDoorClientJob?        @relation(fields: [clientJobId], references: [id], onDelete: SetNull)
+  doorItem     FireDoorClientDoorItem?   @relation(fields: [doorItemId], references: [id], onDelete: SetNull)
+  user         User?                     @relation("FireDoorQRScans", fields: [scannedBy], references: [id], onDelete: SetNull)
+
+  @@index([lineItemId])
+  @@index([clientJobId])
+  @@index([doorItemId])
+  @@index([scanType])
+  @@index([tenantId])
+}
+
+model FireDoorMaintenanceRecord {
+  id              String                  @id @default(cuid())
+  tenantId        String
+  doorItemId      String
+  performedBy     String?
+  performedAt     DateTime                @default(now())
+  maintenanceType String
+  status          String
+  findings        String?
+  actionsTaken    String?
+  photos          Json                    @default("[]")
+  nextDueDate     DateTime?
+  createdAt       DateTime                @default(now())
+  tenant          Tenant                  @relation("FireDoorMaintenanceRecords", fields: [tenantId], references: [id], onDelete: Cascade)
+  doorItem        FireDoorClientDoorItem  @relation(fields: [doorItemId], references: [id], onDelete: Cascade)
+  user            User?                   @relation("FireDoorMaintenanceRecords", fields: [performedBy], references: [id], onDelete: SetNull)
+
+  @@index([doorItemId])
+  @@index([performedAt])
+  @@index([tenantId])
 }
 
 model Rfi {

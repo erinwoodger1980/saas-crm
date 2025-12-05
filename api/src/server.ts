@@ -125,6 +125,7 @@ import doorCoresRouter from "./routes/door-cores";
 import ironmongeryItemsRouter from "./routes/ironmongery-items";
 import rfisRouter from "./routes/rfis";
 import coachingRouter from "./routes/coaching";
+import fireDoorQRRouter from "./routes/fire-door-qr";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -672,6 +673,8 @@ app.use("/fire-door-schedule", requireAuth, fireDoorEnableRouter);
 app.use("/fire-door-production", requireAuth, fireDoorProductionRouter);
 // Fire door quotes (dedicated quote builder for fire doors)
 app.use("/fire-door-quotes", requireAuth, fireDoorQuotesRouter);
+// Fire door QR code system (workshop process tracking, dispatch, maintenance)
+app.use("/fire-door-qr", fireDoorQRRouter); // Public scans + protected management
 // Fire door lookup tables (door cores, ironmongery)
 app.use("/door-cores", requireAuth, doorCoresRouter);
 app.use("/ironmongery-items", requireAuth, ironmongeryItemsRouter);
