@@ -12,6 +12,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 
 type FeedbackStatus = "OPEN" | "IN_REVIEW" | "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "WONT_FIX" | "DUPLICATE";
@@ -110,6 +117,7 @@ export default function FeedbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterValue>("OPEN");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,7 +246,13 @@ export default function FeedbackPage() {
             {visibleItems.map((item) => {
               const submitting = updatingId === item.id;
               return (
-                <TableRow key={item.id} className={item.status === "OPEN" ? "bg-orange-50/50" : undefined}>
+                <TableRow
+                  key={item.id}
+                  className={`${
+                    item.status === "OPEN" ? "bg-orange-50/50" : undefined
+                  } cursor-pointer hover:bg-slate-50 transition-colors`}
+                  onClick={() => setSelectedFeedback(item)}
+                >
                   <TableCell className="align-top text-sm font-medium text-slate-700">
                     <div>{friendlyFeature(item.feature)}</div>
                     {item.sourceUrl && (
@@ -247,25 +261,16 @@ export default function FeedbackPage() {
                         target="_blank"
                         rel="noreferrer"
                         className="mt-1 block text-xs text-blue-600 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         View page ↗
                       </a>
                     )}
                   </TableCell>
                   <TableCell className="align-top text-sm text-slate-700">
-                    <div>{item.comment ? item.comment : <span className="text-slate-400">No notes provided.</span>}</div>
-                    {item.devResponse && (
-                      <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-2">
-                        <div className="text-xs font-medium text-blue-700 mb-1">Developer Response:</div>
-                        <div className="text-sm text-blue-900 whitespace-pre-wrap">{item.devResponse}</div>
-                      </div>
-                    )}
-                    {item.devScreenshotUrl && (
-                      <div className="mt-2">
-                        <a href={item.devScreenshotUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
-                          View screenshot ↗
-                        </a>
-                      </div>
+                    <div className="line-clamp-2">{item.comment ? item.comment : <span className="text-slate-400">No notes provided.</span>}</div>
+                    {(item.devResponse || item.devScreenshotUrl) && (
+                      <div className="mt-1 text-xs text-blue-600 font-medium">✓ Developer response available</div>
                     )}
                   </TableCell>
                   <TableCell className="align-top text-sm text-slate-600">
@@ -279,7 +284,10 @@ export default function FeedbackPage() {
                   </TableCell>
                   <TableCell className="align-top text-sm text-slate-600">{formatDate(item.createdAt)}</TableCell>
                   <TableCell className="align-top text-sm text-slate-600">{formatDate(item.resolvedAt)}</TableCell>
-                  <TableCell className="align-top text-right">
+                  <TableCell
+                    className="align-top text-right"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Button
                       variant={item.status === "COMPLETED" ? "outline" : "default"}
                       size="sm"
@@ -299,6 +307,123 @@ export default function FeedbackPage() {
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={!!selectedFeedback} onOpenChange={(open) => !open && setSelectedFeedback(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {selectedFeedback && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-xl font-bold">
+                  {friendlyFeature(selectedFeedback.feature)}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-6">
+                {/* User Feedback */}
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-slate-900">User Feedback</h3>
+                  <div className="rounded-lg bg-slate-50 p-4 border border-slate-200">
+                    <p className="text-sm text-slate-800 whitespace-pre-wrap">
+                      {selectedFeedback.comment || <span className="text-slate-400">No notes provided</span>}
+                    </p>
+                    {selectedFeedback.sourceUrl && (
+                      <a
+                        href={selectedFeedback.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-block text-xs text-blue-600 hover:underline"
+                      >
+                        View page ↗
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Submission Info */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600">Submitted by</label>
+                    <p className="text-sm text-slate-900 mt-1">{formatSubmittedBy(selectedFeedback.user)}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600">Received</label>
+                    <p className="text-sm text-slate-900 mt-1">{formatDate(selectedFeedback.createdAt)}</p>
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-600">Status</label>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Badge variant={selectedFeedback.status === "OPEN" ? "destructive" : "secondary"}>
+                      {STATUS_LABEL[selectedFeedback.status]}
+                    </Badge>
+                    {selectedFeedback.resolvedBy && selectedFeedback.status === "COMPLETED" && (
+                      <span className="text-xs text-slate-500">
+                        by {formatSubmittedBy(selectedFeedback.resolvedBy)} on {formatDate(selectedFeedback.resolvedAt)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Developer Response */}
+                {selectedFeedback.devResponse && (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-slate-900">Developer Response</h3>
+                    <div className="rounded-lg bg-blue-50 p-4 border border-blue-200">
+                      <p className="text-sm text-slate-800 whitespace-pre-wrap">
+                        {selectedFeedback.devResponse}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Screenshot */}
+                {selectedFeedback.devScreenshotUrl && (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-slate-900">Screenshot</h3>
+                    <div className="rounded-lg overflow-hidden border border-slate-200">
+                      <img
+                        src={selectedFeedback.devScreenshotUrl}
+                        alt="Developer screenshot"
+                        className="w-full h-auto max-h-96 object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                      {!selectedFeedback.devScreenshotUrl.startsWith("data:") && (
+                        <div className="p-2 bg-slate-50 text-right">
+                          <a
+                            href={selectedFeedback.devScreenshotUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            View full size ↗
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <DialogClose asChild>
+                  <Button variant="outline">Close</Button>
+                </DialogClose>
+                <Button
+                  onClick={() => {
+                    toggleStatus(selectedFeedback);
+                    setSelectedFeedback(null);
+                  }}
+                  variant={selectedFeedback.status === "COMPLETED" ? "outline" : "default"}
+                >
+                  {selectedFeedback.status === "COMPLETED" ? "Re-open" : "Mark completed"}
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
