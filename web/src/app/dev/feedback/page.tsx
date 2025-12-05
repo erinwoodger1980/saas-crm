@@ -145,9 +145,13 @@ function FeedbackManagementContent() {
       body += `View your feedback here: ${feedbackUrl}\n\n`;
       body += `Thank you for helping us improve!`;
 
-      // Open mailto link - use window.location.href to trigger default email client
+      // Create mailto link and trigger it via a temporary anchor element
+      // This avoids the blank page issue with window.location.href
       const mailtoUrl = `mailto:${encodeURIComponent(recipientUser.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.location.href = mailtoUrl;
+      const link = document.createElement('a');
+      link.href = mailtoUrl;
+      link.target = '_self';
+      link.click();
 
       // Optionally mark as sent locally (or remove this if you want to track actual sends)
       // setFeedbacks(prev => prev.map(f => 

@@ -136,7 +136,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 {logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={logoUrl}
+                    src={logoUrl.startsWith('http') ? logoUrl : `http://localhost:3000${logoUrl}`}
                     alt={`${brandName} logo`}
                     className="h-full w-full object-contain p-3"
                     onError={(e) => {
