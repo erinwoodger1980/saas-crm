@@ -51,7 +51,7 @@ type FeedbackResponse = {
 
 const FILTER_TABS: { value: FilterValue; label: string }[] = [
   { value: "OPEN", label: "Open" },
-  { value: "RESOLVED", label: "Resolved" },
+  { value: "COMPLETED", label: "Completed" },
   { value: "ALL", label: "All" },
 ];
 

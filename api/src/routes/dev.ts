@@ -573,6 +573,23 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
   }
 });
 
+// Upload screenshot for feedback
+router.post("/feedback/upload-screenshot", requireDeveloper, async (req: any, res) => {
+  try {
+    const base64 = req.body?.screenshot as string;
+    if (!base64 || !base64.startsWith("data:")) {
+      return res.status(400).json({ error: "Invalid screenshot data" });
+    }
+
+    // Base64 data URLs are already in the correct format to send back
+    // They can be used directly as img src attributes
+    res.json({ ok: true, url: base64 });
+  } catch (error: any) {
+    console.error("Failed to upload screenshot:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==============================
 // Dev Task Management (Developer Only)
 // ==============================

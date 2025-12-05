@@ -48,6 +48,7 @@ function FeedbackManagementContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
+  const [uploadingScreenshot, setUploadingScreenshot] = useState<string | null>(null);
 
   async function loadFeedback() {
     setLoading(true);
@@ -103,6 +104,41 @@ function FeedbackManagementContent() {
       alert("Failed to send email: " + e.message);
     } finally {
       setSendingEmail(null);
+    }
+  }
+
+  async function handleScreenshotUpload(feedbackId: string, file: File) {
+    setUploadingScreenshot(feedbackId);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target?.result as string;
+        try {
+          const response = await fetch("/api/dev/feedback/upload-screenshot", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("jwt")}`,
+            },
+            body: JSON.stringify({ screenshot: base64 }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to upload screenshot");
+          }
+
+          const data = await response.json();
+          setEditForm({ ...editForm, devScreenshotUrl: data.url });
+        } catch (e: any) {
+          alert("Failed to upload screenshot: " + e.message);
+        } finally {
+          setUploadingScreenshot(null);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (e: any) {
+      alert("Failed to read screenshot: " + e.message);
+      setUploadingScreenshot(null);
     }
   }
 
@@ -278,12 +314,23 @@ function FeedbackManagementContent() {
                   </div>
 
                   <div>
-                    <label className="text-xs text-muted-foreground">Screenshot URL (shown to user)</label>
-                    <Input 
-                      value={editForm.devScreenshotUrl !== undefined ? editForm.devScreenshotUrl : feedback.devScreenshotUrl || ""}
-                      onChange={(e) => setEditForm({...editForm, devScreenshotUrl: e.target.value})}
-                      placeholder="Paste image URL (e.g., from Imgur, CloudApp, etc.)"
-                    />
+                    <label className="text-xs text-muted-foreground">Screenshot (shown to user)</label>
+                    <div className="flex gap-2 items-center mt-1">
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) {
+                            handleScreenshotUpload(feedback.id, e.target.files[0]);
+                          }
+                        }}
+                        disabled={uploadingScreenshot === feedback.id}
+                        className="text-xs"
+                      />
+                      {uploadingScreenshot === feedback.id && (
+                        <span className="text-xs text-muted-foreground">Uploading...</span>
+                      )}
+                    </div>
                     {(editForm.devScreenshotUrl || feedback.devScreenshotUrl) && (
                       <img 
                         src={editForm.devScreenshotUrl || feedback.devScreenshotUrl || ""} 
