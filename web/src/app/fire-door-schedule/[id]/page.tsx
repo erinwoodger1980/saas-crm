@@ -13,6 +13,7 @@ import { getApiBase } from "@/lib/api-base";
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import FireDoorSpreadsheet from "@/components/FireDoorSpreadsheet";
+import { ColoredSelect } from "@/components/ColoredSelect";
 
 const ironmongeryStatusOptions = [
   "Not in BOM",
@@ -26,6 +27,38 @@ const ironmongeryStatusOptions = [
   "Received from TBS",
   "Received from Customer"
 ];
+
+const MATERIAL_STATUS_COLORS: Record<string, string> = {
+  "Not in BOM": "bg-slate-100 text-slate-600",
+  "In BOM TBC": "bg-orange-100 text-orange-700",
+  "Ordered Call Off": "bg-cyan-100 text-cyan-700",
+  "In BOM": "bg-blue-100 text-blue-700",
+  "Stock": "bg-emerald-100 text-emerald-700",
+  "Ordered": "bg-purple-100 text-purple-700",
+  "N/A": "bg-slate-100 text-slate-600",
+  "Received": "bg-green-100 text-green-700",
+  "Received from TBS": "bg-green-100 text-green-700",
+  "Received from Customer": "bg-green-100 text-green-700",
+};
+
+const PAPERWORK_STATUS_COLORS: Record<string, string> = {
+  "Not Started": "bg-slate-100 text-slate-600",
+  "Working On": "bg-blue-100 text-blue-700",
+  "Ready to Print": "bg-cyan-100 text-cyan-700",
+  "Part Complete": "bg-orange-100 text-orange-700",
+  "Printed in Office": "bg-emerald-100 text-emerald-700",
+  "In Factory": "bg-emerald-100 text-emerald-700",
+  "N/A": "bg-slate-100 text-slate-600",
+};
+
+const TRANSPORT_STATUS_COLORS: Record<string, string> = {
+  "TBC": "bg-slate-100 text-slate-600",
+  "By Customer": "bg-blue-100 text-blue-700",
+  "By LAJ": "bg-purple-100 text-purple-700",
+  "Collect": "bg-cyan-100 text-cyan-700",
+  "Not Booked": "bg-orange-100 text-orange-700",
+  "Booked": "bg-green-100 text-green-700",
+};
 
 interface FireDoorProject {
   id: string;
@@ -666,16 +699,16 @@ export default function FireDoorScheduleDetailPage() {
                     <div className="grid grid-cols-4 gap-4">
                       <div>
                         <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Status</label>
-                        <Select value={(project as any)[material.statusField] || ""} onValueChange={(v) => updateField(material.statusField, v)}>
-                          <SelectTrigger className="h-9">
-                            <SelectValue placeholder="Select..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(material.options || ["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received"]).map((o: string) => (
-                              <SelectItem key={o} value={o}>{o}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <ColoredSelect
+                          value={(project as any)[material.statusField] || ""}
+                          onValueChange={(v) => updateField(material.statusField, v)}
+                          options={(material.options || ["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received"]).map((o: string) => ({
+                            value: o,
+                            label: o,
+                            className: MATERIAL_STATUS_COLORS[o] || ""
+                          }))}
+                          placeholder="Select..."
+                        />
                       </div>
                       <div>
                         <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Ordered Date</label>
@@ -785,17 +818,19 @@ export default function FireDoorScheduleDetailPage() {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Transport Status</label>
-                  <Select value={project.transportStatus || ""} onValueChange={(v) => updateField("transportStatus", v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NOT_SCHEDULED">Not Scheduled</SelectItem>
-                      <SelectItem value="SCHEDULED">Scheduled</SelectItem>
-                      <SelectItem value="IN_TRANSIT">In Transit</SelectItem>
-                      <SelectItem value="DELIVERED">Delivered</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <ColoredSelect
+                    value={project.transportStatus || ""}
+                    onValueChange={(v) => updateField("transportStatus", v)}
+                    options={[
+                      { value: "TBC", label: "TBC", className: TRANSPORT_STATUS_COLORS["TBC"] },
+                      { value: "By Customer", label: "By Customer", className: TRANSPORT_STATUS_COLORS["By Customer"] },
+                      { value: "By LAJ", label: "By LAJ", className: TRANSPORT_STATUS_COLORS["By LAJ"] },
+                      { value: "Collect", label: "Collect", className: TRANSPORT_STATUS_COLORS["Collect"] },
+                      { value: "Not Booked", label: "Not Booked", className: TRANSPORT_STATUS_COLORS["Not Booked"] },
+                      { value: "Booked", label: "Booked", className: TRANSPORT_STATUS_COLORS["Booked"] },
+                    ]}
+                    placeholder="Select..."
+                  />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Door Sets</label>
