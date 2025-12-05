@@ -49,6 +49,20 @@ function FeedbackManagementContent() {
   const [editForm, setEditForm] = useState<any>({});
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
   const [uploadingScreenshot, setUploadingScreenshot] = useState<string | null>(null);
+  const [tenantUsers, setTenantUsers] = useState<Record<string, any[]>>({});
+  const [recipientByFeedback, setRecipientByFeedback] = useState<Record<string, string>>({});
+  // Fetch users for a tenant if not already loaded
+  async function loadTenantUsers(tenantId: string) {
+    if (tenantUsers[tenantId]) return;
+    try {
+      const res = await apiFetch<{ ok: boolean; tenant: { users: any[] } }>(`/tenants/${tenantId}`);
+      if (res.ok) {
+        setTenantUsers(prev => ({ ...prev, [tenantId]: res.tenant.users }));
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
 
   async function loadFeedback() {
     setLoading(true);
@@ -89,9 +103,12 @@ function FeedbackManagementContent() {
   async function sendEmailNotification(feedbackId: string) {
     setSendingEmail(feedbackId);
     try {
+      // Find the selected recipient userId for this feedback
+      const feedback = feedbacks.find(f => f.id === feedbackId);
+      const recipientUserId = recipientByFeedback[feedbackId] || feedback?.user?.id;
       const data = await apiFetch<{ ok: boolean; message: string }>(
         `/dev/feedback/${feedbackId}/notify`,
-        { method: "POST" }
+        { method: "POST", json: { recipientUserId } }
       );
       if (data.ok) {
         alert("Email notification sent successfully!");
@@ -107,54 +124,63 @@ function FeedbackManagementContent() {
     }
   }
 
-  async function handleScreenshotUpload(feedbackId: string, file: File) {
+  async function handleScreenshotUpload(feedbackId: string, files: FileList) {
     setUploadingScreenshot(feedbackId);
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64 = e.target?.result as string;
-        try {
-          const response = await fetch("/api/dev/feedback/upload-screenshot", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("jwt")}`,
-            },
-            body: JSON.stringify({ screenshot: base64 }),
-          });
+      const uploadPromises = Array.from(files).map(file => {
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            const base64 = e.target?.result as string;
+            try {
+              const response = await fetch("/api/dev/feedback/upload-screenshot", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${localStorage.getItem("jwt")}`,
+                },
+                body: JSON.stringify({ screenshot: base64 }),
+              });
 
-          if (!response.ok) {
-            throw new Error("Failed to upload screenshot");
-          }
+              if (!response.ok) {
+                throw new Error("Failed to upload screenshot");
+              }
 
-          const data = await response.json();
-          
-          // Add screenshot to the feedback
-          const response2 = await fetch(`/api/dev/feedback/${feedbackId}/add-screenshot`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("jwt")}`,
-            },
-            body: JSON.stringify({ screenshotUrl: data.url }),
-          });
-          
-          if (!response2.ok) {
-            throw new Error("Failed to add screenshot to feedback");
-          }
-          
-          const feedbackData = await response2.json();
-          setFeedbacks(prev => prev.map(f => f.id === feedbackId ? feedbackData.feedback : f));
-          setEditForm({});
-        } catch (e: any) {
-          alert("Failed to upload screenshot: " + e.message);
-        } finally {
-          setUploadingScreenshot(null);
+              const data = await response.json();
+              resolve(data.url);
+            } catch (e: any) {
+              reject(e);
+            }
+          };
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsDataURL(file);
+        });
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+
+      // Add all screenshots to the feedback
+      for (const screenshotUrl of uploadedUrls) {
+        const response = await fetch(`/api/dev/feedback/${feedbackId}/add-screenshot`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("jwt")}`,
+          },
+          body: JSON.stringify({ screenshotUrl }),
+        });
+        
+        if (!response.ok) {
+          throw new Error("Failed to add screenshot to feedback");
         }
-      };
-      reader.readAsDataURL(file);
+        
+        const feedbackData = await response.json();
+        setFeedbacks(prev => prev.map(f => f.id === feedbackId ? feedbackData.feedback : f));
+      }
+      setEditForm({});
     } catch (e: any) {
-      alert("Failed to read screenshot: " + e.message);
+      alert("Failed to upload screenshot(s): " + e.message);
+    } finally {
       setUploadingScreenshot(null);
     }
   }
@@ -176,9 +202,9 @@ function FeedbackManagementContent() {
 
       const data = await response.json();
       setFeedbacks(prev => prev.map(f => f.id === feedbackId ? data.feedback : f));
-      setEditForm(prev => ({
+      setEditForm((prev: any) => ({
         ...prev,
-        devScreenshotUrls: (prev.devScreenshotUrls || []).filter(url => url !== screenshotUrl)
+        devScreenshotUrls: (prev.devScreenshotUrls || []).filter((url: string) => url !== screenshotUrl)
       }));
     } catch (e: any) {
       alert("Failed to remove screenshot: " + e.message);
@@ -290,6 +316,30 @@ function FeedbackManagementContent() {
               {editingId === feedback.id ? (
                 // Edit Mode
                 <div className="space-y-3">
+                  {/* Recipient selection */}
+                  <div>
+                    <label className="text-xs text-muted-foreground">Email Feedback To</label>
+                    <Select
+                      value={recipientByFeedback[feedback.id] || feedback.user?.id || ""}
+                      onValueChange={async (v) => {
+                        setRecipientByFeedback(prev => ({ ...prev, [feedback.id]: v }));
+                      }}
+                      onOpenChange={open => { if (open) loadTenantUsers(feedback.tenant.id); }}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
+                      <SelectContent>
+                        {(tenantUsers[feedback.tenant.id] || [feedback.user]).map((u: any) => (
+                          <SelectItem key={u.id} value={u.id} disabled={!u.email}>
+                            {u.name || u.email || u.id}
+                            {!u.email ? " (No email)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {tenantUsers[feedback.tenant.id] && (tenantUsers[feedback.tenant.id].find(u => u.id === (recipientByFeedback[feedback.id] || feedback.user?.id))?.email === undefined) && (
+                      <div className="text-xs text-red-500 mt-1">Selected user has no email address.</div>
+                    )}
+                  </div>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs text-muted-foreground">Status</label>
@@ -362,9 +412,10 @@ function FeedbackManagementContent() {
                       <input 
                         type="file" 
                         accept="image/*"
+                        multiple
                         onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            handleScreenshotUpload(feedback.id, e.target.files[0]);
+                          if (e.target.files && e.target.files.length > 0) {
+                            handleScreenshotUpload(feedback.id, e.target.files);
                           }
                         }}
                         disabled={uploadingScreenshot === feedback.id}
@@ -410,6 +461,8 @@ function FeedbackManagementContent() {
                     <Button variant="ghost" onClick={() => {
                       setEditingId(null);
                       setEditForm({});
+                      const { [feedback.id]: _, ...rest } = recipientByFeedback;
+                      setRecipientByFeedback(rest);
                     }}>Cancel</Button>
                   </div>
                 </div>
@@ -487,13 +540,13 @@ function FeedbackManagementContent() {
                     </div>
                   )}
 
-                  {(feedback.devResponse || (feedback.devScreenshotUrls && feedback.devScreenshotUrls.length > 0)) && feedback.user?.email && (
+                  {(feedback.devResponse || (feedback.devScreenshotUrls && feedback.devScreenshotUrls.length > 0)) && (
                     <div className="flex items-center gap-2 pt-2 border-t">
                       <Button 
                         size="sm" 
                         variant={feedback.emailNotificationSent ? "outline" : "default"}
                         onClick={() => sendEmailNotification(feedback.id)}
-                        disabled={sendingEmail === feedback.id || feedback.emailNotificationSent}
+                        disabled={sendingEmail === feedback.id || feedback.emailNotificationSent || !((recipientByFeedback[feedback.id] ? (tenantUsers[feedback.tenant.id] || []).find(u => u.id === recipientByFeedback[feedback.id])?.email : feedback.user?.email))}
                       >
                         {feedback.emailNotificationSent ? (
                           <>
@@ -505,7 +558,7 @@ function FeedbackManagementContent() {
                         ) : (
                           <>
                             <Mail className="w-4 h-4 mr-1" />
-                            Email User: {feedback.user.email}
+                            Email User: {recipientByFeedback[feedback.id] ? (tenantUsers[feedback.tenant.id] || []).find(u => u.id === recipientByFeedback[feedback.id])?.email || "No email" : feedback.user?.email || "No email"}
                           </>
                         )}
                       </Button>

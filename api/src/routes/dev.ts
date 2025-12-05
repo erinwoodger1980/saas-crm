@@ -501,11 +501,12 @@ router.patch("/feedback/:id", requireDeveloper, async (req: any, res) => {
 // Send email notification about feedback response
 router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
   try {
+    const { recipientUserId } = req.body || {};
     const feedback = await prisma.feedback.findUnique({
       where: { id: req.params.id },
       include: {
         tenant: { select: { name: true, slug: true } },
-        user: { select: { email: true, name: true } }
+        user: { select: { email: true, name: true, id: true } }
       }
     });
 
@@ -513,8 +514,17 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
       return res.status(404).json({ error: "Feedback not found" });
     }
 
-    if (!feedback.user?.email) {
-      return res.status(400).json({ error: "User email not available" });
+    let recipientUser = feedback.user;
+    if (recipientUserId && (!feedback.user || recipientUserId !== feedback.user.id)) {
+      // Fetch the selected recipient user
+      recipientUser = await prisma.user.findUnique({
+        where: { id: recipientUserId },
+        select: { email: true, name: true }
+      });
+    }
+
+    if (!recipientUser?.email) {
+      return res.status(400).json({ error: "Recipient user has no email address" });
     }
 
     // Construct feedback URL
@@ -523,7 +533,7 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
     // Build email content
     let emailHtml = `
       <h2>Update on Your Feedback</h2>
-      <p>Hi ${feedback.user.name || 'there'},</p>
+      <p>Hi ${recipientUser.name || 'there'},</p>
       <p>We've updated the feedback you submitted for <strong>${feedback.feature}</strong>.</p>
     `;
 
@@ -557,7 +567,7 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
 
     await resend.emails.send({
       from: process.env.EMAIL_FROM || 'JoineryAI <noreply@joineryai.app>',
-      to: feedback.user.email,
+      to: recipientUser.email,
       subject: `Update on your feedback: ${feedback.feature}`,
       html: emailHtml
     });
