@@ -145,9 +145,9 @@ function FeedbackManagementContent() {
       body += `View your feedback here: ${feedbackUrl}\n\n`;
       body += `Thank you for helping us improve!`;
 
-      // Open mailto link
+      // Open mailto link - use window.location.href to trigger default email client
       const mailtoUrl = `mailto:${encodeURIComponent(recipientUser.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.open(mailtoUrl, '_blank');
+      window.location.href = mailtoUrl;
 
       // Optionally mark as sent locally (or remove this if you want to track actual sends)
       // setFeedbacks(prev => prev.map(f => 
