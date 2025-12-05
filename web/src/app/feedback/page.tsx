@@ -28,6 +28,8 @@ type FeedbackItem = {
   comment: string | null;
   sourceUrl: string | null;
   status: FeedbackStatus;
+  devResponse: string | null;
+  devScreenshotUrl: string | null;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
@@ -246,7 +248,20 @@ export default function FeedbackPage() {
                     )}
                   </TableCell>
                   <TableCell className="align-top text-sm text-slate-700">
-                    {item.comment ? item.comment : <span className="text-slate-400">No notes provided.</span>}
+                    <div>{item.comment ? item.comment : <span className="text-slate-400">No notes provided.</span>}</div>
+                    {item.devResponse && (
+                      <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-2">
+                        <div className="text-xs font-medium text-blue-700 mb-1">Developer Response:</div>
+                        <div className="text-sm text-blue-900 whitespace-pre-wrap">{item.devResponse}</div>
+                      </div>
+                    )}
+                    {item.devScreenshotUrl && (
+                      <div className="mt-2">
+                        <a href={item.devScreenshotUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                          View screenshot ↗
+                        </a>
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="align-top text-sm text-slate-600">
                     {formatSubmittedBy(item.user ?? null)}

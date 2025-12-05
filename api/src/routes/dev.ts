@@ -471,7 +471,7 @@ router.get("/feedback", requireDeveloper, async (req: any, res) => {
 // Update feedback
 router.patch("/feedback/:id", requireDeveloper, async (req: any, res) => {
   try {
-    const { status, priority, category, devNotes, linkedTaskId } = req.body;
+    const { status, priority, category, devNotes, devResponse, devScreenshotUrl, linkedTaskId } = req.body;
     
     const feedback = await prisma.feedback.update({
       where: { id: req.params.id },
@@ -480,11 +480,13 @@ router.patch("/feedback/:id", requireDeveloper, async (req: any, res) => {
         ...(priority && { priority }),
         ...(category && { category }),
         ...(devNotes !== undefined && { devNotes }),
+        ...(devResponse !== undefined && { devResponse }),
+        ...(devScreenshotUrl !== undefined && { devScreenshotUrl }),
         ...(linkedTaskId !== undefined && { linkedTaskId }),
         ...(status === 'COMPLETED' && { resolvedAt: new Date(), resolvedById: req.auth.userId })
       },
       include: {
-        tenant: { select: { name: true } },
+        tenant: { select: { name: true, slug: true } },
         user: { select: { email: true, name: true } }
       }
     });
@@ -492,6 +494,81 @@ router.patch("/feedback/:id", requireDeveloper, async (req: any, res) => {
     res.json({ ok: true, feedback });
   } catch (error: any) {
     console.error("Failed to update feedback:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Send email notification about feedback response
+router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
+  try {
+    const feedback = await prisma.feedback.findUnique({
+      where: { id: req.params.id },
+      include: {
+        tenant: { select: { name: true, slug: true } },
+        user: { select: { email: true, name: true } }
+      }
+    });
+
+    if (!feedback) {
+      return res.status(404).json({ error: "Feedback not found" });
+    }
+
+    if (!feedback.user?.email) {
+      return res.status(400).json({ error: "User email not available" });
+    }
+
+    // Construct feedback URL
+    const feedbackUrl = `${process.env.WEB_URL || 'https://joineryai.app'}/feedback?highlight=${feedback.id}`;
+
+    // Build email content
+    let emailHtml = `
+      <h2>Update on Your Feedback</h2>
+      <p>Hi ${feedback.user.name || 'there'},</p>
+      <p>We've updated the feedback you submitted for <strong>${feedback.feature}</strong>.</p>
+    `;
+
+    if (feedback.devResponse) {
+      emailHtml += `
+        <h3>Developer Response:</h3>
+        <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px 0;">
+          ${feedback.devResponse.replace(/\n/g, '<br>')}
+        </div>
+      `;
+    }
+
+    if (feedback.devScreenshotUrl) {
+      emailHtml += `
+        <h3>Screenshot:</h3>
+        <img src="${feedback.devScreenshotUrl}" alt="Response screenshot" style="max-width: 600px; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0;" />
+      `;
+    }
+
+    emailHtml += `
+      <p><strong>Current Status:</strong> ${feedback.status}</p>
+      <p><a href="${feedbackUrl}" style="display: inline-block; padding: 10px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px; margin-top: 10px;">View Your Feedback</a></p>
+      <p style="color: #666; font-size: 0.9em; margin-top: 20px;">Thank you for helping us improve!</p>
+    `;
+
+    // Send email using resend
+    const { Resend } = require('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    await resend.emails.send({
+      from: process.env.EMAIL_FROM || 'JoineryAI <noreply@joineryai.app>',
+      to: feedback.user.email,
+      subject: `Update on your feedback: ${feedback.feature}`,
+      html: emailHtml
+    });
+
+    // Mark as notified
+    await prisma.feedback.update({
+      where: { id: req.params.id },
+      data: { emailNotificationSent: true }
+    });
+
+    res.json({ ok: true, message: "Email sent successfully" });
+  } catch (error: any) {
+    console.error("Failed to send feedback notification:", error);
     res.status(500).json({ error: error.message });
   }
 });

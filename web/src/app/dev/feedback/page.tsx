@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, Filter } from "lucide-react";
+import { MessageSquare, Filter, Mail, CheckCircle2 } from "lucide-react";
 
 type Feedback = {
   id: string;
@@ -18,7 +18,10 @@ type Feedback = {
   priority: string;
   category: string | null;
   devNotes: string | null;
+  devResponse: string | null;
+  devScreenshotUrl: string | null;
   linkedTaskId: string | null;
+  emailNotificationSent: boolean;
   createdAt: string;
   tenant: {
     id: string;
@@ -44,6 +47,7 @@ function FeedbackManagementContent() {
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
 
   async function loadFeedback() {
     setLoading(true);
@@ -78,6 +82,27 @@ function FeedbackManagementContent() {
       }
     } catch (e: any) {
       alert("Failed to update feedback: " + e.message);
+    }
+  }
+
+  async function sendEmailNotification(feedbackId: string) {
+    setSendingEmail(feedbackId);
+    try {
+      const data = await apiFetch<{ ok: boolean; message: string }>(
+        `/dev/feedback/${feedbackId}/notify`,
+        { method: "POST" }
+      );
+      if (data.ok) {
+        alert("Email notification sent successfully!");
+        // Mark as sent in local state
+        setFeedbacks(prev => prev.map(f => 
+          f.id === feedbackId ? { ...f, emailNotificationSent: true } : f
+        ));
+      }
+    } catch (e: any) {
+      alert("Failed to send email: " + e.message);
+    } finally {
+      setSendingEmail(null);
     }
   }
 
@@ -233,13 +258,39 @@ function FeedbackManagementContent() {
                   </div>
 
                   <div>
-                    <label className="text-xs text-muted-foreground">Developer Notes</label>
+                    <label className="text-xs text-muted-foreground">Developer Notes (Internal)</label>
                     <Textarea 
                       value={editForm.devNotes !== undefined ? editForm.devNotes : feedback.devNotes || ""}
                       onChange={(e) => setEditForm({...editForm, devNotes: e.target.value})}
                       placeholder="Internal notes about this feedback..."
                       rows={3}
                     />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-muted-foreground">Response to User</label>
+                    <Textarea 
+                      value={editForm.devResponse !== undefined ? editForm.devResponse : feedback.devResponse || ""}
+                      onChange={(e) => setEditForm({...editForm, devResponse: e.target.value})}
+                      placeholder="This will be shown to the user who submitted the feedback..."
+                      rows={4}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-muted-foreground">Screenshot URL (shown to user)</label>
+                    <Input 
+                      value={editForm.devScreenshotUrl !== undefined ? editForm.devScreenshotUrl : feedback.devScreenshotUrl || ""}
+                      onChange={(e) => setEditForm({...editForm, devScreenshotUrl: e.target.value})}
+                      placeholder="Paste image URL (e.g., from Imgur, CloudApp, etc.)"
+                    />
+                    {(editForm.devScreenshotUrl || feedback.devScreenshotUrl) && (
+                      <img 
+                        src={editForm.devScreenshotUrl || feedback.devScreenshotUrl || ""} 
+                        alt="Screenshot preview" 
+                        className="mt-2 max-w-md border rounded"
+                      />
+                    )}
                   </div>
 
                   <div>
@@ -299,14 +350,60 @@ function FeedbackManagementContent() {
 
                   {feedback.devNotes && (
                     <div className="bg-yellow-50 p-3 rounded mb-3">
-                      <div className="text-xs text-muted-foreground mb-1">Developer Notes:</div>
+                      <div className="text-xs text-muted-foreground mb-1">Developer Notes (Internal):</div>
                       <div className="text-sm">{feedback.devNotes}</div>
                     </div>
                   )}
 
+                  {feedback.devResponse && (
+                    <div className="bg-blue-50 p-3 rounded mb-3">
+                      <div className="text-xs text-muted-foreground mb-1">Response to User:</div>
+                      <div className="text-sm whitespace-pre-wrap">{feedback.devResponse}</div>
+                    </div>
+                  )}
+
+                  {feedback.devScreenshotUrl && (
+                    <div className="mb-3">
+                      <div className="text-xs text-muted-foreground mb-2">Screenshot:</div>
+                      <img 
+                        src={feedback.devScreenshotUrl} 
+                        alt="Developer response screenshot" 
+                        className="max-w-md border rounded"
+                      />
+                    </div>
+                  )}
+
                   {feedback.linkedTaskId && (
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-xs text-muted-foreground mb-3">
                       Linked Task: {feedback.linkedTaskId}
+                    </div>
+                  )}
+
+                  {(feedback.devResponse || feedback.devScreenshotUrl) && feedback.user?.email && (
+                    <div className="flex items-center gap-2 pt-2 border-t">
+                      <Button 
+                        size="sm" 
+                        variant={feedback.emailNotificationSent ? "outline" : "default"}
+                        onClick={() => sendEmailNotification(feedback.id)}
+                        disabled={sendingEmail === feedback.id || feedback.emailNotificationSent}
+                      >
+                        {feedback.emailNotificationSent ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 mr-1" />
+                            Email Sent
+                          </>
+                        ) : sendingEmail === feedback.id ? (
+                          "Sending..."
+                        ) : (
+                          <>
+                            <Mail className="w-4 h-4 mr-1" />
+                            Email User: {feedback.user.email}
+                          </>
+                        )}
+                      </Button>
+                      {feedback.emailNotificationSent && (
+                        <span className="text-xs text-muted-foreground">Notification already sent</span>
+                      )}
                     </div>
                   )}
                 </div>
