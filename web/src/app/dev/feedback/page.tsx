@@ -47,7 +47,6 @@ function FeedbackManagementContent() {
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
-  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
   const [uploadingScreenshot, setUploadingScreenshot] = useState<string | null>(null);
   const [tenantUsers, setTenantUsers] = useState<Record<string, any[]>>({});
   const [recipientByFeedback, setRecipientByFeedback] = useState<Record<string, string>>({});
@@ -100,27 +99,62 @@ function FeedbackManagementContent() {
     }
   }
 
-  async function sendEmailNotification(feedbackId: string) {
-    setSendingEmail(feedbackId);
+  function sendEmailNotification(feedbackId: string) {
     try {
-      // Find the selected recipient userId for this feedback
+      // Find the selected recipient and feedback details
       const feedback = feedbacks.find(f => f.id === feedbackId);
-      const recipientUserId = recipientByFeedback[feedbackId] || feedback?.user?.id;
-      const data = await apiFetch<{ ok: boolean; message: string }>(
-        `/dev/feedback/${feedbackId}/notify`,
-        { method: "POST", json: { recipientUserId } }
-      );
-      if (data.ok) {
-        alert("Email notification sent successfully!");
-        // Mark as sent in local state
-        setFeedbacks(prev => prev.map(f => 
-          f.id === feedbackId ? { ...f, emailNotificationSent: true } : f
-        ));
+      if (!feedback) {
+        alert("Feedback not found");
+        return;
       }
+
+      const recipientUserId = recipientByFeedback[feedbackId] || feedback?.user?.id;
+      const recipientUser = recipientUserId 
+        ? (tenantUsers[feedback.tenant.id] || []).find(u => u.id === recipientUserId) || feedback.user
+        : feedback.user;
+
+      if (!recipientUser?.email) {
+        alert("No email address found for selected recipient");
+        return;
+      }
+
+      // Construct feedback URL
+      const feedbackUrl = `${window.location.origin}/feedback?highlight=${feedback.id}`;
+
+      // Build email subject
+      const subject = `Update on your feedback: ${feedback.feature}`;
+
+      // Build plain text email body
+      let body = `Hi ${recipientUser.name || 'there'},\n\n`;
+      body += `We've updated the feedback you submitted for "${feedback.feature}".\n\n`;
+
+      if (feedback.devResponse) {
+        body += `Developer Response:\n`;
+        body += `${feedback.devResponse}\n\n`;
+      }
+
+      if (feedback.devScreenshotUrls && feedback.devScreenshotUrls.length > 0) {
+        body += `Screenshots attached (${feedback.devScreenshotUrls.length} image(s)):\n`;
+        feedback.devScreenshotUrls.forEach((url, idx) => {
+          body += `  ${idx + 1}. ${url}\n`;
+        });
+        body += `\n`;
+      }
+
+      body += `Current Status: ${feedback.status}\n\n`;
+      body += `View your feedback here: ${feedbackUrl}\n\n`;
+      body += `Thank you for helping us improve!`;
+
+      // Open mailto link
+      const mailtoUrl = `mailto:${encodeURIComponent(recipientUser.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(mailtoUrl, '_blank');
+
+      // Optionally mark as sent locally (or remove this if you want to track actual sends)
+      // setFeedbacks(prev => prev.map(f => 
+      //   f.id === feedbackId ? { ...f, emailNotificationSent: true } : f
+      // ));
     } catch (e: any) {
-      alert("Failed to send email: " + e.message);
-    } finally {
-      setSendingEmail(null);
+      alert("Failed to prepare email: " + e.message);
     }
   }
 
@@ -318,7 +352,7 @@ function FeedbackManagementContent() {
                 <div className="space-y-3">
                   {/* Recipient selection */}
                   <div>
-                    <label className="text-xs text-muted-foreground">Email Feedback To</label>
+                    <label className="text-xs font-medium text-slate-700 mb-1.5 block">Send Feedback Email To</label>
                     <Select
                       value={recipientByFeedback[feedback.id] || feedback.user?.id || ""}
                       onValueChange={async (v) => {
@@ -326,19 +360,32 @@ function FeedbackManagementContent() {
                       }}
                       onOpenChange={open => { if (open) loadTenantUsers(feedback.tenant.id); }}
                     >
-                      <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select recipient user..." />
+                      </SelectTrigger>
                       <SelectContent>
-                        {(tenantUsers[feedback.tenant.id] || [feedback.user]).map((u: any) => (
+                        {(tenantUsers[feedback.tenant.id] || (feedback.user ? [feedback.user] : [])).map((u: any) => (
                           <SelectItem key={u.id} value={u.id} disabled={!u.email}>
                             {u.name || u.email || u.id}
-                            {!u.email ? " (No email)" : ""}
+                            {u.email ? ` (${u.email})` : " (No email)"}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {tenantUsers[feedback.tenant.id] && (tenantUsers[feedback.tenant.id].find(u => u.id === (recipientByFeedback[feedback.id] || feedback.user?.id))?.email === undefined) && (
-                      <div className="text-xs text-red-500 mt-1">Selected user has no email address.</div>
-                    )}
+                    {(() => {
+                      const selectedUserId = recipientByFeedback[feedback.id] || feedback.user?.id;
+                      const selectedUser = selectedUserId 
+                        ? (tenantUsers[feedback.tenant.id] || [feedback.user]).find((u: any) => u?.id === selectedUserId)
+                        : feedback.user;
+                      
+                      if (selectedUser && !selectedUser.email) {
+                        return <div className="text-xs text-red-500 mt-1">⚠️ Selected user has no email address.</div>;
+                      }
+                      if (selectedUser?.email) {
+                        return <div className="text-xs text-green-600 mt-1">✓ Will send to: {selectedUser.email}</div>;
+                      }
+                      return null;
+                    })()}
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
@@ -544,27 +591,14 @@ function FeedbackManagementContent() {
                     <div className="flex items-center gap-2 pt-2 border-t">
                       <Button 
                         size="sm" 
-                        variant={feedback.emailNotificationSent ? "outline" : "default"}
+                        variant="default"
                         onClick={() => sendEmailNotification(feedback.id)}
-                        disabled={sendingEmail === feedback.id || feedback.emailNotificationSent || !((recipientByFeedback[feedback.id] ? (tenantUsers[feedback.tenant.id] || []).find(u => u.id === recipientByFeedback[feedback.id])?.email : feedback.user?.email))}
+                        disabled={!((recipientByFeedback[feedback.id] ? (tenantUsers[feedback.tenant.id] || []).find(u => u.id === recipientByFeedback[feedback.id])?.email : feedback.user?.email))}
                       >
-                        {feedback.emailNotificationSent ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 mr-1" />
-                            Email Sent
-                          </>
-                        ) : sendingEmail === feedback.id ? (
-                          "Sending..."
-                        ) : (
-                          <>
-                            <Mail className="w-4 h-4 mr-1" />
-                            Email User: {recipientByFeedback[feedback.id] ? (tenantUsers[feedback.tenant.id] || []).find(u => u.id === recipientByFeedback[feedback.id])?.email || "No email" : feedback.user?.email || "No email"}
-                          </>
-                        )}
+                        <Mail className="w-4 h-4 mr-1" />
+                        Open Email to: {recipientByFeedback[feedback.id] ? (tenantUsers[feedback.tenant.id] || []).find(u => u.id === recipientByFeedback[feedback.id])?.email || "No email" : feedback.user?.email || "No email"}
                       </Button>
-                      {feedback.emailNotificationSent && (
-                        <span className="text-xs text-muted-foreground">Notification already sent</span>
-                      )}
+                      <span className="text-xs text-muted-foreground">Opens in your email client for review</span>
                     </div>
                   )}
                 </div>

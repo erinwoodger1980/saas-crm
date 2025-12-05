@@ -130,14 +130,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <div className="relative">
               <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-[36px] border border-slate-200/80 bg-white shadow-[0_30px_60px_-36px_rgba(15,23,42,0.65)]">
                 {logoUrl ? (
-                  <Image
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
                     src={logoUrl}
                     alt={`${brandName} logo`}
-                    width={96}
-                    height={96}
-                    className="object-contain p-3"
-                    priority
-                    unoptimized
+                    className="h-full w-full object-contain p-3"
                   />
                 ) : (
                   <div className="text-2xl font-bold text-slate-600">{initials}</div>
