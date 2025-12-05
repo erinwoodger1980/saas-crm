@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Save, Trash2, Sparkles, FileCheck, Upload, Info, Table, RotateCw } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Sparkles, FileCheck, Upload, Info, Table, RotateCw, QrCode } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { getApiBase } from "@/lib/api-base";
 import { useToast } from "@/components/ui/use-toast";
@@ -501,6 +501,14 @@ export default function FireDoorScheduleDetailPage() {
                       if (file) handleCSVImport(file);
                     }}
                   />
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push(`/fire-door-schedule/${id}/qr-print`)}
+                    className="border-purple-200 text-purple-600 hover:bg-purple-50"
+                  >
+                    <QrCode className="w-4 h-4 mr-2" />
+                    Print QR Labels
+                  </Button>
                   <Button
                     variant="outline"
                     onClick={() => fileInputRef.current?.click()}
