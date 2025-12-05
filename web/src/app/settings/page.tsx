@@ -790,6 +790,8 @@ export default function SettingsPage() {
       // Update settings with new logo URL
       if (data.logoUrl) {
         setS((prev) => prev ? { ...prev, logoUrl: data.logoUrl } : prev);
+        // Emit event so AppShell updates logo immediately
+        emitTenantSettingsUpdate({ logoUrl: data.logoUrl });
         toast({ title: 'Logo uploaded successfully', description: 'Your logo has been updated' });
       }
     } catch (e: any) {

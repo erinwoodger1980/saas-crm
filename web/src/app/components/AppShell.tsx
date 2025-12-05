@@ -40,7 +40,7 @@ const FEEDBACK_ROLES = new Set(["owner", "admin", "manager", "product", "develop
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { brandName, shortName, logoUrl, initials, ownerFirstName, ownerLastName } = useTenantBrand();
+  const { brandName, shortName, logoUrl, initials, ownerFirstName, ownerLastName, refresh } = useTenantBrand();
   const { user } = useCurrentUser();
   const [isFireDoorManufacturer, setIsFireDoorManufacturer] = useState(false);
   const [isGroupCoachingMember, setIsGroupCoachingMember] = useState(false);
@@ -76,7 +76,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
     // Listen for settings updates
     const handleTenantSettingsUpdate = (event: Event) => {
-      const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean; isGroupCoachingMember?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ isFireDoorManufacturer?: boolean; isGroupCoachingMember?: boolean; logoUrl?: string }>).detail;
       console.log("[AppShell] Received tenant-settings:updated event:", detail);
       if (detail && Object.prototype.hasOwnProperty.call(detail, "isFireDoorManufacturer")) {
         console.log("[AppShell] Updating fire door flag to:", detail.isFireDoorManufacturer);
@@ -86,13 +86,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
         console.log("[AppShell] Updating group coaching flag to:", detail.isGroupCoachingMember);
         setIsGroupCoachingMember(Boolean(detail.isGroupCoachingMember));
       }
+      if (detail && Object.prototype.hasOwnProperty.call(detail, "logoUrl")) {
+        console.log("[AppShell] Logo updated, refreshing brand data:", detail.logoUrl);
+        refresh();
+      }
     };
 
     window.addEventListener("tenant-settings:updated", handleTenantSettingsUpdate as EventListener);
     return () => {
       window.removeEventListener("tenant-settings:updated", handleTenantSettingsUpdate as EventListener);
     };
-  }, []);
+  }, [refresh]);
 
   const navItems = useMemo(() => {
     const items = [...BASE_NAV];
@@ -135,10 +139,22 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     src={logoUrl}
                     alt={`${brandName} logo`}
                     className="h-full w-full object-contain p-3"
+                    onError={(e) => {
+                      // Hide broken image and show initials fallback
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.nextElementSibling;
+                      if (fallback) {
+                        (fallback as HTMLElement).style.display = 'flex';
+                      }
+                    }}
                   />
-                ) : (
-                  <div className="text-2xl font-bold text-slate-600">{initials}</div>
-                )}
+                ) : null}
+                <div 
+                  className="text-2xl font-bold text-slate-600 absolute inset-0 flex items-center justify-center"
+                  style={{ display: logoUrl ? 'none' : 'flex' }}
+                >
+                  {initials}
+                </div>
               </div>
               <span className="absolute -bottom-2 -right-2 rounded-full border border-white bg-emerald-500 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-white shadow-sm">
                 Live
