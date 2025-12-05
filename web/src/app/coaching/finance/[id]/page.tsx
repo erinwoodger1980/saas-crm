@@ -279,11 +279,11 @@ export default function FinancePlanPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Gross Margin</span>
-                  <span className="font-semibold">{oneYearTarget.targetGrossMargin.toFixed(1)}%</span>
+                  <span className="font-semibold">{(oneYearTarget.targetGrossMargin ?? 0).toFixed(1)}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Net Margin</span>
-                  <span className="font-semibold">{oneYearTarget.targetNetMargin.toFixed(1)}%</span>
+                  <span className="font-semibold">{(oneYearTarget.targetNetMargin ?? 0).toFixed(1)}%</span>
                 </div>
               </CardContent>
             </Card>
@@ -300,11 +300,11 @@ export default function FinancePlanPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Gross Margin</span>
-                  <span className="font-semibold">{fiveYearTarget.targetGrossMargin.toFixed(1)}%</span>
+                  <span className="font-semibold">{(fiveYearTarget.targetGrossMargin ?? 0).toFixed(1)}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Net Margin</span>
-                  <span className="font-semibold">{fiveYearTarget.targetNetMargin.toFixed(1)}%</span>
+                  <span className="font-semibold">{(fiveYearTarget.targetNetMargin ?? 0).toFixed(1)}%</span>
                 </div>
               </CardContent>
             </Card>
@@ -478,11 +478,11 @@ export default function FinancePlanPage() {
                       .sort((a, b) => a.month - b.month)
                       .map((pnl) => (
                         <td key={pnl.id} className="px-2 py-2 text-right">
-                          {pnl.grossMargin.toFixed(1)}%
+                          {(pnl.grossMargin ?? 0).toFixed(1)}%
                         </td>
                       ))}
                     <td className="bg-slate-100 pl-4 py-2 text-right font-semibold">
-                      {currentYear.avgGrossMargin.toFixed(1)}%
+                      {(currentYear.avgGrossMargin ?? 0).toFixed(1)}%
                     </td>
                   </tr>
 
@@ -546,11 +546,11 @@ export default function FinancePlanPage() {
                       .sort((a, b) => a.month - b.month)
                       .map((pnl) => (
                         <td key={pnl.id} className="px-2 py-2 text-right">
-                          {pnl.netMargin.toFixed(1)}%
+                          {(pnl.netMargin ?? 0).toFixed(1)}%
                         </td>
                       ))}
                     <td className="bg-slate-100 pl-4 py-2 text-right font-semibold">
-                      {currentYear.avgNetMargin.toFixed(1)}%
+                      {(currentYear.avgNetMargin ?? 0).toFixed(1)}%
                     </td>
                   </tr>
                 </tbody>

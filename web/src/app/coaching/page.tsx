@@ -266,14 +266,14 @@ export default function CoachingHubPage() {
                     <div className="mb-1 flex justify-between text-xs">
                       <span className="text-slate-600">Revenue</span>
                       <span className="font-medium text-slate-900">
-                        ${Math.round((financialPlan.actualRevenue / financialPlan.targetRevenue) * 100)}% of target
+                        {Math.round(((financialPlan.actualRevenue ?? 0) / (financialPlan.targetRevenue || 1)) * 100)}% of target
                       </span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
                       <div
                         className="h-full bg-green-600 transition-all"
                         style={{
-                          width: `${Math.min((financialPlan.actualRevenue / financialPlan.targetRevenue) * 100, 100)}%`,
+                          width: `${Math.min(((financialPlan.actualRevenue ?? 0) / (financialPlan.targetRevenue || 1)) * 100, 100)}%`,
                         }}
                       />
                     </div>
@@ -282,14 +282,14 @@ export default function CoachingHubPage() {
                     <div className="mb-1 flex justify-between text-xs">
                       <span className="text-slate-600">Net Margin</span>
                       <span className="font-medium text-slate-900">
-                        {financialPlan.actualNetMargin.toFixed(1)}% (target: {financialPlan.targetNetMargin.toFixed(1)}%)
+                        {(financialPlan.actualNetMargin ?? 0).toFixed(1)}% (target: {(financialPlan.targetNetMargin ?? 0).toFixed(1)}%)
                       </span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
                       <div
                         className="h-full bg-blue-600 transition-all"
                         style={{
-                          width: `${Math.min((financialPlan.actualNetMargin / financialPlan.targetNetMargin) * 100, 100)}%`,
+                          width: `${Math.min(((financialPlan.actualNetMargin ?? 0) / (financialPlan.targetNetMargin || 1)) * 100, 100)}%`,
                         }}
                       />
                     </div>
