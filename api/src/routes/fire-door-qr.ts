@@ -1,9 +1,16 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
-import { authTenantId, authUserId } from "../middleware/auth";
 import QRCode from "qrcode";
 
 const router = Router();
+
+function authTenantId(req: any): string | null {
+  return req.auth?.tenantId || null;
+}
+
+function authUserId(req: any): string | null {
+  return req.auth?.userId || null;
+}
 
 /**
  * GET /fire-door-qr/process-configs
