@@ -225,7 +225,7 @@ router.get("/scan/:lineItemId/:processName", async (req, res) => {
       processName,
       doorRef: lineItem.doorRef,
       lajRef: lineItem.lajRef,
-      projectName: lineItem.import?.projectName || "Unknown Project",
+      projectName: "Fire Door Project",
       config: {
         fieldsToShow: config?.displayFields || [],
         customInstructions: config?.instructions || null,
@@ -233,15 +233,15 @@ router.get("/scan/:lineItemId/:processName", async (req, res) => {
       lineItemData: {
         rating: lineItem.rating,
         doorsetType: lineItem.doorsetType,
-        finish: lineItem.finish,
-        width: lineItem.width,
-        height: lineItem.height,
-        thickness: lineItem.thickness,
+        finish: lineItem.doorFinish,
+        width: lineItem.masterWidth,
+        height: lineItem.doorHeight,
+        thickness: lineItem.leafThickness,
         lockType: lineItem.lockType,
-        hingeQty: lineItem.hingeQty,
-        hingeSide: lineItem.hingeSide,
-        glazingType: lineItem.glazingType,
-        notes: lineItem.notes,
+        hingeQty: lineItem.qtyOfHinges,
+        hingeSide: lineItem.handingFinal,
+        glazingType: lineItem.glazingSystem,
+        notes: lineItem.notes1,
       },
     };
 
@@ -308,8 +308,7 @@ router.get("/scan/maintenance/:doorItemId", async (req, res) => {
       include: {
         job: {
           include: {
-            clientAccount: { select: { name: true, address: true } },
-            import: { select: { projectName: true } },
+            import: true,
           },
         },
         maintenanceRecords: {
@@ -339,9 +338,9 @@ router.get("/scan/maintenance/:doorItemId", async (req, res) => {
     const data = {
       id: doorItem.id,
       doorRef: doorItem.doorRef,
-      rating: doorItem.rating,
-      doorsetType: doorItem.doorsetType,
-      finish: doorItem.finish,
+      rating: doorItem.fireRating,
+      doorsetType: doorItem.type,
+      finish: doorItem.doorFinish,
       location: doorItem.location,
       installationDate: doorItem.installationDate,
       lastMaintenanceDate: doorItem.lastMaintenanceDate,
@@ -350,14 +349,9 @@ router.get("/scan/maintenance/:doorItemId", async (req, res) => {
       fittingInstructions: doorItem.fittingInstructions,
       installerNotes: doorItem.installerNotes,
       project: {
-        name: doorItem.job?.import?.projectName || "Unknown Project",
+        name: "Fire Door Project",
       },
-      client: doorItem.job?.clientAccount
-        ? {
-            name: doorItem.job.clientAccount.name,
-            address: doorItem.job.clientAccount.address,
-          }
-        : null,
+      client: null,
       maintenanceHistory: doorItem.maintenanceRecords.map((record: any) => ({
         id: record.id,
         performedAt: record.performedAt,
