@@ -738,68 +738,88 @@ export default function FireDoorScheduleDetailPage() {
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Door Paperwork</label>
-                  <Select value={(project as any).doorPaperwork || ""} onValueChange={(v) => updateField("doorPaperwork", v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="COMPLETE">Complete</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <ColoredSelect
+                    value={(project as any).doorPaperworkStatus || ""}
+                    onValueChange={(v) => updateField("doorPaperworkStatus", v)}
+                    options={[
+                      { value: "Not Started", label: "Not Started", className: PAPERWORK_STATUS_COLORS["Not Started"] },
+                      { value: "Working On", label: "Working On", className: PAPERWORK_STATUS_COLORS["Working On"] },
+                      { value: "Ready to Print", label: "Ready to Print", className: PAPERWORK_STATUS_COLORS["Ready to Print"] },
+                      { value: "Part Complete", label: "Part Complete", className: PAPERWORK_STATUS_COLORS["Part Complete"] },
+                      { value: "Printed in Office", label: "Printed in Office", className: PAPERWORK_STATUS_COLORS["Printed in Office"] },
+                      { value: "In Factory", label: "In Factory", className: PAPERWORK_STATUS_COLORS["In Factory"] },
+                      { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
+                    ]}
+                    placeholder="Select..."
+                  />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Final CNC Sheet</label>
-                  <Select value={(project as any).finalCncSheet || ""} onValueChange={(v) => updateField("finalCncSheet", v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="COMPLETE">Complete</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <ColoredSelect
+                    value={(project as any).finalCncSheetStatus || ""}
+                    onValueChange={(v) => updateField("finalCncSheetStatus", v)}
+                    options={[
+                      { value: "Not Started", label: "Not Started", className: PAPERWORK_STATUS_COLORS["Not Started"] },
+                      { value: "Working On", label: "Working On", className: PAPERWORK_STATUS_COLORS["Working On"] },
+                      { value: "Ready to Print", label: "Ready to Print", className: PAPERWORK_STATUS_COLORS["Ready to Print"] },
+                      { value: "Part Complete", label: "Part Complete", className: PAPERWORK_STATUS_COLORS["Part Complete"] },
+                      { value: "Printed in Office", label: "Printed in Office", className: PAPERWORK_STATUS_COLORS["Printed in Office"] },
+                      { value: "In Factory", label: "In Factory", className: PAPERWORK_STATUS_COLORS["In Factory"] },
+                      { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
+                    ]}
+                    placeholder="Select..."
+                  />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Final Checks</label>
-                  <Select value={(project as any).finalChecks || ""} onValueChange={(v) => updateField("finalChecks", v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="COMPLETE">Complete</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <ColoredSelect
+                    value={(project as any).finalChecksSheetStatus || ""}
+                    onValueChange={(v) => updateField("finalChecksSheetStatus", v)}
+                    options={[
+                      { value: "Not Started", label: "Not Started", className: PAPERWORK_STATUS_COLORS["Not Started"] },
+                      { value: "Working On", label: "Working On", className: PAPERWORK_STATUS_COLORS["Working On"] },
+                      { value: "Ready to Print", label: "Ready to Print", className: PAPERWORK_STATUS_COLORS["Ready to Print"] },
+                      { value: "Part Complete", label: "Part Complete", className: PAPERWORK_STATUS_COLORS["Part Complete"] },
+                      { value: "Printed in Office", label: "Printed in Office", className: PAPERWORK_STATUS_COLORS["Printed in Office"] },
+                      { value: "In Factory", label: "In Factory", className: PAPERWORK_STATUS_COLORS["In Factory"] },
+                      { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
+                    ]}
+                    placeholder="Select..."
+                  />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Delivery Checklist</label>
-                  <Select value={(project as any).deliveryChecklist || ""} onValueChange={(v) => updateField("deliveryChecklist", v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="COMPLETE">Complete</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <ColoredSelect
+                    value={(project as any).deliveryChecklistStatus || ""}
+                    onValueChange={(v) => updateField("deliveryChecklistStatus", v)}
+                    options={[
+                      { value: "Not Started", label: "Not Started", className: PAPERWORK_STATUS_COLORS["Not Started"] },
+                      { value: "Working On", label: "Working On", className: PAPERWORK_STATUS_COLORS["Working On"] },
+                      { value: "Ready to Print", label: "Ready to Print", className: PAPERWORK_STATUS_COLORS["Ready to Print"] },
+                      { value: "Part Complete", label: "Part Complete", className: PAPERWORK_STATUS_COLORS["Part Complete"] },
+                      { value: "Printed in Office", label: "Printed in Office", className: PAPERWORK_STATUS_COLORS["Printed in Office"] },
+                      { value: "In Factory", label: "In Factory", className: PAPERWORK_STATUS_COLORS["In Factory"] },
+                      { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
+                    ]}
+                    placeholder="Select..."
+                  />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Frames Paperwork</label>
-                  <Select value={(project as any).framesPaperwork || ""} onValueChange={(v) => updateField("framesPaperwork", v)}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NOT_STARTED">Not Started</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="COMPLETE">Complete</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <ColoredSelect
+                    value={(project as any).framesPaperworkStatus || ""}
+                    onValueChange={(v) => updateField("framesPaperworkStatus", v)}
+                    options={[
+                      { value: "Not Started", label: "Not Started", className: PAPERWORK_STATUS_COLORS["Not Started"] },
+                      { value: "Working On", label: "Working On", className: PAPERWORK_STATUS_COLORS["Working On"] },
+                      { value: "Ready to Print", label: "Ready to Print", className: PAPERWORK_STATUS_COLORS["Ready to Print"] },
+                      { value: "Part Complete", label: "Part Complete", className: PAPERWORK_STATUS_COLORS["Part Complete"] },
+                      { value: "Printed in Office", label: "Printed in Office", className: PAPERWORK_STATUS_COLORS["Printed in Office"] },
+                      { value: "In Factory", label: "In Factory", className: PAPERWORK_STATUS_COLORS["In Factory"] },
+                      { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
+                    ]}
+                    placeholder="Select..."
+                  />
                 </div>
               </div>
               <div>
