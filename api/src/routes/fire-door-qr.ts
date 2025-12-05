@@ -184,7 +184,7 @@ router.get("/door-item/:doorItemId/maintenance/generate", async (req, res) => {
 
 /**
  * GET /fire-door-qr/scan/:lineItemId/:processName
- * Get data for a scanned process QR code
+ * Get data for a scanned process QR code (public endpoint - no auth required)
  */
 router.get("/scan/:lineItemId/:processName", async (req, res) => {
   const { lineItemId, processName } = req.params;
@@ -219,11 +219,35 @@ router.get("/scan/:lineItemId/:processName", async (req, res) => {
       },
     });
 
+    // Format response for frontend
+    const data = {
+      lineItemId: lineItem.id,
+      processName,
+      doorRef: lineItem.doorRef,
+      lajRef: lineItem.lajRef,
+      projectName: lineItem.import?.projectName || "Unknown Project",
+      config: {
+        fieldsToShow: config?.displayFields || [],
+        customInstructions: config?.instructions || null,
+      },
+      lineItemData: {
+        rating: lineItem.rating,
+        doorsetType: lineItem.doorsetType,
+        finish: lineItem.finish,
+        width: lineItem.width,
+        height: lineItem.height,
+        thickness: lineItem.thickness,
+        lockType: lineItem.lockType,
+        hingeQty: lineItem.hingeQty,
+        hingeSide: lineItem.hingeSide,
+        glazingType: lineItem.glazingType,
+        notes: lineItem.notes,
+      },
+    };
+
     res.json({
       ok: true,
-      lineItem,
-      config: config || { displayFields: [], instructions: null },
-      processName,
+      data,
     });
   } catch (e: any) {
     console.error("[fire-door-qr] Failed to process scan:", e);
@@ -273,7 +297,7 @@ router.get("/scan/dispatch/:doorItemId", async (req, res) => {
 
 /**
  * GET /fire-door-qr/scan/maintenance/:doorItemId
- * Get data for a scanned maintenance QR code
+ * Get data for a scanned maintenance QR code (public endpoint - no auth required)
  */
 router.get("/scan/maintenance/:doorItemId", async (req, res) => {
   const { doorItemId } = req.params;
@@ -282,11 +306,15 @@ router.get("/scan/maintenance/:doorItemId", async (req, res) => {
     const doorItem = await prisma.fireDoorClientDoorItem.findUnique({
       where: { id: doorItemId },
       include: {
-        job: { include: { clientAccount: true } },
+        job: {
+          include: {
+            clientAccount: { select: { name: true, address: true } },
+            import: { select: { projectName: true } },
+          },
+        },
         maintenanceRecords: {
           orderBy: { performedAt: "desc" },
           take: 10,
-          include: { user: { select: { name: true, email: true } } },
         },
       },
     });
@@ -307,10 +335,43 @@ router.get("/scan/maintenance/:doorItemId", async (req, res) => {
       },
     });
 
+    // Format response data
+    const data = {
+      id: doorItem.id,
+      doorRef: doorItem.doorRef,
+      rating: doorItem.rating,
+      doorsetType: doorItem.doorsetType,
+      finish: doorItem.finish,
+      location: doorItem.location,
+      installationDate: doorItem.installationDate,
+      lastMaintenanceDate: doorItem.lastMaintenanceDate,
+      nextMaintenanceDate: doorItem.nextMaintenanceDate,
+      maintenanceNotes: doorItem.maintenanceNotes,
+      fittingInstructions: doorItem.fittingInstructions,
+      installerNotes: doorItem.installerNotes,
+      project: {
+        name: doorItem.job?.import?.projectName || "Unknown Project",
+      },
+      client: doorItem.job?.clientAccount
+        ? {
+            name: doorItem.job.clientAccount.name,
+            address: doorItem.job.clientAccount.address,
+          }
+        : null,
+      maintenanceHistory: doorItem.maintenanceRecords.map((record: any) => ({
+        id: record.id,
+        performedAt: record.performedAt,
+        performedByName: record.performedByName || "Unknown",
+        findings: record.findings,
+        actionsTaken: record.actionsTaken,
+        photos: record.photos || [],
+        nextDueDate: record.nextDueDate,
+      })),
+    };
+
     res.json({
       ok: true,
-      doorItem,
-      scanType: "MAINTENANCE",
+      data,
     });
   } catch (e: any) {
     console.error("[fire-door-qr] Failed to process maintenance scan:", e);
@@ -320,15 +381,14 @@ router.get("/scan/maintenance/:doorItemId", async (req, res) => {
 
 /**
  * POST /fire-door-qr/maintenance/:doorItemId
- * Add a maintenance record for a door
+ * Add a maintenance record for a door (public endpoint - no auth required)
  */
 router.post("/maintenance/:doorItemId", async (req, res) => {
   const { doorItemId } = req.params;
-  const userId = authUserId(req);
-  const { maintenanceType, status, findings, actionsTaken, photos, nextDueDate } = req.body;
+  const { performedByName, findings, actionsTaken, photos, nextDueDate } = req.body;
 
-  if (!maintenanceType || !status) {
-    return res.status(400).json({ error: "maintenanceType and status required" });
+  if (!performedByName) {
+    return res.status(400).json({ error: "performedByName is required" });
   }
 
   try {
@@ -340,20 +400,19 @@ router.post("/maintenance/:doorItemId", async (req, res) => {
       return res.status(404).json({ error: "Door item not found" });
     }
 
+    // Create maintenance record without requiring user auth
     const record = await prisma.fireDoorMaintenanceRecord.create({
       data: {
         tenantId: doorItem.tenantId,
         doorItemId,
-        performedBy: userId || undefined,
-        maintenanceType,
-        status,
+        performedByName: performedByName,
+        performedBy: authUserId(req) || undefined, // Optional if logged in
+        maintenanceType: "INSPECTION", // Default type
+        status: "COMPLETED", // Default status
         findings: findings || undefined,
         actionsTaken: actionsTaken || undefined,
         photos: photos || [],
         nextDueDate: nextDueDate ? new Date(nextDueDate) : undefined,
-      },
-      include: {
-        user: { select: { name: true, email: true } },
       },
     });
 

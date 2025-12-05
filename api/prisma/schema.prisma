@@ -2972,6 +2972,7 @@ model FireDoorMaintenanceRecord {
   tenantId        String
   doorItemId      String
   performedBy     String?
+  performedByName String?
   performedAt     DateTime                @default(now())
   maintenanceType String
   status          String
