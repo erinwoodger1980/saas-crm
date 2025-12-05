@@ -16,7 +16,7 @@
     "start": "node dist/server.js",
     "prisma:generate": "rm -rf node_modules/.prisma && prisma generate",
     "prisma:deploy": "node scripts/prisma-deploy.mjs",
-    "prisma:deploy:safe": "npx prisma migrate resolve --rolled-back 20251126122031_add_task_template || true && npx prisma migrate deploy",
+    "prisma:deploy:safe": "npx prisma migrate resolve --rolled-back 20251126122031_add_task_template || true && npx prisma migrate resolve --rolled-back 20251205163731_add_performed_by_name || true && npx prisma migrate deploy",
     "prisma:resolve:ead": "prisma migrate resolve --rolled-back 20251021173644_early_adopter_feedback --schema ./prisma/schema.prisma",
     "seed-template": "node scripts/create-seed-template.mjs",
     "seed:followups": "ts-node --transpile-only src/scripts/seed-followup-templates.ts",

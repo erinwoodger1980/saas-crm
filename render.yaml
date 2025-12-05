@@ -7,7 +7,7 @@ services:
     branch: main  # Only deploy from main branch
     buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
     startCommand: pnpm run start
-    preDeployCommand: npx prisma migrate deploy --schema=./prisma/schema.prisma && pnpm tsx scripts/update-wealden-landing-prod.ts || true
+    preDeployCommand: pnpm run prisma:deploy:safe && pnpm tsx scripts/update-wealden-landing-prod.ts || true
     healthCheckPath: /health
     plan: starter
     autoDeploy: false  # Disable auto-deploy - only deploy via GitHub Actions when both CI pass
@@ -59,7 +59,7 @@ services:
     branch: staging  # Auto-deploy from staging branch
     buildCommand: corepack enable && pnpm i --frozen-lockfile && pnpm run build
     startCommand: pnpm run start
-    preDeployCommand: npx prisma migrate deploy --schema=./prisma/schema.prisma
+    preDeployCommand: pnpm run prisma:deploy:safe
     healthCheckPath: /health
     plan: starter
     autoDeploy: true  # Auto-deploy staging when staging branch updates
