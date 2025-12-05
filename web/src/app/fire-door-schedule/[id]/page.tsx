@@ -77,6 +77,11 @@ interface FireDoorProject {
   approxDeliveryDate?: Date | null;
   workingDaysRemaining?: number | null;
   paperworkComments?: string;
+  doorPaperworkStatus?: string;
+  finalCncSheetStatus?: string;
+  finalChecksSheetStatus?: string;
+  deliveryChecklistStatus?: string;
+  framesPaperworkStatus?: string;
   deliveryNotes?: string;
   transportStatus?: string;
   doorSets?: number | null;
