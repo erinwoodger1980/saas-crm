@@ -93,7 +93,7 @@ export default function FireDoorSchedulePage() {
   ]);
   const [scheduledByOptions, setScheduledByOptions] = useState<string[]>(["DAVE", "DARREN", "OFFICE"]);
   const [materialStatusOptions, setMaterialStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received"]);
-  const [ironmongeryStatusOptions, setIronmongeryStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received", "Received from TBS", "Received from Customer"]);
+  const [ironmongeryStatusOptions, setIronmongeryStatusOptions] = useState<string[]>(["Not in BOM", "In BOM TBC", "Ordered Call Off", "In BOM", "Stock", "Ordered", "N/A", "Received", "Received from TGS", "Received from Customer"]);
   const [paperworkStatusOptions, setPaperworkStatusOptions] = useState<string[]>(["Not Started", "Working On", "Ready to Print", "Part Complete", "Printed in Office", "In Factory", "N/A"]);
   const [transportOptions, setTransportOptions] = useState<string[]>(["TBC", "By Customer", "By LAJ", "Collect", "Not Booked", "Booked"]);
   

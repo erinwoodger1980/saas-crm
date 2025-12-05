@@ -24,7 +24,7 @@ const ironmongeryStatusOptions = [
   "Ordered",
   "N/A",
   "Received",
-  "Received from TBS",
+  "Received from TGS",
   "Received from Customer"
 ];
 
@@ -37,7 +37,7 @@ const MATERIAL_STATUS_COLORS: Record<string, string> = {
   "Ordered": "bg-purple-100 text-purple-700",
   "N/A": "bg-slate-100 text-slate-600",
   "Received": "bg-green-100 text-green-700",
-  "Received from TBS": "bg-green-100 text-green-700",
+  "Received from TGS": "bg-green-100 text-green-700",
   "Received from Customer": "bg-green-100 text-green-700",
 };
 
