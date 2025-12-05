@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 
-type FeedbackStatus = "OPEN" | "RESOLVED";
+type FeedbackStatus = "OPEN" | "IN_REVIEW" | "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "WONT_FIX" | "DUPLICATE";
 
 type FeedbackUser = {
   id: string;
@@ -52,7 +52,12 @@ type FilterValue = FeedbackStatus | "ALL";
 
 const STATUS_LABEL: Record<FeedbackStatus, string> = {
   OPEN: "Open",
-  RESOLVED: "Resolved",
+  IN_REVIEW: "In Review",
+  PLANNED: "Planned",
+  IN_PROGRESS: "In Progress",
+  COMPLETED: "Completed",
+  WONT_FIX: "Won't Fix",
+  DUPLICATE: "Duplicate",
 };
 
 function formatDate(date: string | null) {
@@ -148,7 +153,7 @@ export default function FeedbackPage() {
   const openCount = useMemo(() => items.filter((item) => item.status === "OPEN").length, [items]);
 
   async function toggleStatus(item: FeedbackItem) {
-    const nextStatus: FeedbackStatus = item.status === "RESOLVED" ? "OPEN" : "RESOLVED";
+    const nextStatus: FeedbackStatus = item.status === "COMPLETED" ? "OPEN" : "COMPLETED";
     setUpdatingId(item.id);
     setError(null);
     try {
@@ -268,7 +273,7 @@ export default function FeedbackPage() {
                   </TableCell>
                   <TableCell className="align-top">
                     <Badge variant={item.status === "OPEN" ? "destructive" : "secondary"}>{STATUS_LABEL[item.status]}</Badge>
-                    {item.resolvedBy && item.status === "RESOLVED" && (
+                    {item.resolvedBy && item.status === "COMPLETED" && (
                       <div className="mt-1 text-xs text-slate-500">by {formatSubmittedBy(item.resolvedBy)}</div>
                     )}
                   </TableCell>
@@ -276,16 +281,16 @@ export default function FeedbackPage() {
                   <TableCell className="align-top text-sm text-slate-600">{formatDate(item.resolvedAt)}</TableCell>
                   <TableCell className="align-top text-right">
                     <Button
-                      variant={item.status === "RESOLVED" ? "outline" : "default"}
+                      variant={item.status === "COMPLETED" ? "outline" : "default"}
                       size="sm"
                       disabled={submitting}
                       onClick={() => toggleStatus(item)}
                     >
                       {submitting
                         ? "Updating…"
-                        : item.status === "RESOLVED"
+                        : item.status === "COMPLETED"
                         ? "Re-open"
-                        : "Mark resolved"}
+                        : "Mark completed"}
                     </Button>
                   </TableCell>
                 </TableRow>

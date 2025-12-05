@@ -316,7 +316,7 @@ router.patch("/:id", async (req: any, res) => {
 
     const nextStatus = statusRaw as FeedbackStatus;
     const data: any = { status: nextStatus };
-    if (nextStatus === FeedbackStatus.RESOLVED) {
+    if (nextStatus === FeedbackStatus.COMPLETED) {
       data.resolvedAt = new Date();
       data.resolvedById = auth.userId ?? null;
     } else {
