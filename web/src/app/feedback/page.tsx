@@ -36,7 +36,7 @@ type FeedbackItem = {
   sourceUrl: string | null;
   status: FeedbackStatus;
   devResponse: string | null;
-  devScreenshotUrl: string | null;
+  devScreenshotUrls: string[];
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
@@ -269,7 +269,7 @@ export default function FeedbackPage() {
                   </TableCell>
                   <TableCell className="align-top text-sm text-slate-700">
                     <div className="line-clamp-2">{item.comment ? item.comment : <span className="text-slate-400">No notes provided.</span>}</div>
-                    {(item.devResponse || item.devScreenshotUrl) && (
+                    {(item.devResponse || (item.devScreenshotUrls && item.devScreenshotUrls.length > 0)) && (
                       <div className="mt-1 text-xs text-blue-600 font-medium">✓ Developer response available</div>
                     )}
                   </TableCell>
@@ -377,31 +377,35 @@ export default function FeedbackPage() {
                   </div>
                 )}
 
-                {/* Screenshot */}
-                {selectedFeedback.devScreenshotUrl && (
+                {/* Screenshots */}
+                {(selectedFeedback.devScreenshotUrls && selectedFeedback.devScreenshotUrls.length > 0) && (
                   <div className="space-y-2">
-                    <h3 className="font-semibold text-slate-900">Screenshot</h3>
-                    <div className="rounded-lg overflow-hidden border border-slate-200">
-                      <img
-                        src={selectedFeedback.devScreenshotUrl}
-                        alt="Developer screenshot"
-                        className="w-full h-auto max-h-96 object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                      {!selectedFeedback.devScreenshotUrl.startsWith("data:") && (
-                        <div className="p-2 bg-slate-50 text-right">
-                          <a
-                            href={selectedFeedback.devScreenshotUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline"
-                          >
-                            View full size ↗
-                          </a>
+                    <h3 className="font-semibold text-slate-900">Screenshots</h3>
+                    <div className="space-y-3">
+                      {selectedFeedback.devScreenshotUrls.map((url, idx) => (
+                        <div key={idx} className="rounded-lg overflow-hidden border border-slate-200">
+                          <img
+                            src={url}
+                            alt={`Developer screenshot ${idx + 1}`}
+                            className="w-full h-auto max-h-96 object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                          {!url.startsWith("data:") && (
+                            <div className="p-2 bg-slate-50 text-right">
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:underline"
+                              >
+                                View full size ↗
+                              </a>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      ))}
                     </div>
                   </div>
                 )}
