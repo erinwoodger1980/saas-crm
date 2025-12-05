@@ -295,6 +295,15 @@ export default function FireDoorScheduleDetailPage() {
         // Convert Date objects to ISO strings and clean up data before sending
         const cleanData: any = { ...project };
         
+        console.log('[saveProject] Sending data with paperwork fields:', {
+          doorPaperworkStatus: cleanData.doorPaperworkStatus,
+          finalCncSheetStatus: cleanData.finalCncSheetStatus,
+          finalChecksSheetStatus: cleanData.finalChecksSheetStatus,
+          deliveryChecklistStatus: cleanData.deliveryChecklistStatus,
+          framesPaperworkStatus: cleanData.framesPaperworkStatus,
+          ironmongeryStatus: cleanData.ironmongeryStatus,
+        });
+        
         // Convert Date objects to ISO strings or null
         const dateFields = [
           'dateReceived', 'dateRequired', 'signOffDate', 'approxDeliveryDate',
@@ -356,6 +365,7 @@ export default function FireDoorScheduleDetailPage() {
   }
 
   function updateField(field: string, value: any) {
+    console.log(`[updateField] Updating ${field} to:`, value);
     setProject((prev) => {
       if (!prev) return null;
       const updated: any = { ...prev, [field]: value };
@@ -377,7 +387,10 @@ export default function FireDoorScheduleDetailPage() {
       return updated;
     });
     if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
-    setAutoSaveTimeout(setTimeout(() => { if (!isNew) saveProject(); }, 800));
+    setAutoSaveTimeout(setTimeout(() => { 
+      console.log('[autosave] Triggering save after 800ms');
+      if (!isNew) saveProject(); 
+    }, 800));
   }
 
   async function handleCSVImport(file: File) {

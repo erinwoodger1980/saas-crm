@@ -294,6 +294,14 @@ const updateProjectHandler = async (req: any, res: Response) => {
     ];
     
     console.log('[fire-door-schedule] PATCH request data:', JSON.stringify(updateData, null, 2));
+    console.log('[fire-door-schedule] Paperwork fields:', {
+      doorPaperworkStatus: updateData.doorPaperworkStatus,
+      finalCncSheetStatus: updateData.finalCncSheetStatus,
+      finalChecksSheetStatus: updateData.finalChecksSheetStatus,
+      deliveryChecklistStatus: updateData.deliveryChecklistStatus,
+      framesPaperworkStatus: updateData.framesPaperworkStatus,
+      ironmongeryStatus: updateData.ironmongeryStatus,
+    });
     
     for (const field of dateFields) {
       if (updateData[field] !== undefined) {
@@ -336,6 +344,14 @@ const updateProjectHandler = async (req: any, res: Response) => {
     });
 
     console.log('[fire-door-schedule] Project updated successfully');
+    console.log('[fire-door-schedule] Updated paperwork fields:', {
+      doorPaperworkStatus: project.doorPaperworkStatus,
+      finalCncSheetStatus: project.finalCncSheetStatus,
+      finalChecksSheetStatus: project.finalChecksSheetStatus,
+      deliveryChecklistStatus: project.deliveryChecklistStatus,
+      framesPaperworkStatus: project.framesPaperworkStatus,
+      ironmongeryStatus: project.ironmongeryStatus,
+    });
 
     // After updating, auto-complete any tasks linked to changed fields
     try {
