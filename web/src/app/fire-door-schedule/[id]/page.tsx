@@ -284,16 +284,21 @@ export default function FireDoorScheduleDetailPage() {
 
   async function saveProject() {
     if (!project) return;
+    await saveProjectDirect(project);
+  }
+
+  async function saveProjectDirect(projectToSave: FireDoorProject) {
+    if (!projectToSave) return;
     setSaving(true);
     try {
       if (isNew) {
-        const { id: _, ...createData } = project as any;
+        const { id: _, ...createData } = projectToSave as any;
         const created = await apiFetch<FireDoorProject>("/fire-door-schedule", { method: "POST", json: createData });
         toast({ title: "Success", description: "Project created successfully" });
         router.push(`/fire-door-schedule/${created.id}`);
       } else {
         // Convert Date objects to ISO strings and clean up data before sending
-        const cleanData: any = { ...project };
+        const cleanData: any = { ...projectToSave };
         
         console.log('[saveProject] Sending data with paperwork fields:', {
           doorPaperworkStatus: cleanData.doorPaperworkStatus,
@@ -327,7 +332,8 @@ export default function FireDoorScheduleDetailPage() {
           }
         }
         
-        await apiFetch(`/fire-door-schedule/${id}`, { method: "PATCH", json: cleanData });
+        const response = await apiFetch<FireDoorProject>(`/fire-door-schedule/${id}`, { method: "PATCH", json: cleanData });
+        setProject(response);
         toast({ title: "Saved", description: "Changes saved automatically" });
       }
     } catch (error) {
@@ -366,7 +372,8 @@ export default function FireDoorScheduleDetailPage() {
 
   function updateField(field: string, value: any) {
     console.log(`[updateField] Updating ${field} to:`, value);
-    setProject((prev) => {
+    const updatedProject = (() => {
+      const prev = project;
       if (!prev) return null;
       const updated: any = { ...prev, [field]: value };
       const progressFields = [
@@ -385,11 +392,14 @@ export default function FireDoorScheduleDetailPage() {
       const total = progressFields.reduce((sum, f) => sum + (Number(updated[f]) || 0), 0);
       updated.overallProgress = Math.round(total / progressFields.length);
       return updated;
-    });
+    })();
+    
+    setProject(updatedProject);
+    
     if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
     setAutoSaveTimeout(setTimeout(() => { 
-      console.log('[autosave] Triggering save after 800ms');
-      if (!isNew) saveProject(); 
+      console.log('[autosave] Triggering save after 800ms with project:', updatedProject);
+      if (!isNew && updatedProject) saveProjectDirect(updatedProject); 
     }, 800));
   }
 
