@@ -308,14 +308,16 @@ router.get("/scan/maintenance/:doorItemId", async (req, res) => {
       include: {
         job: {
           include: {
-            import: true,
+            clientAccount: true,
           },
         },
-        maintenanceRecords: {
-          orderBy: { performedAt: "desc" },
-          take: 10,
-        },
       },
+    });
+
+    const maintenanceRecords = await prisma.fireDoorMaintenanceRecord.findMany({
+      where: { doorItemId },
+      orderBy: { performedAt: "desc" },
+      take: 10,
     });
 
     if (!doorItem) {
@@ -352,7 +354,7 @@ router.get("/scan/maintenance/:doorItemId", async (req, res) => {
         name: "Fire Door Project",
       },
       client: null,
-      maintenanceHistory: doorItem.maintenanceRecords.map((record: any) => ({
+      maintenanceHistory: maintenanceRecords.map((record: any) => ({
         id: record.id,
         performedAt: record.performedAt,
         performedByName: record.performedByName || "Unknown",
