@@ -471,7 +471,7 @@ router.get("/feedback", requireDeveloper, async (req: any, res) => {
 // Update feedback
 router.patch("/feedback/:id", requireDeveloper, async (req: any, res) => {
   try {
-    const { status, priority, category, devNotes, devResponse, devScreenshotUrl, linkedTaskId } = req.body;
+    const { status, priority, category, devNotes, devResponse, devScreenshotUrls, linkedTaskId } = req.body;
     
     const feedback = await prisma.feedback.update({
       where: { id: req.params.id },
@@ -481,7 +481,7 @@ router.patch("/feedback/:id", requireDeveloper, async (req: any, res) => {
         ...(category && { category }),
         ...(devNotes !== undefined && { devNotes }),
         ...(devResponse !== undefined && { devResponse }),
-        ...(devScreenshotUrl !== undefined && { devScreenshotUrl }),
+        ...(devScreenshotUrls !== undefined && { devScreenshotUrls }),
         ...(linkedTaskId !== undefined && { linkedTaskId }),
         ...(status === 'COMPLETED' && { resolvedAt: new Date(), resolvedById: req.auth.userId })
       },
@@ -536,10 +536,12 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
       `;
     }
 
-    if (feedback.devScreenshotUrl) {
+    if (feedback.devScreenshotUrls && feedback.devScreenshotUrls.length > 0) {
       emailHtml += `
-        <h3>Screenshot:</h3>
-        <img src="${feedback.devScreenshotUrl}" alt="Response screenshot" style="max-width: 600px; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0;" />
+        <h3>Screenshots:</h3>
+        <div style="margin: 10px 0;">
+          ${feedback.devScreenshotUrls.map(url => `<img src="${url}" alt="Response screenshot" style="max-width: 600px; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0; display: block;" />`).join('')}
+        </div>
       `;
     }
 
@@ -586,6 +588,77 @@ router.post("/feedback/upload-screenshot", requireDeveloper, async (req: any, re
     res.json({ ok: true, url: base64 });
   } catch (error: any) {
     console.error("Failed to upload screenshot:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add screenshot URL to feedback
+router.post("/feedback/:id/add-screenshot", requireDeveloper, async (req: any, res) => {
+  try {
+    const screenshotUrl = req.body?.screenshotUrl as string;
+    if (!screenshotUrl) {
+      return res.status(400).json({ error: "Screenshot URL required" });
+    }
+
+    const feedback = await prisma.feedback.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!feedback) {
+      return res.status(404).json({ error: "Feedback not found" });
+    }
+
+    const urls = feedback.devScreenshotUrls || [];
+    if (!urls.includes(screenshotUrl)) {
+      urls.push(screenshotUrl);
+    }
+
+    const updated = await prisma.feedback.update({
+      where: { id: req.params.id },
+      data: { devScreenshotUrls: urls },
+      include: {
+        tenant: { select: { name: true, slug: true } },
+        user: { select: { email: true, name: true } }
+      }
+    });
+
+    res.json({ ok: true, feedback: updated });
+  } catch (error: any) {
+    console.error("Failed to add screenshot:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Remove screenshot URL from feedback
+router.post("/feedback/:id/remove-screenshot", requireDeveloper, async (req: any, res) => {
+  try {
+    const screenshotUrl = req.body?.screenshotUrl as string;
+    if (!screenshotUrl) {
+      return res.status(400).json({ error: "Screenshot URL required" });
+    }
+
+    const feedback = await prisma.feedback.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!feedback) {
+      return res.status(404).json({ error: "Feedback not found" });
+    }
+
+    const urls = (feedback.devScreenshotUrls || []).filter(url => url !== screenshotUrl);
+
+    const updated = await prisma.feedback.update({
+      where: { id: req.params.id },
+      data: { devScreenshotUrls: urls },
+      include: {
+        tenant: { select: { name: true, slug: true } },
+        user: { select: { email: true, name: true } }
+      }
+    });
+
+    res.json({ ok: true, feedback: updated });
+  } catch (error: any) {
+    console.error("Failed to remove screenshot:", error);
     res.status(500).json({ error: error.message });
   }
 });

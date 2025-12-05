@@ -1119,7 +1119,7 @@ model Feedback {
   category          String?
   devNotes          String?
   devResponse       String?
-  devScreenshotUrl  String?
+  devScreenshotUrls String[]         @default([])
   linkedTaskId      String?
   resolvedAt        DateTime?
   resolvedById      String?

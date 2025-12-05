@@ -19,7 +19,7 @@ type Feedback = {
   category: string | null;
   devNotes: string | null;
   devResponse: string | null;
-  devScreenshotUrl: string | null;
+  devScreenshotUrls: string[];
   linkedTaskId: string | null;
   emailNotificationSent: boolean;
   createdAt: string;
@@ -128,7 +128,24 @@ function FeedbackManagementContent() {
           }
 
           const data = await response.json();
-          setEditForm({ ...editForm, devScreenshotUrl: data.url });
+          
+          // Add screenshot to the feedback
+          const response2 = await fetch(`/api/dev/feedback/${feedbackId}/add-screenshot`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("jwt")}`,
+            },
+            body: JSON.stringify({ screenshotUrl: data.url }),
+          });
+          
+          if (!response2.ok) {
+            throw new Error("Failed to add screenshot to feedback");
+          }
+          
+          const feedbackData = await response2.json();
+          setFeedbacks(prev => prev.map(f => f.id === feedbackId ? feedbackData.feedback : f));
+          setEditForm({});
         } catch (e: any) {
           alert("Failed to upload screenshot: " + e.message);
         } finally {
@@ -139,6 +156,32 @@ function FeedbackManagementContent() {
     } catch (e: any) {
       alert("Failed to read screenshot: " + e.message);
       setUploadingScreenshot(null);
+    }
+  }
+
+  async function removeScreenshot(feedbackId: string, screenshotUrl: string) {
+    try {
+      const response = await fetch(`/api/dev/feedback/${feedbackId}/remove-screenshot`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("jwt")}`,
+        },
+        body: JSON.stringify({ screenshotUrl }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to remove screenshot");
+      }
+
+      const data = await response.json();
+      setFeedbacks(prev => prev.map(f => f.id === feedbackId ? data.feedback : f));
+      setEditForm(prev => ({
+        ...prev,
+        devScreenshotUrls: (prev.devScreenshotUrls || []).filter(url => url !== screenshotUrl)
+      }));
+    } catch (e: any) {
+      alert("Failed to remove screenshot: " + e.message);
     }
   }
 
@@ -314,7 +357,7 @@ function FeedbackManagementContent() {
                   </div>
 
                   <div>
-                    <label className="text-xs text-muted-foreground">Screenshot (shown to user)</label>
+                    <label className="text-xs text-muted-foreground">Screenshots (shown to user)</label>
                     <div className="flex gap-2 items-center mt-1">
                       <input 
                         type="file" 
@@ -331,13 +374,26 @@ function FeedbackManagementContent() {
                         <span className="text-xs text-muted-foreground">Uploading...</span>
                       )}
                     </div>
-                    {(editForm.devScreenshotUrl || feedback.devScreenshotUrl) && (
-                      <img 
-                        src={editForm.devScreenshotUrl || feedback.devScreenshotUrl || ""} 
-                        alt="Screenshot preview" 
-                        className="mt-2 max-w-md border rounded"
-                      />
-                    )}
+                    {/* Display uploaded screenshots */}
+                    <div className="mt-3 space-y-2">
+                      {(editForm.devScreenshotUrls || feedback.devScreenshotUrls || []).map((url: string, idx: number) => (
+                        <div key={idx} className="relative inline-block">
+                          <img 
+                            src={url} 
+                            alt={`Screenshot ${idx + 1}`} 
+                            className="max-w-xs border rounded"
+                          />
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => removeScreenshot(feedback.id, url)}
+                            className="absolute top-2 right-2 h-6 w-6 p-0"
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div>
@@ -409,14 +465,19 @@ function FeedbackManagementContent() {
                     </div>
                   )}
 
-                  {feedback.devScreenshotUrl && (
+                  {(feedback.devScreenshotUrls && feedback.devScreenshotUrls.length > 0) && (
                     <div className="mb-3">
-                      <div className="text-xs text-muted-foreground mb-2">Screenshot:</div>
-                      <img 
-                        src={feedback.devScreenshotUrl} 
-                        alt="Developer response screenshot" 
-                        className="max-w-md border rounded"
-                      />
+                      <div className="text-xs text-muted-foreground mb-2">Screenshots ({feedback.devScreenshotUrls.length}):</div>
+                      <div className="space-y-2">
+                        {feedback.devScreenshotUrls.map((url, idx) => (
+                          <img 
+                            key={idx}
+                            src={url} 
+                            alt={`Developer response screenshot ${idx + 1}`} 
+                            className="max-w-md border rounded"
+                          />
+                        ))}
+                      </div>
                     </div>
                   )}
 
@@ -426,7 +487,7 @@ function FeedbackManagementContent() {
                     </div>
                   )}
 
-                  {(feedback.devResponse || feedback.devScreenshotUrl) && feedback.user?.email && (
+                  {(feedback.devResponse || (feedback.devScreenshotUrls && feedback.devScreenshotUrls.length > 0)) && feedback.user?.email && (
                     <div className="flex items-center gap-2 pt-2 border-t">
                       <Button 
                         size="sm" 
