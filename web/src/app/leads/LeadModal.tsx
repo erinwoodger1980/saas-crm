@@ -3164,80 +3164,7 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </div>
                   </section>
 
-                  {/* Quote Workspace: Grid view of line items */}
-                  <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur mt-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                      <span aria-hidden>🧰</span>
-                      Quote Details
-                    </div>
 
-                    <QuoteItemsGrid
-                      items={quoteItems}
-                      columns={columnConfig}
-                      onItemsChange={handleQuoteItemsChange}
-                      onColumnConfigOpen={() => setShowColumnConfig(true)}
-                    />
-                    
-                    {/* Global specification fields */}
-                    {(publicFields || []).length > 0 && (
-                      <div className="mt-6 rounded-xl border border-slate-200/70 bg-white/80 p-4">
-                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
-                          <span aria-hidden>🎨</span>
-                          Project-Wide Specifications
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          {publicFields.map((field) => {
-                            const key = field.key;
-                            if (!key) return null;
-                            const value = (customData as any)?.[key] ?? "";
-                            return (
-                              <UnifiedFieldRenderer
-                                key={key}
-                                field={field as any}
-                                value={value}
-                                onChange={(val: any) => {
-                                  const strVal = typeof val === "string" ? val : String(val ?? "");
-                                  setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                                  saveCustomField(field as any, strVal);
-                                }}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Internal tracking & notes */}
-                    {internalFields.length > 0 && (
-                      <div className="mt-4 rounded-xl border border-slate-200/70 bg-white/80 p-4">
-                        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
-                          <span aria-hidden>🔒</span>
-                          Internal Tracking
-                          <span className="ml-2 text-xs text-slate-500 font-normal">(visible only in CRM)</span>
-                        </div>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          {internalFields.map((field) => {
-                            const key = field.key;
-                            if (!key) return null;
-                            const value = (customData as any)?.[key] ?? "";
-                            return (
-                              <UnifiedFieldRenderer
-                                key={key}
-                                field={field as any}
-                                value={value}
-                                onChange={(val: any) => {
-                                  const strVal = typeof val === "string" ? val : String(val ?? "");
-                                  setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                                  saveCustomField(field as any, strVal);
-                                }}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    {/* ML Estimate panel */}
-                    <section className="mt-4 rounded-2xl border border-slate-200 bg-white/85 p-5 shadow-sm">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                           <span aria-hidden>✨</span>
@@ -3515,6 +3442,21 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
           {currentStage === "quote" && (
             <div className="p-4 sm:p-6 bg-gradient-to-br from-white via-sky-50/70 to-rose-50/60 min-h-[60vh]">
               <div className="max-w-4xl mx-auto space-y-6">
+                {/* Quote Items Grid - Line items with dimensions, materials, etc */}
+                <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                    <span aria-hidden="true">📝</span>
+                    Quote Line Items
+                  </div>
+
+                  <QuoteItemsGrid
+                    items={quoteItems}
+                    columns={columnConfig}
+                    onItemsChange={handleQuoteItemsChange}
+                    onColumnConfigOpen={() => setShowColumnConfig(true)}
+                  />
+                </section>
+
                 {(emailSubject || emailSnippet || fromEmail) && (
                   <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
