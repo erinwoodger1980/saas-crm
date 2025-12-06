@@ -184,9 +184,13 @@ router.get("/:id/line-items", async (req: any, res: Response) => {
       return res.status(404).json({ error: "Project not found" });
     }
 
-    // Load all line items for this project
+    // Load all line items for this project through FireDoorImport
     const lineItems = await prisma.fireDoorLineItem.findMany({
-      where: { projectId: id },
+      where: { 
+        import: {
+          projectId: id,
+        }
+      },
       select: {
         id: true,
         doorRef: true,
