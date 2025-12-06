@@ -134,9 +134,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className={`min-h-screen grid transition-all duration-300 ${sidebarCollapsed ? 'grid-cols-[64px_1fr]' : 'grid-cols-[240px_1fr]'}`}>
+    <div className={`h-screen grid transition-all duration-300 ${sidebarCollapsed ? 'grid-cols-[64px_1fr]' : 'grid-cols-[240px_1fr]'} overflow-hidden`}>
       {/* Sidebar */}
-      <aside className="bg-white border-r flex flex-col relative">
+      <aside className="bg-white border-r flex flex-col relative overflow-y-auto">
         <div className={`flex items-center gap-2 px-5 py-4 ${sidebarCollapsed ? 'justify-center px-2' : ''}`}>
           <Image
             src="/logo-full.png"  // put your Joinery AI logo in /web/public/logo-full.png
@@ -279,7 +279,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main */}
-      <div className="flex flex-col">
+      <div className="flex flex-col overflow-y-auto">
         {/* Impersonation Banner */}
         {isImpersonating && (
           <div className="bg-purple-600 text-white px-4 py-2 flex items-center justify-between">

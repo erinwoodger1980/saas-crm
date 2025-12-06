@@ -83,9 +83,18 @@ export default function FireDoorQRPrintPage() {
     const lineItem = lineItems.find((li) => li.id === lineItemId);
     if (!lineItem) return;
 
+    const qrUrl = qrData[lineItemId];
+    if (!qrUrl) {
+      alert('QR data not ready. Please wait a moment and try again.');
+      return;
+    }
+
     // Create a print window with just this label
     const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+    if (!printWindow) {
+      alert('Pop-up blocked. Please allow pop-ups for this site.');
+      return;
+    }
 
     const labelHtml = `
       <!DOCTYPE html>
@@ -164,23 +173,45 @@ export default function FireDoorQRPrintPage() {
           </div>
           <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
           <script>
-            window.addEventListener('load', function() {
-              QRCode.toCanvas(document.getElementById('qr-code'), '${qrData[lineItemId]}', {
+            console.log('Print page loaded');
+            console.log('QR URL:', '${qrUrl}');
+            
+            function generateQR() {
+              if (typeof QRCode === 'undefined') {
+                console.error('QRCode library not loaded');
+                document.body.innerHTML = '<div style="padding: 20px; font-family: Arial;">Error: QR Code library failed to load. Please check your internet connection and try again.</div>';
+                return;
+              }
+              
+              var canvas = document.getElementById('qr-code');
+              if (!canvas) {
+                console.error('Canvas element not found');
+                return;
+              }
+              
+              QRCode.toCanvas(canvas, '${qrUrl}', {
                 width: 80,
                 margin: 1,
                 errorCorrectionLevel: 'M'
               }, function(error) {
                 if (error) {
                   console.error('QR Code generation error:', error);
-                  alert('Failed to generate QR code: ' + error);
+                  document.body.innerHTML = '<div style="padding: 20px; font-family: Arial;">Error generating QR code: ' + error + '</div>';
                 } else {
+                  console.log('QR code generated successfully');
                   setTimeout(function() { 
                     window.print(); 
                     setTimeout(function() { window.close(); }, 100);
                   }, 500);
                 }
               });
-            });
+            }
+            
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', generateQR);
+            } else {
+              generateQR();
+            }
           </script>
         </body>
       </html>
