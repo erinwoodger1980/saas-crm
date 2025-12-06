@@ -1734,17 +1734,18 @@ export default function FireDoorSchedulePage() {
           </div>
         ) : showTable ? (
           <div className="backdrop-blur-xl bg-white/70 rounded-2xl border border-white/20 shadow-lg overflow-hidden">
-            <div
-              className="relative z-0 overflow-auto max-h-[calc(100vh-260px)]"
-              ref={(el) => {
-                // attach to ref to sync with bottom scroller
-                // store on window for simple linkage without adding more state
-                if (el) {
-                  // @ts-ignore
-                  window.__fdsTableScrollEl = el;
-                }
-              }}
-            >
+            <div className="overflow-x-auto">
+              <div
+                className="relative z-0 overflow-y-auto max-h-[calc(100vh-260px)]"
+                ref={(el) => {
+                  // attach to ref to sync with bottom scroller
+                  // store on window for simple linkage without adding more state
+                  if (el) {
+                    // @ts-ignore
+                    window.__fdsTableScrollEl = el;
+                  }
+                }}
+              >
               <table className="min-w-full text-sm border-separate">
                 <thead>
                   <tr ref={headerRowRef} className="bg-gradient-to-r from-slate-100 to-slate-50 text-slate-600 text-xs uppercase tracking-wider select-none">
@@ -1886,30 +1887,9 @@ export default function FireDoorSchedulePage() {
                   ))}
                 </tbody>
               </table>
-            </div>
-            {/* Persistent bottom scroll bar */}
-            <div className="sticky bottom-0 bg-white/80 backdrop-blur-sm border-t border-slate-200">
-              <div
-                className="overflow-x-auto"
-                style={{ height: 16 }}
-                ref={(bar) => {
-                  if (!bar) return;
-                  const content = bar.firstElementChild as HTMLDivElement | null;
-                  const tableEl = (window as any).__fdsTableScrollEl as HTMLElement | undefined;
-                  if (!content || !tableEl) return;
-                  // Create a wide spacer to force scrollbar
-                  const width = tableEl.scrollWidth;
-                  content.style.width = width + "px";
-                  // Sync scroll positions
-                  const onBarScroll = () => { tableEl.scrollLeft = bar.scrollLeft; };
-                  const onTableScroll = () => { bar.scrollLeft = tableEl.scrollLeft; };
-                  bar.addEventListener("scroll", onBarScroll);
-                  tableEl.addEventListener("scroll", onTableScroll);
-                }}
-              >
-                <div />
               </div>
             </div>
+            {/* Persistent bottom scroll bar - removed, using single horizontal scroll on outer div */}
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">

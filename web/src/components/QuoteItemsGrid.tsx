@@ -202,28 +202,26 @@ export function QuoteItemsGrid({
         </div>
       </div>
 
-      <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-        {/* Header */}
-        <div className="flex border-b border-slate-200 bg-slate-50">
-          {/* Frozen header columns */}
-          <div className="flex border-r border-slate-200" style={{ minWidth: frozenWidth }}>
-            {frozenColumns.map((column) => (
-              <div
-                key={column.key}
-                className="px-3 py-2 text-xs font-semibold text-slate-700 border-r border-slate-200 flex-shrink-0"
-                style={{ width: column.width }}
-              >
-                {column.label}
-              </div>
-            ))}
-          </div>
+      <div className="border border-slate-200 rounded-lg bg-white">
+        {/* Outer wrapper with single horizontal scroll */}
+        <div className="overflow-x-auto">
+          {/* Header */}
+          <div className="flex border-b border-slate-200 bg-slate-50">
+            {/* Frozen header columns */}
+            <div className="flex border-r border-slate-200" style={{ minWidth: frozenWidth }}>
+              {frozenColumns.map((column) => (
+                <div
+                  key={column.key}
+                  className="px-3 py-2 text-xs font-semibold text-slate-700 border-r border-slate-200 flex-shrink-0"
+                  style={{ width: column.width }}
+                >
+                  {column.label}
+                </div>
+              ))}
+            </div>
 
-          {/* Scrollable header columns */}
-          <div
-            ref={headerScrollRef}
-            className="flex overflow-x-auto scrollbar-hide flex-1"
-            onScroll={handleHeaderScroll}
-          >
+            {/* Scrollable header columns */}
+            <div className="flex flex-1">
             {scrollableColumns.map((column) => (
               <div
                 key={column.key}
@@ -266,11 +264,7 @@ export function QuoteItemsGrid({
               </div>
 
               {/* Scrollable columns */}
-              <div
-                ref={idx === 0 ? scrollContainerRef : undefined}
-                className="flex overflow-x-auto scrollbar-hide flex-1"
-                onScroll={idx === 0 ? handleBodyScroll : undefined}
-              >
+              <div className="flex flex-1">
                 {scrollableColumns.map((column) => (
                   <div
                     key={column.key}
@@ -294,6 +288,7 @@ export function QuoteItemsGrid({
             </div>
           ))
         )}
+        </div>
       </div>
     </div>
   );

@@ -3064,8 +3064,35 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           contactEmail={lead?.email}
                           contactName={lead?.contactName}
                           onSelect={async (clientId) => {
-                            setLead((l) => (l ? { ...l, clientId } : l));
-                            await savePatch({ clientId });
+                            // Fetch client details to auto-fill lead fields
+                            try {
+                              const client = await apiFetch<any>(`/clients/${clientId}`, { headers: authHeaders });
+                              if (client) {
+                                // Auto-fill name, email, phone if not already set
+                                const updates: any = { clientId };
+                                if (!nameInput && client.name) {
+                                  setNameInput(client.name);
+                                  updates.contactName = client.name;
+                                }
+                                if (!emailInput && client.email) {
+                                  setEmailInput(client.email);
+                                  updates.email = client.email;
+                                }
+                                if (!phoneInput && client.phone) {
+                                  setPhoneInput(client.phone);
+                                  updates.phone = client.phone;
+                                }
+                                setLead((l) => (l ? { ...l, ...updates } : l));
+                                await savePatch(updates);
+                              } else {
+                                setLead((l) => (l ? { ...l, clientId } : l));
+                                await savePatch({ clientId });
+                              }
+                            } catch (error) {
+                              console.error('Failed to fetch client details:', error);
+                              setLead((l) => (l ? { ...l, clientId } : l));
+                              await savePatch({ clientId });
+                            }
                           }}
                           onCreateNew={async (data) => {
                             try {
@@ -3163,35 +3190,6 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                       </label>
                     </div>
                   </section>
-
-                  {/* Client Fields (Unified) */}
-                  {clientFields.length > 0 && (
-                    <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
-                        <span aria-hidden="true">🧑‍💼</span>
-                        Client Fields
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        {clientFields.map((field) => {
-                          const key = field.key;
-                          if (!key) return null;
-                          const value = (customData as any)?.[key] ?? "";
-                          return (
-                            <UnifiedFieldRenderer
-                              key={key}
-                              field={field as any}
-                              value={value}
-                              onChange={(val: any) => {
-                                const strVal = typeof val === "string" ? val : String(val ?? "");
-                                setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                                saveCustomField(field as any, strVal);
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </section>
-                  )}
 
                   {/* Workspace fields */}
                   {workspaceFields.length > 0 && (
@@ -3390,7 +3388,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   </section>
                 )}
 
-                {(settings?.slug || questionnaireFields.length > 0) && (
+                {/* Questionnaire responses moved to Questionnaire tab */}
+                {false && (settings?.slug || questionnaireFields.length > 0) && (
                   <>
                   <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
