@@ -28,6 +28,7 @@ import { apiFetch } from "@/lib/api";
 
 const BASE_NAV: Array<{ href: string; label: string; description: string; icon: any }> = [
   { href: "/dashboard", label: "Dashboard", description: "Pulse & KPIs", icon: LayoutDashboard },
+  { href: "/clients", label: "Clients", description: "Client companies", icon: Users },
   { href: "/leads", label: "Leads", description: "Inbox & replies", icon: Mail },
   { href: "/tasks/center", label: "Tasks", description: "Unified activity hub", icon: CheckSquare },
   { href: "/opportunities", label: "Opportunities", description: "Quotes to win", icon: Target },
