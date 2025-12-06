@@ -33,6 +33,7 @@ import authRouter from "./routes/auth";
 import aiRouter from "./routes/ai";
 import reportsRouter from "./routes/reports";
 import leadsRouter from "./routes/leads";
+import clientsRouter from "./routes/clients";
 import mailRouter from "./routes/mail";
 import gmailRouter from "./routes/gmail";
 import leadsAiRouter from "./routes/leads-ai";
@@ -586,6 +587,7 @@ app.use("/customer-portal", customerPortalRouter);
 /* ---------------- Protected Routers ---------------- */
 app.use("/auth", authRouter);
 app.use("/leads", leadsRouter);
+app.use("/clients", clientsRouter);
 app.use("/ai", aiRouter);
 app.use("/reports", reportsRouter);
 app.use("/mail", mailRouter);

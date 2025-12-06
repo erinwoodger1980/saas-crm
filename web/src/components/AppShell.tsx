@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame, ChevronLeft, ChevronRight, Package, Upload, Target } from "lucide-react";
+import { LayoutDashboard, Mail, RadioTower, Wrench, LineChart, Code, Flame, ChevronLeft, ChevronRight, Package, Upload, Target, Users } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useCurrentUser } from "@/lib/use-current-user";
 import Image from "next/image";
@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/clients", label: "Clients", icon: Users },
   { href: "/leads", label: "Leads", icon: Mail },
   { href: "/opportunities", label: "Opportunities", icon: RadioTower },
   { href: "/workshop", label: "Workshop", icon: Wrench },

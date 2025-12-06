@@ -28,6 +28,7 @@ import { UnifiedFieldRenderer } from "@/components/fields/UnifiedFieldRenderer";
 import { fetchQuestionnaireFields } from "@/lib/questionnaireFields";
 import { QuoteItemsGrid, QuoteItem, ColumnConfig } from "@/components/QuoteItemsGrid";
 import { QuoteItemColumnConfigModal } from "@/components/QuoteItemColumnConfigModal";
+import { ClientSelector } from "@/components/ClientSelector";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -37,6 +38,7 @@ export type Lead = {
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
+  clientId?: string | null;
   quoteId?: string | null;
   quoteStatus?: string | null;
   status:
@@ -3051,6 +3053,38 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                           placeholder="Phone number"
                         />
                       </label>
+
+                      {/* Client Linking */}
+                      <div className="col-span-full">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                          Client
+                        </span>
+                        <ClientSelector
+                          currentClientId={lead?.clientId}
+                          contactEmail={lead?.email}
+                          contactName={lead?.contactName}
+                          onSelect={async (clientId) => {
+                            setLead((l) => (l ? { ...l, clientId } : l));
+                            await savePatch({ clientId });
+                          }}
+                          onCreateNew={async (data) => {
+                            try {
+                              const newClient = await apiFetch<{ id: string }>("/clients", {
+                                method: "POST",
+                                json: {
+                                  name: data.name,
+                                  email: data.email,
+                                  phone: data.phone || phoneInput || null,
+                                },
+                              });
+                              return newClient.id;
+                            } catch (error) {
+                              console.error("Failed to create client:", error);
+                              throw error;
+                            }
+                          }}
+                        />
+                      </div>
 
                       {/* Address fields from questionnaire */}
                       {workspaceFields

@@ -999,6 +999,7 @@ router.patch("/:id", async (req, res) => {
     number?: string | null;
     contactName?: string | null;
     email?: string | null;
+    clientId?: string | null;
     status?: UiStatus;
     description?: string | null;
     custom?: Record<string, any>;
@@ -1045,6 +1046,7 @@ router.patch("/:id", async (req, res) => {
   if (body.number !== undefined) data.number = body.number || null;
   if (body.contactName !== undefined) data.contactName = body.contactName || null;
   if (body.email !== undefined) data.email = body.email || null;
+  if (body.clientId !== undefined) data.clientId = body.clientId || null;
   if (body.description !== undefined) data.description = body.description || null;
 
   if (body.status !== undefined) {
