@@ -140,7 +140,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
   apiBase?: string;
   scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
 }> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "", scope }) => {
-  const listUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields?includeStandard=true";
+  const listUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields?includeStandard=true" + (scope ? `&scope=${scope}` : "");
   const { data, mutate, isLoading } = useSWR<QuestionnaireFieldRow[]>(listUrl, fetcher);
   const [rows, setRows] = useState<QuestionnaireFieldRow[]>([]);
   const [creating, setCreating] = useState(false);
