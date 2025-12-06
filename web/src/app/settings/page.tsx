@@ -1774,26 +1774,29 @@ export default function SettingsPage() {
             </div>
           </div>
           
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-slate-700">Fire Door System</p>
-            <div className="flex flex-wrap gap-2">
-              {([
-                { key: "fire_door_schedule", label: "Fire Door Schedule", description: "Project tracking fields" },
-                { key: "fire_door_line_items", label: "Fire Door Line Items", description: "Door specifications & BOM" },
-              ] as const).map(({ key, label, description }) => (
-                <button
-                  key={key}
-                  onClick={() => setQScopeTab(key)}
-                  className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
-                  type="button"
-                  title={description}
-                >
-                  <span className="font-semibold">{label}</span>
-                  <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
-                </button>
-              ))}
+          {/* Fire Door System - only show for fire door manufacturers */}
+          {s?.isFireDoorManufacturer && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-700">Fire Door System</p>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { key: "fire_door_schedule", label: "Fire Door Schedule", description: "Project tracking fields" },
+                  { key: "fire_door_line_items", label: "Fire Door Line Items", description: "Door specifications & BOM" },
+                ] as const).map(({ key, label, description }) => (
+                  <button
+                    key={key}
+                    onClick={() => setQScopeTab(key)}
+                    className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
+                    type="button"
+                    title={description}
+                  >
+                    <span className="font-semibold">{label}</span>
+                    <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           
           <div className="space-y-2">
             <p className="text-xs font-semibold text-slate-700">Other</p>

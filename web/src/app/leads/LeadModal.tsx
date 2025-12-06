@@ -136,6 +136,7 @@ type TenantSettings = {
   taskPlaybook?: TaskPlaybook;
   questionnaireEmailSubject?: string | null;
   questionnaireEmailBody?: string | null;
+  isFireDoorManufacturer?: boolean;
 };
 
 const STATUS_LABELS: Record<Lead["status"], string> = {
@@ -908,16 +909,28 @@ export default function LeadModal({
           // Load unified questionnaire fields by scope when tenant slug is available
           try {
             const slug = (s as any)?.slug || null;
+            const isFireDoor = Boolean((s as any)?.isFireDoorManufacturer);
             if (slug) {
-              const [client, quoteDetails, manuf, fireDoorSched, fireDoorItems, pub, internal] = await Promise.all([
+              // Conditionally fetch fire door fields only if tenant is fire door manufacturer
+              const fetchPromises = [
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "client" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "quote_details" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "manufacturing" }).catch(() => []),
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_schedule" }).catch(() => []),
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_line_items" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "public" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "internal" }).catch(() => []),
-              ]);
+              ];
+              
+              if (isFireDoor) {
+                fetchPromises.push(
+                  fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_schedule" }).catch(() => []),
+                  fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_line_items" }).catch(() => [])
+                );
+              }
+              
+              const results = await Promise.all(fetchPromises);
+              const [client, quoteDetails, manuf, pub, internal, fireDoorSched, fireDoorItems] = isFireDoor 
+                ? results 
+                : [...results, [], []];
               setClientFields((client || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setQuoteDetailsFields((quoteDetails || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setManufacturingFields((manuf || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, visibleAfterOrder: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
@@ -3374,8 +3387,8 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   />
                 </section>
 
-                {/* Quote Details Fields */}
-                {quoteDetailsFields.length > 0 && (
+                {/* Quote Details Fields - only show for fire door manufacturers */}
+                {settings?.isFireDoorManufacturer && quoteDetailsFields.length > 0 && (
                   <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
                       <span aria-hidden="true">📊</span>
