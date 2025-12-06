@@ -128,8 +128,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         className="pointer-events-none absolute inset-x-0 top-0 h-[320px] bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),_transparent_70%)]"
       />
 
-      {/* Top header (was sticky; now scrolls with content) */}
-      <header className="relative z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur">
+      {/* Top header - sticky at top */}
+      <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/80 backdrop-blur">
         <div className="mx-auto flex w-full items-center justify-between gap-6 px-6 py-4">
           <div className="flex items-center gap-6">
             <div className="relative">
@@ -137,7 +137,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 {logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={logoUrl.startsWith('http') ? logoUrl : `http://localhost:3000${logoUrl}`}
+                    src={logoUrl.startsWith('http') ? logoUrl : `${process.env.NEXT_PUBLIC_API_BASE_URL || ''}${logoUrl}`}
                     alt={`${brandName} logo`}
                     className="h-full w-full object-contain p-3"
                     onError={(e) => {
@@ -216,7 +216,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main grid */}
       <div className={`relative mx-auto grid w-full gap-8 px-6 py-10 transition-all duration-300 ${sidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[280px_minmax(0,1fr)]'}`}>
-        <aside className="md:sticky md:top-[160px] md:self-start relative">
+        <aside className="md:sticky md:top-8 md:self-start relative">
           {/* Toggle button */}
           <Button
             variant="ghost"
