@@ -160,10 +160,10 @@ router.get("/:id/leads", async (req, res) => {
         contactName: true,
         status: true,
         estimatedValue: true,
-        createdAt: true,
+        capturedAt: true,
       },
       orderBy: {
-        createdAt: "desc",
+        capturedAt: "desc",
       },
     });
 
@@ -197,8 +197,8 @@ router.get("/:id/opportunities", async (req, res) => {
       select: {
         id: true,
         leadId: true,
-        status: true,
-        value: true,
+        stage: true,
+        valueGBP: true,
         createdAt: true,
         lead: {
           select: {
@@ -242,8 +242,8 @@ router.get("/:id/quotes", async (req, res) => {
       select: {
         id: true,
         leadId: true,
-        status: true,
-        value: true,
+        stage: true,
+        valueGBP: true,
         createdAt: true,
         lead: {
           select: {

@@ -33,7 +33,7 @@ type Lead = {
   contactName?: string | null;
   status: string;
   estimatedValue?: number | null;
-  createdAt: string;
+  capturedAt: string;
 };
 
 type Opportunity = {
@@ -42,8 +42,8 @@ type Opportunity = {
   lead: {
     contactName?: string | null;
   };
-  status: string;
-  value?: number | null;
+  stage: string;
+  valueGBP?: number | null;
   createdAt: string;
 };
 
@@ -53,8 +53,8 @@ type Quote = {
   lead: {
     contactName?: string | null;
   };
-  status: string;
-  totalGross?: number | null;
+  stage: string;
+  valueGBP?: number | null;
   createdAt: string;
 };
 
@@ -435,9 +435,9 @@ export default function ClientDetailPage() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-slate-700">{opp.status}</p>
-                    {opp.value && (
-                      <p className="text-sm text-slate-500">£{opp.value.toFixed(2)}</p>
+                    <p className="text-sm font-medium text-slate-700">{opp.stage}</p>
+                    {opp.valueGBP && (
+                      <p className="text-sm text-slate-500">£{Number(opp.valueGBP).toFixed(2)}</p>
                     )}
                   </div>
                 </Link>
@@ -467,10 +467,10 @@ export default function ClientDetailPage() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-slate-700">{quote.status}</p>
-                    {quote.totalGross && (
+                    <p className="text-sm font-medium text-slate-700">{quote.stage}</p>
+                    {quote.valueGBP && (
                       <p className="text-sm text-slate-500">
-                        £{quote.totalGross.toFixed(2)}
+                        £{Number(quote.valueGBP).toFixed(2)}
                       </p>
                     )}
                   </div>
