@@ -153,7 +153,7 @@ export default function FireDoorQRPrintPage() {
         <body>
           <div class="label">
             <div class="qr-container">
-              <svg id="qr-code" width="80" height="80"></svg>
+              <canvas id="qr-code"></canvas>
             </div>
             <div class="info">
               <div class="door-ref">${lineItem.doorRef || lineItem.lajRef || "Door"}</div>
@@ -164,13 +164,22 @@ export default function FireDoorQRPrintPage() {
           </div>
           <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
           <script>
-            QRCode.toCanvas(document.getElementById('qr-code'), '${qrData[lineItemId]}', {
-              width: 80,
-              margin: 1,
-              errorCorrectionLevel: 'M'
-            }, function(error) {
-              if (error) console.error(error);
-              setTimeout(function() { window.print(); window.close(); }, 500);
+            window.addEventListener('load', function() {
+              QRCode.toCanvas(document.getElementById('qr-code'), '${qrData[lineItemId]}', {
+                width: 80,
+                margin: 1,
+                errorCorrectionLevel: 'M'
+              }, function(error) {
+                if (error) {
+                  console.error('QR Code generation error:', error);
+                  alert('Failed to generate QR code: ' + error);
+                } else {
+                  setTimeout(function() { 
+                    window.print(); 
+                    setTimeout(function() { window.close(); }, 100);
+                  }, 500);
+                }
+              });
             });
           </script>
         </body>
