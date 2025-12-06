@@ -3374,6 +3374,35 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                   />
                 </section>
 
+                {/* Quote Details Fields */}
+                {quoteDetailsFields.length > 0 && (
+                  <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
+                      <span aria-hidden="true">📊</span>
+                      Quote Details
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {quoteDetailsFields.map((field) => {
+                        const key = field.key;
+                        if (!key) return null;
+                        const value = (customData as any)?.[key] ?? "";
+                        return (
+                          <UnifiedFieldRenderer
+                            key={key}
+                            field={field as any}
+                            value={value}
+                            onChange={(val: any) => {
+                              const strVal = typeof val === "string" ? val : String(val ?? "");
+                              setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
+                              saveCustomField(field as any, strVal);
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
                 {(emailSubject || emailSnippet || fromEmail) && (
                   <section className="rounded-2xl border border-sky-100 bg-white/85 p-5 shadow-sm backdrop-blur">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
