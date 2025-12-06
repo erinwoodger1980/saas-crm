@@ -162,6 +162,52 @@ router.get("/:id", async (req: any, res: Response) => {
 });
 
 // ============================================================================
+// GET /fire-door-schedule/:id/line-items
+// Get all line items for a fire door schedule project
+// Used by QR print page
+// ============================================================================
+router.get("/:id/line-items", async (req: any, res: Response) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Verify project exists and belongs to tenant
+    const project = await prisma.fireDoorScheduleProject.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    // Load all line items for this project
+    const lineItems = await prisma.fireDoorLineItem.findMany({
+      where: { projectId: id },
+      select: {
+        id: true,
+        doorRef: true,
+        lajRef: true,
+        rating: true,
+        doorsetType: true,
+      },
+      orderBy: [
+        { doorRef: 'asc' },
+        { lajRef: 'asc' },
+      ],
+    });
+
+    res.json({ ok: true, lineItems });
+  } catch (error) {
+    console.error("Error fetching line items:", error);
+    res.status(500).json({ error: "Failed to fetch line items" });
+  }
+});
+
+// ============================================================================
 // POST /fire-door-schedule
 // Create a new fire door schedule project
 // Automatically creates a won opportunity for workshop scheduling
