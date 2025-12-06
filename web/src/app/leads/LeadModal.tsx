@@ -26,6 +26,8 @@ import { TaskCenter } from "@/components/tasks/TaskCenter";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 import { UnifiedFieldRenderer } from "@/components/fields/UnifiedFieldRenderer";
 import { fetchQuestionnaireFields } from "@/lib/questionnaireFields";
+import { QuoteItemsGrid, QuoteItem, ColumnConfig } from "@/components/QuoteItemsGrid";
+import { QuoteItemColumnConfigModal } from "@/components/QuoteItemColumnConfigModal";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -470,6 +472,11 @@ export default function LeadModal({
   const [wkAssignments, setWkAssignments] = useState<ProcAssignment[]>([]);
   const [wkSavingId, setWkSavingId] = useState<string | null>(null);
 
+  // Quote items grid state
+  const [quoteItems, setQuoteItems] = useState<QuoteItem[]>([]);
+  const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
+
   // Material tracking state
   type MaterialDates = {
     timberOrderedAt?: string | null;
@@ -659,6 +666,52 @@ export default function LeadModal({
       description: 'Workshop processes and materials'
     }
   ];
+
+  // Initialize quote items from custom data
+  useEffect(() => {
+    if (!lead?.custom) return;
+    const customData = lead.custom as any;
+    const items = Array.isArray(customData.items) ? customData.items : [];
+    
+    // Convert items to QuoteItem format with IDs
+    const convertedItems = items.map((item: any, index: number) => ({
+      id: item.id || `item-${index + 1}`,
+      itemNumber: index + 1,
+      ...item,
+    }));
+    
+    setQuoteItems(convertedItems);
+    
+    // Initialize column config from localStorage or defaults
+    const savedConfig = localStorage.getItem(`quote-column-config-${lead.id}`);
+    if (savedConfig) {
+      setColumnConfig(JSON.parse(savedConfig));
+    } else {
+      // Default columns
+      const defaultColumns: ColumnConfig[] = [
+        { key: "itemNumber", label: "Item #", type: "number", width: 80, frozen: true, visible: true },
+        { key: "width_mm", label: "Width (mm)", type: "number", width: 120, frozen: false, visible: true },
+        { key: "height_mm", label: "Height (mm)", type: "number", width: 120, frozen: false, visible: true },
+      ];
+      
+      // Add columns from public fields
+      publicFields.slice(0, 5).forEach((field) => {
+        if (field.key && !defaultColumns.some(c => c.key === field.key)) {
+          defaultColumns.push({
+            key: field.key,
+            label: field.label,
+            type: field.type,
+            width: 150,
+            frozen: false,
+            visible: true,
+            options: field.options || undefined,
+          });
+        }
+      });
+      
+      setColumnConfig(defaultColumns);
+    }
+  }, [lead?.custom, lead?.id, publicFields]);
 
   // Load suppliers when modal opens
   useEffect(() => {
@@ -1484,6 +1537,25 @@ export default function LeadModal({
     }
 
     await savePatch(payload);
+  }
+
+  async function handleQuoteItemsChange(items: QuoteItem[]) {
+    setQuoteItems(items);
+    
+    // Save to lead custom data
+    const itemsData = items.map(({ id, ...rest }) => rest);
+    await savePatch({
+      questionnaire: {
+        items: itemsData,
+      },
+    });
+  }
+
+  function handleSaveColumnConfig(config: ColumnConfig[]) {
+    setColumnConfig(config);
+    if (lead?.id) {
+      localStorage.setItem(`quote-column-config-${lead.id}`, JSON.stringify(config));
+    }
   }
 
   async function reloadTasks() {
@@ -3058,98 +3130,48 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
                     </div>
                   </section>
 
-                  {/* Quote Workspace: combined questionnaire + quote details */}
+                  {/* Quote Workspace: Grid view of line items */}
                   <section className="rounded-2xl border border-indigo-100 bg-white/85 p-5 shadow-sm backdrop-blur mt-4">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 mb-4">
                       <span aria-hidden>🧰</span>
-                      Quote Workspace
+                      Quote Details
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">Everything needed to prepare the quote, in one place.</p>
 
-                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                      {/* Items & Measurements */}
-                      <div className="rounded-xl border border-slate-200/70 bg-white/80 p-4">
-                        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
-                          <span aria-hidden>📐</span>
-                          Openings & Measurements
-                        </div>
-                        {questionnaireItems.length === 0 ? (
-                          <div className="text-xs text-slate-500">No itemized questionnaire entries</div>
-                        ) : (
-                          <div className="space-y-2">
-                            {questionnaireItems.map((it: any, idx: number) => (
-                              <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3">
-                                <div className="flex items-center justify-between">
-                                  <div className="text-xs font-semibold text-slate-700">Item {idx + 1}</div>
-                                  <div className="text-xs text-slate-500">
-                                    {(it.width_mm || it.width) && <span>W: {it.width_mm || it.width}mm</span>}
-                                    {(it.height_mm || it.height) && <span className="ml-2">H: {it.height_mm || it.height}mm</span>}
-                                  </div>
-                                </div>
-                                <div className="mt-2 text-xs text-slate-600 space-y-1">
-                                  {Object.entries(it).map(([k,v]) => {
-                                    if (["photos","inspiration_photos","width","height","width_mm","height_mm","door_width_mm","door_height_mm"].includes(k)) return null;
-                                    return (
-                                      <div key={k} className="flex gap-2">
-                                        <div className="w-28 text-slate-500">{String(k)}</div>
-                                        <div className="flex-1 text-slate-700 break-words">{formatAnswer(v) ?? ""}</div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                                {(Array.isArray(it.photos) && it.photos.length > 0) && (
-                                  <div className="mt-2">
-                                    <div className="text-xs text-slate-500">Photos</div>
-                                    <div className="mt-1 flex flex-wrap gap-2">
-                                      {it.photos.map((p: any, pidx: number) => {
-                                        const dataUrl = p?.base64 ? `data:${p.mimeType||"image/jpeg"};base64,${p.base64}` : null;
-                                        return (
-                                          <a key={pidx} href={dataUrl||"#"} download={p?.filename||`photo-${pidx+1}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm">
-                                            <span aria-hidden>📷</span>{p?.filename || `photo-${pidx+1}`}
-                                          </a>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Specs & Finishes */}
-                      <div className="rounded-xl border border-slate-200/70 bg-white/80 p-4">
-                        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <QuoteItemsGrid
+                      items={quoteItems}
+                      columns={columnConfig}
+                      onItemsChange={handleQuoteItemsChange}
+                      onColumnConfigOpen={() => setShowColumnConfig(true)}
+                    />
+                    
+                    {/* Global specification fields */}
+                    {(publicFields || []).length > 0 && (
+                      <div className="mt-6 rounded-xl border border-slate-200/70 bg-white/80 p-4">
+                        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
                           <span aria-hidden>🎨</span>
-                          Specifications & Finish
+                          Project-Wide Specifications
                         </div>
-                        <div className="grid grid-cols-1 gap-3">
-                          {/* Unified public fields */}
-                          {(publicFields || []).length > 0 ? (
-                            publicFields.map((field) => {
-                              const key = field.key;
-                              if (!key) return null;
-                              const value = (customData as any)?.[key] ?? "";
-                              return (
-                                <UnifiedFieldRenderer
-                                  key={key}
-                                  field={field as any}
-                                  value={value}
-                                  onChange={(val: any) => {
-                                    const strVal = typeof val === "string" ? val : String(val ?? "");
-                                    setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
-                                    saveCustomField(field as any, strVal);
-                                  }}
-                                />
-                              );
-                            })
-                          ) : (
-                            <div className="text-xs text-slate-500">No dynamic specification fields</div>
-                          )}
+                        <div className="grid grid-cols-2 gap-3">
+                          {publicFields.map((field) => {
+                            const key = field.key;
+                            if (!key) return null;
+                            const value = (customData as any)?.[key] ?? "";
+                            return (
+                              <UnifiedFieldRenderer
+                                key={key}
+                                field={field as any}
+                                value={value}
+                                onChange={(val: any) => {
+                                  const strVal = typeof val === "string" ? val : String(val ?? "");
+                                  setCustomDraft((prev) => ({ ...prev, [key]: strVal }));
+                                  saveCustomField(field as any, strVal);
+                                }}
+                              />
+                            );
+                          })}
                         </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Internal tracking & notes */}
                     {internalFields.length > 0 && (
@@ -5078,6 +5100,28 @@ async function ensureStatusTasks(status: Lead["status"], existing?: Task[]) {
         body={emailPreview.body}
         to={emailPreview.to}
         recipientName={emailPreview.recipientName}
+      />
+
+      {/* Quote Item Column Configuration Modal */}
+      <QuoteItemColumnConfigModal
+        open={showColumnConfig}
+        onClose={() => setShowColumnConfig(false)}
+        availableFields={[
+          ...publicFields.map((f) => ({
+            key: f.key,
+            label: f.label,
+            type: f.type,
+            options: f.options,
+          })),
+          ...internalFields.map((f) => ({
+            key: f.key,
+            label: f.label,
+            type: f.type,
+            options: f.options,
+          })),
+        ]}
+        currentConfig={columnConfig}
+        onSave={handleSaveColumnConfig}
       />
     </div>
   );
