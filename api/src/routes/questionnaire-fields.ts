@@ -19,16 +19,24 @@ router.get("/", requireAuth, async (req: any, res) => {
     const tenantId = req.auth.tenantId as string;
     const includeInactive = req.query.includeInactive === "true";
     const includeStandard = req.query.includeStandard === "true";
+    const scope = req.query.scope as string | undefined;
 
     let where: any = { tenantId };
     if (!includeInactive) {
       where.isActive = true;
     }
+    if (scope) {
+      where.scope = scope;
+    }
     // If includeStandard, fetch all standard fields for tenant (active or hidden)
     if (includeStandard) {
       // Get all standard fields for tenant, regardless of isActive/isHidden
+      const standardWhere: any = { tenantId, isStandard: true };
+      if (scope) {
+        standardWhere.scope = scope;
+      }
       const standardFields = await prisma.questionnaireField.findMany({
-        where: { tenantId, isStandard: true },
+        where: standardWhere,
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       });
       // Get all non-standard fields (respect isActive)
