@@ -17,15 +17,18 @@ export interface QuestionnaireFieldRow {
   order: number; // local ordering (maps to backend sortOrder or order)
   options?: string[] | null;
   isStandard?: boolean; // true for built-in fields
-  scope?: "client" | "public" | "internal" | "manufacturing"; // where field is used
+  scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal"; // where field is used
 }
 
 const FIELD_TYPES: Array<QuestionnaireFieldRow["type"]> = ["text", "number", "select", "boolean"];
 const SCOPE_OPTIONS: Array<NonNullable<QuestionnaireFieldRow["scope"]>> = [
   "client",
+  "quote_details",
+  "manufacturing",
+  "fire_door_schedule",
+  "fire_door_line_items",
   "public",
   "internal",
-  "manufacturing",
 ];
 
 const fetcher = (url: string) => fetch(url, { credentials: 'include' }).then((r) => r.json());
@@ -135,7 +138,7 @@ function SortableRow({ field, onChange, onDelete }: { field: QuestionnaireFieldR
 
 export const AdminQuestionnaireFieldsTable: React.FC<{
   apiBase?: string;
-  scope?: "client" | "public" | "internal" | "manufacturing";
+  scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
 }> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "", scope }) => {
   const listUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields?includeStandard=true";
   const { data, mutate, isLoading } = useSWR<QuestionnaireFieldRow[]>(listUrl, fetcher);

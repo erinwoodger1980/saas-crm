@@ -232,7 +232,7 @@ export default function SettingsPage() {
     return 'business';
   })();
   
-  const [currentStage, setCurrentStage] = useState<"business" | "questionnaire" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers" | "software-profiles" | "pdf-templates" | "material-costs">(initialTab as any);
+  const [currentStage, setCurrentStage] = useState<"business" | "data-fields" | "email-templates" | "marketing" | "automation" | "workshop-processes" | "integrations" | "suppliers" | "software-profiles" | "pdf-templates" | "material-costs">(initialTab as any);
   const [s, setS] = useState<Settings | null>(null);
   const [inbox, setInbox] = useState<InboxCfg>({ gmail: false, ms365: false, intervalMinutes: 10 });
   const [savingInbox, setSavingInbox] = useState(false);
@@ -248,7 +248,7 @@ export default function SettingsPage() {
   const [qSearch, setQSearch] = useState("");
   const [qHideInternal, setQHideInternal] = useState(true);
   const [qOnlyPublic, setQOnlyPublic] = useState(false);
-  const [qScopeTab, setQScopeTab] = useState<"client" | "public" | "internal" | "manufacturing">("public");
+  const [qScopeTab, setQScopeTab] = useState<"client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal">("client");
   const [savingSettings, setSavingSettings] = useState(false);
     // Seed placeholder testimonials if none exist on initial load
     useEffect(() => {
@@ -1004,7 +1004,7 @@ export default function SettingsPage() {
       <div className="flex gap-1 rounded-xl bg-slate-100/80 p-1 mb-6">
         {[
           { key: "business", label: "Business", icon: "🏢", description: "Company profile and quote settings" },
-          { key: "questionnaire", label: "Questionnaire", icon: "📋", description: "Lead capture form fields" },
+          { key: "data-fields", label: "Data Fields", icon: "📋", description: "Custom fields for leads, quotes & projects" },
           { key: "email-templates", label: "Email Templates", icon: "📧", description: "Customize email templates" },
           { key: "marketing", label: "Marketing", icon: "�", description: "Landing pages and SEO" },
           { key: "automation", label: "Automation", icon: "⚡", description: "Task playbooks and workflows" },
@@ -1746,29 +1746,76 @@ export default function SettingsPage() {
   </>
       )}
 
-      {currentStage === "questionnaire" && (
+      {currentStage === "data-fields" && (
       <Section 
-        title="Questionnaire Fields" 
-        description="Configure fields across scopes. Drag to reorder, click to edit inline."
+        title="Data Fields" 
+        description="Configure custom fields across all areas of your system. Standard fields are built-in and always available."
       >
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {([
-              { key: "client", label: "Client Info" },
-              { key: "public", label: "Public Questionnaire" },
-              { key: "internal", label: "Internal" },
-              { key: "manufacturing", label: "Manufacturing" },
-            ] as const).map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setQScopeTab(key)}
-                className={`px-3 py-1 rounded-full text-xs border ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-slate-700">Lead & Quote Management</p>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { key: "client", label: "Client Details", description: "Name, email, phone, address" },
+                { key: "quote_details", label: "Quote Details", description: "Dimensions, materials, specifications" },
+                { key: "manufacturing", label: "Manufacturing", description: "Installation dates, production notes" },
+              ] as const).map(({ key, label, description }) => (
+                <button
+                  key={key}
+                  onClick={() => setQScopeTab(key)}
+                  className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
+                  type="button"
+                  title={description}
+                >
+                  <span className="font-semibold">{label}</span>
+                  <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
+                </button>
+              ))}
+            </div>
           </div>
+          
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-slate-700">Fire Door System</p>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { key: "fire_door_schedule", label: "Fire Door Schedule", description: "Project tracking fields" },
+                { key: "fire_door_line_items", label: "Fire Door Line Items", description: "Door specifications & BOM" },
+              ] as const).map(({ key, label, description }) => (
+                <button
+                  key={key}
+                  onClick={() => setQScopeTab(key)}
+                  className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
+                  type="button"
+                  title={description}
+                >
+                  <span className="font-semibold">{label}</span>
+                  <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-slate-700">Other</p>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { key: "public", label: "Public Questionnaire", description: "Customer-facing forms" },
+                { key: "internal", label: "Internal Only", description: "Staff notes & data" },
+              ] as const).map(({ key, label, description }) => (
+                <button
+                  key={key}
+                  onClick={() => setQScopeTab(key)}
+                  className={`px-4 py-2 rounded-lg text-xs border flex flex-col items-start text-left ${qScopeTab === key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 hover:bg-slate-50"}`}
+                  type="button"
+                  title={description}
+                >
+                  <span className="font-semibold">{label}</span>
+                  <span className={`text-[10px] ${qScopeTab === key ? "text-blue-100" : "text-slate-500"}`}>{description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          
           <AdminQuestionnaireFieldsTable apiBase={API_BASE} scope={qScopeTab} />
         </div>
       </Section>
