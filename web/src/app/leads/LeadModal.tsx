@@ -423,9 +423,12 @@ export default function LeadModal({
   
   // Unified questionnaire fields by scope
   const [clientFields, setClientFields] = useState<NormalizedQuestionnaireField[]>([]);
+  const [quoteDetailsFields, setQuoteDetailsFields] = useState<NormalizedQuestionnaireField[]>([]);
+  const [manufacturingFields, setManufacturingFields] = useState<NormalizedQuestionnaireField[]>([]);
+  const [fireDoorScheduleFields, setFireDoorScheduleFields] = useState<NormalizedQuestionnaireField[]>([]);
+  const [fireDoorLineItemsFields, setFireDoorLineItemsFields] = useState<NormalizedQuestionnaireField[]>([]);
   const [publicFields, setPublicFields] = useState<NormalizedQuestionnaireField[]>([]);
   const [internalFields, setInternalFields] = useState<NormalizedQuestionnaireField[]>([]);
-  const [manufacturingFields, setManufacturingFields] = useState<NormalizedQuestionnaireField[]>([]);
   
   // ML Estimate state
   const [activeDetailsTab, setActiveDetailsTab] = useState<"client" | "quote" | "questionnaire">("client");
@@ -906,16 +909,22 @@ export default function LeadModal({
           try {
             const slug = (s as any)?.slug || null;
             if (slug) {
-              const [client, pub, internal, manuf] = await Promise.all([
+              const [client, quoteDetails, manuf, fireDoorSched, fireDoorItems, pub, internal] = await Promise.all([
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "client" }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "quote_details" }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "manufacturing" }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_schedule" }).catch(() => []),
+                fetchQuestionnaireFields({ tenantSlug: slug, scope: "fire_door_line_items" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "public" }).catch(() => []),
                 fetchQuestionnaireFields({ tenantSlug: slug, scope: "internal" }).catch(() => []),
-                fetchQuestionnaireFields({ tenantSlug: slug, scope: "manufacturing" }).catch(() => []),
               ]);
               setClientFields((client || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              setQuoteDetailsFields((quoteDetails || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              setManufacturingFields((manuf || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, visibleAfterOrder: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              setFireDoorScheduleFields((fireDoorSched || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
+              setFireDoorLineItemsFields((fireDoorItems || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setPublicFields((pub || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: true, showOnLead: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
               setInternalFields((internal || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, internalOnly: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
-              setManufacturingFields((manuf || []).map(f => ({ ...f, type: String(f.type), options: f.options || [], askInQuestionnaire: false, showOnLead: true, visibleAfterOrder: true, sortOrder: f.sortOrder || 0 })) as NormalizedQuestionnaireField[]);
             }
           } catch (e) {
             console.debug("[LeadModal] failed loading scoped fields", e);

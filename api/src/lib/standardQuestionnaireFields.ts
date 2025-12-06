@@ -16,7 +16,7 @@ export type StandardFieldDefinition = {
   placeholder?: string;
   sortOrder: number;
   group?: string;
-  scope: "client" | "public" | "internal" | "manufacturing"; // 'client' = contact info, 'public' = questionnaire, 'internal' = CRM/tracking, 'manufacturing' = post-won
+  scope: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal"; // 'client' = contact info, 'quote_details' = item specs, 'manufacturing' = post-won, 'fire_door_schedule' = project tracking, 'fire_door_line_items' = door BOM
   isStandard: true;
 };
 
@@ -177,7 +177,7 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     isStandard: true,
   },
 
-  // ============ PUBLIC QUESTIONNAIRE (asked per item in estimator) ============
+  // ============ QUOTE DETAILS (item-level specifications) ============
   {
     key: "materials_grade",
     label: "Materials Grade",
@@ -187,8 +187,34 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     costingInputKey: "materials_grade",
     helpText: "Quality tier of materials",
     sortOrder: 200,
-    group: "Public Questionnaire",
-    scope: "public",
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "timber_type",
+    label: "Timber Type",
+    type: "SELECT",
+    options: ["Oak", "Accoya", "Iroko", "Sapele", "Pine", "Engineered", "Other"],
+    required: false,
+    costingInputKey: "timber_type",
+    helpText: "Wood species",
+    sortOrder: 201,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "finish",
+    label: "Finish",
+    type: "SELECT",
+    options: ["Factory Painted", "Factory Stained", "Primed Only", "Bare Wood"],
+    required: false,
+    costingInputKey: "finish",
+    helpText: "Surface finish",
+    sortOrder: 202,
+    group: "Quote Details",
+    scope: "quote_details",
     isStandard: true,
   },
   {
@@ -199,9 +225,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     required: false,
     costingInputKey: "glazing_type",
     helpText: "Glass specification",
-    sortOrder: 201,
-    group: "Public Questionnaire",
-    scope: "public",
+    sortOrder: 203,
+    group: "Quote Details",
+    scope: "quote_details",
     isStandard: true,
   },
   {
@@ -211,9 +237,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     required: false,
     costingInputKey: "has_curves",
     helpText: "Includes curved or arched elements",
-    sortOrder: 202,
-    group: "Public Questionnaire",
-    scope: "public",
+    sortOrder: 204,
+    group: "Quote Details",
+    scope: "quote_details",
     isStandard: true,
   },
   {
@@ -224,9 +250,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     required: false,
     costingInputKey: "ironmongery_level",
     helpText: "Quality / complexity of ironmongery",
-    sortOrder: 203,
-    group: "Public Questionnaire",
-    scope: "public",
+    sortOrder: 205,
+    group: "Quote Details",
+    scope: "quote_details",
     isStandard: true,
   },
   {
@@ -237,9 +263,9 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     required: false,
     costingInputKey: "door_type",
     helpText: "Primary item type",
-    sortOrder: 204,
-    group: "Public Questionnaire",
-    scope: "public",
+    sortOrder: 206,
+    group: "Quote Details",
+    scope: "quote_details",
     isStandard: true,
   },
   {
@@ -250,12 +276,51 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     costingInputKey: "quantity",
     helpText: "Total count of identical items",
     placeholder: "e.g., 2",
-    sortOrder: 205,
+    sortOrder: 207,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "item_width_mm",
+    label: "Width (mm)",
+    type: "NUMBER",
+    required: false,
+    costingInputKey: "width_mm",
+    helpText: "Item width in millimeters",
+    placeholder: "e.g., 900",
+    sortOrder: 208,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+  {
+    key: "item_height_mm",
+    label: "Height (mm)",
+    type: "NUMBER",
+    required: false,
+    costingInputKey: "height_mm",
+    helpText: "Item height in millimeters",
+    placeholder: "e.g., 2100",
+    sortOrder: 209,
+    group: "Quote Details",
+    scope: "quote_details",
+    isStandard: true,
+  },
+
+  // ============ PUBLIC QUESTIONNAIRE (customer-facing forms) ============
+  {
+    key: "project_description",
+    label: "Project Description",
+    type: "TEXTAREA",
+    required: false,
+    helpText: "Brief description of what you need",
+    placeholder: "Tell us about your project...",
+    sortOrder: 250,
     group: "Public Questionnaire",
     scope: "public",
     isStandard: true,
   },
-  // Removed duplicate dimension questions; OpeningDetailsStep captures width/height
 
   // ============ MANUFACTURING (post-won final specs) ============
   {
@@ -305,6 +370,175 @@ export const STANDARD_FIELDS: StandardFieldDefinition[] = [
     scope: "manufacturing",
     isStandard: true,
   },
+
+  // ============ FIRE DOOR SCHEDULE (project-level tracking) ============
+  {
+    key: "mjs_number",
+    label: "MJS Number",
+    type: "TEXT",
+    required: false,
+    helpText: "Project reference number",
+    placeholder: "e.g., MJS2025-001",
+    sortOrder: 400,
+    group: "Fire Door Schedule",
+    scope: "fire_door_schedule",
+    isStandard: true,
+  },
+  {
+    key: "job_location",
+    label: "Job Location",
+    type: "SELECT",
+    options: ["ASSIGNED MJS", "RED FOLDER", "IN PROGRESS", "COMPLETE IN FACTORY", "COMPLETE & DELIVERED", "N/A"],
+    required: false,
+    helpText: "Current project status",
+    sortOrder: 401,
+    group: "Fire Door Schedule",
+    scope: "fire_door_schedule",
+    isStandard: true,
+  },
+  {
+    key: "sign_off_status",
+    label: "Sign Off Status",
+    type: "SELECT",
+    options: ["AWAITING SCHEDULE", "WORKING ON SCHEDULE", "SCHEDULE SENT FOR SIGN OFF", "SCHEDULE SIGNED OFF", "NOT LOOKED AT"],
+    required: false,
+    helpText: "Schedule approval status",
+    sortOrder: 402,
+    group: "Fire Door Schedule",
+    scope: "fire_door_schedule",
+    isStandard: true,
+  },
+  {
+    key: "date_received",
+    label: "Date Received",
+    type: "DATE",
+    required: false,
+    helpText: "When order was received",
+    sortOrder: 403,
+    group: "Fire Door Schedule",
+    scope: "fire_door_schedule",
+    isStandard: true,
+  },
+  {
+    key: "date_required",
+    label: "Date Required",
+    type: "DATE",
+    required: false,
+    helpText: "Deadline for completion",
+    sortOrder: 404,
+    group: "Fire Door Schedule",
+    scope: "fire_door_schedule",
+    isStandard: true,
+  },
+  {
+    key: "po_number",
+    label: "PO Number",
+    type: "TEXT",
+    required: false,
+    helpText: "Purchase order reference",
+    placeholder: "e.g., PO-12345",
+    sortOrder: 405,
+    group: "Fire Door Schedule",
+    scope: "fire_door_schedule",
+    isStandard: true,
+  },
+
+  // ============ FIRE DOOR LINE ITEMS (door-level specifications) ============
+  {
+    key: "door_ref",
+    label: "Door Reference",
+    type: "TEXT",
+    required: false,
+    helpText: "Door identification code",
+    placeholder: "e.g., FD-01",
+    sortOrder: 500,
+    group: "Fire Door Line Items",
+    scope: "fire_door_line_items",
+    isStandard: true,
+  },
+  {
+    key: "fire_rating",
+    label: "Fire Rating",
+    type: "SELECT",
+    options: ["FD30", "FD60", "FD90", "FD120", "N/A"],
+    required: false,
+    helpText: "Fire resistance rating",
+    sortOrder: 501,
+    group: "Fire Door Line Items",
+    scope: "fire_door_line_items",
+    isStandard: true,
+  },
+  {
+    key: "door_set_type",
+    label: "Doorset Type",
+    type: "SELECT",
+    options: ["Single", "Double", "Double Active", "Single with Sidelight", "Double with Sidelight"],
+    required: false,
+    helpText: "Configuration type",
+    sortOrder: 502,
+    group: "Fire Door Line Items",
+    scope: "fire_door_line_items",
+    isStandard: true,
+  },
+  {
+    key: "leaf_height_mm",
+    label: "Leaf Height (mm)",
+    type: "NUMBER",
+    required: false,
+    helpText: "Door leaf height",
+    placeholder: "e.g., 2040",
+    sortOrder: 503,
+    group: "Fire Door Line Items",
+    scope: "fire_door_line_items",
+    isStandard: true,
+  },
+  {
+    key: "leaf_width_mm",
+    label: "Leaf Width (mm)",
+    type: "NUMBER",
+    required: false,
+    helpText: "Door leaf width",
+    placeholder: "e.g., 826",
+    sortOrder: 504,
+    group: "Fire Door Line Items",
+    scope: "fire_door_line_items",
+    isStandard: true,
+  },
+  {
+    key: "leaf_thickness_mm",
+    label: "Leaf Thickness (mm)",
+    type: "NUMBER",
+    required: false,
+    helpText: "Door leaf thickness",
+    placeholder: "e.g., 44",
+    sortOrder: 505,
+    group: "Fire Door Line Items",
+    scope: "fire_door_line_items",
+    isStandard: true,
+  },
+  {
+    key: "glazed_area",
+    label: "Glazed Area",
+    type: "BOOLEAN",
+    required: false,
+    helpText: "Has vision panel",
+    sortOrder: 506,
+    group: "Fire Door Line Items",
+    scope: "fire_door_line_items",
+    isStandard: true,
+  },
+  {
+    key: "acoustic_rating_db",
+    label: "Acoustic Rating (dB)",
+    type: "NUMBER",
+    required: false,
+    helpText: "Sound reduction rating",
+    placeholder: "e.g., 30",
+    sortOrder: 507,
+    group: "Fire Door Line Items",
+    scope: "fire_door_line_items",
+    isStandard: true,
+  },
 ];
 
 /**
@@ -319,14 +553,14 @@ export function getFieldsByGroup(group: string): StandardFieldDefinition[] {
  */
 export function getFieldGroups(): string[] {
   const groups = [...new Set(STANDARD_FIELDS.map((f) => f.group).filter(Boolean))];
-  const order = ["Client Profile", "Public Questionnaire", "Internal", "Manufacturing"];
+  const order = ["Client Profile", "Quote Details", "Manufacturing", "Fire Door Schedule", "Fire Door Line Items", "Public Questionnaire", "Internal"];
   return order.filter((g) => groups.includes(g));
 }
 
 /**
  * Get fields by scope for context-specific rendering
  */
-export function getFieldsByScope(scope: "client" | "public" | "internal" | "manufacturing"): StandardFieldDefinition[] {
+export function getFieldsByScope(scope: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal"): StandardFieldDefinition[] {
   return STANDARD_FIELDS.filter((f) => f.scope === scope);
 }
 
