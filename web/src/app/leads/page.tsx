@@ -1232,6 +1232,29 @@ function LeadCard({
         </button>
 
         <div className="shrink-0 flex flex-col items-end gap-2 text-right">
+          {/* Task Count Badge */}
+          {lead.taskCount !== undefined && lead.taskCount > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen();
+                // Wait a moment then switch to tasks tab
+                setTimeout(() => {
+                  const event = new CustomEvent('lead-modal-set-stage', { detail: { stage: 'tasks' } });
+                  window.dispatchEvent(event);
+                }, 100);
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+              title={`${lead.taskCount} open task${lead.taskCount !== 1 ? 's' : ''}`}
+              type="button"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              {lead.taskCount}
+            </button>
+          )}
+          
           {lead.status === "NEW_ENQUIRY" && (
             <Button
               variant="destructive"

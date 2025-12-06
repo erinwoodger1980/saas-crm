@@ -830,6 +830,20 @@ router.get("/grouped", async (req, res) => {
     }
   });
 
+  // Get task counts for all leads
+  const leadIds = rows.map(l => l.id);
+  const taskCounts = await prisma.task.groupBy({
+    by: ['relatedId'],
+    where: {
+      tenantId,
+      relatedType: 'LEAD',
+      relatedId: { in: leadIds },
+      status: { notIn: ['DONE', 'CANCELLED'] }
+    },
+    _count: true
+  });
+  const taskCountMap = new Map(taskCounts.map(t => [t.relatedId, t._count]));
+
   const grouped: Record<UiStatus, any[]> = Object.fromEntries(
     UI_BUCKETS.map((s) => [s, [] as any[]])
   ) as any;
@@ -839,7 +853,8 @@ router.get("/grouped", async (req, res) => {
     const bucket = ui ?? dbToUi(l.status);
     (grouped[bucket] || grouped.NEW_ENQUIRY).push({
       ...l,
-      opportunityId: l.opportunity?.id || null
+      opportunityId: l.opportunity?.id || null,
+      taskCount: taskCountMap.get(l.id) || 0
     });
   }
 

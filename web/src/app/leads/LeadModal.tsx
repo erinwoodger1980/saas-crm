@@ -64,6 +64,7 @@ export type Lead = {
     timestamp: string;
   }> | null;
   visionInferences?: VisionInference[] | null;
+  taskCount?: number;
 };
 
 type Task = {
@@ -391,6 +392,18 @@ export default function LeadModal({
       setCurrentStage("tasks");
     }
   }, [showFollowUp]);
+
+  // Listen for external stage change requests (e.g., from task count badge)
+  useEffect(() => {
+    const handleStageChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ stage: Stage }>;
+      if (customEvent.detail?.stage && open) {
+        setCurrentStage(customEvent.detail.stage);
+      }
+    };
+    window.addEventListener('lead-modal-set-stage', handleStageChange);
+    return () => window.removeEventListener('lead-modal-set-stage', handleStageChange);
+  }, [open]);
 
   // Form inputs
   const [numberInput, setNumberInput] = useState("");
