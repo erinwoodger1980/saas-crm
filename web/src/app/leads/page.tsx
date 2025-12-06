@@ -6,6 +6,9 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { CustomizableGrid } from "@/components/CustomizableGrid";
+import { ColumnConfigModal } from "@/components/ColumnConfigModal";
+import { Table, LayoutGrid } from "lucide-react";
 // Robust dynamic import with typed props & fallback component
 interface LeadModalProps {
   open: boolean;
@@ -96,6 +99,42 @@ const ACTIVE_TABS: LeadStatus[] = [
   "READY_TO_QUOTE",
 ];
 
+// Available fields for column configuration
+const AVAILABLE_LEAD_FIELDS = [
+  { field: 'contactName', label: 'Contact Name', type: 'text' },
+  { field: 'email', label: 'Email', type: 'email' },
+  { field: 'phone', label: 'Phone', type: 'phone' },
+  { field: 'number', label: 'Lead #', type: 'text' },
+  {
+    field: 'status',
+    label: 'Status',
+    type: 'dropdown',
+    dropdownOptions: ACTIVE_TABS,
+    dropdownColors: {
+      'NEW_ENQUIRY': 'bg-blue-100 text-blue-700 border-blue-200',
+      'INFO_REQUESTED': 'bg-orange-100 text-orange-700 border-orange-200',
+      'DISQUALIFIED': 'bg-red-100 text-red-700 border-red-200',
+      'REJECTED': 'bg-slate-100 text-slate-700 border-slate-200',
+      'READY_TO_QUOTE': 'bg-purple-100 text-purple-700 border-purple-200',
+      'QUOTE_SENT': 'bg-green-100 text-green-700 border-green-200',
+      'WON': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'LOST': 'bg-gray-100 text-gray-700 border-gray-200',
+    }
+  },
+  { field: 'description', label: 'Description', type: 'text' },
+  { field: 'estimatedValue', label: 'Est. Value', type: 'currency' },
+  { field: 'quotedValue', label: 'Quoted Value', type: 'currency' },
+  { field: 'dateQuoteSent', label: 'Quote Sent Date', type: 'date' },
+  { field: 'capturedAt', label: 'Captured At', type: 'date' },
+  { field: 'quoteStatus', label: 'Quote Status', type: 'text' },
+  { field: 'custom.companyName', label: 'Company', type: 'text' },
+  { field: 'custom.address', label: 'Address', type: 'text' },
+  { field: 'custom.city', label: 'City', type: 'text' },
+  { field: 'custom.postcode', label: 'Postcode', type: 'text' },
+  { field: 'custom.source', label: 'Source', type: 'text' },
+  { field: 'custom.projectType', label: 'Project Type', type: 'text' },
+];
+
 /* -------------------------------- Email Upload Types -------------------------------- */
 
 type EmailUpload = {
@@ -141,6 +180,44 @@ function LeadsPageContent() {
   const [leadPreview, setLeadPreview] = useState<Lead | null>(null);
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const { toast } = useToast();
+
+  // view toggle state
+  const [viewMode, setViewMode] = useState<'cards' | 'grid'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('leads-view-mode') as 'cards' | 'grid') || 'cards';
+    }
+    return 'cards';
+  });
+
+  // column configuration state
+  const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [columnConfig, setColumnConfig] = useState<any[]>([]);
+
+  // Load column config for current tab
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`leads-column-config-${tab}`);
+      if (saved) {
+        try {
+          setColumnConfig(JSON.parse(saved));
+        } catch {
+          setColumnConfig([
+            { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
+            { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
+            { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
+            { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown' },
+          ]);
+        }
+      } else {
+        setColumnConfig([
+          { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
+          { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
+          { field: 'phone', label: 'Phone', visible: true, frozen: false, width: 150 },
+          { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown' },
+        ]);
+      }
+    }
+  }, [tab]);
 
   // email upload state
   const [emailUploadQueue, setEmailUploadQueue] = useState<EmailUpload[]>([]);
@@ -522,6 +599,47 @@ function LeadsPageContent() {
     }
   }
 
+  // View toggle handler
+  function toggleViewMode() {
+    const newMode = viewMode === 'cards' ? 'grid' : 'cards';
+    setViewMode(newMode);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('leads-view-mode', newMode);
+    }
+  }
+
+  // Column config save handler
+  function handleSaveColumnConfig(newConfig: any[]) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`leads-column-config-${tab}`, JSON.stringify(newConfig));
+    }
+    setColumnConfig(newConfig);
+    setShowColumnConfig(false);
+  }
+
+  // Handle cell change in grid
+  async function handleCellChange(leadId: string, field: string, value: any) {
+    try {
+      await apiFetch(`/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: buildAuthHeaders(),
+        body: JSON.stringify({ [field]: value }),
+      });
+      // Refresh data
+      await refreshGrouped();
+      toast({
+        title: "Lead updated",
+        description: "Changes saved successfully",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Update failed",
+        description: e?.message || "Failed to update lead",
+        variant: "destructive",
+      });
+    }
+  }
+
   function addEmailFilesToQueue(files: File[]) {
     // Filter for email-like files (.eml, .msg, .txt) and check MIME types
     const emailFiles = files.filter(file => {
@@ -695,6 +813,15 @@ function LeadsPageContent() {
               variant="ghost"
               className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300"
               type="button"
+              onClick={toggleViewMode}
+              title={viewMode === 'cards' ? 'Switch to Grid View' : 'Switch to Card View'}
+            >
+              {viewMode === 'cards' ? <LayoutGrid className="h-4 w-4" /> : <Table className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300"
+              type="button"
               onClick={refreshGrouped}
             >
               Refresh
@@ -735,9 +862,21 @@ function LeadsPageContent() {
         <SectionCard
           title="Inbox"
           action={
-            <span className="text-xs font-medium text-slate-500">
-              {loading ? "Syncing…" : `${rows.length} in “${STATUS_LABELS[tab]}”`}
-            </span>
+            <div className="flex items-center gap-3">
+              {viewMode === 'grid' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowColumnConfig(true)}
+                  type="button"
+                >
+                  Customize Columns
+                </Button>
+              )}
+              <span className="text-xs font-medium text-slate-500">
+                {loading ? "Syncing…" : `${rows.length} in "${STATUS_LABELS[tab]}"`}
+              </span>
+            </div>
           }
         >
           {error && (
@@ -760,6 +899,13 @@ function LeadsPageContent() {
                   Refresh Inbox
                 </Button>
               }
+            />
+          ) : viewMode === 'grid' ? (
+            <CustomizableGrid
+              data={rows}
+              columns={columnConfig}
+              onRowClick={openLead}
+              onCellChange={handleCellChange}
             />
           ) : (
             <div className="grid gap-3">
@@ -947,6 +1093,14 @@ function LeadsPageContent() {
           }}
         />
       )}
+
+      <ColumnConfigModal
+        open={showColumnConfig}
+        onClose={() => setShowColumnConfig(false)}
+        availableFields={AVAILABLE_LEAD_FIELDS}
+        currentConfig={columnConfig}
+        onSave={handleSaveColumnConfig}
+      />
     </>
   );
 }
