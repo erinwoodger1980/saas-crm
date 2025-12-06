@@ -7,6 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Users, Plus, Check, X, Search, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
+type ClientContact = {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  isPrimary: boolean;
+};
+
 type Client = {
   id: string;
   name: string;
@@ -14,6 +22,7 @@ type Client = {
   phone?: string | null;
   companyName?: string | null;
   city?: string | null;
+  contacts?: ClientContact[];
 };
 
 type ClientSelectorProps = {
@@ -60,11 +69,18 @@ export function ClientSelector({
   }, [currentClientId, clients]);
 
   useEffect(() => {
-    // Auto-suggest client based on email
+    // Auto-suggest client based on email - check both client email and all contact emails
     if (contactEmail && clients.length > 0 && !currentClientId) {
-      const suggested = clients.find(
-        (c) => c.email?.toLowerCase() === contactEmail.toLowerCase()
-      );
+      const emailLower = contactEmail.toLowerCase();
+      const suggested = clients.find((c) => {
+        // Check client's main email
+        if (c.email?.toLowerCase() === emailLower) return true;
+        // Check all contact emails
+        if (c.contacts?.some((contact) => contact.email?.toLowerCase() === emailLower)) {
+          return true;
+        }
+        return false;
+      });
       if (suggested) {
         setSuggestedClient(suggested);
       }

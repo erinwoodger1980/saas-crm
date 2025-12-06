@@ -9,9 +9,21 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DeskSurface } from "@/components/DeskSurface";
 import SectionCard from "@/components/SectionCard";
+import { ClientContacts } from "@/components/ClientContacts";
 import { ArrowLeft, Save, Mail, Phone, MapPin, Building, Edit, Check, X } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
+
+type ClientContact = {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  position?: string | null;
+  isPrimary: boolean;
+  notes?: string | null;
+};
 
 type Client = {
   id: string;
@@ -25,6 +37,7 @@ type Client = {
   postcode?: string | null;
   notes?: string | null;
   createdAt: string;
+  contacts?: ClientContact[];
 };
 
 type Lead = {
@@ -319,6 +332,35 @@ export default function ClientDetailPage() {
               )}
             </div>
           </div>
+        </SectionCard>
+
+        {/* Contacts */}
+        <SectionCard title="Contacts">
+          <ClientContacts
+            clientId={clientId}
+            contacts={client.contacts || []}
+            onRefresh={loadClient}
+            onAddContact={async (data) => {
+              await apiFetch(`/clients/${clientId}/contacts`, {
+                method: "POST",
+                headers: authHeaders,
+                json: data,
+              });
+            }}
+            onUpdateContact={async (contactId, data) => {
+              await apiFetch(`/clients/${clientId}/contacts/${contactId}`, {
+                method: "PATCH",
+                headers: authHeaders,
+                json: data,
+              });
+            }}
+            onDeleteContact={async (contactId) => {
+              await apiFetch(`/clients/${clientId}/contacts/${contactId}`, {
+                method: "DELETE",
+                headers: authHeaders,
+              });
+            }}
+          />
         </SectionCard>
 
         {/* Address */}

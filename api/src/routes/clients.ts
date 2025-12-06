@@ -52,6 +52,19 @@ router.get("/", async (req, res) => {
         postcode: true,
         notes: true,
         createdAt: true,
+        contacts: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            isPrimary: true,
+          },
+          orderBy: [
+            { isPrimary: "desc" },
+            { createdAt: "asc" },
+          ],
+        },
         _count: {
           select: {
             leads: true,
@@ -122,6 +135,22 @@ router.get("/:id", async (req, res) => {
         country: true,
         createdAt: true,
         updatedAt: true,
+        contacts: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            mobile: true,
+            position: true,
+            isPrimary: true,
+            notes: true,
+          },
+          orderBy: [
+            { isPrimary: "desc" },
+            { createdAt: "asc" },
+          ],
+        },
       },
     });
 
@@ -422,6 +451,201 @@ router.delete("/:id", async (req, res) => {
   } catch (error) {
     console.error("Error deleting client:", error);
     res.status(500).json({ error: "Failed to delete client" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* GET /clients/:id/contacts - Get all contacts for a client         */
+/* ------------------------------------------------------------------ */
+
+router.get("/:id/contacts", async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { id } = req.params;
+
+    // Verify client belongs to tenant
+    const client = await prisma.client.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!client) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    const contacts = await prisma.clientContact.findMany({
+      where: { clientId: id },
+      orderBy: [
+        { isPrimary: "desc" },
+        { createdAt: "asc" },
+      ],
+    });
+
+    res.json(contacts);
+  } catch (error) {
+    console.error("Error fetching contacts:", error);
+    res.status(500).json({ error: "Failed to fetch contacts" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* POST /clients/:id/contacts - Add contact to client                */
+/* ------------------------------------------------------------------ */
+
+router.post("/:id/contacts", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId || !userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { id } = req.params;
+    const { name, email, phone, mobile, position, isPrimary, notes } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: "Contact name is required" });
+    }
+
+    // Verify client belongs to tenant
+    const client = await prisma.client.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!client) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    // If marking as primary, unset other primary contacts
+    if (isPrimary) {
+      await prisma.clientContact.updateMany({
+        where: { clientId: id, isPrimary: true },
+        data: { isPrimary: false },
+      });
+    }
+
+    const contact = await prisma.clientContact.create({
+      data: {
+        clientId: id,
+        name: name.trim(),
+        email: email?.trim() || null,
+        phone: phone?.trim() || null,
+        mobile: mobile?.trim() || null,
+        position: position?.trim() || null,
+        isPrimary: Boolean(isPrimary),
+        notes: notes?.trim() || null,
+      },
+    });
+
+    res.status(201).json(contact);
+  } catch (error) {
+    console.error("Error creating contact:", error);
+    res.status(500).json({ error: "Failed to create contact" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* PATCH /clients/:id/contacts/:contactId - Update contact           */
+/* ------------------------------------------------------------------ */
+
+router.patch("/:id/contacts/:contactId", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId || !userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { id, contactId } = req.params;
+    const { name, email, phone, mobile, position, isPrimary, notes } = req.body;
+
+    // Verify client belongs to tenant
+    const client = await prisma.client.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!client) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    // Verify contact belongs to client
+    const existing = await prisma.clientContact.findFirst({
+      where: { id: contactId, clientId: id },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Contact not found" });
+    }
+
+    // If marking as primary, unset other primary contacts
+    if (isPrimary && !existing.isPrimary) {
+      await prisma.clientContact.updateMany({
+        where: { clientId: id, isPrimary: true },
+        data: { isPrimary: false },
+      });
+    }
+
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name.trim();
+    if (email !== undefined) updateData.email = email?.trim() || null;
+    if (phone !== undefined) updateData.phone = phone?.trim() || null;
+    if (mobile !== undefined) updateData.mobile = mobile?.trim() || null;
+    if (position !== undefined) updateData.position = position?.trim() || null;
+    if (isPrimary !== undefined) updateData.isPrimary = Boolean(isPrimary);
+    if (notes !== undefined) updateData.notes = notes?.trim() || null;
+
+    const contact = await prisma.clientContact.update({
+      where: { id: contactId },
+      data: updateData,
+    });
+
+    res.json(contact);
+  } catch (error) {
+    console.error("Error updating contact:", error);
+    res.status(500).json({ error: "Failed to update contact" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* DELETE /clients/:id/contacts/:contactId - Delete contact          */
+/* ------------------------------------------------------------------ */
+
+router.delete("/:id/contacts/:contactId", async (req, res) => {
+  try {
+    const { tenantId, userId } = getAuth(req);
+    if (!tenantId || !userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { id, contactId } = req.params;
+
+    // Verify client belongs to tenant
+    const client = await prisma.client.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!client) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    // Verify contact belongs to client
+    const existing = await prisma.clientContact.findFirst({
+      where: { id: contactId, clientId: id },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Contact not found" });
+    }
+
+    await prisma.clientContact.delete({
+      where: { id: contactId },
+    });
+
+    res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting contact:", error);
+    res.status(500).json({ error: "Failed to delete contact" });
   }
 });
 

@@ -215,11 +215,31 @@ model Client {
   tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   leads         Lead[]
   opportunities Opportunity[]
+  contacts      ClientContact[]
 
   @@unique([tenantId, name, email])
   @@index([tenantId])
   @@index([tenantId, name])
   @@index([tenantId, email])
+}
+
+model ClientContact {
+  id        String   @id @default(cuid())
+  clientId  String
+  name      String
+  email     String?
+  phone     String?
+  mobile    String?
+  position  String?
+  isPrimary Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([email])
+  @@index([clientId, isPrimary])
 }
 
 model Lead {
