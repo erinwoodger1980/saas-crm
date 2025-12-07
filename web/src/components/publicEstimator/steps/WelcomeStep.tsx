@@ -126,7 +126,7 @@ export function WelcomeStep({
       </div>
 
       {/* Testimonial */}
-      {testimonials && testimonials.length > 0 && (
+      {testimonials && testimonials.length > 0 && testimonials[0].quote && testimonials[0].name && (
         <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 shadow-sm">
           <blockquote className="space-y-3">
             <p className="text-sm leading-relaxed text-slate-700">
