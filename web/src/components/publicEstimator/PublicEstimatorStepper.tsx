@@ -494,29 +494,31 @@ export function PublicEstimatorStepper({
           </div>
         </div>
 
-        {/* Estimate preview - only show after contact submission (step 7+) or for invite mode */}
-        {(isInviteMode && currentStep >= 3) && (
-          <div className="lg:col-span-5">
-            <div className="mt-6 lg:sticky lg:top-6 lg:mt-0">
-                  <EstimatePreviewCard
-                    estimate={estimatePreview}
-                    // Only show loading if no estimate yet (prevent flicker during refresh)
-                    isLoading={(!estimatePreview) && isLoadingEstimate}
-                    favouriteItemIds={data.favouriteItemIds}
-                    onToggleFavourite={handleToggleFavourite}
-                    onShare={handleShare}
-                    primaryColor={branding.primaryColor}
-                    companyName={branding.name}
-                    hidePrices={!isInviteMode}
-                    globalSpecs={data.globalSpecs}
-                  />
-              {/* Social Proof */}
-              <div className="mt-4">
-                <SocialProofPanel branding={branding} primaryColor={branding.primaryColor} />
-              </div>
+        {/* Right sidebar - estimate preview and social proof */}
+        <div className="lg:col-span-5">
+          <div className="mt-6 lg:sticky lg:top-6 lg:mt-0">
+            {/* Estimate preview - only show for invite mode after step 3 */}
+            {(isInviteMode && currentStep >= 3) && (
+              <EstimatePreviewCard
+                estimate={estimatePreview}
+                // Only show loading if no estimate yet (prevent flicker during refresh)
+                isLoading={(!estimatePreview) && isLoadingEstimate}
+                favouriteItemIds={data.favouriteItemIds}
+                onToggleFavourite={handleToggleFavourite}
+                onShare={handleShare}
+                primaryColor={branding.primaryColor}
+                companyName={branding.name}
+                hidePrices={!isInviteMode}
+                globalSpecs={data.globalSpecs}
+              />
+            )}
+            
+            {/* Social Proof - always show */}
+            <div className={isInviteMode && currentStep >= 3 ? "mt-4" : ""}>
+              <SocialProofPanel branding={branding} primaryColor={branding.primaryColor} />
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

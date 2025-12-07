@@ -1,0 +1,66 @@
+key,label,current_scope,correct_scope
+acoustic_rating_db,Acoustic Rating (dB),fire_door_line_items,fire_door_line_items
+additional_notes,Additional Details,client,client
+area_m2,Project Area (m²),internal,internal
+budget_range,Budget Range,client,client
+contact_name,Your Name,client,client
+custom_finish,Custom Finish,quote_details,DELETE
+date_received,Date Received,item,fire_door_schedule
+date_required,Date Required,fire_door_schedule,fire_door_schedule
+door_height_mm,Approx Height (mm),quote_details,quote_details
+door_ref,Door Reference,fire_door_line_items,fire_door_line_items
+door_set_type,Doorset Type,fire_door_line_items,fire_door_line_items
+door_type,Door Type,quote_details,quote_details
+door_width_mm,Door Width (mm),quote_details,quote_details
+email,Email Address,client,client
+final_height_mm,Final Height (mm),manufacturing,manufacturing
+final_width_mm,Final Width (mm),manufacturing,manufacturing
+finish,Finish,quote_details,quote_details
+fire_rated,Fire Rated,fire_door_schedule,fire_door_schedule
+fire_rating,Fire Rating,fire_door_line_items,fire_door_line_items
+glass_expected_at,Glass - Expected,item,DELETE
+glass_ordered_at,Glass - Ordered,item,DELETE
+glass_received_at,Glass - Received,item,DELETE
+glazed_area,Glazed Area,fire_door_line_items,fire_door_line_items
+glazing_type,Glazing Type,quote_details,quote_details
+has_curves,Curved or Arched Design,quote_details,quote_details
+installation_date,Installation Date,manufacturing,manufacturing
+installation_end_date,Installation End Date,manufacturing,manufacturing
+installation_required,Installation Required,client,client
+installation_start_date,Installation Start Date,manufacturing,manufacturing
+ironmongery_expected_at,Ironmongery - Expected,item,DELETE
+ironmongery_level,Ironmongery Level,quote_details,quote_details
+ironmongery_ordered_at,Ironmongery - Ordered,item,DELETE
+ironmongery_received_at,Ironmongery - Received,item,DELETE
+item_height_mm,Height (mm),item,DELETE
+item_width_mm,Width (mm),item,DELETE
+job_location,Job Location,fire_door_schedule,fire_door_schedule
+lead_source,How did you hear about us?,client,client
+leaf_height_mm,Leaf Height (mm),fire_door_line_items,fire_door_line_items
+leaf_thickness_mm,Leaf Thickness (mm),fire_door_line_items,fire_door_line_items
+leaf_width_mm,Leaf Width (mm),fire_door_line_items,fire_door_line_items
+manufacturing_end_date,Manufacturing End Date,manufacturing,manufacturing
+manufacturing_start_date,Manufacturing Start Date,manufacturing,manufacturing
+materials_grade,Materials Grade,quote_details,DELETE
+mjs_number,MJS Number,fire_door_schedule,fire_door_schedule
+num_doors,Number of Doors,item,DELETE
+num_windows,Number of Windows,item,DELETE
+paint_expected_at,Paint - Expected,item,DELETE
+paint_ordered_at,Paint - Ordered,item,DELETE
+paint_received_at,Paint - Received,item,DELETE
+phone,Phone Number,client,client
+po_number,PO Number,fire_door_schedule,fire_door_schedule
+premium_hardware,Premium Hardware,quote_details,DELETE
+production_notes,Production Notes,manufacturing,manufacturing
+project_description,Project Description,public,public
+project_type,Project Type,internal,internal
+property_listed,Listed Building,client,client
+quantity,Quantity,quote_details,quote_details
+region,Project Location,client,client
+sign_off_status,Sign Off Status,fire_door_schedule,fire_door_schedule
+timber_expected_at,Timber - Expected,item,DELETE
+timber_ordered_at,Timber - Ordered,item,DELETE
+timber_received_at,Timber - Received,item,DELETE
+timber_type,Timber Type,quote_details,quote_details
+timeframe,Project Timeframe,client,client
+window_style,Window Style,quote_details,quote_details

@@ -1757,7 +1757,7 @@ export default function SettingsPage() {
             <div className="flex flex-wrap gap-2">
               {([
                 { key: "client", label: "Client Details", description: "Name, email, phone, address" },
-                { key: "quote_details", label: "Quote Details", description: "Dimensions, materials, specifications" },
+                { key: "item", label: "Item Details", description: "Per-door/window: dimensions, materials, specs" },
                 { key: "manufacturing", label: "Manufacturing", description: "Installation dates, production notes" },
               ] as const).map(({ key, label, description }) => (
                 <button

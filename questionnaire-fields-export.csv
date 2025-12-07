@@ -1,0 +1,413 @@
+key,label,scope,isStandard
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+additional_notes,Additional Details,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+budget_range,Budget Range,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+contact_name,Your Name,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+email,Email Address,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+installation_required,Installation Required,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+lead_source,How did you hear about us?,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+phone,Phone Number,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+property_listed,Listed Building,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+region,Project Location,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+timeframe,Project Timeframe,client,t
+acoustic_rating_db,Acoustic Rating (dB),fire_door_line_items,t
+door_ref,Door Reference,fire_door_line_items,t
+door_set_type,Doorset Type,fire_door_line_items,t
+fire_rating,Fire Rating,fire_door_line_items,t
+glazed_area,Glazed Area,fire_door_line_items,t
+leaf_height_mm,Leaf Height (mm),fire_door_line_items,t
+leaf_thickness_mm,Leaf Thickness (mm),fire_door_line_items,t
+leaf_width_mm,Leaf Width (mm),fire_door_line_items,t
+date_required,Date Required,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+fire_rated,Fire Rated,fire_door_schedule,t
+job_location,Job Location,fire_door_schedule,t
+mjs_number,MJS Number,fire_door_schedule,t
+po_number,PO Number,fire_door_schedule,t
+sign_off_status,Sign Off Status,fire_door_schedule,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+area_m2,Project Area (m²),internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+project_type,Project Type,internal,t
+date_received,Date Received,item,t
+glass_expected_at,Glass - Expected,item,t
+glass_ordered_at,Glass - Ordered,item,t
+glass_received_at,Glass - Received,item,t
+ironmongery_expected_at,Ironmongery - Expected,item,t
+ironmongery_ordered_at,Ironmongery - Ordered,item,t
+ironmongery_received_at,Ironmongery - Received,item,t
+item_height_mm,Height (mm),item,t
+item_width_mm,Width (mm),item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_doors,Number of Doors,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+num_windows,Number of Windows,item,t
+paint_expected_at,Paint - Expected,item,t
+paint_ordered_at,Paint - Ordered,item,t
+paint_received_at,Paint - Received,item,t
+timber_expected_at,Timber - Expected,item,t
+timber_ordered_at,Timber - Ordered,item,t
+timber_received_at,Timber - Received,item,t
+final_height_mm,Final Height (mm),manufacturing,t
+final_height_mm,Final Height (mm),manufacturing,t
+final_height_mm,Final Height (mm),manufacturing,t
+final_height_mm,Final Height (mm),manufacturing,t
+final_width_mm,Final Width (mm),manufacturing,t
+final_width_mm,Final Width (mm),manufacturing,t
+final_width_mm,Final Width (mm),manufacturing,t
+final_width_mm,Final Width (mm),manufacturing,t
+installation_date,Installation Date,manufacturing,t
+installation_date,Installation Date,manufacturing,t
+installation_date,Installation Date,manufacturing,t
+installation_date,Installation Date,manufacturing,t
+installation_end_date,Installation End Date,manufacturing,t
+installation_start_date,Installation Start Date,manufacturing,t
+manufacturing_end_date,Manufacturing End Date,manufacturing,t
+manufacturing_start_date,Manufacturing Start Date,manufacturing,t
+production_notes,Production Notes,manufacturing,t
+production_notes,Production Notes,manufacturing,t
+production_notes,Production Notes,manufacturing,t
+production_notes,Production Notes,manufacturing,t
+project_description,Project Description,public,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+custom_finish,Custom Finish,quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Approx Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_height_mm,Door Height (mm),quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door / Window Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_type,Door Type,quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Approx Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+door_width_mm,Door Width (mm),quote_details,t
+finish,Finish,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+glazing_type,Glazing Type,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved / Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+has_curves,Curved or Arched Design,quote_details,t
+ironmongery_level,Ironmongery Level,quote_details,t
+ironmongery_level,Ironmongery Level,quote_details,t
+ironmongery_level,Ironmongery Level,quote_details,t
+ironmongery_level,Ironmongery Level,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+materials_grade,Materials Grade,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+premium_hardware,Premium Hardware,quote_details,t
+quantity,Quantity,quote_details,t
+quantity,Quantity,quote_details,t
+quantity,Quantity,quote_details,t
+quantity,Quantity,quote_details,t
+timber_type,Timber Type,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t
+window_style,Window Style,quote_details,t

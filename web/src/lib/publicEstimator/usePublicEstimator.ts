@@ -287,40 +287,13 @@ export function usePublicEstimator({
       try {
         setIsLoadingFields(true);
 
-        // Fetch client and public fields in parallel
-        const [client, public_] = await Promise.all([
+        // Fetch client and item fields (public estimator uses these scopes)
+        const [client, itemFields] = await Promise.all([
           fetchQuestionnaireFields({ tenantSlug: branding.slug, scope: 'client', includeStandard: true }),
-          fetchQuestionnaireFields({ tenantSlug: branding.slug, scope: 'public', includeStandard: true }),
+          fetchQuestionnaireFields({ tenantSlug: branding.slug, scope: 'item', includeStandard: true }),
         ]);
 
-        // Filter out manufacturing and fire door specific fields from public estimator
-        const excludedFields = [
-          'manufacturing_start_date',
-          'production_notes',
-          'manufacturing_end_date',
-          'installation_start_date',
-          'installation_end_date',
-          'installation_date',
-          'timber_ordered',
-          'timber_ordered_date',
-          'glass_ordered',
-          'glass_ordered_date',
-          'hardware_ordered',
-          'hardware_ordered_date',
-          'finish_specification',
-          'production_priority',
-          'workshop_notes',
-          'fire_door_certification',
-          'fire_rating',
-          'acoustic_rating',
-          'security_rating',
-          'u_value',
-          'air_permeability',
-          'water_tightness',
-          'wind_resistance',
-        ];
-
-        const filteredPublic = public_.filter(f => !excludedFields.includes(f.key));
+        const filteredPublic = itemFields;
 
         if (!cancelled) {
           setClientFields(client);
