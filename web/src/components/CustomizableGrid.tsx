@@ -35,6 +35,7 @@ export function CustomizableGrid({
   customColors = {},
 }: CustomizableGridProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   const visibleColumns = columns.filter(col => col.visible);
@@ -42,6 +43,19 @@ export function CustomizableGrid({
   const scrollableColumns = visibleColumns.filter(col => !col.frozen);
 
   const frozenWidth = frozenColumns.reduce((sum, col) => sum + (col.width || 150), 0);
+
+  // Sync scroll between header and body
+  const handleHeaderScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (bodyScrollRef.current) {
+      bodyScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
+
+  const handleBodyScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
 
   const formatCellValue = (value: any, column: ColumnConfig) => {
     if (value === null || value === undefined) return '-';
@@ -188,6 +202,7 @@ export function CustomizableGrid({
           ref={scrollContainerRef}
           className="flex-1 overflow-x-auto"
           style={{ scrollbarWidth: 'thin' }}
+          onScroll={handleHeaderScroll}
         >
           <div className="flex">
             {scrollableColumns.map((column) => (
@@ -218,68 +233,82 @@ export function CustomizableGrid({
         </div>
       </div>
 
-      {/* Body */}
+      {/* Body - Single scroll container for all rows */}
       <div className="max-h-[600px] overflow-y-auto">
-        {data.map((row, rowIndex) => {
-          const rowId = row[rowIdField];
-          const isHovered = hoveredRow === rowId;
-
-          return (
-            <div
-              key={rowId || rowIndex}
-              className={`flex border-b last:border-b-0 hover:bg-slate-50 transition-colors ${
-                onRowClick ? 'cursor-pointer' : ''
-              } ${isHovered ? 'bg-slate-50' : ''}`}
-              onClick={() => onRowClick?.(row)}
-              onMouseEnter={() => setHoveredRow(rowId)}
-              onMouseLeave={() => setHoveredRow(null)}
-            >
-              {/* Frozen Cells */}
-              {frozenColumns.length > 0 && (
-                <div
-                  className="flex-shrink-0 flex border-r bg-white"
-                  style={{ width: frozenWidth }}
-                >
-                  {frozenColumns.map((column) => (
+        <div className="flex flex-col">
+          {/* Frozen columns container */}
+          {frozenColumns.length > 0 && (
+            <div className="absolute left-0 top-0 bottom-0 z-10 pointer-events-none">
+              {data.map((row, rowIndex) => {
+                const rowId = row[rowIdField];
+                const isHovered = hoveredRow === rowId;
+                
+                return (
+                  <div
+                    key={`frozen-${rowId || rowIndex}`}
+                    className={`flex border-b last:border-b-0 bg-white pointer-events-auto ${
+                      isHovered ? 'bg-slate-50' : ''
+                    }`}
+                    style={{ height: '42px' }}
+                  >
                     <div
-                      key={column.field}
-                      className="border-r last:border-r-0 py-2 text-sm flex items-center"
-                      style={{ width: column.width || 150 }}
+                      className="flex-shrink-0 flex border-r"
+                      style={{ width: frozenWidth }}
                     >
-                      {renderCell(row, column)}
+                      {frozenColumns.map((column) => (
+                        <div
+                          key={column.field}
+                          className="border-r last:border-r-0 py-2 text-sm flex items-center"
+                          style={{ width: column.width || 150 }}
+                        >
+                          {renderCell(row, column)}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Scrollable Cells */}
-              <div
-                className="flex-1 overflow-x-auto"
-                style={{
-                  scrollbarWidth: 'none',
-                  msOverflowStyle: 'none',
-                }}
-                onScroll={(e) => {
-                  if (scrollContainerRef.current) {
-                    scrollContainerRef.current.scrollLeft = e.currentTarget.scrollLeft;
-                  }
-                }}
-              >
-                <div className="flex">
-                  {scrollableColumns.map((column) => (
-                    <div
-                      key={column.field}
-                      className="border-r last:border-r-0 py-2 text-sm flex items-center flex-shrink-0"
-                      style={{ width: column.width || 150 }}
-                    >
-                      {renderCell(row, column)}
-                    </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          )}
+
+          {/* Scrollable body */}
+          <div
+            ref={bodyScrollRef}
+            className="overflow-x-auto"
+            style={{ scrollbarWidth: 'thin' }}
+            onScroll={handleBodyScroll}
+          >
+            <div style={{ paddingLeft: frozenWidth }}>
+              {data.map((row, rowIndex) => {
+                const rowId = row[rowIdField];
+                const isHovered = hoveredRow === rowId;
+
+                return (
+                  <div
+                    key={rowId || rowIndex}
+                    className={`flex border-b last:border-b-0 hover:bg-slate-50 transition-colors ${
+                      onRowClick ? 'cursor-pointer' : ''
+                    } ${isHovered ? 'bg-slate-50' : ''}`}
+                    style={{ height: '42px' }}
+                    onClick={() => onRowClick?.(row)}
+                    onMouseEnter={() => setHoveredRow(rowId)}
+                    onMouseLeave={() => setHoveredRow(null)}
+                  >
+                    {scrollableColumns.map((column) => (
+                      <div
+                        key={column.field}
+                        className="border-r last:border-r-0 py-2 text-sm flex items-center flex-shrink-0"
+                        style={{ width: column.width || 150 }}
+                      >
+                        {renderCell(row, column)}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
