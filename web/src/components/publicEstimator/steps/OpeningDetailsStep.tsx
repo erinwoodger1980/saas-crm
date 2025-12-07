@@ -277,7 +277,7 @@ export function OpeningDetailsStep({
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Tell us about your openings</h2>
         <p className="mt-2 text-slate-600">
-          Add details for each door or window. The more info you provide, the more accurate your estimate.
+          Simply take photos of your doors and windows - our AI will measure them for you! Add any extra details you want to share.
         </p>
       </div>
 
@@ -390,7 +390,7 @@ export function OpeningDetailsStep({
                 </div>
               )}
               <p className="mt-1 text-xs text-slate-500">
-                Don't worry if you're not sure - we'll measure accurately during our site visit
+                Just upload photos and let AI measure! Our joiner will verify measurements during the site visit.
               </p>
               {/* Depth / LiDAR stub trigger */}
               <div className="mt-2">
@@ -430,7 +430,7 @@ export function OpeningDetailsStep({
             {/* Photo upload */}
             <div className="mb-4">
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                <Camera className="mb-1 inline h-4 w-4" /> Photos (optional)
+                <Camera className="mb-1 inline h-4 w-4" /> Photos (AI will measure for you!)
               </label>
               
               {/* Uploaded images */}
@@ -460,7 +460,7 @@ export function OpeningDetailsStep({
               >
                 <Camera className="h-5 w-5 text-slate-400" />
                 <span className="text-sm font-medium text-slate-600">
-                  {item.images?.length ? 'Add more photos' : 'Take or upload photos'}
+                  {item.images?.length ? 'Add more photos' : '📸 Snap a photo - AI measures it!'}
                 </span>
                 <input
                   type="file"

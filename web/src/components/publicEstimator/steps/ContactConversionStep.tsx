@@ -169,12 +169,12 @@ export function ContactConversionStep({
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-slate-900">
-          {isInviteMode ? 'Confirm your details' : 'Get your free quote'}
+          {isInviteMode ? 'Confirm your details' : 'Almost done!'}
         </h2>
         <p className="mt-2 text-slate-600">
           {isInviteMode
             ? `We have your details on file. Please confirm they're still correct.`
-            : `We'll send your estimate and arrange a free site survey. No obligation.`}
+            : `Our joiner will review your details and send you an accurate quote. No obligation.`}
         </p>
       </div>
 
@@ -350,23 +350,23 @@ export function ContactConversionStep({
 
       {/* Benefits recap */}
       <div className="rounded-2xl border-2 p-6" style={{ borderColor: `${primaryColor}30`, backgroundColor: `${primaryColor}05` }}>
-        <h4 className="font-semibold text-slate-900 mb-3">What you'll receive:</h4>
+        <h4 className="font-semibold text-slate-900 mb-3">What happens next:</h4>
         <ul className="space-y-2 text-sm text-slate-600">
           <li className="flex gap-2">
             <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>Your detailed estimate via email</span>
+            <span>Our joiner reviews your details and creates your quote</span>
           </li>
           <li className="flex gap-2">
             <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>Free, no-obligation site survey</span>
+            <span>You receive an accurate, detailed quote via email</span>
           </li>
           <li className="flex gap-2">
             <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>Expert advice on materials and specifications</span>
+            <span>Free site survey to confirm final measurements</span>
           </li>
           <li className="flex gap-2">
             <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>Full itemized quote with no hidden costs</span>
+            <span>No obligation - compare quotes at your leisure</span>
           </li>
         </ul>
       </div>
@@ -393,7 +393,7 @@ export function ContactConversionStep({
               Submitting...
             </span>
           ) : (
-            'Submit & get quote'
+            'Submit for review'
           )}
         </Button>
       </div>

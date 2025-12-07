@@ -59,7 +59,7 @@ export function WelcomeStep({
             )}
             <div>
               <h1 className="text-2xl font-bold text-slate-900">
-                Get your instant estimate
+                FREE estimator powered by AI
               </h1>
               <p className="text-sm text-slate-600">{brandName}</p>
             </div>
@@ -97,8 +97,8 @@ export function WelcomeStep({
         <div className="space-y-3">
           <Feature
             icon={<Clock className="h-5 w-5" />}
-            title="Instant rough estimate"
-            description="See pricing right away – takes just 3 minutes"
+            title="Quick & easy"
+            description="Answer a few questions – takes just 3 minutes"
             primaryColor={primaryColor}
           />
           <Feature
@@ -109,8 +109,8 @@ export function WelcomeStep({
           />
           <Feature
             icon={<Building2 className="h-5 w-5" />}
-            title="Expert follow-up"
-            description="We'll arrange a survey to confirm final details"
+            title="Expert pricing"
+            description="Our joiner reviews and sends you an accurate quote"
             primaryColor={primaryColor}
           />
         </div>
@@ -121,7 +121,7 @@ export function WelcomeStep({
         <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 shadow-sm">
           <blockquote className="space-y-3">
             <p className="text-sm leading-relaxed text-slate-700">
-              "{testimonials[0].quote}"
+              {testimonials[0].quote}
             </p>
             <footer className="text-sm font-medium text-slate-900">
               — {testimonials[0].name}

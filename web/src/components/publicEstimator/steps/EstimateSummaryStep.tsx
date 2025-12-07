@@ -233,15 +233,19 @@ export function EstimateSummaryStep({
         <ul className="mt-3 space-y-2 text-sm text-slate-600">
           <li className="flex gap-2">
             <ChevronRight className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>We'll arrange a free site survey to confirm measurements</span>
+            <span>Our joiner reviews your AI-measured photos and details</span>
           </li>
           <li className="flex gap-2">
             <ChevronRight className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>We'll provide a detailed, itemized quote</span>
+            <span>You'll receive an accurate, detailed quote via email</span>
           </li>
           <li className="flex gap-2">
             <ChevronRight className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>No obligation - you're free to compare quotes</span>
+            <span>Free site visit to verify measurements and finalize details</span>
+          </li>
+          <li className="flex gap-2">
+            <ChevronRight className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
+            <span>No obligation - take your time to compare quotes</span>
           </li>
         </ul>
       </div>
@@ -260,7 +264,7 @@ export function EstimateSummaryStep({
           className="flex-1 rounded-2xl py-6 text-base text-white"
           style={{ backgroundColor: primaryColor }}
         >
-          Get your quote
+          Submit for quote
         </Button>
       </div>
     </div>
