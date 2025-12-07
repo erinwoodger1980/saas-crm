@@ -150,8 +150,12 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, LayoutGrid } from "lucide-react";
 import WorkshopSwimlaneTimeline from "./WorkshopSwimlaneTimeline";
+import { CustomizableGrid } from "@/components/CustomizableGrid";
+import { ColumnConfigModal } from "@/components/ColumnConfigModal";
+import DropdownOptionsEditor from "@/components/DropdownOptionsEditor";
+import { useToast } from "@/components/ui/use-toast";
 
 import CalendarWeekView from "./CalendarWeekView";
 import CalendarYearView from "./CalendarYearView";
@@ -301,9 +305,49 @@ export default function WorkshopPage() {
   // Task notifications
   const { permission, requestPermission, isEnabled } = useTaskNotifications(user?.id ? Number(user.id) : null);
   
-  const [viewMode, setViewMode] = useState<'calendar' | 'timeline' | 'tasks'>('calendar');
+  const [viewMode, setViewMode] = useState<'calendar' | 'timeline' | 'tasks' | 'grid'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('workshop-view-mode');
+      if (saved && ['calendar', 'timeline', 'tasks', 'grid'].includes(saved)) {
+        return saved as 'calendar' | 'timeline' | 'tasks' | 'grid';
+      }
+    }
+    return 'calendar';
+  });
   const [calendarViewMode, setCalendarViewMode] = useState<'week' | 'month' | 'year'>('month'); // New state for calendar sub-views
   const [showValues, setShowValues] = useState(false); // Toggle between workshop view (false) and management view (true)
+  
+  // Grid view state
+  const { toast } = useToast();
+  const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [columnConfig, setColumnConfig] = useState<any[]>([]);
+  const [customColors, setCustomColors] = useState<Record<string, { bg: string; text: string }>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('workshop-grid-custom-colors');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {};
+        }
+      }
+    }
+    return {};
+  });
+  const [dropdownOptions, setDropdownOptions] = useState<Record<string, string[]>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('workshop-grid-dropdown-options');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {};
+        }
+      }
+    }
+    return {};
+  });
+  const [editingField, setEditingField] = useState<string | null>(null);
   const [timelineViewFilter, setTimelineViewFilter] = useState<'both' | 'manufacturing' | 'installation'>('both'); // Filter for timeline bars
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [currentWeek, setCurrentWeek] = useState(() => new Date());
@@ -1048,6 +1092,105 @@ export default function WorkshopPage() {
     setCalendarViewMode('month');
   };
 
+  // Grid view helper functions
+  const calculateProcessPercentage = (project: Project, processCode: string): number => {
+    const assignments = project.processAssignments || [];
+    const processAssignment = assignments.find(pa => pa.processCode === processCode);
+    if (!processAssignment) return 0;
+    
+    const totalHours = project.totalHoursByProcess?.[processCode] || 0;
+    const estimatedHours = processAssignment.estimatedHours || 0;
+    
+    if (estimatedHours === 0) return 0;
+    return Math.round((totalHours / estimatedHours) * 100);
+  };
+
+  const getAvailableGridFields = () => {
+    const baseFields = [
+      { field: 'name', label: 'Project Name', type: 'text' },
+      { field: 'valueGBP', label: 'Value (£)', type: 'number' },
+      { field: 'startDate', label: 'Start Date', type: 'date' },
+      { field: 'deliveryDate', label: 'Delivery Date', type: 'date' },
+      { field: 'installationStartDate', label: 'Installation Start', type: 'date' },
+      { field: 'installationEndDate', label: 'Installation End', type: 'date' },
+      { field: 'expectedHours', label: 'Expected Hours', type: 'number' },
+      { field: 'actualHours', label: 'Actual Hours', type: 'number' },
+      { field: 'totalProjectHours', label: 'Total Hours', type: 'number' },
+      { field: 'timberOrderedAt', label: 'Timber Ordered', type: 'date' },
+      { field: 'timberExpectedAt', label: 'Timber Expected', type: 'date' },
+      { field: 'timberReceivedAt', label: 'Timber Received', type: 'date' },
+      { field: 'glassOrderedAt', label: 'Glass Ordered', type: 'date' },
+      { field: 'glassExpectedAt', label: 'Glass Expected', type: 'date' },
+      { field: 'glassReceivedAt', label: 'Glass Received', type: 'date' },
+      { field: 'ironmongeryOrderedAt', label: 'Ironmongery Ordered', type: 'date' },
+      { field: 'ironmongeryExpectedAt', label: 'Ironmongery Expected', type: 'date' },
+      { field: 'ironmongeryReceivedAt', label: 'Ironmongery Received', type: 'date' },
+      { field: 'paintOrderedAt', label: 'Paint Ordered', type: 'date' },
+      { field: 'paintExpectedAt', label: 'Paint Expected', type: 'date' },
+      { field: 'paintReceivedAt', label: 'Paint Received', type: 'date' },
+    ];
+
+    // Add process percentage columns
+    const processFields = processDefs.map(proc => ({
+      field: `${proc.code}_percentage`,
+      label: `${proc.name} %`,
+      type: 'progress',
+    }));
+
+    return [...baseFields, ...processFields];
+  };
+
+  const getDefaultDropdownOptions = (field: string): string[] => {
+    // Return empty array as default - no dropdowns in workshop grid by default
+    return [];
+  };
+
+  // Load column config for grid view
+  useEffect(() => {
+    if (viewMode === 'grid' && typeof window !== 'undefined') {
+      const saved = localStorage.getItem('workshop-grid-column-config');
+      if (saved) {
+        try {
+          setColumnConfig(JSON.parse(saved));
+        } catch {
+          // Set default config
+          setColumnConfig([
+            { field: 'name', label: 'Project Name', visible: true, frozen: true, width: 250 },
+            { field: 'valueGBP', label: 'Value (£)', visible: true, frozen: false, width: 120, type: 'number' },
+            { field: 'startDate', label: 'Start Date', visible: true, frozen: false, width: 150, type: 'date' },
+            { field: 'deliveryDate', label: 'Delivery Date', visible: true, frozen: false, width: 150, type: 'date' },
+            { field: 'totalProjectHours', label: 'Total Hours', visible: true, frozen: false, width: 120, type: 'number' },
+            ...processDefs.map(proc => ({
+              field: `${proc.code}_percentage`,
+              label: `${proc.name} %`,
+              visible: true,
+              frozen: false,
+              width: 150,
+              type: 'progress',
+            })),
+          ]);
+        }
+      } else {
+        // Set default config
+        setColumnConfig([
+          { field: 'name', label: 'Project Name', visible: true, frozen: true, width: 250 },
+          { field: 'valueGBP', label: 'Value (£)', visible: true, frozen: false, width: 120, type: 'number' },
+          { field: 'startDate', label: 'Start Date', visible: true, frozen: false, width: 150, type: 'date' },
+          { field: 'deliveryDate', label: 'Delivery Date', visible: true, frozen: false, width: 150, type: 'date' },
+          { field: 'totalProjectHours', label: 'Total Hours', visible: true, frozen: false, width: 120, type: 'number' },
+          ...processDefs.map(proc => ({
+            field: `${proc.code}_percentage`,
+            label: `${proc.name} %`,
+            visible: true,
+            frozen: false,
+            width: 150,
+            type: 'progress',
+          })),
+        ]);
+      }
+    }
+  }, [viewMode, processDefs]);
+
   if (loading) return (
     <div className="p-2">
       <h1 className="text-2xl font-semibold mb-2">Workshop</h1>
@@ -1072,86 +1215,128 @@ export default function WorkshopPage() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <NotificationToggle 
             permission={permission}
             onEnable={requestPermission}
           />
           <span className="text-sm text-muted-foreground">{projects.length} project{projects.length !== 1 ? 's' : ''}</span>
+          
+          {/* View Mode Toggle */}
           {!isWorkshopOnly && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => window.location.href = '/timesheets'}>
-                📋 View Timesheets
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowQuickLog(true)}>
-                Quick Log Hours
-              </Button>
+            <div className="flex items-center gap-1 rounded-lg border bg-background p-1">
               <Button 
-                variant={viewMode === 'calendar' ? 'default' : 'outline'} 
+                variant={viewMode === 'calendar' ? 'default' : 'ghost'} 
                 size="sm" 
-                onClick={() => setViewMode('calendar')}
+                onClick={() => {
+                  setViewMode('calendar');
+                  if (typeof window !== 'undefined') localStorage.setItem('workshop-view-mode', 'calendar');
+                }}
+                className="h-8"
               >
-                <CalendarIcon className="w-4 h-4 mr-2" />
+                <CalendarIcon className="w-4 h-4 mr-1" />
                 Calendar
               </Button>
               <Button 
-                variant={viewMode === 'timeline' ? 'default' : 'outline'} 
+                variant={viewMode === 'timeline' ? 'default' : 'ghost'} 
                 size="sm" 
-                onClick={() => setViewMode('timeline')}
+                onClick={() => {
+                  setViewMode('timeline');
+                  if (typeof window !== 'undefined') localStorage.setItem('workshop-view-mode', 'timeline');
+                }}
+                className="h-8"
               >
-                Timeline (Swimlane)
+                Timeline
               </Button>
-              <div className="h-6 w-px bg-border" />
               <Button 
-                variant={showValues ? 'default' : 'outline'} 
+                variant={viewMode === 'grid' ? 'default' : 'ghost'} 
                 size="sm" 
-                onClick={() => setShowValues(!showValues)}
-                title={showValues ? "Hide values (Workshop View)" : "Show values (Management View)"}
+                onClick={() => {
+                  setViewMode('grid');
+                  if (typeof window !== 'undefined') localStorage.setItem('workshop-view-mode', 'grid');
+                }}
+                className="h-8"
               >
-                {showValues ? '£ Values' : '🔧 Workshop'}
+                <LayoutGrid className="w-4 h-4 mr-1" />
+                Grid
               </Button>
-              <div className="h-6 w-px bg-border" />
-              <div className="flex items-center gap-1">
-                <Button 
-                  variant={timelineViewFilter === 'both' ? 'default' : 'outline'} 
-                  size="sm" 
-                  onClick={() => setTimelineViewFilter('both')}
-                  title="Show both manufacturing and installation"
-                >
-                  Both
-                </Button>
-                <Button 
-                  variant={timelineViewFilter === 'manufacturing' ? 'default' : 'outline'} 
-                  size="sm" 
-                  onClick={() => setTimelineViewFilter('manufacturing')}
-                  title="Show only manufacturing"
-                >
-                  🏭 Mfg
-                </Button>
-                <Button 
-                  variant={timelineViewFilter === 'installation' ? 'default' : 'outline'} 
-                  size="sm" 
-                  onClick={() => setTimelineViewFilter('installation')}
-                  title="Show only installation"
-                >
-                  🔧 Install
-                </Button>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setShowHolidayModal(true)}>Holidays</Button>
-              <Button variant="outline" size="sm" onClick={() => setShowUserColors(true)}>User Colors</Button>
-            </>
+            </div>
           )}
-          <Button variant="outline" size="sm" onClick={loadAll}>Refresh</Button>
+          
+          {/* Quick Actions Dropdown */}
           {!isWorkshopOnly && (
-            <Button 
-              variant={isFullscreen ? "default" : "outline"} 
-              size="sm" 
-              onClick={toggleFullscreen}
-              title={isFullscreen ? "Exit fullscreen display mode" : "Enter fullscreen display mode (auto-refreshes every 5 min)"}
-            >
-              {isFullscreen ? "Exit Display" : "📺 Display Mode"}
-            </Button>
+            <Select onValueChange={(value) => {
+              if (value === 'timesheets') window.location.href = '/timesheets';
+              else if (value === 'quicklog') setShowQuickLog(true);
+              else if (value === 'holidays') setShowHolidayModal(true);
+              else if (value === 'usercolors') setShowUserColors(true);
+            }}>
+              <SelectTrigger className="w-[140px] h-9">
+                <SelectValue placeholder="Actions" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="quicklog">📝 Quick Log Hours</SelectItem>
+                <SelectItem value="timesheets">📋 View Timesheets</SelectItem>
+                <SelectItem value="holidays">🏖️ Holidays</SelectItem>
+                <SelectItem value="usercolors">🎨 User Colors</SelectItem>
+              </SelectContent>
+            </Select>
           )}
+          
+          {/* Display Options Dropdown */}
+          {!isWorkshopOnly && (
+            <Select onValueChange={(value) => {
+              if (value === 'workshop') setShowValues(false);
+              else if (value === 'values') setShowValues(true);
+              else if (value === 'fullscreen') toggleFullscreen();
+            }} value={showValues ? 'values' : 'workshop'}>
+              <SelectTrigger className="w-[140px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="workshop">🔧 Workshop View</SelectItem>
+                <SelectItem value="values">£ Values View</SelectItem>
+                <SelectItem value="fullscreen">{isFullscreen ? '↙️ Exit Display' : '📺 Display Mode'}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          
+          {/* Timeline Filter (only shown in timeline view) */}
+          {!isWorkshopOnly && viewMode === 'timeline' && (
+            <div className="flex items-center gap-1 rounded-lg border bg-background p-1">
+              <Button 
+                variant={timelineViewFilter === 'both' ? 'default' : 'ghost'} 
+                size="sm" 
+                onClick={() => setTimelineViewFilter('both')}
+                className="h-8 px-2"
+                title="Show both"
+              >
+                Both
+              </Button>
+              <Button 
+                variant={timelineViewFilter === 'manufacturing' ? 'default' : 'ghost'} 
+                size="sm" 
+                onClick={() => setTimelineViewFilter('manufacturing')}
+                className="h-8 px-2"
+                title="Manufacturing only"
+              >
+                🏭
+              </Button>
+              <Button 
+                variant={timelineViewFilter === 'installation' ? 'default' : 'ghost'} 
+                size="sm" 
+                onClick={() => setTimelineViewFilter('installation')}
+                className="h-8 px-2"
+                title="Installation only"
+              >
+                🔧
+              </Button>
+            </div>
+          )}
+          
+          <Button variant="outline" size="sm" onClick={loadAll} className="h-9">
+            🔄 Refresh
+          </Button>
         </div>
       </div>
 
@@ -1769,6 +1954,134 @@ export default function WorkshopPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Grid View */}
+      {viewMode === 'grid' && (
+        <div className="space-y-4">
+          {/* Grid Header with Column Config Button */}
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Projects Grid</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowColumnConfig(true)}
+            >
+              ⚙️ Configure Columns
+            </Button>
+          </div>
+
+          {/* CustomizableGrid */}
+          {projects.length > 0 ? (
+            <CustomizableGrid
+              data={projects.map(p => ({
+                id: p.id,
+                name: p.name,
+                valueGBP: p.valueGBP,
+                startDate: p.startDate,
+                deliveryDate: p.deliveryDate,
+                installationStartDate: p.installationStartDate,
+                installationEndDate: p.installationEndDate,
+                expectedHours: p.expectedHours,
+                actualHours: p.actualHours,
+                totalProjectHours: p.totalProjectHours,
+                timberOrderedAt: p.timberOrderedAt,
+                timberExpectedAt: p.timberExpectedAt,
+                timberReceivedAt: p.timberReceivedAt,
+                timberNotApplicable: p.timberNotApplicable,
+                glassOrderedAt: p.glassOrderedAt,
+                glassExpectedAt: p.glassExpectedAt,
+                glassReceivedAt: p.glassReceivedAt,
+                glassNotApplicable: p.glassNotApplicable,
+                ironmongeryOrderedAt: p.ironmongeryOrderedAt,
+                ironmongeryExpectedAt: p.ironmongeryExpectedAt,
+                ironmongeryReceivedAt: p.ironmongeryReceivedAt,
+                ironmongeryNotApplicable: p.ironmongeryNotApplicable,
+                paintOrderedAt: p.paintOrderedAt,
+                paintExpectedAt: p.paintExpectedAt,
+                paintReceivedAt: p.paintReceivedAt,
+                paintNotApplicable: p.paintNotApplicable,
+                ...Object.fromEntries(
+                  processDefs.map(proc => [
+                    `${proc.code}_percentage`,
+                    calculateProcessPercentage(p, proc.code)
+                  ])
+                ),
+              }))}
+              columns={columnConfig.filter((col) => col.visible)}
+              onRowClick={(project) => setShowProjectDetails(project.id)}
+              onCellChange={async (projectId, field, value) => {
+                try {
+                  // Update via API
+                  await apiFetch(`/workshop/projects/${projectId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [field]: value }),
+                  });
+                  await loadAll();
+                  toast({
+                    title: "Project updated",
+                    description: "Changes saved successfully",
+                  });
+                } catch (e: any) {
+                  toast({
+                    title: "Update failed",
+                    description: e?.message || "Failed to update project",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              rowIdField="id"
+              onEditColumnOptions={(field) => setEditingField(field)}
+              customColors={customColors}
+              customDropdownOptions={dropdownOptions}
+            />
+          ) : (
+            <Card className="p-8 text-center text-muted-foreground">
+              <p>No projects found. Mark a lead as Won to create a project.</p>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Column Configuration Modal */}
+      {showColumnConfig && (
+        <ColumnConfigModal
+          open={showColumnConfig}
+          availableFields={getAvailableGridFields()}
+          currentConfig={columnConfig}
+          onSave={(newConfig) => {
+            setColumnConfig(newConfig);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('workshop-grid-column-config', JSON.stringify(newConfig));
+            }
+            setShowColumnConfig(false);
+          }}
+          onClose={() => setShowColumnConfig(false)}
+        />
+      )}
+
+      {/* Dropdown Options Editor Modal */}
+      {editingField && (
+        <DropdownOptionsEditor
+          isOpen={true}
+          fieldName={editingField}
+          fieldLabel={getAvailableGridFields().find(f => f.field === editingField)?.label || editingField}
+          currentOptions={dropdownOptions[editingField] || getDefaultDropdownOptions(editingField)}
+          currentColors={customColors}
+          onSave={(options, colors) => {
+            const newDropdownOptions = { ...dropdownOptions, [editingField]: options };
+            const newCustomColors = { ...customColors, ...colors };
+            setDropdownOptions(newDropdownOptions);
+            setCustomColors(newCustomColors);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('workshop-grid-dropdown-options', JSON.stringify(newDropdownOptions));
+              localStorage.setItem('workshop-grid-custom-colors', JSON.stringify(newCustomColors));
+            }
+            setEditingField(null);
+          }}
+          onClose={() => setEditingField(null)}
+        />
       )}
 
       {/* Hours Tracking Modal */}
