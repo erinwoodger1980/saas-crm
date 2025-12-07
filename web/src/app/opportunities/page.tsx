@@ -303,10 +303,22 @@ export default function OpportunitiesPage() {
     { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST', 'COMPLETED'] },
     { field: 'nextAction', label: 'Next Action', type: 'text' },
     { field: 'nextActionAt', label: 'Next Action Date', type: 'date' },
-    { field: 'timber', label: 'Timber', type: 'text' },
-    { field: 'glass', label: 'Glass', type: 'text' },
-    { field: 'ironmongery', label: 'Ironmongery', type: 'text' },
-    { field: 'paint', label: 'Paint', type: 'text' },
+    // Timber dates
+    { field: 'timber_ordered', label: 'Timber - Ordered', type: 'date' },
+    { field: 'timber_expected', label: 'Timber - Expected', type: 'date' },
+    { field: 'timber_received', label: 'Timber - Received', type: 'date' },
+    // Glass dates
+    { field: 'glass_ordered', label: 'Glass - Ordered', type: 'date' },
+    { field: 'glass_expected', label: 'Glass - Expected', type: 'date' },
+    { field: 'glass_received', label: 'Glass - Received', type: 'date' },
+    // Ironmongery dates
+    { field: 'ironmongery_ordered', label: 'Ironmongery - Ordered', type: 'date' },
+    { field: 'ironmongery_expected', label: 'Ironmongery - Expected', type: 'date' },
+    { field: 'ironmongery_received', label: 'Ironmongery - Received', type: 'date' },
+    // Paint dates
+    { field: 'paint_ordered', label: 'Paint - Ordered', type: 'date' },
+    { field: 'paint_expected', label: 'Paint - Expected', type: 'date' },
+    { field: 'paint_received', label: 'Paint - Received', type: 'date' },
   ];
 
   const TabButton = ({ s }: { s: LeadStatus }) => {
