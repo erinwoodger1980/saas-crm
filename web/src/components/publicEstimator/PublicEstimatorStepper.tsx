@@ -494,8 +494,8 @@ export function PublicEstimatorStepper({
           </div>
         </div>
 
-        {/* Estimate preview - sticky on desktop, below on mobile */}
-        {currentStep >= 3 && (
+        {/* Estimate preview - only show after contact submission (step 7+) or for invite mode */}
+        {(isInviteMode && currentStep >= 3) && (
           <div className="lg:col-span-5">
             <div className="mt-6 lg:sticky lg:top-6 lg:mt-0">
                   <EstimatePreviewCard
