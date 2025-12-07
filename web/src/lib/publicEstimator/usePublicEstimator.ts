@@ -293,9 +293,38 @@ export function usePublicEstimator({
           fetchQuestionnaireFields({ tenantSlug: branding.slug, scope: 'public', includeStandard: true }),
         ]);
 
+        // Filter out manufacturing and fire door specific fields from public estimator
+        const excludedFields = [
+          'manufacturing_start_date',
+          'production_notes',
+          'manufacturing_end_date',
+          'installation_start_date',
+          'installation_end_date',
+          'installation_date',
+          'timber_ordered',
+          'timber_ordered_date',
+          'glass_ordered',
+          'glass_ordered_date',
+          'hardware_ordered',
+          'hardware_ordered_date',
+          'finish_specification',
+          'production_priority',
+          'workshop_notes',
+          'fire_door_certification',
+          'fire_rating',
+          'acoustic_rating',
+          'security_rating',
+          'u_value',
+          'air_permeability',
+          'water_tightness',
+          'wind_resistance',
+        ];
+
+        const filteredPublic = public_.filter(f => !excludedFields.includes(f.key));
+
         if (!cancelled) {
           setClientFields(client);
-          setPublicFields(public_);
+          setPublicFields(filteredPublic);
         }
       } catch (error) {
         console.error('Failed to load questionnaire fields:', error);
