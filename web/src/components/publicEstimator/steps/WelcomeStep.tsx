@@ -89,28 +89,37 @@ export function WelcomeStep({
         </div>
       </div>
 
+      {/* Friendly intro */}
+      <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-blue-50 to-white p-6 shadow-sm">
+        <p className="text-base text-slate-700 leading-relaxed">
+          Welcome! Answer a few quick questions and upload a photo of your door or window opening. 
+          Our AI will measure the dimensions, then our expert team will review everything and send you 
+          a detailed, accurate quote. <span className="font-semibold">No pressure, no obligation.</span>
+        </p>
+      </div>
+
       {/* What you'll get */}
       <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">
-          What you'll get:
+          How it works:
         </h2>
         <div className="space-y-3">
           <Feature
             icon={<Clock className="h-5 w-5" />}
-            title="Quick & easy"
-            description="Answer a few questions – takes just 3 minutes"
+            title="Fast & simple"
+            description="Just 3 minutes to complete – answer a few questions and upload a photo"
             primaryColor={primaryColor}
           />
           <Feature
             icon={<CheckCircle2 className="h-5 w-5" />}
-            title="No obligation"
-            description="Free estimate with no pressure to commit"
+            title="Expert reviewed"
+            description={`${brandName}'s team checks every detail before sending your quote`}
             primaryColor={primaryColor}
           />
           <Feature
             icon={<Building2 className="h-5 w-5" />}
-            title="Expert pricing"
-            description={`${brandName} reviews and sends you an accurate quote`}
+            title="No obligation"
+            description="Free, detailed estimate – no spam, no pressure to proceed"
             primaryColor={primaryColor}
           />
         </div>
@@ -139,16 +148,24 @@ export function WelcomeStep({
       <Button
         onClick={onNext}
         size="lg"
-        className="w-full gap-2 text-base"
+        className="w-full gap-2 text-lg font-semibold shadow-lg hover:shadow-xl transition-shadow py-7"
         style={{ backgroundColor: primaryColor }}
       >
-        Start my estimate
+        Get my free estimate
         <ArrowRight className="h-5 w-5" />
       </Button>
 
-      <p className="text-center text-xs text-slate-500">
-        Takes about 3 minutes · No payment required
-      </p>
+      <div className="space-y-2">
+        <p className="text-center text-sm text-slate-600">
+          ✓ Takes 3 minutes · ✓ No payment info needed · ✓ Your details are safe
+        </p>
+        <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
+          <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+          </svg>
+          <span>Your privacy protected · We never share your details</span>
+        </div>
+      </div>
     </div>
   );
 }

@@ -168,13 +168,13 @@ export function ContactConversionStep({
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-slate-900">
-          {isInviteMode ? 'Confirm your details' : 'Almost done!'}
+        <h2 className="text-3xl font-bold text-slate-900">
+          {isInviteMode ? 'Confirm your details' : 'You\'re almost there!'}
         </h2>
-        <p className="mt-2 text-slate-600">
+        <p className="mt-3 text-base text-slate-600 leading-relaxed">
           {isInviteMode
             ? `We have your details on file. Please confirm they're still correct.`
-            : `${companyName} will review your details and send you an accurate quote. No obligation.`}
+            : `Just a few quick details so ${companyName} can send you a personalized quote. We'll never spam you or share your information with anyone else.`}
         </p>
       </div>
 
@@ -335,14 +335,18 @@ export function ContactConversionStep({
       </div>
 
       {/* Privacy notice */}
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="rounded-2xl border-2 border-green-200 bg-green-50 p-4">
         <div className="flex gap-3">
-          <CheckCircle2 className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: primaryColor }} />
-          <div className="text-sm text-slate-600">
-            <p className="font-medium text-slate-900">Your privacy matters</p>
-            <p className="mt-1">
-              We'll only use your details to send your estimate and arrange a consultation. 
-              We never share your information with third parties.
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500 text-white flex-shrink-0">
+            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="text-sm text-slate-700">
+            <p className="font-semibold text-slate-900 text-base">Your privacy is 100% protected</p>
+            <p className="mt-1 leading-relaxed">
+              We'll only contact you about your quote. Your details are encrypted and secure. 
+              We never sell or share your information with anyone. Promise.
             </p>
           </div>
         </div>
@@ -350,23 +354,23 @@ export function ContactConversionStep({
 
       {/* Benefits recap */}
       <div className="rounded-2xl border-2 p-6" style={{ borderColor: `${primaryColor}30`, backgroundColor: `${primaryColor}05` }}>
-        <h4 className="font-semibold text-slate-900 mb-3">What happens next:</h4>
-        <ul className="space-y-2 text-sm text-slate-600">
-          <li className="flex gap-2">
-            <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>{companyName} reviews your details and creates your quote</span>
+        <h3 className="text-lg font-bold text-slate-900 mb-4">What happens next:</h3>
+        <ul className="space-y-3 text-base text-slate-700">
+          <li className="flex gap-3">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full flex-shrink-0 text-white font-bold text-sm" style={{ backgroundColor: primaryColor }}>1</div>
+            <span><strong>Within 24 hours:</strong> {companyName}'s expert team reviews your photos and creates a detailed quote</span>
           </li>
-          <li className="flex gap-2">
-            <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>You receive an accurate, detailed quote via email</span>
+          <li className="flex gap-3">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full flex-shrink-0 text-white font-bold text-sm" style={{ backgroundColor: primaryColor }}>2</div>
+            <span><strong>You'll receive:</strong> A personalized estimate via email with all the details and options</span>
           </li>
-          <li className="flex gap-2">
-            <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>Free site survey to confirm final measurements</span>
+          <li className="flex gap-3">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full flex-shrink-0 text-white font-bold text-sm" style={{ backgroundColor: primaryColor }}>3</div>
+            <span><strong>Optional:</strong> Free site visit to confirm measurements and answer any questions</span>
           </li>
-          <li className="flex gap-2">
-            <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>No obligation - compare quotes at your leisure</span>
+          <li className="flex gap-3">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full flex-shrink-0 text-white font-bold text-sm" style={{ backgroundColor: primaryColor }}>4</div>
+            <span><strong>Your choice:</strong> Take your time to compare – absolutely no pressure to proceed</span>
           </li>
         </ul>
       </div>
@@ -384,16 +388,16 @@ export function ContactConversionStep({
         <Button
           onClick={handleSubmit}
           disabled={isSubmitting}
-          className="flex-1 rounded-2xl py-6 text-base text-white"
+          className="flex-1 rounded-2xl py-7 text-lg font-bold text-white shadow-lg hover:shadow-xl transition-shadow"
           style={{ backgroundColor: primaryColor }}
         >
           {isSubmitting ? (
             <span className="flex items-center gap-2">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Submitting...
+              Sending your request...
             </span>
           ) : (
-            'Submit for review'
+            '✓ Request my free estimate'
           )}
         </Button>
       </div>

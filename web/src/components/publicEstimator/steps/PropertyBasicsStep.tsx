@@ -79,9 +79,10 @@ export function PropertyBasicsStep({
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Property Type */}
       <div className="space-y-3">
-        <Label className="text-base font-semibold">
-          What type of property? <span className="text-red-500">*</span>
+        <Label className="text-lg font-semibold text-slate-900">
+          What type of property do you have? <span className="text-red-500">*</span>
         </Label>
+        <p className="text-sm text-slate-600">This helps us understand your needs better</p>
         <div className="grid gap-3">
           {PROPERTY_TYPES.map((type) => (
             <label
@@ -126,8 +127,8 @@ export function PropertyBasicsStep({
 
       {/* Quantity */}
       <div className="space-y-3">
-        <Label htmlFor="itemCount" className="text-base font-semibold">
-          Quantity <span className="text-red-500">*</span>
+        <Label htmlFor="itemCount" className="text-lg font-semibold text-slate-900">
+          How many doors or windows do you need? <span className="text-red-500">*</span>
         </Label>
         <Select
           value={String(itemCount)}
@@ -158,10 +159,11 @@ export function PropertyBasicsStep({
 
       {/* Timeframe */}
       <div className="space-y-3">
-        <Label htmlFor="timeframe" className="text-base font-semibold">
-          <Calendar className="mr-2 inline h-4 w-4" />
-          When are you looking to start?
+        <Label htmlFor="timeframe" className="text-lg font-semibold text-slate-900">
+          <Calendar className="mr-2 inline h-5 w-5" />
+          When would you like to get started?
         </Label>
+        <p className="text-sm text-slate-600">Even rough timings help us plan ahead for you</p>
         <Select value={timeframe} onValueChange={(value) => onChange({ timeframe: value })}>
           <SelectTrigger
             id="timeframe"
@@ -181,16 +183,16 @@ export function PropertyBasicsStep({
 
       {/* Budget */}
       <div className="space-y-3">
-        <Label htmlFor="budget" className="text-base font-semibold">
-          <Coins className="mr-2 inline h-4 w-4" />
-          Rough budget (optional)
+        <Label htmlFor="budget" className="text-lg font-semibold text-slate-900">
+          <Coins className="mr-2 inline h-5 w-5" />
+          What's your budget range? (optional)
         </Label>
         <Select value={budget} onValueChange={(value) => onChange({ budget: value })}>
           <SelectTrigger
             id="budget"
             className="h-14 rounded-2xl border-2 border-slate-200 text-base"
           >
-            <SelectValue placeholder="Select budget range" />
+            <SelectValue placeholder="Select a rough budget" />
           </SelectTrigger>
           <SelectContent>
             {BUDGETS.map((b) => (
@@ -200,8 +202,8 @@ export function PropertyBasicsStep({
             ))}
           </SelectContent>
         </Select>
-        <p className="text-xs text-slate-500">
-          Helps us tailor recommendations to your needs
+        <p className="text-sm text-slate-600">
+          💡 No worries if you're not sure – we'll help you find the right options
         </p>
       </div>
 

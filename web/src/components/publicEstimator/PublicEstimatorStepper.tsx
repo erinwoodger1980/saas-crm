@@ -18,6 +18,7 @@ import { EstimateSummaryStep } from './steps/EstimateSummaryStep';
 import { ContactConversionStep } from './steps/ContactConversionStep';
 import { EstimatePreviewCard } from './EstimatePreviewCard';
 import { DecisionStep } from './steps/DecisionStep';
+import { ThankYouStep } from './steps/ThankYouStep';
 import { Button } from '@/components/ui/button';
 
 interface PublicEstimatorStepperProps {
