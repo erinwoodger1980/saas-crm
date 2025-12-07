@@ -53,7 +53,7 @@ import DropdownOptionsEditor from "@/components/DropdownOptionsEditor";
 import { Table, LayoutGrid } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-type LeadStatus = "QUOTE_SENT" | "WON" | "LOST";
+type LeadStatus = "QUOTE_SENT" | "WON" | "LOST" | "COMPLETED";
 type Lead = {
   id: string;
   contactName: string;
@@ -77,6 +77,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   QUOTE_SENT: "Quote sent",
   WON: "Won",
   LOST: "Lost",
+  COMPLETED: "Completed",
 };
 
 export default function OpportunitiesPage() {
@@ -181,6 +182,7 @@ export default function OpportunitiesPage() {
       QUOTE_SENT: (grouped.QUOTE_SENT || []).length,
       WON: (grouped.WON || []).length,
       LOST: (grouped.LOST || []).length,
+      COMPLETED: (grouped.COMPLETED || []).length,
     }),
     [grouped]
   );
@@ -218,7 +220,7 @@ export default function OpportunitiesPage() {
           setColumnConfig([
             { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
             { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
-            { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST'] },
+            { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST', 'COMPLETED'] },
             { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
           ]);
         }
@@ -226,7 +228,7 @@ export default function OpportunitiesPage() {
         setColumnConfig([
           { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
           { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
-          { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST'] },
+          { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST', 'COMPLETED'] },
           { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
         ]);
       }
@@ -298,9 +300,13 @@ export default function OpportunitiesPage() {
   const AVAILABLE_FIELDS = [
     { field: 'contactName', label: 'Contact Name', type: 'text' },
     { field: 'email', label: 'Email', type: 'email' },
-    { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST'] },
+    { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST', 'COMPLETED'] },
     { field: 'nextAction', label: 'Next Action', type: 'text' },
     { field: 'nextActionAt', label: 'Next Action Date', type: 'date' },
+    { field: 'timber', label: 'Timber', type: 'text' },
+    { field: 'glass', label: 'Glass', type: 'text' },
+    { field: 'ironmongery', label: 'Ironmongery', type: 'text' },
+    { field: 'paint', label: 'Paint', type: 'text' },
   ];
 
   const TabButton = ({ s }: { s: LeadStatus }) => {
@@ -381,6 +387,7 @@ export default function OpportunitiesPage() {
           <TabButton s="QUOTE_SENT" />
           <TabButton s="WON" />
           <TabButton s="LOST" />
+          <TabButton s="COMPLETED" />
         </div>
 
         {error && (
