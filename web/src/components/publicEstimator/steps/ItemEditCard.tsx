@@ -118,21 +118,25 @@ export function ItemEditCard({
                 </div>
               )}
             </button>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-              <span>Net: £{mask(item.netGBP.toFixed(2))}</span>
-              <span>•</span>
-              <span>VAT: £{mask(item.vatGBP.toFixed(2))}</span>
-            </div>
+            {!hidePrices && (
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                <span>Net: £{item.netGBP.toFixed(2)}</span>
+                <span>•</span>
+                <span>VAT: £{item.vatGBP.toFixed(2)}</span>
+              </div>
+            )}
           </div>
 
           {/* Price and actions */}
           <div className="flex flex-shrink-0 flex-col items-end gap-2">
-            <p
-              className="text-lg font-bold"
-              style={isFavourite ? { color: primaryColor } : {}}
-            >
-              £{mask(item.totalGBP.toFixed(2))}
-            </p>
+            {!hidePrices && (
+              <p
+                className="text-lg font-bold"
+                style={isFavourite ? { color: primaryColor } : {}}
+              >
+                £{item.totalGBP.toFixed(2)}
+              </p>
+            )}
             <div className="flex gap-1">
               {opening && onUpdateOpening && !isEditing && (
                 <button

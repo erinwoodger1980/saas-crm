@@ -145,14 +145,16 @@ export function EstimateSummaryStep({
           </div>
           
           {/* Favourites subtotal */}
-          <div className="mt-4 rounded-2xl bg-slate-50 p-4">
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-slate-700">Favourites subtotal</span>
-              <span className="text-xl font-bold" style={{ color: primaryColor }}>
-                £{mask(favouritesTotal.toFixed(2))}
-              </span>
+          {!hidePrices && (
+            <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-slate-700">Favourites subtotal</span>
+                <span className="text-xl font-bold" style={{ color: primaryColor }}>
+                  £{favouritesTotal.toFixed(2)}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -182,12 +184,12 @@ export function EstimateSummaryStep({
             ))}
           </div>
           
-          {favouritedItems.length > 0 && (
+          {!hidePrices && favouritedItems.length > 0 && (
             <div className="mt-4 rounded-2xl bg-slate-50 p-4">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-slate-700">Other items subtotal</span>
                 <span className="text-xl font-bold text-slate-900">
-                  £{mask(othersTotal.toFixed(2))}
+                  £{othersTotal.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -195,36 +197,40 @@ export function EstimateSummaryStep({
         </div>
       )}
 
-      {/* Total section */}
-      <div className="rounded-3xl border-2 p-6" style={{ borderColor: primaryColor, backgroundColor: `${primaryColor}05` }}>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-slate-700">
-            <span>Net total</span>
-            <span className="font-medium">£{mask(estimate.totalNet.toFixed(2))}</span>
-          </div>
-          <div className="flex items-center justify-between text-slate-700">
-            <span>VAT (20%)</span>
-            <span className="font-medium">£{mask(estimate.totalVat.toFixed(2))}</span>
-          </div>
-          <div className="border-t-2 border-slate-200 pt-3">
-            <div className="flex items-center justify-between">
-              <span className="text-lg font-semibold text-slate-900">Total estimate</span>
-              <span className="text-3xl font-bold" style={{ color: primaryColor }}>
-                £{mask(estimate.totalGross.toFixed(2))}
-              </span>
+      {/* Total section - hidden when prices not confirmed */}
+      {!hidePrices && (
+        <>
+          <div className="rounded-3xl border-2 p-6" style={{ borderColor: primaryColor, backgroundColor: `${primaryColor}05` }}>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-slate-700">
+                <span>Net total</span>
+                <span className="font-medium">£{estimate.totalNet.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-700">
+                <span>VAT (20%)</span>
+                <span className="font-medium">£{estimate.totalVat.toFixed(2)}</span>
+              </div>
+              <div className="border-t-2 border-slate-200 pt-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-lg font-semibold text-slate-900">Total estimate</span>
+                  <span className="text-3xl font-bold" style={{ color: primaryColor }}>
+                    £{estimate.totalGross.toFixed(2)}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Disclaimer */}
-      {estimate.disclaimer && (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm text-slate-600">
-            <Sparkles className="mb-1 inline h-4 w-4" style={{ color: primaryColor }} />
-            {' '}{estimate.disclaimer}
-          </p>
-        </div>
+          {/* Disclaimer */}
+          {estimate.disclaimer && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm text-slate-600">
+                <Sparkles className="mb-1 inline h-4 w-4" style={{ color: primaryColor }} />
+                {' '}{estimate.disclaimer}
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Next steps message */}
@@ -233,7 +239,7 @@ export function EstimateSummaryStep({
         <ul className="mt-3 space-y-2 text-sm text-slate-600">
           <li className="flex gap-2">
             <ChevronRight className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>Our joiner reviews your AI-measured photos and details</span>
+            <span>{companyName} reviews your AI-measured photos and details</span>
           </li>
           <li className="flex gap-2">
             <ChevronRight className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />

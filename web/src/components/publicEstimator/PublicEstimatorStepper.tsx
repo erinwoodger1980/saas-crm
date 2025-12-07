@@ -407,7 +407,7 @@ export function PublicEstimatorStepper({
               handleUpdateData({ openingDetails: updated });
             }}
             onTrackInteraction={trackInteraction}
-            hidePrices={!isInviteMode}
+            hidePrices={true}
           />
         )}
 

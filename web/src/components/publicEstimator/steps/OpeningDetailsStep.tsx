@@ -390,7 +390,7 @@ export function OpeningDetailsStep({
                 </div>
               )}
               <p className="mt-1 text-xs text-slate-500">
-                Just upload photos and let AI measure! Our joiner will verify measurements during the site visit.
+                Just upload photos and let AI measure! We'll verify measurements during the site visit.
               </p>
               {/* Depth / LiDAR stub trigger */}
               <div className="mt-2">

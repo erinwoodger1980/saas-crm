@@ -174,7 +174,7 @@ export function ContactConversionStep({
         <p className="mt-2 text-slate-600">
           {isInviteMode
             ? `We have your details on file. Please confirm they're still correct.`
-            : `Our joiner will review your details and send you an accurate quote. No obligation.`}
+            : `${companyName} will review your details and send you an accurate quote. No obligation.`}
         </p>
       </div>
 
@@ -354,7 +354,7 @@ export function ContactConversionStep({
         <ul className="space-y-2 text-sm text-slate-600">
           <li className="flex gap-2">
             <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />
-            <span>Our joiner reviews your details and creates your quote</span>
+            <span>{companyName} reviews your details and creates your quote</span>
           </li>
           <li className="flex gap-2">
             <CheckCircle2 className="h-5 w-5 flex-shrink-0" style={{ color: primaryColor }} />

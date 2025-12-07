@@ -344,12 +344,14 @@ router.get("/tenant/:tenantSlug/questionnaire-fields", async (req, res) => {
     if (!settings) return res.status(404).json({ error: "unknown_tenant" });
 
     const includeStandard = req.query.includeStandard === "true";
+    const scope = req.query.scope ? String(req.query.scope) : undefined;
 
     // Fetch fields for this tenant
     const fields = await prisma.questionnaireField.findMany({
       where: {
         tenantId: settings.tenantId,
         ...(includeStandard ? {} : { isStandard: false }),
+        ...(scope ? { scope } : {}),
       },
       orderBy: { sortOrder: "asc" },
     });

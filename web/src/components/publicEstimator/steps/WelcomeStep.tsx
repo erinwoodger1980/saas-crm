@@ -110,7 +110,7 @@ export function WelcomeStep({
           <Feature
             icon={<Building2 className="h-5 w-5" />}
             title="Expert pricing"
-            description="Our joiner reviews and sends you an accurate quote"
+            description={`${brandName} reviews and sends you an accurate quote`}
             primaryColor={primaryColor}
           />
         </div>
