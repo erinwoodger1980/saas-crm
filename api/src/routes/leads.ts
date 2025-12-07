@@ -825,7 +825,16 @@ router.get("/grouped", async (req, res) => {
     orderBy: [{ capturedAt: "desc" }],
     include: {
       opportunity: {
-        select: { id: true }
+        select: { 
+          id: true,
+          projectProcesses: {
+            include: {
+              processDefinition: {
+                select: { code: true, name: true }
+              }
+            }
+          }
+        }
       }
     }
   });
@@ -851,10 +860,37 @@ router.get("/grouped", async (req, res) => {
   for (const l of rows) {
     const ui = (l.custom as any)?.uiStatus as UiStatus | undefined;
     const bucket = ui ?? dbToUi(l.status);
+    
+    // Calculate process completion percentages
+    const processes = l.opportunity?.projectProcesses || [];
+    const processPercentages: Record<string, number> = {};
+    
+    if (processes.length > 0) {
+      // Group by process code and calculate completion
+      const byCode: Record<string, { total: number; completed: number }> = {};
+      processes.forEach(p => {
+        const code = p.processDefinition.code;
+        if (!byCode[code]) {
+          byCode[code] = { total: 0, completed: 0 };
+        }
+        byCode[code].total += 1;
+        if (p.status === 'completed') {
+          byCode[code].completed += 1;
+        }
+      });
+      
+      // Calculate percentages
+      Object.keys(byCode).forEach(code => {
+        const { total, completed } = byCode[code];
+        processPercentages[code] = Math.round((completed / total) * 100);
+      });
+    }
+    
     (grouped[bucket] || grouped.NEW_ENQUIRY).push({
       ...l,
       opportunityId: l.opportunity?.id || null,
-      taskCount: taskCountMap.get(l.id) || 0
+      taskCount: taskCountMap.get(l.id) || 0,
+      processPercentages
     });
   }
 

@@ -8,7 +8,7 @@ interface ColumnConfig {
   visible: boolean;
   width?: number;
   frozen?: boolean;
-  type?: 'text' | 'date' | 'dropdown' | 'number' | 'email' | 'phone' | 'currency' | 'boolean';
+  type?: 'text' | 'date' | 'dropdown' | 'number' | 'email' | 'phone' | 'currency' | 'boolean' | 'progress';
   dropdownOptions?: string[];
   dropdownColors?: Record<string, string>;
 }
@@ -71,9 +71,34 @@ export function CustomizableGrid({
     }
   };
 
+  const getProgressColor = (progress?: number): string => {
+    if (!progress) return "from-gray-400 to-gray-500";
+    if (progress < 30) return "from-red-400 to-red-500";
+    if (progress < 60) return "from-orange-400 to-orange-500";
+    if (progress < 90) return "from-blue-400 to-blue-500";
+    return "from-green-400 to-green-500";
+  };
+
   const renderCell = (row: any, column: ColumnConfig) => {
     const value = row[column.field];
     const rowId = row[rowIdField];
+
+    if (column.type === 'progress') {
+      // Get process percentage from processPercentages object
+      const percentage = row.processPercentages?.[column.field] || 0;
+      
+      return (
+        <div className="flex items-center gap-2 px-3">
+          <div className="w-16 h-2 bg-slate-100 rounded overflow-hidden">
+            <div
+              className={`h-full bg-gradient-to-r ${getProgressColor(percentage)}`}
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
+          <span className="text-xs font-semibold text-slate-700 w-8">{percentage}%</span>
+        </div>
+      );
+    }
 
     if (column.type === 'dropdown' && onCellChange) {
       // Use custom dropdown options if available, otherwise fall back to column options
