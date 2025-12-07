@@ -147,18 +147,6 @@ export default function OpportunitiesPage() {
       { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST', 'COMPLETED'] },
       { field: 'nextAction', label: 'Next Action', type: 'text' },
       { field: 'nextActionAt', label: 'Next Action Date', type: 'date' },
-      { field: 'timberOrderedAt', label: 'Timber Ordered', type: 'date' },
-      { field: 'timberExpectedAt', label: 'Timber Expected', type: 'date' },
-      { field: 'timberReceivedAt', label: 'Timber Received', type: 'date' },
-      { field: 'glassOrderedAt', label: 'Glass Ordered', type: 'date' },
-      { field: 'glassExpectedAt', label: 'Glass Expected', type: 'date' },
-      { field: 'glassReceivedAt', label: 'Glass Received', type: 'date' },
-      { field: 'ironmongeryOrderedAt', label: 'Ironmongery Ordered', type: 'date' },
-      { field: 'ironmongeryExpectedAt', label: 'Ironmongery Expected', type: 'date' },
-      { field: 'ironmongeryReceivedAt', label: 'Ironmongery Received', type: 'date' },
-      { field: 'paintOrderedAt', label: 'Paint Ordered', type: 'date' },
-      { field: 'paintExpectedAt', label: 'Paint Expected', type: 'date' },
-      { field: 'paintReceivedAt', label: 'Paint Received', type: 'date' },
     ];
 
     // Add workshop process percentage fields dynamically
