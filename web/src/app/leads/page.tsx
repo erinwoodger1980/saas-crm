@@ -8,6 +8,7 @@ import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { CustomizableGrid } from "@/components/CustomizableGrid";
 import { ColumnConfigModal } from "@/components/ColumnConfigModal";
+import DropdownOptionsEditor from "@/components/DropdownOptionsEditor";
 import { Table, LayoutGrid } from "lucide-react";
 // Robust dynamic import with typed props & fallback component
 interface LeadModalProps {
@@ -192,6 +193,37 @@ function LeadsPageContent() {
   // column configuration state
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [columnConfig, setColumnConfig] = useState<any[]>([]);
+
+  // dropdown customization state
+  const [customColors, setCustomColors] = useState<Record<string, { bg: string; text: string }>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('leads-custom-colors');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {};
+        }
+      }
+    }
+    return {};
+  });
+
+  const [dropdownOptions, setDropdownOptions] = useState<Record<string, string[]>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('leads-dropdown-options');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {};
+        }
+      }
+    }
+    return {};
+  });
+
+  const [editingField, setEditingField] = useState<string | null>(null);
 
   // Load column config for current tab
   useEffect(() => {
@@ -640,6 +672,23 @@ function LeadsPageContent() {
     }
   }
 
+  // Handle saving custom colors and dropdown options
+  function handleSaveDropdownOptions(field: string, options: string[], colors: Record<string, { bg: string; text: string }>) {
+    // Save dropdown options
+    const newOptions = { ...dropdownOptions, [field]: options };
+    setDropdownOptions(newOptions);
+    localStorage.setItem('leads-dropdown-options', JSON.stringify(newOptions));
+
+    // Save custom colors
+    setCustomColors(colors);
+    localStorage.setItem('leads-custom-colors', JSON.stringify(colors));
+
+    toast({
+      title: "Options updated",
+      description: `Dropdown options and colors saved for ${field}`,
+    });
+  }
+
   function addEmailFilesToQueue(files: File[]) {
     // Filter for email-like files (.eml, .msg, .txt) and check MIME types
     const emailFiles = files.filter(file => {
@@ -906,6 +955,9 @@ function LeadsPageContent() {
               columns={columnConfig}
               onRowClick={openLead}
               onCellChange={handleCellChange}
+              customColors={customColors}
+              customDropdownOptions={dropdownOptions}
+              onEditColumnOptions={(field) => setEditingField(field)}
             />
           ) : (
             <div className="grid gap-3">
@@ -1101,6 +1153,18 @@ function LeadsPageContent() {
         currentConfig={columnConfig}
         onSave={handleSaveColumnConfig}
       />
+
+      {editingField && (
+        <DropdownOptionsEditor
+          isOpen={!!editingField}
+          onClose={() => setEditingField(null)}
+          fieldName={editingField}
+          fieldLabel={columnConfig.find(c => c.field === editingField)?.label || editingField}
+          currentOptions={dropdownOptions[editingField] || columnConfig.find(c => c.field === editingField)?.dropdownOptions || []}
+          currentColors={customColors}
+          onSave={(options, colors) => handleSaveDropdownOptions(editingField, options, colors)}
+        />
+      )}
     </>
   );
 }

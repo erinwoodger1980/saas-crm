@@ -19,6 +19,9 @@ interface CustomizableGridProps {
   onRowClick?: (row: any) => void;
   onCellChange?: (rowId: string, field: string, value: any) => void;
   rowIdField?: string;
+  onEditColumnOptions?: (field: string) => void;
+  customColors?: Record<string, { bg: string; text: string }>;
+  customDropdownOptions?: Record<string, string[]>;
 }
 
 export function CustomizableGrid({
@@ -27,6 +30,9 @@ export function CustomizableGrid({
   onRowClick,
   onCellChange,
   rowIdField = 'id',
+  customDropdownOptions = {},
+  onEditColumnOptions,
+  customColors = {},
 }: CustomizableGridProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
@@ -69,8 +75,17 @@ export function CustomizableGrid({
     const value = row[column.field];
     const rowId = row[rowIdField];
 
-    if (column.type === 'dropdown' && column.dropdownOptions && onCellChange) {
-      const colorClass = column.dropdownColors?.[value] || 'bg-slate-100 text-slate-600';
+    if (column.type === 'dropdown' && onCellChange) {
+      // Use custom dropdown options if available, otherwise fall back to column options
+      const options = customDropdownOptions[column.field] || column.dropdownOptions || [];
+      
+      // Get color from custom colors or fallback to column colors
+      const customColorKey = `${column.field}:${value}`;
+      const customColor = customColors[customColorKey];
+      const colorClass = customColor 
+        ? `${customColor.bg} ${customColor.text}`
+        : column.dropdownColors?.[value] || 'bg-slate-100 text-slate-600';
+      
       return (
         <select
           value={value || ''}
@@ -82,7 +97,7 @@ export function CustomizableGrid({
           onClick={(e) => e.stopPropagation()}
         >
           <option value="">-</option>
-          {column.dropdownOptions.map((opt) => (
+          {options.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
             </option>
@@ -119,10 +134,25 @@ export function CustomizableGrid({
             {frozenColumns.map((column) => (
               <div
                 key={column.field}
-                className="border-r last:border-r-0 px-3 py-2 font-semibold text-sm text-slate-700 flex items-center"
+                className="border-r last:border-r-0 px-3 py-2 font-semibold text-sm text-slate-700 flex items-center justify-between"
                 style={{ width: column.width || 150 }}
               >
-                {column.label}
+                <span>{column.label}</span>
+                {column.type === 'dropdown' && onEditColumnOptions && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditColumnOptions(column.field);
+                    }}
+                    className="ml-2 p-1 hover:bg-slate-200 rounded"
+                    title="Edit options & colors"
+                  >
+                    <svg className="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -138,10 +168,25 @@ export function CustomizableGrid({
             {scrollableColumns.map((column) => (
               <div
                 key={column.field}
-                className="border-r last:border-r-0 px-3 py-2 font-semibold text-sm text-slate-700 flex items-center flex-shrink-0"
+                className="border-r last:border-r-0 px-3 py-2 font-semibold text-sm text-slate-700 flex items-center justify-between flex-shrink-0"
                 style={{ width: column.width || 150 }}
               >
-                {column.label}
+                <span>{column.label}</span>
+                {column.type === 'dropdown' && onEditColumnOptions && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditColumnOptions(column.field);
+                    }}
+                    className="ml-2 p-1 hover:bg-slate-200 rounded"
+                    title="Edit options & colors"
+                  >
+                    <svg className="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </button>
+                )}
               </div>
             ))}
           </div>
