@@ -46,6 +46,12 @@ const LeadModalLazy = dynamic<LeadModalProps>(
 import { apiFetch, ensureDemoAuth } from "@/lib/api";
 import { DeskSurface } from "@/components/DeskSurface";
 import { useTenantBrand } from "@/lib/use-tenant-brand";
+import { Button } from "@/components/ui/button";
+import { CustomizableGrid } from "@/components/CustomizableGrid";
+import { ColumnConfigModal } from "@/components/ColumnConfigModal";
+import DropdownOptionsEditor from "@/components/DropdownOptionsEditor";
+import { Table, LayoutGrid } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 
 type LeadStatus = "QUOTE_SENT" | "WON" | "LOST";
 type Lead = {
@@ -79,6 +85,7 @@ export default function OpportunitiesPage() {
   const [rows, setRows] = useState<Lead[]>([]);
   const [repliedIds, setRepliedIds] = useState<Set<string>>(new Set());
   const { shortName } = useTenantBrand();
+  const { toast } = useToast();
 
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
@@ -86,6 +93,49 @@ export default function OpportunitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [oppRows, setOppRows] = useState<Opp[]>([]);
+
+  // view toggle state
+  const [viewMode, setViewMode] = useState<'cards' | 'grid'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('opportunities-view-mode') as 'cards' | 'grid') || 'cards';
+    }
+    return 'cards';
+  });
+
+  // column configuration state
+  const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [columnConfig, setColumnConfig] = useState<any[]>([]);
+
+  // dropdown customization state
+  const [customColors, setCustomColors] = useState<Record<string, { bg: string; text: string }>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('opportunities-custom-colors');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {};
+        }
+      }
+    }
+    return {};
+  });
+
+  const [dropdownOptions, setDropdownOptions] = useState<Record<string, string[]>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('opportunities-dropdown-options');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {};
+        }
+      }
+    }
+    return {};
+  });
+
+  const [editingField, setEditingField] = useState<string | null>(null);
 
   async function load() {
     setError(null);
@@ -157,6 +207,102 @@ export default function OpportunitiesPage() {
     }
   }
 
+  // Load column config for current tab
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`opportunities-column-config-${tab}`);
+      if (saved) {
+        try {
+          setColumnConfig(JSON.parse(saved));
+        } catch {
+          setColumnConfig([
+            { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
+            { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
+            { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST'] },
+            { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
+          ]);
+        }
+      } else {
+        setColumnConfig([
+          { field: 'contactName', label: 'Contact Name', visible: true, frozen: true, width: 200 },
+          { field: 'email', label: 'Email', visible: true, frozen: false, width: 200 },
+          { field: 'status', label: 'Status', visible: true, frozen: false, width: 150, type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST'] },
+          { field: 'nextAction', label: 'Next Action', visible: true, frozen: false, width: 200 },
+        ]);
+      }
+    }
+  }, [tab]);
+
+  // Handle view mode toggle
+  function handleViewModeToggle(newMode: 'cards' | 'grid') {
+    setViewMode(newMode);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('opportunities-view-mode', newMode);
+    }
+  }
+
+  // Handle column config save
+  function handleSaveColumnConfig(newConfig: any[]) {
+    setColumnConfig(newConfig);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`opportunities-column-config-${tab}`, JSON.stringify(newConfig));
+    }
+  }
+
+  // Handle cell change in grid
+  async function handleCellChange(leadId: string, field: string, value: any) {
+    try {
+      await apiFetch(`/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      });
+      // Refresh data
+      await load();
+      toast({
+        title: "Opportunity updated",
+        description: "Changes saved successfully",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Update failed",
+        description: e?.message || "Failed to update opportunity",
+        variant: "destructive",
+      });
+    }
+  }
+
+  // Handle saving custom colors and dropdown options
+  function handleSaveDropdownOptions(field: string, options: string[], colors: Record<string, { bg: string; text: string }>) {
+    // Save dropdown options
+    const newOptions = { ...dropdownOptions, [field]: options };
+    setDropdownOptions(newOptions);
+    localStorage.setItem('opportunities-dropdown-options', JSON.stringify(newOptions));
+
+    // Save custom colors
+    setCustomColors(colors);
+    localStorage.setItem('opportunities-custom-colors', JSON.stringify(colors));
+
+    toast({
+      title: "Options updated",
+      description: `Dropdown options and colors saved for ${field}`,
+    });
+  }
+
+  function openLead(lead: Lead) {
+    setSelected(lead);
+    setOpen(true);
+  }
+
+  // Available fields for column configuration
+  const AVAILABLE_FIELDS = [
+    { field: 'contactName', label: 'Contact Name', type: 'text' },
+    { field: 'email', label: 'Email', type: 'email' },
+    { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST'] },
+    { field: 'nextAction', label: 'Next Action', type: 'text' },
+    { field: 'nextActionAt', label: 'Next Action Date', type: 'date' },
+  ];
+
   const TabButton = ({ s }: { s: LeadStatus }) => {
     const active = tab === s;
     return (
@@ -193,6 +339,41 @@ export default function OpportunitiesPage() {
             <span aria-hidden="true">🎯</span>
             Opportunity desk
             {shortName && <span className="hidden sm:inline text-slate-400">· {shortName}</span>}
+          </div>
+          <div className="flex gap-2">
+            <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+              <button
+                onClick={() => handleViewModeToggle('cards')}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition ${
+                  viewMode === 'cards'
+                    ? 'bg-amber-100 text-amber-900'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleViewModeToggle('grid')}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition ${
+                  viewMode === 'grid'
+                    ? 'bg-amber-100 text-amber-900'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Grid view"
+              >
+                <Table className="w-4 h-4" />
+              </button>
+            </div>
+            {viewMode === 'grid' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowColumnConfig(true)}
+              >
+                Configure Columns
+              </Button>
+            )}
           </div>
         </header>
 
@@ -238,8 +419,18 @@ export default function OpportunitiesPage() {
         <section className="space-y-2">
           {(tab === "QUOTE_SENT" ? notReplied : rows).length === 0 ? (
             <div className="rounded-xl border border-dashed border-amber-200 bg-white/70 py-10 text-center text-sm text-slate-500">
-              No opportunities in “{STATUS_LABELS[tab]}”.
+              No opportunities in "{STATUS_LABELS[tab]}".
             </div>
+          ) : viewMode === 'grid' ? (
+            <CustomizableGrid
+              data={tab === "QUOTE_SENT" ? notReplied : rows}
+              columns={columnConfig}
+              onRowClick={openLead}
+              onCellChange={handleCellChange}
+              customColors={customColors}
+              customDropdownOptions={dropdownOptions}
+              onEditColumnOptions={(field) => setEditingField(field)}
+            />
           ) : (
             (tab === "QUOTE_SENT" ? notReplied : rows).map((l) => (
               <CardRow
@@ -313,6 +504,26 @@ export default function OpportunitiesPage() {
             />
           </Suspense>
         </ErrorBoundary>
+      )}
+
+      <ColumnConfigModal
+        open={showColumnConfig}
+        onClose={() => setShowColumnConfig(false)}
+        availableFields={AVAILABLE_FIELDS}
+        currentConfig={columnConfig}
+        onSave={handleSaveColumnConfig}
+      />
+
+      {editingField && (
+        <DropdownOptionsEditor
+          isOpen={!!editingField}
+          onClose={() => setEditingField(null)}
+          fieldName={editingField}
+          fieldLabel={columnConfig.find(c => c.field === editingField)?.label || editingField}
+          currentOptions={dropdownOptions[editingField] || columnConfig.find(c => c.field === editingField)?.dropdownOptions || []}
+          currentColors={customColors}
+          onSave={(options, colors) => handleSaveDropdownOptions(editingField, options, colors)}
+        />
       )}
     </>
   );
