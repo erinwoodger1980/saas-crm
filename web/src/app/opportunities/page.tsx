@@ -94,6 +94,7 @@ export default function OpportunitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [oppRows, setOppRows] = useState<Opp[]>([]);
+  const [workshopProcesses, setWorkshopProcesses] = useState<Array<{ code: string; name: string }>>([]);
 
   // view toggle state
   const [viewMode, setViewMode] = useState<'cards' | 'grid'>(() => {
@@ -138,6 +139,38 @@ export default function OpportunitiesPage() {
 
   const [editingField, setEditingField] = useState<string | null>(null);
 
+  // Dynamically build available fields including workshop processes
+  const AVAILABLE_FIELDS = useMemo(() => {
+    const baseFields = [
+      { field: 'contactName', label: 'Contact Name', type: 'text' },
+      { field: 'email', label: 'Email', type: 'email' },
+      { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST', 'COMPLETED'] },
+      { field: 'nextAction', label: 'Next Action', type: 'text' },
+      { field: 'nextActionAt', label: 'Next Action Date', type: 'date' },
+      { field: 'timberOrderedAt', label: 'Timber Ordered', type: 'date' },
+      { field: 'timberExpectedAt', label: 'Timber Expected', type: 'date' },
+      { field: 'timberReceivedAt', label: 'Timber Received', type: 'date' },
+      { field: 'glassOrderedAt', label: 'Glass Ordered', type: 'date' },
+      { field: 'glassExpectedAt', label: 'Glass Expected', type: 'date' },
+      { field: 'glassReceivedAt', label: 'Glass Received', type: 'date' },
+      { field: 'ironmongeryOrderedAt', label: 'Ironmongery Ordered', type: 'date' },
+      { field: 'ironmongeryExpectedAt', label: 'Ironmongery Expected', type: 'date' },
+      { field: 'ironmongeryReceivedAt', label: 'Ironmongery Received', type: 'date' },
+      { field: 'paintOrderedAt', label: 'Paint Ordered', type: 'date' },
+      { field: 'paintExpectedAt', label: 'Paint Expected', type: 'date' },
+      { field: 'paintReceivedAt', label: 'Paint Received', type: 'date' },
+    ];
+
+    // Add workshop process percentage fields dynamically
+    const processFields = workshopProcesses.map(proc => ({
+      field: proc.code,
+      label: `${proc.name} %`,
+      type: 'progress'
+    }));
+
+    return [...baseFields, ...processFields];
+  }, [workshopProcesses]);
+
   async function load() {
     setError(null);
     const ok = await ensureDemoAuth();
@@ -168,6 +201,14 @@ export default function OpportunitiesPage() {
       setOppRows(res.opportunities || []);
     } catch {
       setOppRows([]);
+    }
+
+    // 4) Load workshop processes
+    try {
+      const processes = await apiFetch<Array<{ code: string; name: string }>>("/workshop-processes");
+      setWorkshopProcesses(processes || []);
+    } catch {
+      setWorkshopProcesses([]);
     }
   }
 
@@ -297,34 +338,6 @@ export default function OpportunitiesPage() {
   }
 
   // Available fields for column configuration
-  const AVAILABLE_FIELDS = [
-    { field: 'contactName', label: 'Contact Name', type: 'text' },
-    { field: 'email', label: 'Email', type: 'email' },
-    { field: 'status', label: 'Status', type: 'dropdown', dropdownOptions: ['QUOTE_SENT', 'WON', 'LOST', 'COMPLETED'] },
-    { field: 'nextAction', label: 'Next Action', type: 'text' },
-    { field: 'nextActionAt', label: 'Next Action Date', type: 'date' },
-    { field: 'timberOrderedAt', label: 'Timber Ordered', type: 'date' },
-    { field: 'timberExpectedAt', label: 'Timber Expected', type: 'date' },
-    { field: 'timberReceivedAt', label: 'Timber Received', type: 'date' },
-    { field: 'glassOrderedAt', label: 'Glass Ordered', type: 'date' },
-    { field: 'glassExpectedAt', label: 'Glass Expected', type: 'date' },
-    { field: 'glassReceivedAt', label: 'Glass Received', type: 'date' },
-    { field: 'ironmongeryOrderedAt', label: 'Ironmongery Ordered', type: 'date' },
-    { field: 'ironmongeryExpectedAt', label: 'Ironmongery Expected', type: 'date' },
-    { field: 'ironmongeryReceivedAt', label: 'Ironmongery Received', type: 'date' },
-    { field: 'paintOrderedAt', label: 'Paint Ordered', type: 'date' },
-    { field: 'paintExpectedAt', label: 'Paint Expected', type: 'date' },
-    { field: 'paintReceivedAt', label: 'Paint Received', type: 'date' },
-    { field: 'MACHINING', label: 'Machining %', type: 'progress' },
-    { field: 'ASSEMBLY', label: 'Assembly %', type: 'progress' },
-    { field: 'SANDING', label: 'Sanding %', type: 'progress' },
-    { field: 'SPRAYING', label: 'Spraying %', type: 'progress' },
-    { field: 'FINAL_ASSEMBLY', label: 'Final Assembly %', type: 'progress' },
-    { field: 'GLAZING', label: 'Glazing %', type: 'progress' },
-    { field: 'IRONMONGERY', label: 'Ironmongery %', type: 'progress' },
-    { field: 'INSTALLATION', label: 'Installation %', type: 'progress' },
-  ];
-
   const TabButton = ({ s }: { s: LeadStatus }) => {
     const active = tab === s;
     return (
