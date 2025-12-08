@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import LandingPage from "./(public)/components/LandingPage";
+import NewHomepage from "./(public)/components/NewHomepage";
 
-const title = "JoineryAI — Faster Quotes, Smarter Workshops";
+const title = "JoineryAI — Quote Faster. Win More Jobs. Run a Smarter Workshop.";
 const description =
-  "JoineryAI helps UK joinery manufacturers automate quoting, follow-ups and workshop scheduling with a 14-day free trial.";
+  "AI-powered quoting, email automation, CRM, and workshop management for UK joinery manufacturers. Try free for 14 days.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://joineryai.app"),
@@ -38,5 +38,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <LandingPage />;
+  return <NewHomepage />;
 }
