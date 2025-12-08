@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { FeedbackStatus } from "@prisma/client";
 import OpenAI from "openai";
 
 const router = Router();
@@ -350,7 +351,7 @@ router.post("/feedback-reply", async (req, res) => {
             data: {
               userResponseApproved: approved,
               userResponseAt: new Date(),
-              status: approved ? 'RESOLVED' : 'OPEN'
+              status: approved ? FeedbackStatus.RESOLVED : FeedbackStatus.OPEN
             }
           });
 
