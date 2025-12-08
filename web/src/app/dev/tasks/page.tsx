@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { GitBranch, Plus, Calendar } from "lucide-react";
 
 type DevTask = {
@@ -153,7 +153,7 @@ function DevTasksContent() {
               json: {
                 devTaskId: data.task.id,
                 date: scheduledDate,
-                allocatedHours: data.task.estimatedHours
+                allocatedHours: parseFloat(String(data.task.estimatedHours))
               }
             });
           }
@@ -179,7 +179,7 @@ function DevTasksContent() {
               json: {
                 devTaskId: data.task.id,
                 date: scheduledDate,
-                allocatedHours: data.task.estimatedHours
+                allocatedHours: parseFloat(String(data.task.estimatedHours))
               }
             });
           }
@@ -210,7 +210,7 @@ function DevTasksContent() {
             json: {
               devTaskId: id,
               date: scheduledDate,
-              allocatedHours: data.task.estimatedHours
+              allocatedHours: parseFloat(String(data.task.estimatedHours))
             }
           });
         }
@@ -278,6 +278,9 @@ function DevTasksContent() {
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>{editingTask ? 'Edit' : 'Create'} Development Task</DialogTitle>
+                <DialogDescription>
+                  {editingTask ? 'Update task details and schedule' : 'Create a new development task and optionally schedule it'}
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
@@ -489,6 +492,9 @@ function DevTasksContent() {
                   }`}></span>
                   {selectedTask.title}
                 </DialogTitle>
+                <DialogDescription>
+                  View task details, track time, and manage task progress
+                </DialogDescription>
               </DialogHeader>
               
               <div className="space-y-4">
