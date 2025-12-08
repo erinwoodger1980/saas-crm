@@ -369,33 +369,44 @@ export default function DevCalendarPage() {
           <div className="p-8 text-center text-gray-500">No tasks scheduled for this day</div>
         ) : (
           <div className="space-y-3">
-            {dayAssignments.map(assignment => (
-              <div key={assignment.id} className="p-4 border rounded-lg hover:bg-gray-50">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="font-medium text-lg cursor-pointer hover:text-blue-600" onClick={() => openTaskDetail(assignment.devTask)}>
-                      {assignment.devTask.title}
+            {dayAssignments.map(assignment => {
+              const colors = getDeveloperColor(assignment.devTask.assignee);
+              const textColor = assignment.devTask.assignee === 'Erin' ? 'text-blue-600' : assignment.devTask.assignee === 'Naomi' ? 'text-purple-600' : 'text-gray-600';
+              return (
+                <div key={assignment.id} className={`p-4 border-2 ${colors.border} rounded-lg ${colors.bg} hover:bg-opacity-75`}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="font-medium text-lg cursor-pointer hover:opacity-75" onClick={() => openTaskDetail(assignment.devTask)}>
+                          {assignment.devTask.title}
+                        </div>
+                        {assignment.devTask.assignee && (
+                          <span className={`text-xs font-medium ${textColor} px-2 py-0.5 rounded`}>
+                            {assignment.devTask.assignee}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-600 mt-1">{assignment.devTask.type?.replace(/_/g, ' ')}</div>
+                      {assignment.devTask.description && (
+                        <div className="text-sm text-gray-500 mt-2">{assignment.devTask.description}</div>
+                      )}
                     </div>
-                    <div className="text-sm text-gray-600 mt-1">{assignment.devTask.type?.replace(/_/g, ' ')}</div>
-                    {assignment.devTask.description && (
-                      <div className="text-sm text-gray-500 mt-2">{assignment.devTask.description}</div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-blue-600">{assignment.allocatedHours}h</div>
-                      <div className="text-xs text-gray-500">allocated</div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <div className={`text-2xl font-bold ${textColor}`}>{assignment.allocatedHours}h</div>
+                        <div className="text-xs text-gray-500">allocated</div>
+                      </div>
+                      <button
+                        onClick={() => deleteAssignment(assignment.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => deleteAssignment(assignment.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         
@@ -567,32 +578,35 @@ export default function DevCalendarPage() {
           )}
 
           <div className="space-y-1">
-            {dayAssignments.map(assignment => (
-              <div
-                key={assignment.id}
-                className="text-xs p-1 rounded bg-blue-100 border-l-2 border-blue-500 cursor-pointer hover:bg-blue-200"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openTaskDetail(assignment.devTask);
-                }}
-              >
-                <div className="flex items-start justify-between gap-1">
-                  <div className="flex-1 truncate">
-                    <div className="font-medium truncate">{assignment.devTask.title}</div>
-                    <div className="text-gray-600">{assignment.allocatedHours}h</div>
+            {dayAssignments.map(assignment => {
+              const colors = getDeveloperColor(assignment.devTask.assignee);
+              return (
+                <div
+                  key={assignment.id}
+                  className={`text-xs p-1 rounded ${colors.bg} border-l-2 ${colors.border} cursor-pointer ${colors.hover}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openTaskDetail(assignment.devTask);
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="flex-1 truncate">
+                      <div className="font-medium truncate">{assignment.devTask.title}</div>
+                      <div className="text-gray-600">{assignment.allocatedHours}h</div>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteAssignment(assignment.id);
+                      }}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteAssignment(assignment.id);
-                    }}
-                    className="text-red-600 hover:text-red-800"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {schedule?.isWorkDay !== false && isCurrentMonth && (
@@ -699,6 +713,24 @@ export default function DevCalendarPage() {
           <p className="text-sm text-gray-600">Schedule tasks and set working days</p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={async () => {
+              if (confirm('Create calendar assignments for tasks that have estimated hours but no assignments yet?')) {
+                try {
+                  const data = await apiFetch('/dev/calendar/create-missing-assignments', { method: 'POST' });
+                  if (data.ok) {
+                    alert(`Created ${data.created?.length || 0} assignments. Reloading...`);
+                    await loadData();
+                  }
+                } catch (e: any) {
+                  alert('Failed: ' + e.message);
+                }
+              }
+            }}
+          >
+            Sync Tasks to Calendar
+          </Button>
           <Button variant="outline" onClick={() => window.location.href = '/dev/tasks'}>
             Back to Tasks
           </Button>

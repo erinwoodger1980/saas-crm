@@ -1447,6 +1447,55 @@ router.get("/calendar/summary", requireDeveloper, async (req: any, res) => {
 });
 
 // ==============================
+// Calendar Data Migration
+// ==============================
+
+// Create assignments for tasks that need them (migration helper)
+router.post("/calendar/create-missing-assignments", requireDeveloper, async (req: any, res) => {
+  try {
+    // Find tasks with estimated hours but no assignments
+    const tasks = await prisma.devTask.findMany({
+      where: {
+        estimatedHours: { not: null },
+        status: { in: ['BACKLOG', 'TODO', 'IN_PROGRESS'] }
+      },
+      include: {
+        assignments: true
+      }
+    });
+
+    const created = [];
+    const today = new Date().toISOString().split('T')[0];
+
+    for (const task of tasks) {
+      if (task.assignments.length === 0 && task.estimatedHours) {
+        // Create assignment for today or a reasonable default date
+        const assignment = await prisma.devTaskAssignment.create({
+          data: {
+            devTaskId: task.id,
+            date: today,
+            allocatedHours: parseFloat(task.estimatedHours.toString())
+          },
+          include: {
+            devTask: true
+          }
+        });
+        created.push(assignment);
+      }
+    }
+
+    res.json({ 
+      ok: true, 
+      message: `Created ${created.length} assignments`,
+      created 
+    });
+  } catch (error: any) {
+    console.error("Failed to create missing assignments:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================
 // ML Training Status (Developer Only)
 // ==============================
 
