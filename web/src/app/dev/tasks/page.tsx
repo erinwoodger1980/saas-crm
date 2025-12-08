@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -38,7 +38,7 @@ const STATUS_COLUMNS = [
   { key: "BLOCKED", label: "Blocked", color: "bg-red-100" }
 ];
 
-export default function DevTasksPage() {
+function DevTasksContent() {
   const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<DevTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -299,5 +299,13 @@ export default function DevTasksPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function DevTasksPage() {
+  return (
+    <Suspense fallback={<div className="p-8">Loading tasks...</div>}>
+      <DevTasksContent />
+    </Suspense>
   );
 }
