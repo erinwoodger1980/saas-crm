@@ -1851,7 +1851,7 @@ router.post("/developers", requireDeveloper, async (req: any, res) => {
     }
 
     // Check if user exists
-    let user = await prisma.user.findFirst({
+    let user: any = await prisma.user.findFirst({
       where: { email: { equals: email, mode: 'insensitive' } }
     });
 
@@ -1872,7 +1872,7 @@ router.post("/developers", requireDeveloper, async (req: any, res) => {
     } else {
       // Create new developer user - need a tenant
       // Get or create a developer tenant
-      let devTenant = await prisma.tenant.findFirst({
+      let devTenant: any = await prisma.tenant.findFirst({
         where: { slug: 'developers' }
       });
 
