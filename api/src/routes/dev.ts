@@ -1443,7 +1443,43 @@ router.get("/calendar/summary", requireDeveloper, async (req: any, res) => {
       summary[assignee][type] += assignment.allocatedHours;
     });
 
-    res.json({ ok: true, summary });
+     // Also include tasks with scheduledDate set directly
+     const scheduledWhere: any = { scheduledDate: { not: null } };
+     if (startDate || endDate) {
+       scheduledWhere.scheduledDate = {};
+       if (startDate) {
+         scheduledWhere.scheduledDate.gte = startDate;
+       }
+       if (endDate) {
+         scheduledWhere.scheduledDate.lte = endDate;
+       }
+     }
+
+     const scheduledTasks = await prisma.devTask.findMany({
+       where: scheduledWhere,
+       select: {
+         type: true,
+         assignee: true,
+         estimatedHours: true
+       }
+     });
+
+     // Aggregate scheduled tasks into summary
+     scheduledTasks.forEach(task => {
+       const assignee = task.assignee || 'Unassigned';
+       const type = task.type;
+       const hours = task.estimatedHours || 0;
+
+       if (!summary[assignee]) {
+         summary[assignee] = {};
+       }
+       if (!summary[assignee][type]) {
+         summary[assignee][type] = 0;
+       }
+       summary[assignee][type] += hours;
+     });
+
+     res.json({ ok: true, summary });
   } catch (error: any) {
     console.error("Failed to get calendar summary:", error);
     res.status(500).json({ error: error.message });
