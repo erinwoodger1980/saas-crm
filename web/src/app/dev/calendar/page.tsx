@@ -817,6 +817,61 @@ export default function DevCalendarPage() {
         </div>
       )}
 
+      {/* Per Developer Summary Table */}
+      {Object.keys(summary).length > 0 && (
+        <div className="bg-white p-6 rounded border space-y-4">
+          <h2 className="text-lg font-semibold">Hours per Developer - {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border p-2 text-left font-medium">Developer</th>
+                  {(() => {
+                    const allTypes = new Set<string>();
+                    Object.values(summary).forEach(types => {
+                      Object.keys(types).forEach(type => allTypes.add(type));
+                    });
+                    return Array.from(allTypes).sort().map(type => (
+                      <th key={type} className="border p-2 text-center font-medium text-sm">
+                        {type.replace(/_/g, ' ')}
+                      </th>
+                    ));
+                  })()}
+                  <th className="border p-2 text-center font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(summary).map(([assignee, types]) => {
+                  const allTypes = new Set<string>();
+                  Object.values(summary).forEach(t => Object.keys(t).forEach(type => allTypes.add(type)));
+                  const total = Object.values(types).reduce((sum, hours) => sum + hours, 0);
+                  
+                  return (
+                    <tr key={assignee} className="hover:bg-gray-50">
+                      <td className="border p-2 font-medium">{assignee}</td>
+                      {Array.from(allTypes).sort().map(type => (
+                        <td key={type} className="border p-2 text-center text-sm">
+                          {types[type] ? (
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeColor(type)}`}>
+                              {types[type].toFixed(1)}h
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
+                      ))}
+                      <td className="border p-2 text-center font-bold text-blue-600">
+                        {total.toFixed(1)}h
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
       <div className="flex items-center justify-between bg-white p-4 rounded border">
         <Button variant="outline" onClick={navigatePrevious}>
