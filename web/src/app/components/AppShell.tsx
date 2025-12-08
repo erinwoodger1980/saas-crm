@@ -216,7 +216,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main grid */}
       <div className={`relative mx-auto grid w-full gap-8 px-6 py-10 transition-all duration-300 ${sidebarCollapsed ? 'lg:grid-cols-[80px_minmax(0,1fr)]' : 'lg:grid-cols-[280px_minmax(0,1fr)]'}`}>
-        <aside className="md:sticky md:top-8 md:self-start relative">
+        <aside className="relative">
           {/* Toggle button */}
           <Button
             variant="ghost"

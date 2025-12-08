@@ -487,15 +487,23 @@ export default function FireDoorSchedulePage() {
 
   // Calculate Production completion percentage
   function calculateProductionPercent(project: FireDoorProject): number {
-    const percentages = [
-      project.blanksCutPercent || 0,
-      project.edgebandPercent || 0,
-      project.calibratePercent || 0,
-      project.facingsPercent || 0,
-      project.sprayPercent || 0,
-      project.buildPercent || 0
+    const allProcesses = [
+      project.blanksCutPercent,
+      project.edgebandPercent,
+      project.calibratePercent,
+      project.facingsPercent,
+      project.finalCncPercent,
+      project.finishPercent,
+      project.sandPercent,
+      project.sprayPercent,
+      project.cutPercent,
+      project.cncPercent,
+      project.buildPercent
     ];
-    const avg = percentages.reduce((a, b) => a + b, 0) / percentages.length;
+    // Filter out N/A processes (null values) and only include applicable processes
+    const applicableProcesses = allProcesses.filter(p => p !== null);
+    if (applicableProcesses.length === 0) return 0;
+    const avg = applicableProcesses.reduce((a, b) => a + (b || 0), 0) / applicableProcesses.length;
     return Math.round(avg);
   }
 

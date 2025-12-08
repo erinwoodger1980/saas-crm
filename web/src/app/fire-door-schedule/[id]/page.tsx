@@ -91,17 +91,17 @@ interface FireDoorProject {
   installEnd?: Date | null;
   snaggingStatus?: string;
   snaggingComplete?: boolean;
-  blanksCutPercent?: number;
-  edgebandPercent?: number;
-  calibratePercent?: number;
-  facingsPercent?: number;
-  finalCncPercent?: number;
-  finishPercent?: number;
-  sandPercent?: number;
-  sprayPercent?: number;
-  cutPercent?: number;
-  cncPercent?: number;
-  buildPercent?: number;
+  blanksCutPercent?: number | null;
+  edgebandPercent?: number | null;
+  calibratePercent?: number | null;
+  facingsPercent?: number | null;
+  finalCncPercent?: number | null;
+  finishPercent?: number | null;
+  sandPercent?: number | null;
+  sprayPercent?: number | null;
+  cutPercent?: number | null;
+  cncPercent?: number | null;
+  buildPercent?: number | null;
   overallProgress?: number;
   netValue?: number | null;
   // BOM & Materials fields
@@ -657,58 +657,157 @@ export default function FireDoorScheduleDetailPage() {
               <div className="grid grid-cols-3 gap-6">
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Blanks Cut</label>
-                  <ProgressBar value={project.blanksCutPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.blanksCutPercent || 0} onChange={(e) => updateField("blanksCutPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.blanksCutPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.blanksCutPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.blanksCutPercent === null ? "" : (project.blanksCutPercent || 0)} onChange={(e) => updateField("blanksCutPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.blanksCutPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("blanksCutPercent", project.blanksCutPercent === null ? 0 : null)}>{project.blanksCutPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Edgeband</label>
-                  <ProgressBar value={project.edgebandPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.edgebandPercent || 0} onChange={(e) => updateField("edgebandPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.edgebandPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.edgebandPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.edgebandPercent === null ? "" : (project.edgebandPercent || 0)} onChange={(e) => updateField("edgebandPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.edgebandPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("edgebandPercent", project.edgebandPercent === null ? 0 : null)}>{project.edgebandPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Calibrate</label>
-                  <ProgressBar value={project.calibratePercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.calibratePercent || 0} onChange={(e) => updateField("calibratePercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.calibratePercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.calibratePercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.calibratePercent === null ? "" : (project.calibratePercent || 0)} onChange={(e) => updateField("calibratePercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.calibratePercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("calibratePercent", project.calibratePercent === null ? 0 : null)}>{project.calibratePercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Facings</label>
-                  <ProgressBar value={project.facingsPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.facingsPercent || 0} onChange={(e) => updateField("facingsPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.facingsPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.facingsPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.facingsPercent === null ? "" : (project.facingsPercent || 0)} onChange={(e) => updateField("facingsPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.facingsPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("facingsPercent", project.facingsPercent === null ? 0 : null)}>{project.facingsPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Final CNC</label>
-                  <ProgressBar value={project.finalCncPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.finalCncPercent || 0} onChange={(e) => updateField("finalCncPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.finalCncPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.finalCncPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.finalCncPercent === null ? "" : (project.finalCncPercent || 0)} onChange={(e) => updateField("finalCncPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.finalCncPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("finalCncPercent", project.finalCncPercent === null ? 0 : null)}>{project.finalCncPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Finish</label>
-                  <ProgressBar value={project.finishPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.finishPercent || 0} onChange={(e) => updateField("finishPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.finishPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.finishPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.finishPercent === null ? "" : (project.finishPercent || 0)} onChange={(e) => updateField("finishPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.finishPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("finishPercent", project.finishPercent === null ? 0 : null)}>{project.finishPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Sand</label>
-                  <ProgressBar value={project.sandPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.sandPercent || 0} onChange={(e) => updateField("sandPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.sandPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.sandPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.sandPercent === null ? "" : (project.sandPercent || 0)} onChange={(e) => updateField("sandPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.sandPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("sandPercent", project.sandPercent === null ? 0 : null)}>{project.sandPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Spray</label>
-                  <ProgressBar value={project.sprayPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.sprayPercent || 0} onChange={(e) => updateField("sprayPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.sprayPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.sprayPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.sprayPercent === null ? "" : (project.sprayPercent || 0)} onChange={(e) => updateField("sprayPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.sprayPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("sprayPercent", project.sprayPercent === null ? 0 : null)}>{project.sprayPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Cut</label>
-                  <ProgressBar value={project.cutPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.cutPercent || 0} onChange={(e) => updateField("cutPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.cutPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.cutPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.cutPercent === null ? "" : (project.cutPercent || 0)} onChange={(e) => updateField("cutPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.cutPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("cutPercent", project.cutPercent === null ? 0 : null)}>{project.cutPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">CNC</label>
-                  <ProgressBar value={project.cncPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.cncPercent || 0} onChange={(e) => updateField("cncPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.cncPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.cncPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.cncPercent === null ? "" : (project.cncPercent || 0)} onChange={(e) => updateField("cncPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.cncPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("cncPercent", project.cncPercent === null ? 0 : null)}>{project.cncPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-slate-600 mb-2 block">Build</label>
-                  <ProgressBar value={project.buildPercent || 0} />
-                  <Input type="number" min={0} max={100} value={project.buildPercent || 0} onChange={(e) => updateField("buildPercent", Number(e.target.value))} className="mt-2 w-32" />
+                  {project.buildPercent === null ? (
+                    <div className="h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-medium text-slate-500">N/A</span>
+                    </div>
+                  ) : (
+                    <ProgressBar value={project.buildPercent || 0} />
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <Input type="number" min={0} max={100} value={project.buildPercent === null ? "" : (project.buildPercent || 0)} onChange={(e) => updateField("buildPercent", e.target.value === "" ? 0 : Number(e.target.value))} className="w-32" disabled={project.buildPercent === null} />
+                    <Button variant="outline" size="sm" onClick={() => updateField("buildPercent", project.buildPercent === null ? 0 : null)}>{project.buildPercent === null ? "Enable" : "N/A"}</Button>
+                  </div>
                 </div>
               </div>
             </div>

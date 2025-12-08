@@ -48,8 +48,8 @@ function calculateProgressPercentages(project: any) {
   ).length;
   const paperworkPercent = Math.round((completedCount / paperworkItems.length) * 100);
 
-  // 3. Production Progress: average of 11 production processes
-  const productionProcesses = [
+  // 3. Production Progress: average of applicable production processes (excluding N/A)
+  const allProductionProcesses = [
     project.blanksCutPercent,
     project.edgebandPercent,
     project.calibratePercent,
@@ -62,8 +62,12 @@ function calculateProgressPercentages(project: any) {
     project.cncPercent,
     project.buildPercent
   ];
-  const totalProductionPercent = productionProcesses.reduce((sum: number, val: number) => sum + (val || 0), 0);
-  const productionPercent = Math.round(totalProductionPercent / productionProcesses.length);
+  // Filter out N/A processes (null values) - only count applicable processes
+  const applicableProcesses = allProductionProcesses.filter((val: number | null) => val !== null);
+  const totalProductionPercent = applicableProcesses.reduce((sum: number, val: number) => sum + (val || 0), 0);
+  const productionPercent = applicableProcesses.length > 0 
+    ? Math.round(totalProductionPercent / applicableProcesses.length) 
+    : 0;
 
   return { bomPercent, paperworkPercent, productionPercent };
 }
