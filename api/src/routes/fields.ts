@@ -65,6 +65,7 @@ router.get("/", requireAuth, async (req: any, res) => {
   try {
     const tenantId = req.auth.tenantId as string;
     const questionnaireId = req.query.questionnaireId as string | undefined;
+    const scope = req.query.scope as string | undefined;
 
     // Auto-upsert standard fields (idempotent). Ensures they appear across UIs without running seed script.
     // Skip when explicit ?skipEnsureStandard=1 passed (escape hatch for bulk operations)
@@ -178,6 +179,7 @@ router.get("/", requireAuth, async (req: any, res) => {
       where: {
         tenantId,
         ...(questionnaireId && { questionnaireId }),
+        ...(scope && { scope }),
       },
       // Prefer sortOrder; fall back to legacy order for older rows if any.
       orderBy: [
