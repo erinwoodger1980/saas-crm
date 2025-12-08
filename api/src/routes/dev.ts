@@ -546,10 +546,10 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
       `;
     }
 
-    // Process screenshots - convert base64 to attachments
+    // Process screenshots - convert base64 to attachments with proper CID
     const attachments: any[] = [];
     if (feedback.devScreenshotUrls && feedback.devScreenshotUrls.length > 0) {
-      emailHtml += `<h3>Screenshots attached (${feedback.devScreenshotUrls.length} image(s)):</h3>`;
+      emailHtml += `<h3>Screenshots:</h3>`;
       
       feedback.devScreenshotUrls.forEach((dataUrl: string, idx: number) => {
         if (dataUrl.startsWith('data:')) {
@@ -559,15 +559,17 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
             const mimeType = matches[1];
             const base64Data = matches[2];
             const extension = mimeType.split('/')[1] || 'png';
+            const cid = `screenshot${idx + 1}`;
             
             attachments.push({
               filename: `screenshot-${idx + 1}.${extension}`,
               content: base64Data,
-              contentType: mimeType
+              encoding: 'base64',
+              cid: cid
             });
             
-            // Reference attachment in HTML using cid
-            emailHtml += `<p>${idx + 1}. <img src="cid:screenshot-${idx + 1}.${extension}" alt="Screenshot ${idx + 1}" style="max-width: 600px; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0; display: block;" /></p>`;
+            // Reference attachment in HTML using cid (no file extension in cid)
+            emailHtml += `<p style="margin: 10px 0;"><img src="cid:${cid}" alt="Screenshot ${idx + 1}" style="max-width: 600px; border: 1px solid #ddd; border-radius: 5px; display: block;" /></p>`;
           }
         }
       });
@@ -575,7 +577,12 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
 
     emailHtml += `
       <p><strong>Current Status:</strong> ${feedback.status}</p>
-      <p><a href="${feedbackUrl}" style="display: inline-block; padding: 10px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px; margin-top: 10px;">View Your Feedback</a></p>
+      <div style="margin: 20px 0;">
+        <p style="margin-bottom: 10px;"><strong>Does this work for you?</strong></p>
+        <a href="${feedbackUrl}&response=approved" style="display: inline-block; padding: 10px 20px; background: #22c55e; color: white; text-decoration: none; border-radius: 5px; margin-right: 10px;">✓ Yes, it works!</a>
+        <a href="${feedbackUrl}&response=needs-more" style="display: inline-block; padding: 10px 20px; background: #ef4444; color: white; text-decoration: none; border-radius: 5px;">✗ No, needs more work</a>
+      </div>
+      <p><a href="${feedbackUrl}" style="display: inline-block; padding: 10px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px; margin-top: 10px;">View Full Details</a></p>
       <p style="color: #666; font-size: 0.9em; margin-top: 20px;">Thank you for helping us improve!</p>
     `;
 

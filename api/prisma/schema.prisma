@@ -1150,6 +1150,8 @@ model Feedback {
   resolvedAt        DateTime?
   resolvedById      String?
   emailNotificationSent Boolean       @default(false)
+  userResponseApproved Boolean?       // true = works for them, false = needs more dev
+  userResponseAt    DateTime?         // when user responded
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   resolvedBy        User?            @relation("FeedbackResolver", fields: [resolvedById], references: [id])

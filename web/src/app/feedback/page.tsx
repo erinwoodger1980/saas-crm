@@ -37,6 +37,8 @@ type FeedbackItem = {
   status: FeedbackStatus;
   devResponse: string | null;
   devScreenshotUrls: string[];
+  userResponseApproved: boolean | null;
+  userResponseAt: string | null;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
@@ -118,6 +120,35 @@ export default function FeedbackPage() {
   const [filter, setFilter] = useState<FilterValue>("OPEN");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+
+  // Handle URL parameters for response buttons
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const feedbackId = params.get("highlight");
+    const response = params.get("response");
+
+    if (feedbackId && response) {
+      // Auto-submit response from email link
+      (async () => {
+        try {
+          const approved = response === "approved";
+          await apiFetch(`/feedback/${feedbackId}/response`, {
+            method: "POST",
+            json: { approved },
+          });
+          // Remove response param from URL
+          const newUrl = new URL(window.location.href);
+          newUrl.searchParams.delete("response");
+          window.history.replaceState({}, "", newUrl.toString());
+          // Show success
+          alert(approved ? "Thanks! We're glad it works for you." : "Thanks for letting us know. We'll keep working on it.");
+        } catch (err: any) {
+          console.error("Failed to record response:", err);
+        }
+      })();
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -272,6 +303,11 @@ export default function FeedbackPage() {
                     {(item.devResponse || (item.devScreenshotUrls && item.devScreenshotUrls.length > 0)) && (
                       <div className="mt-1 text-xs text-blue-600 font-medium">✓ Developer response available</div>
                     )}
+                    {item.userResponseApproved !== null && (
+                      <div className={`mt-1 text-xs font-medium ${item.userResponseApproved ? 'text-green-600' : 'text-rose-600'}`}>
+                        {item.userResponseApproved ? '✓ User approved' : '✗ Needs more work'}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="align-top text-sm text-slate-600">
                     {formatSubmittedBy(item.user ?? null)}
@@ -374,6 +410,68 @@ export default function FeedbackPage() {
                         {selectedFeedback.devResponse}
                       </p>
                     </div>
+                    
+                    {/* User Response Section */}
+                    {selectedFeedback.userResponseApproved === null ? (
+                      <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <p className="text-sm font-semibold text-slate-900 mb-3">Does this work for you?</p>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={async () => {
+                              setRespondingId(selectedFeedback.id);
+                              try {
+                                const response = await apiFetch<{ ok: boolean; feedback: FeedbackItem }>(`/feedback/${selectedFeedback.id}/response`, {
+                                  method: "POST",
+                                  json: { approved: true },
+                                });
+                                setItems((prev) => prev.map((row) => (row.id === selectedFeedback.id ? { ...row, ...response.feedback } : row)));
+                                setSelectedFeedback({ ...selectedFeedback, ...response.feedback });
+                              } catch (err: any) {
+                                setError(err?.message || "Failed to record response");
+                              } finally {
+                                setRespondingId(null);
+                              }
+                            }}
+                            disabled={respondingId === selectedFeedback.id}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            ✓ Yes, it works!
+                          </Button>
+                          <Button
+                            onClick={async () => {
+                              setRespondingId(selectedFeedback.id);
+                              try {
+                                const response = await apiFetch<{ ok: boolean; feedback: FeedbackItem }>(`/feedback/${selectedFeedback.id}/response`, {
+                                  method: "POST",
+                                  json: { approved: false },
+                                });
+                                setItems((prev) => prev.map((row) => (row.id === selectedFeedback.id ? { ...row, ...response.feedback } : row)));
+                                setSelectedFeedback({ ...selectedFeedback, ...response.feedback });
+                              } catch (err: any) {
+                                setError(err?.message || "Failed to record response");
+                              } finally {
+                                setRespondingId(null);
+                              }
+                            }}
+                            disabled={respondingId === selectedFeedback.id}
+                            variant="destructive"
+                          >
+                            ✗ No, needs more work
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`mt-4 p-4 rounded-lg border ${selectedFeedback.userResponseApproved ? 'bg-green-50 border-green-200' : 'bg-rose-50 border-rose-200'}`}>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {selectedFeedback.userResponseApproved ? '✓ User confirmed this works' : '✗ User says needs more work'}
+                        </p>
+                        {selectedFeedback.userResponseAt && (
+                          <p className="text-xs text-slate-600 mt-1">
+                            Responded {formatDate(selectedFeedback.userResponseAt)}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 

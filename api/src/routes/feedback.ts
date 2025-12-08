@@ -342,4 +342,47 @@ router.patch("/:id", async (req: any, res) => {
   }
 });
 
+// POST /feedback/:id/response { approved: true | false }
+router.post("/:id/response", async (req: any, res) => {
+  try {
+    const auth = req.auth;
+    if (!auth?.tenantId) return res.status(401).json({ error: "unauthorized" });
+
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: "id_required" });
+
+    const approved = req.body?.approved;
+    if (typeof approved !== 'boolean') {
+      return res.status(400).json({ error: "approved_required" });
+    }
+
+    const feedback = await prisma.feedback.findFirst({
+      where: { id, tenantId: auth.tenantId },
+    });
+
+    if (!feedback) {
+      return res.status(404).json({ error: "not_found" });
+    }
+
+    const updated = await prisma.feedback.update({
+      where: { id },
+      data: {
+        userResponseApproved: approved,
+        userResponseAt: new Date(),
+      },
+      select: FEEDBACK_SELECT,
+    });
+
+    res.json({ ok: true, feedback: updated });
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const code = e?.code || e?.name;
+    console.error("[POST /feedback/:id/response] failed:", msg);
+    if (code === "P2021" || /does not exist/i.test(msg)) {
+      return res.status(404).json({ error: "not_found" });
+    }
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 export default router;
