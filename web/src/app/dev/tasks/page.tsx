@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { GitBranch, Plus } from "lucide-react";
+import { GitBranch, Plus, Calendar } from "lucide-react";
 
 type DevTask = {
   id: string;
@@ -38,6 +39,7 @@ const STATUS_COLUMNS = [
 ];
 
 export default function DevTasksPage() {
+  const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<DevTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -46,6 +48,25 @@ export default function DevTasksPage() {
     status: "BACKLOG",
     priority: "MEDIUM"
   });
+
+  // Check if we're creating from feedback
+  useEffect(() => {
+    const createFrom = searchParams?.get("createFrom");
+    if (createFrom === "feedback") {
+      const feedbackId = searchParams?.get("feedbackId");
+      const title = searchParams?.get("title");
+      const description = searchParams?.get("description");
+      
+      setFormData({
+        status: "BACKLOG",
+        priority: "MEDIUM",
+        title: title || "",
+        description: description || "",
+        feedbackIds: feedbackId ? [feedbackId] : []
+      });
+      setShowCreateDialog(true);
+    }
+  }, [searchParams]);
 
   async function loadTasks() {
     setLoading(true);
@@ -122,6 +143,10 @@ export default function DevTasksPage() {
           Development Tasks
         </h1>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => window.location.href = '/dev/calendar'}>
+            <Calendar className="w-4 h-4 mr-2" />
+            Calendar
+          </Button>
           <Button variant="outline" onClick={loadTasks}>Refresh</Button>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
             <DialogTrigger asChild>

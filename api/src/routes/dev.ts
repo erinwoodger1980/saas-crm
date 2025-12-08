@@ -1035,6 +1035,137 @@ router.get("/time-entries/summary", requireDeveloper, async (req: any, res) => {
 });
 
 // ==============================
+// Calendar Scheduling (Developer Only)
+// ==============================
+
+// Get day schedules for a month
+router.get("/calendar/schedules", requireDeveloper, async (req: any, res) => {
+  try {
+    const { month } = req.query;
+    const date = month ? new Date(month as string) : new Date();
+    const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    
+    const startDate = startOfMonth.toISOString().split('T')[0];
+    const endDate = endOfMonth.toISOString().split('T')[0];
+
+    const schedules = await prisma.devDaySchedule.findMany({
+      where: {
+        date: {
+          gte: startDate,
+          lte: endDate
+        }
+      },
+      orderBy: { date: 'asc' }
+    });
+
+    res.json({ ok: true, schedules });
+  } catch (error: any) {
+    console.error("Failed to get schedules:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create or update day schedule
+router.post("/calendar/schedules", requireDeveloper, async (req: any, res) => {
+  try {
+    const { date, isWorkDay, availableHours, notes } = req.body;
+    if (!date) return res.status(400).json({ error: "date required" });
+
+    const schedule = await prisma.devDaySchedule.upsert({
+      where: { date },
+      create: {
+        date,
+        isWorkDay: isWorkDay ?? true,
+        availableHours: availableHours ?? 8,
+        notes
+      },
+      update: {
+        isWorkDay: isWorkDay ?? true,
+        availableHours: availableHours ?? 8,
+        notes
+      }
+    });
+
+    res.json({ ok: true, schedule });
+  } catch (error: any) {
+    console.error("Failed to save schedule:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get task assignments for a month
+router.get("/calendar/assignments", requireDeveloper, async (req: any, res) => {
+  try {
+    const { month } = req.query;
+    const date = month ? new Date(month as string) : new Date();
+    const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    
+    const startDate = startOfMonth.toISOString().split('T')[0];
+    const endDate = endOfMonth.toISOString().split('T')[0];
+
+    const assignments = await prisma.devTaskAssignment.findMany({
+      where: {
+        date: {
+          gte: startDate,
+          lte: endDate
+        }
+      },
+      include: {
+        devTask: true
+      },
+      orderBy: { date: 'asc' }
+    });
+
+    res.json({ ok: true, assignments });
+  } catch (error: any) {
+    console.error("Failed to get assignments:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create task assignment
+router.post("/calendar/assignments", requireDeveloper, async (req: any, res) => {
+  try {
+    const { devTaskId, date, allocatedHours } = req.body;
+    if (!devTaskId || !date) {
+      return res.status(400).json({ error: "devTaskId and date required" });
+    }
+
+    const assignment = await prisma.devTaskAssignment.create({
+      data: {
+        devTaskId,
+        date,
+        allocatedHours: allocatedHours || 1
+      },
+      include: {
+        devTask: true
+      }
+    });
+
+    res.json({ ok: true, assignment });
+  } catch (error: any) {
+    console.error("Failed to create assignment:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete task assignment
+router.delete("/calendar/assignments/:id", requireDeveloper, async (req: any, res) => {
+  try {
+    await prisma.devTaskAssignment.delete({
+      where: { id: req.params.id }
+    });
+
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error("Failed to delete assignment:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================
 // ML Training Status (Developer Only)
 // ==============================
 

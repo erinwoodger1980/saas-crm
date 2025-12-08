@@ -354,6 +354,23 @@ function FeedbackManagementContent() {
               {editingId === feedback.id ? (
                 // Edit Mode
                 <div className="space-y-3">
+                  {/* Display User Comment */}
+                  {feedback.comment && (
+                    <div className="bg-slate-50 p-3 rounded border-l-4 border-slate-400">
+                      <div className="text-xs font-medium text-slate-700 mb-1">User Comment:</div>
+                      <div className="text-sm">{feedback.comment}</div>
+                      {feedback.rating && (
+                        <div className="text-sm mt-1">Rating: {"⭐".repeat(feedback.rating)}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Feature Title */}
+                  <div className="font-semibold text-lg">{feedback.feature}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {feedback.tenant.name} • {feedback.user?.email || "Anonymous"} • {new Date(feedback.createdAt).toLocaleDateString()}
+                  </div>
+
                   {/* Recipient selection */}
                   <div>
                     <label className="text-xs font-medium text-slate-700 mb-1.5 block">Send Feedback Email To</label>
@@ -509,6 +526,10 @@ function FeedbackManagementContent() {
 
                   <div className="flex gap-2">
                     <Button onClick={() => updateFeedback(feedback.id, editForm)}>Save</Button>
+                    <Button variant="outline" onClick={() => {
+                      // Navigate to task creation with feedback context
+                      window.location.href = `/dev/tasks?createFrom=feedback&feedbackId=${feedback.id}&title=${encodeURIComponent(feedback.feature)}&description=${encodeURIComponent(feedback.comment || '')}`;
+                    }}>Create Task</Button>
                     <Button variant="ghost" onClick={() => {
                       setEditingId(null);
                       setEditForm({});

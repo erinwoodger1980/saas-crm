@@ -1162,23 +1162,24 @@ model Feedback {
 }
 
 model DevTask {
-  id             String           @id @default(cuid())
+  id             String              @id @default(cuid())
   title          String
   description    String?
-  status         DevTaskStatus    @default(BACKLOG)
-  priority       FeedbackPriority @default(MEDIUM)
+  status         DevTaskStatus       @default(BACKLOG)
+  priority       FeedbackPriority    @default(MEDIUM)
   category       String?
   sprint         String?
   estimatedHours Decimal?
   actualHours    Decimal?
   assignee       String?
-  feedbackIds    String[]         @default([])
-  tenantIds      String[]         @default([])
+  feedbackIds    String[]            @default([])
+  tenantIds      String[]            @default([])
   notes          String?
   completedAt    DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   timeEntries    DevTimeEntry[]
+  assignments    DevTaskAssignment[]
 
   @@index([status, priority])
   @@index([sprint])
@@ -1200,6 +1201,32 @@ model DevTimeEntry {
   @@index([devTaskId])
   @@index([userId])
   @@index([startedAt])
+}
+
+model DevDaySchedule {
+  id              String   @id @default(cuid())
+  date            String   @unique
+  isWorkDay       Boolean  @default(true)
+  availableHours  Float    @default(8)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([date])
+}
+
+model DevTaskAssignment {
+  id              String   @id @default(cuid())
+  devTaskId       String
+  devTask         DevTask  @relation(fields: [devTaskId], references: [id], onDelete: Cascade)
+  date            String
+  allocatedHours  Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([devTaskId])
+  @@index([date])
+  @@index([date, devTaskId])
 }
 
 model Task {
