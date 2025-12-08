@@ -196,7 +196,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
         delete body.order;
       }
       await fetch(listUrl + "/" + id, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: 'include',
         body: JSON.stringify(body),

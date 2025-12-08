@@ -45,6 +45,7 @@ const updateFieldSchema = z.object({
   order: z.number().int().optional(), // legacy
   sortOrder: z.number().int().optional(), // new
   costingInputKey: z.string().max(255).optional().nullable(),
+  scope: z.string().optional(),
 });
 
 function slugify(text: string): string {
@@ -346,6 +347,7 @@ router.patch("/:id", requireAuth, async (req: any, res) => {
         ...(validatedData.costingInputKey !== undefined && {
           costingInputKey: validatedData.costingInputKey,
         }),
+        ...(validatedData.scope && { scope: validatedData.scope }),
       },
       include: {
         questionnaire: {
