@@ -171,6 +171,15 @@ export default function DevCalendarPage() {
     return date.toISOString().split('T')[0];
   }
 
+  function getDeveloperColor(assignee: string | null): { bg: string; border: string; hover: string } {
+    const colors: Record<string, { bg: string; border: string; hover: string }> = {
+      'Erin': { bg: 'bg-blue-100', border: 'border-blue-500', hover: 'hover:bg-blue-200' },
+      'Naomi': { bg: 'bg-purple-100', border: 'border-purple-500', hover: 'hover:bg-purple-200' },
+      'Unassigned': { bg: 'bg-gray-100', border: 'border-gray-400', hover: 'hover:bg-gray-200' },
+    };
+    return colors[assignee || 'Unassigned'] || { bg: 'bg-green-100', border: 'border-green-500', hover: 'hover:bg-green-200' };
+  }
+
   function getDaySchedule(dateStr: string): DaySchedule | null {
     return schedules[dateStr] || null;
   }
