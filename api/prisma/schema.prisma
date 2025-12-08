@@ -181,6 +181,7 @@ model User {
   workshopTimers            WorkshopTimer[]
   fireDoorQRScans           FireDoorQRScan[]           @relation("FireDoorQRScans")
   fireDoorMaintenanceRecords FireDoorMaintenanceRecord[] @relation("FireDoorMaintenanceRecords")
+  devTimeEntries            DevTimeEntry[]
   supplier                  Supplier?                  @relation(fields: [supplierId], references: [id])
   tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
 }
@@ -1177,9 +1178,28 @@ model DevTask {
   completedAt    DateTime?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+  timeEntries    DevTimeEntry[]
 
   @@index([status, priority])
   @@index([sprint])
+}
+
+model DevTimeEntry {
+  id          String   @id @default(cuid())
+  devTaskId   String
+  devTask     DevTask  @relation(fields: [devTaskId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  durationMs  Int?     @default(0)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([devTaskId])
+  @@index([userId])
+  @@index([startedAt])
 }
 
 model Task {

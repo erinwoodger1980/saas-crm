@@ -803,6 +803,238 @@ router.delete("/tasks/:id", requireDeveloper, async (req: any, res) => {
 });
 
 // ==============================
+// Dev Task Time Tracking (Developer Only)
+// ==============================
+
+// Get active timer for current user
+router.get("/timer/active", requireDeveloper, async (req: any, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "unauthorized" });
+
+    const activeTimer = await prisma.devTimeEntry.findFirst({
+      where: {
+        userId,
+        endedAt: null
+      },
+      include: {
+        devTask: true
+      },
+      orderBy: { startedAt: 'desc' }
+    });
+
+    res.json({ ok: true, timer: activeTimer });
+  } catch (error: any) {
+    console.error("Failed to get active timer:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Start timer for a dev task
+router.post("/timer/start", requireDeveloper, async (req: any, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "unauthorized" });
+
+    const { devTaskId, notes } = req.body;
+    if (!devTaskId) return res.status(400).json({ error: "devTaskId required" });
+
+    // Stop any active timer first
+    const activeTimer = await prisma.devTimeEntry.findFirst({
+      where: {
+        userId,
+        endedAt: null
+      }
+    });
+
+    if (activeTimer) {
+      const endedAt = new Date();
+      const durationMs = endedAt.getTime() - new Date(activeTimer.startedAt).getTime();
+      await prisma.devTimeEntry.update({
+        where: { id: activeTimer.id },
+        data: {
+          endedAt,
+          durationMs
+        }
+      });
+    }
+
+    // Start new timer
+    const timer = await prisma.devTimeEntry.create({
+      data: {
+        devTaskId,
+        userId,
+        notes,
+        startedAt: new Date()
+      },
+      include: {
+        devTask: true
+      }
+    });
+
+    res.json({ ok: true, timer });
+  } catch (error: any) {
+    console.error("Failed to start timer:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Stop active timer
+router.post("/timer/stop", requireDeveloper, async (req: any, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "unauthorized" });
+
+    const { notes } = req.body;
+
+    const activeTimer = await prisma.devTimeEntry.findFirst({
+      where: {
+        userId,
+        endedAt: null
+      }
+    });
+
+    if (!activeTimer) {
+      return res.status(404).json({ error: "no_active_timer" });
+    }
+
+    const endedAt = new Date();
+    const durationMs = endedAt.getTime() - new Date(activeTimer.startedAt).getTime();
+
+    const timer = await prisma.devTimeEntry.update({
+      where: { id: activeTimer.id },
+      data: {
+        endedAt,
+        durationMs,
+        ...(notes && { notes })
+      },
+      include: {
+        devTask: true
+      }
+    });
+
+    // Update task's actualHours
+    const totalMs = await prisma.devTimeEntry.aggregate({
+      where: { devTaskId: timer.devTaskId },
+      _sum: { durationMs: true }
+    });
+    
+    const totalHours = (totalMs._sum.durationMs || 0) / (1000 * 60 * 60);
+    await prisma.devTask.update({
+      where: { id: timer.devTaskId },
+      data: { actualHours: totalHours }
+    });
+
+    res.json({ ok: true, timer });
+  } catch (error: any) {
+    console.error("Failed to stop timer:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get time entries for a task
+router.get("/tasks/:id/time-entries", requireDeveloper, async (req: any, res) => {
+  try {
+    const entries = await prisma.devTimeEntry.findMany({
+      where: {
+        devTaskId: req.params.id
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { startedAt: 'desc' }
+    });
+
+    res.json({ ok: true, entries });
+  } catch (error: any) {
+    console.error("Failed to get time entries:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get time entries summary (for dashboard)
+router.get("/time-entries/summary", requireDeveloper, async (req: any, res) => {
+  try {
+    const { userId, startDate, endDate } = req.query;
+    
+    const where: any = {};
+    if (userId) where.userId = userId;
+    if (startDate || endDate) {
+      where.startedAt = {};
+      if (startDate) where.startedAt.gte = new Date(startDate as string);
+      if (endDate) where.startedAt.lte = new Date(endDate as string);
+    }
+
+    const entries = await prisma.devTimeEntry.findMany({
+      where,
+      include: {
+        devTask: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { startedAt: 'desc' }
+    });
+
+    // Group by task
+    const byTask = entries.reduce((acc: any, entry) => {
+      const taskId = entry.devTaskId;
+      if (!acc[taskId]) {
+        acc[taskId] = {
+          task: entry.devTask,
+          entries: [],
+          totalMs: 0,
+          totalHours: 0
+        };
+      }
+      acc[taskId].entries.push(entry);
+      acc[taskId].totalMs += entry.durationMs || 0;
+      acc[taskId].totalHours = acc[taskId].totalMs / (1000 * 60 * 60);
+      return acc;
+    }, {});
+
+    // Group by user
+    const byUser = entries.reduce((acc: any, entry) => {
+      const userId = entry.userId;
+      if (!acc[userId]) {
+        acc[userId] = {
+          user: entry.user,
+          entries: [],
+          totalMs: 0,
+          totalHours: 0
+        };
+      }
+      acc[userId].entries.push(entry);
+      acc[userId].totalMs += entry.durationMs || 0;
+      acc[userId].totalHours = acc[userId].totalMs / (1000 * 60 * 60);
+      return acc;
+    }, {});
+
+    res.json({ 
+      ok: true, 
+      entries,
+      byTask: Object.values(byTask),
+      byUser: Object.values(byUser),
+      totalMs: entries.reduce((sum, e) => sum + (e.durationMs || 0), 0),
+      totalHours: entries.reduce((sum, e) => sum + (e.durationMs || 0), 0) / (1000 * 60 * 60)
+    });
+  } catch (error: any) {
+    console.error("Failed to get time summary:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================
 // ML Training Status (Developer Only)
 // ==============================
 

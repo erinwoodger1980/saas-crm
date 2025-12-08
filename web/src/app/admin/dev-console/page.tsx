@@ -1,10 +1,29 @@
 "use client";
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import DiffViewer from '@/components/DiffViewer';
 import RunStatus from '@/components/RunStatus';
-import { adminFeatureApprove, adminFeatureReject, adminFeatureRunAi, runCodex, startAutoLoop, getLoopStatus } from '@/lib/api';
+import { adminFeatureApprove, adminFeatureReject, adminFeatureRunAi, runCodex, startAutoLoop, getLoopStatus, apiFetch } from '@/lib/api';
+import { Play, Square, Clock } from 'lucide-react';
 
 type Status = "idle" | "running" | "ready" | "approved" | "failed";
+
+type DevTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  estimatedHours: number | null;
+  actualHours: number | null;
+};
+
+type Timer = {
+  id: string;
+  devTaskId: string;
+  startedAt: string;
+  notes: string | null;
+  devTask: DevTask;
+};
 
 export default function DeveloperConsolePage() {
   const [desc, setDesc] = useState("");
@@ -18,8 +37,96 @@ export default function DeveloperConsolePage() {
   const [loopSessionId, setLoopSessionId] = useState<string | null>(null);
   const [loopStatus, setLoopStatus] = useState<any | null>(null);
   const [loopPolling, setLoopPolling] = useState<boolean>(false);
+  
+  // Timer state
+  const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [availableTasks, setAvailableTasks] = useState<DevTask[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState<string>("");
+  const [timerNotes, setTimerNotes] = useState("");
 
   const canApprove = useMemo(() => !!diff && status === 'ready', [diff, status]);
+
+  // Load active timer and available tasks on mount
+  useEffect(() => {
+    loadTimer();
+    loadTasks();
+    const interval = setInterval(loadTimer, 5000); // Refresh every 5s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!activeTimer) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const startTime = new Date(activeTimer.startedAt).getTime();
+    const updateElapsed = () => {
+      const now = Date.now();
+      setElapsedSeconds(Math.floor((now - startTime) / 1000));
+    };
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [activeTimer]);
+
+  async function loadTimer() {
+    try {
+      const data = await apiFetch<{ ok: boolean; timer: Timer | null }>("/dev/timer/active");
+      if (data.ok) setActiveTimer(data.timer);
+    } catch (e) {
+      console.error("Failed to load timer:", e);
+    }
+  }
+
+  async function loadTasks() {
+    try {
+      const data = await apiFetch<{ ok: boolean; tasks: DevTask[] }>("/dev/tasks?status=IN_PROGRESS");
+      if (data.ok) setAvailableTasks(data.tasks);
+    } catch (e) {
+      console.error("Failed to load tasks:", e);
+    }
+  }
+
+  async function startTimer() {
+    if (!selectedTaskId) return;
+    try {
+      const data = await apiFetch<{ ok: boolean; timer: Timer }>("/dev/timer/start", {
+        method: "POST",
+        json: { devTaskId: selectedTaskId, notes: timerNotes }
+      });
+      if (data.ok) {
+        setActiveTimer(data.timer);
+        setTimerNotes("");
+      }
+    } catch (e: any) {
+      alert("Failed to start timer: " + e.message);
+    }
+  }
+
+  async function stopTimer() {
+    try {
+      const data = await apiFetch<{ ok: boolean; timer: Timer }>("/dev/timer/stop", {
+        method: "POST",
+        json: { notes: timerNotes }
+      });
+      if (data.ok) {
+        setActiveTimer(null);
+        setTimerNotes("");
+        loadTasks(); // Refresh tasks to show updated actualHours
+      }
+    } catch (e: any) {
+      alert("Failed to stop timer: " + e.message);
+    }
+  }
+
+  function formatElapsed(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
 
   async function onRun() {
     setStatus('running'); setDiff(""); setLogs([]); setPrUrl(null); setBranch(null);
@@ -118,6 +225,88 @@ export default function DeveloperConsolePage() {
         <h1 className="text-2xl font-bold">Developer Console</h1>
         <p className="text-sm text-gray-600">Run AI patches, review diffs, and approve PRs.</p>
       </header>
+
+      {/* Timer Section */}
+      <section className="rounded border bg-white p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Clock className="h-5 w-5 text-gray-600" />
+            <h2 className="text-lg font-semibold">Task Timer</h2>
+            <a 
+              href="/admin/dev-console/time-tracking" 
+              className="text-sm text-purple-600 hover:text-purple-800 underline"
+            >
+              View Dashboard
+            </a>
+          </div>
+          {activeTimer && (
+            <div className="text-2xl font-mono font-bold text-purple-600">
+              {formatElapsed(elapsedSeconds)}
+            </div>
+          )}
+        </div>
+
+        {activeTimer ? (
+          <div className="mt-4 space-y-3">
+            <div className="p-3 bg-purple-50 rounded border border-purple-200">
+              <div className="font-medium text-purple-900">{activeTimer.devTask.title}</div>
+              <div className="text-sm text-purple-700 mt-1">
+                Started: {new Date(activeTimer.startedAt).toLocaleTimeString()}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Add notes (optional)..."
+                value={timerNotes}
+                onChange={(e) => setTimerNotes(e.target.value)}
+                className="flex-1 border rounded px-3 py-2 text-sm"
+              />
+              <button
+                onClick={stopTimer}
+                className="px-4 py-2 bg-red-600 text-white rounded flex items-center gap-2 hover:bg-red-700"
+              >
+                <Square className="h-4 w-4" />
+                Stop
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <div className="flex gap-2">
+              <select
+                value={selectedTaskId}
+                onChange={(e) => setSelectedTaskId(e.target.value)}
+                className="flex-1 border rounded px-3 py-2 text-sm"
+              >
+                <option value="">Select a task...</option>
+                {availableTasks.map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {task.title} {task.actualHours ? `(${task.actualHours.toFixed(1)}h logged)` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={startTimer}
+                disabled={!selectedTaskId}
+                className="px-4 py-2 bg-green-600 text-white rounded flex items-center gap-2 hover:bg-green-700 disabled:opacity-50"
+              >
+                <Play className="h-4 w-4" />
+                Start
+              </button>
+            </div>
+            {selectedTaskId && (
+              <input
+                type="text"
+                placeholder="Add notes (optional)..."
+                value={timerNotes}
+                onChange={(e) => setTimerNotes(e.target.value)}
+                className="w-full border rounded px-3 py-2 text-sm"
+              />
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
