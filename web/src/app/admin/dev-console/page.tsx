@@ -380,7 +380,6 @@ function buildPrompt(desc: string, template: string) {
 
 // Minimal activity list (admin queue as proxy for recent AI-related activity)
 import useSWR from 'swr';
-import { apiFetch } from '@/lib/api';
 function RecentActivity() {
   const fetcher = (u: string) => apiFetch<any[]>(u);
   const { data, error } = useSWR<any[]>("/feature-requests/admin/queue", fetcher);
