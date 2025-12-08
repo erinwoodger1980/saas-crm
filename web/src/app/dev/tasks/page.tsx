@@ -22,7 +22,6 @@ type DevTask = {
   estimatedHours: number | null;
   actualHours: number | null;
   assignee: string | null;
-  scheduledDate: string | null;
   feedbackIds: string[];
   tenantIds: string[];
   notes: string | null;
@@ -53,6 +52,7 @@ function DevTasksContent() {
     priority: "MEDIUM",
     type: "DEVELOPMENT"
   });
+  const [scheduledDate, setScheduledDate] = useState<string>("");
   const [activeTimer, setActiveTimer] = useState<any>(null);
   const [timerNotes, setTimerNotes] = useState("");
 
@@ -131,6 +131,7 @@ function DevTasksContent() {
 
   function openTaskDetail(task: DevTask) {
     setSelectedTask(task);
+    setScheduledDate("");
     setShowDetailDialog(true);
   }
 
@@ -144,8 +145,22 @@ function DevTasksContent() {
         });
         if (data.ok) {
           setTasks(prev => prev.map(t => t.id === editingTask.id ? data.task : t));
+          
+          // If scheduledDate is set and task has estimated hours, create/update assignment
+          if (scheduledDate && data.task.estimatedHours) {
+            await apiFetch("/dev/calendar/assignments", {
+              method: "POST",
+              json: {
+                devTaskId: data.task.id,
+                date: scheduledDate,
+                allocatedHours: data.task.estimatedHours
+              }
+            });
+          }
+          
           setShowCreateDialog(false);
           setFormData({ status: "BACKLOG", priority: "MEDIUM" });
+          setScheduledDate("");
           setEditingTask(null);
         }
       } else {
@@ -156,8 +171,22 @@ function DevTasksContent() {
         });
         if (data.ok) {
           setTasks(prev => [...prev, data.task]);
+          
+          // If scheduledDate is set and task has estimated hours, create assignment
+          if (scheduledDate && data.task.estimatedHours) {
+            await apiFetch("/dev/calendar/assignments", {
+              method: "POST",
+              json: {
+                devTaskId: data.task.id,
+                date: scheduledDate,
+                allocatedHours: data.task.estimatedHours
+              }
+            });
+          }
+          
           setShowCreateDialog(false);
           setFormData({ status: "BACKLOG", priority: "MEDIUM" });
+          setScheduledDate("");
         }
       }
     } catch (e: any) {
@@ -173,7 +202,21 @@ function DevTasksContent() {
       });
       if (data.ok) {
         setTasks(prev => prev.map(t => t.id === id ? data.task : t));
+        
+        // If scheduledDate is set and task has estimated hours, create/update assignment
+        if (scheduledDate && data.task.estimatedHours) {
+          await apiFetch("/dev/calendar/assignments", {
+            method: "POST",
+            json: {
+              devTaskId: id,
+              date: scheduledDate,
+              allocatedHours: data.task.estimatedHours
+            }
+          });
+        }
+        
         setEditingTask(null);
+        setScheduledDate("");
       }
     } catch (e: any) {
       alert("Failed to update task: " + e.message);
@@ -321,9 +364,14 @@ function DevTasksContent() {
                   <label className="text-sm font-medium">Scheduled Date</label>
                   <Input
                     type="date"
-                    value={formData.scheduledDate || ""}
-                    onChange={(e) => setFormData({...formData, scheduledDate: e.target.value})}
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
                   />
+                  {scheduledDate && formData.estimatedHours && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Will create calendar assignment for {formData.estimatedHours}h
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2 justify-end">
                   <Button variant="ghost" onClick={() => {
@@ -389,11 +437,7 @@ function DevTasksContent() {
                             👤 {task.assignee}
                           </div>
                         )}
-                        {task.scheduledDate && (
-                          <div className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded w-fit">
-                            📅 {new Date(task.scheduledDate).toLocaleDateString()}
-                          </div>
-                        )}
+
                         <div className="flex gap-1 pt-2">
                           <Select
                             value={task.status}
@@ -484,12 +528,6 @@ function DevTasksContent() {
                     <span className="text-sm font-medium text-gray-600">Actual:</span>
                     <span className="ml-2">{selectedTask.actualHours || 0}h</span>
                   </div>
-                  {selectedTask.scheduledDate && (
-                    <div className="col-span-2">
-                      <span className="text-sm font-medium text-gray-600">Scheduled Date:</span>
-                      <span className="ml-2">{new Date(selectedTask.scheduledDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
                 </div>
 
                 {/* Description */}
