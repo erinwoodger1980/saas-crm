@@ -768,55 +768,6 @@ export default function DevCalendarPage() {
         </Button>
       </div>
 
-      {/* Summary Stats by Developer and Type */}
-      {Object.keys(summary).length > 0 && (
-        <div className="bg-white p-6 rounded border space-y-4">
-          <h2 className="text-lg font-semibold">Time Allocation Summary ({viewMode})</h2>
-          <div className="space-y-3">
-            {Object.entries(summary).map(([assignee, types]) => {
-              const total = Object.values(types).reduce((sum, hours) => sum + hours, 0);
-              return (
-                <div key={assignee} className="border rounded p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="font-medium text-lg">{assignee}</div>
-                    <div className="text-lg font-bold text-blue-600">{total.toFixed(1)}h</div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(types).map(([type, hours]) => (
-                      <div key={type} className={`px-3 py-1 rounded text-sm ${getTypeColor(type)}`}>
-                        {type.replace(/_/g, ' ')}: {hours.toFixed(1)}h
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Summary by Type Across All Developers */}
-      {Object.keys(summary).length > 0 && (
-        <div className="bg-white p-6 rounded border space-y-4">
-          <h2 className="text-lg font-semibold">Total Hours by Type</h2>
-          <div className="flex flex-wrap gap-3">
-            {(() => {
-              const typeAggregates: Record<string, number> = {};
-              Object.values(summary).forEach(types => {
-                Object.entries(types).forEach(([type, hours]) => {
-                  typeAggregates[type] = (typeAggregates[type] || 0) + hours;
-                });
-              });
-              return Object.entries(typeAggregates).map(([type, hours]) => (
-                <div key={type} className={`px-4 py-2 rounded-lg text-sm font-medium ${getTypeColor(type)}`}>
-                  {type.replace(/_/g, ' ')}: {hours.toFixed(1)}h
-                </div>
-              ));
-            })()}
-          </div>
-        </div>
-      )}
-
       {/* Per Developer Summary Table */}
       {Object.keys(summary).length > 0 && (
         <div className="bg-white p-6 rounded border space-y-4">
