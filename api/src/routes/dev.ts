@@ -590,11 +590,21 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
     const { Resend } = require('resend');
     const resend = new Resend(process.env.RESEND_API_KEY);
 
+    // Create a unique Message-ID for this feedback notification
+    const messageId = `feedback-${feedback.id}@${process.env.EMAIL_DOMAIN || 'joineryai.app'}`;
+
     const emailPayload: any = {
       from: process.env.EMAIL_FROM || 'JoineryAI <noreply@joineryai.app>',
       to: recipientUser.email,
       subject: `Update on your feedback: ${feedback.feature}`,
-      html: emailHtml
+      html: emailHtml,
+      headers: {
+        'X-Feedback-ID': feedback.id,
+        'X-Feedback-Feature': feedback.feature,
+        'Message-ID': messageId,
+        'X-Priority': '3',
+        'X-MSMail-Priority': 'Normal'
+      }
     };
 
     if (attachments.length > 0) {

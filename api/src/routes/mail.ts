@@ -267,4 +267,120 @@ Return ONLY JSON.
   }
 });
 
+/**
+ * POST /mail/feedback-reply
+ * Handle email replies to feedback notifications
+ * Body: { messageId, from, subject, body, feedbackId?, references? }
+ */
+router.post("/feedback-reply", async (req, res) => {
+  const { messageId, from, subject, body, feedbackId, references } = req.body || {};
+
+  if (!messageId || !from || !body) {
+    return res.status(400).json({ error: "messageId, from, and body required" });
+  }
+
+  try {
+    // Try to extract feedback ID from references or params
+    let extractedFeedbackId = feedbackId;
+    
+    // If no feedbackId provided, try to extract from In-Reply-To or References header
+    if (!extractedFeedbackId && references) {
+      // References might contain message IDs like <feedback-123@joineryai.app>
+      const match = references.match(/feedback-([a-z0-9]+)@/i);
+      if (match) {
+        extractedFeedbackId = match[1];
+      }
+    }
+
+    // Also try to extract from email subject
+    if (!extractedFeedbackId && subject) {
+      const match = subject.match(/feedback[:\s]+([a-z0-9]+)/i);
+      if (match) {
+        extractedFeedbackId = match[1];
+      }
+    }
+
+    // Try to parse the response from the email body
+    let approved: boolean | null = null;
+    const bodyLower = body.toLowerCase();
+
+    // Check for approval patterns
+    const approvalPatterns = [
+      /yes[,]?\s*(?:it|this)\s*works?/i,
+      /approved?/i,
+      /great[,]?\s*(?:it|this)\s*works?/i,
+      /looks?\s+good/i,
+      /fixed/i,
+      /solved/i,
+      /thank(?:s|k)\s+you/i,
+      /excellent/i,
+      /perfect/i,
+      /working\s+now/i,
+    ];
+
+    const rejectionPatterns = [
+      /no[,]?\s*(?:it|this|needs|doesn't)\s*(?:work|doesn't work)?/i,
+      /needs?\s+more/i,
+      /still\s+(?:broken|not\s+work)/i,
+      /didn't?\s+work/i,
+      /not\s+fixed/i,
+      /nope/i,
+      /doesn't?\s+work/i,
+    ];
+
+    const isApproved = approvalPatterns.some(p => p.test(bodyLower));
+    const isRejected = rejectionPatterns.some(p => p.test(bodyLower));
+
+    if (isApproved) {
+      approved = true;
+    } else if (isRejected) {
+      approved = false;
+    }
+
+    // If we found an approved/rejected status and feedbackId, update feedback
+    if (extractedFeedbackId && typeof approved === 'boolean') {
+      try {
+        const feedback = await prisma.feedback.findUnique({
+          where: { id: extractedFeedbackId }
+        });
+
+        if (feedback) {
+          await prisma.feedback.update({
+            where: { id: extractedFeedbackId },
+            data: {
+              userResponseApproved: approved,
+              userResponseAt: new Date(),
+              status: approved ? 'RESOLVED' : 'PENDING'
+            }
+          });
+
+          console.log(`[mail/feedback-reply] Updated feedback ${extractedFeedbackId}: approved=${approved}`);
+          
+          return res.json({ 
+            ok: true, 
+            feedbackId: extractedFeedbackId,
+            approved,
+            updated: true 
+          });
+        }
+      } catch (e: any) {
+        console.error("[mail/feedback-reply] Failed to update feedback:", e.message);
+      }
+    }
+
+    // Log the reply even if we couldn't process it
+    console.log(`[mail/feedback-reply] Received reply from ${from}: feedbackId=${extractedFeedbackId}, approved=${approved}`);
+
+    res.json({ 
+      ok: true, 
+      processed: !!approved,
+      feedbackId: extractedFeedbackId,
+      approved 
+    });
+  } catch (err: any) {
+    console.error("[mail/feedback-reply] failed:", err);
+    return res.status(500).json({ error: err?.message || "reply processing failed" });
+  }
+});
+
 export default router;
