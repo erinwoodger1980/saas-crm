@@ -54,7 +54,7 @@ export default function DevCalendarPage() {
   const [assignmentForm, setAssignmentForm] = useState<Partial<TaskAssignment>>({});
   const [loading, setLoading] = useState(true);
   const [activeTimer, setActiveTimer] = useState<any>(null);
-  const [timerNotes, setTimerNotes] = useState(\"\");
+  const [timerNotes, setTimerNotes] = useState("");
 
   const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
