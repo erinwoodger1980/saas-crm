@@ -24,10 +24,10 @@ const COMPARISON = [
     joineryAI: "Automatic labour + material costing",
   },
   {
-    feature: "Fire door pricing",
-    spreadsheets: "Manual calculations",
-    genericCRM: "No specialist tools",
-    joineryAI: "Built-in MJS tracking & production logging",
+    feature: "Custom project specs",
+    spreadsheets: "Spreadsheet columns",
+    genericCRM: "Generic fields, not joinery-specific",
+    joineryAI: "Built for bespoke manufacturing workflows",
   },
   {
     feature: "Follow-up automation",

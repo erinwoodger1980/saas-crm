@@ -63,7 +63,7 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
               Sign in
             </Link>
             <Button asChild variant="outline" className="border-white/20 bg-white/10 hover:bg-white/20">
-              <Link href="/early-access">Early Access</Link>
+              <Link href="/signup">Sign Up</Link>
             </Button>
           </div>
         </nav>
@@ -91,7 +91,7 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
 
             {/* Subheadline */}
             <p className="text-xl text-white/80 leading-relaxed">
-              JoineryAI automates quoting, email follow-ups, and workshop scheduling for UK joinery manufacturers. AI that understands fire doors. CRM built for profit.
+              JoineryAI automates quoting, email follow-ups, and workshop scheduling for UK joinery manufacturers, installers, and showrooms. CRM built for profit.
             </p>
 
             {/* Key benefits */}
@@ -127,7 +127,7 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
                     disabled={loading}
                     className="gap-2"
                   >
-                    Start Free Trial
+                    Get Access
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </div>

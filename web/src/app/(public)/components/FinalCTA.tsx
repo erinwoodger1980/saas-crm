@@ -29,8 +29,8 @@ export default function FinalCTA({ onCtaClick }: FinalCTAProps) {
             className="gap-2 bg-white text-emerald-600 hover:bg-white/90"
             onClick={() => onCtaClick?.("footer-trial")}
           >
-            <Link href="/early-access">
-              Start Free Trial
+            <Link href="/signup">
+              Create Account
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -41,8 +41,8 @@ export default function FinalCTA({ onCtaClick }: FinalCTAProps) {
             className="border-white text-white hover:bg-white/10 gap-2"
             onClick={() => onCtaClick?.("footer-demo")}
           >
-            <Link href="/demo">
-              Schedule a Demo
+            <Link href="/login">
+              Sign In
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>

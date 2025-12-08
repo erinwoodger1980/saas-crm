@@ -33,9 +33,9 @@ const FEATURES = [
   },
   {
     icon: Flame,
-    title: "Fire Door Specialization",
+    title: "Flexible Project Types",
     description:
-      "MJS number tracking, production logging, client job portal, RFI system. Built for manufacturers, showrooms, installers.",
+      "Bespoke or standardised projects. Track custom manufacturing specs, material variants, and project timelines with full visibility.",
   },
 ];
 
