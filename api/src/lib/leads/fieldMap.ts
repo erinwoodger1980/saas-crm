@@ -120,6 +120,9 @@ export const CSV_FIELD_MAP: Record<string, CsvFieldTarget> = {
   "date received": { leadKey: "capturedAt", qKey: "date_of_enquiry", transform: toISODate },
   "captured at": { leadKey: "capturedAt", qKey: "date_of_enquiry", transform: toISODate },
   "date of enquiry": { leadKey: "capturedAt", qKey: "date_of_enquiry", transform: toISODate },
+  "date created": { leadKey: "capturedAt", qKey: "date_of_enquiry", transform: toISODate },
+  "created date": { leadKey: "capturedAt", qKey: "date_of_enquiry", transform: toISODate },
+  "created at": { leadKey: "capturedAt", qKey: "date_of_enquiry", transform: toISODate },
   "date quote sent": { qKey: "date_quote_sent", transform: toISODate },
   "date order placed": { qKey: "date_order_placed", transform: toISODate },
   "start date": { qKey: "startDate", transform: toISODate },
@@ -186,10 +189,13 @@ export const CANONICAL_FIELD_CONFIG: Record<string, CanonicalFieldConfig> = {
   startDate: { type: "date" },
   deliveryDate: { type: "date" },
   preferred_installation_date: { type: "date" },
+  installationStartDate: { type: "date" },
+  installationEndDate: { type: "date" },
   area_m2: { type: "number" },
   height_mm: { type: "number" },
   width_mm: { type: "number" },
   quantity: { type: "number" },
+  projected_hours: { type: "number" },
 };
 
 export function normaliseHeader(header: string): string {

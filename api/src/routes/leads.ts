@@ -418,12 +418,12 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
     // Return first few rows as preview
     const preview = rows.slice(0, 5);
     
-    // Get questionnaire fields for this tenant (client and public scopes for import)
+    // Get questionnaire fields for this tenant (client, public, and internal scopes for import)
     const questionnaireFields = await prisma.questionnaireField.findMany({
       where: { 
         tenantId,
         scope: {
-          in: ['client', 'public']
+          in: ['client', 'public', 'internal']
         }
       },
       orderBy: { sortOrder: 'asc' }
@@ -439,10 +439,12 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
       { key: 'description', label: 'Project Description', required: false },
       { key: 'source', label: 'Lead Source', required: false },
       { key: 'status', label: 'Status', required: false },
+      { key: 'capturedAt', label: 'Date Created / Enquiry Date', required: false },
       { key: 'startDate', label: 'Start Date (Production)', required: false },
       { key: 'deliveryDate', label: 'Delivery Date', required: false },
-      { key: 'quotedValue', label: 'Quoted Value', required: false },
-      { key: 'estimatedValue', label: 'Estimated Value', required: false },
+      { key: 'quotedValue', label: 'Quoted Value (£)', required: false },
+      { key: 'estimatedValue', label: 'Estimated Value (£)', required: false },
+      { key: 'dateQuoteSent', label: 'Date Quote Sent', required: false },
       // Add questionnaire fields
       ...questionnaireFields.map(field => ({
         key: `custom.${field.key}`,
