@@ -1468,7 +1468,7 @@ router.get("/calendar/summary", requireDeveloper, async (req: any, res) => {
      scheduledTasks.forEach(task => {
        const assignee = task.assignee || 'Unassigned';
        const type = task.type;
-       const hours = task.estimatedHours || 0;
+      const hours = task.estimatedHours ? parseFloat(task.estimatedHours.toString()) : 0;
 
        if (!summary[assignee]) {
          summary[assignee] = {};
