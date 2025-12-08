@@ -261,6 +261,174 @@ export default function DevCalendarPage() {
     }
   }
 
+  const renderDayView = () => {
+    const dateStr = formatDate(currentDate);
+    const schedule = getDaySchedule(dateStr);
+    const dayAssignments = getDayAssignments(dateStr);
+    const totalAllocated = getTotalAllocated(dateStr);
+    
+    return (
+      <div className="bg-white rounded border p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-semibold">{currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</h3>
+          {schedule?.isWorkDay && (
+            <div className="text-lg">
+              <span className="font-bold text-blue-600">{totalAllocated}h</span>
+              <span className="text-gray-600"> / {schedule.availableHours}h available</span>
+            </div>
+          )}
+        </div>
+        
+        {schedule?.isWorkDay === false && (
+          <div className="p-4 bg-gray-100 rounded text-gray-600">Non-working day</div>
+        )}
+        
+        {dayAssignments.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">No tasks scheduled for this day</div>
+        ) : (
+          <div className="space-y-3">
+            {dayAssignments.map(assignment => (
+              <div key={assignment.id} className="p-4 border rounded-lg hover:bg-gray-50">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="font-medium text-lg cursor-pointer hover:text-blue-600" onClick={() => openTaskDetail(assignment.devTask)}>
+                      {assignment.devTask.title}
+                    </div>
+                    <div className="text-sm text-gray-600 mt-1">{assignment.devTask.type?.replace(/_/g, ' ')}</div>
+                    {assignment.devTask.description && (
+                      <div className="text-sm text-gray-500 mt-2">{assignment.devTask.description}</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-blue-600">{assignment.allocatedHours}h</div>
+                      <div className="text-xs text-gray-500">allocated</div>
+                    </div>
+                    <button
+                      onClick={() => deleteAssignment(assignment.id)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <button
+          onClick={() => openAssignDialog(dateStr)}
+          className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
+        >
+          + Add Task
+        </button>
+      </div>
+    );
+  };
+
+  const renderWeekView = () => {
+    const weekStart = new Date(currentDate);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(weekStart);
+      date.setDate(date.getDate() + i);
+      weekDays.push(date);
+    }
+    
+    return (
+      <div className="bg-white rounded border overflow-hidden">
+        <div className="grid grid-cols-7 gap-0">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
+            <div key={day} className="p-4 text-center font-semibold bg-gray-100 border-b">
+              <div>{day}</div>
+              <div className="text-sm font-normal text-gray-600">{weekDays[idx].getDate()}</div>
+            </div>
+          ))}
+          {weekDays.map(date => {
+            const dateStr = formatDate(date);
+            const isToday = formatDate(new Date()) === dateStr;
+            const schedule = getDaySchedule(dateStr);
+            const dayAssignments = getDayAssignments(dateStr);
+            const totalAllocated = getTotalAllocated(dateStr);
+            
+            return (
+              <div
+                key={dateStr}
+                className={`min-h-[200px] border p-3 ${isToday ? 'ring-2 ring-blue-500' : ''} ${schedule?.isWorkDay === false ? 'bg-gray-50' : 'bg-white'}`}
+              >
+                {schedule?.isWorkDay && (
+                  <div className="text-xs text-gray-600 mb-2">
+                    {totalAllocated}h / {schedule.availableHours}h
+                  </div>
+                )}
+                <div className="space-y-2">
+                  {dayAssignments.map(assignment => (
+                    <div
+                      key={assignment.id}
+                      className="text-xs p-2 rounded bg-blue-100 border-l-2 border-blue-500 cursor-pointer hover:bg-blue-200"
+                      onClick={() => openTaskDetail(assignment.devTask)}
+                    >
+                      <div className="font-medium truncate">{assignment.devTask.title}</div>
+                      <div className="text-gray-600">{assignment.allocatedHours}h</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderYearView = () => {
+    const year = currentDate.getFullYear();
+    const months = [];
+    
+    for (let month = 0; month < 12; month++) {
+      const monthDate = new Date(year, month, 1);
+      const monthName = monthDate.toLocaleDateString('en-US', { month: 'short' });
+      
+      // Count tasks for this month
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0);
+      const monthTasks = assignments.filter(a => {
+        const assignDate = new Date(a.date);
+        return assignDate >= monthStart && assignDate <= monthEnd;
+      });
+      const monthHours = monthTasks.reduce((sum, a) => sum + a.allocatedHours, 0);
+      
+      months.push({ month, monthName, tasks: monthTasks.length, hours: monthHours });
+    }
+    
+    return (
+      <div className="bg-white rounded border p-6">
+        <h3 className="text-2xl font-bold text-center mb-6">{year}</h3>
+        <div className="grid grid-cols-3 md:grid-cols-4 gap-4">
+          {months.map(({ month, monthName, tasks, hours }) => (
+            <div
+              key={month}
+              className="p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+              onClick={() => {
+                setCurrentDate(new Date(year, month, 1));
+                setViewMode('month');
+              }}
+            >
+              <div className="font-semibold text-lg">{monthName}</div>
+              <div className="text-sm text-gray-600 mt-2">
+                <div>{tasks} tasks</div>
+                <div className="font-medium text-blue-600">{hours.toFixed(1)}h</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const renderCalendar = () => {
     const days: JSX.Element[] = [];
     const date = new Date(startDate);
@@ -368,12 +536,59 @@ export default function DevCalendarPage() {
     return days;
   };
 
-  const prevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  const navigatePrevious = () => {
+    const newDate = new Date(currentDate);
+    switch (viewMode) {
+      case 'day':
+        newDate.setDate(newDate.getDate() - 1);
+        break;
+      case 'week':
+        newDate.setDate(newDate.getDate() - 7);
+        break;
+      case 'month':
+        newDate.setMonth(newDate.getMonth() - 1);
+        break;
+      case 'year':
+        newDate.setFullYear(newDate.getFullYear() - 1);
+        break;
+    }
+    setCurrentDate(newDate);
   };
 
-  const nextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  const navigateNext = () => {
+    const newDate = new Date(currentDate);
+    switch (viewMode) {
+      case 'day':
+        newDate.setDate(newDate.getDate() + 1);
+        break;
+      case 'week':
+        newDate.setDate(newDate.getDate() + 7);
+        break;
+      case 'month':
+        newDate.setMonth(newDate.getMonth() + 1);
+        break;
+      case 'year':
+        newDate.setFullYear(newDate.getFullYear() + 1);
+        break;
+    }
+    setCurrentDate(newDate);
+  };
+
+  const getViewTitle = () => {
+    switch (viewMode) {
+      case 'day':
+        return currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      case 'week':
+        const weekStart = new Date(currentDate);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        return `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      case 'month':
+        return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      case 'year':
+        return currentDate.getFullYear().toString();
+    }
   };
 
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -470,53 +685,63 @@ export default function DevCalendarPage() {
         </div>
       )}
 
-      {/* Month Navigation */}
+      {/* Navigation */}
       <div className="flex items-center justify-between bg-white p-4 rounded border">
-        <Button variant="outline" onClick={prevMonth}>
+        <Button variant="outline" onClick={navigatePrevious}>
           <ChevronLeft className="w-4 h-4" />
         </Button>
-        <h2 className="text-xl font-semibold">{monthName}</h2>
-        <Button variant="outline" onClick={nextMonth}>
+        <h2 className="text-xl font-semibold">{getViewTitle()}</h2>
+        <Button variant="outline" onClick={navigateNext}>
           <ChevronRight className="w-4 h-4" />
         </Button>
       </div>
 
-      {/* Legend */}
-      <div className="bg-white p-4 rounded border">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-blue-100 border-l-2 border-blue-500 rounded"></div>
-            <span>Scheduled Task</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-red-50 border rounded"></div>
-            <span>Overallocated</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-gray-100 border rounded"></div>
-            <span>Non-working Day</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 ring-2 ring-blue-500 rounded"></div>
-            <span>Today</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Calendar Grid */}
+      {/* Calendar View */}
       {loading ? (
         <div className="text-center py-12 text-gray-500">Loading calendar...</div>
       ) : (
-        <div className="bg-white rounded border">
-          <div className="grid grid-cols-7 gap-0">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="p-2 text-center font-medium text-sm bg-gray-100 border">
-                {day}
+        <>
+          {viewMode === 'day' && renderDayView()}
+          {viewMode === 'week' && renderWeekView()}
+          {viewMode === 'year' && renderYearView()}
+          {viewMode === 'month' && (
+            <>
+              {/* Legend */}
+              <div className="bg-white p-4 rounded border">
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-blue-100 border-l-2 border-blue-500 rounded"></div>
+                    <span>Scheduled Task</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-red-50 border rounded"></div>
+                    <span>Overallocated</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-gray-100 border rounded"></div>
+                    <span>Non-working Day</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 ring-2 ring-blue-500 rounded"></div>
+                    <span>Today</span>
+                  </div>
+                </div>
               </div>
-            ))}
-            {renderCalendar()}
-          </div>
-        </div>
+
+              {/* Month Calendar Grid */}
+              <div className="bg-white rounded border">
+                <div className="grid grid-cols-7 gap-0">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                    <div key={day} className="p-2 text-center font-medium text-sm bg-gray-100 border">
+                      {day}
+                    </div>
+                  ))}
+                  {renderCalendar()}
+                </div>
+              </div>
+            </>
+          )}
+        </>
       )}
 
       {/* Day Schedule Dialog */}
