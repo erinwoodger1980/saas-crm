@@ -43,11 +43,15 @@ function DevTasksContent() {
   const [tasks, setTasks] = useState<DevTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [editingTask, setEditingTask] = useState<DevTask | null>(null);
+  const [selectedTask, setSelectedTask] = useState<DevTask | null>(null);
   const [formData, setFormData] = useState<Partial<DevTask>>({
     status: "BACKLOG",
     priority: "MEDIUM"
   });
+  const [activeTimer, setActiveTimer] = useState<any>(null);
+  const [timerNotes, setTimerNotes] = useState("");
 
   // Check if we're creating from feedback
   useEffect(() => {
@@ -80,19 +84,81 @@ function DevTasksContent() {
     }
   }
 
-  async function createTask() {
+  async function loadActiveTimer() {
     try {
-      const data = await apiFetch<{ ok: boolean; task: DevTask }>("/dev/tasks", {
-        method: "POST",
-        json: formData
-      });
-      if (data.ok) {
-        setTasks(prev => [...prev, data.task]);
-        setShowCreateDialog(false);
-        setFormData({ status: "BACKLOG", priority: "MEDIUM" });
+      const data = await apiFetch<{ ok: boolean; timer: any }>("/dev/timer/active");
+      if (data.ok && data.timer) {
+        setActiveTimer(data.timer);
       }
     } catch (e: any) {
-      alert("Failed to create task: " + e.message);
+      console.error("Failed to load active timer:", e);
+    }
+  }
+
+  async function startTimer(taskId: string) {
+    try {
+      const data = await apiFetch<{ ok: boolean; timer: any }>("/dev/timer/start", {
+        method: "POST",
+        json: { devTaskId: taskId, notes: timerNotes }
+      });
+      if (data.ok) {
+        setActiveTimer(data.timer);
+        setTimerNotes("");
+        await loadTasks(); // Reload to get updated actualHours
+      }
+    } catch (e: any) {
+      alert("Failed to start timer: " + e.message);
+    }
+  }
+
+  async function stopTimer() {
+    if (!activeTimer) return;
+    try {
+      await apiFetch("/dev/timer/stop", {
+        method: "POST",
+        json: { notes: timerNotes }
+      });
+      setActiveTimer(null);
+      setTimerNotes("");
+      await loadTasks(); // Reload to get updated actualHours
+    } catch (e: any) {
+      alert("Failed to stop timer: " + e.message);
+    }
+  }
+
+  function openTaskDetail(task: DevTask) {
+    setSelectedTask(task);
+    setShowDetailDialog(true);
+  }
+
+  async function createTask() {
+    try {
+      if (editingTask) {
+        // Update existing task
+        const data = await apiFetch<{ ok: boolean; task: DevTask }>(`/dev/tasks/${editingTask.id}`, {
+          method: "PATCH",
+          json: formData
+        });
+        if (data.ok) {
+          setTasks(prev => prev.map(t => t.id === editingTask.id ? data.task : t));
+          setShowCreateDialog(false);
+          setFormData({ status: "BACKLOG", priority: "MEDIUM" });
+          setEditingTask(null);
+        }
+      } else {
+        // Create new task
+        const data = await apiFetch<{ ok: boolean; task: DevTask }>("/dev/tasks", {
+          method: "POST",
+          json: formData
+        });
+        if (data.ok) {
+          setTasks(prev => [...prev, data.task]);
+          setShowCreateDialog(false);
+          setFormData({ status: "BACKLOG", priority: "MEDIUM" });
+        }
+      }
+    } catch (e: any) {
+      alert(`Failed to ${editingTask ? 'update' : 'create'} task: ` + e.message);
     }
   }
 
@@ -123,6 +189,14 @@ function DevTasksContent() {
 
   useEffect(() => {
     loadTasks();
+    loadActiveTimer();
+    
+    // Poll for timer updates every 5 seconds
+    const interval = setInterval(() => {
+      loadActiveTimer();
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const getPriorityColor = (priority: string) => {
@@ -157,7 +231,7 @@ function DevTasksContent() {
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Create Development Task</DialogTitle>
+                <DialogTitle>{editingTask ? 'Edit' : 'Create'} Development Task</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
@@ -220,8 +294,14 @@ function DevTasksContent() {
                   />
                 </div>
                 <div className="flex gap-2 justify-end">
-                  <Button variant="ghost" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
-                  <Button onClick={createTask} disabled={!formData.title}>Create Task</Button>
+                  <Button variant="ghost" onClick={() => {
+                    setShowCreateDialog(false);
+                    setEditingTask(null);
+                    setFormData({ status: "BACKLOG", priority: "MEDIUM" });
+                  }}>Cancel</Button>
+                  <Button onClick={createTask} disabled={!formData.title}>
+                    {editingTask ? 'Update' : 'Create'} Task
+                  </Button>
                 </div>
               </div>
             </DialogContent>
@@ -243,7 +323,11 @@ function DevTasksContent() {
                 </div>
                 <div className="space-y-2">
                   {columnTasks.map((task) => (
-                    <Card key={task.id} className={`p-3 cursor-pointer hover:shadow-md transition-shadow ${getPriorityColor(task.priority)}`}>
+                    <Card 
+                      key={task.id} 
+                      className={`p-3 cursor-pointer hover:shadow-md transition-shadow ${getPriorityColor(task.priority)}`}
+                      onClick={() => openTaskDetail(task)}
+                    >
                       <div className="space-y-2">
                         <div className="font-medium text-sm line-clamp-2">{task.title}</div>
                         {task.category && (
@@ -271,7 +355,7 @@ function DevTasksContent() {
                             value={task.status}
                             onValueChange={(v) => updateTask(task.id, { status: v })}
                           >
-                            <SelectTrigger className="h-7 text-xs">
+                            <SelectTrigger className="h-7 text-xs" onClick={(e) => e.stopPropagation()}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -284,7 +368,10 @@ function DevTasksContent() {
                             size="sm"
                             variant="ghost"
                             className="h-7 text-xs"
-                            onClick={() => deleteTask(task.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteTask(task.id);
+                            }}
                           >
                             Delete
                           </Button>
@@ -298,6 +385,160 @@ function DevTasksContent() {
           })}
         </div>
       )}
+
+      {/* Task Detail Dialog */}
+      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          {selectedTask && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <span className={`w-3 h-3 rounded-full ${
+                    selectedTask.priority === "CRITICAL" ? "bg-red-500" :
+                    selectedTask.priority === "HIGH" ? "bg-orange-500" :
+                    selectedTask.priority === "MEDIUM" ? "bg-yellow-500" :
+                    "bg-green-500"
+                  }`}></span>
+                  {selectedTask.title}
+                </DialogTitle>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                {/* Task Info */}
+                <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded">
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Status:</span>
+                    <span className="ml-2">{STATUS_COLUMNS.find(c => c.key === selectedTask.status)?.label}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Priority:</span>
+                    <span className="ml-2">{selectedTask.priority}</span>
+                  </div>
+                  {selectedTask.category && (
+                    <div>
+                      <span className="text-sm font-medium text-gray-600">Category:</span>
+                      <span className="ml-2">{selectedTask.category}</span>
+                    </div>
+                  )}
+                  {selectedTask.assignee && (
+                    <div>
+                      <span className="text-sm font-medium text-gray-600">Assignee:</span>
+                      <span className="ml-2">{selectedTask.assignee}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Estimated:</span>
+                    <span className="ml-2">{selectedTask.estimatedHours || 0}h</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Actual:</span>
+                    <span className="ml-2">{selectedTask.actualHours || 0}h</span>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {selectedTask.description && (
+                  <div>
+                    <h3 className="font-semibold mb-2">Description</h3>
+                    <div className="p-3 bg-gray-50 rounded whitespace-pre-wrap">
+                      {selectedTask.description}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {selectedTask.notes && (
+                  <div>
+                    <h3 className="font-semibold mb-2">Notes</h3>
+                    <div className="p-3 bg-gray-50 rounded whitespace-pre-wrap">
+                      {selectedTask.notes}
+                    </div>
+                  </div>
+                )}
+
+                {/* Timer Section */}
+                <div className="border-t pt-4">
+                  <h3 className="font-semibold mb-3">Time Tracking</h3>
+                  
+                  {activeTimer && activeTimer.devTaskId === selectedTask.id ? (
+                    <div className="space-y-3">
+                      <div className="p-4 bg-green-50 border border-green-200 rounded">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-green-700">Timer Running</div>
+                            <div className="text-sm text-green-600">
+                              Started: {new Date(activeTimer.startedAt).toLocaleString()}
+                            </div>
+                          </div>
+                          <div className="text-2xl font-bold text-green-700">
+                            {Math.floor((Date.now() - new Date(activeTimer.startedAt).getTime()) / 1000 / 60)}m
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="text-sm font-medium">Notes (optional)</label>
+                        <Input
+                          value={timerNotes}
+                          onChange={(e) => setTimerNotes(e.target.value)}
+                          placeholder="What did you work on?"
+                        />
+                      </div>
+                      
+                      <Button onClick={stopTimer} className="w-full" variant="destructive">
+                        Stop Timer
+                      </Button>
+                    </div>
+                  ) : activeTimer ? (
+                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded">
+                      <div className="font-medium text-yellow-700">
+                        Timer active on another task: {activeTimer.devTask?.title}
+                      </div>
+                      <div className="text-sm text-yellow-600 mt-1">
+                        Stop that timer before starting a new one
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-sm font-medium">Notes (optional)</label>
+                        <Input
+                          value={timerNotes}
+                          onChange={(e) => setTimerNotes(e.target.value)}
+                          placeholder="What are you working on?"
+                        />
+                      </div>
+                      
+                      <Button 
+                        onClick={() => startTimer(selectedTask.id)} 
+                        className="w-full"
+                        disabled={selectedTask.status === "DONE" || selectedTask.status === "BLOCKED"}
+                      >
+                        Start Timer
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 justify-end border-t pt-4">
+                  <Button variant="outline" onClick={() => {
+                    setEditingTask(selectedTask);
+                    setFormData(selectedTask);
+                    setShowDetailDialog(false);
+                    setShowCreateDialog(true);
+                  }}>
+                    Edit Task
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowDetailDialog(false)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

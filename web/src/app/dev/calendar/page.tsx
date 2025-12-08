@@ -41,11 +41,15 @@ export default function DevCalendarPage() {
   const [schedules, setSchedules] = useState<Record<string, DaySchedule>>({});
   const [assignments, setAssignments] = useState<TaskAssignment[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<DevTask | null>(null);
   const [showDayDialog, setShowDayDialog] = useState(false);
   const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [showTaskDetailDialog, setShowTaskDetailDialog] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Partial<DaySchedule>>({});
   const [assignmentForm, setAssignmentForm] = useState<Partial<TaskAssignment>>({});
   const [loading, setLoading] = useState(true);
+  const [activeTimer, setActiveTimer] = useState<any>(null);
+  const [timerNotes, setTimerNotes] = useState("");
 
   const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
@@ -55,10 +59,11 @@ export default function DevCalendarPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [tasksData, schedulesData, assignmentsData] = await Promise.all([
+      const [tasksData, schedulesData, assignmentsData, timerData] = await Promise.all([
         apiFetch<{ ok: boolean; tasks: DevTask[] }>("/dev/tasks?status=BACKLOG&status=TODO&status=IN_PROGRESS"),
         apiFetch<{ ok: boolean; schedules: DaySchedule[] }>(`/dev/calendar/schedules?month=${currentDate.toISOString()}`),
-        apiFetch<{ ok: boolean; assignments: TaskAssignment[] }>(`/dev/calendar/assignments?month=${currentDate.toISOString()}`)
+        apiFetch<{ ok: boolean; assignments: TaskAssignment[] }>(`/dev/calendar/assignments?month=${currentDate.toISOString()}`),
+        apiFetch<{ ok: boolean; timer: any }>("/dev/timer/active")
       ]);
 
       if (tasksData.ok) setTasks(tasksData.tasks);
@@ -72,11 +77,48 @@ export default function DevCalendarPage() {
       }
       
       if (assignmentsData.ok) setAssignments(assignmentsData.assignments);
+      if (timerData.ok && timerData.timer) setActiveTimer(timerData.timer);
     } catch (e) {
       console.error("Failed to load calendar data:", e);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function startTimer(taskId: string) {
+    try {
+      const data = await apiFetch<{ ok: boolean; timer: any }>("/dev/timer/start", {
+        method: "POST",
+        json: { devTaskId: taskId, notes: timerNotes }
+      });
+      if (data.ok) {
+        setActiveTimer(data.timer);
+        setTimerNotes("");
+        await loadData();
+      }
+    } catch (e: any) {
+      alert("Failed to start timer: " + e.message);
+    }
+  }
+
+  async function stopTimer() {
+    if (!activeTimer) return;
+    try {
+      await apiFetch("/dev/timer/stop", {
+        method: "POST",
+        json: { notes: timerNotes }
+      });
+      setActiveTimer(null);
+      setTimerNotes("");
+      await loadData();
+    } catch (e: any) {
+      alert("Failed to stop timer: " + e.message);
+    }
+  }
+
+  function openTaskDetail(task: DevTask) {
+    setSelectedTask(task);
+    setShowTaskDetailDialog(true);
   }
 
   useEffect(() => {
@@ -225,8 +267,7 @@ export default function DevCalendarPage() {
                 className="text-xs p-1 rounded bg-blue-100 border-l-2 border-blue-500 cursor-pointer hover:bg-blue-200"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setSelectedDate(dateStr);
-                  setShowAssignDialog(true);
+                  openTaskDetail(assignment.devTask);
                 }}
               >
                 <div className="flex items-start justify-between gap-1">
@@ -482,6 +523,130 @@ export default function DevCalendarPage() {
               <Button variant="ghost" onClick={() => setShowAssignDialog(false)}>Cancel</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task Detail Dialog */}
+      <Dialog open={showTaskDetailDialog} onOpenChange={setShowTaskDetailDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          {selectedTask && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <span className={`w-3 h-3 rounded-full ${
+                    selectedTask.priority === "CRITICAL" ? "bg-red-500" :
+                    selectedTask.priority === "HIGH" ? "bg-orange-500" :
+                    selectedTask.priority === "MEDIUM" ? "bg-yellow-500" :
+                    "bg-green-500"
+                  }`}></span>
+                  {selectedTask.title}
+                </DialogTitle>
+              </DialogHeader>
+              
+              <div className="space-y-4">
+                {/* Task Info */}
+                <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded">
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Status:</span>
+                    <span className="ml-2">{selectedTask.status}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Priority:</span>
+                    <span className="ml-2">{selectedTask.priority}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Estimated:</span>
+                    <span className="ml-2">{selectedTask.estimatedHours || 0}h</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Actual:</span>
+                    <span className="ml-2">{selectedTask.actualHours || 0}h</span>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {selectedTask.description && (
+                  <div>
+                    <h3 className="font-semibold mb-2">Description</h3>
+                    <div className="p-3 bg-gray-50 rounded whitespace-pre-wrap">
+                      {selectedTask.description}
+                    </div>
+                  </div>
+                )}
+
+                {/* Timer Section */}
+                <div className="border-t pt-4">
+                  <h3 className="font-semibold mb-3">Time Tracking</h3>
+                  
+                  {activeTimer && activeTimer.devTaskId === selectedTask.id ? (
+                    <div className="space-y-3">
+                      <div className="p-4 bg-green-50 border border-green-200 rounded">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-green-700">Timer Running</div>
+                            <div className="text-sm text-green-600">
+                              Started: {new Date(activeTimer.startedAt).toLocaleString()}
+                            </div>
+                          </div>
+                          <div className="text-2xl font-bold text-green-700">
+                            {Math.floor((Date.now() - new Date(activeTimer.startedAt).getTime()) / 1000 / 60)}m
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="text-sm font-medium">Notes (optional)</label>
+                        <Input
+                          value={timerNotes}
+                          onChange={(e) => setTimerNotes(e.target.value)}
+                          placeholder="What did you work on?"
+                        />
+                      </div>
+                      
+                      <Button onClick={stopTimer} className="w-full" variant="destructive">
+                        Stop Timer
+                      </Button>
+                    </div>
+                  ) : activeTimer ? (
+                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded">
+                      <div className="font-medium text-yellow-700">
+                        Timer active on another task: {activeTimer.devTask?.title}
+                      </div>
+                      <div className="text-sm text-yellow-600 mt-1">
+                        Stop that timer before starting a new one
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-sm font-medium">Notes (optional)</label>
+                        <Input
+                          value={timerNotes}
+                          onChange={(e) => setTimerNotes(e.target.value)}
+                          placeholder="What are you working on?"
+                        />
+                      </div>
+                      
+                      <Button 
+                        onClick={() => startTimer(selectedTask.id)} 
+                        className="w-full"
+                        disabled={selectedTask.status === "DONE" || selectedTask.status === "BLOCKED"}
+                      >
+                        Start Timer
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 justify-end border-t pt-4">
+                  <Button variant="ghost" onClick={() => setShowTaskDetailDialog(false)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
