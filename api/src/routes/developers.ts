@@ -5,9 +5,22 @@ import { prisma } from '../prisma';
 const router = Router();
 
 function ensureDeveloper(req: any, res: any, next: any) {
-  const isDev = req.auth?.user?.isDeveloper || req.auth?.isDeveloper;
-  if (!isDev) return res.status(403).json({ ok: false, error: 'forbidden' });
-  next();
+  if (!req.auth?.userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  
+  prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: { isDeveloper: true, role: true }
+  }).then(user => {
+    if (!user?.isDeveloper) {
+      return res.status(403).json({ error: "Developer access required" });
+    }
+    next();
+  }).catch(err => {
+    console.error("Developer auth check failed:", err);
+    res.status(500).json({ error: "Auth check failed" });
+  });
 }
 
 // List all developer users

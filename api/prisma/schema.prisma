@@ -1155,6 +1155,7 @@ model Feedback {
   resolvedBy        User?            @relation("FeedbackResolver", fields: [resolvedById], references: [id])
   tenant            Tenant           @relation(fields: [tenantId], references: [id])
   user              User?            @relation("FeedbackAuthor", fields: [userId], references: [id])
+  linkedDevTasks    DevTaskFeedback[]
 
   @@index([tenantId, feature, createdAt])
   @@index([tenantId, status, createdAt])
@@ -1167,11 +1168,12 @@ model DevTask {
   description    String?
   status         DevTaskStatus       @default(BACKLOG)
   priority       FeedbackPriority    @default(MEDIUM)
+  type           DevTaskType         @default(DEVELOPMENT)
   category       String?
   sprint         String?
   estimatedHours Decimal?
   actualHours    Decimal?
-  assignee       String?
+  assignee       String?             // User ID of assigned developer
   scheduledDate  String?             // Date in YYYY-MM-DD format for calendar display
   feedbackIds    String[]            @default([])
   tenantIds      String[]            @default([])
@@ -1181,10 +1183,13 @@ model DevTask {
   updatedAt      DateTime            @updatedAt
   timeEntries    DevTimeEntry[]
   assignments    DevTaskAssignment[]
+  linkedFeedbacks DevTaskFeedback[]
 
   @@index([status, priority])
   @@index([sprint])
   @@index([scheduledDate])
+  @@index([type])
+  @@index([assignee])
 }
 
 model DevTimeEntry {
@@ -1229,6 +1234,19 @@ model DevTaskAssignment {
   @@index([devTaskId])
   @@index([date])
   @@index([date, devTaskId])
+}
+
+model DevTaskFeedback {
+  id          String   @id @default(cuid())
+  devTaskId   String
+  devTask     DevTask  @relation(fields: [devTaskId], references: [id], onDelete: Cascade)
+  feedbackId  String
+  feedback    Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([devTaskId, feedbackId])
+  @@index([devTaskId])
+  @@index([feedbackId])
 }
 
 model Task {
@@ -3217,6 +3235,19 @@ enum DevTaskStatus {
   TESTING
   DONE
   BLOCKED
+}
+
+enum DevTaskType {
+  DEVELOPMENT
+  BUG_FIX
+  FEATURE
+  COACHING
+  FAMILY_TIME
+  HOUSEWORK
+  ADMIN
+  LEARNING
+  MEETING
+  OTHER
 }
 
 enum RelatedType {
