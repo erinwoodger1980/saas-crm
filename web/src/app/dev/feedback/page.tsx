@@ -171,20 +171,13 @@ function FeedbackManagementContent() {
           reader.onload = async (e) => {
             const base64 = e.target?.result as string;
             try {
-              const response = await fetch("/api/dev/feedback/upload-screenshot", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${localStorage.getItem("jwt")}`,
-                },
-                body: JSON.stringify({ screenshot: base64 }),
-              });
-
-              if (!response.ok) {
-                throw new Error("Failed to upload screenshot");
-              }
-
-              const data = await response.json();
+              const data = await apiFetch<{ ok: boolean; url: string }>(
+                "/dev/feedback/upload-screenshot",
+                {
+                  method: "POST",
+                  json: { screenshot: base64 },
+                }
+              );
               resolve(data.url);
             } catch (e: any) {
               reject(e);
@@ -199,20 +192,13 @@ function FeedbackManagementContent() {
 
       // Add all screenshots to the feedback
       for (const screenshotUrl of uploadedUrls) {
-        const response = await fetch(`/api/dev/feedback/${feedbackId}/add-screenshot`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("jwt")}`,
-          },
-          body: JSON.stringify({ screenshotUrl }),
-        });
-        
-        if (!response.ok) {
-          throw new Error("Failed to add screenshot to feedback");
-        }
-        
-        const feedbackData = await response.json();
+        const feedbackData = await apiFetch<{ ok: boolean; feedback: Feedback }>(
+          `/dev/feedback/${feedbackId}/add-screenshot`,
+          {
+            method: "POST",
+            json: { screenshotUrl },
+          }
+        );
         setFeedbacks(prev => prev.map(f => f.id === feedbackId ? feedbackData.feedback : f));
       }
       setEditForm({});
