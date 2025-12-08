@@ -5,7 +5,7 @@ import { API_BASE, apiFetch } from "@/lib/api";
 import { getAuthIdsFromJwt } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Mail, Phone, MapPin, User } from "lucide-react";
+import { Search, Plus, Mail, Phone, MapPin, User, Tag } from "lucide-react";
 import { DeskSurface } from "@/components/DeskSurface";
 import Link from "next/link";
 
@@ -19,6 +19,7 @@ type Client = {
   city?: string | null;
   postcode?: string | null;
   notes?: string | null;
+  tags?: string[];
   createdAt: string;
   _count?: {
     leads: number;
@@ -170,6 +171,25 @@ export default function ClientsPage() {
                       )}
                     </div>
                   </div>
+                  {client.tags && client.tags.length > 0 && (
+                    <div className="flex gap-1 flex-wrap">
+                      {client.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                            tag === "trade_partner"
+                              ? "bg-amber-100 text-amber-700 border border-amber-200"
+                              : tag === "brochure_enquiry"
+                              ? "bg-purple-100 text-purple-700 border border-purple-200"
+                              : "bg-slate-100 text-slate-700 border border-slate-200"
+                          }`}
+                        >
+                          <Tag className="h-3 w-3" />
+                          {tag === "trade_partner" ? "Trade Partner" : tag === "brochure_enquiry" ? "Brochure" : tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2 text-sm text-slate-600">

@@ -51,6 +51,7 @@ router.get("/", async (req, res) => {
         city: true,
         postcode: true,
         notes: true,
+        tags: true,
         createdAt: true,
         contacts: {
           select: {
@@ -131,6 +132,7 @@ router.get("/:id", async (req, res) => {
         city: true,
         postcode: true,
         notes: true,
+        tags: true,
         contactPerson: true,
         country: true,
         createdAt: true,
@@ -379,6 +381,7 @@ router.patch("/:id", async (req, res) => {
       city,
       postcode,
       notes,
+      tags,
     } = req.body;
 
     // Verify client exists and belongs to tenant
@@ -403,6 +406,7 @@ router.patch("/:id", async (req, res) => {
     if (city !== undefined) updateData.city = city?.trim() || null;
     if (postcode !== undefined) updateData.postcode = postcode?.trim() || null;
     if (notes !== undefined) updateData.notes = notes?.trim() || null;
+    if (tags !== undefined) updateData.tags = Array.isArray(tags) ? tags : [];
 
     const client = await prisma.client.update({
       where: { id },

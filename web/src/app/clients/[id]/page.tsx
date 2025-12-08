@@ -36,6 +36,7 @@ type Client = {
   city?: string | null;
   postcode?: string | null;
   notes?: string | null;
+  tags?: string[];
   createdAt: string;
   contacts?: ClientContact[];
 };
@@ -95,6 +96,7 @@ export default function ClientDetailPage() {
     city: "",
     postcode: "",
     notes: "",
+    tags: [] as string[],
   });
 
   useEffect(() => {
@@ -129,6 +131,7 @@ export default function ClientDetailPage() {
         city: data.city || "",
         postcode: data.postcode || "",
         notes: data.notes || "",
+        tags: data.tags || [],
       });
     } catch (error) {
       console.error("Failed to load client:", error);
@@ -244,6 +247,7 @@ export default function ClientDetailPage() {
                       city: client.city || "",
                       postcode: client.postcode || "",
                       notes: client.notes || "",
+                      tags: client.tags || [],
                     });
                   }}
                   disabled={saving}
@@ -419,6 +423,67 @@ export default function ClientDetailPage() {
                 <p className="text-slate-900 whitespace-pre-wrap">
                   {client.notes || "—"}
                 </p>
+              )}
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Tags</label>
+              {editing ? (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300"
+                      checked={formData.tags.includes("trade_partner")}
+                      onChange={(e) => {
+                        const newTags = e.target.checked
+                          ? [...formData.tags, "trade_partner"]
+                          : formData.tags.filter(t => t !== "trade_partner");
+                        setFormData({ ...formData, tags: newTags });
+                      }}
+                    />
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200">
+                      Trade Partner
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300"
+                      checked={formData.tags.includes("brochure_enquiry")}
+                      onChange={(e) => {
+                        const newTags = e.target.checked
+                          ? [...formData.tags, "brochure_enquiry"]
+                          : formData.tags.filter(t => t !== "brochure_enquiry");
+                        setFormData({ ...formData, tags: newTags });
+                      }}
+                    />
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                      Brochure Enquiry
+                    </span>
+                  </label>
+                </div>
+              ) : (
+                <div className="flex gap-2 flex-wrap">
+                  {client.tags && client.tags.length > 0 ? (
+                    client.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                          tag === "trade_partner"
+                            ? "bg-amber-100 text-amber-700 border border-amber-200"
+                            : tag === "brochure_enquiry"
+                            ? "bg-purple-100 text-purple-700 border border-purple-200"
+                            : "bg-slate-100 text-slate-700 border border-slate-200"
+                        }`}
+                      >
+                        {tag === "trade_partner" ? "Trade Partner" : tag === "brochure_enquiry" ? "Brochure Enquiry" : tag}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-900">—</span>
+                  )}
+                </div>
               )}
             </div>
           </div>
