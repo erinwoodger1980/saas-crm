@@ -546,13 +546,31 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
       `;
     }
 
+    // Process screenshots - convert base64 to attachments
+    const attachments: any[] = [];
     if (feedback.devScreenshotUrls && feedback.devScreenshotUrls.length > 0) {
-      emailHtml += `
-        <h3>Screenshots:</h3>
-        <div style="margin: 10px 0;">
-          ${feedback.devScreenshotUrls.map(url => `<img src="${url}" alt="Response screenshot" style="max-width: 600px; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0; display: block;" />`).join('')}
-        </div>
-      `;
+      emailHtml += `<h3>Screenshots attached (${feedback.devScreenshotUrls.length} image(s)):</h3>`;
+      
+      feedback.devScreenshotUrls.forEach((dataUrl: string, idx: number) => {
+        if (dataUrl.startsWith('data:')) {
+          // Extract mime type and base64 content
+          const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (matches) {
+            const mimeType = matches[1];
+            const base64Data = matches[2];
+            const extension = mimeType.split('/')[1] || 'png';
+            
+            attachments.push({
+              filename: `screenshot-${idx + 1}.${extension}`,
+              content: base64Data,
+              contentType: mimeType
+            });
+            
+            // Reference attachment in HTML using cid
+            emailHtml += `<p>${idx + 1}. <img src="cid:screenshot-${idx + 1}.${extension}" alt="Screenshot ${idx + 1}" style="max-width: 600px; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0; display: block;" /></p>`;
+          }
+        }
+      });
     }
 
     emailHtml += `
@@ -565,12 +583,18 @@ router.post("/feedback/:id/notify", requireDeveloper, async (req: any, res) => {
     const { Resend } = require('resend');
     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    await resend.emails.send({
+    const emailPayload: any = {
       from: process.env.EMAIL_FROM || 'JoineryAI <noreply@joineryai.app>',
       to: recipientUser.email,
       subject: `Update on your feedback: ${feedback.feature}`,
       html: emailHtml
-    });
+    };
+
+    if (attachments.length > 0) {
+      emailPayload.attachments = attachments;
+    }
+
+    await resend.emails.send(emailPayload);
 
     // Mark as notified
     await prisma.feedback.update({
