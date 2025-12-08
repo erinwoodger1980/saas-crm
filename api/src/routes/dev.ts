@@ -1830,10 +1830,9 @@ router.get("/developers", requireDeveloper, async (req: any, res) => {
         email: true,
         name: true,
         isDeveloper: true,
-        role: true,
-        createdAt: true
+        role: true
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { email: 'asc' }
     });
 
     res.json({ ok: true, developers });
@@ -1866,8 +1865,7 @@ router.post("/developers", requireDeveloper, async (req: any, res) => {
           email: true,
           name: true,
           isDeveloper: true,
-          role: true,
-          createdAt: true
+          role: true
         }
       });
       res.json({ ok: true, message: "User promoted to developer", user });
@@ -1883,7 +1881,7 @@ router.post("/developers", requireDeveloper, async (req: any, res) => {
           data: {
             name: 'Developers',
             slug: 'developers',
-            trialEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
+            trialEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
           }
         });
       }
@@ -1896,7 +1894,7 @@ router.post("/developers", requireDeveloper, async (req: any, res) => {
       user = await prisma.user.create({
         data: {
           email,
-          password: hashedPassword,
+          passwordHash: hashedPassword,
           name: email.split('@')[0],
           isDeveloper: true,
           role: 'ADMIN',
@@ -1907,15 +1905,15 @@ router.post("/developers", requireDeveloper, async (req: any, res) => {
           email: true,
           name: true,
           isDeveloper: true,
-          role: true,
-          createdAt: true
+          role: true
         }
       });
 
       res.json({ 
         ok: true, 
         message: `Developer created with temp password: ${tempPassword}`,
-        user 
+        user,
+        tempPassword
       });
     }
   } catch (error: any) {
