@@ -140,7 +140,8 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
   apiBase?: string;
   scope?: "client" | "quote_details" | "manufacturing" | "fire_door_schedule" | "fire_door_line_items" | "public" | "internal";
 }> = ({ apiBase = process.env.NEXT_PUBLIC_API_URL || "", scope }) => {
-  const listUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields?includeStandard=true" + (scope ? `&scope=${scope}` : "");
+  const baseUrl = apiBase.replace(/\/$/, "") + "/questionnaire-fields";
+  const listUrl = baseUrl + "?includeStandard=true" + (scope ? `&scope=${scope}` : "");
   const { data, mutate, isLoading } = useSWR<QuestionnaireFieldRow[]>(listUrl, fetcher);
   const [rows, setRows] = useState<QuestionnaireFieldRow[]>([]);
   const [creating, setCreating] = useState(false);
@@ -171,7 +172,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
   async function seedStandardFields() {
     setSeeding(true);
     try {
-      const response = await fetch(listUrl.split('?')[0] + '/seed-standard', {
+      const response = await fetch(baseUrl + '/seed-standard', {
         method: 'POST',
         credentials: 'include',
       });
@@ -195,7 +196,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
         body.sortOrder = body.order;
         delete body.order;
       }
-      await fetch(listUrl + "/" + id, {
+      await fetch(baseUrl + "/" + id, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: 'include',
@@ -210,7 +211,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
   async function deleteField(id: string) {
     if (!confirm("Delete this field?")) return;
     setRows((prev) => prev.filter((r) => r.id !== id));
-    await fetch(listUrl + "/" + id, { method: "DELETE", credentials: 'include' });
+    await fetch(baseUrl + "/" + id, { method: "DELETE", credentials: 'include' });
     mutate();
   }
 
@@ -226,7 +227,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
       scope: payload.scope || scope || "public",
     };
     try {
-      const resp = await fetch(listUrl, {
+      const resp = await fetch(baseUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: 'include',
@@ -257,7 +258,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
   async function persistOrder(newRows: QuestionnaireFieldRow[]) {
     setSavingOrder(true);
     try {
-      await fetch(listUrl + "/reorder", {
+      await fetch(baseUrl + "/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: 'include',
@@ -383,7 +384,7 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
     setMigrating(true);
     setMigrationResult(null);
     try {
-      const response = await fetch(listUrl.split('?')[0] + '/migrate-standard-fields', {
+      const response = await fetch(baseUrl + '/migrate-standard-fields', {
         method: 'POST',
         credentials: 'include',
       });
