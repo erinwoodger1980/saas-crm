@@ -50,6 +50,8 @@ function FeedbackManagementContent() {
   const [uploadingScreenshot, setUploadingScreenshot] = useState<string | null>(null);
   const [tenantUsers, setTenantUsers] = useState<Record<string, any[]>>({});
   const [recipientByFeedback, setRecipientByFeedback] = useState<Record<string, string>>({});
+  const [emailPreview, setEmailPreview] = useState<string | null>(null);
+
   // Fetch users for a tenant if not already loaded
   async function loadTenantUsers(tenantId: string) {
     if (tenantUsers[tenantId]) return;
@@ -140,6 +142,42 @@ function FeedbackManagementContent() {
       }
     } catch (e: any) {
       alert("Failed to send email: " + e.message);
+    }
+  }
+
+  async function prepareEmailPreview(feedbackId: string) {
+    try {
+      const feedback = feedbacks.find(f => f.id === feedbackId);
+      if (!feedback) {
+        alert("Feedback not found");
+        return;
+      }
+
+      const recipientUserId = recipientByFeedback[feedbackId] || feedback?.user?.id;
+      const recipientUser = recipientUserId 
+        ? (tenantUsers[feedback.tenant.id] || []).find(u => u.id === recipientUserId) || feedback.user
+        : feedback.user;
+
+      if (!recipientUser?.email) {
+        alert("No email address found for selected recipient");
+        return;
+      }
+
+      const res = await apiFetch<{ html: string }>(
+        `/dev/feedback/${feedbackId}/preview-email`,
+        {
+          method: "POST",
+          json: { recipientUserId: recipientUser.id }
+        }
+      );
+
+      if (res?.html) {
+        setEmailPreview(res.html);
+      } else {
+        alert("Failed to prepare email preview");
+      }
+    } catch (e: any) {
+      alert("Failed to prepare email preview: " + e.message);
     }
   }
 
@@ -597,6 +635,28 @@ function FeedbackManagementContent() {
               )}
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Email Preview Modal */}
+      {emailPreview && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
+            <h3 className="text-lg font-semibold mb-4">Email Preview</h3>
+            <div className="mb-4" dangerouslySetInnerHTML={{ __html: emailPreview }} />
+            <div className="flex justify-end gap-2">
+              <Button onClick={() => setEmailPreview(null)} variant="outline">Close Preview</Button>
+              <Button onClick={() => {
+                // Send email after preview
+                const feedbackId = Object.keys(recipientByFeedback).find(id => recipientByFeedback[id] === recipientByFeedback[feedback.id]);
+                if (feedbackId) {
+                  sendEmailNotification(feedbackId);
+                }
+              }}>
+                Send Email
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
