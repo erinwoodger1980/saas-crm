@@ -58,6 +58,7 @@ export default function DevCalendarPage() {
   const [loading, setLoading] = useState(true);
   const [activeTimer, setActiveTimer] = useState<any>(null);
   const [timerNotes, setTimerNotes] = useState("");
+  const [newTaskTitle, setNewTaskTitle] = useState("");
 
   const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
@@ -274,6 +275,33 @@ export default function DevCalendarPage() {
       }
     } catch (e: any) {
       alert("Failed to create task: " + e.message);
+    }
+  }
+
+  async function createTaskAndAssign() {
+    if (!selectedDate || !newTaskTitle) {
+      alert("Please provide a task title and select a date.");
+      return;
+    }
+
+    try {
+      const data = await apiFetch<{ ok: boolean; task: DevTask }>("/dev/tasks", {
+        method: "POST",
+        json: { title: newTaskTitle, priority: "MEDIUM", estimatedHours: 1 }
+      });
+
+      if (data.ok) {
+        setTasks(prev => [...prev, data.task]);
+        setAssignmentForm({
+          devTaskId: data.task.id,
+          allocatedHours: 1
+        });
+        alert("Task created and ready to assign.");
+      } else {
+        alert("Failed to create task.");
+      }
+    } catch (e: any) {
+      alert("Error creating task: " + e.message);
     }
   }
 
@@ -907,6 +935,17 @@ export default function DevCalendarPage() {
                 value={assignmentForm.allocatedHours || 1}
                 onChange={(e) => setAssignmentForm({ ...assignmentForm, allocatedHours: parseFloat(e.target.value) })}
               />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">New Task Title</label>
+              <Input
+                type="text"
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                placeholder="Enter task title..."
+              />
+              <Button onClick={createTaskAndAssign}>Create Task</Button>
             </div>
 
             {selectedDate && getDaySchedule(selectedDate) && (
