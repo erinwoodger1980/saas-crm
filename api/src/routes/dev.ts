@@ -714,6 +714,7 @@ router.post("/tasks", requireDeveloper, async (req: any, res) => {
       sprint,
       estimatedHours,
       assignee,
+      scheduledDate,
       feedbackIds,
       tenantIds,
       notes
@@ -729,6 +730,7 @@ router.post("/tasks", requireDeveloper, async (req: any, res) => {
         sprint,
         estimatedHours,
         assignee,
+        scheduledDate,
         feedbackIds: feedbackIds || [],
         tenantIds: tenantIds || [],
         notes
@@ -755,6 +757,7 @@ router.patch("/tasks/:id", requireDeveloper, async (req: any, res) => {
       estimatedHours,
       actualHours,
       assignee,
+      scheduledDate,
       feedbackIds,
       tenantIds,
       notes
@@ -775,6 +778,7 @@ router.patch("/tasks/:id", requireDeveloper, async (req: any, res) => {
         ...(estimatedHours !== undefined && { estimatedHours }),
         ...(actualHours !== undefined && { actualHours }),
         ...(assignee !== undefined && { assignee }),
+        ...(scheduledDate !== undefined && { scheduledDate }),
         ...(feedbackIds && { feedbackIds }),
         ...(tenantIds && { tenantIds }),
         ...(notes !== undefined && { notes })

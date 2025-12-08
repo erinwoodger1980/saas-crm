@@ -541,18 +541,31 @@ function DevTasksContent() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-2 justify-end border-t pt-4">
-                  <Button variant="outline" onClick={() => {
-                    setEditingTask(selectedTask);
-                    setFormData(selectedTask);
-                    setShowDetailDialog(false);
-                    setShowCreateDialog(true);
-                  }}>
-                    Edit Task
+                <div className="flex gap-2 justify-between border-t pt-4">
+                  <Button 
+                    variant="destructive" 
+                    onClick={() => {
+                      if (confirm("Are you sure you want to delete this task?")) {
+                        deleteTask(selectedTask.id);
+                        setShowDetailDialog(false);
+                      }
+                    }}
+                  >
+                    Delete Task
                   </Button>
-                  <Button variant="ghost" onClick={() => setShowDetailDialog(false)}>
-                    Close
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => {
+                      setEditingTask(selectedTask);
+                      setFormData(selectedTask);
+                      setShowDetailDialog(false);
+                      setShowCreateDialog(true);
+                    }}>
+                      Edit Task
+                    </Button>
+                    <Button variant="ghost" onClick={() => setShowDetailDialog(false)}>
+                      Close
+                    </Button>
+                  </div>
                 </div>
               </div>
             </>
