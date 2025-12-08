@@ -1845,7 +1845,7 @@ router.get("/developers", requireDeveloper, async (req: any, res) => {
 // Add or promote developer
 router.post("/developers", requireDeveloper, async (req: any, res) => {
   try {
-    const { email } = req.body;
+    const { email, name, password } = req.body;
     if (!email) {
       return res.status(400).json({ error: "Email required" });
     }
@@ -1857,9 +1857,16 @@ router.post("/developers", requireDeveloper, async (req: any, res) => {
 
     if (user) {
       // Update existing user
+      const updateData: any = { isDeveloper: true, role: 'ADMIN' };
+      if (name) updateData.name = name;
+      if (password) {
+        const bcrypt = require('bcrypt');
+        updateData.passwordHash = await bcrypt.hash(password, 10);
+      }
+      
       user = await prisma.user.update({
         where: { id: user.id },
-        data: { isDeveloper: true, role: 'ADMIN' },
+        data: updateData,
         select: {
           id: true,
           email: true,
@@ -1886,16 +1893,19 @@ router.post("/developers", requireDeveloper, async (req: any, res) => {
         });
       }
 
-      // Create user with generated password
+      // Create user with provided password or generate one
       const bcrypt = require('bcrypt');
-      const tempPassword = Math.random().toString(36).slice(-12);
+      let tempPassword = password;
+      if (!tempPassword) {
+        tempPassword = Math.random().toString(36).slice(-12);
+      }
       const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
       user = await prisma.user.create({
         data: {
           email,
           passwordHash: hashedPassword,
-          name: email.split('@')[0],
+          name: name || email.split('@')[0],
           isDeveloper: true,
           role: 'ADMIN',
           tenantId: devTenant.id
@@ -1911,9 +1921,9 @@ router.post("/developers", requireDeveloper, async (req: any, res) => {
 
       res.json({ 
         ok: true, 
-        message: `Developer created with temp password: ${tempPassword}`,
+        message: `Developer created${password ? '' : ' with temp password'}`,
         user,
-        tempPassword
+        tempPassword: !password ? tempPassword : undefined
       });
     }
   } catch (error: any) {

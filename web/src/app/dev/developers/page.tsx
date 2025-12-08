@@ -19,8 +19,11 @@ export default function DevelopersPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState<string>("");
+  const [name, setName] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [adding, setAdding] = useState<boolean>(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [showTempPassword, setShowTempPassword] = useState<string | null>(null);
 
   async function load() {
     setLoading(true); setError(null); setMessage(null);
@@ -41,11 +44,18 @@ export default function DevelopersPage() {
   async function addDeveloper(e: React.FormEvent) {
     e.preventDefault();
     if (!validateEmail(email)) { setError("Invalid email format"); return; }
+    if (!name.trim()) { setError("Name is required"); return; }
     setAdding(true); setError(null); setMessage(null);
     try {
-      const out = await apiFetch<{ message: string; user: DevUser }>("/developers", { method: "POST", json: { email } });
+      const out = await apiFetch<{ message: string; user: DevUser; tempPassword?: string }>("/developers", { 
+        method: "POST", 
+        json: { email, name: name.trim(), password: password || undefined } 
+      });
       setMessage(out.message || "Developer added/updated");
+      if (out.tempPassword) setShowTempPassword(out.tempPassword);
       setEmail("");
+      setName("");
+      setPassword("");
       await load();
     } catch (e: any) {
       setError(e?.message || "Failed to add developer");
@@ -61,19 +71,51 @@ export default function DevelopersPage() {
 
       <Card className="p-6 space-y-4">
         <h2 className="text-xl font-semibold flex items-center gap-2"><PlusCircle className="w-5 h-5" /> Add / Promote Developer</h2>
-        <form onSubmit={addDeveloper} className="flex flex-col sm:flex-row gap-3">
-          <Input
-            placeholder="developer@example.com"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            disabled={adding}
-            className="flex-1"
-          />
-          <Button type="submit" disabled={adding || !email}> {adding ? "Saving..." : "Save"} </Button>
+        <form onSubmit={addDeveloper} className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              placeholder="developer@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              disabled={adding}
+              type="email"
+            />
+            <Input
+              placeholder="Full name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              disabled={adding}
+            />
+            <Input
+              placeholder="Password (optional - will auto-generate if empty)"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              disabled={adding}
+              type="password"
+            />
+          </div>
+          <Button type="submit" disabled={adding || !email || !name} className="w-full"> {adding ? "Saving..." : "Add Developer"} </Button>
         </form>
+        {showTempPassword && (
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+            <div className="text-blue-700 text-sm font-medium mb-2">Temporary Password Generated:</div>
+            <div className="font-mono text-blue-900">{showTempPassword}</div>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={() => {
+                navigator.clipboard.writeText(showTempPassword);
+                setShowTempPassword(null);
+              }}
+              className="mt-2"
+            >
+              Copy & Close
+            </Button>
+          </div>
+        )}
         {message && <div className="p-3 bg-green-50 border border-green-200 rounded text-green-700 text-sm">{message}</div>}
         {error && <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">{error}</div>}
-        <p className="text-xs text-slate-500">If the email exists it will be promoted. Otherwise a new user is created with a generated password.</p>
+        <p className="text-xs text-slate-500">If the email exists it will be promoted to developer. Otherwise a new user is created.</p>
       </Card>
 
       <Card className="p-6">

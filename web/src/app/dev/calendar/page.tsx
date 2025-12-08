@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Calendar, ChevronLeft, ChevronRight, Plus, Clock, Edit2, Trash2 } from "lucide-react";
@@ -52,6 +53,8 @@ export default function DevCalendarPage() {
   const [showTaskDetailDialog, setShowTaskDetailDialog] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Partial<DaySchedule>>({});
   const [assignmentForm, setAssignmentForm] = useState<Partial<TaskAssignment>>({});
+  const [showCreateTaskDialog, setShowCreateTaskDialog] = useState(false);
+  const [createTaskForm, setCreateTaskForm] = useState<Partial<DevTask>>({ status: 'BACKLOG', priority: 'MEDIUM', type: 'DEVELOPMENT' });
   const [loading, setLoading] = useState(true);
   const [activeTimer, setActiveTimer] = useState<any>(null);
   const [timerNotes, setTimerNotes] = useState("");
@@ -251,6 +254,29 @@ export default function DevCalendarPage() {
     setShowAssignDialog(true);
   }
 
+  function openCreateTaskDialog(dateStr?: string) {
+    if (dateStr) setSelectedDate(dateStr);
+    setCreateTaskForm({ status: 'BACKLOG', priority: 'MEDIUM', type: 'DEVELOPMENT', scheduledDate: dateStr });
+    setShowCreateTaskDialog(true);
+  }
+
+  async function createTask() {
+    try {
+      const data = await apiFetch<{ ok: boolean; task: DevTask }>("/dev/tasks", {
+        method: "POST",
+        json: createTaskForm
+      });
+      if (data.ok) {
+        setTasks(prev => [...prev, data.task]);
+        setShowCreateTaskDialog(false);
+        setCreateTaskForm({ status: 'BACKLOG', priority: 'MEDIUM', type: 'DEVELOPMENT' });
+        await loadData(); // Reload to get updated summary
+      }
+    } catch (e: any) {
+      alert("Failed to create task: " + e.message);
+    }
+  }
+
   function getPriorityColor(priority: string): string {
     switch (priority) {
       case "CRITICAL": return "bg-red-500";
@@ -317,12 +343,20 @@ export default function DevCalendarPage() {
           </div>
         )}
         
-        <button
-          onClick={() => openAssignDialog(dateStr)}
-          className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
-        >
-          + Add Task
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => openAssignDialog(dateStr)}
+            className="flex-1 p-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
+          >
+            + Assign Task
+          </button>
+          <button
+            onClick={() => openCreateTaskDialog(dateStr)}
+            className="flex-1 p-4 border-2 border-dashed border-purple-300 rounded-lg text-purple-600 hover:border-purple-500 hover:text-purple-700 transition-colors"
+          >
+            + Create Task
+          </button>
+        </div>
       </div>
     );
   };
@@ -331,7 +365,7 @@ export default function DevCalendarPage() {
     const weekStart = new Date(currentDate);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     
-    const weekDays = [];
+    const weekDays: Date[] = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(weekStart);
       date.setDate(date.getDate() + i);
@@ -376,6 +410,12 @@ export default function DevCalendarPage() {
                     </div>
                   ))}
                 </div>
+                <button
+                  onClick={() => openCreateTaskDialog(dateStr)}
+                  className="text-xs mt-2 p-1 text-purple-600 hover:bg-purple-50 rounded w-full text-center"
+                >
+                  + Create
+                </button>
               </div>
             );
           })}
@@ -1006,6 +1046,124 @@ export default function DevCalendarPage() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Task Dialog */}
+      <Dialog open={showCreateTaskDialog} onOpenChange={setShowCreateTaskDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Task</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Task Title *</label>
+              <Input
+                value={createTaskForm.title || ""}
+                onChange={(e) => setCreateTaskForm({ ...createTaskForm, title: e.target.value })}
+                placeholder="What needs to be done?"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Description</label>
+              <Textarea
+                value={createTaskForm.description || ""}
+                onChange={(e) => setCreateTaskForm({ ...createTaskForm, description: e.target.value })}
+                placeholder="Additional details..."
+                className="resize-none h-20"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Status</label>
+                <Select
+                  value={createTaskForm.status || "BACKLOG"}
+                  onValueChange={(v) => setCreateTaskForm({ ...createTaskForm, status: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="BACKLOG">Backlog</SelectItem>
+                    <SelectItem value="TODO">To Do</SelectItem>
+                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                    <SelectItem value="IN_REVIEW">In Review</SelectItem>
+                    <SelectItem value="TESTING">Testing</SelectItem>
+                    <SelectItem value="DONE">Done</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Priority</label>
+                <Select
+                  value={createTaskForm.priority || "MEDIUM"}
+                  onValueChange={(v) => setCreateTaskForm({ ...createTaskForm, priority: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="CRITICAL">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Task Type</label>
+              <Select
+                value={createTaskForm.type || "DEVELOPMENT"}
+                onValueChange={(v) => setCreateTaskForm({ ...createTaskForm, type: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DEVELOPMENT">Development</SelectItem>
+                  <SelectItem value="BUG_FIX">Bug Fix</SelectItem>
+                  <SelectItem value="FEATURE">Feature</SelectItem>
+                  <SelectItem value="COACHING">Coaching</SelectItem>
+                  <SelectItem value="FAMILY_TIME">Family Time</SelectItem>
+                  <SelectItem value="HOUSEWORK">Housework</SelectItem>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                  <SelectItem value="LEARNING">Learning</SelectItem>
+                  <SelectItem value="MEETING">Meeting</SelectItem>
+                  <SelectItem value="OTHER">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Estimated Hours</label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  value={createTaskForm.estimatedHours || ""}
+                  onChange={(e) => setCreateTaskForm({ ...createTaskForm, estimatedHours: parseFloat(e.target.value) || null })}
+                  placeholder="4"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Scheduled Date</label>
+                <Input
+                  type="date"
+                  value={createTaskForm.scheduledDate || ""}
+                  onChange={(e) => setCreateTaskForm({ ...createTaskForm, scheduledDate: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button onClick={createTask} disabled={!createTaskForm.title}>
+                Create Task
+              </Button>
+              <Button variant="ghost" onClick={() => setShowCreateTaskDialog(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
