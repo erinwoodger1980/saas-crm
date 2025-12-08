@@ -1044,7 +1044,7 @@ router.get("/stats", requireDeveloper, async (req: any, res) => {
 // Get active timer for current user
 router.get("/timer/active", requireDeveloper, async (req: any, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.auth?.userId;
     if (!userId) return res.status(401).json({ error: "unauthorized" });
 
     const activeTimer = await prisma.devTimeEntry.findFirst({
@@ -1068,7 +1068,7 @@ router.get("/timer/active", requireDeveloper, async (req: any, res) => {
 // Start timer for a dev task
 router.post("/timer/start", requireDeveloper, async (req: any, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.auth?.userId;
     if (!userId) return res.status(401).json({ error: "unauthorized" });
 
     const { devTaskId, notes } = req.body;
@@ -1117,7 +1117,7 @@ router.post("/timer/start", requireDeveloper, async (req: any, res) => {
 // Stop active timer
 router.post("/timer/stop", requireDeveloper, async (req: any, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.auth?.userId;
     if (!userId) return res.status(401).json({ error: "unauthorized" });
 
     const { notes } = req.body;
