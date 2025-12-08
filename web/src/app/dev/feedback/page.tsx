@@ -99,7 +99,7 @@ function FeedbackManagementContent() {
     }
   }
 
-  function sendEmailNotification(feedbackId: string) {
+  async function sendEmailNotification(feedbackId: string) {
     try {
       // Find the selected recipient and feedback details
       const feedback = feedbacks.find(f => f.id === feedbackId);
@@ -118,47 +118,28 @@ function FeedbackManagementContent() {
         return;
       }
 
-      // Construct feedback URL
-      const feedbackUrl = `${window.location.origin}/feedback?highlight=${feedback.id}`;
+      // Send email via backend API with proper attachment handling
+      const res = await apiFetch<{ ok: boolean }>(
+        `/dev/feedback/${feedbackId}/notify`,
+        {
+          method: "POST",
+          json: { 
+            recipientUserId: recipientUser.id 
+          }
+        }
+      );
 
-      // Build email subject
-      const subject = `Update on your feedback: ${feedback.feature}`;
-
-      // Build plain text email body
-      let body = `Hi ${recipientUser.name || 'there'},\n\n`;
-      body += `We've updated the feedback you submitted for "${feedback.feature}".\n\n`;
-
-      if (feedback.devResponse) {
-        body += `Developer Response:\n`;
-        body += `${feedback.devResponse}\n\n`;
+      if (res?.ok) {
+        alert("Email sent successfully with screenshots attached!");
+        // Mark as sent locally
+        setFeedbacks(prev => prev.map(f => 
+          f.id === feedbackId ? { ...f, emailNotificationSent: true } : f
+        ));
+      } else {
+        alert("Failed to send email");
       }
-
-      if (feedback.devScreenshotUrls && feedback.devScreenshotUrls.length > 0) {
-        body += `Screenshots attached (${feedback.devScreenshotUrls.length} image(s)):\n`;
-        feedback.devScreenshotUrls.forEach((url, idx) => {
-          body += `  ${idx + 1}. ${url}\n`;
-        });
-        body += `\n`;
-      }
-
-      body += `Current Status: ${feedback.status}\n\n`;
-      body += `View your feedback here: ${feedbackUrl}\n\n`;
-      body += `Thank you for helping us improve!`;
-
-      // Create mailto link and trigger it via a temporary anchor element
-      // This avoids the blank page issue with window.location.href
-      const mailtoUrl = `mailto:${encodeURIComponent(recipientUser.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      const link = document.createElement('a');
-      link.href = mailtoUrl;
-      link.target = '_self';
-      link.click();
-
-      // Optionally mark as sent locally (or remove this if you want to track actual sends)
-      // setFeedbacks(prev => prev.map(f => 
-      //   f.id === feedbackId ? { ...f, emailNotificationSent: true } : f
-      // ));
     } catch (e: any) {
-      alert("Failed to prepare email: " + e.message);
+      alert("Failed to send email: " + e.message);
     }
   }
 
