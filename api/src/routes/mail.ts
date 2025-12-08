@@ -350,7 +350,7 @@ router.post("/feedback-reply", async (req, res) => {
             data: {
               userResponseApproved: approved,
               userResponseAt: new Date(),
-              status: approved ? 'RESOLVED' : 'PENDING'
+              status: approved ? 'RESOLVED' : 'OPEN'
             }
           });
 
