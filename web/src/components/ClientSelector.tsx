@@ -292,10 +292,13 @@ export function ClientSelector({
                 {/* Create New */}
                 <div className="p-3 border-t border-slate-200 bg-slate-50">
                   <Button
+                    type="button"
                     variant="ghost"
                     size="sm"
                     className="w-full"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setCreatingNew(true);
                       setShowDropdown(false);
                     }}
@@ -319,6 +322,7 @@ export function ClientSelector({
                 Create New Client
               </h3>
               <Button
+                type="button"
                 size="sm"
                 variant="ghost"
                 onClick={() => setCreatingNew(false)}
@@ -354,10 +358,11 @@ export function ClientSelector({
             </div>
 
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setCreatingNew(false)}>
+              <Button type="button" variant="outline" onClick={() => setCreatingNew(false)}>
                 Cancel
               </Button>
               <Button
+                type="button"
                 onClick={handleCreateNew}
                 disabled={!newClientName.trim()}
               >
