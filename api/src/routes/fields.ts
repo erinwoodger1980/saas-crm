@@ -129,6 +129,11 @@ router.get("/", requireAuth, async (req: any, res) => {
         "num_doors",
         "premium_hardware",
         "custom_finish",
+        "door_height_mm",
+        "door_width_mm",
+        "final_width_mm",
+        "final_height_mm",
+        "installation_date",
       ];
       if (DEPRECATED_KEYS.length) {
         await prisma.questionnaireField.updateMany({
@@ -404,6 +409,130 @@ router.delete("/:id", requireAuth, async (req: any, res) => {
     return res.json({ success: true });
   } catch (error) {
     console.error("[DELETE /fields/:id] Error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /fields/migrate-standard-fields
+ * Migration endpoint to sync new standard fields and remove deprecated ones
+ * Based on joineryai_questionnaire_fields.csv updates
+ */
+router.post("/migrate-standard-fields", requireAuth, async (req: any, res) => {
+  try {
+    const tenantId = req.auth.tenantId as string;
+
+    // Fields to delete based on CSV
+    const FIELDS_TO_DELETE = [
+      "door_height_mm",
+      "door_width_mm", 
+      "final_width_mm",
+      "final_height_mm",
+      "installation_date"
+    ];
+
+    // Delete deprecated fields
+    const deletedResult = await prisma.questionnaireField.deleteMany({
+      where: {
+        tenantId,
+        key: { in: FIELDS_TO_DELETE }
+      }
+    });
+
+    // Get existing standard fields
+    const existing = await prisma.questionnaireField.findMany({
+      where: { tenantId, isStandard: true },
+      select: { key: true, id: true },
+    });
+    const existingKeys = new Set(existing.map((f) => f.key));
+
+    // Get or create default questionnaire
+    let questionnaire = await prisma.questionnaire.findFirst({
+      where: { tenantId, isActive: true },
+    });
+    if (!questionnaire) {
+      questionnaire = await prisma.questionnaire.create({
+        data: {
+          tenantId,
+          name: "Default Questionnaire",
+          description: "Auto-created for standard ML fields",
+          isActive: true,
+        },
+      });
+    }
+
+    // Create new standard fields that don't exist yet
+    const toCreate = STANDARD_FIELDS.filter((f) => !existingKeys.has(f.key));
+    let createdCount = 0;
+
+    for (const f of toCreate) {
+      try {
+        await prisma.questionnaireField.create({
+          data: {
+            tenantId,
+            questionnaireId: questionnaire.id,
+            key: f.key,
+            label: f.label,
+            type: f.type,
+            options: f.options ? f.options : undefined,
+            required: f.required,
+            sortOrder: f.sortOrder,
+            order: f.sortOrder,
+            costingInputKey: f.costingInputKey || null,
+            helpText: f.helpText || null,
+            placeholder: f.placeholder || null,
+            isStandard: true,
+            isHidden: false,
+            requiredForCosting: !!f.costingInputKey,
+          },
+        });
+        createdCount++;
+      } catch (e: any) {
+        if (e?.code !== "P2002") {
+          console.warn("[fields/migrate] create standard field failed", f.key, e?.message || e);
+        }
+      }
+    }
+
+    // Update existing standard fields to ensure correct scope/properties
+    // This ensures fields like material tracking dates are marked as standard for all tenants
+    for (const standardField of STANDARD_FIELDS) {
+      if (existingKeys.has(standardField.key)) {
+        try {
+          await prisma.questionnaireField.updateMany({
+            where: {
+              tenantId,
+              key: standardField.key
+            },
+            data: {
+              isStandard: true,
+              isHidden: false,
+              label: standardField.label,
+              type: standardField.type,
+              options: standardField.options ? standardField.options : undefined,
+              sortOrder: standardField.sortOrder,
+              costingInputKey: standardField.costingInputKey || null,
+              helpText: standardField.helpText || null,
+              placeholder: standardField.placeholder || null,
+              requiredForCosting: !!standardField.costingInputKey,
+            }
+          });
+        } catch (e: any) {
+          console.warn("[fields/migrate] update standard field failed", standardField.key, e?.message || e);
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      deleted: deletedResult.count,
+      created: createdCount,
+      updated: existingKeys.size,
+      fieldsDeleted: FIELDS_TO_DELETE,
+      message: `Migrated standard fields: deleted ${deletedResult.count}, created ${createdCount} new fields, updated ${existingKeys.size} existing fields`
+    });
+  } catch (error) {
+    console.error("[POST /fields/migrate-standard-fields] Error:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -373,12 +373,51 @@ export const AdminQuestionnaireFieldsTable: React.FC<{
     );
   }, [isLoading, rows]);
 
+  const [migrating, setMigrating] = useState(false);
+  const [migrationResult, setMigrationResult] = useState<string | null>(null);
+
+  async function runMigration() {
+    if (!confirm("This will sync all standard fields and remove deprecated ones (door_height_mm, door_width_mm, final_width_mm, final_height_mm, installation_date). Continue?")) {
+      return;
+    }
+    setMigrating(true);
+    setMigrationResult(null);
+    try {
+      const response = await fetch(listUrl.split('?')[0] + '/migrate-standard-fields', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setMigrationResult(`✅ ${result.message}`);
+        await mutate();
+      } else {
+        setMigrationResult(`❌ Migration failed: ${result.error || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      console.error('Failed to run migration:', e);
+      setMigrationResult(`❌ Migration error: ${e.message}`);
+    } finally {
+      setMigrating(false);
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h1 className="text-sm font-semibold">Questionnaire Fields{scope ? ` — ${scope}` : ''}</h1>
         <div className="flex items-center gap-2">
           {savingOrder && <span className="text-[10px] text-slate-400">Saving order…</span>}
+          {migrationResult && <span className="text-[10px] px-2 py-1 rounded bg-slate-100">{migrationResult}</span>}
+          <button
+            type="button"
+            onClick={runMigration}
+            disabled={migrating}
+            className="rounded bg-purple-600 text-white text-xs px-3 py-1 hover:bg-purple-500 disabled:opacity-50"
+            title="Sync latest standard fields and remove deprecated ones"
+          >
+            {migrating ? 'Migrating...' : 'Migrate Fields'}
+          </button>
           <button
             type="button"
             onClick={() => setCreating(true)}
