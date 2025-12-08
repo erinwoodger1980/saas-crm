@@ -59,6 +59,7 @@ export default function DevCalendarPage() {
   const [activeTimer, setActiveTimer] = useState<any>(null);
   const [timerNotes, setTimerNotes] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [editingTaskAssignee, setEditingTaskAssignee] = useState<string | null>(null);
 
   const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
@@ -278,6 +279,25 @@ export default function DevCalendarPage() {
     }
   }
 
+  async function updateTaskAssignee(taskId: string, assignee: string) {
+    try {
+      const data = await apiFetch<{ ok: boolean; task: DevTask }>("/dev/tasks/" + taskId, {
+        method: "PATCH",
+        json: { assignee }
+      });
+      if (data.ok) {
+        setTasks(prev => prev.map(t => t.id === taskId ? data.task : t));
+        if (selectedTask?.id === taskId) {
+          setSelectedTask(data.task);
+        }
+        setEditingTaskAssignee(null);
+        await loadData();
+      }
+    } catch (e: any) {
+      alert("Failed to update assignee: " + e.message);
+    }
+  }
+
   async function createTaskAndAssign() {
     if (!selectedDate || !newTaskTitle) {
       alert("Please provide a task title and select a date.");
@@ -319,6 +339,7 @@ export default function DevCalendarPage() {
     const dateStr = formatDate(currentDate);
     const schedule = getDaySchedule(dateStr);
     const dayAssignments = getDayAssignments(dateStr);
+    const directlyScheduled = getDirectlyScheduledTasks(dateStr);
     const totalAllocated = getTotalAllocated(dateStr);
     
     return (
@@ -337,7 +358,7 @@ export default function DevCalendarPage() {
           <div className="p-4 bg-gray-100 rounded text-gray-600">Non-working day</div>
         )}
         
-        {dayAssignments.length === 0 ? (
+        {dayAssignments.length === 0 && directlyScheduled.length === 0 ? (
           <div className="p-8 text-center text-gray-500">No tasks scheduled for this day</div>
         ) : (
           <div className="space-y-3">
@@ -364,6 +385,27 @@ export default function DevCalendarPage() {
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {directlyScheduled.map(task => (
+              <div key={task.id} className="p-4 border rounded-lg hover:bg-gray-50 bg-purple-50">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="font-medium text-lg cursor-pointer hover:text-purple-600" onClick={() => openTaskDetail(task)}>
+                      {task.title}
+                    </div>
+                    <div className="text-sm text-gray-600 mt-1">{task.type?.replace(/_/g, ' ')}</div>
+                    {task.description && (
+                      <div className="text-sm text-gray-500 mt-2">{task.description}</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-purple-600">{task.estimatedHours || 0}h</div>
+                      <div className="text-xs text-gray-500">estimated</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -753,6 +795,28 @@ export default function DevCalendarPage() {
         </div>
       )}
 
+      {/* Summary by Type Across All Developers */}
+      {Object.keys(summary).length > 0 && (
+        <div className="bg-white p-6 rounded border space-y-4">
+          <h2 className="text-lg font-semibold">Total Hours by Type</h2>
+          <div className="flex flex-wrap gap-3">
+            {(() => {
+              const typeAggregates: Record<string, number> = {};
+              Object.values(summary).forEach(types => {
+                Object.entries(types).forEach(([type, hours]) => {
+                  typeAggregates[type] = (typeAggregates[type] || 0) + hours;
+                });
+              });
+              return Object.entries(typeAggregates).map(([type, hours]) => (
+                <div key={type} className={`px-4 py-2 rounded-lg text-sm font-medium ${getTypeColor(type)}`}>
+                  {type.replace(/_/g, ' ')}: {hours.toFixed(1)}h
+                </div>
+              ));
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
       <div className="flex items-center justify-between bg-white p-4 rounded border">
         <Button variant="outline" onClick={navigatePrevious}>
@@ -999,6 +1063,48 @@ export default function DevCalendarPage() {
                   <div>
                     <span className="text-sm font-medium text-gray-600">Actual:</span>
                     <span className="ml-2">{selectedTask.actualHours || 0}h</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Type:</span>
+                    <span className="ml-2">{selectedTask.type?.replace(/_/g, ' ')}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-600">Assigned To:</span>
+                    {editingTaskAssignee !== null ? (
+                      <div className="mt-2 space-y-2">
+                        <Input
+                          value={editingTaskAssignee}
+                          onChange={(e) => setEditingTaskAssignee(e.target.value)}
+                          placeholder="Developer name"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => updateTaskAssignee(selectedTask.id, editingTaskAssignee)}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingTaskAssignee(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span>{selectedTask.assignee || 'Unassigned'}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingTaskAssignee(selectedTask.assignee || '')}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
