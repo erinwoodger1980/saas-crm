@@ -60,7 +60,7 @@ export default function DevCalendarPage() {
     setLoading(true);
     try {
       const [tasksData, schedulesData, assignmentsData, timerData] = await Promise.all([
-        apiFetch<{ ok: boolean; tasks: DevTask[] }>("/dev/tasks?status=BACKLOG&status=TODO&status=IN_PROGRESS"),
+        apiFetch<{ ok: boolean; tasks: DevTask[] }>("/dev/tasks"),
         apiFetch<{ ok: boolean; schedules: DaySchedule[] }>(`/dev/calendar/schedules?month=${currentDate.toISOString()}`),
         apiFetch<{ ok: boolean; assignments: TaskAssignment[] }>(`/dev/calendar/assignments?month=${currentDate.toISOString()}`),
         apiFetch<{ ok: boolean; timer: any }>("/dev/timer/active")
@@ -135,6 +135,10 @@ export default function DevCalendarPage() {
 
   function getDayAssignments(dateStr: string): TaskAssignment[] {
     return assignments.filter(a => a.date === dateStr);
+  }
+
+  function getDirectlyScheduledTasks(dateStr: string): DevTask[] {
+    return tasks.filter(t => t.scheduledDate === dateStr);
   }
 
   function getTotalAllocated(dateStr: string): number {
@@ -284,6 +288,23 @@ export default function DevCalendarPage() {
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
+                </div>
+              </div>
+            ))}
+            {getDirectlyScheduledTasks(dateStr).map(task => (
+              <div
+                key={task.id}
+                className="text-xs p-1 rounded bg-purple-100 border-l-2 border-purple-500 cursor-pointer hover:bg-purple-200"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openTaskDetail(task);
+                }}
+              >
+                <div className="flex items-start justify-between gap-1">
+                  <div className="flex-1 truncate">
+                    <div className="font-medium truncate">{task.title}</div>
+                    <div className="text-gray-600">{task.estimatedHours || 0}h est</div>
+                  </div>
                 </div>
               </div>
             ))}
