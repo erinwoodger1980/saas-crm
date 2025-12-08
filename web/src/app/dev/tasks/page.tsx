@@ -16,6 +16,7 @@ type DevTask = {
   description: string | null;
   status: string;
   priority: string;
+  type: string;
   category: string | null;
   sprint: string | null;
   estimatedHours: number | null;
@@ -49,7 +50,8 @@ function DevTasksContent() {
   const [selectedTask, setSelectedTask] = useState<DevTask | null>(null);
   const [formData, setFormData] = useState<Partial<DevTask>>({
     status: "BACKLOG",
-    priority: "MEDIUM"
+    priority: "MEDIUM",
+    type: "DEVELOPMENT"
   });
   const [activeTimer, setActiveTimer] = useState<any>(null);
   const [timerNotes, setTimerNotes] = useState("");
@@ -252,7 +254,28 @@ function DevTasksContent() {
                     rows={4}
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium">Type</label>
+                    <Select 
+                      value={formData.type || 'DEVELOPMENT'}
+                      onValueChange={(v) => setFormData({...formData, type: v})}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DEVELOPMENT">Development</SelectItem>
+                        <SelectItem value="BUG_FIX">Bug Fix</SelectItem>
+                        <SelectItem value="FEATURE">Feature</SelectItem>
+                        <SelectItem value="COACHING">Coaching</SelectItem>
+                        <SelectItem value="FAMILY_TIME">Family Time</SelectItem>
+                        <SelectItem value="HOUSEWORK">Housework</SelectItem>
+                        <SelectItem value="ADMIN">Admin</SelectItem>
+                        <SelectItem value="LEARNING">Learning</SelectItem>
+                        <SelectItem value="MEETING">Meeting</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div>
                     <label className="text-sm font-medium">Priority</label>
                     <Select 
@@ -339,11 +362,18 @@ function DevTasksContent() {
                     >
                       <div className="space-y-2">
                         <div className="font-medium text-sm line-clamp-2">{task.title}</div>
-                        {task.category && (
-                          <div className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit">
-                            {task.category}
-                          </div>
-                        )}
+                        <div className="flex gap-1 flex-wrap">
+                          {task.type && (
+                            <div className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                              {task.type.replace(/_/g, ' ')}
+                            </div>
+                          )}
+                          {task.category && (
+                            <div className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                              {task.category}
+                            </div>
+                          )}
+                        </div>
                         {task.description && (
                           <div className="text-xs text-muted-foreground line-clamp-2">
                             {task.description}
@@ -428,6 +458,12 @@ function DevTasksContent() {
                     <span className="text-sm font-medium text-gray-600">Priority:</span>
                     <span className="ml-2">{selectedTask.priority}</span>
                   </div>
+                  {selectedTask.type && (
+                    <div>
+                      <span className="text-sm font-medium text-gray-600">Type:</span>
+                      <span className="ml-2">{selectedTask.type.replace(/_/g, ' ')}</span>
+                    </div>
+                  )}
                   {selectedTask.category && (
                     <div>
                       <span className="text-sm font-medium text-gray-600">Category:</span>

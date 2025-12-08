@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Database, Users, MessageSquare, GitBranch, TrendingUp, Server, Activity } from "lucide-react";
+import { BarChart3, Database, Users, MessageSquare, GitBranch, TrendingUp, Server, Activity, Calendar } from "lucide-react";
 import Link from "next/link";
 
 type Stats = {
@@ -169,7 +169,7 @@ export default function DevDashboard() {
           <Activity className="w-5 h-5" />
           Quick Actions
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
           <Link href="/dev/tenants">
             <Button variant="outline" className="w-full">
               <Database className="w-4 h-4 mr-2" />
@@ -186,6 +186,12 @@ export default function DevDashboard() {
             <Button variant="outline" className="w-full">
               <GitBranch className="w-4 h-4 mr-2" />
               Dev Tasks
+            </Button>
+          </Link>
+          <Link href="/dev/calendar">
+            <Button variant="outline" className="w-full">
+              <Calendar className="w-4 h-4 mr-2" />
+              Dev Calendar
             </Button>
           </Link>
           <Link href="/dev/ml">

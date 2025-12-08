@@ -13,11 +13,14 @@ type DevTask = {
   description: string | null;
   status: string;
   priority: string;
+  type: string;
   estimatedHours: number | null;
   actualHours: number | null;
   assignee: string | null;
   scheduledDate: string | null;
 };
+
+type CalendarSummary = Record<string, Record<string, number>>;
 
 type DaySchedule = {
   id: string;
@@ -37,9 +40,11 @@ type TaskAssignment = {
 
 export default function DevCalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'year'>('month');
   const [tasks, setTasks] = useState<DevTask[]>([]);
   const [schedules, setSchedules] = useState<Record<string, DaySchedule>>({});
   const [assignments, setAssignments] = useState<TaskAssignment[]>([]);
+  const [summary, setSummary] = useState<CalendarSummary>({});
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<DevTask | null>(null);
   const [showDayDialog, setShowDayDialog] = useState(false);
@@ -49,21 +54,53 @@ export default function DevCalendarPage() {
   const [assignmentForm, setAssignmentForm] = useState<Partial<TaskAssignment>>({});
   const [loading, setLoading] = useState(true);
   const [activeTimer, setActiveTimer] = useState<any>(null);
-  const [timerNotes, setTimerNotes] = useState("");
+  const [timerNotes, setTimerNotes] = useState(\"\");
 
   const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
   const startDate = new Date(startOfMonth);
   startDate.setDate(startDate.getDate() - startDate.getDay()); // Start from Sunday
 
+  function getDateRange() {
+    const start = new Date(currentDate);
+    const end = new Date(currentDate);
+    
+    switch (viewMode) {
+      case 'day':
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'week':
+        start.setDate(start.getDate() - start.getDay());
+        end.setDate(start.getDate() + 6);
+        break;
+      case 'month':
+        start.setDate(1);
+        end.setMonth(end.getMonth() + 1, 0);
+        break;
+      case 'year':
+        start.setMonth(0, 1);
+        end.setMonth(11, 31);
+        break;
+    }
+    
+    return {
+      startDate: start.toISOString().split('T')[0],
+      endDate: end.toISOString().split('T')[0]
+    };
+  }
+
   async function loadData() {
     setLoading(true);
     try {
-      const [tasksData, schedulesData, assignmentsData, timerData] = await Promise.all([
+      const { startDate: start, endDate: end } = getDateRange();
+      
+      const [tasksData, schedulesData, assignmentsData, timerData, summaryData] = await Promise.all([
         apiFetch<{ ok: boolean; tasks: DevTask[] }>("/dev/tasks"),
         apiFetch<{ ok: boolean; schedules: DaySchedule[] }>(`/dev/calendar/schedules?month=${currentDate.toISOString()}`),
         apiFetch<{ ok: boolean; assignments: TaskAssignment[] }>(`/dev/calendar/assignments?month=${currentDate.toISOString()}`),
-        apiFetch<{ ok: boolean; timer: any }>("/dev/timer/active")
+        apiFetch<{ ok: boolean; timer: any }>("/dev/timer/active"),
+        apiFetch<{ ok: boolean; summary: CalendarSummary }>(`/dev/calendar/summary?startDate=${start}&endDate=${end}`)
       ]);
 
       if (tasksData.ok) setTasks(tasksData.tasks);
@@ -78,6 +115,7 @@ export default function DevCalendarPage() {
       
       if (assignmentsData.ok) setAssignments(assignmentsData.assignments);
       if (timerData.ok && timerData.timer) setActiveTimer(timerData.timer);
+      if (summaryData.ok) setSummary(summaryData.summary);
     } catch (e) {
       console.error("Failed to load calendar data:", e);
     } finally {
@@ -123,7 +161,7 @@ export default function DevCalendarPage() {
 
   useEffect(() => {
     loadData();
-  }, [currentDate]);
+  }, [currentDate, viewMode]);
 
   function formatDate(date: Date): string {
     return date.toISOString().split('T')[0];
@@ -340,6 +378,22 @@ export default function DevCalendarPage() {
 
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
+  const getTypeColor = (type: string) => {
+    const colors: Record<string, string> = {
+      DEVELOPMENT: 'bg-blue-100 text-blue-700',
+      BUG_FIX: 'bg-red-100 text-red-700',
+      FEATURE: 'bg-green-100 text-green-700',
+      COACHING: 'bg-purple-100 text-purple-700',
+      FAMILY_TIME: 'bg-pink-100 text-pink-700',
+      HOUSEWORK: 'bg-orange-100 text-orange-700',
+      ADMIN: 'bg-gray-100 text-gray-700',
+      LEARNING: 'bg-cyan-100 text-cyan-700',
+      MEETING: 'bg-yellow-100 text-yellow-700',
+      OTHER: 'bg-slate-100 text-slate-700'
+    };
+    return colors[type] || colors.OTHER;
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -356,6 +410,65 @@ export default function DevCalendarPage() {
           </Button>
         </div>
       </div>
+
+      {/* View Mode Selector */}
+      <div className="flex items-center gap-2 bg-white p-2 rounded border w-fit">
+        <Button
+          size="sm"
+          variant={viewMode === 'day' ? 'default' : 'outline'}
+          onClick={() => setViewMode('day')}
+        >
+          Day
+        </Button>
+        <Button
+          size="sm"
+          variant={viewMode === 'week' ? 'default' : 'outline'}
+          onClick={() => setViewMode('week')}
+        >
+          Week
+        </Button>
+        <Button
+          size="sm"
+          variant={viewMode === 'month' ? 'default' : 'outline'}
+          onClick={() => setViewMode('month')}
+        >
+          Month
+        </Button>
+        <Button
+          size="sm"
+          variant={viewMode === 'year' ? 'default' : 'outline'}
+          onClick={() => setViewMode('year')}
+        >
+          Year
+        </Button>
+      </div>
+
+      {/* Summary Stats by Developer and Type */}
+      {Object.keys(summary).length > 0 && (
+        <div className="bg-white p-6 rounded border space-y-4">
+          <h2 className="text-lg font-semibold">Time Allocation Summary ({viewMode})</h2>
+          <div className="space-y-3">
+            {Object.entries(summary).map(([assignee, types]) => {
+              const total = Object.values(types).reduce((sum, hours) => sum + hours, 0);
+              return (
+                <div key={assignee} className="border rounded p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="font-medium text-lg">{assignee}</div>
+                    <div className="text-lg font-bold text-blue-600">{total.toFixed(1)}h</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(types).map(([type, hours]) => (
+                      <div key={type} className={`px-3 py-1 rounded text-sm ${getTypeColor(type)}`}>
+                        {type.replace(/_/g, ' ')}: {hours.toFixed(1)}h
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Month Navigation */}
       <div className="flex items-center justify-between bg-white p-4 rounded border">

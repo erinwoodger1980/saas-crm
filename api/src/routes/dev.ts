@@ -1390,6 +1390,56 @@ router.delete("/calendar/assignments/:id", requireDeveloper, async (req: any, re
   }
 });
 
+// Get calendar summary stats (hours by developer and task type)
+router.get("/calendar/summary", requireDeveloper, async (req: any, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    const where: any = {};
+    if (startDate) {
+      where.date = { gte: startDate };
+    }
+    if (endDate) {
+      where.date = { ...where.date, lte: endDate };
+    }
+
+    const assignments = await prisma.devTaskAssignment.findMany({
+      where,
+      include: {
+        devTask: {
+          select: {
+            type: true,
+            assignee: true
+          }
+        }
+      }
+    });
+
+    // Group by assignee and type
+    const summary: Record<string, Record<string, number>> = {};
+    
+    assignments.forEach(assignment => {
+      const assignee = assignment.devTask.assignee || 'Unassigned';
+      const type = assignment.devTask.type;
+      
+      if (!summary[assignee]) {
+        summary[assignee] = {};
+      }
+      
+      if (!summary[assignee][type]) {
+        summary[assignee][type] = 0;
+      }
+      
+      summary[assignee][type] += assignment.allocatedHours;
+    });
+
+    res.json({ ok: true, summary });
+  } catch (error: any) {
+    console.error("Failed to get calendar summary:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==============================
 // ML Training Status (Developer Only)
 // ==============================
@@ -1762,6 +1812,114 @@ router.get("/stats", requireDeveloper, async (req: any, res) => {
     });
   } catch (error: any) {
     console.error("Failed to fetch stats:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==============================
+// Developer User Management
+// ==============================
+
+// Get all developers
+router.get("/developers", requireDeveloper, async (req: any, res) => {
+  try {
+    const developers = await prisma.user.findMany({
+      where: { isDeveloper: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        isDeveloper: true,
+        role: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json({ ok: true, developers });
+  } catch (error: any) {
+    console.error("Failed to fetch developers:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add or promote developer
+router.post("/developers", requireDeveloper, async (req: any, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "Email required" });
+    }
+
+    // Check if user exists
+    let user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } }
+    });
+
+    if (user) {
+      // Update existing user
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { isDeveloper: true, role: 'ADMIN' },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          isDeveloper: true,
+          role: true,
+          createdAt: true
+        }
+      });
+      res.json({ ok: true, message: "User promoted to developer", user });
+    } else {
+      // Create new developer user - need a tenant
+      // Get or create a developer tenant
+      let devTenant = await prisma.tenant.findFirst({
+        where: { slug: 'developers' }
+      });
+
+      if (!devTenant) {
+        devTenant = await prisma.tenant.create({
+          data: {
+            name: 'Developers',
+            slug: 'developers',
+            trialEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
+          }
+        });
+      }
+
+      // Create user with generated password
+      const bcrypt = require('bcrypt');
+      const tempPassword = Math.random().toString(36).slice(-12);
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+      user = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          name: email.split('@')[0],
+          isDeveloper: true,
+          role: 'ADMIN',
+          tenantId: devTenant.id
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          isDeveloper: true,
+          role: true,
+          createdAt: true
+        }
+      });
+
+      res.json({ 
+        ok: true, 
+        message: `Developer created with temp password: ${tempPassword}`,
+        user 
+      });
+    }
+  } catch (error: any) {
+    console.error("Failed to add developer:", error);
     res.status(500).json({ error: error.message });
   }
 });
