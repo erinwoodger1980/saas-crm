@@ -18,7 +18,6 @@ type DevTask = {
   estimatedHours: number | null;
   actualHours: number | null;
   assignee: string | null;
-  scheduledDate: string | null;
 };
 
 type CalendarSummary = Record<string, Record<string, number>>;
@@ -180,10 +179,6 @@ export default function DevCalendarPage() {
     return assignments.filter(a => a.date === dateStr);
   }
 
-  function getDirectlyScheduledTasks(dateStr: string): DevTask[] {
-    return tasks.filter(t => t.scheduledDate === dateStr);
-  }
-
   function getTotalAllocated(dateStr: string): number {
     return getDayAssignments(dateStr).reduce((sum, a) => sum + a.allocatedHours, 0);
   }
@@ -258,7 +253,7 @@ export default function DevCalendarPage() {
 
   function openCreateTaskDialog(dateStr?: string) {
     if (dateStr) setSelectedDate(dateStr);
-    setCreateTaskForm({ status: 'BACKLOG', priority: 'MEDIUM', type: 'DEVELOPMENT', scheduledDate: dateStr });
+    setCreateTaskForm({ status: 'BACKLOG', priority: 'MEDIUM', type: 'DEVELOPMENT' });
     setShowCreateTaskDialog(true);
   }
 
@@ -270,6 +265,19 @@ export default function DevCalendarPage() {
       });
       if (data.ok) {
         setTasks(prev => [...prev, data.task]);
+        
+        // If a date is selected and task has estimated hours, create assignment
+        if (selectedDate && createTaskForm.estimatedHours) {
+          await apiFetch("/dev/calendar/assignments", {
+            method: "POST",
+            json: {
+              devTaskId: data.task.id,
+              date: selectedDate,
+              allocatedHours: createTaskForm.estimatedHours
+            }
+          });
+        }
+        
         setShowCreateTaskDialog(false);
         setCreateTaskForm({ status: 'BACKLOG', priority: 'MEDIUM', type: 'DEVELOPMENT' });
         await loadData(); // Reload to get updated summary
@@ -339,7 +347,6 @@ export default function DevCalendarPage() {
     const dateStr = formatDate(currentDate);
     const schedule = getDaySchedule(dateStr);
     const dayAssignments = getDayAssignments(dateStr);
-    const directlyScheduled = getDirectlyScheduledTasks(dateStr);
     const totalAllocated = getTotalAllocated(dateStr);
     
     return (
@@ -358,7 +365,7 @@ export default function DevCalendarPage() {
           <div className="p-4 bg-gray-100 rounded text-gray-600">Non-working day</div>
         )}
         
-        {dayAssignments.length === 0 && directlyScheduled.length === 0 ? (
+        {dayAssignments.length === 0 ? (
           <div className="p-8 text-center text-gray-500">No tasks scheduled for this day</div>
         ) : (
           <div className="space-y-3">
@@ -385,27 +392,6 @@ export default function DevCalendarPage() {
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {directlyScheduled.map(task => (
-              <div key={task.id} className="p-4 border rounded-lg hover:bg-gray-50 bg-purple-50">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="font-medium text-lg cursor-pointer hover:text-purple-600" onClick={() => openTaskDetail(task)}>
-                      {task.title}
-                    </div>
-                    <div className="text-sm text-gray-600 mt-1">{task.type?.replace(/_/g, ' ')}</div>
-                    {task.description && (
-                      <div className="text-sm text-gray-500 mt-2">{task.description}</div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-purple-600">{task.estimatedHours || 0}h</div>
-                      <div className="text-xs text-gray-500">estimated</div>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -604,23 +590,6 @@ export default function DevCalendarPage() {
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
-                </div>
-              </div>
-            ))}
-            {getDirectlyScheduledTasks(dateStr).map(task => (
-              <div
-                key={task.id}
-                className="text-xs p-1 rounded bg-purple-100 border-l-2 border-purple-500 cursor-pointer hover:bg-purple-200"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openTaskDetail(task);
-                }}
-              >
-                <div className="flex items-start justify-between gap-1">
-                  <div className="flex-1 truncate">
-                    <div className="font-medium truncate">{task.title}</div>
-                    <div className="text-gray-600">{task.estimatedHours || 0}h est</div>
-                  </div>
                 </div>
               </div>
             ))}
@@ -1300,9 +1269,11 @@ export default function DevCalendarPage() {
                 <label className="text-sm font-medium">Scheduled Date</label>
                 <Input
                   type="date"
-                  value={createTaskForm.scheduledDate || ""}
-                  onChange={(e) => setCreateTaskForm({ ...createTaskForm, scheduledDate: e.target.value })}
+                  value={selectedDate || ""}
+                  disabled
+                  className="bg-gray-50"
                 />
+                <p className="text-xs text-gray-500 mt-1">Task will be scheduled for this date if estimated hours are set</p>
               </div>
             </div>
 
