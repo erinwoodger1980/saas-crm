@@ -418,31 +418,35 @@ router.post("/import/preview", upload.single('csvFile'), async (req, res) => {
     // Return first few rows as preview
     const preview = rows.slice(0, 5);
     
-    // Get questionnaire questions for this tenant
-    const leadFieldDefs = await prisma.leadFieldDef.findMany({
-      where: { tenantId },
+    // Get questionnaire fields for this tenant (client and public scopes for import)
+    const questionnaireFields = await prisma.questionnaireField.findMany({
+      where: { 
+        tenantId,
+        scope: {
+          in: ['client', 'public']
+        }
+      },
       orderBy: { sortOrder: 'asc' }
     });
     
-    // Build available fields including basic fields and questionnaire questions
+    // Build available fields including basic fields and questionnaire fields
     const availableFields = [
-      { key: 'number', label: 'Number', required: false },
+      { key: 'number', label: 'Lead Number', required: false },
       { key: 'contactName', label: 'Contact Name', required: false },
       { key: 'email', label: 'Email', required: false },
       { key: 'phone', label: 'Phone', required: false },
       { key: 'company', label: 'Company', required: false },
-      { key: 'description', label: 'Description', required: false },
-      { key: 'source', label: 'Source', required: false },
+      { key: 'description', label: 'Project Description', required: false },
+      { key: 'source', label: 'Lead Source', required: false },
       { key: 'status', label: 'Status', required: false },
       { key: 'startDate', label: 'Start Date (Production)', required: false },
       { key: 'deliveryDate', label: 'Delivery Date', required: false },
       { key: 'quotedValue', label: 'Quoted Value', required: false },
       { key: 'estimatedValue', label: 'Estimated Value', required: false },
-      { key: 'dateQuoteSent', label: 'Date Quote Sent', required: false },
-      // Add questionnaire questions
-      ...leadFieldDefs.map(field => ({
+      // Add questionnaire fields
+      ...questionnaireFields.map(field => ({
         key: `custom.${field.key}`,
-        label: `${field.label} (Questionnaire)`,
+        label: field.label,
         required: field.required
       }))
     ];
