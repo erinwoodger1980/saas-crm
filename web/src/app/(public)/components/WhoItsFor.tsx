@@ -27,7 +27,6 @@ export default function WhoItsFor() {
   return (
     <section className="px-6 py-20 sm:px-10 lg:px-20 bg-gradient-to-b from-slate-50 to-white">
       <div className="mx-auto max-w-6xl">
-        {/* Section header */}
         <div className="mb-16 text-center">
           <h2 className="text-4xl font-bold text-slate-900 sm:text-5xl mb-4">
             Built for joinery
@@ -37,7 +36,6 @@ export default function WhoItsFor() {
           </p>
         </div>
 
-        {/* Segments grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {SEGMENTS.map((segment, i) => {
             const Icon = segment.icon;

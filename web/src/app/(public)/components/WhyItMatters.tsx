@@ -27,7 +27,6 @@ export default function WhyItMatters() {
   return (
     <section className="px-6 py-20 sm:px-10 lg:px-20 bg-white">
       <div className="mx-auto max-w-6xl">
-        {/* Section header */}
         <div className="mb-16 text-center">
           <h2 className="text-4xl font-bold text-slate-900 sm:text-5xl mb-4">
             Why it matters
@@ -37,7 +36,6 @@ export default function WhyItMatters() {
           </p>
         </div>
 
-        {/* ROI grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {ROI_POINTS.map((point, i) => {
             const Icon = point.icon;
@@ -60,7 +58,6 @@ export default function WhyItMatters() {
           })}
         </div>
 
-        {/* Benefit bullets */}
         <div className="mt-16 rounded-lg bg-emerald-50 border border-emerald-200 p-8">
           <h3 className="text-lg font-bold text-slate-900 mb-6">
             What this means for your business

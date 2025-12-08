@@ -37,7 +37,6 @@ export default function TheWorkflow() {
   return (
     <section className="px-6 py-20 sm:px-10 lg:px-20 bg-gradient-to-b from-slate-50 to-white">
       <div className="mx-auto max-w-6xl">
-        {/* Section header */}
         <div className="mb-16 text-center">
           <h2 className="text-4xl font-bold text-slate-900 sm:text-5xl mb-4">
             From email to profit
@@ -47,7 +46,6 @@ export default function TheWorkflow() {
           </p>
         </div>
 
-        {/* Workflow timeline */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {WORKFLOW_STEPS.map((step, i) => {
             const Icon = step.icon;
@@ -67,14 +65,6 @@ export default function TheWorkflow() {
                     {step.description}
                   </p>
                 </div>
-                {/* Arrow between steps */}
-                {i < WORKFLOW_STEPS.length - 1 && (
-                  <div className="hidden lg:flex absolute top-1/2 -right-4 transform -translate-y-1/2 text-slate-300">
-                    <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                )}
               </div>
             );
           })}

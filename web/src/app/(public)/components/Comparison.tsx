@@ -1,5 +1,3 @@
-import { Check, X } from "lucide-react";
-
 const COMPARISON = [
   {
     feature: "Quote generation time",
@@ -43,7 +41,6 @@ export default function Comparison() {
   return (
     <section className="px-6 py-20 sm:px-10 lg:px-20 bg-white">
       <div className="mx-auto max-w-6xl">
-        {/* Section header */}
         <div className="mb-16 text-center">
           <h2 className="text-4xl font-bold text-slate-900 sm:text-5xl mb-4">
             Why JoineryAI, not spreadsheets or generic CRMs
@@ -53,7 +50,6 @@ export default function Comparison() {
           </p>
         </div>
 
-        {/* Comparison table */}
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">

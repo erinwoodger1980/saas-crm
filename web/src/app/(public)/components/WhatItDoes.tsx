@@ -43,7 +43,6 @@ export default function WhatItDoes() {
   return (
     <section className="px-6 py-20 sm:px-10 lg:px-20 bg-white">
       <div className="mx-auto max-w-6xl">
-        {/* Section header */}
         <div className="mb-16 text-center">
           <h2 className="text-4xl font-bold text-slate-900 sm:text-5xl mb-4">
             Everything joinery needs
@@ -53,7 +52,6 @@ export default function WhatItDoes() {
           </p>
         </div>
 
-        {/* Features grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {FEATURES.map((feature, i) => {
             const Icon = feature.icon;

@@ -27,7 +27,6 @@ export default function Trust() {
   return (
     <section className="px-6 py-20 sm:px-10 lg:px-20 bg-gradient-to-b from-slate-50 to-white">
       <div className="mx-auto max-w-6xl">
-        {/* Section header */}
         <div className="mb-16 text-center">
           <h2 className="text-4xl font-bold text-slate-900 sm:text-5xl mb-4">
             Enterprise-grade security
@@ -37,7 +36,6 @@ export default function Trust() {
           </p>
         </div>
 
-        {/* Trust cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {TRUST_POINTS.map((point, i) => {
             const Icon = point.icon;
@@ -60,7 +58,6 @@ export default function Trust() {
           })}
         </div>
 
-        {/* Compliance badges */}
         <div className="mt-12 flex flex-wrap justify-center gap-8">
           {[
             { label: "GDPR Compliant", icon: "📋" },
