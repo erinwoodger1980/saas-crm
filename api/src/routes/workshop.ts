@@ -1429,21 +1429,21 @@ router.post("/timer/stop", async (req: any, res) => {
 
   console.log(`[timer/stop] Found timer ${timer.id}, projectId=${timer.projectId}, process=${timer.process}`);
 
-  // Calculate hours worked
+  // Calculate hours worked (exact minutes, no rounding)
   const now = new Date();
   const startedAt = new Date(timer.startedAt);
   const hoursWorked = (now.getTime() - startedAt.getTime()) / (1000 * 60 * 60);
-  const roundedHours = Math.round(hoursWorked * 4) / 4; // Round to nearest 0.25
+  const finalHours = Math.max(0.01, hoursWorked); // Minimum 0.01 hours (0.6 minutes)
 
   // Create time entry
   const timeEntry = await (prisma as any).timeEntry.create({
     data: {
       tenantId,
-      projectId: timer.projectId,
+      projectId: timer.projectId, // Can be null for generic processes
       process: timer.process,
       userId,
       date: startedAt,
-      hours: Math.max(0.25, roundedHours), // Minimum 0.25 hours
+      hours: finalHours,
       notes: timer.notes,
     },
   });

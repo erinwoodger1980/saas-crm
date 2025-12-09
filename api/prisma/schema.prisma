@@ -1511,14 +1511,14 @@ model ProcessPlan {
 model TimeEntry {
   id        String          @id @default(cuid())
   tenantId  String
-  projectId String
+  projectId String?         // Nullable for generic processes (cleaning, admin, etc.)
   process   WorkshopProcess
   userId    String
   date      DateTime
   hours     Decimal         @default(0)
   notes     String?
   createdAt DateTime        @default(now())
-  project   Opportunity     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Opportunity?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user      User            @relation(fields: [userId], references: [id])
 

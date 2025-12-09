@@ -430,12 +430,17 @@ const WorkshopTimer = forwardRef<WorkshopTimerHandle, WorkshopTimerProps>(({ pro
         // Show success message with hours logged
         const logged = Number((response as any).hours);
         if (!isNaN(logged)) {
-          alert(`Timer stopped. Logged ${logged.toFixed(2)} hours.`);
+          const hours = Math.floor(logged);
+          const minutes = Math.round((logged - hours) * 60);
+          const display = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+          alert(`Timer stopped. Logged ${display} (${logged.toFixed(2)} hours).`);
         } else if (activeTimer?.startedAt) {
           // Fallback: compute locally if API sent a non-number (e.g., Decimal serialized as string)
           const diffHrs = (Date.now() - new Date(activeTimer.startedAt).getTime()) / (1000 * 60 * 60);
-          const rounded = Math.round(diffHrs * 4) / 4;
-          alert(`Timer stopped. Logged ${Math.max(0.25, rounded).toFixed(2)} hours.`);
+          const hours = Math.floor(diffHrs);
+          const minutes = Math.round((diffHrs - hours) * 60);
+          const display = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+          alert(`Timer stopped. Logged ${display} (${diffHrs.toFixed(2)} hours).`);
         } else {
           alert(`Timer stopped.`);
         }

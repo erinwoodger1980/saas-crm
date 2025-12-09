@@ -347,7 +347,7 @@ export default function MobileWorkshopPage() {
               <label className="text-sm font-medium mb-1 block">Hours</label>
               <Input
                 type="number"
-                step="0.25"
+                step="0.01"
                 min="0"
                 value={quickLogForm.hours}
                 onChange={(e) => setQuickLogForm(f => ({ ...f, hours: e.target.value }))}

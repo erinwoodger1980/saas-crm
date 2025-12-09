@@ -84,7 +84,7 @@ function QuickLogModal({ users, projects, processes, onSave, onClose }: QuickLog
           )}
           <div>
             <label className="text-sm font-medium mb-1 block">Hours</label>
-            <Input type="number" min="0" step="0.25" value={form.hours} onChange={e => setForm(f => ({ ...f, hours: e.target.value }))} />
+            <Input type="number" min="0" step="0.01" value={form.hours} onChange={e => setForm(f => ({ ...f, hours: e.target.value }))} />
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">Notes</label>
@@ -2271,7 +2271,7 @@ export default function WorkshopPage() {
                 <label className="text-sm font-medium mb-1 block">Hours</label>
                 <Input
                   type="number"
-                  step="0.25"
+                  step="0.01"
                   min="0"
                   placeholder="e.g. 8 or 7.5"
                   value={hoursForm.hours}
