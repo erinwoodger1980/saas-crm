@@ -2526,11 +2526,8 @@ export default function SettingsPage() {
       <Section title="Your Email Connections" description="Connect your own email account for sending and receiving">
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            Connect your Gmail or Microsoft 365 <strong>work/school</strong> account. When you send emails from the CRM, they'll come from your connected account. 
+            Connect your Gmail or Microsoft 365 account. When you send emails from the CRM, they'll come from your connected account. 
             All admin users' connected accounts will automatically import leads.
-          </p>
-          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
-            <strong>Note:</strong> Microsoft 365 connection requires a <strong>work or school account</strong> (e.g., your@company.com). Personal Microsoft accounts (Outlook.com, Hotmail.com) are not supported.
           </p>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="rounded-xl border bg-white/70 p-4">
@@ -2561,7 +2558,7 @@ export default function SettingsPage() {
             
             <div className="rounded-xl border bg-white/70 p-4">
               <div className="mb-3">
-                <div className="text-sm font-semibold text-slate-800">Your Microsoft 365 (Work Account)</div>
+                <div className="text-sm font-semibold text-slate-800">Your Microsoft 365</div>
                 <div className="mt-1 text-xs text-slate-600">
                   {userMs365Conn?.ms365Address ? (
                     <span className="inline-flex items-center gap-1">
@@ -2571,7 +2568,7 @@ export default function SettingsPage() {
                   ) : (
                     <span className="inline-flex items-center gap-1">
                       <span className="h-2 w-2 rounded-full bg-slate-300"></span>
-                      Not connected (work/school accounts only)
+                      Not connected
                     </span>
                   )}
                 </div>
