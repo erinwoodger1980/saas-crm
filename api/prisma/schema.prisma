@@ -1513,7 +1513,7 @@ model TimeEntry {
   id        String          @id @default(cuid())
   tenantId  String
   projectId String?         // Nullable for generic processes (cleaning, admin, etc.)
-  process   WorkshopProcess
+  process   String          // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
   userId    String
   date      DateTime
   hours     Decimal         @default(0)
