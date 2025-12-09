@@ -1549,7 +1549,7 @@ model WorkshopTimer {
   tenantId         String
   userId           String
   projectId        String?
-  process          WorkshopProcess
+  process          String          // Changed from enum to String to support generic processes (CLEANING, ADMIN, etc.)
   startedAt        DateTime        @default(now())
   notes            String?
   latitude         Float?
