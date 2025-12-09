@@ -1291,25 +1291,24 @@ router.post("/timer/start", async (req: any, res) => {
           const startedAt = new Date(existing.startedAt);
           const now = new Date();
           const hoursWorked = (now.getTime() - startedAt.getTime()) / (1000 * 60 * 60);
-          const roundedHours = Math.round(hoursWorked * 4) / 4;
-          if (roundedHours > 0) {
-            await (tx as any).timeEntry.create({
-              data: {
-                tenantId,
-                userId,
-                projectId: existing.projectId,
-                process: existing.process,
-                hours: roundedHours,
-                notes: existing.notes || null,
-                date: new Date(),
-              },
-            });
-          }
+          const finalHours = Math.max(0.01, hoursWorked); // Minimum 0.01 hours (exact minutes, no rounding)
+          await (tx as any).timeEntry.create({
+            data: {
+              tenantId,
+              userId,
+              projectId: existing.projectId, // Can be null for generic processes
+              process: existing.process,
+              hours: finalHours,
+              notes: existing.notes || null,
+              date: startedAt, // Use original start time, not now
+            },
+          });
           await (tx as any).workshopTimer.delete({ where: { id: existing.id } });
         }
       });
     } catch (txErr: any) {
       console.error('[timer/start] transaction failed:', txErr?.message || txErr);
+      console.error('[timer/start] transaction error details:', txErr);
       assignmentWarning = 'Failed to stop previous timer or create time entry.';
     }
 
