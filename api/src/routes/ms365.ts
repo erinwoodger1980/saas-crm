@@ -184,10 +184,12 @@ router.get("/user/connect", (req: any, res) => {
 
   const tenantSegment = process.env.MS365_TENANT || "common";
   const scopes = process.env.MS365_SCOPES || "offline_access Mail.ReadWrite User.Read";
+  // Use user-specific redirect URI (add /user to the path)
+  const userRedirectUri = env.MS365_REDIRECT_URI.replace(/\/callback$/, '/user/callback');
   const params = new URLSearchParams({
     client_id: env.MS365_CLIENT_ID,
     response_type: "code",
-    redirect_uri: env.MS365_REDIRECT_URI,
+    redirect_uri: userRedirectUri,
     response_mode: "query",
     scope: scopes,
     state: JSON.stringify({ tenantId, userId }),
@@ -226,13 +228,15 @@ router.get("/user/callback", async (req: any, res) => {
 
     const tenantSegment = process.env.MS365_TENANT || "common";
     const tokenUrl = `https://login.microsoftonline.com/${tenantSegment}/oauth2/v2.0/token`;
-
+    
+    // Use user-specific redirect URI (must match what was sent to Microsoft)
+    const userRedirectUri = env.MS365_REDIRECT_URI.replace(/\/callback$/, '/user/callback');
     const form = new URLSearchParams({
       client_id: env.MS365_CLIENT_ID,
       client_secret: env.MS365_CLIENT_SECRET,
       grant_type: "authorization_code",
       code,
-      redirect_uri: env.MS365_REDIRECT_URI,
+      redirect_uri: userRedirectUri,
       scope: process.env.MS365_SCOPES || "offline_access Mail.ReadWrite User.Read",
     });
 
