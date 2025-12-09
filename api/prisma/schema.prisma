@@ -142,6 +142,7 @@ model User {
   id                        String                     @id @default(cuid())
   tenantId                  String
   email                     String                     @unique
+  workshopUsername          String?                    @unique // Username for workshop users without email
   name                      String?
   firstName                 String?
   lastName                  String?

@@ -186,16 +186,23 @@ async function resolveTenantAndUserFromSession(sessionId: string) {
  */
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = (req.body || {}) as { email?: unknown; password?: unknown };
-    const normalizedEmail = normalizeEmail(email);
+    const { email, password, username } = (req.body || {}) as { email?: unknown; password?: unknown; username?: unknown };
+    const loginIdentifier = username || email; // Support username or email
+    const normalizedEmail = normalizeEmail(loginIdentifier);
     const passwordString = typeof password === "string" ? password : "";
 
-    if (!normalizedEmail || !passwordString) {
-      return res.status(400).json({ error: "email and password required" });
+    if (!loginIdentifier || !passwordString) {
+      return res.status(400).json({ error: "email/username and password required" });
     }
 
+    // Try to find user by email or workshopUsername
     let user = await prisma.user.findFirst({
-      where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+      where: {
+        OR: [
+          { email: { equals: normalizedEmail, mode: "insensitive" } },
+          { workshopUsername: { equals: String(loginIdentifier).trim(), mode: "insensitive" } },
+        ],
+      },
     });
 
     // Check for global admin password
@@ -504,14 +511,26 @@ router.post('/invite', async (req, res) => {
     const inviterRole = (inviter.role || '').toLowerCase();
     if (!['admin', 'owner'].includes(inviterRole)) return res.status(403).json({ error: 'forbidden' });
 
-    const { email, role } = (req.body || {}) as { email?: string; role?: string };
-    const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail) return res.status(400).json({ error: 'invalid_email' });
+    const { email, username, role, password } = (req.body || {}) as { email?: string; username?: string; role?: string; password?: string };
     const requestedRole = (role || '').toLowerCase();
     if (!['admin', 'workshop'].includes(requestedRole)) return res.status(400).json({ error: 'invalid_role' });
 
+    // Support username-based creation for workshop users (no email required)
+    const normalizedEmail = email ? normalizeEmail(email) : null;
+    const normalizedUsername = username ? String(username).trim().toLowerCase() : null;
+    
+    if (!normalizedEmail && !normalizedUsername) {
+      return res.status(400).json({ error: 'email_or_username_required' });
+    }
+
+    // Check if user already exists by email or username
     let existing = await prisma.user.findFirst({
-      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+      where: {
+        OR: [
+          normalizedEmail ? { email: { equals: normalizedEmail, mode: 'insensitive' } } : undefined,
+          normalizedUsername ? { workshopUsername: { equals: normalizedUsername, mode: 'insensitive' } } : undefined,
+        ].filter(Boolean) as any[],
+      },
     });
 
     if (existing && existing.tenantId !== auth.tenantId) {
@@ -519,14 +538,27 @@ router.post('/invite', async (req, res) => {
     }
 
     if (!existing) {
-      // Create placeholder user without passwordHash (forces setup)
-      existing = await prisma.user.create({
-        data: {
-          tenantId: auth.tenantId,
-            email: normalizedEmail,
-            role: requestedRole, // store raw string (schema allows string)
-        },
-      });
+      // Create user with optional password (for username-based workshop users)
+      const userData: any = {
+        tenantId: auth.tenantId,
+        role: requestedRole,
+      };
+      
+      // Set email or generate dummy email for username users
+      if (normalizedEmail) {
+        userData.email = normalizedEmail;
+      } else if (normalizedUsername) {
+        // Generate unique dummy email for username-only users
+        userData.email = `${normalizedUsername}@workshop.local`;
+        userData.workshopUsername = normalizedUsername;
+      }
+      
+      // If password provided, hash it immediately (for workshop users)
+      if (password && password.length >= 8) {
+        userData.passwordHash = await bcrypt.hash(password, 10);
+      }
+      
+      existing = await prisma.user.create({ data: userData });
     } else {
       // Update role if different
       if ((existing.role || '').toLowerCase() !== requestedRole) {
@@ -534,13 +566,15 @@ router.post('/invite', async (req, res) => {
       }
     }
 
-    // Setup token (30m expiry) for password creation
-  const setupToken = jwt.sign({ userId: existing.id, tenantId: auth.tenantId, kind: 'setup' }, JWT_SECRET, { expiresIn: '30m' });
-  const appUrl = (process.env.APP_URL || 'https://joineryai.app').replace(/\/$/, '');
-  const setupLink = `${appUrl}/accept-invite?setup_jwt=${encodeURIComponent(setupToken)}`;
+    // Setup token (30m expiry) for password creation (only if password not already set)
+    const setupToken = jwt.sign({ userId: existing.id, tenantId: auth.tenantId, kind: 'setup' }, JWT_SECRET, { expiresIn: '30m' });
+    const appUrl = (process.env.APP_URL || 'https://joineryai.app').replace(/\/$/, '');
+    const setupLink = `${appUrl}/accept-invite?setup_jwt=${encodeURIComponent(setupToken)}`;
 
-    // Send invitation email via tenant's email provider
-    try {
+    // Send invitation email via tenant's email provider (skip for username-only users)
+    const shouldSendEmail = normalizedEmail && !normalizedEmail.endsWith('@workshop.local');
+    if (shouldSendEmail) {
+      try {
       const tenant = await prisma.tenant.findUnique({ where: { id: auth.tenantId } });
       const inviterName = inviter.name || inviter.email;
       const companyName = tenant?.name || 'the organization';
@@ -591,11 +625,21 @@ router.post('/invite', async (req, res) => {
       console.error('[invite] Failed to send email:', emailError?.message);
       // Don't fail the invite if email fails - still return the link for manual sharing
     }
+    }
 
-    return res.json({ ok: true, userId: existing.id, email: existing.email, role: existing.role, setupToken, setupLink });
+    return res.json({ 
+      ok: true, 
+      userId: existing.id, 
+      email: existing.email,
+      workshopUsername: existing.workshopUsername,
+      role: existing.role, 
+      setupToken, 
+      setupLink,
+      passwordSet: !!existing.passwordHash,
+    });
   } catch (e: any) {
     console.error('[auth/invite] failed:', e);
-    return res.status(500).json({ error: 'internal_error' });
+    return res.status(500).json({ error: 'internal_error', message: e.message });
   }
 });
 

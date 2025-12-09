@@ -19,9 +19,19 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
+      // Support both email and username login
+      const payload: any = { password: loginPassword };
+      const identifier = loginEmail.trim();
+      // If contains @, treat as email, otherwise as username
+      if (identifier.includes('@')) {
+        payload.email = identifier;
+      } else {
+        payload.username = identifier;
+      }
+      
       const res = await apiFetch<{ jwt: string }>("/auth/login", {
         method: "POST",
-        json: { email: loginEmail.trim(), password: loginPassword },
+        json: payload,
       });
       const authToken = res?.jwt;
       if (authToken) {
@@ -32,7 +42,7 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       console.error(err);
-      setError("Invalid email or password");
+      setError("Invalid email/username or password");
     } finally {
       setLoading(false);
     }
@@ -71,15 +81,16 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Email
+              Email or Username
             </label>
             <input
               id="email"
-              type="email"
+              type="text"
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
+              autoComplete="username"
+              placeholder="your@email.com or username"
               required
             />
           </div>

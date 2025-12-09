@@ -8,11 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, KeyRound } from "lucide-react";
 
-type UserRow = { id: string; name: string | null; email: string; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null };
+type UserRow = { id: string; name: string | null; email: string; workshopUsername?: string | null; role?: string; workshopHoursPerDay?: number | null; workshopProcessCodes?: string[]; passwordHash?: string | null; firstName?: string | null; lastName?: string | null; emailFooter?: string | null };
 
 type UsersResponse = { ok: boolean; items: UserRow[] };
 
-type InviteResponse = { ok: true; userId: string; email: string; role: string; setupToken: string; setupLink: string } | { error: string };
+type InviteResponse = { ok: true; userId: string; email: string; workshopUsername?: string; role: string; setupToken: string; setupLink: string; passwordSet?: boolean } | { error: string };
 
 type ProcessDef = { code: string; name: string };
 
@@ -22,7 +22,7 @@ export default function UsersSettingsPage() {
   const [processes, setProcesses] = useState<ProcessDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<{ email: string; role: "admin" | "workshop" | "" }>({ email: "", role: "" });
+  const [form, setForm] = useState<{ email: string; username: string; password: string; role: "admin" | "workshop" | ""; useUsername: boolean }>({ email: "", username: "", password: "", role: "", useUsername: false });
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [editingHours, setEditingHours] = useState<Record<string, string>>({});
   const [editingProcesses, setEditingProcesses] = useState<Record<string, string[]>>({});
@@ -64,16 +64,45 @@ export default function UsersSettingsPage() {
   async function onInvite() {
     setInviteLink(null);
     setError(null);
-    if (!form.email || !form.role) return;
+    
+    // Validate: need either email or username, and role
+    if ((!form.email && !form.username) || !form.role) {
+      setError("Please provide email or username, and select a role");
+      return;
+    }
+    
+    // If using username, password is required
+    if (form.useUsername && form.username && !form.password) {
+      setError("Password is required for username-based accounts");
+      return;
+    }
+    
     try {
+      const payload: any = { role: form.role };
+      
+      if (form.useUsername && form.username) {
+        payload.username = form.username;
+        payload.password = form.password;
+      } else if (form.email) {
+        payload.email = form.email;
+      }
+      
       const resp = await apiFetch<InviteResponse>("/auth/invite", {
         method: "POST",
-        json: { email: form.email, role: form.role },
+        json: payload,
       });
-      if ((resp as any)?.setupLink) {
-        setInviteLink((resp as any).setupLink);
+      
+      if ((resp as any)?.ok) {
+        const response = resp as any;
+        if (response.passwordSet) {
+          setInviteLink(null);
+          setError(null);
+          alert(`User created successfully! They can now log in with username: ${response.workshopUsername || form.username}`);
+        } else {
+          setInviteLink(response.setupLink);
+        }
         await loadUsers();
-        setForm({ email: "", role: "" });
+        setForm({ email: "", username: "", password: "", role: "", useUsername: false });
       }
     } catch (e: any) {
       setError(e?.message || "Invite failed");
@@ -213,11 +242,52 @@ export default function UsersSettingsPage() {
 
       <Card className="p-4">
         <h2 className="font-medium mb-3">Invite a user</h2>
+        
+        <div className="mb-4">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.useUsername}
+              onChange={(e) => setForm(f => ({ ...f, useUsername: e.target.checked, email: "", username: "", password: "" }))}
+              className="h-4 w-4"
+            />
+            <span>Create workshop user with username (no email required)</span>
+          </label>
+        </div>
+        
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-          <div className="md:col-span-2">
-            <label className="text-xs text-muted-foreground">Email</label>
-            <Input type="email" value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} placeholder="name@company.com" />
-          </div>
+          {form.useUsername ? (
+            <>
+              <div>
+                <label className="text-xs text-muted-foreground">Username</label>
+                <Input 
+                  type="text" 
+                  value={form.username} 
+                  onChange={(e) => setForm(f => ({ ...f, username: e.target.value }))} 
+                  placeholder="john_smith" 
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Password</label>
+                <Input 
+                  type="password" 
+                  value={form.password} 
+                  onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))} 
+                  placeholder="Min 8 characters" 
+                />
+              </div>
+            </>
+          ) : (
+            <div className="md:col-span-2">
+              <label className="text-xs text-muted-foreground">Email</label>
+              <Input 
+                type="email" 
+                value={form.email} 
+                onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} 
+                placeholder="name@company.com" 
+              />
+            </div>
+          )}
           <div>
             <label className="text-xs text-muted-foreground">Role</label>
             <Select value={form.role} onValueChange={(v) => setForm(f => ({ ...f, role: v as any }))}>
@@ -229,7 +299,12 @@ export default function UsersSettingsPage() {
             </Select>
           </div>
           <div>
-            <Button onClick={onInvite} disabled={!form.email || !form.role}>Send Invite</Button>
+            <Button 
+              onClick={onInvite} 
+              disabled={(!form.email && !form.username) || !form.role || (form.useUsername && !form.password)}
+            >
+              {form.useUsername ? "Create User" : "Send Invite"}
+            </Button>
           </div>
         </div>
         {inviteLink && (
@@ -254,7 +329,10 @@ export default function UsersSettingsPage() {
               <div key={u.id} className="py-3">
                 <div className="flex items-center justify-between gap-4 mb-2">
                   <div className="flex-1">
-                    <div className="font-medium">{u.name || u.email}</div>
+                    <div className="font-medium">{u.name || u.workshopUsername || u.email}</div>
+                    {u.workshopUsername && (
+                      <div className="text-xs text-muted-foreground">Username: {u.workshopUsername}</div>
+                    )}
                     <div className="text-xs text-muted-foreground">{u.email}</div>
                     {(u.firstName || u.lastName) && (
                       <div className="text-xs text-muted-foreground mt-1">
