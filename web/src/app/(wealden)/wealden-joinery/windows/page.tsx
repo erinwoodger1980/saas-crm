@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import wealdenImageMap from "@/scripts/wealden-image-map.json";
 import { SectionHeading } from "../_components/section-heading";
+import { getHeroImage, getImagesByHint } from "../_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
   title: "Timber Windows for Period & Contemporary Homes | Wealden Joinery",
@@ -10,25 +10,9 @@ export const metadata: Metadata = {
     "Sash and casement windows crafted in Sussex. Heritage glazing bars, high performance, secure locking, and sympathetic designs for listed buildings.",
 };
 
-type WealdenImage = {
-  originalUrl: string;
-  localPath: string;
-  alt: string;
-  page?: string;
-  site?: string;
-};
-
-const wealdenImages = (wealdenImageMap as { images: WealdenImage[] }).images ?? [];
-
-function pickImageByKeyword(keyword: string): WealdenImage | undefined {
-  const lower = keyword.toLowerCase();
-  return wealdenImages.find(
-    (img) =>
-      (img.alt && img.alt.toLowerCase().includes(lower)) ||
-      img.localPath.toLowerCase().includes(lower) ||
-      img.originalUrl.toLowerCase().includes(lower),
-  );
-}
+const heroImg = getHeroImage();
+const windowTypeImages = getImagesByHint("range-windows", 2);
+const detailImages = getImagesByHint("detail", 4);
 
 const windowTypes = [
   {
@@ -80,10 +64,6 @@ const windowFaqs = [
 ];
 
 export default function WindowsPage() {
-  const sashImg = pickImageByKeyword("sash") ?? pickImageByKeyword("window");
-  const casementImg = pickImageByKeyword("casement");
-  const heroImg = sashImg ?? casementImg ?? pickImageByKeyword("front");
-
   return (
     <div className="space-y-16">
       {/* Hero */}
@@ -119,9 +99,10 @@ export default function WindowsPage() {
           {heroImg && (
             <div className="relative h-64 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-lg sm:h-80 lg:h-[400px]">
               <Image
-                src={heroImg.localPath}
-                alt={heroImg.alt || "Timber windows by Wealden Joinery"}
-                fill
+                src={heroImg.publicPath}
+                alt={heroImg.caption}
+                width={heroImg.width}
+                height={heroImg.height}
                 className="object-cover"
                 priority
               />
@@ -139,7 +120,7 @@ export default function WindowsPage() {
         />
         <div className="grid gap-6 md:grid-cols-2">
           {windowTypes.map((type, idx) => {
-            const typeImg = idx === 0 ? sashImg : casementImg;
+            const typeImg = windowTypeImages[idx % windowTypeImages.length];
             return (
               <article
                 key={type.title}
@@ -148,9 +129,10 @@ export default function WindowsPage() {
                 {typeImg && (
                   <div className="relative h-56 w-full">
                     <Image
-                      src={typeImg.localPath}
-                      alt={typeImg.alt || `${type.title} by Wealden Joinery`}
-                      fill
+                      src={typeImg.publicPath}
+                      alt={typeImg.caption}
+                      width={typeImg.width}
+                      height={typeImg.height}
                       className="object-cover"
                     />
                   </div>

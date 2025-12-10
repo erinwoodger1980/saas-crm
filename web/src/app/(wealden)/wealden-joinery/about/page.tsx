@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import wealdenImageMap from "@/scripts/wealden-image-map.json";
 import { SectionHeading } from "../_components/section-heading";
+import { getImagesByHint } from "../_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
   title: "About Wealden Joinery | Traditional Timber Windows & Doors",
@@ -10,19 +10,8 @@ export const metadata: Metadata = {
     "Founded in the 1990s, Wealden Joinery is a family-run workshop in Rotherfield, crafting bespoke timber windows and doors for heritage and contemporary properties across Sussex and Kent.",
 };
 
-type WealdenImage = {
-  originalUrl: string;
-  localPath: string;
-  alt: string;
-  page?: string;
-  site?: string;
-};
-
-const wealdenImages = (wealdenImageMap as { images: WealdenImage[] }).images ?? [];
-
-function pickImageByKeyword(keyword: string): WealdenImage | undefined {
-  return wealdenImages.find((img) => img.alt.toLowerCase().includes(keyword.toLowerCase()));
-}
+const workshopImages = getImagesByHint("workshop", 2);
+const teamImages = getImagesByHint("team", 1);
 
 const values = [
   {
@@ -60,9 +49,7 @@ const regions = [
 ];
 
 export default function AboutPage() {
-  const workshopImage = pickImageByKeyword("workshop");
-  const detailImage = pickImageByKeyword("detail");
-
+  const workshopImage = workshopImages[0];
   return (
     <div className="space-y-16">
       {/* Hero */}
@@ -92,9 +79,10 @@ export default function AboutPage() {
           {workshopImage && (
             <div className="relative h-64 w-full overflow-hidden rounded-2xl md:h-auto">
               <Image
-                src={workshopImage.localPath}
-                alt={workshopImage.alt || "Wealden Joinery workshop"}
-                fill
+                src={workshopImage.publicPath}
+                alt={workshopImage.caption}
+                width={workshopImage.width}
+                height={workshopImage.height}
                 className="object-cover"
               />
             </div>

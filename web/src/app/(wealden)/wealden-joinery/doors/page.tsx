@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import wealdenImageMap from "@/scripts/wealden-image-map.json";
 import { SectionHeading } from "../_components/section-heading";
+import { getHeroImage, getImagesByHint } from "../_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
   title: "Timber Entrance & Garden Doors | Wealden Joinery",
@@ -10,25 +10,9 @@ export const metadata: Metadata = {
     "Bespoke timber entrance doors, French doors, sliding doors, and bi-folds. Secure cores, premium hardware, and elegant detailing crafted in Sussex.",
 };
 
-type WealdenImage = {
-  originalUrl: string;
-  localPath: string;
-  alt: string;
-  page?: string;
-  site?: string;
-};
-
-const wealdenImages = (wealdenImageMap as { images: WealdenImage[] }).images ?? [];
-
-function pickImageByKeyword(keyword: string): WealdenImage | undefined {
-  const lower = keyword.toLowerCase();
-  return wealdenImages.find(
-    (img) =>
-      (img.alt && img.alt.toLowerCase().includes(lower)) ||
-      img.localPath.toLowerCase().includes(lower) ||
-      img.originalUrl.toLowerCase().includes(lower),
-  );
-}
+const heroImg = getHeroImage();
+const doorTypeImages = getImagesByHint("range-doors", 3);
+const lifestyleImages = getImagesByHint("lifestyle", 3);
 
 const doorTypes = [
   {
@@ -92,11 +76,6 @@ const doorsFaqs = [
 ];
 
 export default function DoorsPage() {
-  const doorImg = pickImageByKeyword("door");
-  const frenchImg = pickImageByKeyword("french");
-  const bifoldImg = pickImageByKeyword("bifold") ?? pickImageByKeyword("sliding");
-  const heroImg = doorImg ?? frenchImg ?? bifoldImg;
-
   return (
     <div className="space-y-16">
       {/* Hero */}
@@ -130,9 +109,10 @@ export default function DoorsPage() {
           {heroImg && (
             <div className="relative h-64 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-lg sm:h-80 lg:h-[400px]">
               <Image
-                src={heroImg.localPath}
-                alt={heroImg.alt || "Timber doors by Wealden Joinery"}
-                fill
+                src={heroImg.publicPath}
+                alt={heroImg.caption}
+                width={heroImg.width}
+                height={heroImg.height}
                 className="object-cover"
                 priority
               />
@@ -150,10 +130,7 @@ export default function DoorsPage() {
         />
         <div className="space-y-6">
           {doorTypes.map((type, idx) => {
-            let typeImg = doorImg;
-            if (idx === 1) typeImg = frenchImg ?? doorImg;
-            if (idx === 2) typeImg = bifoldImg ?? doorImg;
-
+            const typeImg = doorTypeImages[idx % doorTypeImages.length];
             return (
               <article
                 key={type.title}
@@ -163,9 +140,10 @@ export default function DoorsPage() {
                   {typeImg && (
                     <div className="relative h-64 w-full md:h-auto">
                       <Image
-                        src={typeImg.localPath}
-                        alt={typeImg.alt || `${type.title} by Wealden Joinery`}
-                        fill
+                        src={typeImg.publicPath}
+                        alt={typeImg.caption}
+                        width={typeImg.width}
+                        height={typeImg.height}
                         className="object-cover"
                       />
                     </div>
@@ -219,18 +197,17 @@ export default function DoorsPage() {
           copy="From heritage townhouses to contemporary new builds, every door is crafted to suit the property."
         />
         <div className="grid gap-4 md:grid-cols-3">
-          {[doorImg, frenchImg, bifoldImg].filter(Boolean).map((img, idx) =>
-            img ? (
-              <div key={idx} className="relative h-48 w-full overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
-                <Image
-                  src={img.localPath}
-                  alt={img.alt || "Wealden Joinery door installation"}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-            ) : null
-          )}
+          {lifestyleImages.map((img, idx) => (
+            <div key={idx} className="relative h-48 w-full overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+              <Image
+                src={img.publicPath}
+                alt={img.caption}
+                width={img.width}
+                height={img.height}
+                className="object-cover"
+              />
+            </div>
+          ))}
         </div>
       </section>
 

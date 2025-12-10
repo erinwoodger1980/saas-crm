@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import wealdenImageMap from "@/scripts/wealden-image-map.json";
 import { SectionHeading } from "../_components/section-heading";
+import { getImagesByHint } from "../_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
   title: "Design Choices & Details | Wealden Joinery",
@@ -10,19 +10,7 @@ export const metadata: Metadata = {
     "Explore colours, glazing, hardware, and architectural details for your timber windows and doors. Infinite design possibilities.",
 };
 
-type WealdenImage = {
-  originalUrl: string;
-  localPath: string;
-  alt: string;
-  page?: string;
-  site?: string;
-};
-
-const wealdenImages = (wealdenImageMap as { images: WealdenImage[] }).images ?? [];
-
-function pickImageByKeyword(keyword: string): WealdenImage | undefined {
-  return wealdenImages.find((img) => img.alt.toLowerCase().includes(keyword.toLowerCase()));
-}
+const detailImages = getImagesByHint("detail", 2);
 
 const colourOptions = [
   {
@@ -104,9 +92,7 @@ const barsAndMouldings = [
 ];
 
 export default function ChoicesPage() {
-  const detailImage = pickImageByKeyword("detail");
-  const hardwareImage = pickImageByKeyword("hardware");
-
+  const hardwareImage = detailImages[0];
   return (
     <div className="space-y-16">
       {/* Hero */}
@@ -176,9 +162,10 @@ export default function ChoicesPage() {
           {hardwareImage && (
             <div className="relative h-64 w-full overflow-hidden rounded-2xl md:h-auto">
               <Image
-                src={hardwareImage.localPath}
-                alt={hardwareImage.alt || "Wealden Joinery hardware detail"}
-                fill
+                src={hardwareImage.publicPath}
+                alt={hardwareImage.caption}
+                width={hardwareImage.width}
+                height={hardwareImage.height}
                 className="object-cover"
               />
             </div>

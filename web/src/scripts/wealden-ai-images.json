@@ -1,0 +1,1875 @@
+{
+  "version": "1.0",
+  "generatedAt": "2025-12-10T21:30:23.204Z",
+  "totalImages": 96,
+  "images": [
+    {
+      "id": "local-0-faf82465",
+      "publicPath": "/wealden-ai/local-0-faf82465.jpg",
+      "caption": "Elegant house exterior with large windows and decorative balcony railing.",
+      "tags": [
+        "timber",
+        "door",
+        "window",
+        "heritage",
+        "contemporary",
+        "sash"
+      ],
+      "placementHints": [
+        "range-windows",
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2400,
+      "height": 950
+    },
+    {
+      "id": "local-1-f74e668f",
+      "publicPath": "/wealden-ai/local-1-f74e668f.jpg",
+      "caption": "Exterior view of a building with three sash windows.",
+      "tags": [
+        "sash",
+        "window",
+        "exterior",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-windows",
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 438,
+      "height": 314
+    },
+    {
+      "id": "local-2-d96bc6c3",
+      "publicPath": "/wealden-ai/local-2-d96bc6c3.jpg",
+      "caption": "White timber front door with glass panels and lanterns.",
+      "tags": [
+        "timber",
+        "door",
+        "heritage",
+        "glass",
+        "front door"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 444,
+      "height": 520
+    },
+    {
+      "id": "local-3-33ecd61e",
+      "publicPath": "/wealden-ai/local-3-33ecd61e.jpg",
+      "caption": "Oak entrance door with surrounding windows on a brick house.",
+      "tags": [
+        "timber",
+        "oak",
+        "door",
+        "window",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-doors",
+        "range-windows",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 996,
+      "height": 350
+    },
+    {
+      "id": "local-4-73198579",
+      "publicPath": "/wealden-ai/local-4-73198579.jpg",
+      "caption": "Brick house with white timber windows and a wooden front door.",
+      "tags": [
+        "timber",
+        "oak",
+        "window",
+        "door",
+        "heritage",
+        "sash",
+        "casement"
+      ],
+      "placementHints": [
+        "range-windows",
+        "range-doors",
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 992,
+      "height": 348
+    },
+    {
+      "id": "local-5-61bc3d21",
+      "publicPath": "/wealden-ai/local-5-61bc3d21.jpg",
+      "caption": "Craftsman working on a timber window frame in a workshop.",
+      "tags": [
+        "timber",
+        "window",
+        "workshop",
+        "craftsmanship",
+        "detail"
+      ],
+      "placementHints": [
+        "workshop",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 992,
+      "height": 350
+    },
+    {
+      "id": "local-6-ae6e4274",
+      "publicPath": "/wealden-ai/local-6-ae6e4274.jpg",
+      "caption": "Traditional brick house with timber windows and lush greenery.",
+      "tags": [
+        "timber",
+        "window",
+        "heritage",
+        "brick",
+        "traditional",
+        "house"
+      ],
+      "placementHints": [
+        "lifestyle",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1000,
+      "height": 356
+    },
+    {
+      "id": "local-7-802cb63c",
+      "publicPath": "/wealden-ai/local-7-802cb63c.jpg",
+      "caption": "Elegant timber door and sash windows on a brick facade.",
+      "tags": [
+        "timber",
+        "door",
+        "sash",
+        "window",
+        "heritage",
+        "brick"
+      ],
+      "placementHints": [
+        "range-doors",
+        "range-windows",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 994,
+      "height": 352
+    },
+    {
+      "id": "local-8-d8ef3ce8",
+      "publicPath": "/wealden-ai/local-8-d8ef3ce8.jpg",
+      "caption": "Craftsman in a timber workshop with machinery in the background.",
+      "tags": [
+        "timber",
+        "workshop",
+        "craftsman",
+        "woodworking",
+        "machinery"
+      ],
+      "placementHints": [
+        "workshop",
+        "team"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1018,
+      "height": 756
+    },
+    {
+      "id": "local-9-ad5be861",
+      "publicPath": "/wealden-ai/local-9-ad5be861.jpg",
+      "caption": "Craftsman working on a wooden door frame in a workshop.",
+      "tags": [
+        "timber",
+        "workshop",
+        "door",
+        "craftsmanship",
+        "woodworking"
+      ],
+      "placementHints": [
+        "workshop",
+        "detail",
+        "team"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 636,
+      "height": 850
+    },
+    {
+      "id": "local-10-f1f81312",
+      "publicPath": "/wealden-ai/local-10-f1f81312.jpg",
+      "caption": "Craftsman operating machinery in a woodworking workshop.",
+      "tags": [
+        "workshop",
+        "machinery",
+        "craftsman",
+        "timber",
+        "woodworking"
+      ],
+      "placementHints": [
+        "workshop",
+        "team"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 632,
+      "height": 850
+    },
+    {
+      "id": "local-11-5a39eedb",
+      "publicPath": "/wealden-ai/local-11-5a39eedb.jpg",
+      "caption": "Person working at a desk in an office setting.",
+      "tags": [
+        "office",
+        "desk",
+        "work",
+        "team"
+      ],
+      "placementHints": [
+        "team"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 636,
+      "height": 642
+    },
+    {
+      "id": "local-12-7ac9e4d7",
+      "publicPath": "/wealden-ai/local-12-7ac9e4d7.jpg",
+      "caption": "Craftsman measuring wood in a workshop setting.",
+      "tags": [
+        "workshop",
+        "craftsman",
+        "timber",
+        "detail"
+      ],
+      "placementHints": [
+        "workshop",
+        "team"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 634,
+      "height": 840
+    },
+    {
+      "id": "local-13-dae16e3a",
+      "publicPath": "/wealden-ai/local-13-dae16e3a.jpg",
+      "caption": "Craftsman working on timber in a woodworking workshop.",
+      "tags": [
+        "timber",
+        "workshop",
+        "craftsmanship",
+        "woodworking",
+        "detail"
+      ],
+      "placementHints": [
+        "workshop",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 456,
+      "height": 586
+    },
+    {
+      "id": "local-14-4d4875fe",
+      "publicPath": "/wealden-ai/local-14-4d4875fe.jpg",
+      "caption": "Craftsman working on a timber window frame in a workshop.",
+      "tags": [
+        "timber",
+        "window",
+        "workshop",
+        "craftsmanship",
+        "frame"
+      ],
+      "placementHints": [
+        "workshop",
+        "team"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 634,
+      "height": 846
+    },
+    {
+      "id": "local-15-edb5ba12",
+      "publicPath": "/wealden-ai/local-15-edb5ba12.jpg",
+      "caption": "Wood surface with PAS 24:2016 certification mark.",
+      "tags": [
+        "timber",
+        "wood",
+        "certification",
+        "security",
+        "PAS 24:2016"
+      ],
+      "placementHints": [
+        "detail",
+        "workshop"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1014,
+      "height": 702
+    },
+    {
+      "id": "local-16-91534ba6",
+      "publicPath": "/wealden-ai/local-16-91534ba6.jpg",
+      "caption": "Close-up of a multi-point locking system for doors.",
+      "tags": [
+        "door",
+        "locking system",
+        "hardware",
+        "security",
+        "detail"
+      ],
+      "placementHints": [
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 332,
+      "height": 610
+    },
+    {
+      "id": "local-17-91c6eb39",
+      "publicPath": "/wealden-ai/local-17-91c6eb39.jpg",
+      "caption": "Person attempting to break into a window with a crowbar.",
+      "tags": [
+        "window",
+        "security",
+        "break-in",
+        "safety",
+        "intruder"
+      ],
+      "placementHints": [
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 638,
+      "height": 416
+    },
+    {
+      "id": "local-18-6eb1cb32",
+      "publicPath": "/wealden-ai/local-18-6eb1cb32.jpg",
+      "caption": "Metal window locking mechanisms on a white background.",
+      "tags": [
+        "metal",
+        "window",
+        "locking",
+        "mechanism",
+        "hardware",
+        "detail"
+      ],
+      "placementHints": [
+        "detail",
+        "workshop"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 602,
+      "height": 716
+    },
+    {
+      "id": "local-19-8b68c1ce",
+      "publicPath": "/wealden-ai/local-19-8b68c1ce.jpg",
+      "caption": "Close-up of timber joinery pieces on a workshop table.",
+      "tags": [
+        "timber",
+        "workshop",
+        "detail",
+        "joinery"
+      ],
+      "placementHints": [
+        "workshop",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1012,
+      "height": 526
+    },
+    {
+      "id": "local-20-01f8edab",
+      "publicPath": "/wealden-ai/local-20-01f8edab.jpg",
+      "caption": "Interior view of a room with open double doors and stone flooring.",
+      "tags": [
+        "door",
+        "interior",
+        "double doors",
+        "stone flooring",
+        "contemporary"
+      ],
+      "placementHints": [
+        "lifestyle",
+        "range-doors"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 634,
+      "height": 680
+    },
+    {
+      "id": "local-21-d6de95ac",
+      "publicPath": "/wealden-ai/local-21-d6de95ac.jpg",
+      "caption": "White interior door with panel detailing in a modern setting.",
+      "tags": [
+        "door",
+        "interior",
+        "panel",
+        "modern",
+        "white"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 634,
+      "height": 850
+    },
+    {
+      "id": "local-22-35ea43cd",
+      "publicPath": "/wealden-ai/local-22-35ea43cd.jpg",
+      "caption": "Craftsman working on timber window frame outdoors.",
+      "tags": [
+        "timber",
+        "window",
+        "workshop",
+        "craftsmanship",
+        "outdoor"
+      ],
+      "placementHints": [
+        "workshop",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 630,
+      "height": 852
+    },
+    {
+      "id": "local-23-590a7da5",
+      "publicPath": "/wealden-ai/local-23-590a7da5.jpg",
+      "caption": "Charming wooden door on a rustic brick and timber building.",
+      "tags": [
+        "timber",
+        "door",
+        "window",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 632,
+      "height": 852
+    },
+    {
+      "id": "local-24-58a605e5",
+      "publicPath": "/wealden-ai/local-24-58a605e5.jpg",
+      "caption": "Green timber French doors on a brick exterior wall.",
+      "tags": [
+        "timber",
+        "door",
+        "French",
+        "brick",
+        "exterior",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-doors",
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 630,
+      "height": 848
+    },
+    {
+      "id": "local-25-06b84a2b",
+      "publicPath": "/wealden-ai/local-25-06b84a2b.jpg",
+      "caption": "Modern timber-clad building with large windows and a glass door.",
+      "tags": [
+        "timber",
+        "door",
+        "window",
+        "contemporary",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-doors",
+        "range-windows",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 632,
+      "height": 852
+    },
+    {
+      "id": "local-26-9880c9dd",
+      "publicPath": "/wealden-ai/local-26-9880c9dd.jpg",
+      "caption": "Detailed view of a timber window frame with aluminum cladding.",
+      "tags": [
+        "timber",
+        "window",
+        "alu-clad",
+        "detail"
+      ],
+      "placementHints": [
+        "detail",
+        "alu-clad"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 494,
+      "height": 498
+    },
+    {
+      "id": "local-27-761d21ec",
+      "publicPath": "/wealden-ai/local-27-761d21ec.jpg",
+      "caption": "Detailed cross-sections of timber window profiles with thermal analysis.",
+      "tags": [
+        "timber",
+        "window",
+        "cross-section",
+        "thermal",
+        "detail"
+      ],
+      "placementHints": [
+        "detail",
+        "range-windows"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 702,
+      "height": 320
+    },
+    {
+      "id": "local-28-7e4d8e48",
+      "publicPath": "/wealden-ai/local-28-7e4d8e48.jpg",
+      "caption": "Modern timber-framed glass extension with patio view.",
+      "tags": [
+        "timber",
+        "glass",
+        "door",
+        "window",
+        "contemporary",
+        "extension",
+        "patio"
+      ],
+      "placementHints": [
+        "range-doors",
+        "range-windows",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 636,
+      "height": 480
+    },
+    {
+      "id": "local-29-18786024",
+      "publicPath": "/wealden-ai/local-29-18786024.jpg",
+      "caption": "Close-up of timber window frame cross-sections with aluminum cladding.",
+      "tags": [
+        "timber",
+        "window",
+        "alu-clad",
+        "detail",
+        "frame"
+      ],
+      "placementHints": [
+        "detail",
+        "alu-clad"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 636,
+      "height": 386
+    },
+    {
+      "id": "local-30-ffa250ef",
+      "publicPath": "/wealden-ai/local-30-ffa250ef.jpg",
+      "caption": "Elegant wooden driveway gate in a rustic setting.",
+      "tags": [
+        "timber",
+        "oak",
+        "gate",
+        "heritage",
+        "detail"
+      ],
+      "placementHints": [
+        "range-doors",
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1014,
+      "height": 756
+    },
+    {
+      "id": "local-31-8c7ce7e3",
+      "publicPath": "/wealden-ai/local-31-8c7ce7e3.jpg",
+      "caption": "Modern wooden driveway gate with brick pillars in a garden setting.",
+      "tags": [
+        "timber",
+        "gate",
+        "wood",
+        "garden",
+        "driveway"
+      ],
+      "placementHints": [
+        "lifestyle",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1016,
+      "height": 744
+    },
+    {
+      "id": "local-32-037dc858",
+      "publicPath": "/wealden-ai/local-32-037dc858.jpg",
+      "caption": "Wooden frame construction in a workshop setting.",
+      "tags": [
+        "timber",
+        "workshop",
+        "construction",
+        "woodwork",
+        "frame"
+      ],
+      "placementHints": [
+        "workshop",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 632,
+      "height": 632
+    },
+    {
+      "id": "local-33-9e02df48",
+      "publicPath": "/wealden-ai/local-33-9e02df48.jpg",
+      "caption": "Geometric design of a skylight window with clear glass panels.",
+      "tags": [
+        "window",
+        "skylight",
+        "geometric",
+        "glass",
+        "contemporary"
+      ],
+      "placementHints": [
+        "range-windows",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 636,
+      "height": 852
+    },
+    {
+      "id": "local-34-a9b4e717",
+      "publicPath": "/wealden-ai/local-34-a9b4e717.jpg",
+      "caption": "Blue bespoke door with leaded glass panels in brick setting.",
+      "tags": [
+        "door",
+        "bespoke",
+        "leaded glass",
+        "brick",
+        "heritage",
+        "craftsmanship"
+      ],
+      "placementHints": [
+        "case-study",
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2164,
+      "height": 864
+    },
+    {
+      "id": "local-35-edff5e24",
+      "publicPath": "/wealden-ai/local-35-edff5e24.jpg",
+      "caption": "Customer testimonial about window quality and installation service.",
+      "tags": [
+        "testimonial",
+        "customer feedback",
+        "quality",
+        "installation"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2160,
+      "height": 476
+    },
+    {
+      "id": "local-36-1a54cefb",
+      "publicPath": "/wealden-ai/local-36-1a54cefb.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's craftsmanship and service.",
+      "tags": [
+        "testimonial",
+        "customer feedback",
+        "craftsmanship",
+        "service",
+        "windows",
+        "frames"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2166,
+      "height": 566
+    },
+    {
+      "id": "local-37-bd3d88cb",
+      "publicPath": "/wealden-ai/local-37-bd3d88cb.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's door installation service.",
+      "tags": [
+        "testimonial",
+        "door",
+        "customer feedback",
+        "service",
+        "installation"
+      ],
+      "placementHints": [
+        "case-study",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2162,
+      "height": 732
+    },
+    {
+      "id": "local-38-41b143ee",
+      "publicPath": "/wealden-ai/local-38-41b143ee.jpg",
+      "caption": "Customer testimonial highlighting excellent craftsmanship and service.",
+      "tags": [
+        "testimonial",
+        "customer feedback",
+        "service",
+        "craftsmanship",
+        "quality"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2158,
+      "height": 488
+    },
+    {
+      "id": "local-39-6ccae494",
+      "publicPath": "/wealden-ai/local-39-6ccae494.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's service and professionalism.",
+      "tags": [
+        "testimonial",
+        "customer",
+        "service",
+        "professional",
+        "front door",
+        "installation"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2158,
+      "height": 1038
+    },
+    {
+      "id": "local-40-7002eefe",
+      "publicPath": "/wealden-ai/local-40-7002eefe.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's window replacement service.",
+      "tags": [
+        "testimonial",
+        "window",
+        "Georgian",
+        "craftsmanship",
+        "quality",
+        "fitting",
+        "workmanship"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2160,
+      "height": 518
+    },
+    {
+      "id": "local-41-46849bde",
+      "publicPath": "/wealden-ai/local-41-46849bde.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's bespoke doors and windows.",
+      "tags": [
+        "testimonial",
+        "bespoke",
+        "doors",
+        "windows",
+        "workshop",
+        "customer satisfaction"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2170,
+      "height": 1062
+    },
+    {
+      "id": "local-42-e7bac978",
+      "publicPath": "/wealden-ai/local-42-e7bac978.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's service and quality.",
+      "tags": [
+        "testimonial",
+        "door",
+        "window",
+        "heritage",
+        "service",
+        "quality"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2156,
+      "height": 540
+    },
+    {
+      "id": "local-43-d74edd6d",
+      "publicPath": "/wealden-ai/local-43-d74edd6d.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's bespoke doors and windows.",
+      "tags": [
+        "testimonial",
+        "bespoke",
+        "doors",
+        "windows",
+        "quality",
+        "service",
+        "Rotherfield"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2170,
+      "height": 628
+    },
+    {
+      "id": "local-44-92c4fb77",
+      "publicPath": "/wealden-ai/local-44-92c4fb77.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's service and quality.",
+      "tags": [
+        "testimonial",
+        "door",
+        "customer feedback",
+        "project",
+        "service"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2168,
+      "height": 618
+    },
+    {
+      "id": "local-45-bee35bbd",
+      "publicPath": "/wealden-ai/local-45-bee35bbd.jpg",
+      "caption": "Customer testimonial about bespoke oak front door by Wealden Joinery.",
+      "tags": [
+        "timber",
+        "oak",
+        "door",
+        "bespoke",
+        "testimonial"
+      ],
+      "placementHints": [
+        "case-study",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2172,
+      "height": 696
+    },
+    {
+      "id": "local-46-df01b413",
+      "publicPath": "/wealden-ai/local-46-df01b413.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's quality and punctuality.",
+      "tags": [
+        "testimonial",
+        "quality",
+        "punctuality",
+        "customer",
+        "feedback"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2160,
+      "height": 486
+    },
+    {
+      "id": "local-47-51e4e5dd",
+      "publicPath": "/wealden-ai/local-47-51e4e5dd.jpg",
+      "caption": "Customer testimonial praising workmanship and attention to detail.",
+      "tags": [
+        "testimonial",
+        "workmanship",
+        "detail",
+        "installation",
+        "customer feedback"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2160,
+      "height": 442
+    },
+    {
+      "id": "local-48-c25726af",
+      "publicPath": "/wealden-ai/local-48-c25726af.jpg",
+      "caption": "Testimonial from an estate manager praising Wealden Joinery's work.",
+      "tags": [
+        "testimonial",
+        "estate",
+        "sash",
+        "bow windows",
+        "joinery",
+        "Sussex"
+      ],
+      "placementHints": [
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2166,
+      "height": 606
+    },
+    {
+      "id": "local-49-2f323c46",
+      "publicPath": "/wealden-ai/local-49-2f323c46.jpg",
+      "caption": "Customer testimonial praising Wealden Joinery's window installation.",
+      "tags": [
+        "testimonial",
+        "customer feedback",
+        "windows",
+        "Wealden Joinery"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2170,
+      "height": 500
+    },
+    {
+      "id": "local-50-5f8e8fbc",
+      "publicPath": "/wealden-ai/local-50-5f8e8fbc.jpg",
+      "caption": "Timber-framed windows with grid pattern on a brick house exterior.",
+      "tags": [
+        "timber",
+        "window",
+        "heritage",
+        "casement",
+        "brick"
+      ],
+      "placementHints": [
+        "range-windows",
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1580,
+      "height": 988
+    },
+    {
+      "id": "local-51-8d9da951",
+      "publicPath": "/wealden-ai/local-51-8d9da951.jpg",
+      "caption": "Oak timber window set in a brick wall exterior.",
+      "tags": [
+        "timber",
+        "oak",
+        "window",
+        "heritage",
+        "detail"
+      ],
+      "placementHints": [
+        "range-windows",
+        "case-study",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1582,
+      "height": 990
+    },
+    {
+      "id": "local-52-959370df",
+      "publicPath": "/wealden-ai/local-52-959370df.jpg",
+      "caption": "Timber-framed glass door and windows on a rustic stone building.",
+      "tags": [
+        "timber",
+        "door",
+        "window",
+        "heritage",
+        "oak",
+        "casement"
+      ],
+      "placementHints": [
+        "range-doors",
+        "range-windows",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1578,
+      "height": 980
+    },
+    {
+      "id": "local-53-f60b2f04",
+      "publicPath": "/wealden-ai/local-53-f60b2f04.jpg",
+      "caption": "Timber-framed window with a unique geometric design.",
+      "tags": [
+        "timber",
+        "window",
+        "oak",
+        "contemporary",
+        "detail"
+      ],
+      "placementHints": [
+        "range-windows",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1576,
+      "height": 964
+    },
+    {
+      "id": "local-54-402e6840",
+      "publicPath": "/wealden-ai/local-54-402e6840.jpg",
+      "caption": "Wooden double doors with glass panels set in a brick wall.",
+      "tags": [
+        "timber",
+        "door",
+        "glass",
+        "wood",
+        "exterior"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1576,
+      "height": 990
+    },
+    {
+      "id": "local-55-66b33a5f",
+      "publicPath": "/wealden-ai/local-55-66b33a5f.jpg",
+      "caption": "White timber French doors with transom windows on a shingled exterior.",
+      "tags": [
+        "timber",
+        "door",
+        "window",
+        "French",
+        "transom",
+        "exterior"
+      ],
+      "placementHints": [
+        "range-doors",
+        "range-windows",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1580,
+      "height": 988
+    },
+    {
+      "id": "local-56-1903080c",
+      "publicPath": "/wealden-ai/local-56-1903080c.jpg",
+      "caption": "White timber French door with grid design against a brick wall.",
+      "tags": [
+        "timber",
+        "door",
+        "French door",
+        "grid",
+        "exterior"
+      ],
+      "placementHints": [
+        "range-doors",
+        "detail",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1578,
+      "height": 984
+    },
+    {
+      "id": "local-57-2c4519db",
+      "publicPath": "/wealden-ai/local-57-2c4519db.jpg",
+      "caption": "Contemporary timber-framed glass extension on a traditional house.",
+      "tags": [
+        "timber",
+        "oak",
+        "window",
+        "contemporary",
+        "heritage"
+      ],
+      "placementHints": [
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1222,
+      "height": 1332
+    },
+    {
+      "id": "local-58-3798a96b",
+      "publicPath": "/wealden-ai/local-58-3798a96b.jpg",
+      "caption": "Arched window with a view of a historic courtyard.",
+      "tags": [
+        "timber",
+        "window",
+        "heritage",
+        "arched",
+        "view"
+      ],
+      "placementHints": [
+        "range-windows",
+        "case-study",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1068,
+      "height": 1448
+    },
+    {
+      "id": "local-59-773abe08",
+      "publicPath": "/wealden-ai/local-59-773abe08.jpg",
+      "caption": "White timber door with glass panels surrounded by brick and greenery.",
+      "tags": [
+        "timber",
+        "door",
+        "glass",
+        "heritage",
+        "brick",
+        "greenery"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1046,
+      "height": 1390
+    },
+    {
+      "id": "local-60-63149d48",
+      "publicPath": "/wealden-ai/local-60-63149d48.jpg",
+      "caption": "White wooden door with glass panels set in a red brick wall.",
+      "tags": [
+        "timber",
+        "door",
+        "glass",
+        "heritage",
+        "brick"
+      ],
+      "placementHints": [
+        "range-doors",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 912,
+      "height": 1468
+    },
+    {
+      "id": "local-61-85493233",
+      "publicPath": "/wealden-ai/local-61-85493233.jpg",
+      "caption": "Elegant white wooden front door with glass panels and outdoor lanterns.",
+      "tags": [
+        "timber",
+        "door",
+        "heritage",
+        "detail",
+        "window"
+      ],
+      "placementHints": [
+        "range-doors",
+        "detail",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1046,
+      "height": 1402
+    },
+    {
+      "id": "local-62-17c97cf1",
+      "publicPath": "/wealden-ai/local-62-17c97cf1.jpg",
+      "caption": "Modern grey timber front door with glass side panels.",
+      "tags": [
+        "timber",
+        "door",
+        "contemporary",
+        "glass",
+        "front door"
+      ],
+      "placementHints": [
+        "range-doors",
+        "detail",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1050,
+      "height": 1158
+    },
+    {
+      "id": "local-63-4c37a5c5",
+      "publicPath": "/wealden-ai/local-63-4c37a5c5.jpg",
+      "caption": "Grey timber French doors leading to a garden patio.",
+      "tags": [
+        "timber",
+        "door",
+        "French",
+        "patio",
+        "contemporary"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1054,
+      "height": 1248
+    },
+    {
+      "id": "local-64-cd4e92c1",
+      "publicPath": "/wealden-ai/local-64-cd4e92c1.jpg",
+      "caption": "Elegant oak French doors with glass panels in a garden setting.",
+      "tags": [
+        "timber",
+        "oak",
+        "door",
+        "French door",
+        "garden",
+        "contemporary"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2000,
+      "height": 1506
+    },
+    {
+      "id": "local-65-42a637a8",
+      "publicPath": "/wealden-ai/local-65-42a637a8.jpg",
+      "caption": "Arched oak windows with leaded glass in a brick wall.",
+      "tags": [
+        "timber",
+        "oak",
+        "window",
+        "heritage",
+        "detail"
+      ],
+      "placementHints": [
+        "range-windows",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1046,
+      "height": 1406
+    },
+    {
+      "id": "local-66-58f39a1a",
+      "publicPath": "/wealden-ai/local-66-58f39a1a.jpg",
+      "caption": "Arched oak window with leaded glass set in brick wall.",
+      "tags": [
+        "timber",
+        "oak",
+        "window",
+        "heritage",
+        "detail"
+      ],
+      "placementHints": [
+        "range-windows",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1046,
+      "height": 1406
+    },
+    {
+      "id": "local-67-a558616a",
+      "publicPath": "/wealden-ai/local-67-a558616a.jpg",
+      "caption": "Contemporary glass extension with dark timber frames and garden view.",
+      "tags": [
+        "timber",
+        "contemporary",
+        "glass",
+        "extension",
+        "door",
+        "window",
+        "garden"
+      ],
+      "placementHints": [
+        "lifestyle",
+        "range-doors",
+        "range-windows"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1998,
+      "height": 1498
+    },
+    {
+      "id": "local-68-eef6dbd6",
+      "publicPath": "/wealden-ai/local-68-eef6dbd6.jpg",
+      "caption": "Wooden exterior staircase with railing attached to a brick building.",
+      "tags": [
+        "timber",
+        "wood",
+        "staircase",
+        "exterior",
+        "railing",
+        "architecture"
+      ],
+      "placementHints": [
+        "detail",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1022,
+      "height": 1188
+    },
+    {
+      "id": "local-69-254e0a04",
+      "publicPath": "/wealden-ai/local-69-254e0a04.jpg",
+      "caption": "Wooden staircase with integrated storage under the stairs.",
+      "tags": [
+        "timber",
+        "oak",
+        "staircase",
+        "woodwork",
+        "interior",
+        "storage"
+      ],
+      "placementHints": [
+        "detail",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1028,
+      "height": 1170
+    },
+    {
+      "id": "local-70-7be88034",
+      "publicPath": "/wealden-ai/local-70-7be88034.jpg",
+      "caption": "Traditional wooden door and sash window on a white brick exterior.",
+      "tags": [
+        "timber",
+        "door",
+        "window",
+        "sash",
+        "heritage",
+        "traditional"
+      ],
+      "placementHints": [
+        "range-doors",
+        "range-windows",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1214,
+      "height": 806
+    },
+    {
+      "id": "local-71-acee69df",
+      "publicPath": "/wealden-ai/local-71-acee69df.jpg",
+      "caption": "Blue timber front door with glass panels and potted plants.",
+      "tags": [
+        "timber",
+        "door",
+        "glass",
+        "heritage",
+        "entrance"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1218,
+      "height": 1458
+    },
+    {
+      "id": "local-72-a92f3530",
+      "publicPath": "/wealden-ai/local-72-a92f3530.jpg",
+      "caption": "Decorative frosted glass window with fleur-de-lis pattern and ornate handles.",
+      "tags": [
+        "window",
+        "frosted glass",
+        "decorative",
+        "heritage",
+        "detail"
+      ],
+      "placementHints": [
+        "range-windows",
+        "detail",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1988,
+      "height": 1488
+    },
+    {
+      "id": "local-73-b4b78786",
+      "publicPath": "/wealden-ai/local-73-b4b78786.jpg",
+      "caption": "Traditional house facade with sash windows and green door.",
+      "tags": [
+        "timber",
+        "sash",
+        "door",
+        "window",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-windows",
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2002,
+      "height": 1504
+    },
+    {
+      "id": "local-74-36a2d0b7",
+      "publicPath": "/wealden-ai/local-74-36a2d0b7.jpg",
+      "caption": "Wooden staircase with vertical balusters and natural finish.",
+      "tags": [
+        "timber",
+        "oak",
+        "staircase",
+        "woodwork",
+        "interior",
+        "detail"
+      ],
+      "placementHints": [
+        "detail",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2134,
+      "height": 1404
+    },
+    {
+      "id": "local-75-1e655880",
+      "publicPath": "/wealden-ai/local-75-1e655880.jpg",
+      "caption": "Wooden front door with brick porch and overhead lantern.",
+      "tags": [
+        "timber",
+        "door",
+        "brick",
+        "porch",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1224,
+      "height": 1464
+    },
+    {
+      "id": "local-76-a569f19e",
+      "publicPath": "/wealden-ai/local-76-a569f19e.jpg",
+      "caption": "Front entrance with arched windows and a wooden door under a porch.",
+      "tags": [
+        "door",
+        "window",
+        "timber",
+        "arched",
+        "porch",
+        "entrance"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1428,
+      "height": 1076
+    },
+    {
+      "id": "local-77-38117042",
+      "publicPath": "/wealden-ai/local-77-38117042.jpg",
+      "caption": "White timber sash window on a cream exterior wall.",
+      "tags": [
+        "timber",
+        "sash",
+        "window",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-windows",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1378,
+      "height": 1034
+    },
+    {
+      "id": "local-78-d4ed1b5e",
+      "publicPath": "/wealden-ai/local-78-d4ed1b5e.jpg",
+      "caption": "White timber casement window with diamond lattice design.",
+      "tags": [
+        "timber",
+        "casement",
+        "window",
+        "heritage",
+        "detail"
+      ],
+      "placementHints": [
+        "range-windows",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1048,
+      "height": 798
+    },
+    {
+      "id": "local-79-0bd19436",
+      "publicPath": "/wealden-ai/local-79-0bd19436.jpg",
+      "caption": "White timber double doors set in a brick and stone exterior wall.",
+      "tags": [
+        "timber",
+        "door",
+        "heritage",
+        "contemporary"
+      ],
+      "placementHints": [
+        "range-doors",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1046,
+      "height": 788
+    },
+    {
+      "id": "local-80-3142264b",
+      "publicPath": "/wealden-ai/local-80-3142264b.jpg",
+      "caption": "Wooden barn doors with black metal hardware on a timber building.",
+      "tags": [
+        "timber",
+        "oak",
+        "door",
+        "heritage",
+        "workshop"
+      ],
+      "placementHints": [
+        "range-doors",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1050,
+      "height": 790
+    },
+    {
+      "id": "local-81-47cf7285",
+      "publicPath": "/wealden-ai/local-81-47cf7285.jpg",
+      "caption": "Wooden garage doors with black hinges on a rustic building.",
+      "tags": [
+        "timber",
+        "door",
+        "heritage",
+        "garage",
+        "wood"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1050,
+      "height": 786
+    },
+    {
+      "id": "local-82-15d22316",
+      "publicPath": "/wealden-ai/local-82-15d22316.jpg",
+      "caption": "Black timber-framed windows on a dark wood exterior wall.",
+      "tags": [
+        "timber",
+        "window",
+        "casement",
+        "exterior",
+        "contemporary"
+      ],
+      "placementHints": [
+        "range-windows",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1048,
+      "height": 784
+    },
+    {
+      "id": "local-83-d9ff1fc1",
+      "publicPath": "/wealden-ai/local-83-d9ff1fc1.jpg",
+      "caption": "Curved brick extension with white timber windows.",
+      "tags": [
+        "timber",
+        "window",
+        "heritage",
+        "brick",
+        "extension"
+      ],
+      "placementHints": [
+        "case-study",
+        "range-windows"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1048,
+      "height": 788
+    },
+    {
+      "id": "local-84-ab71bf8d",
+      "publicPath": "/wealden-ai/local-84-ab71bf8d.jpg",
+      "caption": "Mint green wooden door with glass panels in a sunlit courtyard.",
+      "tags": [
+        "timber",
+        "door",
+        "heritage",
+        "outdoor"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1122,
+      "height": 1492
+    },
+    {
+      "id": "local-85-189801b9",
+      "publicPath": "/wealden-ai/local-85-189801b9.jpg",
+      "caption": "White timber French doors with glass panes leading to a patio.",
+      "tags": [
+        "timber",
+        "door",
+        "French",
+        "glass",
+        "interior",
+        "patio"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1046,
+      "height": 812
+    },
+    {
+      "id": "local-86-16aaad10",
+      "publicPath": "/wealden-ai/local-86-16aaad10.jpg",
+      "caption": "Elegant wooden door with decorative panels and greenery.",
+      "tags": [
+        "timber",
+        "door",
+        "heritage",
+        "detail"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1050,
+      "height": 808
+    },
+    {
+      "id": "local-87-b4507415",
+      "publicPath": "/wealden-ai/local-87-b4507415.jpg",
+      "caption": "Double timber windows with a grey finish on a dark exterior wall.",
+      "tags": [
+        "timber",
+        "window",
+        "casement",
+        "contemporary",
+        "exterior"
+      ],
+      "placementHints": [
+        "range-windows",
+        "detail"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1048,
+      "height": 796
+    },
+    {
+      "id": "local-88-7b9ec795",
+      "publicPath": "/wealden-ai/local-88-7b9ec795.jpg",
+      "caption": "White timber French doors with multiple glass panes.",
+      "tags": [
+        "timber",
+        "door",
+        "window",
+        "heritage",
+        "contemporary"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1048,
+      "height": 786
+    },
+    {
+      "id": "local-89-8f71202b",
+      "publicPath": "/wealden-ai/local-89-8f71202b.jpg",
+      "caption": "Wooden staircase with white risers and wooden treads.",
+      "tags": [
+        "timber",
+        "wood",
+        "staircase",
+        "interior",
+        "contemporary"
+      ],
+      "placementHints": [
+        "detail",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1050,
+      "height": 764
+    },
+    {
+      "id": "local-90-ea5f52a5",
+      "publicPath": "/wealden-ai/local-90-ea5f52a5.jpg",
+      "caption": "Elegant timber door and windows on a brick facade.",
+      "tags": [
+        "timber",
+        "door",
+        "window",
+        "brick",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-doors",
+        "range-windows"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1048,
+      "height": 732
+    },
+    {
+      "id": "local-91-80c3db9b",
+      "publicPath": "/wealden-ai/local-91-80c3db9b.jpg",
+      "caption": "White timber window with stained glass panels and garden view.",
+      "tags": [
+        "timber",
+        "window",
+        "stained glass",
+        "heritage",
+        "casement"
+      ],
+      "placementHints": [
+        "range-windows",
+        "detail",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1046,
+      "height": 784
+    },
+    {
+      "id": "local-92-9cdb3781",
+      "publicPath": "/wealden-ai/local-92-9cdb3781.jpg",
+      "caption": "Brick exterior with a dark timber door and leaded glass window.",
+      "tags": [
+        "timber",
+        "door",
+        "window",
+        "brick",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-doors",
+        "range-windows",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1042,
+      "height": 746
+    },
+    {
+      "id": "local-93-4f6d2fb5",
+      "publicPath": "/wealden-ai/local-93-4f6d2fb5.jpg",
+      "caption": "Elegant wooden gate with curved design in a driveway setting.",
+      "tags": [
+        "timber",
+        "oak",
+        "gate",
+        "driveway",
+        "heritage"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle",
+        "case-study"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1048,
+      "height": 788
+    },
+    {
+      "id": "local-94-c7cb27b1",
+      "publicPath": "/wealden-ai/local-94-c7cb27b1.jpg",
+      "caption": "White timber window with leaded glass on a brick wall.",
+      "tags": [
+        "timber",
+        "window",
+        "leaded glass",
+        "heritage",
+        "brick"
+      ],
+      "placementHints": [
+        "range-windows",
+        "heritage"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 1050,
+      "height": 784
+    },
+    {
+      "id": "local-95-2847160f",
+      "publicPath": "/wealden-ai/local-95-2847160f.jpg",
+      "caption": "Blue timber French doors with glass panels and a cat flap.",
+      "tags": [
+        "timber",
+        "door",
+        "French doors",
+        "glass",
+        "cat flap",
+        "garden",
+        "contemporary"
+      ],
+      "placementHints": [
+        "range-doors",
+        "lifestyle"
+      ],
+      "sourceKind": "local-enhanced",
+      "width": 2000,
+      "height": 1500
+    }
+  ]
+}

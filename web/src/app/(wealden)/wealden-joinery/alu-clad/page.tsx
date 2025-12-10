@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import wealdenImageMap from "@/scripts/wealden-image-map.json";
 import { SectionHeading } from "../_components/section-heading";
+import { getHeroImage, getImagesByHint } from "../_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
   title: "Alu-Clad Timber Windows & Doors | Wealden Joinery",
@@ -10,25 +10,8 @@ export const metadata: Metadata = {
     "Timber warmth inside, durable aluminium outside. Low-maintenance alu-clad systems for new builds and exposed locations across the South East.",
 };
 
-type WealdenImage = {
-  originalUrl: string;
-  localPath: string;
-  alt: string;
-  page?: string;
-  site?: string;
-};
-
-const wealdenImages = (wealdenImageMap as { images: WealdenImage[] }).images ?? [];
-
-function pickImageByKeyword(keyword: string): WealdenImage | undefined {
-  const lower = keyword.toLowerCase();
-  return wealdenImages.find(
-    (img) =>
-      (img.alt && img.alt.toLowerCase().includes(lower)) ||
-      img.localPath.toLowerCase().includes(lower) ||
-      img.originalUrl.toLowerCase().includes(lower),
-  );
-}
+const heroImg = getHeroImage();
+const aluImages = getImagesByHint("alu-clad", 2);
 
 const benefits = [
   {
@@ -76,8 +59,7 @@ const comparisonData = [
 ];
 
 export default function AluCladPage() {
-  const aluImg = pickImageByKeyword("alu") ?? pickImageByKeyword("clad") ?? pickImageByKeyword("window");
-
+  const aluImg = aluImages[0] || heroImg;
   return (
     <div className="space-y-16">
       {/* Hero */}
@@ -111,9 +93,10 @@ export default function AluCladPage() {
           {aluImg && (
             <div className="relative h-64 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-lg sm:h-80 lg:h-[400px]">
               <Image
-                src={aluImg.localPath}
-                alt={aluImg.alt || "Alu-clad timber windows by Wealden Joinery"}
-                fill
+                src={aluImg.publicPath}
+                alt={aluImg.caption}
+                width={aluImg.width}
+                height={aluImg.height}
                 className="object-cover"
                 priority
               />

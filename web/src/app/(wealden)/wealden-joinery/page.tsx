@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import wealdenImageMap from "@/scripts/wealden-image-map.json";
 import { SectionHeading } from "./_components/section-heading";
+import { getHeroImage, getImagesByHint, getFallbackImages } from "./_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
   title: "Wealden Joinery | Beautiful Timber Windows & Doors, Crafted in Sussex",
@@ -10,44 +10,14 @@ export const metadata: Metadata = {
     "Discover Wealden Joinery’s premium timber windows and doors. Heritage-friendly replacements with modern performance, crafted and installed across the South East.",
 };
 
-type WealdenImage = {
-  originalUrl: string;
-  localPath: string;
-  alt: string;
-  page?: string;
-  site?: string;
-};
-
-const wealdenImages = (wealdenImageMap as { images: WealdenImage[] }).images ?? [];
-const usedImagePaths = new Set<string>();
-
-function pickImageByKeyword(keyword: string): WealdenImage | undefined {
-  const lower = keyword.toLowerCase();
-  const found = wealdenImages.find(
-    (img) =>
-      (img.alt && img.alt.toLowerCase().includes(lower)) ||
-      img.localPath.toLowerCase().includes(lower) ||
-      img.originalUrl.toLowerCase().includes(lower),
-  );
-
-  if (found && !usedImagePaths.has(found.localPath)) {
-    usedImagePaths.add(found.localPath);
-    return found;
-  }
-
-  return undefined;
-}
-
-function pickFirstUnusedImages(count: number): WealdenImage[] {
-  const result: WealdenImage[] = [];
-  for (const img of wealdenImages) {
-    if (result.length >= count) break;
-    if (usedImagePaths.has(img.localPath)) continue;
-    usedImagePaths.add(img.localPath);
-    result.push(img);
-  }
-  return result;
-}
+// Use AI-processed images
+const heroImage = getHeroImage();
+const windowImages = getImagesByHint("range-windows", 2);
+const doorImages = getImagesByHint("range-doors", 2);
+const aluImages = getImagesByHint("alu-clad", 1);
+const caseStudyImages = getImagesByHint("case-study", 3);
+const workshopImage = getImagesByHint("workshop", 1)[0];
+const lifestyleImage = getImagesByHint("lifestyle", 1)[0];
 
 const reasons = [
   {
@@ -125,20 +95,6 @@ const faqs = [
 ];
 
 export default function WealdenHomePage() {
-  usedImagePaths.clear();
-
-  const heroImage = pickImageByKeyword("front") ?? pickImageByKeyword("window") ?? pickFirstUnusedImages(1)[0];
-
-  const sashImg = pickImageByKeyword("sash") ?? pickImageByKeyword("window");
-  const casementImg = pickImageByKeyword("casement");
-  const doorImg = pickImageByKeyword("door");
-  const bifoldImg = pickImageByKeyword("bifold") ?? pickImageByKeyword("sliding");
-  const aluImg = pickImageByKeyword("alu") ?? pickImageByKeyword("clad");
-
-  const caseStudyImages = pickFirstUnusedImages(3);
-  const guaranteeImage = pickImageByKeyword("workshop") ?? pickFirstUnusedImages(1)[0] ?? heroImage;
-  const estimatorImage = pickFirstUnusedImages(1)[0] ?? heroImage;
-
   return (
     <div className="space-y-16">
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -187,9 +143,10 @@ export default function WealdenHomePage() {
           <div className="relative w-full h-64 sm:h-80 lg:h-[400px] rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-lg">
             {heroImage && (
               <Image
-                src={heroImage.localPath}
-                alt={heroImage.alt || "Wealden Joinery timber windows and doors"}
-                fill
+                src={heroImage.publicPath}
+                alt={heroImage.caption}
+                width={heroImage.width}
+                height={heroImage.height}
                 className="object-cover"
                 priority
               />
@@ -224,19 +181,14 @@ export default function WealdenHomePage() {
           copy="From conservation-friendly sashes to contemporary alu-clad systems, every range is built to suit the property."
         />
         <div className="grid gap-4 md:grid-cols-2">
-          {products.map((product) => {
-            const selectedImage =
-              product.name === "Timber Sash Windows"
-                ? sashImg
-                : product.name === "Timber Casement Windows"
-                  ? casementImg
-                  : product.name === "Entrance Doors"
-                    ? doorImg
-                    : product.name === "French, Sliding & Bi-Fold Doors"
-                      ? bifoldImg
-                      : aluImg;
-
-            const productImage = selectedImage ?? pickFirstUnusedImages(1)[0] ?? heroImage;
+          {products.map((product, idx) => {
+            // Map products to images
+            const productImage = 
+              product.name.includes("Sash") || product.name.includes("Casement") 
+                ? windowImages[idx % windowImages.length]
+                : product.name.includes("Alu-Clad")
+                  ? aluImages[0]
+                  : doorImages[idx % doorImages.length];
 
             return (
               <article
@@ -246,9 +198,10 @@ export default function WealdenHomePage() {
                 {productImage && (
                   <div className="relative w-full h-48">
                     <Image
-                      src={productImage.localPath}
-                      alt={productImage.alt || `${product.name} by Wealden Joinery`}
-                      fill
+                      src={productImage.publicPath}
+                      alt={productImage.caption}
+                      width={productImage.width}
+                      height={productImage.height}
                       className="object-cover"
                     />
                   </div>
@@ -302,9 +255,10 @@ export default function WealdenHomePage() {
               {caseStudyImages[index] && (
                 <div className="relative w-full h-48">
                   <Image
-                    src={caseStudyImages[index].localPath}
-                    alt={caseStudyImages[index].alt || "Wealden Joinery project"}
-                    fill
+                    src={caseStudyImages[index].publicPath}
+                    alt={caseStudyImages[index].caption}
+                    width={caseStudyImages[index].width}
+                    height={caseStudyImages[index].height}
                     className="object-cover"
                   />
                 </div>
@@ -339,12 +293,13 @@ export default function WealdenHomePage() {
             </ul>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            {guaranteeImage && (
+            {workshopImage && (
               <div className="relative w-full h-48">
                 <Image
-                  src={guaranteeImage.localPath}
-                  alt={guaranteeImage.alt || "Wealden Joinery guarantee"}
-                  fill
+                  src={workshopImage.publicPath}
+                  alt={workshopImage.caption}
+                  width={workshopImage.width}
+                  height={workshopImage.height}
                   className="object-cover"
                 />
               </div>
@@ -417,12 +372,13 @@ export default function WealdenHomePage() {
             </div>
           </div>
           <div className="rounded-xl border border-white/20 bg-white/5 p-6 shadow-inner backdrop-blur-sm">
-            {estimatorImage && (
+            {lifestyleImage && (
               <div className="relative mb-4 w-full h-40 overflow-hidden rounded-xl border border-white/20">
                 <Image
-                  src={estimatorImage.localPath}
-                  alt={estimatorImage.alt || "Wealden Joinery inspiration"}
-                  fill
+                  src={lifestyleImage.publicPath}
+                  alt={lifestyleImage.caption}
+                  width={lifestyleImage.width}
+                  height={lifestyleImage.height}
                   className="object-cover"
                 />
               </div>

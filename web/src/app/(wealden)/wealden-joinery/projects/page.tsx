@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import wealdenImageMap from "@/scripts/wealden-image-map.json";
 import { SectionHeading } from "../_components/section-heading";
+import { getImagesByHint } from "../_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
   title: "Recent Projects Across the South East | Wealden Joinery",
@@ -10,15 +10,7 @@ export const metadata: Metadata = {
     "View our recent timber window and door installations across Sussex, Kent, and the South East. Heritage and contemporary projects.",
 };
 
-type WealdenImage = {
-  originalUrl: string;
-  localPath: string;
-  alt: string;
-  page?: string;
-  site?: string;
-};
-
-const wealdenImages = (wealdenImageMap as { images: WealdenImage[] }).images ?? [];
+const projectImages = getImagesByHint("case-study", 6);
 
 const projects = [
   {
@@ -96,8 +88,6 @@ const projects = [
 ];
 
 export default function ProjectsPage() {
-  const projectImages = wealdenImages.slice(0, projects.length);
-
   return (
     <div className="space-y-16">
       {/* Hero */}
@@ -130,9 +120,10 @@ export default function ProjectsPage() {
                   {projectImage && (
                     <div className="relative h-64 w-full md:h-auto">
                       <Image
-                        src={projectImage.localPath}
-                        alt={projectImage.alt || `${project.type} project by Wealden Joinery`}
-                        fill
+                        src={projectImage.publicPath}
+                        alt={projectImage.caption}
+                        width={projectImage.width}
+                        height={projectImage.height}
                         className="object-cover"
                       />
                     </div>
