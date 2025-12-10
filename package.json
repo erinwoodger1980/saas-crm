@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:opening-description": "tsx src/lib/buildOpeningDescription.test.ts",
-    "test:material-alerts": "tsx web/src/lib/materialAlerts.test.ts"
+    "test:material-alerts": "tsx web/src/lib/materialAlerts.test.ts",
+    "scrape:wealden": "tsx ./scripts/scrape-wealden-images.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -31,6 +32,7 @@
     "@tiptap/pm": "^3.10.2",
     "@tiptap/react": "^3.10.2",
     "@tiptap/starter-kit": "^3.10.2",
+    "axios": "^1.7.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
@@ -46,6 +48,7 @@
     "react-dom": "18.2.0",
     "react-dropzone": "^14.3.8",
     "react-hook-form": "^7.66.0",
+    "cheerio": "^1.0.0",
     "swr": "^2.3.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
