@@ -255,7 +255,7 @@ async function updateWealdenLanding() {
   }
 
   console.log('\n✅ Wealden Joinery landing page content updated successfully in PRODUCTION!');
-  console.log(`   View at: https://www.joineryai.app/tenant/wealden/landing`);
+  console.log(`   View at: https://www.joineryai.app/tenant/wealden-joinery/landing`);
 }
 
 updateWealdenLanding()

@@ -3,6 +3,18 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
+  async redirects() {
+    const destination = "https://www.joineryai.app/tenant/wealden-joinery/landing";
+
+    return [
+      { source: "/wealden", destination, statusCode: 301 },
+      { source: "/wealden-joinery", destination, statusCode: 301 },
+      { source: "/wealden-joinery/", destination, statusCode: 301 },
+      { source: "/tenant/wealden", destination, statusCode: 301 },
+      { source: "/tenant/wealden-joinery", destination, statusCode: 301 },
+      { source: "/landing-wealden", destination, statusCode: 301 },
+    ];
+  },
   async rewrites() {
     const rewrites: any[] = [];
 

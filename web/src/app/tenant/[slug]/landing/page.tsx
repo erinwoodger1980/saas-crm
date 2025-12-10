@@ -10,12 +10,22 @@ interface PageProps {
 }
 
 // Generate metadata for SEO
+const CANONICAL_WEALDEN_URL = 'https://www.joineryai.app/tenant/wealden-joinery/landing';
+const tenantSlugAliases: Record<string, string> = {
+  wealden: 'wealden-joinery',
+};
+
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const { kw: keyword } = await searchParams;
+
+  const resolvedSlug = tenantSlugAliases[slug] || slug;
   
   try {
-    const tenant = await fetchTenantFromDB(slug, false);
+    let tenant = await fetchTenantFromDB(resolvedSlug, false);
+    if (!tenant && resolvedSlug !== slug) {
+      tenant = await fetchTenantFromDB(slug, false);
+    }
     
     if (!tenant) {
       return { title: 'Tenant Not Found' };
@@ -30,9 +40,12 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
       ? `Expert ${keyword.toLowerCase()} services in ${location}. ${tenant.name} provides heritage quality with modern performance. Get your free quote today!`
       : `${tenant.name} provides bespoke timber windows and doors in ${location}. PAS 24 certified, 50-year guarantee. Serving ${tenant.content?.serviceAreas?.slice(0, 3).join(', ') || location}.`;
 
+    const canonicalUrl = resolvedSlug === 'wealden-joinery' ? CANONICAL_WEALDEN_URL : undefined;
+
     return {
       title,
       description,
+      alternates: canonicalUrl ? { canonical: canonicalUrl } : undefined,
       openGraph: {
         title,
         description,
@@ -55,9 +68,14 @@ export default async function TenantLandingPage({ params, searchParams }: PagePr
   const { slug } = await params;
   const { kw: keyword } = await searchParams;
 
+  const resolvedSlug = tenantSlugAliases[slug] || slug;
+
   let tenant;
   try {
-    tenant = await fetchTenantFromDB(slug, false);
+    tenant = await fetchTenantFromDB(resolvedSlug, false);
+    if (!tenant && resolvedSlug !== slug) {
+      tenant = await fetchTenantFromDB(slug, false);
+    }
   } catch (error) {
     console.error('Failed to load tenant:', error);
     return (
@@ -149,7 +167,7 @@ export default async function TenantLandingPage({ params, searchParams }: PagePr
   return (
     <Suspense fallback={<LoadingState />}>
       <PublicLandingClient
-        tenantSlug={slug}
+        tenantSlug={resolvedSlug}
         tenant={tenant}
         headline={headline}
         subheadline={subheadline}
