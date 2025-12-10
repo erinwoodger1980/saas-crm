@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
+import wealdenImageMap from "@/scripts/wealden-image-map.json";
 import { SectionHeading } from "./_components/section-heading";
 
 export const metadata: Metadata = {
@@ -7,6 +9,45 @@ export const metadata: Metadata = {
   description:
     "Discover Wealden Joinery’s premium timber windows and doors. Heritage-friendly replacements with modern performance, crafted and installed across the South East.",
 };
+
+type WealdenImage = {
+  originalUrl: string;
+  localPath: string;
+  alt: string;
+  page?: string;
+  site?: string;
+};
+
+const wealdenImages = (wealdenImageMap as { images: WealdenImage[] }).images ?? [];
+const usedImagePaths = new Set<string>();
+
+function pickImageByKeyword(keyword: string): WealdenImage | undefined {
+  const lower = keyword.toLowerCase();
+  const found = wealdenImages.find(
+    (img) =>
+      (img.alt && img.alt.toLowerCase().includes(lower)) ||
+      img.localPath.toLowerCase().includes(lower) ||
+      img.originalUrl.toLowerCase().includes(lower),
+  );
+
+  if (found && !usedImagePaths.has(found.localPath)) {
+    usedImagePaths.add(found.localPath);
+    return found;
+  }
+
+  return undefined;
+}
+
+function pickFirstUnusedImages(count: number): WealdenImage[] {
+  const result: WealdenImage[] = [];
+  for (const img of wealdenImages) {
+    if (result.length >= count) break;
+    if (usedImagePaths.has(img.localPath)) continue;
+    usedImagePaths.add(img.localPath);
+    result.push(img);
+  }
+  return result;
+}
 
 const reasons = [
   {
@@ -84,10 +125,24 @@ const faqs = [
 ];
 
 export default function WealdenHomePage() {
+  usedImagePaths.clear();
+
+  const heroImage = pickImageByKeyword("front") ?? pickImageByKeyword("window") ?? pickFirstUnusedImages(1)[0];
+
+  const sashImg = pickImageByKeyword("sash") ?? pickImageByKeyword("window");
+  const casementImg = pickImageByKeyword("casement");
+  const doorImg = pickImageByKeyword("door");
+  const bifoldImg = pickImageByKeyword("bifold") ?? pickImageByKeyword("sliding");
+  const aluImg = pickImageByKeyword("alu") ?? pickImageByKeyword("clad");
+
+  const caseStudyImages = pickFirstUnusedImages(3);
+  const guaranteeImage = pickImageByKeyword("workshop") ?? pickFirstUnusedImages(1)[0] ?? heroImage;
+  const estimatorImage = pickFirstUnusedImages(1)[0] ?? heroImage;
+
   return (
     <div className="space-y-16">
       <section className="overflow-hidden rounded-3xl border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-amber-100/60 shadow-sm">
-        <div className="grid gap-10 px-4 py-10 md:grid-cols-2 md:px-8 md:py-14">
+        <div className="grid items-center gap-10 px-4 py-10 md:px-8 md:py-14 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <div className="space-y-6">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-amber-900/80">Wealden Joinery</p>
             <h1 className="text-3xl font-semibold leading-tight text-slate-900 md:text-4xl">
@@ -112,28 +167,31 @@ export default function WealdenHomePage() {
               </Link>
             </div>
             <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
-              <div className="flex items-center gap-2 rounded-full bg-white/70 px-3 py-2 shadow-sm">
-                <span className="text-amber-700">★★★★★</span> 4.9/5 from recent homeowners
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                <span>Made in Rotherfield workshop</span>
               </div>
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-amber-900/80">
-                <span className="h-8 w-8 rounded-full bg-amber-100" />
-                <span>FENSA · BM TRADA · FSC® (placeholders)</span>
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+                <span>FENSA registered installer</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
+                <span>PAS 24 compliant</span>
               </div>
             </div>
           </div>
-          <div className="relative">
-            <div className="absolute inset-6 rounded-3xl bg-gradient-to-br from-amber-200/50 via-white to-amber-50 blur-3xl" />
-            <div className="relative h-full rounded-3xl border border-amber-100 bg-white/70 p-4 shadow-lg">
-              <div className="aspect-[4/3] w-full overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_20%_20%,#fcd34d_0,#fde68a_20%,transparent_40%),radial-gradient(circle_at_80%_30%,#bfdbfe_0,#bfdbfe_18%,transparent_38%),linear-gradient(135deg,#0f172a,#1e293b)]">
-                <div className="flex h-full items-end justify-between bg-gradient-to-t from-black/60 to-black/0 p-6 text-white">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-amber-100">Sussex workshop</p>
-                    <p className="text-lg font-semibold">Precision-made timber frames</p>
-                  </div>
-                  <div className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase">AI Estimator ready</div>
-                </div>
-              </div>
-            </div>
+
+          <div className="relative w-full h-64 sm:h-80 lg:h-[360px] rounded-3xl overflow-hidden border border-amber-100 bg-white/70 shadow-lg">
+            {heroImage && (
+              <Image
+                src={heroImage.localPath}
+                alt={heroImage.alt || "Wealden Joinery timber windows and doors"}
+                fill
+                className="object-cover"
+                priority
+              />
+            )}
           </div>
         </div>
       </section>
@@ -164,22 +222,50 @@ export default function WealdenHomePage() {
           copy="From conservation-friendly sashes to contemporary alu-clad systems, every range is built to suit the property."
         />
         <div className="grid gap-4 md:grid-cols-2">
-          {products.map((product) => (
-            <div key={product.name} className="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">{product.name}</h3>
-                  <p className="mt-2 text-sm text-slate-600">{product.summary}</p>
+          {products.map((product) => {
+            const selectedImage =
+              product.name === "Timber Sash Windows"
+                ? sashImg
+                : product.name === "Timber Casement Windows"
+                  ? casementImg
+                  : product.name === "Entrance Doors"
+                    ? doorImg
+                    : product.name === "French, Sliding & Bi-Fold Doors"
+                      ? bifoldImg
+                      : aluImg;
+
+            const productImage = selectedImage ?? pickFirstUnusedImages(1)[0] ?? heroImage;
+
+            return (
+              <article
+                key={product.name}
+                className="rounded-2xl border border-amber-100 bg-white shadow-sm overflow-hidden flex flex-col"
+              >
+                {productImage && (
+                  <div className="relative w-full h-40">
+                    <Image
+                      src={productImage.localPath}
+                      alt={productImage.alt || `${product.name} by Wealden Joinery`}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                )}
+                <div className="p-5 space-y-2 flex-1 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold text-slate-900">{product.name}</h3>
+                    <p className="text-sm text-slate-600">{product.summary}</p>
+                  </div>
+                  <Link
+                    href={`/wealden-joinery/${product.name.toLowerCase().split(" ")[0] === "timber" ? "windows" : "doors"}`}
+                    className="inline-flex text-sm font-semibold text-amber-900 hover:underline"
+                  >
+                    View details
+                  </Link>
                 </div>
-                <Link
-                  href={`/wealden-joinery/${product.name.toLowerCase().split(" ")[0] === "timber" ? "windows" : "doors"}`}
-                  className="text-sm font-semibold text-amber-900 hover:underline"
-                >
-                  View details
-                </Link>
-              </div>
-            </div>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </section>
 
@@ -209,17 +295,26 @@ export default function WealdenHomePage() {
           copy="Regional installs with the right balance of heritage detail and modern comfort. Full stories coming soon."
         />
         <div className="grid gap-4 md:grid-cols-3">
-          {caseStudies.map((project) => (
-            <div key={project.location} className="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm">
-              <div className="aspect-[4/3] rounded-xl bg-[radial-gradient(circle_at_30%_30%,#fef3c7,transparent_50%),linear-gradient(135deg,#0f172a,#1f2937)]" />
-              <div className="mt-4 space-y-1 text-sm text-slate-700">
+          {caseStudies.map((project, index) => (
+            <div key={project.location} className="rounded-2xl border border-amber-100 bg-white shadow-sm overflow-hidden">
+              {caseStudyImages[index] && (
+                <div className="relative w-full h-40">
+                  <Image
+                    src={caseStudyImages[index].localPath}
+                    alt={caseStudyImages[index].alt || "Wealden Joinery project"}
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+              )}
+              <div className="p-5 space-y-1 text-sm text-slate-700">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-900/80">{project.location}</p>
                 <p className="text-base font-semibold text-slate-900">{project.type}</p>
                 <p>{project.products}</p>
+                <Link href="/wealden-joinery/projects" className="mt-3 inline-flex text-sm font-semibold text-amber-900 hover:underline">
+                  View project
+                </Link>
               </div>
-              <Link href="/wealden-joinery/projects" className="mt-3 inline-flex text-sm font-semibold text-amber-900 hover:underline">
-                View project
-              </Link>
             </div>
           ))}
         </div>
@@ -239,26 +334,38 @@ export default function WealdenHomePage() {
               <li>• Installation workmanship guarantee with responsive aftercare.</li>
             </ul>
           </div>
-          <div className="rounded-2xl border border-amber-100 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-900/80">AI Estimator</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-900">Get a tailored estimate in minutes.</h3>
-            <p className="mt-2 text-sm text-slate-700">
-              Outline your windows and doors, select styles, and receive an indicative budget range with next steps. No obligation,
-              no pushy follow-up.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
-              <Link
-                href="/wealden-joinery/estimate"
-                className="rounded-full bg-amber-800 px-5 py-3 text-white transition hover:bg-amber-900"
-              >
-                Start the AI Estimator
-              </Link>
-              <Link
-                href="/wealden-joinery/windows"
-                className="rounded-full border border-amber-800 px-5 py-3 text-amber-900 transition hover:bg-amber-50"
-              >
-                Explore windows first
-              </Link>
+          <div className="rounded-2xl border border-amber-100 bg-white shadow-sm overflow-hidden">
+            {guaranteeImage && (
+              <div className="relative w-full h-40">
+                <Image
+                  src={guaranteeImage.localPath}
+                  alt={guaranteeImage.alt || "Wealden Joinery guarantee"}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+            )}
+            <div className="p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-900/80">AI Estimator</p>
+              <h3 className="mt-2 text-xl font-semibold text-slate-900">Get a tailored estimate in minutes.</h3>
+              <p className="mt-2 text-sm text-slate-700">
+                Outline your windows and doors, select styles, and receive an indicative budget range with next steps. No obligation,
+                no pushy follow-up.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
+                <Link
+                  href="/wealden-joinery/estimate"
+                  className="rounded-full bg-amber-800 px-5 py-3 text-white transition hover:bg-amber-900"
+                >
+                  Start the AI Estimator
+                </Link>
+                <Link
+                  href="/wealden-joinery/windows"
+                  className="rounded-full border border-amber-800 px-5 py-3 text-amber-900 transition hover:bg-amber-50"
+                >
+                  Explore windows first
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -304,6 +411,16 @@ export default function WealdenHomePage() {
             </div>
           </div>
           <div className="rounded-2xl border border-white/20 bg-white/5 p-6 shadow-inner">
+            {estimatorImage && (
+              <div className="relative mb-4 w-full h-32 overflow-hidden rounded-xl border border-white/20">
+                <Image
+                  src={estimatorImage.localPath}
+                  alt={estimatorImage.alt || "Wealden Joinery inspiration"}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+            )}
             <p className="text-sm font-semibold text-amber-100">What you’ll get</p>
             <ul className="mt-3 space-y-2 text-sm text-amber-50">
               <li>• Colour inspiration for heritage and contemporary homes</li>

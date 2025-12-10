@@ -24,3 +24,16 @@ uploads/
 # ignore dependencies
 **/node_modules
 api/.env.local
+
+# ignore cached compilation outputs
+**/node-compile-cache/
+
+# avoid committing scraped binary assets
+public/wealden-scraped/*.jpg
+public/wealden-scraped/*.jpeg
+public/wealden-scraped/*.png
+public/wealden-scraped/*.webp
+web/public/wealden-scraped/*.jpg
+web/public/wealden-scraped/*.jpeg
+web/public/wealden-scraped/*.png
+web/public/wealden-scraped/*.webp

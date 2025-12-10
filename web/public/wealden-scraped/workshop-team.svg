@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" role="img" aria-label="Workshop team placeholder">
+  <defs>
+    <linearGradient id="workGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#fff7ed" />
+      <stop offset="100%" stop-color="#fde68a" />
+    </linearGradient>
+  </defs>
+  <rect width="900" height="520" fill="url(#workGrad)" />
+  <g fill="#b45309" opacity="0.18">
+    <rect x="70" y="180" width="180" height="220" rx="24" />
+    <rect x="280" y="140" width="180" height="260" rx="24" />
+    <rect x="500" y="190" width="180" height="220" rx="24" />
+    <rect x="720" y="150" width="120" height="260" rx="24" />
+  </g>
+  <g fill="#92400e" font-family="'Inter', 'Segoe UI', system-ui" font-weight="700">
+    <text x="80" y="110" font-size="34">Workshop team</text>
+    <text x="80" y="150" font-size="20" fill="#854d0e">Joiners, finishers, installers</text>
+  </g>
+  <g stroke="#b45309" stroke-width="12" stroke-linecap="round" opacity="0.6">
+    <line x1="120" y1="320" x2="160" y2="260" />
+    <line x1="340" y1="330" x2="360" y2="260" />
+    <line x1="560" y1="320" x2="600" y2="250" />
+    <line x1="760" y1="310" x2="780" y2="250" />
+  </g>
+</svg>

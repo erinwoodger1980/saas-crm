@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" role="img" aria-label="Front door placeholder">
+  <defs>
+    <linearGradient id="doorGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fef3c7" />
+      <stop offset="100%" stop-color="#fde68a" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="480" fill="url(#doorGrad)" />
+  <rect x="240" y="60" width="200" height="360" rx="18" fill="#b45309" opacity="0.65" />
+  <rect x="260" y="90" width="160" height="140" rx="12" fill="#fefce8" stroke="#78350f" stroke-width="8" />
+  <rect x="260" y="250" width="160" height="120" rx="12" fill="#fefce8" stroke="#78350f" stroke-width="8" />
+  <circle cx="412" cy="200" r="10" fill="#92400e" />
+  <g fill="#7c2d12" font-family="'Inter', 'Segoe UI', system-ui" font-size="28" font-weight="700">
+    <text x="40" y="80">Accoya entrance door</text>
+    <text x="40" y="120" font-size="18" fill="#854d0e">Brass hardware &amp; glazed lights</text>
+  </g>
+</svg>

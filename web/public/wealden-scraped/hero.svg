@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Wealden Joinery hero">
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fef3c7" />
+      <stop offset="50%" stop-color="#fef9e7" />
+      <stop offset="100%" stop-color="#fde68a" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#grad)" />
+  <rect x="80" y="90" width="520" height="450" rx="32" fill="#d97706" opacity="0.12" />
+  <rect x="640" y="130" width="420" height="360" rx="32" fill="#92400e" opacity="0.18" />
+  <g fill="#92400e" font-family="'Inter', 'Segoe UI', system-ui" font-weight="700">
+    <text x="90" y="170" font-size="42">Wealden Joinery</text>
+    <text x="90" y="230" font-size="32" fill="#b45309">Timber windows &amp; doors</text>
+    <text x="90" y="290" font-size="24" fill="#854d0e">Hero placeholder image</text>
+  </g>
+  <g fill="#92400e" opacity="0.75">
+    <rect x="720" y="180" width="200" height="260" rx="20" fill="#fef3c7" stroke="#b45309" stroke-width="8" />
+    <line x1="820" y1="180" x2="820" y2="440" stroke="#b45309" stroke-width="8" />
+    <line x1="720" y1="280" x2="920" y2="280" stroke="#b45309" stroke-width="8" />
+  </g>
+</svg>
