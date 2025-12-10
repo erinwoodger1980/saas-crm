@@ -13,18 +13,24 @@ const links = [
 
 export function WealdenNavbar() {
   return (
-    <header className="sticky top-0 z-30 backdrop-blur border-b border-white/20 bg-white/70">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 md:px-6">
-        <Link href="/wealden-joinery" className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-          <span className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-200 via-amber-100 to-amber-300 border border-amber-200 shadow-inner" />
+    <header className="sticky top-0 z-30 border-b border-slate-200/60 bg-white/90 backdrop-blur-md shadow-sm">
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 md:px-8">
+        <Link href="/wealden-joinery" className="flex items-center gap-3 transition-opacity hover:opacity-80">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-600 to-emerald-700 text-sm font-bold text-white shadow-md">
+            W
+          </span>
           <div className="leading-tight">
-            <div className="text-sm uppercase tracking-[0.2em] text-amber-900/70">Wealden</div>
-            <div className="text-lg font-semibold text-slate-900">Joinery</div>
+            <div className="text-base font-semibold tracking-tight text-slate-900">Wealden Joinery</div>
+            <div className="text-xs text-slate-600">Timber Windows & Doors</div>
           </div>
         </Link>
-        <nav className="hidden items-center gap-6 text-sm font-medium text-slate-700 lg:flex">
+        <nav className="hidden items-center gap-8 text-sm font-medium text-slate-700 lg:flex">
           {links.map((link) => (
-            <Link key={link.href} href={link.href} className="hover:text-amber-900">
+            <Link 
+              key={link.href} 
+              href={link.href} 
+              className="relative transition-colors hover:text-emerald-700 after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-0 after:bg-emerald-700 after:transition-all hover:after:w-full"
+            >
               {link.label}
             </Link>
           ))}
@@ -32,15 +38,15 @@ export function WealdenNavbar() {
         <div className="flex items-center gap-3">
           <Link
             href="/wealden-joinery/estimate"
-            className="rounded-full bg-amber-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-900"
+            className="rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-[1.02] hover:bg-emerald-800 hover:shadow-lg"
           >
-            Get an Instant Estimate
+            Get an Estimate
           </Link>
           <Link
             href="/wealden-joinery/contact"
-            className="hidden rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-amber-800 hover:text-amber-900 md:inline-flex"
+            className="hidden rounded-full border-2 border-slate-300 px-5 py-2 text-sm font-semibold text-slate-800 transition hover:border-emerald-700 hover:text-emerald-700 md:inline-flex"
           >
-            Book a Consultation
+            Contact Us
           </Link>
         </div>
       </div>

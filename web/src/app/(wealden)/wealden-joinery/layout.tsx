@@ -42,13 +42,13 @@ const localBusinessSchema = {
 
 export default function WealdenLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50 via-white to-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
       <TrackingScripts />
       <Script id="wealden-localbusiness" type="application/ld+json">
         {JSON.stringify(localBusinessSchema)}
       </Script>
       <WealdenNavbar />
-      <main className="mx-auto max-w-6xl px-4 pb-16 pt-10 md:px-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 md:px-8">{children}</main>
       <WealdenFooter />
     </div>
   );
