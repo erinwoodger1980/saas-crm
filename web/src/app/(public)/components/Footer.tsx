@@ -24,7 +24,7 @@ export default function Footer() {
             Privacy
           </Link>
           <a
-            href="mailto:hello@joineryai.app"
+            href="mailto:erin@erinwoodger.com"
             className="transition hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
           >
             Contact

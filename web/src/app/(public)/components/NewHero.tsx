@@ -141,18 +141,6 @@ export default function NewHero({ onOpenDemo, onCtaClick }: NewHeroProps) {
                 </p>
               </div>
             )}
-
-            {/* Secondary CTA */}
-            <button
-              onClick={() => {
-                onCtaClick?.("hero-demo");
-                onOpenDemo();
-              }}
-              className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition"
-            >
-              Watch a 2-minute demo
-              <ArrowRight className="h-4 w-4" />
-            </button>
           </div>
 
           {/* Right side: feature preview / screenshot would go here */}

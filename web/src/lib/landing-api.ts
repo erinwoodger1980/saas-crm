@@ -39,10 +39,12 @@ export async function apiFetch(endpoint: string, options: FetchOptions = {}) {
 export async function fetchTenantFromDB(slug: string, draft: boolean = false) {
   try {
     const url = `/landing-tenants/${slug}${draft ? '?draft=1' : ''}`;
+    console.log(`[fetchTenantFromDB] Fetching: ${API_BASE}${url}`);
     const data = await apiFetch(url);
+    console.log(`[fetchTenantFromDB] Success:`, data ? 'Data received' : 'No data');
     return data;
   } catch (error) {
-    console.warn(`Failed to fetch tenant ${slug} from DB:`, error);
+    console.error(`[fetchTenantFromDB] Failed to fetch tenant ${slug}:`, error);
     return null;
   }
 }

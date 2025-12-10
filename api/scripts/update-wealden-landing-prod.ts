@@ -7,15 +7,19 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
-const prisma = new PrismaClient();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 async function updateWealdenLanding() {
   console.log('🔄 Updating Wealden Joinery landing page in PRODUCTION...');
 
   // Find or create Wealden tenant
   let tenant = await prisma.tenant.findUnique({
-    where: { slug: 'wealden' }
+    where: { slug: 'wealden-joinery' }
   });
 
   if (!tenant) {
@@ -23,7 +27,7 @@ async function updateWealdenLanding() {
     tenant = await prisma.tenant.create({
       data: {
         name: 'Wealden Joinery',
-        slug: 'wealden',
+        slug: 'wealden-joinery',
         serviceAreas: ['East Sussex', 'Kent', 'Rotherfield', 'Tunbridge Wells', 'Crowborough', 'Uckfield'],
         homeUrl: 'https://www.wealdenjoinery.com'
       }

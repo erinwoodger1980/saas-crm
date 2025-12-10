@@ -22,6 +22,8 @@ services:
         value: "1"
       - key: SKIP_PRISMA_POSTINSTALL
         value: "1"
+      - key: WEB_ORIGIN
+        value: https://www.joineryai.app,https://joineryai.app
   
   - type: web
     name: web
@@ -76,6 +78,8 @@ services:
         value: "1"
       - key: SKIP_PRISMA_POSTINSTALL
         value: "1"
+      - key: WEB_ORIGIN
+        sync: false  # Set to https://staging.joineryai.app in Render dashboard
       - key: DATABASE_URL
         sync: false  # Set to staging database in Render dashboard
   
