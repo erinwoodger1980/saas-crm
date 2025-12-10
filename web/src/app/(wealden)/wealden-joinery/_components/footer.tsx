@@ -1,4 +1,4 @@
-import Link from "next";
+import Link from "next/link";
 import Image from "next/image";
 
 // Footer with key contact details for Wealden Joinery.

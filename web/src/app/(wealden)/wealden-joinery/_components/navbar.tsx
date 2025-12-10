@@ -1,4 +1,4 @@
-import Link from "next";
+import Link from "next/link";
 import Image from "next/image";
 
 // Top navigation for the Wealden Joinery marketing site section.
