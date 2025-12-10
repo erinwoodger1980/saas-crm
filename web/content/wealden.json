@@ -1,0 +1,98 @@
+{
+  "heroSections": [
+    {
+      "title": "Hand-crafted timber windows & doors for character homes",
+      "subtitle": "Wealden Joinery designs and builds bespoke oak and Accoya joinery from our Rotherfield workshop, blending period details with modern performance.",
+      "primaryCta": { "label": "Book a design visit", "href": "#contact" },
+      "secondaryCta": { "label": "View recent work", "href": "#gallery" },
+      "image": "https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1600&q=80",
+      "highlights": [
+        "50-year anti-rot timber warranty",
+        "City & Guilds master craftsmen",
+        "Listed building and conservation specialists"
+      ]
+    }
+  ],
+  "productCategories": [
+    {
+      "title": "Sash & casement windows",
+      "description": "Slim sightlines, secure locking, and discreet draught-proofing that respects the original architecture.",
+      "image": "https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1400&q=80",
+      "bullets": [
+        "Bespoke profiles to match period details",
+        "PAS 24 hardware options",
+        "Factory spray finish for longevity"
+      ]
+    },
+    {
+      "title": "Entrance, French & bifold doors",
+      "description": "Solid timber doors with crisp joinery, warm-edge glazing, and smooth operation built to handle daily use.",
+      "image": "https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?auto=format&fit=crop&w=1400&q=80",
+      "bullets": [
+        "Secure multipoint locking",
+        "Heritage mouldings and glazing bars",
+        "Colour-matched to your property"
+      ]
+    },
+    {
+      "title": "Bespoke joinery & restoration",
+      "description": "Made-to-measure cabinetry, stair details, and sympathetic replacements for listed buildings across East Sussex and Kent.",
+      "image": "https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1400&q=80",
+      "bullets": [
+        "On-site surveys and measured drawings",
+        "FSC-certified timber and Accoya",
+        "Installation by trusted local teams"
+      ]
+    }
+  ],
+  "caseStudies": [
+    {
+      "title": "Rotherfield farmhouse upgrade",
+      "summary": "New Accoya sash windows with slim glazing bars improved comfort while preserving the cottage character.",
+      "cta": "See the detailing",
+      "image": "https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1400&q=80"
+    },
+    {
+      "title": "Tunbridge Wells townhouse",
+      "summary": "Hand-finished French doors and sidelights brought more light into a Georgian kitchen extension.",
+      "cta": "View the finish",
+      "image": "https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?auto=format&fit=crop&w=1400&q=80"
+    }
+  ],
+  "aboutSections": [
+    {
+      "heading": "Crafted in Rotherfield",
+      "body": "Our team machines, assembles, and finishes every project in-house, combining traditional techniques with precision tooling.",
+      "points": [
+        "Accoya and sustainably sourced oak",
+        "Weather-tested coatings with 10-year finish cover",
+        "Friendly team available by phone or workshop visit"
+      ]
+    },
+    {
+      "heading": "Why homeowners choose Wealden",
+      "body": "From survey to installation we keep communication clear, share technical drawings for approval, and schedule works around your build.",
+      "points": [
+        "Conservation and listed building experience",
+        "Clean, considerate fitting teams",
+        "Warranty-backed joinery built to last"
+      ]
+    }
+  ],
+  "galleryImages": [
+    { "src": "https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1400&q=80", "alt": "Timber sash window detail" },
+    { "src": "https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?auto=format&fit=crop&w=1400&q=80", "alt": "Custom timber door with glazing" },
+    { "src": "https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1400&q=80", "alt": "Workshop joinery components ready for finishing" }
+  ],
+  "contactSections": [
+    {
+      "heading": "Ready to plan your project?",
+      "body": "Share your drawings or tell us about your property and we'll prepare a clear, itemised quotation.",
+      "primaryCta": { "label": "Request a quote", "href": "#contact" },
+      "secondaryCta": { "label": "Call 01892 770123", "href": "tel:01892770123" },
+      "address": "Unit 1, London Road, Rotherfield, East Sussex",
+      "email": "info@wealdenjoinery.com",
+      "phone": "01892 770123"
+    }
+  ]
+}
