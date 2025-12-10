@@ -1,28 +1,15 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import imageMap from '../../../../scripts/wealden-image-map.json';
-
-type WealdenImage = {
-  originalUrl: string;
-  localPath: string;
-  alt: string;
-  page?: string;
-};
-
-const navItems = [
-  { label: 'Windows', href: '#windows' },
-  { label: 'Doors', href: '#doors' },
-  { label: 'Heritage & Listed', href: '#heritage' },
-  { label: 'Trade', href: '#trade' },
-  { label: 'Gallery', href: '#projects' },
-];
+import { tenantProfile, WealdenFooter, WealdenImage, WealdenNav } from '../wealden-shared';
 
 export default function LandingPage({ params }: { params: { slug: string } }) {
   const tenant = {
     id: params.slug,
-    name: 'Wealden Joinery',
-    phone: '01892 852544',
+    ...tenantProfile,
   };
+
+  const basePath = `/tenant/${params.slug}`;
 
   const images: WealdenImage[] = (imageMap.images as WealdenImage[]) || [];
   const usedImages = new Set<string>();
@@ -69,44 +56,7 @@ export default function LandingPage({ params }: { params: { slug: string } }) {
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
-      <header className="border-b border-slate-200 bg-white/90 backdrop-blur lg:sticky lg:top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="text-2xl font-semibold tracking-tight text-slate-900">{tenant.name}</div>
-          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-700">
-            {navItems.map((item) => (
-              <Link key={item.label} href={item.href} className="hover:text-green-800 transition-colors">
-                {item.label}
-              </Link>
-            ))}
-            <Link
-              href="#quote"
-              className="inline-flex items-center rounded-full bg-green-800 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-900 transition-colors"
-            >
-              Get a Quote
-            </Link>
-          </div>
-          <details className="md:hidden relative group">
-            <summary className="list-none cursor-pointer rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 flex items-center gap-2">
-              <span className="block w-5 h-0.5 bg-slate-900" />
-              <span className="block w-5 h-0.5 bg-slate-900" />
-              <span className="block w-5 h-0.5 bg-slate-900" />
-            </summary>
-            <div className="absolute right-0 mt-3 w-56 rounded-lg border border-slate-200 bg-white shadow-lg p-4 flex flex-col gap-3 z-20">
-              {navItems.map((item) => (
-                <Link key={item.label} href={item.href} className="text-sm font-medium text-slate-800 hover:text-green-800">
-                  {item.label}
-                </Link>
-              ))}
-              <Link
-                href="#quote"
-                className="inline-flex items-center justify-center rounded-full bg-green-800 px-4 py-2 text-sm font-semibold text-white hover:bg-green-900"
-              >
-                Get a Quote
-              </Link>
-            </div>
-          </details>
-        </div>
-      </header>
+      <WealdenNav slug={params.slug} />
 
       <main>
         <section className="relative overflow-hidden bg-gradient-to-b from-green-50/50 to-white">
@@ -232,7 +182,7 @@ export default function LandingPage({ params }: { params: { slug: string } }) {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <h2 className="text-3xl sm:text-4xl font-semibold text-slate-900">Trusted by homeowners and builders across the South East</h2>
             <Link
-              href="#projects"
+              href={`${basePath}/projects`}
               className="inline-flex items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-800 hover:border-green-700 hover:text-green-800"
             >
               View Recent Projects
@@ -608,48 +558,7 @@ export default function LandingPage({ params }: { params: { slug: string } }) {
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid md:grid-cols-3 gap-8 text-sm text-slate-700">
-          <div className="space-y-2">
-            <div className="text-lg font-semibold text-slate-900">Wealden Joinery</div>
-            <p>Rotherfield, East Sussex</p>
-            <p>
-              Phone:{' '}
-              <Link href={`tel:${tenant.phone.replace(/\s+/g, '')}`} className="font-semibold text-green-800">
-                {tenant.phone}
-              </Link>
-            </p>
-            <p>
-              Email:{' '}
-              <Link href="mailto:martin@wealdenjoinery.com" className="font-semibold text-green-800">
-                martin@wealdenjoinery.com
-              </Link>
-            </p>
-          </div>
-          <div>
-            <div className="text-lg font-semibold text-slate-900">Service areas</div>
-            <p className="mt-2 leading-relaxed">
-              East Sussex, Kent, Rotherfield, Tunbridge Wells, Crowborough, Uckfield, Heathfield, Mayfield, Wadhurst, Frant.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <div className="text-lg font-semibold text-slate-900">Links</div>
-            <div className="flex flex-col gap-2">
-              <Link href="#quote" className="hover:text-green-800">
-                Get a Quote
-              </Link>
-              <Link href="/privacy" className="hover:text-green-800">
-                Privacy Policy
-              </Link>
-              <Link href="/terms" className="hover:text-green-800">
-                Terms & Conditions
-              </Link>
-            </div>
-            <p className="pt-4 text-xs text-slate-500">© 2025 Wealden Joinery. All rights reserved.</p>
-            <p className="text-xs text-slate-500">Campaign powered by Joinery AI</p>
-          </div>
-        </div>
-      </footer>
+      <WealdenFooter slug={params.slug} />
     </div>
   );
 }
