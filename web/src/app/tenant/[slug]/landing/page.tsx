@@ -3,6 +3,8 @@ import { Metadata } from 'next';
 import { fetchTenantFromDB } from '@/lib/landing-api';
 import { PublicLandingClient } from './client';
 import { cookies } from 'next/headers';
+import WealdenLayout from '@/app/(wealden)/wealden-joinery/layout';
+import WealdenHomePage from '@/app/(wealden)/wealden-joinery/page';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -15,12 +17,37 @@ const tenantSlugAliases: Record<string, string> = {
   wealden: 'wealden-joinery',
 };
 
+const wealdenMetadata: Metadata = {
+  title: 'Wealden Joinery | Beautiful Timber Windows & Doors, Crafted in Sussex',
+  description:
+    'Discover Wealden Joinery’s premium timber windows and doors. Heritage-friendly replacements with modern performance, crafted and installed across the South East.',
+  alternates: { canonical: CANONICAL_WEALDEN_URL },
+  openGraph: {
+    title: 'Wealden Joinery | Beautiful Timber Windows & Doors, Crafted in Sussex',
+    description:
+      'Beautiful, high-performance timber windows and doors from Sussex joinery specialists. Explore sash, casement, doors, and alu-clad options.',
+    url: CANONICAL_WEALDEN_URL,
+    siteName: 'Wealden Joinery',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Wealden Joinery | Beautiful Timber Windows & Doors, Crafted in Sussex',
+    description:
+      'Discover Wealden Joinery’s premium timber windows and doors. Heritage-friendly replacements with modern performance, crafted and installed across the South East.',
+  },
+};
+
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const { kw: keyword } = await searchParams;
 
   const resolvedSlug = tenantSlugAliases[slug] || slug;
-  
+
+  if (resolvedSlug === 'wealden-joinery') {
+    return wealdenMetadata;
+  }
+
   try {
     let tenant = await fetchTenantFromDB(resolvedSlug, false);
     if (!tenant && resolvedSlug !== slug) {
@@ -69,6 +96,14 @@ export default async function TenantLandingPage({ params, searchParams }: PagePr
   const { kw: keyword } = await searchParams;
 
   const resolvedSlug = tenantSlugAliases[slug] || slug;
+
+  if (resolvedSlug === 'wealden-joinery') {
+    return (
+      <WealdenLayout>
+        <WealdenHomePage />
+      </WealdenLayout>
+    );
+  }
 
   let tenant;
   try {
