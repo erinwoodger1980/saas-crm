@@ -7,23 +7,27 @@
  * 1. NEXT_PUBLIC_API_BASE (explicit full base) 
  * 2. NEXT_PUBLIC_API_URL (legacy name used elsewhere) 
  * 3. window.location.origin + '/api' in browser (supports same-origin deployments)
- * 4. http://localhost:4000 in development only
- * If nothing can be resolved in production, we return an empty string so fetch callers
- * can still use relative paths or handle error gracefully without crashing the whole app.
+ * 4. /api rewrite fallback (so frontend can proxy to the API service)
+ * 5. http://localhost:4000 in development only
+ * We never return an empty string in production—fall back to the /api rewrite so calls
+ * like `/api/landing-tenants/<slug>` reach the backend instead of 404ing.
  */
 export function getApiBase() {
   const base = (process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_URL || '').trim();
   if (base) return base.replace(/\/$/, '');
+
   if (typeof window !== 'undefined') {
     // Same-origin fallback – assume Next.js API routes or reverse proxy at /api
     return (window.location.origin || '').replace(/\/$/, '') + '/api';
   }
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:4000';
+
+  // Server-side fallback: always use the /api rewrite in production so requests hit the backend
+  const isDev = process.env.NODE_ENV === 'development';
+  if (!isDev) {
+    return '/api';
   }
-  // Production hard fallback: empty string (callers should prepend manually or fail gracefully)
-  console.warn('[api-base] No public API base env vars set; using empty string fallback');
-  return '';
+
+  return 'http://localhost:4000';
 }
 
 export const API_BASE = getApiBase();
