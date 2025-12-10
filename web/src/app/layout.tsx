@@ -41,7 +41,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const isPublicThankYou =
     pathname === "/thank-you" || pathname?.startsWith("/q/thank-you");
   const isMarketingRoute =
-    pathname === "/" || pathname?.startsWith("/policy") || pathname?.startsWith("/wealden-landing");
+    pathname === "/" ||
+    pathname?.startsWith("/policy") ||
+    pathname?.startsWith("/wealden-landing") ||
+    pathname?.startsWith("/wealden-joinery");
   const isTenantLandingPage = pathname?.match(/^\/tenant\/[^/]+\/landing(\/|$)/);
   const isVanityTenantLandingPage = pathname?.match(/^\/[A-Za-z0-9-]+\/landing(\/|$)/);
   const isEarlyAccessRoute = pathname?.startsWith("/early-access");
