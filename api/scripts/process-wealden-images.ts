@@ -74,12 +74,13 @@ async function enhanceImage(inputPath: string, outputPath: string): Promise<{ wi
   
   const metadata = await sharp(inputPath)
     .normalize() // Auto color balance
-    .sharpen({ sigma: 1.5 }) // Clarity enhancement
-    .resize(2400, 1600, { // Max dimensions while preserving aspect ratio
+    .modulate({ brightness: 1.05, saturation: 1.1 }) // Enhance colors
+    .sharpen({ sigma: 2.0 }) // More clarity
+    .resize(3200, 2400, { // Larger max dimensions for better quality
       fit: "inside",
       withoutEnlargement: true,
     })
-    .jpeg({ quality: 90, mozjpeg: true })
+    .jpeg({ quality: 95, mozjpeg: true })
     .toFile(outputPath);
 
   return { width: metadata.width, height: metadata.height };

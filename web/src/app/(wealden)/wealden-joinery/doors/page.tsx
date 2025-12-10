@@ -11,8 +11,9 @@ export const metadata: Metadata = {
 };
 
 const heroImg = getHeroImage();
-const doorTypeImages = getImagesByHint("range-doors", 3);
-const lifestyleImages = getImagesByHint("lifestyle", 3);
+const doorTypeImages = getImagesByHint("range-doors", 8);
+const lifestyleImages = getImagesByHint("lifestyle", 8);
+const detailImages = getImagesByHint("detail", 6);
 
 const doorTypes = [
   {
@@ -189,16 +190,58 @@ export default function DoorsPage() {
         </div>
       </section>
 
-      {/* Mini Gallery Strip */}
+      {/* Door Gallery */}
+      <section>
+        <SectionHeading
+          title="Our Timber Doors"
+          copy="From grand entrance doors to bi-fold garden doors, all crafted for security and style."
+        />
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          {doorTypeImages.map((img) => (
+            <div key={img.id} className="relative aspect-[3/4] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
+              <Image
+                src={img.publicPath}
+                alt={img.caption}
+                width={img.width}
+                height={img.height}
+                className="object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Lifestyle Gallery */}
       <section>
         <SectionHeading
           eyebrow="Recent Installs"
-          title="Doors across the South East."
+          title="Doors across the South East"
           copy="From heritage townhouses to contemporary new builds, every door is crafted to suit the property."
         />
-        <div className="grid gap-4 md:grid-cols-3">
-          {lifestyleImages.map((img, idx) => (
-            <div key={idx} className="relative h-48 w-full overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          {lifestyleImages.map((img) => (
+            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
+              <Image
+                src={img.publicPath}
+                alt={img.caption}
+                width={img.width}
+                height={img.height}
+                className="object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Detail Gallery */}
+      <section>
+        <SectionHeading
+          title="Craftsmanship Details"
+          copy="Premium hardware, elegant mouldings, and refined finishing touches."
+        />
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+          {detailImages.map((img) => (
+            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
               <Image
                 src={img.publicPath}
                 alt={img.caption}

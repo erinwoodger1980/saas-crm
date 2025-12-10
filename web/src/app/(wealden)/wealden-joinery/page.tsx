@@ -12,10 +12,11 @@ export const metadata: Metadata = {
 
 // Use AI-processed images
 const heroImage = getHeroImage();
-const windowImages = getImagesByHint("range-windows", 2);
-const doorImages = getImagesByHint("range-doors", 2);
-const aluImages = getImagesByHint("alu-clad", 1);
-const caseStudyImages = getImagesByHint("case-study", 3);
+const windowImages = getImagesByHint("range-windows", 6);
+const doorImages = getImagesByHint("range-doors", 6);
+const aluImages = getImagesByHint("alu-clad", 2);
+const caseStudyImages = getImagesByHint("case-study", 6);
+const lifestyleImages = getImagesByHint("lifestyle", 8);
 const workshopImage = getImagesByHint("workshop", 1)[0];
 const lifestyleImage = getImagesByHint("lifestyle", 1)[0];
 
@@ -220,6 +221,26 @@ export default function WealdenHomePage() {
               </article>
             );
           })}
+        </div>
+      </section>
+
+      <section>
+        <SectionHeading
+          title="Premium timber joinery in homes across the region"
+          copy="From heritage restorations to contemporary new builds, our work enhances comfort and character."
+        />
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          {lifestyleImages.map((img) => (
+            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
+              <Image
+                src={img.publicPath}
+                alt={img.caption}
+                width={img.width}
+                height={img.height}
+                className="object-cover"
+              />
+            </div>
+          ))}
         </div>
       </section>
 

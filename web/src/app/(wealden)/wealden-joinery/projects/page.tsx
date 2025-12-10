@@ -10,7 +10,8 @@ export const metadata: Metadata = {
     "View our recent timber window and door installations across Sussex, Kent, and the South East. Heritage and contemporary projects.",
 };
 
-const projectImages = getImagesByHint("case-study", 6);
+const projectImages = getImagesByHint("case-study", 12);
+const lifestyleImages = getImagesByHint("lifestyle", 6);
 
 const projects = [
   {
@@ -154,6 +155,27 @@ export default function ProjectsPage() {
               </article>
             );
           })}
+        </div>
+      </section>
+
+      {/* Project Gallery */}
+      <section>
+        <SectionHeading
+          title="More Recent Installs"
+          copy="A selection of our work across Sussex, Kent, and the South East."
+        />
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+          {lifestyleImages.map((img) => (
+            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
+              <Image
+                src={img.publicPath}
+                alt={img.caption}
+                width={img.width}
+                height={img.height}
+                className="object-cover"
+              />
+            </div>
+          ))}
         </div>
       </section>
 

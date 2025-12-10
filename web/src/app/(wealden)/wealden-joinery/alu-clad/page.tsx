@@ -12,6 +12,8 @@ export const metadata: Metadata = {
 
 const heroImg = getHeroImage();
 const aluImages = getImagesByHint("alu-clad", 2);
+const lifestyleImages = getImagesByHint("lifestyle", 6);
+const detailImages = getImagesByHint("detail", 4);
 
 const benefits = [
   {
@@ -192,6 +194,47 @@ export default function AluCladPage() {
               Structural strength of aluminium supports larger panels for bi-fold and sliding door systems.
             </p>
           </div>
+        </div>
+      </section>
+
+      {/* Gallery */}
+      <section>
+        <SectionHeading
+          title="Contemporary Installations"
+          copy="See alu-clad systems in modern homes across the South East."
+        />
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+          {lifestyleImages.map((img) => (
+            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
+              <Image
+                src={img.publicPath}
+                alt={img.caption}
+                width={img.width}
+                height={img.height}
+                className="object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <SectionHeading
+          title="Detail & Finish Quality"
+          copy="Precision engineering and refined detailing throughout."
+        />
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-2">
+          {detailImages.map((img) => (
+            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
+              <Image
+                src={img.publicPath}
+                alt={img.caption}
+                width={img.width}
+                height={img.height}
+                className="object-cover"
+              />
+            </div>
+          ))}
         </div>
       </section>
 

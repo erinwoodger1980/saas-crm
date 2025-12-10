@@ -11,8 +11,9 @@ export const metadata: Metadata = {
 };
 
 const heroImg = getHeroImage();
-const windowTypeImages = getImagesByHint("range-windows", 2);
-const detailImages = getImagesByHint("detail", 4);
+const windowTypeImages = getImagesByHint("range-windows", 8);
+const detailImages = getImagesByHint("detail", 6);
+const lifestyleImages = getImagesByHint("lifestyle", 6);
 
 const windowTypes = [
   {
@@ -154,6 +155,47 @@ export default function WindowsPage() {
               </article>
             );
           })}
+        </div>
+      </section>
+
+      {/* Gallery */}
+      <section>
+        <SectionHeading
+          title="Our Timber Windows"
+          copy="From heritage sash windows to contemporary casements, all crafted for lasting performance."
+        />
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          {windowTypeImages.map((img) => (
+            <div key={img.id} className="relative aspect-[3/4] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
+              <Image
+                src={img.publicPath}
+                alt={img.caption}
+                width={img.width}
+                height={img.height}
+                className="object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <SectionHeading
+          title="In Period & Contemporary Homes"
+          copy="See how our windows enhance character and comfort in properties across the South East."
+        />
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+          {lifestyleImages.map((img) => (
+            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
+              <Image
+                src={img.publicPath}
+                alt={img.caption}
+                width={img.width}
+                height={img.height}
+                className="object-cover"
+              />
+            </div>
+          ))}
         </div>
       </section>
 
