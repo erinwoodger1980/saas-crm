@@ -4,8 +4,8 @@
  *
  * Usage:
  *   pnpm --filter api tsx scripts/bootstrap_campaign.ts -- \
- *     --slug wealden \
- *     --url https://www.joineryai.app/tenant/wealden/landing \
+ *     --slug wealden-joinery \
+ *     --url https://www.joineryai.app/tenant/wealden-joinery/landing \
  *     --postcode "TN22 1AA" \
  *     --radius 50 \
  *     --budget 10 \
@@ -57,8 +57,8 @@ async function main() {
     console.error('  [--radius <miles>] [--budget <gbp>] [--city <city>]');
     console.error('\nExample:');
     console.error('  pnpm --filter api tsx scripts/bootstrap_campaign.ts -- \\');
-    console.error('    --slug wealden \\');
-    console.error('    --url https://www.joineryai.app/tenant/wealden/landing \\');
+    console.error('    --slug wealden-joinery \\');
+    console.error('    --url https://www.joineryai.app/tenant/wealden-joinery/landing \\');
     console.error('    --postcode "TN22 1AA" \\');
     console.error('    --radius 50 \\');
     console.error('    --budget 10 \\');

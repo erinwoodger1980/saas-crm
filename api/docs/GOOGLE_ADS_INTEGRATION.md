@@ -160,7 +160,7 @@ Creates a complete Search campaign with all settings:
 ```bash
 pnpm --filter api tsx scripts/bootstrap_campaign.ts -- \
   --slug wealden \
-  --url https://www.joineryai.app/tenant/wealden/landing \
+  --url https://www.joineryai.app/tenant/wealden-joinery/landing \
   --postcode "TN22 1AA" \
   --radius 50 \
   --budget 10 \
@@ -180,7 +180,7 @@ Expected output:
 Bootstrapping Google Ads campaign...
 
   Tenant slug: wealden
-  Landing URL: https://www.joineryai.app/tenant/wealden/landing
+Landing URL: https://www.joineryai.app/tenant/wealden-joinery/landing
   Postcode: TN22 1AA
   Radius: 50 miles
   Daily budget: £10
@@ -248,7 +248,7 @@ curl -X POST http://localhost:4000/ads/tenant/wealden/bootstrap \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "landingUrl": "https://www.joineryai.app/tenant/wealden/landing",
+    "landingUrl": "https://www.joineryai.app/tenant/wealden-joinery/landing",
     "postcode": "TN22 1AA",
     "radiusMiles": 50,
     "dailyBudgetGBP": 10,

@@ -109,7 +109,7 @@ Bootstrap a complete Search campaign.
 **Request:**
 ```json
 {
-  "landingUrl": "https://www.joineryai.app/tenant/wealden/landing",
+  "landingUrl": "https://www.joineryai.app/tenant/wealden-joinery/landing",
   "postcode": "TN22 1AA",
   "radiusMiles": 50,
   "dailyBudgetGBP": 10
@@ -147,7 +147,7 @@ Bootstrap a complete Search campaign.
 curl -X POST http://localhost:4000/ads/tenant/wealden/bootstrap \
   -H "Content-Type: application/json" \
   -d '{
-    "landingUrl": "https://www.joineryai.app/tenant/wealden/landing",
+    "landingUrl": "https://www.joineryai.app/tenant/wealden-joinery/landing",
     "postcode": "TN22 1AA",
     "radiusMiles": 50,
     "dailyBudgetGBP": 10
@@ -275,7 +275,7 @@ curl http://localhost:4000/ads/tenant/wealden/verify
 curl -X POST http://localhost:4000/ads/tenant/wealden/bootstrap \
   -H "Content-Type: application/json" \
   -d '{
-    "landingUrl": "https://www.joineryai.app/tenant/wealden/landing",
+    "landingUrl": "https://www.joineryai.app/tenant/wealden-joinery/landing",
     "postcode": "TN22 1AA",
     "radiusMiles": 50,
     "dailyBudgetGBP": 10
