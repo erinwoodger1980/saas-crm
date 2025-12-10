@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Contact Wealden Joinery | Get in Touch",
   description:
-    "Contact Wealden Joinery for timber windows and doors. Call, email, or use our online form. Based in Rotherfield, serving Sussex, Kent, and the South East.",
+    "Contact Wealden Joinery for timber windows and doors. Visit our Crowborough HQ or showrooms nationwide. Call, email, or use our online form.",
 };
 
 export default function ContactPage() {
@@ -46,16 +46,29 @@ export default function ContactPage() {
                 <p className="mt-1 text-xs text-slate-600">We respond within 24 hours</p>
               </div>
               <div>
-                <p className="font-semibold text-slate-900">Workshop</p>
+                <p className="font-semibold text-slate-900">Headquarters</p>
                 <address className="not-italic text-slate-700">
                   Wealden Joinery
                   <br />
-                  Rotherfield, East Sussex
+                  Manufacturing HQ & Showroom
                   <br />
-                  TN6 (Full address on request)
+                  Crowborough, East Sussex TN6 3DU
                 </address>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-emerald-700 bg-emerald-50 p-6 shadow-sm">
+            <h3 className="text-base font-semibold text-slate-900">Visit Our Showrooms</h3>
+            <p className="mt-2 text-sm text-slate-700">
+              See our products in person at one of our showrooms across the UK. From our Crowborough manufacturing HQ to locations in Tunbridge Wells, Brighton, Sevenoaks, and London.
+            </p>
+            <Link
+              href="/wealden-joinery/showrooms"
+              className="mt-4 inline-flex rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            >
+              View All Showrooms
+            </Link>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 shadow-sm">

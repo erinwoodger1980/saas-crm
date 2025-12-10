@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+  <!-- Logo based on the provided design -->
+  <defs>
+    <style>
+      .logo-dark { fill: #3d3d3d; }
+      .logo-orange { fill: #d97740; }
+    </style>
+  </defs>
+  
+  <!-- Left triangle (dark) -->
+  <polygon class="logo-dark" points="88,263 202,380 88,497 88,263"/>
+  
+  <!-- Right triangle (orange) -->
+  <polygon class="logo-orange" points="202,263 329,380 202,497 202,263"/>
+  
+  <!-- Text: WEALDEN -->
+  <text x="400" y="360" font-family="Arial, sans-serif" font-size="120" font-weight="bold" class="logo-dark">WEALDEN</text>
+  
+  <!-- Text: JOINERY -->
+  <text x="400" y="470" font-family="Arial, sans-serif" font-size="120" font-weight="bold" class="logo-orange">JOINERY</text>
+  
+  <!-- Text: TIMBER WINDOWS & DOORS -->
+  <text x="400" y="530" font-family="Arial, sans-serif" font-size="32" letter-spacing="8" class="logo-dark">TIMBER WINDOWS &amp; DOORS</text>
+</svg>

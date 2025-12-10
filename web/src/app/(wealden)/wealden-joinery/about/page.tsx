@@ -7,7 +7,7 @@ import { getImagesByHint } from "../_lib/wealdenAiImages";
 export const metadata: Metadata = {
   title: "About Wealden Joinery | Traditional Timber Windows & Doors",
   description:
-    "Founded in the 1990s, Wealden Joinery is a family-run workshop in Rotherfield, crafting bespoke timber windows and doors for heritage and contemporary properties across Sussex and Kent.",
+    "Founded in the 1990s, Wealden Joinery combines in-house craftsmanship at our Crowborough headquarters with a network of showrooms nationwide, delivering premium timber windows and doors across the UK.",
 };
 
 const workshopImages = getImagesByHint("workshop", 2);
@@ -17,7 +17,7 @@ const values = [
   {
     title: "Craftsmanship",
     description:
-      "Every window and door is made by hand in our Rotherfield workshop. We use mortice-and-tenon joinery, engineered cores, and time-tested techniques that guarantee long life.",
+      "Our Crowborough headquarters combines traditional hand-finishing with modern CNC precision. Some products are crafted by trusted manufacturing partners, all meeting our exacting quality standards.",
     icon: "⚒️",
   },
   {
@@ -40,12 +40,27 @@ const values = [
   },
 ];
 
-const regions = [
-  "East Sussex — Lewes, Brighton, Uckfield, Crowborough, Rotherfield, Heathfield, Hailsham, Rye",
-  "West Sussex — Horsham, Haywards Heath, Burgess Hill, Chichester",
-  "Kent — Tunbridge Wells, Sevenoaks, Tonbridge, Maidstone, Ashford",
-  "Surrey — Redhill, Reigate, Dorking, Guildford",
-  "South London — Bromley, Croydon, Dulwich, Greenwich",
+const showroomLocations = [
+  {
+    region: "East Sussex",
+    showrooms: "Crowborough (HQ & Manufacturing), Brighton & Hove",
+    coverage: "Lewes, Brighton, Uckfield, Crowborough, Heathfield, Hailsham, Eastbourne, Hastings",
+  },
+  {
+    region: "Kent",
+    showrooms: "Tunbridge Wells, Sevenoaks",
+    coverage: "Tunbridge Wells, Sevenoaks, Tonbridge, Maidstone, Ashford, Canterbury",
+  },
+  {
+    region: "London",
+    showrooms: "Chelsea Design Studio",
+    coverage: "Central London, South London, West London — serving architects and trade professionals",
+  },
+  {
+    region: "Nationwide Service",
+    showrooms: "Contact us for your area",
+    coverage: "We coordinate surveys, installations, and aftercare across the UK through our showroom network",
+  },
 ];
 
 export default function AboutPage() {
@@ -61,8 +76,7 @@ export default function AboutPage() {
               Traditional Craft, Modern Performance
             </h1>
             <p className="text-lg text-slate-600">
-              Wealden Joinery has been crafting bespoke timber windows and doors since the 1990s. From our Rotherfield workshop, we
-              serve homeowners, architects, and heritage specialists across the South East.
+              Since the 1990s, Wealden Joinery has been crafting premium timber windows and doors. From our Crowborough manufacturing headquarters and showroom network, we serve homeowners, architects, and heritage specialists nationwide.
             </p>
           </div>
         </div>
@@ -89,22 +103,16 @@ export default function AboutPage() {
           )}
           <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
             <p className="text-sm text-slate-700">
-              Wealden Joinery started as a small workshop in Rotherfield, East Sussex, specialising in heritage sash window repairs
-              and replacements. Over time, we expanded into contemporary casements, entrance doors, and alu-clad systems—always
-              maintaining the same commitment to hand-crafted quality.
+              Wealden Joinery started as a small workshop in East Sussex, specialising in heritage sash window repairs and replacements. Over three decades, we've grown into a nationwide business with our manufacturing headquarters in Crowborough and showrooms across the Southeast and London.
             </p>
             <p className="text-sm text-slate-700">
-              Today, we're a trusted name for Listed building consents, conservation area approvals, and high-end new-builds. Our
-              team of skilled joiners, finishers, and installers work on projects from small cottage sash replacements to
-              multi-thousand-square-foot contemporary homes.
+              Today, we're a trusted name for Listed building consents, conservation area approvals, and high-end new-builds. Our in-house team at Crowborough handles precision manufacturing, while trusted partner workshops produce selected ranges to our specifications. Every product, regardless of origin, meets our exacting quality standards.
             </p>
             <p className="text-sm text-slate-700">
-              We don't mass-produce. Every window and door is made to order, measured on-site, and tailored to your property. That
-              approach takes longer, but it's the only way to deliver joinery that lasts.
+              We don't mass-produce. Every window and door is made to order, measured on-site, and tailored to your property. Our showroom network ensures expert local service, from initial consultation through to installation and aftercare.
             </p>
             <p className="text-sm text-slate-700">
-              <strong className="font-semibold text-slate-900">Based in Rotherfield, East Sussex.</strong> Serving Sussex, Kent,
-              Surrey, and South London.
+              <strong className="font-semibold text-slate-900">Manufacturing HQ: Crowborough, East Sussex.</strong> Showrooms nationwide—visit us to see our products and meet our team.
             </p>
           </div>
         </div>
@@ -128,27 +136,35 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Region Served */}
+      {/* Showroom Network */}
       <section>
         <SectionHeading
-          eyebrow="Where We Work"
-          title="Serving the South East"
-          copy="We install across Sussex, Kent, Surrey, and South London. If you're outside these areas, get in touch—we may still be able to help."
+          eyebrow="Our Showrooms"
+          title="Visit us nationwide"
+          copy="From our Crowborough headquarters to showrooms across the Southeast and London, we're here to help with your project."
         />
-        <div className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <ul className="space-y-3">
-            {regions.map((region) => {
-              const parts = region.split(" — ");
-              const county = parts[0];
-              const towns = parts[1];
-              return (
-                <li key={region} className="text-sm">
-                  <strong className="font-semibold text-slate-900">{county}</strong>
-                  {towns && <span className="text-slate-700"> — {towns}</span>}
-                </li>
-              );
-            })}
-          </ul>
+        <div className="mt-8 space-y-4">
+          {showroomLocations.map((location) => (
+            <article key={location.region} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+              <div className="space-y-2">
+                <h3 className="text-base font-semibold text-slate-900">{location.region}</h3>
+                <p className="text-sm text-emerald-700">
+                  <strong>Showrooms:</strong> {location.showrooms}
+                </p>
+                <p className="text-sm leading-relaxed text-slate-600">
+                  <strong className="text-slate-700">Coverage:</strong> {location.coverage}
+                </p>
+              </div>
+            </article>
+          ))}
+          <div className="text-center pt-4">
+            <Link
+              href="/wealden-joinery/showrooms"
+              className="inline-flex rounded-full bg-emerald-700 px-6 py-3 text-sm font-semibold text-white transition hover:scale-[1.02] hover:bg-emerald-800"
+            >
+              View All Showrooms & Locations
+            </Link>
+          </div>
         </div>
       </section>
 

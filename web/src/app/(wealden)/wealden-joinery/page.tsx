@@ -5,9 +5,9 @@ import { SectionHeading } from "./_components/section-heading";
 import { getHeroImage, getImagesByHint, getFallbackImages } from "./_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
-  title: "Wealden Joinery | Beautiful Timber Windows & Doors, Crafted in Sussex",
+  title: "Wealden Joinery | Premium Timber Windows & Doors — Nationwide Showrooms",
   description:
-    "Discover Wealden Joinery’s premium timber windows and doors. Heritage-friendly replacements with modern performance, crafted and installed across the South East.",
+    "Premium timber windows and doors from our Crowborough manufacturing HQ. Visit our showrooms nationwide for heritage and contemporary joinery solutions.",
 };
 
 // Use AI-processed images
@@ -104,11 +104,10 @@ export default function WealdenHomePage() {
               Wealden Joinery
             </p>
             <h1 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
-              Beautiful Timber Windows & Doors, Crafted in Sussex.
+              Premium Timber Windows & Doors
             </h1>
             <p className="text-lg text-slate-600">
-              Heritage-sensitive replacements with modern performance. From sash and casement windows to statement entrance doors,
-              we design, make, and install everything in-house.
+              Heritage-sensitive replacements with modern performance. Manufactured at our Crowborough headquarters with showrooms nationwide. From sash and casement windows to statement entrance doors.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
@@ -127,15 +126,15 @@ export default function WealdenHomePage() {
             <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
               <div className="flex items-center gap-2">
                 <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                <span>Made in Rotherfield workshop</span>
+                <span>Crowborough HQ & Manufacturing</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
-                <span>FENSA registered installer</span>
+                <span>Showrooms Nationwide</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="inline-block h-2 w-2 rounded-full bg-slate-500" />
-                <span>PAS 24 compliant</span>
+                <span>FENSA & PAS 24 Certified</span>
               </div>
             </div>
           </div>
