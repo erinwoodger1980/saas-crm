@@ -1,4 +1,13 @@
+import Image from 'next/image';
 import Link from 'next/link';
+import imageMap from '../../../../scripts/wealden-image-map.json';
+
+type WealdenImage = {
+  originalUrl: string;
+  localPath: string;
+  alt: string;
+  page?: string;
+};
 
 const navItems = [
   { label: 'Windows', href: '#windows' },
@@ -14,6 +23,49 @@ export default function LandingPage({ params }: { params: { slug: string } }) {
     name: 'Wealden Joinery',
     phone: '01892 852544',
   };
+
+  const images: WealdenImage[] = (imageMap.images as WealdenImage[]) || [];
+  const usedImages = new Set<string>();
+
+  const getRemainingImages = (count: number) => {
+    const available = images.filter((img) => !usedImages.has(img.localPath));
+    const selection = available.slice(0, count);
+    selection.forEach((img) => usedImages.add(img.localPath));
+    return selection;
+  };
+
+  const getFirstMatchingImage = (keyword: string) => {
+    const lower = keyword.toLowerCase();
+    const found = images.find(
+      (img) =>
+        !usedImages.has(img.localPath) &&
+        ((img.alt && img.alt.toLowerCase().includes(lower)) || img.localPath.toLowerCase().includes(lower)),
+    );
+
+    if (found) {
+      usedImages.add(found.localPath);
+      return found;
+    }
+
+    return getRemainingImages(1)[0];
+  };
+
+  const heroImage = getFirstMatchingImage('hero');
+  const frontDoorImage = getFirstMatchingImage('door');
+  const sashImage = getFirstMatchingImage('sash');
+  const casementImage = getFirstMatchingImage('casement');
+  const genericImages = getRemainingImages(3);
+  const projectImages = [frontDoorImage, sashImage, casementImage, ...getRemainingImages(3)]
+    .filter(Boolean)
+    .slice(0, 3) as WealdenImage[];
+  const materialsImage =
+    getFirstMatchingImage('joinery') || getFirstMatchingImage('oak') || projectImages[0] || genericImages[0];
+  const projectContent = [
+    { title: 'Tunbridge Wells – Oak Sash Windows' },
+    { title: 'Mayfield – Accoya Front Door' },
+    { title: 'Crowborough – Cottage Casement Windows' },
+  ];
+  const displayProjectImages = (projectImages.length ? projectImages : genericImages).slice(0, 3);
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -95,7 +147,17 @@ export default function LandingPage({ params }: { params: { slug: string } }) {
               </div>
             </div>
             <div className="relative">
-              <div className="rounded-3xl bg-[url('/images/wealden-hero-placeholder.jpg')] bg-cover bg-center h-[320px] sm:h-[420px] shadow-xl shadow-slate-900/10" />
+              <div className="relative w-full h-[260px] sm:h-[360px] lg:h-[480px] overflow-hidden rounded-2xl shadow-lg">
+                {heroImage && (
+                  <Image
+                    src={heroImage.localPath}
+                    alt={heroImage.alt || 'Wealden Joinery timber windows and doors'}
+                    fill
+                    className="object-cover"
+                    priority
+                  />
+                )}
+              </div>
             </div>
           </div>
           <div className="border-t border-slate-200 bg-white/70 backdrop-blur">
@@ -210,18 +272,23 @@ export default function LandingPage({ params }: { params: { slug: string } }) {
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 lg:py-20 space-y-8">
             <h2 className="text-3xl sm:text-4xl font-semibold text-slate-900">Recent projects</h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[
-                { title: 'Tunbridge Wells – Oak Sash Windows', image: "bg-[url('/images/wealden-project-1.jpg')]" },
-                { title: 'Mayfield – Accoya Front Door', image: "bg-[url('/images/wealden-project-2.jpg')]" },
-                { title: 'Crowborough – Cottage Casement Windows', image: "bg-[url('/images/wealden-project-3.jpg')]" },
-              ].map((item) => (
-                <div
-                  key={item.title}
+              {displayProjectImages.map((img, idx) => (
+                <article
+                  key={idx}
                   className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
                 >
-                  <div className={`h-48 bg-center bg-cover ${item.image || ''} bg-slate-100`} />
-                  <div className="p-4 text-sm font-semibold text-slate-900 group-hover:text-green-800 transition">{item.title}</div>
-                </div>
+                  <div className="relative w-full h-48">
+                    <Image
+                      src={img.localPath}
+                      alt={img.alt || 'Wealden Joinery project'}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="p-4 text-sm font-semibold text-slate-900 group-hover:text-green-800 transition">
+                    {projectContent[idx]?.title || 'Wealden Joinery project'}
+                  </div>
+                </article>
               ))}
             </div>
           </div>
@@ -248,7 +315,16 @@ export default function LandingPage({ params }: { params: { slug: string } }) {
                 ))}
               </ul>
             </div>
-            <div className="rounded-3xl bg-[url('/images/wealden-materials.jpg')] bg-cover bg-center h-[320px] sm:h-[400px] shadow-lg shadow-slate-900/10" />
+            {materialsImage && (
+              <div className="relative w-full h-64 md:h-80 rounded-2xl overflow-hidden shadow-md">
+                <Image
+                  src={materialsImage.localPath}
+                  alt={materialsImage.alt || 'Oak and Accoya timber windows and doors'}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+            )}
           </div>
         </section>
 

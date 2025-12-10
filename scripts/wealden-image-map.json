@@ -1,0 +1,34 @@
+{
+  "images": [
+    {
+      "originalUrl": "https://www.wealdenjoinery.com/wp-content/uploads/2024/02/wealden-hero.jpg",
+      "localPath": "/wealden-scraped/wealden-hero.jpg",
+      "alt": "oak sash window living room hero",
+      "page": "https://www.wealdenjoinery.com/"
+    },
+    {
+      "originalUrl": "https://www.wealdenjoinery.com/wp-content/uploads/2024/02/accoya-front-door.jpg",
+      "localPath": "/wealden-scraped/accoya-front-door.jpg",
+      "alt": "accoya front door with brass hardware",
+      "page": "https://www.wealdenjoinery.com/gallery/"
+    },
+    {
+      "originalUrl": "https://www.wealdenjoinery.com/wp-content/uploads/2024/02/sash-window-detail.jpg",
+      "localPath": "/wealden-scraped/sash-window-detail.jpg",
+      "alt": "heritage sash window detail",
+      "page": "https://www.wealdenjoinery.com/projects/"
+    },
+    {
+      "originalUrl": "https://www.wealdenjoinery.com/wp-content/uploads/2024/02/casement-windows.jpg",
+      "localPath": "/wealden-scraped/casement-windows.jpg",
+      "alt": "oak casement windows",
+      "page": "https://www.wealdenjoinery.com/gallery/"
+    },
+    {
+      "originalUrl": "https://www.wealdenjoinery.com/wp-content/uploads/2024/02/workshop-team.jpg",
+      "localPath": "/wealden-scraped/workshop-team.jpg",
+      "alt": "wealden joinery workshop team",
+      "page": "https://www.wealdenjoinery.com/"
+    }
+  ]
+}
