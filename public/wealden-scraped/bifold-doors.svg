@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500" role="img" aria-label="Bifold doors placeholder">
+  <defs>
+    <linearGradient id="bifoldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff7ed" />
+      <stop offset="100%" stop-color="#facc15" />
+    </linearGradient>
+  </defs>
+  <rect width="900" height="500" fill="url(#bifoldGrad)" />
+  <g fill="#fefce8" stroke="#b45309" stroke-width="10">
+    <rect x="120" y="90" width="200" height="320" rx="18" />
+    <rect x="340" y="90" width="200" height="320" rx="18" />
+    <rect x="560" y="90" width="200" height="320" rx="18" />
+    <line x1="320" y1="90" x2="320" y2="410" />
+    <line x1="540" y1="90" x2="540" y2="410" />
+  </g>
+  <g fill="#92400e" font-family="'Inter', 'Segoe UI', system-ui" font-weight="700">
+    <text x="140" y="60" font-size="30">Timber bifold doors</text>
+    <text x="140" y="100" font-size="18" fill="#854d0e">Garden opening • Slim profiles</text>
+  </g>
+</svg>

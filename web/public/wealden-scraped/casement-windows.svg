@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 460" role="img" aria-label="Casement windows placeholder">
+  <defs>
+    <linearGradient id="caseGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fef9e7" />
+      <stop offset="100%" stop-color="#fbbf24" />
+    </linearGradient>
+  </defs>
+  <rect width="820" height="460" fill="url(#caseGrad)" />
+  <rect x="150" y="80" width="520" height="300" rx="20" fill="#fefce8" stroke="#b45309" stroke-width="10" />
+  <line x1="410" y1="80" x2="410" y2="380" stroke="#b45309" stroke-width="10" />
+  <line x1="150" y1="230" x2="670" y2="230" stroke="#b45309" stroke-width="10" stroke-dasharray="14 10" />
+  <text x="70" y="90" fill="#92400e" font-family="'Inter', 'Segoe UI', system-ui" font-size="26" font-weight="700">
+    Oak casement windows
+  </text>
+  <text x="70" y="130" fill="#92400e" font-family="'Inter', 'Segoe UI', system-ui" font-size="18">
+    Flush lines • Multi-point locking
+  </text>
+</svg>
