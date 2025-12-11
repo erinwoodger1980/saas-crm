@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import ProductionLogModal from "@/components/ProductionLogModal";
+import { ColumnConfigModal } from "@/components/ColumnConfigModal";
 
 interface FireDoorProject {
   id: string;
@@ -66,6 +67,8 @@ export default function FireDoorSchedulePage() {
   const [frozenColumns, setFrozenColumns] = useState<string[]>(['mjsNumber']); // Default freeze MJS column
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [showColumnFreezeModal, setShowColumnFreezeModal] = useState(false);
+  const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [tabColumnConfigs, setTabColumnConfigs] = useState<Record<string, any[]>>({});
   const headerRefs = useRef<Record<string, HTMLTableCellElement | null>>({});
   const headerRowRef = useRef<HTMLTableRowElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
@@ -156,6 +159,7 @@ export default function FireDoorSchedulePage() {
       const savedCustomColors = localStorage.getItem("fds:customColors");
       const savedFrozenColumns = localStorage.getItem("fds:frozenColumns");
       const savedColumnFilters = localStorage.getItem("fds:columnFilters");
+      const savedTabColumnConfigs = localStorage.getItem("fds:tabColumnConfigs");
       if (savedView) setShowTable(savedView === "table");
       if (savedActiveTab) setActiveTab(savedActiveTab);
       if (savedCustomColors) {
@@ -171,6 +175,11 @@ export default function FireDoorSchedulePage() {
       if (savedColumnFilters) {
         try {
           setColumnFilters(JSON.parse(savedColumnFilters));
+        } catch {}
+      }
+      if (savedTabColumnConfigs) {
+        try {
+          setTabColumnConfigs(JSON.parse(savedTabColumnConfigs));
         } catch {}
       }
       
@@ -238,6 +247,9 @@ export default function FireDoorSchedulePage() {
   useEffect(() => {
     try { localStorage.setItem("fds:columnFilters", JSON.stringify(columnFilters)); } catch {}
   }, [columnFilters]);
+  useEffect(() => {
+    try { localStorage.setItem("fds:tabColumnConfigs", JSON.stringify(tabColumnConfigs)); } catch {}
+  }, [tabColumnConfigs]);
 
   // Load dropdown options from localStorage
   useEffect(() => {
@@ -437,6 +449,8 @@ export default function FireDoorSchedulePage() {
     return "bg-slate-100 text-slate-600";
   }
 
+
+
   // Helper to get hex color from Tailwind class
   function getColorHex(colorClass: string): string {
     const colorMap: Record<string, string> = {
@@ -615,11 +629,29 @@ export default function FireDoorSchedulePage() {
         'deliveryNotes'
       ]
     },
+    BOM_OVERVIEW: {
+      label: 'BOM Overview',
+      columns: [
+        'mjsNumber',
+        'clientName',
+        'jobName',
+        'blanksStatus',
+        'lippingsStatus',
+        'facingsStatus',
+        'glassStatus',
+        'cassettesStatus',
+        'timbersStatus',
+        'ironmongeryStatus',
+        'bomPercent'
+      ]
+    },
     ALL: {
       label: 'All',
       columns: [
         'mjsNumber',
         'clientName',
+        'jobName',
+        'netValue',
         'dateReceived',
         'jobLocation',
         'signOffStatus',
@@ -778,6 +810,48 @@ export default function FireDoorSchedulePage() {
     // Regular columns for other text
     return 120;
   };
+
+  // Get visible columns for current tab
+  function getVisibleColumns(): string[] {
+    const tabConfig = tabColumnConfigs[activeTab];
+    if (tabConfig && tabConfig.length > 0) {
+      return tabConfig.filter(c => c.visible).map(c => c.field);
+    }
+    // Default to tab definition
+    return TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS]?.columns || [];
+  }
+
+  // Handle save column config
+  function handleSaveColumnConfig(newConfig: any[]) {
+    setTabColumnConfigs({
+      ...tabColumnConfigs,
+      [activeTab]: newConfig
+    });
+    setShowColumnConfig(false);
+  }
+
+  // Get available fields for column config modal (all fields from ALL tab)
+  const allAvailableFields = TAB_DEFINITIONS.ALL.columns.map(field => ({
+    field,
+    label: COLUMN_LABELS[field] || field,
+    type: 'text'
+  }));
+
+  // Get current column config for the modal
+  function getCurrentColumnConfig() {
+    const tabConfig = tabColumnConfigs[activeTab];
+    if (tabConfig && tabConfig.length > 0) {
+      return tabConfig;
+    }
+    // Build from tab defaults
+    const defaultCols = TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS]?.columns || [];
+    return defaultCols.map(field => ({
+      field,
+      label: COLUMN_LABELS[field] || field,
+      visible: true,
+      width: getColumnWidth(field)
+    }));
+  }
 
   async function updateProject(projectId: string, patch: Partial<FireDoorProject>) {
     try {
@@ -1468,16 +1542,28 @@ export default function FireDoorSchedulePage() {
               {showTable ? "Card View" : "Table View"}
             </Button>
             {showTable && (
-              <Button
-                variant="outline"
-                className="h-12 bg-white/50"
-                onClick={() => setShowColumnFreezeModal(!showColumnFreezeModal)}
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Freeze Columns
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  className="h-12 bg-white/50"
+                  onClick={() => setShowColumnConfig(true)}
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                  Customize Columns
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-12 bg-white/50"
+                  onClick={() => setShowColumnFreezeModal(!showColumnFreezeModal)}
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Freeze Columns
+                </Button>
+              </>
             )}
           </div>
           {/* Tabs */}
@@ -1511,7 +1597,7 @@ export default function FireDoorSchedulePage() {
                 Select columns to freeze (stick to the left when scrolling). They will appear in the order you select them.
               </p>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-60 overflow-y-auto p-2 border border-slate-200 rounded-md bg-slate-50">
-                {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map(field => {
+                {getVisibleColumns().map(field => {
                   const isChecked = frozenColumns.includes(field);
                   return (
                     <label key={field} className="flex items-center gap-2 cursor-pointer hover:bg-white p-2 rounded">
@@ -1777,7 +1863,7 @@ export default function FireDoorSchedulePage() {
                     <th className="sticky top-0 left-0 px-4 py-3 text-left z-[200] bg-white bg-clip-padding border-r border-slate-200 w-[140px] min-w-[140px] max-w-[140px]">
                       <span className="text-xs uppercase tracking-wider">Actions</span>
                     </th>
-                    {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field, index) => {
+                    {getVisibleColumns().map((field, index) => {
                       const isFrozen = frozenColumns.includes(field);
                       const frozenIndex = frozenColumns.indexOf(field);
                       const fieldWidth = getColumnWidth(field);
@@ -1838,7 +1924,7 @@ export default function FireDoorSchedulePage() {
                         Clear
                       </button>
                     </th>
-                    {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
+                    {getVisibleColumns().map((field) => {
                       const isFrozen = frozenColumns.includes(field);
                       const frozenIndex = frozenColumns.indexOf(field);
                       const fieldWidth = getColumnWidth(field);
@@ -1889,7 +1975,7 @@ export default function FireDoorSchedulePage() {
                           View Order
                         </Button>
                       </td>
-                      {TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS].columns.map((field) => {
+                      {getVisibleColumns().map((field) => {
                         const isFrozen = frozenColumns.includes(field);
                         const frozenIndex = frozenColumns.indexOf(field);
                         const fieldWidth = getColumnWidth(field);
@@ -1993,6 +2079,16 @@ export default function FireDoorSchedulePage() {
           }}
         />
       )}
+
+      {/* Column Config Modal */}
+      <ColumnConfigModal
+        open={showColumnConfig}
+        onClose={() => setShowColumnConfig(false)}
+        availableFields={allAvailableFields}
+        currentConfig={getCurrentColumnConfig()}
+        onSave={handleSaveColumnConfig}
+        tabName={TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS]?.label}
+      />
     </div>
   );
 }
