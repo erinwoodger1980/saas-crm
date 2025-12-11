@@ -162,6 +162,7 @@ import CalendarYearView from "./CalendarYearView";
 import WorkshopTimer, { WorkshopTimerHandle } from "@/components/workshop/WorkshopTimer";
 import { useTaskNotifications } from "@/hooks/useTaskNotifications";
 import { NotificationPrompt, NotificationToggle } from "@/components/notifications/NotificationPrompt";
+import QRScannerModal from "@/components/workshop/QRScannerModal";
 
 // Workshop processes are sourced from settings via `/workshop-processes`
 interface ProcDef { id: string; code: string; name: string; sortOrder?: number; isGeneric?: boolean }
@@ -387,6 +388,7 @@ export default function WorkshopPage() {
   const [showMaterialLink, setShowMaterialLink] = useState<{taskId: string; taskTitle: string} | null>(null);
   const [showMaterialOrder, setShowMaterialOrder] = useState<{taskId: string; taskTitle: string; materialType: string; opportunityId: string} | null>(null);
   const [myTasksCount, setMyTasksCount] = useState(0);
+  const [showQRScanner, setShowQRScanner] = useState(false);
 
   async function loadWorkshopTasks() {
     if (!user?.id) return;
@@ -757,6 +759,28 @@ export default function WorkshopPage() {
     } catch (e: any) {
       alert('Failed to log hours: ' + (e?.message || 'Unknown error'));
       console.error("Failed to log hours", e);
+    }
+  }
+
+  // Handle QR code scan success
+  function handleQRScanSuccess(qrUrl: string) {
+    setShowQRScanner(false);
+    
+    // Extract the URL path and navigate to it
+    try {
+      const url = new URL(qrUrl);
+      window.location.href = url.pathname;
+    } catch (e) {
+      // If it's just a path, navigate directly
+      if (qrUrl.startsWith('/')) {
+        window.location.href = qrUrl;
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Invalid QR Code",
+          description: "Could not parse QR code URL",
+        });
+      }
     }
   }
 
@@ -1342,7 +1366,7 @@ export default function WorkshopPage() {
 
       {/* Timer Widget - Mobile optimized */}
       <div className="max-w-2xl mx-auto space-y-4">
-        <div className="flex justify-center gap-3">
+        <div className="flex justify-center gap-3 flex-wrap">
           <Button 
             variant={viewMode === 'calendar' ? 'default' : 'outline'} 
             size="lg"
@@ -1363,6 +1387,14 @@ export default function WorkshopPage() {
                 {myTasksCount}
               </Badge>
             )}
+          </Button>
+          <Button 
+            variant="outline" 
+            size="lg"
+            onClick={() => setShowQRScanner(true)}
+            className="font-bold"
+          >
+            📷 QR Code
           </Button>
         </div>
         <WorkshopTimer
@@ -2756,6 +2788,14 @@ export default function WorkshopPage() {
             </div>
           </Card>
         </div>
+      )}
+
+      {/* QR Scanner Modal */}
+      {showQRScanner && (
+        <QRScannerModal
+          onClose={() => setShowQRScanner(false)}
+          onScanSuccess={handleQRScanSuccess}
+        />
       )}
     </div>
   );
