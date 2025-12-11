@@ -921,12 +921,13 @@ export default function FireDoorSchedulePage() {
     internalNotes: 'Internal Notes',
     bomNotes: 'Notes',
     lastUpdatedBy: 'Updated By',
-    lastUpdatedAt: 'Updated At'
+    lastUpdatedAt: 'Updated At',
+    approxDate: 'Approx Date'
   };
 
   // Calculate column width based on field type and configuration
   const getColumnWidth = (field: string): number => {
-    // Check if there's a configured width for this field in the current tab
+    // First check the current tab's configuration
     const tabConfig = tabColumnConfigs[activeTab];
     if (tabConfig && tabConfig.length > 0) {
       const colConfig = tabConfig.find(c => c.field === field);
@@ -936,7 +937,21 @@ export default function FireDoorSchedulePage() {
       }
     }
     
-    // Fallback to default widths based on field type
+    // Then check ALL tab configuration (as fallback to preserve old settings)
+    const allTabConfig = tabColumnConfigs['ALL'];
+    if (allTabConfig && allTabConfig.length > 0) {
+      const colConfig = allTabConfig.find(c => c.field === field);
+      if (colConfig && colConfig.width) {
+        console.log('[COLUMN WIDTH] Using ALL tab configured width for', field, ':', colConfig.width);
+        return colConfig.width;
+      }
+    }
+    
+    // Finally fallback to default widths based on field type
+    // Special case for bomNotes - wider default
+    if (field === 'bomNotes') {
+      return 200;
+    }
     // Narrow columns for status/select fields
     if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus', 'jobLocation', 'signOffStatus', 'scheduledBy', 'snaggingStatus', 'snaggingComplete'].includes(field)) {
       return 85;
@@ -1017,6 +1032,22 @@ export default function FireDoorSchedulePage() {
 
   // Render cell based on field type
   function renderCell(project: FireDoorProject, field: string) {
+    // Handle calculated approxDate field
+    if (field === 'approxDate') {
+      if (project.signOffDate && project.leadTimeWeeks) {
+        const signOffDate = new Date(project.signOffDate);
+        const daysToAdd = project.leadTimeWeeks * 7;
+        const approxDate = new Date(signOffDate);
+        approxDate.setDate(approxDate.getDate() + daysToAdd);
+        return (
+          <div className="text-[11px] font-medium px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full border border-blue-200">
+            {approxDate.toLocaleDateString('en-GB')}
+          </div>
+        );
+      }
+      return <div className="text-[11px] text-slate-400 px-3 py-1.5">—</div>;
+    }
+    
     const value = project[field];
 
     // Date fields
