@@ -379,6 +379,11 @@ export default function FireDoorLineItemDetailPage() {
   const processes = activeLayout.processes || [];
 
   function renderProcessTab(process: ProcessConfig) {
+    // Check if CNC URLs are configured
+    const initialCncUrl = data?.layout?.cncCalculations?.initialCncProgramUrl;
+    const finalCncUrl = data?.layout?.cncCalculations?.finalCncTrimProgramUrl;
+    const hasCncUrls = initialCncUrl || finalCncUrl;
+    
     return (
       <div className="space-y-6">
         {/* Project Information for this process */}
@@ -400,6 +405,25 @@ export default function FireDoorLineItemDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {process.lineItemFields.map((fieldConfig) =>
                 renderField(fieldConfig, lineItem[fieldConfig.key], "lineItem")
+              )}
+            </div>
+          </Card>
+        )}
+        
+        {/* CNC Program QR Codes - Always show if configured */}
+        {hasCncUrls && (
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4">CNC Programs</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {initialCncUrl && renderField(
+                { key: "initialCncProgramUrl", label: "Initial CNC Program", visible: true, editable: false },
+                null,
+                "lineItem"
+              )}
+              {finalCncUrl && renderField(
+                { key: "finalCncTrimProgramUrl", label: "Final CNC Trim Program", visible: true, editable: false },
+                null,
+                "lineItem"
               )}
             </div>
           </Card>
