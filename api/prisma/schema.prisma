@@ -2676,6 +2676,8 @@ model FireDoorLineItem {
   materialCost            Decimal?
   lineTotal               Decimal?
   rawRowJson              Json
+  initialCncProgramUrl    String?
+  finalCncTrimProgramUrl  String?
   createdAt               DateTime         @default(now())
   updatedAt               DateTime         @updatedAt
   import                  FireDoorImport   @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)
