@@ -303,18 +303,27 @@ export default function WorkshopScanPage() {
             <h1 className="text-2xl font-bold">
               {scanData.doorRef || scanData.lajRef || "Door"}
             </h1>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div className="text-lg font-semibold text-primary">
                 {processName}
               </div>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={changeProcess}
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Change Process
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => window.location.href = `/fire-door-line-item-layout/${lineItemId}`}
+                >
+                  View Full Details
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={changeProcess}
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Change Process
+                </Button>
+              </div>
             </div>
             <div className="text-sm text-muted-foreground">
               Project: {scanData.projectName}

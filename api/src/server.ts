@@ -118,6 +118,7 @@ import fireDoorImportBomRouter from "./routes/fire-door-import-bom";
 import fireDoorImportTriggerRouter from "./routes/fire-door-import-trigger";
 import fireDoorEnableRouter from "./routes/fire-door-enable";
 import fireDoorProductionRouter from "./routes/fire-door-production";
+import fireDoorLineItemLayoutRouter from "./routes/fire-door-line-item-layout";
 import fireDoorQuotesRouter from "./routes/fire-door-quotes";
 import publicFireDoorsRouter from "./routes/public-fire-doors";
 import customerAuthRouter from "./routes/customer-auth";
@@ -676,6 +677,8 @@ app.use("/fire-door-schedule", requireAuth, fireDoorImportTriggerRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorEnableRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorScheduleRouter);
 app.use("/fire-door-production", requireAuth, fireDoorProductionRouter);
+// Fire door line item layout configuration (customizable field display for QR scans)
+app.use("/fire-door-line-item-layout", requireAuth, fireDoorLineItemLayoutRouter);
 // Fire door quotes (dedicated quote builder for fire doors)
 app.use("/fire-door-quotes", requireAuth, fireDoorQuotesRouter);
 // Fire door QR code system (workshop process tracking, dispatch, maintenance)

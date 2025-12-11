@@ -608,4 +608,48 @@ router.post("/colors", async (req: any, res: Response) => {
   }
 });
 
+// PATCH /fire-door-schedule/line-items/:id - Update line item fields
+router.patch("/line-items/:id", async (req: any, res: Response) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    const { id } = req.params;
+    
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
+    }
+
+    // Verify line item belongs to this tenant
+    const existingLineItem = await prisma.fireDoorLineItem.findFirst({
+      where: {
+        id,
+        tenantId,
+      },
+    });
+
+    if (!existingLineItem) {
+      return res.status(404).json({ error: "Line item not found" });
+    }
+
+    // Update the line item
+    const updatedLineItem = await prisma.fireDoorLineItem.update({
+      where: { id },
+      data: req.body,
+    });
+
+    res.json({ success: true, lineItem: updatedLineItem });
+  } catch (error) {
+    console.error("Error updating line item:", error);
+    res.status(500).json({ error: "Failed to update line item" });
+  }
+});
+
 export default router;
