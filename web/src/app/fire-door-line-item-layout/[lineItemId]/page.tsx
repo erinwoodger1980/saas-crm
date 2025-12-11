@@ -159,9 +159,10 @@ export default function FireDoorLineItemDetailPage() {
     // Hide blank fields if configured
     if (data?.layout?.hideBlankFields && isBlank) return null;
 
-    // Handle CNC URL fields with QR codes
+    // Handle CNC URL fields with QR codes - get formula from layout configuration
     if (config.key === 'initialCncProgramUrl' || config.key === 'finalCncTrimProgramUrl') {
-      const evaluatedUrl = currentValue ? evaluateFormula(currentValue) : '';
+      const formula = data?.layout?.cncCalculations?.[config.key as 'initialCncProgramUrl' | 'finalCncTrimProgramUrl'];
+      const evaluatedUrl = formula ? evaluateFormula(formula) : '';
       
       return (
         <div key={`${source}-${config.key}`} className="space-y-2">
