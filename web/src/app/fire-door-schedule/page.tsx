@@ -471,6 +471,37 @@ export default function FireDoorSchedulePage() {
     return (r * 299 + g * 587 + b * 114) / 1000;
   }
 
+  // Map Tailwind background classes to hex colors
+  const TAILWIND_BG_TO_HEX: Record<string, string> = {
+    'bg-slate-100': '#f1f5f9',
+    'bg-orange-100': '#ffedd5',
+    'bg-cyan-100': '#cffafe',
+    'bg-blue-100': '#dbeafe',
+    'bg-emerald-100': '#d1fae5',
+    'bg-purple-100': '#f3e8ff',
+    'bg-green-100': '#dcfce7',
+  };
+
+  // Get default color for an option based on the field being edited
+  function getDefaultColorForOption(fieldName: string, optionValue: string): string {
+    let colorMap: Record<string, string> = {};
+    
+    if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus'].includes(fieldName)) {
+      colorMap = MATERIAL_STATUS_COLORS;
+    } else if (['doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus'].includes(fieldName)) {
+      colorMap = PAPERWORK_STATUS_COLORS;
+    } else if (fieldName === 'transportStatus') {
+      colorMap = TRANSPORT_STATUS_COLORS;
+    }
+    
+    const tailwindClasses = colorMap[optionValue];
+    if (!tailwindClasses) return '#ffffff';
+    
+    // Extract bg-* class and convert to hex
+    const bgClass = tailwindClasses.split(' ').find(c => c.startsWith('bg-'));
+    return bgClass ? (TAILWIND_BG_TO_HEX[bgClass] || '#ffffff') : '#ffffff';
+  }
+
   // Calculate BOM completion percentage
   function calculateBOMPercent(project: FireDoorProject): number {
     const statuses = [
@@ -1763,7 +1794,7 @@ export default function FireDoorSchedulePage() {
                         <input
                           type="color"
                           className="w-8 h-7 border rounded cursor-pointer"
-                          value={customColors[opt]?.bg || '#ffffff'}
+                          value={customColors[opt]?.bg || getDefaultColorForOption(editingConfigField || '', opt)}
                           onChange={(e) => {
                             const hex = e.target.value;
                             const brightness = getBrightness(hex);
