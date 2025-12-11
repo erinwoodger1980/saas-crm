@@ -129,11 +129,7 @@ router.get("/:lineItemId/data", async (req: any, res: Response) => {
         tenantId,
       },
       include: {
-        import: {
-          include: {
-            project: true,
-          },
-        },
+        import: true,
       },
     });
 
@@ -141,9 +137,17 @@ router.get("/:lineItemId/data", async (req: any, res: Response) => {
       return res.status(404).json({ error: "Line item not found" });
     }
 
+    // Get the associated fire door schedule project if it exists
+    let project = null;
+    if (lineItem.import.projectId) {
+      project = await prisma.fireDoorScheduleProject.findUnique({
+        where: { id: lineItem.import.projectId },
+      });
+    }
+
     res.json({
       lineItem,
-      project: lineItem.import.project,
+      project,
       layout: settings.fireDoorLineItemLayout,
     });
   } catch (error) {
