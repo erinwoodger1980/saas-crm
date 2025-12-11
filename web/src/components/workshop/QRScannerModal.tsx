@@ -31,26 +31,10 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
     };
     document.body.appendChild(script);
 
-    // Wait for video element to be mounted, then start camera
-    let attempts = 0;
-    const maxAttempts = 10;
-    const checkAndStartCamera = () => {
-      console.log(`Attempt ${attempts + 1}: checking if video element is ready...`);
-      if (videoRef.current) {
-        console.log("Video element found, starting camera");
-        startCamera();
-      } else if (attempts < maxAttempts) {
-        attempts++;
-        setTimeout(checkAndStartCamera, 100);
-      } else {
-        console.error("Video element not found after 10 attempts");
-        setError("Failed to initialize video element");
-        setHasPermission(false);
-      }
-    };
-    
-    // Start checking after a small delay
-    const timer = setTimeout(checkAndStartCamera, 50);
+    // Start camera after a brief delay to ensure video element is in DOM
+    const timer = setTimeout(() => {
+      startCamera();
+    }, 100);
 
     return () => {
       clearTimeout(timer);
@@ -249,8 +233,18 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
         {/* Camera View */}
         <div className="p-4">
           <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+            {/* Video element always rendered so it exists when we need it */}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+              style={{ display: hasPermission === true ? 'block' : 'none' }}
+            />
+
             {hasPermission === null && (
-              <div className="absolute inset-0 flex items-center justify-center text-white">
+              <div className="absolute inset-0 flex items-center justify-center text-white z-10">
                 <div className="text-center">
                   <Camera className="w-12 h-12 mx-auto mb-2 animate-pulse" />
                   <p>Requesting camera access...</p>
@@ -259,7 +253,7 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
             )}
 
             {hasPermission === false && (
-              <div className="absolute inset-0 flex items-center justify-center text-white p-6">
+              <div className="absolute inset-0 flex items-center justify-center text-white p-6 z-10">
                 <div className="text-center">
                   <Camera className="w-12 h-12 mx-auto mb-2 text-red-400" />
                   <p className="font-semibold mb-2">Camera Access Denied</p>
@@ -286,16 +280,8 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
 
             {hasPermission && (
               <>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-                
                 {/* QR Code targeting frame */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                   <div className="relative w-64 h-64 border-4 border-white/50 rounded-lg">
                     {/* Corner decorations */}
                     <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 -translate-x-1 -translate-y-1" />
@@ -306,7 +292,7 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
                 </div>
 
                 {/* Instructions */}
-                <div className="absolute bottom-4 left-0 right-0 text-center">
+                <div className="absolute bottom-4 left-0 right-0 text-center z-10">
                   <div className="inline-block bg-black/70 text-white px-4 py-2 rounded-full text-sm">
                     Position QR code within the frame
                   </div>
