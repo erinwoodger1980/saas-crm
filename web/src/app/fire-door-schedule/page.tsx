@@ -1726,11 +1726,19 @@ export default function FireDoorSchedulePage() {
               </button>
             </div>
           )}
-          <div className="mt-2 text-xs text-slate-500 flex flex-wrap gap-4">
+          <div className="mt-2 text-xs text-slate-500 flex flex-wrap gap-4 items-center">
             <span>Location Filter: <strong>{selectedLocations.length === 0 ? 'None' : selectedLocations.length === jobLocationOptions.length ? 'All' : selectedLocations.join(', ')}</strong></span>
             <span>Active Tab: <strong>{TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS]?.label || activeTab}</strong></span>
             {Object.keys(columnFilters).length > 0 && (
-              <span>Column Filters: <strong className="text-blue-600">{Object.keys(columnFilters).length} active</strong></span>
+              <>
+                <span>Column Filters: <strong className="text-blue-600">{Object.keys(columnFilters).length} active</strong></span>
+                <button
+                  onClick={() => setColumnFilters({})}
+                  className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                >
+                  Clear All Column Filters
+                </button>
+              </>
             )}
             {frozenColumns.length > 0 && (
               <span>Frozen Columns: <strong className="text-purple-600">{frozenColumns.length}</strong></span>
