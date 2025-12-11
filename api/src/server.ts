@@ -669,11 +669,12 @@ app.use("/example-photos", examplePhotosRouter);
 // Fire door import system (requires fire door manufacturer access)
 app.use("/fire-doors", requireAuth, fireDoorsRouter);
 // Fire door schedule (unified project tracking for fire door manufacturers)
-app.use("/fire-door-schedule", requireAuth, fireDoorScheduleRouter);
+// Register specific routers first, then the main router as catch-all
 app.use("/fire-door-schedule", requireAuth, fireDoorScheduleSyncRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorImportBomRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorImportTriggerRouter);
 app.use("/fire-door-schedule", requireAuth, fireDoorEnableRouter);
+app.use("/fire-door-schedule", requireAuth, fireDoorScheduleRouter);
 app.use("/fire-door-production", requireAuth, fireDoorProductionRouter);
 // Fire door quotes (dedicated quote builder for fire doors)
 app.use("/fire-door-quotes", requireAuth, fireDoorQuotesRouter);
