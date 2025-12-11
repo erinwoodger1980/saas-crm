@@ -2741,6 +2741,7 @@ model FireDoorScheduleProject {
   deliveryChecklistStatus String?
   framesPaperworkStatus   String?
   paperworkComments       String?
+  bomNotes                String?
   certificationRequired   String?
   fscRequired             Boolean                 @default(false)
   invoiceStatus           String?

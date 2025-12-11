@@ -733,7 +733,8 @@ export default function FireDoorSchedulePage() {
         'ironmongeryStatus',
         'ironmongeryDateOrdered',
         'ironmongeryDateExpected',
-        'ironmongeryDateReceived'
+        'ironmongeryDateReceived',
+        'bomNotes'
       ]
     },
     PAPERWORK: {
@@ -917,6 +918,7 @@ export default function FireDoorSchedulePage() {
     snaggingComplete: 'Snagging Done',
     communicationNotes: 'Communication',
     internalNotes: 'Internal Notes',
+    bomNotes: 'Notes',
     lastUpdatedBy: 'Updated By',
     lastUpdatedAt: 'Updated At'
   };
@@ -1416,13 +1418,14 @@ export default function FireDoorSchedulePage() {
     }
 
     // Textarea for comments/notes
-    if (field === 'paperworkComments' || field === 'deliveryNotes') {
+    if (field === 'paperworkComments' || field === 'deliveryNotes' || field === 'bomNotes') {
       return (
         <textarea
           className="bg-transparent outline-none w-full text-sm border border-slate-200 rounded px-2 py-1 focus:border-blue-500 resize-none"
           rows={2}
           value={value || ''}
           placeholder="—"
+          title={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
         />
       );
@@ -1441,6 +1444,7 @@ export default function FireDoorSchedulePage() {
           value={value || ''}
           placeholder="—"
           rows={2}
+          title={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
         />
       );
