@@ -37,8 +37,8 @@ export default function FireDoorQRPrintPage() {
       );
       if (data.ok) {
         setLineItems(data.lineItems);
-        // Generate QR data for all items with selected process
-        generateQRData(data.lineItems, selectedProcess);
+        // Generate QR data for all items (universal QR - user selects process after scanning)
+        generateQRData(data.lineItems);
       }
     } catch (e: any) {
       console.error("Failed to load line items:", e);
@@ -239,7 +239,7 @@ export default function FireDoorQRPrintPage() {
                 {lineItem.doorRef || lineItem.lajRef || "Door"}
               </div>
               <div className="text-sm text-center text-muted-foreground">
-                {selectedProcess}
+                Workshop QR
               </div>
               {lineItem.rating && (
                 <div className="text-xs text-center text-muted-foreground">
