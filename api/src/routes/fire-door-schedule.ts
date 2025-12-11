@@ -138,6 +138,77 @@ router.get("/", async (req: any, res: Response) => {
 });
 
 // ============================================================================
+// GET /fire-door-schedule/colors
+// Get custom fire door schedule colors for the current tenant
+// NOTE: Must come BEFORE /:id route to avoid "colors" being treated as an ID
+// ============================================================================
+router.get("/colors", async (req: any, res: Response) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { 
+        isFireDoorManufacturer: true,
+        fireDoorScheduleColors: true 
+      },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
+    }
+
+    // Return custom colors or empty object if not set
+    res.json({ colors: tenantSettings.fireDoorScheduleColors || {} });
+  } catch (error) {
+    console.error("Error fetching fire door schedule colors:", error);
+    res.status(500).json({ error: "Failed to fetch colors" });
+  }
+});
+
+// ============================================================================
+// POST /fire-door-schedule/colors
+// Save custom fire door schedule colors for the current tenant
+// NOTE: Must come BEFORE /:id route to avoid "colors" being treated as an ID
+// ============================================================================
+router.post("/colors", async (req: any, res: Response) => {
+  try {
+    const tenantId = req.auth?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const tenantSettings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { isFireDoorManufacturer: true },
+    });
+
+    if (!tenantSettings?.isFireDoorManufacturer) {
+      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
+    }
+
+    const { colors } = req.body;
+    if (!colors || typeof colors !== 'object') {
+      return res.status(400).json({ error: "Invalid colors format" });
+    }
+
+    // Update tenant settings with new colors
+    await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: { fireDoorScheduleColors: colors },
+    });
+
+    res.json({ success: true, colors });
+  } catch (error) {
+    console.error("Error saving fire door schedule colors:", error);
+    res.status(500).json({ error: "Failed to save colors" });
+  }
+});
+
+// ============================================================================
 // GET /fire-door-schedule/:id
 // Get a single project by ID
 // ============================================================================
@@ -536,75 +607,6 @@ router.get("/stats/summary", async (req: any, res: Response) => {
   } catch (error) {
     console.error("Error fetching summary stats:", error);
     res.status(500).json({ error: "Failed to fetch stats" });
-  }
-});
-
-// ============================================================================
-// GET /fire-door-schedule/colors
-// Get custom fire door schedule colors for the current tenant
-// ============================================================================
-router.get("/colors", async (req: any, res: Response) => {
-  try {
-    const tenantId = req.auth?.tenantId;
-    if (!tenantId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-
-    const tenantSettings = await prisma.tenantSettings.findUnique({
-      where: { tenantId },
-      select: { 
-        isFireDoorManufacturer: true,
-        fireDoorScheduleColors: true 
-      },
-    });
-
-    if (!tenantSettings?.isFireDoorManufacturer) {
-      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
-    }
-
-    // Return custom colors or empty object if not set
-    res.json({ colors: tenantSettings.fireDoorScheduleColors || {} });
-  } catch (error) {
-    console.error("Error fetching fire door schedule colors:", error);
-    res.status(500).json({ error: "Failed to fetch colors" });
-  }
-});
-
-// ============================================================================
-// POST /fire-door-schedule/colors
-// Save custom fire door schedule colors for the current tenant
-// ============================================================================
-router.post("/colors", async (req: any, res: Response) => {
-  try {
-    const tenantId = req.auth?.tenantId;
-    if (!tenantId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-
-    const tenantSettings = await prisma.tenantSettings.findUnique({
-      where: { tenantId },
-      select: { isFireDoorManufacturer: true },
-    });
-
-    if (!tenantSettings?.isFireDoorManufacturer) {
-      return res.status(403).json({ error: "Fire door schedule is only available for fire door manufacturers" });
-    }
-
-    const { colors } = req.body;
-    if (!colors || typeof colors !== 'object') {
-      return res.status(400).json({ error: "Invalid colors format" });
-    }
-
-    // Update tenant settings with new colors
-    await prisma.tenantSettings.update({
-      where: { tenantId },
-      data: { fireDoorScheduleColors: colors },
-    });
-
-    res.json({ success: true, colors });
-  } catch (error) {
-    console.error("Error saving fire door schedule colors:", error);
-    res.status(500).json({ error: "Failed to save colors" });
   }
 });
 
