@@ -1081,11 +1081,12 @@ export default function FireDoorSchedulePage() {
     // Material status fields
     if (field === 'ironmongeryStatus') {
       const customColor = customColors[value as string];
+      const colorClasses = customColor ? '' : (MATERIAL_STATUS_COLORS[value as string] ?? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${!customColor ? 'border-slate-300 bg-white hover:bg-slate-50' : ''}`}
+          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
@@ -1096,11 +1097,12 @@ export default function FireDoorSchedulePage() {
 
     if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus'].includes(field)) {
       const customColor = customColors[value as string];
+      const colorClasses = customColor ? '' : (MATERIAL_STATUS_COLORS[value as string] ?? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${!customColor ? 'border-slate-300 bg-white hover:bg-slate-50' : ''}`}
+          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
@@ -1112,11 +1114,12 @@ export default function FireDoorSchedulePage() {
     // Paperwork status fields
     if (['doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus'].includes(field)) {
       const customColor = customColors[value as string];
+      const colorClasses = customColor ? '' : (PAPERWORK_STATUS_COLORS[value as string] ?? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${!customColor ? 'border-slate-300 bg-white hover:bg-slate-50' : ''}`}
+          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
@@ -1128,11 +1131,12 @@ export default function FireDoorSchedulePage() {
     // Transport status
     if (field === 'transportStatus') {
       const customColor = customColors[value as string];
+      const colorClasses = customColor ? '' : (TRANSPORT_STATUS_COLORS[value as string] ?? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
       return (
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${!customColor ? 'border-slate-300 bg-white hover:bg-slate-50' : ''}`}
+          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
