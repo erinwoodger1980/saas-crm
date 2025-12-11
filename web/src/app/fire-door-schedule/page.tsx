@@ -1081,7 +1081,8 @@ export default function FireDoorSchedulePage() {
     // Material status fields
     if (field === 'ironmongeryStatus') {
       const customColor = customColors[value as string];
-      const colorClasses = customColor ? '' : (MATERIAL_STATUS_COLORS[value as string] ?? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
+      const defaultColor = MATERIAL_STATUS_COLORS[value as string];
+      const colorClasses = customColor ? '' : (defaultColor ? defaultColor : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
       return (
         <select
           value={value || ''}
@@ -1097,7 +1098,8 @@ export default function FireDoorSchedulePage() {
 
     if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus'].includes(field)) {
       const customColor = customColors[value as string];
-      const colorClasses = customColor ? '' : (MATERIAL_STATUS_COLORS[value as string] ?? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
+      const defaultColor = MATERIAL_STATUS_COLORS[value as string];
+      const colorClasses = customColor ? '' : (defaultColor ? defaultColor : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
       return (
         <select
           value={value || ''}
@@ -1114,7 +1116,8 @@ export default function FireDoorSchedulePage() {
     // Paperwork status fields
     if (['doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus'].includes(field)) {
       const customColor = customColors[value as string];
-      const colorClasses = customColor ? '' : (PAPERWORK_STATUS_COLORS[value as string] ?? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
+      const defaultColor = PAPERWORK_STATUS_COLORS[value as string];
+      const colorClasses = customColor ? '' : (defaultColor ? defaultColor : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
       return (
         <select
           value={value || ''}
@@ -1131,7 +1134,8 @@ export default function FireDoorSchedulePage() {
     // Transport status
     if (field === 'transportStatus') {
       const customColor = customColors[value as string];
-      const colorClasses = customColor ? '' : (TRANSPORT_STATUS_COLORS[value as string] ?? "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
+      const defaultColor = TRANSPORT_STATUS_COLORS[value as string];
+      const colorClasses = customColor ? '' : (defaultColor ? defaultColor : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50");
       return (
         <select
           value={value || ''}
@@ -1673,7 +1677,7 @@ export default function FireDoorSchedulePage() {
                         <input
                           type="color"
                           className="w-8 h-7 border rounded cursor-pointer"
-                          value={customColors[opt]?.bg || '#3b82f6'}
+                          value={customColors[opt]?.bg || '#ffffff'}
                           onChange={(e) => {
                             const hex = e.target.value;
                             const brightness = getBrightness(hex);
