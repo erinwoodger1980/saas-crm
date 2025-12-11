@@ -53,10 +53,19 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
         streamRef.current = stream;
         setHasPermission(true);
 
-        // Start scanning for QR codes
-        scanIntervalRef.current = setInterval(() => {
-          scanForQRCode();
-        }, 500);
+        // Wait for video to be ready before starting scan
+        videoRef.current.onloadedmetadata = () => {
+          if (videoRef.current) {
+            videoRef.current.play().then(() => {
+              // Start scanning for QR codes after video is playing
+              scanIntervalRef.current = setInterval(() => {
+                scanForQRCode();
+              }, 500);
+            }).catch((playErr) => {
+              console.error("Error playing video:", playErr);
+            });
+          }
+        };
       }
     } catch (err: any) {
       console.error("Error accessing camera:", err);
