@@ -72,14 +72,14 @@ router.post("/process-configs", async (req, res) => {
 });
 
 /**
- * GET /fire-door-qr/line-item/:lineItemId/process/:processName/generate
- * Generate QR code for a line item + process combination
+ * GET /fire-door-qr/line-item/:lineItemId/generate
+ * Generate QR code for a line item (user selects process on scan)
  */
-router.get("/line-item/:lineItemId/process/:processName/generate", async (req, res) => {
+router.get("/line-item/:lineItemId/generate", async (req, res) => {
   const tenantId = authTenantId(req);
   if (!tenantId) return res.status(401).json({ error: "unauthorized" });
 
-  const { lineItemId, processName } = req.params;
+  const { lineItemId } = req.params;
 
   try {
     // Verify line item exists
@@ -92,9 +92,9 @@ router.get("/line-item/:lineItemId/process/:processName/generate", async (req, r
       return res.status(404).json({ error: "Line item not found" });
     }
 
-    // Generate QR data
+    // Generate QR data - single QR per line item, process selected by user
     const baseUrl = process.env.WEB_PUBLIC_URL || process.env.PUBLIC_BASE_URL || "https://www.joineryai.app";
-    const qrData = `${baseUrl}/fire-door-qr/${lineItemId}/${processName}`;
+    const qrData = `${baseUrl}/fire-door-qr/${lineItemId}`;
 
     // Generate QR code as data URL
     const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
@@ -183,11 +183,13 @@ router.get("/door-item/:doorItemId/maintenance/generate", async (req, res) => {
 });
 
 /**
- * GET /fire-door-qr/scan/:lineItemId/:processName
- * Get data for a scanned process QR code (public endpoint - no auth required)
+ * GET /fire-door-qr/scan/:lineItemId?process=PROCESS_NAME
+ * Get data for a scanned QR code (public endpoint - no auth required)
+ * Process can be specified via query param or selected by user after scan
  */
-router.get("/scan/:lineItemId/:processName", async (req, res) => {
-  const { lineItemId, processName } = req.params;
+router.get("/scan/:lineItemId", async (req, res) => {
+  const { lineItemId } = req.params;
+  const processName = req.query.process as string | undefined;
 
   try {
     const lineItem = await prisma.fireDoorLineItem.findUnique({
@@ -199,30 +201,33 @@ router.get("/scan/:lineItemId/:processName", async (req, res) => {
       return res.status(404).json({ error: "Line item not found" });
     }
 
-    // Get process config
-    const config = await prisma.fireDoorProcessQRConfig.findUnique({
-      where: {
-        tenantId_processName: { tenantId: lineItem.tenantId, processName },
-      },
-    });
+    // Get process config if process specified
+    let config = null;
+    if (processName) {
+      config = await prisma.fireDoorProcessQRConfig.findUnique({
+        where: {
+          tenantId_processName: { tenantId: lineItem.tenantId, processName },
+        },
+      });
 
-    // Log the scan
-    const userId = authUserId(req);
-    await prisma.fireDoorQRScan.create({
-      data: {
-        tenantId: lineItem.tenantId,
-        lineItemId,
-        scanType: "PROCESS",
-        processName,
-        scannedBy: userId || undefined,
-        deviceInfo: req.headers["user-agent"] || undefined,
-      },
-    });
+      // Log the scan with process
+      const userId = authUserId(req);
+      await prisma.fireDoorQRScan.create({
+        data: {
+          tenantId: lineItem.tenantId,
+          lineItemId,
+          scanType: "PROCESS",
+          processName,
+          scannedBy: userId || undefined,
+          deviceInfo: req.headers["user-agent"] || undefined,
+        },
+      });
+    }
 
     // Format response for frontend
     const data = {
       lineItemId: lineItem.id,
-      processName,
+      processName: processName || null,
       doorRef: lineItem.doorRef,
       lajRef: lineItem.lajRef,
       projectName: "Fire Door Project",
@@ -242,6 +247,8 @@ router.get("/scan/:lineItemId/:processName", async (req, res) => {
         hingeSide: lineItem.handingFinal,
         glazingType: lineItem.glazingSystem,
         notes: lineItem.notes1,
+        initialCncProgramUrl: lineItem.initialCncProgramUrl,
+        finalCncTrimProgramUrl: lineItem.finalCncTrimProgramUrl,
       },
     };
 
@@ -253,6 +260,16 @@ router.get("/scan/:lineItemId/:processName", async (req, res) => {
     console.error("[fire-door-qr] Failed to process scan:", e);
     res.status(500).json({ error: e?.message || "Failed to process scan" });
   }
+});
+
+/**
+ * GET /fire-door-qr/scan/:lineItemId/:processName (legacy support)
+ * Redirect to new format for backwards compatibility
+ */
+router.get("/scan/:lineItemId/:processName", async (req, res) => {
+  const { lineItemId, processName } = req.params;
+  // Redirect to new format with process as query param
+  res.redirect(`/fire-door-qr/scan/${lineItemId}?process=${processName}`);
 });
 
 /**

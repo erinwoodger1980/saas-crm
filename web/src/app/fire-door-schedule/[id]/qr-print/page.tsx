@@ -20,21 +20,7 @@ export default function FireDoorQRPrintPage() {
   const projectId = params?.id as string;
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedProcess, setSelectedProcess] = useState("Cutting");
   const [qrData, setQrData] = useState<Record<string, string>>({});
-
-  const PROCESSES = [
-    "Cutting",
-    "Lipping",
-    "Edging",
-    "Facing",
-    "Calibration",
-    "Finishing",
-    "Machining",
-    "Glazing",
-    "Assembly",
-    "Packing",
-  ];
 
   useEffect(() => {
     if (projectId) {
@@ -61,23 +47,24 @@ export default function FireDoorQRPrintPage() {
     }
   }
 
-  function generateQRData(items: LineItem[], process: string) {
+  function generateQRData(items: LineItem[]) {
     const baseUrl =
       typeof window !== "undefined"
         ? window.location.origin
         : "https://www.joineryai.app";
     const qrMap: Record<string, string> = {};
     items.forEach((item) => {
-      qrMap[item.id] = `${baseUrl}/fire-door-qr/${item.id}/${process}`;
+      // Single QR code per line item - user selects process after scanning
+      qrMap[item.id] = `${baseUrl}/fire-door-qr/${item.id}`;
     });
     setQrData(qrMap);
   }
 
   useEffect(() => {
     if (lineItems.length > 0) {
-      generateQRData(lineItems, selectedProcess);
+      generateQRData(lineItems);
     }
-  }, [selectedProcess, lineItems]);
+  }, [lineItems]);
 
   function printLabel(lineItemId: string) {
     const lineItem = lineItems.find((li) => li.id === lineItemId);
@@ -166,7 +153,7 @@ export default function FireDoorQRPrintPage() {
             </div>
             <div class="info">
               <div class="door-ref">${lineItem.doorRef || lineItem.lajRef || "Door"}</div>
-              <div class="process">${selectedProcess}</div>
+              <div class="process">Workshop QR</div>
               ${lineItem.rating ? `<div class="detail">Rating: ${lineItem.rating}</div>` : ""}
               ${lineItem.doorsetType ? `<div class="detail">${lineItem.doorsetType}</div>` : ""}
             </div>
@@ -233,19 +220,8 @@ export default function FireDoorQRPrintPage() {
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Print QR Labels</h1>
-        <div className="flex items-center gap-4">
-          <label className="text-sm font-medium">Process:</label>
-          <select
-            value={selectedProcess}
-            onChange={(e) => setSelectedProcess(e.target.value)}
-            className="border rounded-md px-3 py-2"
-          >
-            {PROCESSES.map((process) => (
-              <option key={process} value={process}>
-                {process}
-              </option>
-            ))}
-          </select>
+        <div className="text-sm text-muted-foreground">
+          One QR code per door - user selects process after scanning
         </div>
       </div>
 
