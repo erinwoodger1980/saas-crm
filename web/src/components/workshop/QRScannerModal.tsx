@@ -31,15 +31,32 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
     };
     document.body.appendChild(script);
 
-    startCamera();
+    // Small delay to ensure video element is mounted
+    const timer = setTimeout(() => {
+      startCamera();
+    }, 100);
+
     return () => {
+      clearTimeout(timer);
       stopCamera();
-      document.body.removeChild(script);
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
     };
   }, []);
 
   const startCamera = async () => {
+    console.log("startCamera called, videoRef.current:", !!videoRef.current);
+    
+    if (!videoRef.current) {
+      console.error("Video element not mounted yet");
+      setError("Video element not ready");
+      setHasPermission(false);
+      return;
+    }
+
     try {
+      console.log("Requesting camera access...");
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "environment", // Use back camera on mobile
@@ -48,21 +65,27 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
         },
       });
 
+      console.log("Camera access granted, stream:", stream);
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         setHasPermission(true);
+        console.log("Stream assigned to video element");
 
         // Wait for video to be ready before starting scan
         videoRef.current.onloadedmetadata = () => {
+          console.log("Video metadata loaded");
           if (videoRef.current) {
             videoRef.current.play().then(() => {
+              console.log("Video playing, starting scan interval");
               // Start scanning for QR codes after video is playing
               scanIntervalRef.current = setInterval(() => {
                 scanForQRCode();
               }, 500);
             }).catch((playErr) => {
               console.error("Error playing video:", playErr);
+              setError("Failed to start video playback");
             });
           }
         };
