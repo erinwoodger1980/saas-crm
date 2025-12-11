@@ -587,6 +587,22 @@ export default function FireDoorSchedulePage() {
         'workingDaysRemaining',
       ]
     },
+    BOM_OVERVIEW: {
+      label: 'BOM Overview',
+      columns: [
+        'mjsNumber',
+        'clientName',
+        'jobName',
+        'blanksStatus',
+        'lippingsStatus',
+        'facingsStatus',
+        'glassStatus',
+        'cassettesStatus',
+        'timbersStatus',
+        'ironmongeryStatus',
+        'bomPercent'
+      ]
+    },
     BOM_MATERIALS: {
       label: 'BOM & Materials',
       columns: [
@@ -658,22 +674,6 @@ export default function FireDoorSchedulePage() {
         'doorSets',
         'leaves',
         'deliveryNotes'
-      ]
-    },
-    BOM_OVERVIEW: {
-      label: 'BOM Overview',
-      columns: [
-        'mjsNumber',
-        'clientName',
-        'jobName',
-        'blanksStatus',
-        'lippingsStatus',
-        'facingsStatus',
-        'glassStatus',
-        'cassettesStatus',
-        'timbersStatus',
-        'ironmongeryStatus',
-        'bomPercent'
       ]
     },
     ALL: {
