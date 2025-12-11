@@ -169,18 +169,32 @@ export default function FireDoorSchedulePage() {
         try {
           setCustomColors(JSON.parse(savedCustomColors));
         } catch {}
+      } else if (user?.tenantId === "cmi58fkzm0000it43i4h78pej") {
+        // LAJ Joinery specific default colors matching their current setup
+        const lajColors: Record<string, {bg: string, text: string}> = {
+          // Material statuses - matching screenshot colors
+          "In BOM": { bg: "#fde047", text: "#854d0e" },      // Yellow
+          "In BOM TBC": { bg: "#fde047", text: "#854d0e" },  // Yellow
+          "Ordered": { bg: "#fb923c", text: "#7c2d12" },     // Orange
+          "Received": { bg: "#86efac", text: "#14532d" },    // Green
+          "Stock": { bg: "#86efac", text: "#14532d" },       // Green
+          "Received from TGS": { bg: "#86efac", text: "#14532d" }, // Green
+          "Received from Customer": { bg: "#86efac", text: "#14532d" }, // Green
+          // Paperwork statuses  
+          "In Factory": { bg: "#86efac", text: "#14532d" },  // Green
+          "Printed in Office": { bg: "#86efac", text: "#14532d" }, // Green
+          // Transport
+          "Booked": { bg: "#86efac", text: "#14532d" },      // Green
+        };
+        setCustomColors(lajColors);
       } else if (user?.tenantId) {
-        // Set default colors for LAJ Joinery (check by user email domain or tenant name)
-        // For now, set defaults for all tenants that don't have saved colors
+        // Generic default colors for other tenants
         const defaultColors: Record<string, {bg: string, text: string}> = {
-          // Material statuses
           "In BOM": { bg: "#fde047", text: "#854d0e" },
           "Ordered": { bg: "#fb923c", text: "#7c2d12" },
           "Received": { bg: "#86efac", text: "#14532d" },
           "Stock": { bg: "#86efac", text: "#14532d" },
-          // Paperwork statuses  
           "In Factory": { bg: "#86efac", text: "#14532d" },
-          // Transport
           "Booked": { bg: "#86efac", text: "#14532d" },
         };
         setCustomColors(defaultColors);
