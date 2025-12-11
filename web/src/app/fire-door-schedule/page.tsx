@@ -1400,7 +1400,7 @@ export default function FireDoorSchedulePage() {
     }
 
     if (field === 'workingDaysRemaining') {
-      return <span className="text-sm">{value ?? '—'}</span>;
+      return <span className="text-sm font-semibold">{value ?? '—'}</span>;
     }
 
     // Number fields for door sets and leaves
@@ -1412,7 +1412,7 @@ export default function FireDoorSchedulePage() {
           value={value || ''}
           placeholder="—"
           onChange={(e) => updateProject(project.id, { [field]: parseInt(e.target.value) || null })}
-          className="bg-transparent outline-none w-20 text-sm border-b border-dashed border-slate-300 focus:border-blue-500"
+          className="bg-transparent outline-none w-20 text-sm font-semibold border-b border-dashed border-slate-300 focus:border-blue-500"
         />
       );
     }
@@ -1421,7 +1421,7 @@ export default function FireDoorSchedulePage() {
     if (field === 'paperworkComments' || field === 'deliveryNotes' || field === 'bomNotes') {
       return (
         <textarea
-          className="bg-transparent outline-none w-full text-sm border border-slate-200 rounded px-2 py-1 focus:border-blue-500 resize-none"
+          className="bg-transparent outline-none w-full text-sm font-semibold border border-slate-200 rounded px-2 py-1 focus:border-blue-500 resize-none"
           rows={2}
           value={value || ''}
           placeholder="—"
@@ -1440,7 +1440,7 @@ export default function FireDoorSchedulePage() {
     if (field === 'jobName') {
       return (
         <textarea
-          className="bg-transparent outline-none w-full text-sm resize-none min-h-[40px]"
+          className="bg-transparent outline-none w-full text-sm font-semibold resize-none min-h-[40px]"
           value={value || ''}
           placeholder="—"
           rows={2}
@@ -1453,7 +1453,7 @@ export default function FireDoorSchedulePage() {
     // Text fields (default)
     return (
       <input
-        className="bg-transparent outline-none w-full text-sm"
+        className="bg-transparent outline-none w-full text-sm font-semibold"
         value={value || ''}
         placeholder="—"
         onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
@@ -2116,7 +2116,7 @@ export default function FireDoorSchedulePage() {
                         return (
                         <td
                           key={field}
-                          className={`px-4 py-3 text-slate-600 cursor-pointer ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-0 group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                          className={`px-4 py-3 text-slate-700 font-semibold cursor-pointer ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-0 group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
                           style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : undefined}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Settings, Save } from "lucide-react";
 import Link from "next/link";
+import QRCodeReact from "react-qr-code";
 
 interface FieldConfig {
   key: string;
@@ -157,6 +158,43 @@ export default function FireDoorLineItemDetailPage() {
     
     // Hide blank fields if configured
     if (data?.layout?.hideBlankFields && isBlank) return null;
+
+    // Handle CNC URL fields with QR codes
+    if (config.key === 'initialCncProgramUrl' || config.key === 'finalCncTrimProgramUrl') {
+      const evaluatedUrl = currentValue ? evaluateFormula(currentValue) : '';
+      
+      return (
+        <div key={`${source}-${config.key}`} className="space-y-2">
+          <label className="text-sm font-medium text-muted-foreground">
+            {config.label}
+          </label>
+          {evaluatedUrl ? (
+            <>
+              <div className="bg-white p-4 rounded border inline-block">
+                <QRCodeReact value={evaluatedUrl} size={200} />
+              </div>
+              <div className="flex gap-2">
+                <Input 
+                  value={evaluatedUrl} 
+                  readOnly 
+                  className="text-xs font-mono"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => window.open(evaluatedUrl, '_blank')}
+                >
+                  Open
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="text-sm p-2 bg-muted rounded text-muted-foreground">
+              No URL configured
+            </div>
+          )}
+        </div>
+      );
+    }
 
     // Format the value for display
     const displayValue = isBlank ? "-" : 
