@@ -305,63 +305,6 @@ export default function FireDoorLineItemDetailPage() {
             </div>
           </Card>
         )}
-
-        {/* CNC Program URLs for CNC process */}
-        {process.code === "CNC" && activeLayout.cncCalculations && (
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">CNC Programs</h2>
-            <div className="space-y-4">
-              {activeLayout.cncCalculations.initialCncProgramUrl && (
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-muted-foreground">
-                    Initial CNC Program URL
-                  </label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      value={evaluateFormula(activeLayout.cncCalculations.initialCncProgramUrl)}
-                      readOnly
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const url = evaluateFormula(activeLayout.cncCalculations.initialCncProgramUrl);
-                        if (url) window.open(url, "_blank");
-                      }}
-                    >
-                      Open
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {activeLayout.cncCalculations.finalCncTrimProgramUrl && (
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-muted-foreground">
-                    Final CNC Trim Program URL
-                  </label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="text"
-                      value={evaluateFormula(activeLayout.cncCalculations.finalCncTrimProgramUrl)}
-                      readOnly
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const url = evaluateFormula(activeLayout.cncCalculations.finalCncTrimProgramUrl);
-                        if (url) window.open(url, "_blank");
-                      }}
-                    >
-                      Open
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-        )}
       </div>
     );
   }
