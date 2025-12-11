@@ -32,6 +32,9 @@ interface LayoutConfig {
     initialCncProgramUrl: string;
     finalCncTrimProgramUrl: string;
   };
+  fieldCalculations?: {
+    [fieldKey: string]: string; // field key -> formula
+  };
   hideBlankFields: boolean;
   groupByCategory: boolean;
 }
@@ -106,6 +109,22 @@ const ALL_LINE_ITEM_FIELDS = [
   
   { key: "initialCncProgramUrl", label: "Initial CNC Program URL", category: "CNC" },
   { key: "finalCncTrimProgramUrl", label: "Final CNC Trim Program URL", category: "CNC" },
+  
+  // Calculated fields
+  { key: "cncBlankWidth", label: "CNC Blank Width", category: "Calculated" },
+  { key: "cncBlankHeight", label: "CNC Blank Height", category: "Calculated" },
+  { key: "cncTrimWidth", label: "CNC Trim Width", category: "Calculated" },
+  { key: "cncTrimHeight", label: "CNC Trim Height", category: "Calculated" },
+  { key: "totalLinearMeters", label: "Total Linear Meters", category: "Calculated" },
+  { key: "totalSquareMeters", label: "Total Square Meters", category: "Calculated" },
+  { key: "lippingLinearMeters", label: "Lipping Linear Meters", category: "Calculated" },
+  { key: "facingSquareMeters", label: "Facing Square Meters", category: "Calculated" },
+  { key: "fullReference", label: "Full Reference", category: "Calculated" },
+  { key: "calculatedField1", label: "Custom Calculation 1", category: "Calculated" },
+  { key: "calculatedField2", label: "Custom Calculation 2", category: "Calculated" },
+  { key: "calculatedField3", label: "Custom Calculation 3", category: "Calculated" },
+  { key: "calculatedField4", label: "Custom Calculation 4", category: "Calculated" },
+  { key: "calculatedField5", label: "Custom Calculation 5", category: "Calculated" },
 ];
 
 const ALL_PROJECT_FIELDS = [
@@ -230,6 +249,18 @@ export default function FireDoorLineItemLayoutSettings() {
       cncCalculations: {
         ...layout.cncCalculations,
         [field]: value,
+      },
+    });
+  }
+
+  function updateFieldCalculation(fieldKey: string, formula: string) {
+    if (!layout) return;
+    
+    setLayout({
+      ...layout,
+      fieldCalculations: {
+        ...layout.fieldCalculations,
+        [fieldKey]: formula,
       },
     });
   }
@@ -424,6 +455,44 @@ export default function FireDoorLineItemLayoutSettings() {
                   {'https://cnc.example.com/program?door=${lineItem.doorRef}&width=${lineItem.masterWidth}'}
                 </code>
               </p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Field Calculations */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Field Calculations</h2>
+            <p className="text-sm text-muted-foreground">
+              Define formulas for calculated fields
+            </p>
+          </div>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {ALL_LINE_ITEM_FIELDS.map((field) => (
+                <div key={field.key} className="space-y-2">
+                  <Label htmlFor={`calc-${field.key}`} className="flex items-center justify-between">
+                    <span>{field.label}</span>
+                    <span className="text-xs text-muted-foreground">{field.category}</span>
+                  </Label>
+                  <Input
+                    id={`calc-${field.key}`}
+                    value={layout.fieldCalculations?.[field.key] || ""}
+                    onChange={(e) => updateFieldCalculation(field.key, e.target.value)}
+                    placeholder="e.g., ${lineItem.masterWidth} - 6"
+                    className="font-mono text-xs"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="font-semibold text-sm mb-2">Formula Examples:</h3>
+              <ul className="text-xs text-muted-foreground space-y-1">
+                <li><code className="bg-white px-1 py-0.5 rounded">{'${lineItem.masterWidth} - 6'}</code> - Subtract 6 from master width</li>
+                <li><code className="bg-white px-1 py-0.5 rounded">{'${lineItem.doorHeight} - (${lineItem.top} + ${lineItem.btm})'}</code> - Complex calculation</li>
+                <li><code className="bg-white px-1 py-0.5 rounded">{'${lineItem.masterWidth} * 2 + ${lineItem.slaveWidth}'}</code> - Multiple operations</li>
+                <li><code className="bg-white px-1 py-0.5 rounded">{'${project.mjsNumber}-${lineItem.doorRef}'}</code> - Concatenate strings</li>
+              </ul>
             </div>
           </div>
         </Card>

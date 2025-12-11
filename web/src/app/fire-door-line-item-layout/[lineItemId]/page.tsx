@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Settings, Save } from "lucide-react";
+import { ArrowLeft, Settings, Save, Calculator } from "lucide-react";
 import Link from "next/link";
 import QRCodeReact from "react-qr-code";
 
@@ -31,6 +31,9 @@ interface LayoutConfig {
   cncCalculations: {
     initialCncProgramUrl: string;
     finalCncTrimProgramUrl: string;
+  };
+  fieldCalculations?: {
+    [fieldKey: string]: string;
   };
   hideBlankFields: boolean;
   groupByCategory: boolean;
@@ -197,18 +200,61 @@ export default function FireDoorLineItemDetailPage() {
       );
     }
 
+    // Check for calculated field formulas
+    const fieldFormula = data?.layout?.fieldCalculations?.[config.key];
+    let calculatedValue = null;
+    let calculationError = null;
+    
+    if (fieldFormula && source === "lineItem") {
+      try {
+        // Evaluate the formula
+        const evaluated = evaluateFormula(fieldFormula);
+        // Try to evaluate as math expression
+        try {
+          // Simple eval for math (could be enhanced with a proper expression parser)
+          const result = Function('"use strict"; return (' + evaluated + ')')();
+          calculatedValue = result;
+        } catch {
+          // If it's not a math expression, use as-is (could be string concatenation)
+          calculatedValue = evaluated;
+        }
+      } catch (error) {
+        calculationError = error instanceof Error ? error.message : "Calculation error";
+      }
+    }
+
     // Format the value for display
-    const displayValue = isBlank ? "-" : 
+    const displayValue = calculatedValue !== null ? String(calculatedValue) :
+      isBlank ? "-" : 
       value instanceof Date ? new Date(value).toLocaleDateString() :
       typeof value === "number" ? value.toLocaleString() :
       String(value);
 
     return (
       <div key={`${source}-${config.key}`} className="space-y-1">
-        <label className="text-sm font-medium text-muted-foreground">
+        <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
           {config.label}
+          {calculatedValue !== null && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">
+              <Calculator className="w-3 h-3 mr-1" />
+              Calculated
+            </span>
+          )}
         </label>
-        {config.editable && source === "lineItem" ? (
+        {calculationError ? (
+          <div className="text-sm p-2 bg-red-50 border border-red-200 text-red-700 rounded">
+            Error: {calculationError}
+          </div>
+        ) : calculatedValue !== null ? (
+          <div className="space-y-2">
+            <div className="text-sm p-2 bg-blue-50 border border-blue-200 rounded font-semibold">
+              {displayValue}
+            </div>
+            <div className="text-xs text-muted-foreground font-mono bg-muted p-1 rounded">
+              Formula: {fieldFormula}
+            </div>
+          </div>
+        ) : config.editable && source === "lineItem" ? (
           typeof currentValue === "string" && currentValue.length > 50 ? (
             <Textarea
               value={currentValue}

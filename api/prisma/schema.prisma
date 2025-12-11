@@ -2679,6 +2679,21 @@ model FireDoorLineItem {
   rawRowJson              Json
   initialCncProgramUrl    String?
   finalCncTrimProgramUrl  String?
+  // Calculated fields for manufacturing
+  cncBlankWidth           Float?
+  cncBlankHeight          Float?
+  cncTrimWidth            Float?
+  cncTrimHeight           Float?
+  totalLinearMeters       Float?
+  totalSquareMeters       Float?
+  lippingLinearMeters     Float?
+  facingSquareMeters      Float?
+  fullReference           String?
+  calculatedField1        String?
+  calculatedField2        String?
+  calculatedField3        String?
+  calculatedField4        String?
+  calculatedField5        String?
   createdAt               DateTime         @default(now())
   updatedAt               DateTime         @updatedAt
   import                  FireDoorImport   @relation(fields: [fireDoorImportId], references: [id], onDelete: Cascade)

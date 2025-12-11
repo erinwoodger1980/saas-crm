@@ -345,6 +345,7 @@ export default function FireDoorSchedulePage() {
     try { localStorage.setItem("fds:columnFilters", JSON.stringify(columnFilters)); } catch {}
   }, [columnFilters]);
   useEffect(() => {
+    console.log('[COLUMN CONFIG] Saving to localStorage:', tabColumnConfigs);
     try { localStorage.setItem("fds:tabColumnConfigs", JSON.stringify(tabColumnConfigs)); } catch {}
   }, [tabColumnConfigs]);
 
@@ -930,6 +931,7 @@ export default function FireDoorSchedulePage() {
     if (tabConfig && tabConfig.length > 0) {
       const colConfig = tabConfig.find(c => c.field === field);
       if (colConfig && colConfig.width) {
+        console.log('[COLUMN WIDTH] Using configured width for', field, ':', colConfig.width);
         return colConfig.width;
       }
     }
@@ -963,6 +965,7 @@ export default function FireDoorSchedulePage() {
 
   // Handle save column config
   function handleSaveColumnConfig(newConfig: any[]) {
+    console.log('[COLUMN CONFIG] Saving config for tab:', activeTab, newConfig);
     setTabColumnConfigs({
       ...tabColumnConfigs,
       [activeTab]: newConfig
@@ -980,16 +983,20 @@ export default function FireDoorSchedulePage() {
   // Get current column config for the modal
   function getCurrentColumnConfig() {
     const tabConfig = tabColumnConfigs[activeTab];
+    console.log('[COLUMN CONFIG] Getting config for tab:', activeTab, 'Existing config:', tabConfig);
     if (tabConfig && tabConfig.length > 0) {
+      console.log('[COLUMN CONFIG] Using existing config');
       return tabConfig;
     }
     // Build from tab defaults
     const defaultCols = TAB_DEFINITIONS[activeTab as keyof typeof TAB_DEFINITIONS]?.columns || [];
+    console.log('[COLUMN CONFIG] Building from defaults, columns:', defaultCols.length);
     return defaultCols.map(field => ({
       field,
       label: COLUMN_LABELS[field] || field,
       visible: true,
-      width: getColumnWidth(field)
+      width: 150, // Default width - will be customized by user
+      frozen: false
     }));
   }
 
