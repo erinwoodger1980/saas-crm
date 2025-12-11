@@ -329,19 +329,6 @@ export default function FireDoorLineItemLayoutSettings() {
             }
           : p
       ),
-      projectFields: [
-        ...layout.projectFields,
-        { key: fieldDef.key, label: fieldDef.label, visible: true, editable: false },
-      ],
-    });
-  }
-
-  function removeProjectField(key: string) {
-    if (!layout) return;
-    
-    setLayout({
-      ...layout,
-      projectFields: layout.projectFields.filter(f => f.key !== key),
     });
   }
 
@@ -362,11 +349,17 @@ export default function FireDoorLineItemLayoutSettings() {
   }
 
   const categories = Array.from(new Set(ALL_LINE_ITEM_FIELDS.map(f => f.category)));
+  
+  // Get current process's fields
+  const currentProcess = layout.processes?.find(p => p.code === selectedProcess);
+  const currentProcessFields = currentProcess?.lineItemFields || [];
+  const currentProjectFields = currentProcess?.projectFields || [];
+  
   const availableLineItemFields = ALL_LINE_ITEM_FIELDS.filter(
-    f => !layout.lineItemFields.some(lf => lf.key === f.key)
+    f => !currentProcessFields.some(lf => lf.key === f.key)
   );
   const availableProjectFields = ALL_PROJECT_FIELDS.filter(
-    f => !layout.projectFields.some(pf => pf.key === f.key)
+    f => !currentProjectFields.some(pf => pf.key === f.key)
   );
 
   return (
@@ -395,6 +388,46 @@ export default function FireDoorLineItemLayoutSettings() {
       </div>
 
       <div className="container mx-auto px-4 py-6 space-y-6">
+        {/* CNC Program URL Calculations */}
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold mb-4">CNC Program URL Calculations</h2>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="initialCnc" className="mb-2 block">
+                Initial CNC Program URL
+              </Label>
+              <Input
+                id="initialCnc"
+                value={layout.cncCalculations?.initialCncProgramUrl || ""}
+                onChange={(e) => updateCncCalculation("initialCncProgramUrl", e.target.value)}
+                placeholder="https://cnc.example.com/program/${lineItem.doorRef}"
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Use <code className="bg-muted px-1 py-0.5 rounded">{'${lineItem.fieldName}'}</code> or{" "}
+                <code className="bg-muted px-1 py-0.5 rounded">{'${project.fieldName}'}</code> for dynamic values
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="finalCnc" className="mb-2 block">
+                Final CNC Trim Program URL
+              </Label>
+              <Input
+                id="finalCnc"
+                value={layout.cncCalculations?.finalCncTrimProgramUrl || ""}
+                onChange={(e) => updateCncCalculation("finalCncTrimProgramUrl", e.target.value)}
+                placeholder="https://cnc.example.com/trim/${lineItem.doorRef}"
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Example: <code className="bg-muted px-1 py-0.5 rounded text-xs">
+                  {'https://cnc.example.com/program?door=${lineItem.doorRef}&width=${lineItem.masterWidth}'}
+                </code>
+              </p>
+            </div>
+          </div>
+        </Card>
+
         {/* Global Options */}
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Display Options</h2>
@@ -422,156 +455,229 @@ export default function FireDoorLineItemLayoutSettings() {
           </div>
         </Card>
 
-        {/* Project Fields */}
+        {/* Process Management */}
         <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Project Fields</h2>
-          </div>
-          
-          <div className="space-y-2 mb-4">
-            {layout.projectFields.map((field) => (
-              <div
-                key={field.key}
-                className="flex items-center justify-between p-3 border rounded-lg"
-              >
-                <div className="flex items-center gap-3 flex-1">
-                  <span className="font-medium">{field.label}</span>
-                  <span className="text-xs text-muted-foreground">({field.key})</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id={`${field.key}-visible`}
-                      checked={field.visible}
-                      onCheckedChange={() => toggleProjectField(field.key, "visible")}
-                    />
-                    <Label htmlFor={`${field.key}-visible`} className="text-sm">
-                      Visible
-                    </Label>
-                  </div>
+          <h2 className="text-lg font-semibold mb-4">Process Configuration</h2>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Label className="flex-shrink-0">Current Process:</Label>
+              <div className="flex gap-2 flex-1">
+                {layout.processes?.map((process) => (
                   <Button
-                    variant="ghost"
+                    key={process.code}
+                    variant={selectedProcess === process.code ? "default" : "outline"}
                     size="sm"
-                    onClick={() => removeProjectField(field.key)}
+                    onClick={() => setSelectedProcess(process.code)}
                   >
-                    <Trash2 className="w-4 h-4" />
+                    {process.name}
                   </Button>
-                </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={addProcess}
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Process
+                </Button>
               </div>
-            ))}
-          </div>
-
-          {availableProjectFields.length > 0 && (
-            <div className="border-t pt-4">
-              <Label className="text-sm font-medium mb-2 block">Add Project Field</Label>
-              <div className="flex flex-wrap gap-2">
-                {availableProjectFields.map((field) => (
+            </div>
+            
+            {currentProcess && (
+              <div className="flex gap-2 items-center pt-2 border-t">
+                <Label htmlFor="processName">Process Name:</Label>
+                <Input
+                  id="processName"
+                  value={currentProcess.name}
+                  onChange={(e) => updateProcessName(currentProcess.code, e.target.value)}
+                  className="max-w-xs"
+                />
+                {layout.processes && layout.processes.length > 1 && (
                   <Button
-                    key={field.key}
-                    variant="outline"
+                    variant="destructive"
                     size="sm"
-                    onClick={() => addProjectField(field)}
+                    onClick={() => removeProcess(currentProcess.code)}
                   >
-                    <Plus className="w-3 h-3 mr-1" />
-                    {field.label}
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Delete Process
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {!currentProcess && (
+          <Card className="p-6">
+            <p className="text-center text-muted-foreground">
+              No process selected. Please add a process to configure fields.
+            </p>
+          </Card>
+        )}
+
+        {currentProcess && (
+          <>
+            {/* Project Fields */}
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Project Fields for {currentProcess.name}</h2>
+              </div>
+              
+              <div className="space-y-2 mb-4">
+                {currentProjectFields.map((field) => (
+                  <div
+                    key={field.key}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <span className="font-medium">{field.label}</span>
+                      <span className="text-xs text-muted-foreground">({field.key})</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`${currentProcess.code}-${field.key}-visible`}
+                          checked={field.visible}
+                          onCheckedChange={() => toggleProjectField(currentProcess.code, field.key, "visible")}
+                        />
+                        <Label htmlFor={`${currentProcess.code}-${field.key}-visible`} className="text-sm">
+                          Visible
+                        </Label>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setLayout({
+                            ...layout,
+                            processes: layout.processes.map(p =>
+                              p.code === currentProcess.code
+                                ? { ...p, projectFields: p.projectFields.filter(f => f.key !== field.key) }
+                                : p
+                            ),
+                          });
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {availableProjectFields.length > 0 && (
+                <div className="border-t pt-4">
+                  <Label className="text-sm font-medium mb-2 block">Add Project Field</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {availableProjectFields.map((field) => (
+                      <Button
+                        key={field.key}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addProjectField(currentProcess.code, field)}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        {field.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            {/* Line Item Fields */}
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Line Item Fields for {currentProcess.name}</h2>
+              </div>
+
+              {/* Category Filter */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {categories.map((category) => (
+                  <Button
+                    key={category}
+                    variant={selectedCategory === category ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedCategory(category)}
+                  >
+                    {category}
                   </Button>
                 ))}
               </div>
-            </div>
-          )}
-        </Card>
-
-        {/* Line Item Fields */}
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Line Item Fields</h2>
-          </div>
-
-          {/* Category Filter */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {categories.map((category) => (
-              <Button
-                key={category}
-                variant={selectedCategory === category ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedCategory(category)}
-              >
-                {category}
-              </Button>
-            ))}
-          </div>
-          
-          <div className="space-y-2 mb-4">
-            {layout.lineItemFields
-              .filter(field => {
-                const fieldDef = ALL_LINE_ITEM_FIELDS.find(f => f.key === field.key);
-                return !selectedCategory || fieldDef?.category === selectedCategory;
-              })
-              .map((field) => (
-                <div
-                  key={field.key}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="flex items-center gap-3 flex-1">
-                    <span className="font-medium">{field.label}</span>
-                    <span className="text-xs text-muted-foreground">({field.key})</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id={`${field.key}-visible`}
-                        checked={field.visible}
-                        onCheckedChange={() => toggleLineItemField(field.key, "visible")}
-                      />
-                      <Label htmlFor={`${field.key}-visible`} className="text-sm">
-                        Visible
-                      </Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id={`${field.key}-editable`}
-                        checked={field.editable}
-                        onCheckedChange={() => toggleLineItemField(field.key, "editable")}
-                      />
-                      <Label htmlFor={`${field.key}-editable`} className="text-sm">
-                        Editable
-                      </Label>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeLineItemField(field.key)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-          </div>
-
-          {availableLineItemFields.filter(f => f.category === selectedCategory).length > 0 && (
-            <div className="border-t pt-4">
-              <Label className="text-sm font-medium mb-2 block">
-                Add {selectedCategory} Field
-              </Label>
-              <div className="flex flex-wrap gap-2">
-                {availableLineItemFields
-                  .filter(f => f.category === selectedCategory)
+              
+              <div className="space-y-2 mb-4">
+                {currentProcessFields
+                  .filter(field => {
+                    const fieldDef = ALL_LINE_ITEM_FIELDS.find(f => f.key === field.key);
+                    return !selectedCategory || fieldDef?.category === selectedCategory;
+                  })
                   .map((field) => (
-                    <Button
+                    <div
                       key={field.key}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addLineItemField(field)}
+                      className="flex items-center justify-between p-3 border rounded-lg"
                     >
-                      <Plus className="w-3 h-3 mr-1" />
-                      {field.label}
-                    </Button>
+                      <div className="flex items-center gap-3 flex-1">
+                        <span className="font-medium">{field.label}</span>
+                        <span className="text-xs text-muted-foreground">({field.key})</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`${currentProcess.code}-${field.key}-visible`}
+                            checked={field.visible}
+                            onCheckedChange={() => toggleLineItemField(currentProcess.code, field.key, "visible")}
+                          />
+                          <Label htmlFor={`${currentProcess.code}-${field.key}-visible`} className="text-sm">
+                            Visible
+                          </Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`${currentProcess.code}-${field.key}-editable`}
+                            checked={field.editable}
+                            onCheckedChange={() => toggleLineItemField(currentProcess.code, field.key, "editable")}
+                          />
+                          <Label htmlFor={`${currentProcess.code}-${field.key}-editable`} className="text-sm">
+                            Editable
+                          </Label>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeLineItemField(currentProcess.code, field.key)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
                   ))}
               </div>
-            </div>
-          )}
-        </Card>
+
+              {availableLineItemFields.filter(f => f.category === selectedCategory).length > 0 && (
+                <div className="border-t pt-4">
+                  <Label className="text-sm font-medium mb-2 block">
+                    Add {selectedCategory} Field
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {availableLineItemFields
+                      .filter(f => f.category === selectedCategory)
+                      .map((field) => (
+                        <Button
+                          key={field.key}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addLineItemField(currentProcess.code, field)}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          {field.label}
+                        </Button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+          </>
+        )}
       </div>
     </div>
   );

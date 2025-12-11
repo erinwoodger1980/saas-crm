@@ -311,7 +311,7 @@ export default function WorkshopScanPage() {
                 <Button 
                   variant="outline" 
                   size="sm"
-                  onClick={() => window.location.href = `/fire-door-line-item-layout/${lineItemId}`}
+                  onClick={() => window.location.href = `/fire-door-line-item-layout/${lineItemId}?process=${selectedProcess}`}
                 >
                   View Full Details
                 </Button>
