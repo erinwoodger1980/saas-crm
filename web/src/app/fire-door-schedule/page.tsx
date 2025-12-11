@@ -1508,12 +1508,12 @@ export default function FireDoorSchedulePage() {
                 variant="outline"
                 className="bg-white/50 border-2 border-blue-500/30 text-blue-700 hover:bg-blue-50 hover:border-blue-500/50"
                 onClick={() => {
-                  // Navigate to the 144-column AG Grid page
+                  // Navigate to the project overview page
                   if (projects.length > 0) {
                     const firstProject = projects[0];
-                    router.push(`/fire-door-quotes/${firstProject.id}`);
+                    router.push(`/fire-door-schedule/${firstProject.id}`);
                   } else {
-                    router.push("/fire-door-quotes/new");
+                    router.push("/fire-door-schedule/new");
                   }
                 }}
               >
@@ -2095,7 +2095,7 @@ export default function FireDoorSchedulePage() {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            router.push(`/fire-door-quotes/${project.id}`);
+                            router.push(`/fire-door-schedule/${project.id}`);
                           }}
                           className="text-xs bg-white/80 border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-500"
                         >
