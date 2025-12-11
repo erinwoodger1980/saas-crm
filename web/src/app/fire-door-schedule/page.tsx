@@ -923,8 +923,18 @@ export default function FireDoorSchedulePage() {
     lastUpdatedAt: 'Updated At'
   };
 
-  // Calculate column width based on field type
+  // Calculate column width based on field type and configuration
   const getColumnWidth = (field: string): number => {
+    // Check if there's a configured width for this field in the current tab
+    const tabConfig = tabColumnConfigs[activeTab];
+    if (tabConfig && tabConfig.length > 0) {
+      const colConfig = tabConfig.find(c => c.field === field);
+      if (colConfig && colConfig.width) {
+        return colConfig.width;
+      }
+    }
+    
+    // Fallback to default widths based on field type
     // Narrow columns for status/select fields
     if (['blanksStatus', 'lippingsStatus', 'facingsStatus', 'glassStatus', 'cassettesStatus', 'timbersStatus', 'ironmongeryStatus', 'doorPaperworkStatus', 'finalCncSheetStatus', 'finalChecksSheetStatus', 'deliveryChecklistStatus', 'framesPaperworkStatus', 'transportStatus', 'jobLocation', 'signOffStatus', 'scheduledBy', 'snaggingStatus', 'snaggingComplete'].includes(field)) {
       return 85;
@@ -1307,7 +1317,21 @@ export default function FireDoorSchedulePage() {
       return (
         <select
           value={value || ''}
-          onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
+          onChange={(e) => {
+            const newValue = e.target.value;
+            const updates: any = { [field]: newValue };
+            
+            // Auto-populate date ordered when status changes to Received
+            if (newValue === 'Received') {
+              const dateField = field.replace('Status', 'DateOrdered');
+              // Only set if not already set
+              if (!project[dateField as keyof FireDoorProject]) {
+                updates[dateField] = new Date().toISOString();
+              }
+            }
+            
+            updateProject(project.id, updates);
+          }}
           className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
