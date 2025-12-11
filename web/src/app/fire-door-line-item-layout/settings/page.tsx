@@ -19,9 +19,19 @@ interface FieldConfig {
   editable: boolean;
 }
 
-interface LayoutConfig {
+interface ProcessConfig {
+  code: string;
+  name: string;
   projectFields: FieldConfig[];
   lineItemFields: FieldConfig[];
+}
+
+interface LayoutConfig {
+  processes: ProcessConfig[];
+  cncCalculations: {
+    initialCncProgramUrl: string;
+    finalCncTrimProgramUrl: string;
+  };
   hideBlankFields: boolean;
   groupByCategory: boolean;
 }
@@ -121,10 +131,17 @@ export default function FireDoorLineItemLayoutSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("Basic Info");
+  const [selectedProcess, setSelectedProcess] = useState<string>("");
 
   useEffect(() => {
     loadLayout();
   }, []);
+
+  useEffect(() => {
+    if (layout?.processes && layout.processes.length > 0 && !selectedProcess) {
+      setSelectedProcess(layout.processes[0].code);
+    }
+  }, [layout, selectedProcess]);
 
   async function loadLayout() {
     setLoading(true);
@@ -169,54 +186,149 @@ export default function FireDoorLineItemLayoutSettings() {
     }
   }
 
-  function toggleProjectField(key: string, property: "visible" | "editable") {
+  function toggleProjectField(processCode: string, key: string, property: "visible" | "editable") {
     if (!layout) return;
     
     setLayout({
       ...layout,
-      projectFields: layout.projectFields.map(f =>
-        f.key === key ? { ...f, [property]: !f[property] } : f
+      processes: layout.processes.map(p =>
+        p.code === processCode
+          ? {
+              ...p,
+              projectFields: p.projectFields.map(f =>
+                f.key === key ? { ...f, [property]: !f[property] } : f
+              ),
+            }
+          : p
       ),
     });
   }
 
-  function toggleLineItemField(key: string, property: "visible" | "editable") {
+  function toggleLineItemField(processCode: string, key: string, property: "visible" | "editable") {
     if (!layout) return;
     
     setLayout({
       ...layout,
-      lineItemFields: layout.lineItemFields.map(f =>
-        f.key === key ? { ...f, [property]: !f[property] } : f
+      processes: layout.processes.map(p =>
+        p.code === processCode
+          ? {
+              ...p,
+              lineItemFields: p.lineItemFields.map(f =>
+                f.key === key ? { ...f, [property]: !f[property] } : f
+              ),
+            }
+          : p
       ),
     });
   }
 
-  function addLineItemField(fieldDef: typeof ALL_LINE_ITEM_FIELDS[0]) {
+  function updateCncCalculation(field: "initialCncProgramUrl" | "finalCncTrimProgramUrl", value: string) {
     if (!layout) return;
     
     setLayout({
       ...layout,
-      lineItemFields: [
-        ...layout.lineItemFields,
-        { key: fieldDef.key, label: fieldDef.label, visible: true, editable: false },
+      cncCalculations: {
+        ...layout.cncCalculations,
+        [field]: value,
+      },
+    });
+  }
+
+  function addProcess() {
+    if (!layout) return;
+    
+    const newCode = `PROCESS${layout.processes.length + 1}`;
+    setLayout({
+      ...layout,
+      processes: [
+        ...layout.processes,
+        {
+          code: newCode,
+          name: `Process ${layout.processes.length + 1}`,
+          projectFields: [],
+          lineItemFields: [],
+        },
       ],
     });
+    setSelectedProcess(newCode);
   }
 
-  function removeLineItemField(key: string) {
+  function removeProcess(code: string) {
+    if (!layout) return;
+    
+    const newProcesses = layout.processes.filter(p => p.code !== code);
+    setLayout({
+      ...layout,
+      processes: newProcesses,
+    });
+    
+    if (selectedProcess === code && newProcesses.length > 0) {
+      setSelectedProcess(newProcesses[0].code);
+    }
+  }
+
+  function updateProcessName(code: string, name: string) {
     if (!layout) return;
     
     setLayout({
       ...layout,
-      lineItemFields: layout.lineItemFields.filter(f => f.key !== key),
+      processes: layout.processes.map(p =>
+        p.code === code ? { ...p, name } : p
+      ),
     });
   }
 
-  function addProjectField(fieldDef: typeof ALL_PROJECT_FIELDS[0]) {
+  function addLineItemField(processCode: string, fieldDef: typeof ALL_LINE_ITEM_FIELDS[0]) {
     if (!layout) return;
     
     setLayout({
       ...layout,
+      processes: layout.processes.map(p =>
+        p.code === processCode
+          ? {
+              ...p,
+              lineItemFields: [
+                ...p.lineItemFields,
+                { key: fieldDef.key, label: fieldDef.label, visible: true, editable: false },
+              ],
+            }
+          : p
+      ),
+    });
+  }
+
+  function removeLineItemField(processCode: string, key: string) {
+    if (!layout) return;
+    
+    setLayout({
+      ...layout,
+      processes: layout.processes.map(p =>
+        p.code === processCode
+          ? {
+              ...p,
+              lineItemFields: p.lineItemFields.filter(f => f.key !== key),
+            }
+          : p
+      ),
+    });
+  }
+
+  function addProjectField(processCode: string, fieldDef: typeof ALL_PROJECT_FIELDS[0]) {
+    if (!layout) return;
+    
+    setLayout({
+      ...layout,
+      processes: layout.processes.map(p =>
+        p.code === processCode
+          ? {
+              ...p,
+              projectFields: [
+                ...p.projectFields,
+                { key: fieldDef.key, label: fieldDef.label, visible: true, editable: false },
+              ],
+            }
+          : p
+      ),
       projectFields: [
         ...layout.projectFields,
         { key: fieldDef.key, label: fieldDef.label, visible: true, editable: false },

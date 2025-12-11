@@ -34,21 +34,43 @@ router.get("/", async (req: any, res: Response) => {
 
     // Default configuration if none exists
     const defaultLayout = {
-      projectFields: [
-        { key: "mjsNumber", label: "MJS Number", visible: true, editable: false },
-        { key: "jobName", label: "Job Name", visible: true, editable: false },
-        { key: "clientName", label: "Client", visible: true, editable: false },
-        { key: "dateRequired", label: "Date Required", visible: true, editable: false },
+      processes: [
+        {
+          code: "CORE",
+          name: "Core Cutting",
+          projectFields: [
+            { key: "mjsNumber", label: "MJS Number", visible: true, editable: false },
+            { key: "jobName", label: "Job Name", visible: true, editable: false },
+          ],
+          lineItemFields: [
+            { key: "doorRef", label: "Door Ref", visible: true, editable: false },
+            { key: "rating", label: "Fire Rating", visible: true, editable: false },
+            { key: "masterWidth", label: "Master Width", visible: true, editable: false },
+            { key: "doorHeight", label: "Door Height", visible: true, editable: false },
+            { key: "core", label: "Core", visible: true, editable: false },
+            { key: "notes1", label: "Notes", visible: true, editable: true },
+          ],
+        },
+        {
+          code: "CNC",
+          name: "CNC Machining",
+          projectFields: [
+            { key: "mjsNumber", label: "MJS Number", visible: true, editable: false },
+            { key: "jobName", label: "Job Name", visible: true, editable: false },
+          ],
+          lineItemFields: [
+            { key: "doorRef", label: "Door Ref", visible: true, editable: false },
+            { key: "masterWidth", label: "Master Width", visible: true, editable: false },
+            { key: "doorHeight", label: "Door Height", visible: true, editable: false },
+            { key: "lockType", label: "Lock Type", visible: true, editable: false },
+            { key: "hingeType", label: "Hinge Type", visible: true, editable: false },
+          ],
+        },
       ],
-      lineItemFields: [
-        { key: "doorRef", label: "Door Ref", visible: true, editable: false },
-        { key: "rating", label: "Fire Rating", visible: true, editable: false },
-        { key: "doorsetType", label: "Doorset Type", visible: true, editable: false },
-        { key: "masterWidth", label: "Master Width", visible: true, editable: false },
-        { key: "doorHeight", label: "Door Height", visible: true, editable: false },
-        { key: "material", label: "Material", visible: true, editable: false },
-        { key: "notes1", label: "Notes", visible: true, editable: true },
-      ],
+      cncCalculations: {
+        initialCncProgramUrl: "https://cnc.example.com/program/${lineItem.doorRef}",
+        finalCncTrimProgramUrl: "https://cnc.example.com/trim/${lineItem.doorRef}",
+      },
       hideBlankFields: true,
       groupByCategory: true,
     };
