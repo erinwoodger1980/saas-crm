@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useCurrentUser } from "@/lib/use-current-user";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
@@ -51,6 +52,7 @@ interface Stats {
 
 export default function FireDoorSchedulePage() {
   const router = useRouter();
+  const { user } = useCurrentUser();
   const [projects, setProjects] = useState<FireDoorProject[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -156,7 +158,8 @@ export default function FireDoorSchedulePage() {
       const savedLocations = localStorage.getItem("fds:selectedLocations");
       const savedSortF = localStorage.getItem("fds:sortField");
       const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
-      const savedCustomColors = localStorage.getItem("fds:customColors");
+      const colorKey = user?.tenantId ? `fds:customColors:${user.tenantId}` : "fds:customColors";
+      const savedCustomColors = localStorage.getItem(colorKey);
       const savedFrozenColumns = localStorage.getItem("fds:frozenColumns");
       const savedColumnFilters = localStorage.getItem("fds:columnFilters");
       const savedTabColumnConfigs = localStorage.getItem("fds:tabColumnConfigs");
@@ -166,6 +169,21 @@ export default function FireDoorSchedulePage() {
         try {
           setCustomColors(JSON.parse(savedCustomColors));
         } catch {}
+      } else if (user?.tenantId) {
+        // Set default colors for LAJ Joinery (check by user email domain or tenant name)
+        // For now, set defaults for all tenants that don't have saved colors
+        const defaultColors: Record<string, {bg: string, text: string}> = {
+          // Material statuses
+          "In BOM": { bg: "#fde047", text: "#854d0e" },
+          "Ordered": { bg: "#fb923c", text: "#7c2d12" },
+          "Received": { bg: "#86efac", text: "#14532d" },
+          "Stock": { bg: "#86efac", text: "#14532d" },
+          // Paperwork statuses  
+          "In Factory": { bg: "#86efac", text: "#14532d" },
+          // Transport
+          "Booked": { bg: "#86efac", text: "#14532d" },
+        };
+        setCustomColors(defaultColors);
       }
       if (savedFrozenColumns) {
         try {
@@ -239,8 +257,10 @@ export default function FireDoorSchedulePage() {
     try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
   }, [sortField, sortDir]);
   useEffect(() => {
-    try { localStorage.setItem("fds:customColors", JSON.stringify(customColors)); } catch {}
-  }, [customColors]);
+    if (user?.tenantId) {
+      try { localStorage.setItem(`fds:customColors:${user.tenantId}`, JSON.stringify(customColors)); } catch {}
+    }
+  }, [customColors, user?.tenantId]);
   useEffect(() => {
     try { localStorage.setItem("fds:frozenColumns", JSON.stringify(frozenColumns)); } catch {}
   }, [frozenColumns]);
