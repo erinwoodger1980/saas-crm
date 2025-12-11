@@ -31,10 +31,26 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
     };
     document.body.appendChild(script);
 
-    // Small delay to ensure video element is mounted
-    const timer = setTimeout(() => {
-      startCamera();
-    }, 100);
+    // Wait for video element to be mounted, then start camera
+    let attempts = 0;
+    const maxAttempts = 10;
+    const checkAndStartCamera = () => {
+      console.log(`Attempt ${attempts + 1}: checking if video element is ready...`);
+      if (videoRef.current) {
+        console.log("Video element found, starting camera");
+        startCamera();
+      } else if (attempts < maxAttempts) {
+        attempts++;
+        setTimeout(checkAndStartCamera, 100);
+      } else {
+        console.error("Video element not found after 10 attempts");
+        setError("Failed to initialize video element");
+        setHasPermission(false);
+      }
+    };
+    
+    // Start checking after a small delay
+    const timer = setTimeout(checkAndStartCamera, 50);
 
     return () => {
       clearTimeout(timer);
@@ -253,6 +269,17 @@ export default function QRScannerModal({ onClose, onScanSuccess }: QRScannerModa
                   {error && (
                     <p className="text-xs text-red-400 mt-2">{error}</p>
                   )}
+                  <Button
+                    onClick={() => {
+                      setError(null);
+                      setHasPermission(null);
+                      setTimeout(() => startCamera(), 100);
+                    }}
+                    className="mt-4"
+                    variant="secondary"
+                  >
+                    Try Again
+                  </Button>
                 </div>
               </div>
             )}

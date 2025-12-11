@@ -149,6 +149,56 @@ export default function FireDoorSchedulePage() {
     projectCount: number;
   } | null>(null);
 
+  // Fetch custom colors from API
+  useEffect(() => {
+    const fetchColors = async () => {
+      try {
+        const res = await fetch("/api/fire-door-schedule/colors");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.colors && Object.keys(data.colors).length > 0) {
+            setCustomColors(data.colors);
+          } else {
+            // Set default colors if none saved in database
+            if (user?.tenantId === "cmi58fkzm0000it43i4h78pej") {
+              // LAJ Joinery specific default colors
+              const lajColors: Record<string, {bg: string, text: string}> = {
+                "In BOM": { bg: "#fde047", text: "#854d0e" },
+                "In BOM TBC": { bg: "#fde047", text: "#854d0e" },
+                "Ordered": { bg: "#fb923c", text: "#7c2d12" },
+                "Received": { bg: "#86efac", text: "#14532d" },
+                "Stock": { bg: "#86efac", text: "#14532d" },
+                "Received from TGS": { bg: "#86efac", text: "#14532d" },
+                "Received from Customer": { bg: "#86efac", text: "#14532d" },
+                "In Factory": { bg: "#86efac", text: "#14532d" },
+                "Printed in Office": { bg: "#86efac", text: "#14532d" },
+                "Booked": { bg: "#86efac", text: "#14532d" },
+              };
+              setCustomColors(lajColors);
+            } else {
+              // Generic default colors for other tenants
+              const defaultColors: Record<string, {bg: string, text: string}> = {
+                "In BOM": { bg: "#fde047", text: "#854d0e" },
+                "Ordered": { bg: "#fb923c", text: "#7c2d12" },
+                "Received": { bg: "#86efac", text: "#14532d" },
+                "Stock": { bg: "#86efac", text: "#14532d" },
+                "In Factory": { bg: "#86efac", text: "#14532d" },
+                "Booked": { bg: "#86efac", text: "#14532d" },
+              };
+              setCustomColors(defaultColors);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching colors:", error);
+      }
+    };
+    
+    if (user?.tenantId) {
+      fetchColors();
+    }
+  }, [user?.tenantId]);
+
   useEffect(() => {
     loadData();
     // Load persisted UI prefs
@@ -158,47 +208,11 @@ export default function FireDoorSchedulePage() {
       const savedLocations = localStorage.getItem("fds:selectedLocations");
       const savedSortF = localStorage.getItem("fds:sortField");
       const savedSortD = localStorage.getItem("fds:sortDir") as "asc" | "desc" | null;
-      const colorKey = user?.tenantId ? `fds:customColors:${user.tenantId}` : "fds:customColors";
-      const savedCustomColors = localStorage.getItem(colorKey);
       const savedFrozenColumns = localStorage.getItem("fds:frozenColumns");
       const savedColumnFilters = localStorage.getItem("fds:columnFilters");
       const savedTabColumnConfigs = localStorage.getItem("fds:tabColumnConfigs");
       if (savedView) setShowTable(savedView === "table");
       if (savedActiveTab) setActiveTab(savedActiveTab);
-      if (savedCustomColors) {
-        try {
-          setCustomColors(JSON.parse(savedCustomColors));
-        } catch {}
-      } else if (user?.tenantId === "cmi58fkzm0000it43i4h78pej") {
-        // LAJ Joinery specific default colors matching their current setup
-        const lajColors: Record<string, {bg: string, text: string}> = {
-          // Material statuses - matching screenshot colors
-          "In BOM": { bg: "#fde047", text: "#854d0e" },      // Yellow
-          "In BOM TBC": { bg: "#fde047", text: "#854d0e" },  // Yellow
-          "Ordered": { bg: "#fb923c", text: "#7c2d12" },     // Orange
-          "Received": { bg: "#86efac", text: "#14532d" },    // Green
-          "Stock": { bg: "#86efac", text: "#14532d" },       // Green
-          "Received from TGS": { bg: "#86efac", text: "#14532d" }, // Green
-          "Received from Customer": { bg: "#86efac", text: "#14532d" }, // Green
-          // Paperwork statuses  
-          "In Factory": { bg: "#86efac", text: "#14532d" },  // Green
-          "Printed in Office": { bg: "#86efac", text: "#14532d" }, // Green
-          // Transport
-          "Booked": { bg: "#86efac", text: "#14532d" },      // Green
-        };
-        setCustomColors(lajColors);
-      } else if (user?.tenantId) {
-        // Generic default colors for other tenants
-        const defaultColors: Record<string, {bg: string, text: string}> = {
-          "In BOM": { bg: "#fde047", text: "#854d0e" },
-          "Ordered": { bg: "#fb923c", text: "#7c2d12" },
-          "Received": { bg: "#86efac", text: "#14532d" },
-          "Stock": { bg: "#86efac", text: "#14532d" },
-          "In Factory": { bg: "#86efac", text: "#14532d" },
-          "Booked": { bg: "#86efac", text: "#14532d" },
-        };
-        setCustomColors(defaultColors);
-      }
       if (savedFrozenColumns) {
         try {
           setFrozenColumns(JSON.parse(savedFrozenColumns));
@@ -270,9 +284,22 @@ export default function FireDoorSchedulePage() {
   useEffect(() => {
     try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
   }, [sortField, sortDir]);
+  
+  // Save customColors to database via API whenever they change
   useEffect(() => {
-    if (user?.tenantId) {
-      try { localStorage.setItem(`fds:customColors:${user.tenantId}`, JSON.stringify(customColors)); } catch {}
+    if (user?.tenantId && Object.keys(customColors).length > 0) {
+      const saveColors = async () => {
+        try {
+          await fetch("/api/fire-door-schedule/colors", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ colors: customColors }),
+          });
+        } catch (error) {
+          console.error("Error saving colors:", error);
+        }
+      };
+      saveColors();
     }
   }, [customColors, user?.tenantId]);
   useEffect(() => {
