@@ -535,6 +535,7 @@ model TenantSettings {
   serviceArea               String?
   testimonials              Json?
   fireDoorScheduleColors    Json?
+  fireDoorLineItemLayout    Json?
 }
 
 model FollowUpLog {
