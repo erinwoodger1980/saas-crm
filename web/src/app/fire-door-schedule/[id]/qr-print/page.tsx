@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import QRCode from "react-qr-code";
 import { Button } from "@/components/ui/button";
-import { Printer } from "lucide-react";
+import { Printer, Eye } from "lucide-react";
+import Link from "next/link";
 
 interface LineItem {
   id: string;
@@ -17,6 +18,7 @@ interface LineItem {
 
 export default function FireDoorQRPrintPage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params?.id as string;
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +37,23 @@ export default function FireDoorQRPrintPage() {
       const data = await apiFetch<{ ok: boolean; lineItems: LineItem[] }>(
         `/fire-door-schedule/${projectId}/line-items`
       );
+      if (data.ok) {
+        // Sort line items numerically by doorRef or lajRef
+        const sortedItems = data.lineItems.sort((a, b) => {
+          const aRef = a.doorRef || a.lajRef || "";
+          const bRef = b.doorRef || b.lajRef || "";
+          
+          // Extract numbers from the references
+          const aNum = parseInt(aRef.replace(/\D/g, "")) || 0;
+          const bNum = parseInt(bRef.replace(/\D/g, "")) || 0;
+          
+          return aNum - bNum;
+        });
+        
+        setLineItems(sortedItems);
+        // Generate QR data for all items (universal QR - user selects process after scanning)
+        generateQRData(sortedItems);
+      }
       if (data.ok) {
         setLineItems(data.lineItems);
         // Generate QR data for all items (universal QR - user selects process after scanning)
@@ -247,14 +266,29 @@ export default function FireDoorQRPrintPage() {
                 </div>
               )}
             </div>
-            <Button
-              onClick={() => printLabel(lineItem.id)}
-              className="w-full"
-              size="sm"
-            >
-              <Printer className="w-4 h-4 mr-2" />
-              Print Label
-            </Button>
+            <div className="flex gap-2">
+              <Link
+                href={`/fire-door-line-item-layout/${lineItem.id}`}
+                className="flex-1"
+              >
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  size="sm"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  View Details
+                </Button>
+              </Link>
+              <Button
+                onClick={() => printLabel(lineItem.id)}
+                className="flex-1"
+                size="sm"
+              >
+                <Printer className="w-4 h-4 mr-2" />
+                Print Label
+              </Button>
+            </div>
           </div>
         ))}
       </div>
