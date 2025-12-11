@@ -1331,9 +1331,10 @@ export default function FireDoorSchedulePage() {
             // Auto-populate date ordered when status changes to Received
             if (newValue === 'Received') {
               const dateField = field.replace('Status', 'DateOrdered');
-              // Only set if not already set
-              if (!project[dateField as keyof FireDoorProject]) {
-                updates[dateField] = new Date().toISOString();
+              const currentDate = project[dateField as keyof FireDoorProject];
+              // Only set if not already set (check for null, undefined, or empty string)
+              if (!currentDate || currentDate === '' || currentDate === 'dd/mm/yyyy') {
+                updates[dateField] = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
               }
             }
             
