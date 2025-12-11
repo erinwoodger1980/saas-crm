@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Save, ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Save, ArrowLeft, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -148,6 +148,10 @@ export default function FireDoorLineItemLayoutSettings() {
   const { toast } = useToast();
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expandedCategories, setExpandedCategories] = useState<{ [key: string]: boolean }>({
+    "Basic Info": true,
+    "Calculated": true,
+  });
   const [saving, setSaving] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("Basic Info");
   const [selectedProcess, setSelectedProcess] = useState<string>("");
@@ -463,36 +467,119 @@ export default function FireDoorLineItemLayoutSettings() {
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Field Calculations</h2>
-            <p className="text-sm text-muted-foreground">
-              Define formulas for calculated fields
-            </p>
-          </div>
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {ALL_LINE_ITEM_FIELDS.map((field) => (
-                <div key={field.key} className="space-y-2">
-                  <Label htmlFor={`calc-${field.key}`} className="flex items-center justify-between">
-                    <span>{field.label}</span>
-                    <span className="text-xs text-muted-foreground">{field.category}</span>
-                  </Label>
-                  <Input
-                    id={`calc-${field.key}`}
-                    value={layout.fieldCalculations?.[field.key] || ""}
-                    onChange={(e) => updateFieldCalculation(field.key, e.target.value)}
-                    placeholder="e.g., ${lineItem.masterWidth} - 6"
-                    className="font-mono text-xs"
-                  />
-                </div>
-              ))}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const customFieldCount = ALL_LINE_ITEM_FIELDS.filter(f => 
+                    f.key.startsWith('calculatedField')
+                  ).length;
+                  const newFieldKey = `calculatedField${customFieldCount + 1}`;
+                  const newFieldLabel = `Custom Calculation ${customFieldCount + 1}`;
+                  
+                  // Add to ALL_LINE_ITEM_FIELDS dynamically
+                  ALL_LINE_ITEM_FIELDS.push({
+                    key: newFieldKey,
+                    label: newFieldLabel,
+                    category: "Calculated"
+                  });
+                  
+                  // Force re-render
+                  setLayout({ ...layout! });
+                }}
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Add Calculated Field
+              </Button>
             </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="font-semibold text-sm mb-2">Formula Examples:</h3>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li><code className="bg-white px-1 py-0.5 rounded">{'${lineItem.masterWidth} - 6'}</code> - Subtract 6 from master width</li>
-                <li><code className="bg-white px-1 py-0.5 rounded">{'${lineItem.doorHeight} - (${lineItem.top} + ${lineItem.btm})'}</code> - Complex calculation</li>
-                <li><code className="bg-white px-1 py-0.5 rounded">{'${lineItem.masterWidth} * 2 + ${lineItem.slaveWidth}'}</code> - Multiple operations</li>
-                <li><code className="bg-white px-1 py-0.5 rounded">{'${project.mjsNumber}-${lineItem.doorRef}'}</code> - Concatenate strings</li>
-              </ul>
+          </div>
+          
+          <div className="space-y-4">
+            {/* Group fields by category */}
+            {Object.entries(
+              ALL_LINE_ITEM_FIELDS.reduce((acc, field) => {
+                if (!acc[field.category]) acc[field.category] = [];
+                acc[field.category].push(field);
+                return acc;
+              }, {} as { [key: string]: typeof ALL_LINE_ITEM_FIELDS })
+            ).map(([category, fields]) => (
+              <div key={category} className="border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setExpandedCategories({
+                    ...expandedCategories,
+                    [category]: !expandedCategories[category]
+                  })}
+                  className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm">{category}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({fields.filter(f => layout?.fieldCalculations?.[f.key]).length}/{fields.length} configured)
+                    </span>
+                  </div>
+                  {expandedCategories[category] ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                </button>
+                
+                {expandedCategories[category] && (
+                  <div className="p-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {fields.map((field) => (
+                        <div key={field.key} className="space-y-2">
+                          <Label htmlFor={`calc-${field.key}`} className="flex items-center gap-2">
+                            <span className="text-sm">{field.label}</span>
+                            {layout?.fieldCalculations?.[field.key] && (
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                                Active
+                              </span>
+                            )}
+                          </Label>
+                          <Input
+                            id={`calc-${field.key}`}
+                            value={layout?.fieldCalculations?.[field.key] || ""}
+                            onChange={(e) => updateFieldCalculation(field.key, e.target.value)}
+                            placeholder="e.g., ${lineItem.masterWidth} - 6"
+                            className="font-mono text-xs"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Formula Examples */}
+          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-semibold text-sm mb-3">Formula Examples:</h3>
+            <div className="space-y-2">
+              <div className="text-xs">
+                <strong>Math Operations:</strong>
+                <ul className="ml-4 mt-1 space-y-1 text-muted-foreground">
+                  <li><code className="bg-white px-1 py-0.5 rounded">{'${lineItem.masterWidth} - 6'}</code> - Subtract constant</li>
+                  <li><code className="bg-white px-1 py-0.5 rounded">{'${lineItem.doorHeight} - (${lineItem.top} + ${lineItem.btm})'}</code> - Complex calculation</li>
+                  <li><code className="bg-white px-1 py-0.5 rounded">{'${lineItem.masterWidth} * 2 + ${lineItem.slaveWidth}'}</code> - Multiple operations</li>
+                </ul>
+              </div>
+              <div className="text-xs">
+                <strong>String Concatenation:</strong>
+                <ul className="ml-4 mt-1 space-y-1 text-muted-foreground">
+                  <li><code className="bg-white px-1 py-0.5 rounded">{'${project.mjsNumber}-${lineItem.doorRef}'}</code> - Join with dash</li>
+                </ul>
+              </div>
+              <div className="text-xs">
+                <strong>Lookup Tables:</strong>
+                <ul className="ml-4 mt-1 space-y-1 text-muted-foreground">
+                  <li><code className="bg-white px-1 py-0.5 rounded">{'LOOKUP(FireCertificationRule, rating=${lineItem.rating}, certification)'}</code> - Get certification from rating</li>
+                  <li><code className="bg-white px-1 py-0.5 rounded">{'LOOKUP(WeightLookup, width=${lineItem.masterWidth}, weight)'}</code> - Get weight from dimensions</li>
+                  <li><code className="bg-white px-1 py-0.5 rounded">{'LOOKUP(PricingTable, material=${lineItem.material}&rating=${lineItem.rating}, price)'}</code> - Multi-condition lookup</li>
+                </ul>
+              </div>
             </div>
           </div>
         </Card>

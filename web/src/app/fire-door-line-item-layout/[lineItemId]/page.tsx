@@ -119,6 +119,40 @@ export default function FireDoorLineItemDetailPage() {
     }));
   }
 
+  async function evaluateLookup(tableName: string, conditions: string, returnField: string): Promise<string> {
+    try {
+      // Parse conditions (e.g., "rating=${lineItem.rating}&type=${lineItem.doorsetType}")
+      let conditionStr = conditions;
+      
+      // Replace line item fields
+      const lineItemMatches = conditions.match(/\$\{lineItem\.(\w+)\}/g);
+      if (lineItemMatches) {
+        lineItemMatches.forEach(match => {
+          const field = match.replace("${lineItem.", "").replace("}", "");
+          const value = data!.lineItem[field] || "";
+          conditionStr = conditionStr.replace(match, String(value));
+        });
+      }
+      
+      // Replace project fields
+      const projectMatches = conditions.match(/\$\{project\.(\w+)\}/g);
+      if (projectMatches) {
+        projectMatches.forEach(match => {
+          const field = match.replace("${project.", "").replace("}", "");
+          const value = data!.project?.[field] || "";
+          conditionStr = conditionStr.replace(match, String(value));
+        });
+      }
+      
+      // Call API to perform lookup
+      const response = await apiFetch(`/api/lookup/${tableName}?${conditionStr}&returnField=${returnField}`);
+      return response.value || "";
+    } catch (e) {
+      console.error("Error performing lookup:", e);
+      throw new Error(`Lookup failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+  }
+
   function evaluateFormula(formula: string): string {
     if (!data?.lineItem || !formula) return "";
     
@@ -126,13 +160,25 @@ export default function FireDoorLineItemDetailPage() {
       // Replace ${lineItem.field} and ${project.field} with actual values
       let result = formula;
       
+      // Check for LOOKUP function - this will be handled asynchronously
+      if (formula.includes('LOOKUP(')) {
+        // LOOKUP formulas need async evaluation - return placeholder
+        return "[LOOKUP - Loading...]";
+      }
+      
       // Replace lineItem fields
       const lineItemMatches = formula.match(/\$\{lineItem\.(\w+)\}/g);
       if (lineItemMatches) {
         lineItemMatches.forEach(match => {
           const field = match.replace("${lineItem.", "").replace("}", "");
           const value = data.lineItem[field] || "";
-          result = result.replace(match, encodeURIComponent(String(value)));
+          // For URL encoding (CNC URLs), encode the value
+          if (formula.includes('http') || formula.includes('cnc')) {
+            result = result.replace(match, encodeURIComponent(String(value)));
+          } else {
+            // For calculations, use raw value
+            result = result.replace(match, String(value));
+          }
         });
       }
       
@@ -142,7 +188,13 @@ export default function FireDoorLineItemDetailPage() {
         projectMatches.forEach(match => {
           const field = match.replace("${project.", "").replace("}", "");
           const value = data.project?.[field] || "";
-          result = result.replace(match, encodeURIComponent(String(value)));
+          // For URL encoding (CNC URLs), encode the value
+          if (formula.includes('http') || formula.includes('cnc')) {
+            result = result.replace(match, encodeURIComponent(String(value)));
+          } else {
+            // For calculations, use raw value
+            result = result.replace(match, String(value));
+          }
         });
       }
       

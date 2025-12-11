@@ -129,6 +129,7 @@ import ironmongeryItemsRouter from "./routes/ironmongery-items";
 import rfisRouter from "./routes/rfis";
 import coachingRouter from "./routes/coaching";
 import fireDoorQRRouter from "./routes/fire-door-qr";
+import lookupRouter from "./routes/lookup";
 
 type BillingModule = typeof import("./routes/billing");
 type PublicSignupModule = typeof import("./routes/public-signup");
@@ -687,6 +688,8 @@ app.use("/fire-door-qr", fireDoorQRRouter); // Public scans + protected manageme
 app.use("/door-cores", requireAuth, doorCoresRouter);
 app.use("/ironmongery-items", requireAuth, ironmongeryItemsRouter);
 app.use("/rfis", requireAuth, rfisRouter);
+// Generic lookup API for calculated fields
+app.use("/api/lookup", requireAuth, lookupRouter);
 // Material cost debug routes (internal debugging tool)
 app.use("/material-debug", requireAuth, materialDebugRouter);
 // Developer Console routes
