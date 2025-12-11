@@ -155,55 +155,62 @@ export default function FireDoorSchedulePage() {
   useEffect(() => {
     const fetchColors = async () => {
       try {
-        const res = await fetch("/api/fire-door-schedule/colors");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.colors && Object.keys(data.colors).length > 0) {
-            setCustomColors(data.colors);
-            initialColorsRef.current = JSON.stringify(data.colors); // Store initial state
-            colorsLoadedRef.current = true; // Mark as loaded from API
+        console.log("[COLORS] Fetching colors from API...");
+        const data = await apiFetch<{ colors: Record<string, {bg: string, text: string}> }>("/fire-door-schedule/colors");
+        console.log("[COLORS] Fetched data:", data);
+        
+        if (data.colors && Object.keys(data.colors).length > 0) {
+          console.log("[COLORS] Setting custom colors from API:", data.colors);
+          setCustomColors(data.colors);
+          initialColorsRef.current = JSON.stringify(data.colors); // Store initial state
+          colorsLoadedRef.current = true; // Mark as loaded from API
+        } else {
+          console.log("[COLORS] No colors in database, using defaults");
+          // Set default colors if none saved in database
+          if (user?.tenantId === "cmi58fkzm0000it43i4h78pej") {
+            // LAJ Joinery specific default colors
+            const lajColors: Record<string, {bg: string, text: string}> = {
+              "In BOM": { bg: "#fde047", text: "#854d0e" },
+              "In BOM TBC": { bg: "#fde047", text: "#854d0e" },
+              "Ordered": { bg: "#fb923c", text: "#7c2d12" },
+              "Received": { bg: "#86efac", text: "#14532d" },
+              "Stock": { bg: "#86efac", text: "#14532d" },
+              "Received from TGS": { bg: "#86efac", text: "#14532d" },
+              "Received from Customer": { bg: "#86efac", text: "#14532d" },
+              "In Factory": { bg: "#86efac", text: "#14532d" },
+              "Printed in Office": { bg: "#86efac", text: "#14532d" },
+              "Booked": { bg: "#86efac", text: "#14532d" },
+            };
+            console.log("[COLORS] Setting LAJ default colors");
+            setCustomColors(lajColors);
+            initialColorsRef.current = JSON.stringify(lajColors); // Store initial state
+            colorsLoadedRef.current = true; // Mark as loaded
           } else {
-            // Set default colors if none saved in database
-            if (user?.tenantId === "cmi58fkzm0000it43i4h78pej") {
-              // LAJ Joinery specific default colors
-              const lajColors: Record<string, {bg: string, text: string}> = {
-                "In BOM": { bg: "#fde047", text: "#854d0e" },
-                "In BOM TBC": { bg: "#fde047", text: "#854d0e" },
-                "Ordered": { bg: "#fb923c", text: "#7c2d12" },
-                "Received": { bg: "#86efac", text: "#14532d" },
-                "Stock": { bg: "#86efac", text: "#14532d" },
-                "Received from TGS": { bg: "#86efac", text: "#14532d" },
-                "Received from Customer": { bg: "#86efac", text: "#14532d" },
-                "In Factory": { bg: "#86efac", text: "#14532d" },
-                "Printed in Office": { bg: "#86efac", text: "#14532d" },
-                "Booked": { bg: "#86efac", text: "#14532d" },
-              };
-              setCustomColors(lajColors);
-              initialColorsRef.current = JSON.stringify(lajColors); // Store initial state
-              colorsLoadedRef.current = true; // Mark as loaded
-            } else {
-              // Generic default colors for other tenants
-              const defaultColors: Record<string, {bg: string, text: string}> = {
-                "In BOM": { bg: "#fde047", text: "#854d0e" },
-                "Ordered": { bg: "#fb923c", text: "#7c2d12" },
-                "Received": { bg: "#86efac", text: "#14532d" },
-                "Stock": { bg: "#86efac", text: "#14532d" },
-                "In Factory": { bg: "#86efac", text: "#14532d" },
-                "Booked": { bg: "#86efac", text: "#14532d" },
-              };
-              setCustomColors(defaultColors);
-              initialColorsRef.current = JSON.stringify(defaultColors); // Store initial state
-              colorsLoadedRef.current = true; // Mark as loaded
-            }
+            // Generic default colors for other tenants
+            const defaultColors: Record<string, {bg: string, text: string}> = {
+              "In BOM": { bg: "#fde047", text: "#854d0e" },
+              "Ordered": { bg: "#fb923c", text: "#7c2d12" },
+              "Received": { bg: "#86efac", text: "#14532d" },
+              "Stock": { bg: "#86efac", text: "#14532d" },
+              "In Factory": { bg: "#86efac", text: "#14532d" },
+              "Booked": { bg: "#86efac", text: "#14532d" },
+            };
+            console.log("[COLORS] Setting generic default colors");
+            setCustomColors(defaultColors);
+            initialColorsRef.current = JSON.stringify(defaultColors); // Store initial state
+            colorsLoadedRef.current = true; // Mark as loaded
           }
         }
       } catch (error) {
-        console.error("Error fetching colors:", error);
+        console.error("[COLORS] Error fetching colors:", error);
       }
     };
     
     if (user?.tenantId) {
+      console.log("[COLORS] User tenant ID:", user.tenantId);
       fetchColors();
+    } else {
+      console.log("[COLORS] No user or tenant ID, skipping color fetch");
     }
   }, [user?.tenantId]);
 
@@ -302,26 +309,32 @@ export default function FireDoorSchedulePage() {
       if (currentColorsStr !== initialColorsRef.current) {
         const saveColors = async () => {
           try {
-            console.log("Saving colors to API:", customColors);
-            const response = await fetch("/api/fire-door-schedule/colors", {
+            console.log("[COLORS] Saving colors to API:", customColors);
+            console.log("[COLORS] Initial colors:", initialColorsRef.current);
+            console.log("[COLORS] Current colors:", currentColorsStr);
+            
+            const response = await apiFetch("/fire-door-schedule/colors", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ colors: customColors }),
+              json: { colors: customColors },
             });
-            if (response.ok) {
-              console.log("Colors saved successfully");
-              // Update initial ref to prevent re-saving the same data
-              initialColorsRef.current = currentColorsStr;
-            } else {
-              console.error("Failed to save colors:", await response.text());
-            }
+            
+            console.log("[COLORS] Save response:", response);
+            console.log("[COLORS] Colors saved successfully");
+            // Update initial ref to prevent re-saving the same data
+            initialColorsRef.current = currentColorsStr;
           } catch (error) {
-            console.error("Error saving colors:", error);
+            console.error("[COLORS] Error saving colors:", error);
           }
         };
         // Debounce the save to avoid too many requests
         const timeoutId = setTimeout(saveColors, 500);
         return () => clearTimeout(timeoutId);
+      } else {
+        console.log("[COLORS] No change detected, skipping save");
+      }
+    } else {
+      if (!colorsLoadedRef.current) {
+        console.log("[COLORS] Colors not yet loaded from API, skipping save");
       }
     }
   }, [customColors, user?.tenantId]);
