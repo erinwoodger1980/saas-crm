@@ -237,6 +237,9 @@ export default function FireDoorScheduleDetailPage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshing, setRefreshing] = useState(false);
   const [customColors, setCustomColors] = useState<Record<string, {bg: string, text: string}>>({});
+  const [lineItemLayout, setLineItemLayout] = useState<any>(null);
+  const [lineItems, setLineItems] = useState<any[]>([]);
+  const [loadingLineItems, setLoadingLineItems] = useState(false);
 
   // Fetch custom colors from API
   useEffect(() => {
@@ -262,6 +265,8 @@ export default function FireDoorScheduleDetailPage() {
   useEffect(() => {
     if (!isNew && id) {
       loadProject();
+      loadLineItemLayout();
+      loadLineItems();
     } else if (isNew) {
       setProject({ id: "new", jobLocation: "RED FOLDER", signOffStatus: "AWAITING SCHEDULE", overallProgress: 0 } as FireDoorProject);
     }
@@ -293,11 +298,35 @@ export default function FireDoorScheduleDetailPage() {
     setRefreshing(true);
     try {
       await loadProject();
+      await loadLineItems();
       toast({ title: "Refreshed", description: "Project data updated" });
     } catch (error) {
       console.error("Error refreshing project:", error);
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function loadLineItemLayout() {
+    try {
+      const data = await apiFetch<{ layout: any }>("/fire-door-line-item-layout");
+      setLineItemLayout(data.layout);
+    } catch (error) {
+      console.error("Error loading line item layout:", error);
+    }
+  }
+
+  async function loadLineItems() {
+    if (!id || isNew) return;
+    setLoadingLineItems(true);
+    try {
+      const data = await apiFetch<any[]>(`/fire-door-schedule/${id}/line-items`);
+      setLineItems(data || []);
+    } catch (error) {
+      console.error("Error loading line items:", error);
+      setLineItems([]);
+    } finally {
+      setLoadingLineItems(false);
     }
   }
 
@@ -579,7 +608,7 @@ export default function FireDoorScheduleDetailPage() {
       <div className="container mx-auto px-6 py-8">
         {!isNew ? (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full max-w-3xl grid-cols-3 bg-white/60 backdrop-blur-sm">
+            <TabsList className={`grid w-full bg-white/60 backdrop-blur-sm ${lineItemLayout?.processes ? `grid-cols-${2 + lineItemLayout.processes.length}` : 'grid-cols-3'}`}>
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <Info className="w-4 h-4" />
                 Project Overview
@@ -588,10 +617,12 @@ export default function FireDoorScheduleDetailPage() {
                 <FileCheck className="w-4 h-4" />
                 BOM & Materials
               </TabsTrigger>
-              <TabsTrigger value="lineitems" className="flex items-center gap-2">
-                <Table className="w-4 h-4" />
-                Line Items
-              </TabsTrigger>
+              {lineItemLayout?.processes && lineItemLayout.processes.map((process: any) => (
+                <TabsTrigger key={process.code} value={`process-${process.code}`} className="flex items-center gap-2">
+                  <Table className="w-4 h-4" />
+                  {process.name}
+                </TabsTrigger>
+              ))}
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
@@ -1071,21 +1102,85 @@ export default function FireDoorScheduleDetailPage() {
         )}
             </TabsContent>
 
-            <TabsContent value="lineitems" className="space-y-6">
-              <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                    <Table className="w-5 h-5 text-white" />
+            {lineItemLayout?.processes && lineItemLayout.processes.map((process: any) => (
+              <TabsContent key={process.code} value={`process-${process.code}`} className="space-y-6">
+                <div className="bg-white/60 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                        <Table className="w-5 h-5 text-white" />
+                      </div>
+                      <h2 className="text-xl font-bold text-slate-800">{process.name} - Line Items</h2>
+                    </div>
                   </div>
-                  <h2 className="text-xl font-bold text-slate-800">Fire Door Line Items (144 Columns)</h2>
+                  
+                  {loadingLineItems ? (
+                    <div className="text-center py-8 text-slate-600">Loading line items...</div>
+                  ) : lineItems.length === 0 ? (
+                    <div className="text-center py-8 text-slate-600">No line items found for this project.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 border-b-2 border-slate-300">
+                            {process.projectFields?.filter((f: any) => f.visible).map((field: any) => (
+                              <th key={`proj-${field.key}`} className="px-3 py-2 text-left text-xs font-semibold text-slate-700 sticky top-0 bg-slate-100">
+                                {field.label}
+                              </th>
+                            ))}
+                            {process.lineItemFields?.filter((f: any) => f.visible).map((field: any) => (
+                              <th key={`item-${field.key}`} className="px-3 py-2 text-left text-xs font-semibold text-slate-700 sticky top-0 bg-slate-100">
+                                {field.label}
+                              </th>
+                            ))}
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700 sticky top-0 bg-slate-100">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lineItems.map((item: any, idx: number) => (
+                            <tr key={item.id} className={`border-b border-slate-200 hover:bg-blue-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                              {process.projectFields?.filter((f: any) => f.visible).map((field: any) => (
+                                <td key={`proj-${field.key}`} className="px-3 py-2 text-sm text-slate-700">
+                                  {project?.[field.key] != null ? String(project[field.key]) : '—'}
+                                </td>
+                              ))}
+                              {process.lineItemFields?.filter((f: any) => f.visible).map((field: any) => (
+                                <td key={`item-${field.key}`} className="px-3 py-2 text-sm text-slate-700">
+                                  {item[field.key] != null ? String(item[field.key]) : '—'}
+                                </td>
+                              ))}
+                              <td className="px-3 py-2 text-sm">
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => router.push(`/fire-door-line-item-layout/${item.id}?process=${process.code}`)}
+                                    className="text-xs"
+                                  >
+                                    View
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(`/fire-door-qr/${item.id}`, '_blank')}
+                                    className="text-xs"
+                                  >
+                                    <QrCode className="w-3 h-3 mr-1" />
+                                    QR
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-                {selectedImportId ? (
-                  <FireDoorSpreadsheet importId={selectedImportId} />
-                ) : (
-                  <div className="text-slate-600 text-sm">Select an import in the Project Overview tab to view line items.</div>
-                )}
-              </div>
-            </TabsContent>
+              </TabsContent>
+            ))}
           </Tabs>
         ) : (
           <div className="space-y-6">

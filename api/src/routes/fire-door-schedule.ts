@@ -266,20 +266,13 @@ router.get("/:id/line-items", async (req: any, res: Response) => {
           projectId: id,
         }
       },
-      select: {
-        id: true,
-        doorRef: true,
-        lajRef: true,
-        rating: true,
-        doorsetType: true,
-      },
       orderBy: [
         { doorRef: 'asc' },
         { lajRef: 'asc' },
       ],
     });
 
-    res.json({ ok: true, lineItems });
+    res.json(lineItems);
   } catch (error) {
     console.error("Error fetching line items:", error);
     res.status(500).json({ error: "Failed to fetch line items" });

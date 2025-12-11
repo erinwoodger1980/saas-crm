@@ -1308,7 +1308,7 @@ export default function FireDoorSchedulePage() {
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
+          className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
@@ -1326,7 +1326,7 @@ export default function FireDoorSchedulePage() {
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
+          className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>
@@ -1344,7 +1344,7 @@ export default function FireDoorSchedulePage() {
         <select
           value={value || ''}
           onChange={(e) => updateProject(project.id, { [field]: e.target.value })}
-          className={`text-[11px] font-medium px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
+          className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border focus:outline-none focus:ring-2 focus:ring-blue-300 ${colorClasses}`}
           style={customColor ? { backgroundColor: customColor.bg, color: customColor.text, borderColor: customColor.bg } : undefined}
         >
           <option value="">--</option>

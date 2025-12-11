@@ -164,6 +164,25 @@ export function ColumnConfigModal({
                     </div>
 
                     <div className="flex items-center gap-4 flex-shrink-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-600">Width:</span>
+                        <Input
+                          type="number"
+                          min={50}
+                          max={500}
+                          value={col.width || 150}
+                          onChange={(e) => {
+                            const newWidth = parseInt(e.target.value) || 150;
+                            setColumns((prev) =>
+                              prev.map((c) =>
+                                c.field === col.field ? { ...c, width: newWidth } : c
+                              )
+                            );
+                          }}
+                          className="w-20 h-8 text-xs"
+                        />
+                      </div>
+
                       <label className="flex items-center gap-2 cursor-pointer">
                         <Checkbox
                           checked={col.visible}
