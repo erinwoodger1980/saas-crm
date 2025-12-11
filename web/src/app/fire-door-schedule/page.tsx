@@ -2035,8 +2035,8 @@ export default function FireDoorSchedulePage() {
                       return (
                       <th
                         key={field}
-                        className={`px-4 py-3 text-left group sticky top-0 ${isFrozen ? `z-[210] bg-white bg-clip-padding min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-[190] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
-                        style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : undefined}
+                        className={`px-4 py-3 text-left group sticky top-0 ${isFrozen ? `z-[210] bg-white bg-clip-padding` : 'z-[190] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                        style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : { width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` }}
                         ref={(el) => { headerRefs.current[field] = el }}
                       >
                         <div className="flex flex-col gap-1">
@@ -2096,8 +2096,8 @@ export default function FireDoorSchedulePage() {
                       return (
                         <th
                           key={field}
-                          className={`px-4 py-2 sticky ${isFrozen ? `z-[200] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-[90] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
-                            style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, top: `${headerHeight}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : { top: `${headerHeight}px` }}
+                          className={`px-4 py-2 sticky ${isFrozen ? `z-[200] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)]` : 'z-[90] bg-white'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                            style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, top: `${headerHeight}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : { top: `${headerHeight}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` }}
                         >
                           <Input
                             placeholder="Filter..."
@@ -2147,8 +2147,8 @@ export default function FireDoorSchedulePage() {
                         return (
                         <td
                           key={field}
-                          className={`px-4 py-3 text-slate-700 font-semibold cursor-pointer ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)] min-w-[${fieldWidth}px] w-[${fieldWidth}px] max-w-[${fieldWidth}px]` : 'z-0 group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
-                          style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : undefined}
+                          className={`px-4 py-3 text-slate-700 font-semibold cursor-pointer ${isFrozen ? `sticky z-[50] bg-white bg-clip-padding shadow-[inset_-1px_0_0_rgba(15,23,42,0.06)]` : 'z-0 group-hover:bg-blue-50/40'} ${isLastFrozen ? 'border-r border-slate-200' : ''}`}
+                          style={isFrozen && leftOffset !== undefined ? { left: `${leftOffset}px`, width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` } : { width: `${fieldWidth}px`, minWidth: `${fieldWidth}px`, maxWidth: `${fieldWidth}px` }}
                           onClick={() => router.push(`/fire-door-schedule/${project.id}`)}
                         >
                           <div onClick={(e) => e.stopPropagation()} className="relative z-40">
