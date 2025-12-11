@@ -12,6 +12,7 @@ import { apiFetch } from "@/lib/api";
 import { getApiBase } from "@/lib/api-base";
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
+import { useCurrentUser } from "@/lib/use-current-user";
 import FireDoorSpreadsheet from "@/components/FireDoorSpreadsheet";
 import { ColoredSelect } from "@/components/ColoredSelect";
 
@@ -28,6 +29,16 @@ const ironmongeryStatusOptions = [
   "Received from Customer"
 ];
 
+// Helper function to get inline styles from custom colors
+function getCustomColorStyle(status: string | undefined, customColors: Record<string, {bg: string, text: string}>) {
+  if (!status || !customColors[status]) return {};
+  return {
+    backgroundColor: customColors[status].bg,
+    color: customColors[status].text,
+  };
+}
+
+// Fallback Tailwind classes when custom colors not available
 const MATERIAL_STATUS_COLORS: Record<string, string> = {
   "Not in BOM": "bg-slate-100 text-slate-600",
   "In BOM TBC": "bg-orange-100 text-orange-700",
@@ -212,6 +223,7 @@ export default function FireDoorScheduleDetailPage() {
   const id = params?.id as string;
   const isNew = id === "new";
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   const [project, setProject] = useState<FireDoorProject | null>(null);
   const [loading, setLoading] = useState(!isNew);
@@ -224,6 +236,28 @@ export default function FireDoorScheduleDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshing, setRefreshing] = useState(false);
+  const [customColors, setCustomColors] = useState<Record<string, {bg: string, text: string}>>({});
+
+  // Fetch custom colors from API
+  useEffect(() => {
+    const fetchColors = async () => {
+      try {
+        const res = await fetch("/api/fire-door-schedule/colors");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.colors && Object.keys(data.colors).length > 0) {
+            setCustomColors(data.colors);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching colors:", error);
+      }
+    };
+    
+    if (user?.tenantId) {
+      fetchColors();
+    }
+  }, [user?.tenantId]);
 
   useEffect(() => {
     if (!isNew && id) {
@@ -631,16 +665,16 @@ export default function FireDoorScheduleDetailPage() {
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-600 mb-1.5 block">Job Location</label>
-              <Select value={project.jobLocation || ""} onValueChange={(v) => updateField("jobLocation", v)}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="RED FOLDER">🔴 Red Folder</SelectItem>
-                  <SelectItem value="IN PROGRESS">⚙️ In Progress</SelectItem>
-                  <SelectItem value="COMPLETE">✅ Complete</SelectItem>
-                </SelectContent>
-              </Select>
+              <ColoredSelect
+                value={project.jobLocation || ""}
+                onValueChange={(v) => updateField("jobLocation", v)}
+                options={[
+                  { value: "RED FOLDER", label: "🔴 Red Folder", className: "" },
+                  { value: "IN PROGRESS", label: "⚙️ In Progress", className: "" },
+                  { value: "COMPLETE", label: "✅ Complete", className: "" },
+                ]}
+                customColors={customColors}
+              />
             </div>
           </div>
         </div>
@@ -843,6 +877,7 @@ export default function FireDoorScheduleDetailPage() {
                             className: MATERIAL_STATUS_COLORS[o] || ""
                           }))}
                           placeholder="Select..."
+                          customColors={customColors}
                         />
                       </div>
                       <div>
@@ -886,6 +921,7 @@ export default function FireDoorScheduleDetailPage() {
                       { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
                     ]}
                     placeholder="Select..."
+                    customColors={customColors}
                   />
                 </div>
                 <div>
@@ -903,6 +939,7 @@ export default function FireDoorScheduleDetailPage() {
                       { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
                     ]}
                     placeholder="Select..."
+                    customColors={customColors}
                   />
                 </div>
                 <div>
@@ -920,6 +957,7 @@ export default function FireDoorScheduleDetailPage() {
                       { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
                     ]}
                     placeholder="Select..."
+                    customColors={customColors}
                   />
                 </div>
                 <div>
@@ -937,6 +975,7 @@ export default function FireDoorScheduleDetailPage() {
                       { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
                     ]}
                     placeholder="Select..."
+                    customColors={customColors}
                   />
                 </div>
                 <div>
@@ -954,6 +993,7 @@ export default function FireDoorScheduleDetailPage() {
                       { value: "N/A", label: "N/A", className: PAPERWORK_STATUS_COLORS["N/A"] },
                     ]}
                     placeholder="Select..."
+                    customColors={customColors}
                   />
                 </div>
               </div>
@@ -985,6 +1025,7 @@ export default function FireDoorScheduleDetailPage() {
                       { value: "Booked", label: "Booked", className: TRANSPORT_STATUS_COLORS["Booked"] },
                     ]}
                     placeholder="Select..."
+                    customColors={customColors}
                   />
                 </div>
                 <div>

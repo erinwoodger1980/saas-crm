@@ -66,6 +66,8 @@ export default function FireDoorSchedulePage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingConfigField, setEditingConfigField] = useState<string | null>(null);
   const [customColors, setCustomColors] = useState<Record<string, {bg: string, text: string}>>({});
+  const colorsLoadedRef = useRef(false); // Track if colors have been loaded from API
+  const initialColorsRef = useRef<string>(""); // Track initial colors JSON to detect real changes
   const [frozenColumns, setFrozenColumns] = useState<string[]>(['mjsNumber']); // Default freeze MJS column
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [showColumnFreezeModal, setShowColumnFreezeModal] = useState(false);
@@ -158,6 +160,8 @@ export default function FireDoorSchedulePage() {
           const data = await res.json();
           if (data.colors && Object.keys(data.colors).length > 0) {
             setCustomColors(data.colors);
+            initialColorsRef.current = JSON.stringify(data.colors); // Store initial state
+            colorsLoadedRef.current = true; // Mark as loaded from API
           } else {
             // Set default colors if none saved in database
             if (user?.tenantId === "cmi58fkzm0000it43i4h78pej") {
@@ -175,6 +179,8 @@ export default function FireDoorSchedulePage() {
                 "Booked": { bg: "#86efac", text: "#14532d" },
               };
               setCustomColors(lajColors);
+              initialColorsRef.current = JSON.stringify(lajColors); // Store initial state
+              colorsLoadedRef.current = true; // Mark as loaded
             } else {
               // Generic default colors for other tenants
               const defaultColors: Record<string, {bg: string, text: string}> = {
@@ -186,6 +192,8 @@ export default function FireDoorSchedulePage() {
                 "Booked": { bg: "#86efac", text: "#14532d" },
               };
               setCustomColors(defaultColors);
+              initialColorsRef.current = JSON.stringify(defaultColors); // Store initial state
+              colorsLoadedRef.current = true; // Mark as loaded
             }
           }
         }
@@ -285,21 +293,36 @@ export default function FireDoorSchedulePage() {
     try { localStorage.setItem("fds:sortField", sortField); localStorage.setItem("fds:sortDir", sortDir); } catch {}
   }, [sortField, sortDir]);
   
-  // Save customColors to database via API whenever they change
+  // Save customColors to database via API whenever they change (but not on initial load)
   useEffect(() => {
-    if (user?.tenantId && Object.keys(customColors).length > 0) {
-      const saveColors = async () => {
-        try {
-          await fetch("/api/fire-door-schedule/colors", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ colors: customColors }),
-          });
-        } catch (error) {
-          console.error("Error saving colors:", error);
-        }
-      };
-      saveColors();
+    // Only save if colors have been loaded and actually changed
+    if (user?.tenantId && Object.keys(customColors).length > 0 && colorsLoadedRef.current) {
+      const currentColorsStr = JSON.stringify(customColors);
+      // Only save if colors have actually changed from initial state
+      if (currentColorsStr !== initialColorsRef.current) {
+        const saveColors = async () => {
+          try {
+            console.log("Saving colors to API:", customColors);
+            const response = await fetch("/api/fire-door-schedule/colors", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ colors: customColors }),
+            });
+            if (response.ok) {
+              console.log("Colors saved successfully");
+              // Update initial ref to prevent re-saving the same data
+              initialColorsRef.current = currentColorsStr;
+            } else {
+              console.error("Failed to save colors:", await response.text());
+            }
+          } catch (error) {
+            console.error("Error saving colors:", error);
+          }
+        };
+        // Debounce the save to avoid too many requests
+        const timeoutId = setTimeout(saveColors, 500);
+        return () => clearTimeout(timeoutId);
+      }
     }
   }, [customColors, user?.tenantId]);
   useEffect(() => {
