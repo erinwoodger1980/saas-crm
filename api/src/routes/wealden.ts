@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { prisma } from "../lib/db.js";
+import { prisma } from "../prisma";
 import multer from "multer";
 
 const router = Router();
