@@ -32,8 +32,9 @@ const products = [
   { name: "Sash Windows", href: "/wealden-joinery/windows" },
   { name: "Casement Windows", href: "/wealden-joinery/windows" },
   { name: "Entrance Doors", href: "/wealden-joinery/doors" },
-  { name: "French Doors", href: "/wealden-joinery/doors" },
-  { name: "Alu-Clad Systems", href: "/wealden-joinery/alu-clad" },
+  { name: "Bi-Fold Doors", href: "/wealden-joinery/doors" },
+  { name: "Alu-Clad Windows", href: "/wealden-joinery/alu-clad" },
+  { name: "Sliding Doors", href: "/wealden-joinery/doors" },
 ];
 
 const steps = [
@@ -109,10 +110,10 @@ export default function WealdenHomePage() {
       <section className={components.section}>
         <div className="text-center mb-16 space-y-3">
           <p className={designSystem.typography.caption}>Systems</p>
-          <h2 className={designSystem.typography.h2}>Five product ranges</h2>
+          <h2 className={designSystem.typography.h2}>Six product ranges</h2>
         </div>
         <div className={`${designSystem.grid.three} ${designSystem.spacing.cardGap}`}>
-          {products.slice(0, 3).map((product, idx) => (
+          {products.map((product, idx) => (
             <div key={product.name} className="group space-y-4">
               <ImageSlot
                 slotId={`home-product-${idx}`}
