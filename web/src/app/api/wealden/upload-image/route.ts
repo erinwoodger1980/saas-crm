@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { put, list, del } from "@vercel/blob";
+import { writeFile, mkdir } from "fs/promises";
+import { join } from "path";
+import { existsSync } from "fs";
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,35 +19,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No slotId provided" }, { status: 400 });
     }
 
-    // Use consistent filename based on slotId
-    const sanitizedSlotId = slotId.replace(/[^a-z0-9]/gi, "-").toLowerCase();
-    const extension = file.name.split(".").pop();
-    const filename = `wealden/${sanitizedSlotId}.${extension}`;
+    // Convert file to buffer
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
 
-    console.log("[Upload API] Uploading to Vercel Blob:", filename);
-
-    // Delete existing file with same slotId if it exists
-    try {
-      const { blobs } = await list({ prefix: `wealden/${sanitizedSlotId}` });
-      for (const blob of blobs) {
-        await del(blob.url);
-        console.log("[Upload API] Deleted old blob:", blob.url);
-      }
-    } catch (err) {
-      console.log("[Upload API] No existing blob to delete");
+    // Use the same upload directory pattern as the rest of the app
+    // Store in web/public/wealden/ for public access
+    const uploadDir = join(process.cwd(), "../web/public/wealden");
+    console.log("[Upload API] Upload directory:", uploadDir);
+    
+    if (!existsSync(uploadDir)) {
+      console.log("[Upload API] Creating directory...");
+      await mkdir(uploadDir, { recursive: true });
     }
 
-    // Upload to Vercel Blob
-    const blob = await put(filename, file, {
-      access: "public",
-      addRandomSuffix: false,
-    });
+    // Use consistent filename based on slotId (replace existing if present)
+    const sanitizedSlotId = slotId.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+    const extension = file.name.split(".").pop();
+    const filename = `${sanitizedSlotId}.${extension}`;
+    const filepath = join(uploadDir, filename);
 
-    console.log("[Upload API] Upload successful:", blob.url);
+    console.log("[Upload API] Writing file:", filepath);
+    
+    // Save file (overwrites existing)
+    await writeFile(filepath, buffer);
+
+    console.log("[Upload API] File written successfully");
+
+    // Return the public path (relative to web/public)
+    const publicUrl = `/wealden/${filename}`;
 
     return NextResponse.json({
       ok: true,
-      imageUrl: blob.url,
+      imageUrl: publicUrl,
       slotId,
       filename,
     });
@@ -67,15 +73,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "slotId required" }, { status: 400 });
     }
 
+    // Check if image exists for this slotId
+    const uploadDir = join(process.cwd(), "../web/public/wealden");
+    if (!existsSync(uploadDir)) {
+      return NextResponse.json({ image: null });
+    }
+
+    const { readdir } = await import("fs/promises");
+    const files = await readdir(uploadDir);
     const sanitizedSlotId = slotId.replace(/[^a-z0-9]/gi, "-").toLowerCase();
     
-    // List blobs with this slotId prefix
-    const { blobs } = await list({ prefix: `wealden/${sanitizedSlotId}` });
+    // Find file that matches this slotId
+    const matchingFile = files.find(f => f.startsWith(sanitizedSlotId + "."));
     
-    if (blobs.length > 0) {
+    if (matchingFile) {
       return NextResponse.json({
         image: {
-          imageUrl: blobs[0].url,
+          imageUrl: `/wealden/${matchingFile}`,
           slotId,
         },
       });
