@@ -22,20 +22,20 @@ const lifestyleImage = getImagesByHint("lifestyle", 1)[0];
 
 const reasons = [
   {
-    title: "Craftsmanship that honours heritage",
-    copy: "Hand-finished timber windows and doors that respect the character of period homes while upgrading performance.",
+    title: "UK-manufactured with certified quality",
+    copy: "Every window and door is manufactured by approved joinery specialists using high-performance timber, industry-leading tooling and certified finishing processes.",
   },
   {
-    title: "Performance you can feel",
-    copy: "Engineered timber, high-spec glazing, and weather seals keep homes warmer, quieter, and secure.",
+    title: "FSC® certified timber",
+    copy: "Sustainably sourced timber with a natural carbon store and the lowest embodied carbon of any window or door frame. Crafted to last for generations.",
   },
   {
-    title: "Reliable delivery & install",
-    copy: "Survey, design, manufacture, and installation handled by one accountable team—no hand-offs or surprises.",
+    title: "Secure, Part Q and PAS 24 compliant",
+    copy: "Engineered for real homes with secure multi-point locking, robust construction, and full compliance with building regulations and Secured by Design systems.",
   },
   {
-    title: "Aftercare that lasts",
-    copy: "Clear guarantees on timber, paint, glazing, and workmanship with responsive local support.",
+    title: "Industry leading guarantees",
+    copy: "30-year rot and fungal decay warranty, 10-year workmanship, paint finish and hardware guarantees, 15-year glazing warranty.",
   },
 ];
 
@@ -91,7 +91,7 @@ const faqs = [
   },
   {
     q: "What guarantees do you offer?",
-    a: "We outline guarantees on timber stability, paint system, glazing units, and installation workmanship. Detailed terms are provided with every order.",
+    a: "Industry-leading warranties: 30 years on rot and fungal decay, 10 years on workmanship, paint finish and hardware, 15 years on glazing. Detailed terms provided with every order.",
   },
 ];
 
@@ -108,7 +108,7 @@ export default function WealdenHomePage() {
               Premium Timber Windows & Doors
             </h1>
             <p className="text-lg text-slate-600">
-              Heritage-sensitive replacements with modern performance. Manufactured at our Crowborough headquarters with showrooms nationwide. From sash and casement windows to statement entrance doors.
+              Sustainably crafted timber windows and doors built for people who want the character of timber with modern-day performance. Whether restoring a period property, building new or renovating, our products combine traditional craftsmanship with up-to-date standards on energy efficiency, security, and durability.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
@@ -302,15 +302,37 @@ export default function WealdenHomePage() {
         <div className="grid gap-8 md:grid-cols-2 md:items-center">
           <div>
             <SectionHeading
-              eyebrow="Guarantees"
-              title="Assurance on materials, coatings, glazing, and workmanship."
-              copy="We specify engineered timber, multi-coat finishes, and premium glazing so our guarantees are meaningful. Full terms provided with every order."
+              eyebrow="Industry Leading Guarantees"
+              title="Built to last a lifetime with exceptional warranties."
+              copy="With over 30 years of experience, we know that lasting quality comes down to the details. That's why Lignum windows and doors are built to stand the test of time."
             />
-            <ul className="space-y-2 text-sm leading-relaxed text-slate-700">
-              <li>• Timber stability and paint system guarantees (years depend on specification). {/* TODO: confirm durations */}</li>
-              <li>• Glazing seal warranty and hardware performance guidance.</li>
-              <li>• Installation workmanship guarantee with responsive aftercare.</li>
-            </ul>
+            <div className="grid grid-cols-2 gap-4 mt-6">
+              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center">
+                <div className="text-3xl font-bold text-emerald-700">30</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
+                <div className="text-sm text-slate-700 mt-2">Rot & Fungal Decay</div>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center">
+                <div className="text-3xl font-bold text-emerald-700">10</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
+                <div className="text-sm text-slate-700 mt-2">Workmanship</div>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center">
+                <div className="text-3xl font-bold text-emerald-700">10</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
+                <div className="text-sm text-slate-700 mt-2">Paint Finish</div>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center">
+                <div className="text-3xl font-bold text-emerald-700">10</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
+                <div className="text-sm text-slate-700 mt-2">Hardware</div>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center col-span-2">
+                <div className="text-3xl font-bold text-emerald-700">15</div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
+                <div className="text-sm text-slate-700 mt-2">Glazing</div>
+              </div>
+            </div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             {workshopImage && (
@@ -365,6 +387,70 @@ export default function WealdenHomePage() {
               <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.a}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-blue-50 p-6 shadow-sm md:p-10">
+        <SectionHeading
+          eyebrow="The Benefits"
+          title="Why Lignum Timber Windows & Doors Perform So Well"
+          copy="With over 30 years of experience in crafting timber windows and doors, we know that lasting quality comes down to the details."
+        />
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-xl border border-white bg-white p-6 shadow-sm">
+            <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <h4 className="text-base font-semibold text-slate-900">Exceptional Energy Efficiency</h4>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">High-performance glazing and insulated frames reduce heat loss and keep your home comfortable year-round.</p>
+          </div>
+          <div className="rounded-xl border border-white bg-white p-6 shadow-sm">
+            <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <h4 className="text-base font-semibold text-slate-900">Outstanding Durability</h4>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">Engineered timber with fully sealed joints resists warping, twisting and swelling for decades of reliable performance.</p>
+          </div>
+          <div className="rounded-xl border border-white bg-white p-6 shadow-sm">
+            <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-purple-100 text-purple-700">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+              </svg>
+            </div>
+            <h4 className="text-base font-semibold text-slate-900">Low Maintenance Design</h4>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">Engineered timber frames with smooth profiles shed rain naturally, finished with factory-applied microporous coatings for long-lasting weather protection.</p>
+          </div>
+          <div className="rounded-xl border border-white bg-white p-6 shadow-sm">
+            <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-700">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h4 className="text-base font-semibold text-slate-900">Secure by Design</h4>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">Multi-point locking and robust construction offer superior protection for your home, PAS 24 certified and Secured by Design approved.</p>
+          </div>
+          <div className="rounded-xl border border-white bg-white p-6 shadow-sm">
+            <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-700">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </div>
+            <h4 className="text-base font-semibold text-slate-900">Quiet Comfort</h4>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">Advanced glazing reduces external noise by up to 36dB, creating a calmer indoor environment with excellent acoustic insulation.</p>
+          </div>
+          <div className="rounded-xl border border-white bg-white p-6 shadow-sm">
+            <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-700">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h4 className="text-base font-semibold text-slate-900">Sustainable Choice</h4>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">Responsibly sourced FSC® timber with a lower carbon footprint than aluminium or PVC-U. Natural carbon store, renewable and recyclable, crafted to last for generations.</p>
+          </div>
         </div>
       </section>
 

@@ -18,47 +18,65 @@ const detailImages = getImagesByHint("detail", 6);
 const doorTypes = [
   {
     title: "Entrance Doors",
-    summary: "Statement front doors with secure cores, premium hardware, and bespoke detailing.",
+    summary: "You can feel it's a real wood door. Every Lignum entrance door is available in a stunning range of decorative glass options with traditional or designer handles.",
     details: [
-      "Solid or engineered timber cores for stability",
-      "Multi-point locking with secure cylinders",
-      "Decorative glazing, sidelights, and toplights",
-      "Traditional panel designs or flush contemporary",
-      "Letter plates, knockers, and pull handles in brass or chrome",
-      "Factory-sprayed multi-coat finishes in heritage or modern colours",
+      "PAS 24 certified for security",
+      "Solid engineered timber construction",
+      "Fully sealed and weather-tested",
+      "Multi-point locks as standard",
+      "Bespoke styles and detailing available",
+      "Matching sidelights, toplights and frames",
+      "Choose from traditional, contemporary or modern designs",
+      "Available in stunning range of decorative glass options",
     ],
   },
   {
     title: "French Doors",
-    summary: "Classic opening pairs with slim sight lines and elegant mouldings.",
+    summary: "Timeless functionality designed for modern life. Ideal for bringing natural light into your living space while maintaining architectural integrity.",
     details: [
-      "Flush or rebated pairs with concealed shootbolts",
-      "Narrow stiles for maximum glass area",
-      "Toughened or laminated safety glazing",
-      "Weather-sealed rebates and thresholds",
-      "Traditional ironmongery or contemporary handles",
-      "Oak, Accoya®, or engineered hardwood options",
+      "Inward or outward opening",
+      "Secure multi-point locking",
+      "High-performance double glazing",
+      "Flush or rebated thresholds",
+      "Fully finished timber inside and out",
+      "Optional glazing bars for traditional or contemporary style",
+      "Pair with fixed sidelights or toplights to extend the view",
+      "Suitable for both traditional and contemporary homes",
     ],
   },
   {
-    title: "Sliding & Bi-Fold Doors",
-    summary: "Large glass openings with stable engineered timber and high-performance running gear.",
+    title: "Bifold Doors",
+    summary: "Flexible living with smooth operation. Designed for modern living, opening up your home to the outdoors with excellent thermal performance.",
     details: [
-      "Stainless steel or anodised tracks for smooth sliding",
-      "Multi-panel configurations up to 6 metres wide",
-      "High-performance glazing with slim frames",
-      "Weather-sealed panels and flush thresholds",
-      "Concealed drainage and ventilation channels",
-      "Low-maintenance finishes for long-term performance",
+      "Wide clear openings with minimal frame",
+      "Secure multi-point locking and PAS 24 hardware",
+      "Smooth operation with robust durability",
+      "Double or vacuum glazing options",
+      "Thermally efficient and weather-sealed",
+      "Ideal for extensions and garden rooms",
+      "Bespoke configurations with optional traffic door",
+      "Choose track finish, threshold type and ironmongery",
     ],
   },
 ];
 
 const securityPerformance = [
-  { title: "Locking Systems", copy: "Multi-point espag locks, secure cylinders with anti-snap protection, and concealed shootbolts on French doors." },
-  { title: "Glazing", copy: "Toughened or laminated safety glass, Argon-filled sealed units, and acoustic options for exposed locations." },
-  { title: "Weather Seals", copy: "Compression gaskets, brush seals, and weatherbar thresholds for draught exclusion and rain resistance." },
-  { title: "Hardware", copy: "Heavy-duty hinges, pull handles, letter plates, knockers, and spy holes in brass, chrome, or matt black finishes." },
+  { 
+    title: "Handles & Ironmongery", 
+    copy: "Handles that match the craftsmanship. Easy-to-operate ergonomic designs in satin brass, antique bronze, polished chrome or black finishes. The finishing touch that combines understated elegance with durable functionality. Handles, letterplates, knockers, and hinges are the jewellery of your front door." 
+  },
+  { 
+    title: "Colours & Finishes", 
+    copy: "Customized to your décor with rich, durable finishes. Breathable microporous coatings protect timber and enhance grain. Choose from natural wood tones, soft neutrals or bold architectural shades. Dual-colour options allow clean white or natural stain interior with contrasting external colour. 10-year paint finish guarantee." 
+  },
+  { 
+    title: "Decorative Glazing", 
+    copy: "Glazing isn't just functional—it becomes a defining feature. From classic leaded or stained glass to sleek sandblasted or reeded styles, filter light, enhance privacy, or introduce decorative motifs. Available in stunning range of options including acoustic glass for noise reduction." 
+  },
+  { 
+    title: "Security & Performance", 
+    copy: "PAS 24 certified with secure multi-point locking systems. Fully sealed and weather-tested construction. Toughened or laminated safety glass. Engineered timber with 30-year rot and fungal decay warranty. High-performance glazing for thermal efficiency and comfort." 
+  },
 ];
 
 const doorsFaqs = [
@@ -88,8 +106,7 @@ export default function DoorsPage() {
               Timber Entrance & Garden Doors
             </h1>
             <p className="text-lg text-slate-600">
-              Statement entrance doors, French doors, and large sliding or bi-fold openings. Secure cores, premium hardware,
-              and elegant detailing crafted to suit period homes and contemporary builds.
+              Handcrafted timber doors that set the tone for your entire home. More than a point of entry—your first impression, your welcome, and a way to express personal style. Combining precision joinery with security, energy efficiency, and the luxurious look and feel of real wood.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
@@ -170,12 +187,80 @@ export default function DoorsPage() {
         </div>
       </section>
 
-      {/* Security & Performance */}
+      {/* How to Make an Entrance */}
+      <section className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-slate-50 p-6 shadow-sm md:p-10">
+        <SectionHeading
+          eyebrow="Design Guide"
+          title="How to Make an Entrance"
+          copy="Designing a statement front door that reflects your style and complements your home."
+        />
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="rounded-xl border border-white bg-white p-6 shadow-sm">
+            <h4 className="text-lg font-semibold text-slate-900 mb-3">Choose a Style That Complements Your Home</h4>
+            <p className="text-sm leading-relaxed text-slate-700 mb-3">
+              Traditional homes often suit classic panelled door designs with heritage ironmongery and period details, while modern or contemporary homes may call for minimalist lines, wide boards, or flush finishes.
+            </p>
+            <p className="text-sm leading-relaxed text-slate-700">
+              For transitional properties blending old and new, look to updated traditional designs with a fresh twist: clean mouldings, bold colour, or a natural wood finish.
+            </p>
+          </div>
+          <div className="rounded-xl border border-white bg-white p-6 shadow-sm">
+            <h4 className="text-lg font-semibold text-slate-900 mb-3">Make It Personal With Colour</h4>
+            <p className="text-sm leading-relaxed text-slate-700 mb-3">
+              Timber offers the perfect canvas for colour. Whether you opt for a soft heritage shade, a dramatic black, or a bold red or blue, your choice can instantly elevate kerb appeal.
+            </p>
+            <p className="text-sm leading-relaxed text-slate-700">
+              You can contrast your door colour with the frame or glazing bars for a bespoke touch. Contrasting a stained door with a painted frame in a bold colour makes the natural wood pop out!
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Bifolds vs French Doors */}
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-10">
         <SectionHeading
-          eyebrow="Security & Performance"
-          title="Locking systems, glazing, and weather seals."
-          copy="Premium specifications so doors perform securely, quietly, and look beautiful for years."
+          eyebrow="Choosing the Right Style"
+          title="Timber Bifolds or French Doors: Which is right for your home?"
+          copy="Both offer charm, warmth and long-lasting performance when made from sustainably sourced timber."
+        />
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-slate-900">Open Up With Bifolds</h4>
+            <p className="text-sm leading-relaxed text-slate-700">
+              Timber bifold doors are ideal for larger openings and contemporary living spaces. Individual panels fold back and stack neatly to one or both sides, creating a wide, uninterrupted connection between indoors and out.
+            </p>
+            <p className="text-sm leading-relaxed text-slate-700">
+              If you're designing a kitchen diner or open plan area leading to a patio or garden, bifolds help bring the outside in with maximum impact. Available in configurations from two to six panels with optional traffic door for everyday access.
+            </p>
+            <ul className="space-y-2 text-sm text-slate-700">
+              <li className="flex gap-2"><span className="text-emerald-700">✓</span><span>Large openings and flexible layouts</span></li>
+              <li className="flex gap-2"><span className="text-emerald-700">✓</span><span>Open plan living and seamless garden access</span></li>
+              <li className="flex gap-2"><span className="text-emerald-700">✓</span><span>Maximum impact for modern living</span></li>
+            </ul>
+          </div>
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-slate-900">Keep It Classic with French Doors</h4>
+            <p className="text-sm leading-relaxed text-slate-700">
+              If your project calls for a more traditional or compact solution, French doors are a timeless choice. Featuring two symmetrical doors that open outward or inward, they work beautifully in smaller openings or side returns.
+            </p>
+            <p className="text-sm leading-relaxed text-slate-700">
+              Timber French doors offer excellent thermal performance, especially when paired with high performance glazing. Style with feature bars or panel detailing to complement a Georgian, Edwardian or cottage aesthetic.
+            </p>
+            <ul className="space-y-2 text-sm text-slate-700">
+              <li className="flex gap-2"><span className="text-emerald-700">✓</span><span>Classic proportions and compact spaces</span></li>
+              <li className="flex gap-2"><span className="text-emerald-700">✓</span><span>Period styling and heritage properties</span></li>
+              <li className="flex gap-2"><span className="text-emerald-700">✓</span><span>Timeless elegance and thermal comfort</span></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* Security & Performance */}
+      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm md:p-10">
+        <SectionHeading
+          eyebrow="Specifications & Finishes"
+          title="Handles, colours, glazing, and security."
+          copy="Premium specifications and finishing touches so doors perform securely, quietly, and look beautiful for years."
         />
         <div className="grid gap-4 md:grid-cols-2">
           {securityPerformance.map((option) => (

@@ -17,36 +17,75 @@ const lifestyleImages = getImagesByHint("lifestyle", 6);
 
 const windowTypes = [
   {
-    title: "Sash Windows",
-    summary: "Smooth-running, heritage-friendly sashes with discreet balances and slim glazing bars.",
+    title: "Box Sash Windows",
+    summary: "Engineered to replicate traditional sash designs while meeting today's security, energy efficiency and practical living standards.",
     details: [
-      "Spiral or traditional weight-and-pulley balances",
-      "Single or double glazing with slimline units",
-      "Georgian, Victorian, or contemporary bar patterns",
-      "Multi-coat paint or micro-porous stain finishes",
-      "Brass or chrome fittings, meeting rail locks",
-      "Ideal for listed buildings and conservation areas",
+      "Pulley and cord operation with counterweights",
+      "Slimline double or acoustic glazing",
+      "Conservation-approved profiles",
+      "Low air leakage and strong thermal performance",
+      "Optional traditional horns and decorative bars",
+      "Ideal for Georgian, Victorian or Edwardian properties",
+    ],
+  },
+  {
+    title: "Spring Balance Sash Windows",
+    summary: "Designed for homes that can't accommodate full box sashes, offering a slimmer frame while keeping the classic sash look.",
+    details: [
+      "Classic vertical sliding appearance",
+      "Spring balance system for smooth opening",
+      "Slimmer frame depth for tight reveals",
+      "Double-glazed with heritage detailing",
+      "Lower maintenance with full timber finish",
+      "Ideal for extensions or upper floors",
+    ],
+  },
+  {
+    title: "Flush Casement Windows",
+    summary: "Effortless elegance with flush timber sashes that sit level with the frame, creating a clean, understated look.",
+    details: [
+      "Flush finish for a refined look",
+      "Energy-efficient double or triple glazing",
+      "Discreet friction hinges or traditional butt hinges",
+      "PAS 24 security compliance",
+      "Made to measure, finished to order",
+      "Ideal for heritage homes and modern extensions",
     ],
   },
   {
     title: "Casement Windows",
-    summary: "Flush or storm-proof frames with secure multi-point locking and elegant mouldings.",
+    summary: "Timeless timber design with slim sightlines, fully sealed joints and high-spec glazing, made to order for a tailored fit.",
     details: [
-      "Flush casement for heritage properties",
-      "Storm-proof for exposed locations and modern builds",
-      "High-performance weatherseals and draught exclusion",
-      "Concealed shootbolt or espag locks",
-      "Fixed lights, sidelights, or top-hung vents",
-      "Oak, Accoya®, or engineered timber cores",
+      "Side or top-hung options",
+      "High security locks as standard",
+      "Custom glazing bars and mouldings",
+      "Factory-finished timber with 10-year paint guarantee",
+      "Suitable for conservation and contemporary homes",
+      "Single or multi-light layouts available",
+    ],
+  },
+  {
+    title: "Wood-Aluminium Windows",
+    summary: "The beauty of timber with added protection. Engineered timber frame with durable aluminium outer shell for all-weather performance.",
+    details: [
+      "Timber-aluminium composite construction",
+      "Maintenance-free powder-coated external finish",
+      "Engineered timber interior",
+      "Full system performance with enhanced durability",
+      "Perfect for exposed locations or low-maintenance living",
+      "Ideal for contemporary or high-spec applications",
     ],
   },
 ];
 
 const performanceOptions = [
-  { title: "Timber", copy: "Oak (air-dried, kiln-dried, or European), Accoya® with 50-year anti-rot guarantee, or engineered hardwood." },
-  { title: "Glazing", copy: "Slimline double glazing, acoustic laminate, or toughened safety glass. Sealed units with Argon fill and warm-edge spacers." },
-  { title: "Paint & Stain", copy: "Multi-coat factory spray (RAL or heritage colours) or micro-porous stain with UV stabilisers. 8–10 year re-coat cycles typical." },
-  { title: "Hardware", copy: "Brass, chrome, or matt black handles, hinges, and locks. Concealed friction stays, shootbolts, or traditional espag locks." },
+  { title: "Timber", copy: "Sustainably sourced FSC® certified timber, engineered for strength and stability. Oak, Accoya® with 50-year anti-rot guarantee, or engineered hardwood cores." },
+  { 
+    title: "Glazing & Vacuum Glass", 
+    copy: "Industry-leading vacuum glazing with U-values as low as 0.49 W/m²K—more than twice as efficient as standard double glazing. Reduces noise by up to 36dB with slim 6.15mm profiles. Also available: slimline heritage double glazing, laminated acoustic glass, and decorative obscure styles. 15-year glazing warranty." 
+  },
+  { title: "Paint & Stain", copy: "Long-life microporous coatings in natural wood tones, soft neutrals or bold architectural shades. UV-resistant and low maintenance. Dual-colour options available. 10-year paint finish guarantee." },
+  { title: "Hardware", copy: "Handles that match the craftsmanship. Easy-to-operate ergonomic designs in satin, bronze, or matte black finishes. Coordinated with your chosen colours and finishes. 10-year hardware guarantee." },
 ];
 
 const windowFaqs = [
@@ -116,10 +155,10 @@ export default function WindowsPage() {
       <section>
         <SectionHeading
           eyebrow="Window Types"
-          title="Sash and casement options for every style."
-          copy="Heritage-sensitive designs with high-performance glazing, secure locking, and long-life timber."
+          title="Comprehensive range for every style and application."
+          copy="From traditional box sash to contemporary wood-aluminium systems, all engineered for lasting performance with modern standards."
         />
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {windowTypes.map((type, idx) => {
             const typeImg = windowTypeImages[idx % windowTypeImages.length];
             return (
