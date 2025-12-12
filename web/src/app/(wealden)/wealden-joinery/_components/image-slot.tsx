@@ -48,15 +48,28 @@ export function ImageSlot({
     fetch(`/api/wealden/upload-image?slotId=${encodeURIComponent(slotId)}`)
       .then((res) => res.json())
       .then((data) => {
+        console.log(`[ImageSlot ${slotId}] Server response:`, data);
         if (data.image?.imageUrl) {
           setImageUrl(data.image.imageUrl);
         } else if (defaultImage) {
           setImageUrl(defaultImage);
+        } else {
+          // Check localStorage as fallback during migration
+          const localImage = localStorage.getItem(`wealden-image-${slotId}`);
+          if (localImage) {
+            console.log(`[ImageSlot ${slotId}] Found in localStorage, use migration tool to upload to server`);
+            setImageUrl(localImage);
+          }
         }
       })
       .catch((err) => {
-        console.error("Failed to fetch image:", err);
-        if (defaultImage) {
+        console.error(`[ImageSlot ${slotId}] Failed to fetch from server:`, err);
+        // Fallback to localStorage during migration
+        const localImage = localStorage.getItem(`wealden-image-${slotId}`);
+        if (localImage) {
+          console.log(`[ImageSlot ${slotId}] Using localStorage fallback`);
+          setImageUrl(localImage);
+        } else if (defaultImage) {
           setImageUrl(defaultImage);
         }
       });
