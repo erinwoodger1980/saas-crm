@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { EnhancedImagePlaceholder } from "../_components/enhanced-image-placeholder";
+import { ImageSlot } from "../_components/image-slot";
 import { designSystem, components } from "../_lib/design-system";
 
 export const metadata: Metadata = {
@@ -94,7 +94,8 @@ export default function AluCladPage() {
             </div>
           </div>
           <div>
-            <EnhancedImagePlaceholder
+            <ImageSlot
+              slotId="alu-clad-hero"
               label="Alu-Clad Hero"
               aspectRatio={designSystem.images.portrait}
               size="xl"
@@ -134,7 +135,8 @@ export default function AluCladPage() {
             </div>
           </div>
           <div>
-            <EnhancedImagePlaceholder
+            <ImageSlot
+              slotId="alu-clad-system"
               label="System Detail"
               aspectRatio={designSystem.images.landscape}
               size="lg"
@@ -237,9 +239,10 @@ export default function AluCladPage() {
           <h2 className={designSystem.typography.h2}>Alu-Clad Examples</h2>
         </div>
         <div className={`${designSystem.grid.three} ${designSystem.spacing.cardGap}`}>
-          {["Detail Shot 1", "Detail Shot 2", "Detail Shot 3"].map((label) => (
-            <EnhancedImagePlaceholder
+          {["Detail Shot 1", "Detail Shot 2", "Detail Shot 3"].map((label, idx) => (
+            <ImageSlot
               key={label}
+              slotId={`alu-clad-detail-${idx}`}
               label={label}
               aspectRatio={designSystem.images.square}
               size="md"
@@ -247,7 +250,8 @@ export default function AluCladPage() {
           ))}
         </div>
         <div className="mt-8">
-          <EnhancedImagePlaceholder
+          <ImageSlot
+            slotId="alu-clad-lifestyle"
             label="Lifestyle Context"
             aspectRatio={designSystem.images.wide}
             size="xl"

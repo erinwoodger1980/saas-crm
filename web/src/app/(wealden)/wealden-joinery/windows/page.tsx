@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { EnhancedImagePlaceholder } from "../_components/enhanced-image-placeholder";
+import { ImageSlot } from "../_components/image-slot";
 import { designSystem, components } from "../_lib/design-system";
 
 export const metadata: Metadata = {
@@ -131,7 +131,8 @@ export default function WindowsPage() {
             </div>
           </div>
           <div>
-            <EnhancedImagePlaceholder
+            <ImageSlot
+              slotId="windows-hero"
               label="Windows Hero"
               aspectRatio={designSystem.images.portrait}
               size="xl"
@@ -152,9 +153,10 @@ export default function WindowsPage() {
           </p>
         </div>
         <div className={`${designSystem.grid.two} ${designSystem.spacing.cardGap}`}>
-          {heritageWindows.map((window) => (
+          {heritageWindows.map((window, idx) => (
             <div key={window.title} className="space-y-6">
-              <EnhancedImagePlaceholder
+              <ImageSlot
+                slotId={`windows-heritage-${idx}`}
                 label={window.title}
                 aspectRatio={designSystem.images.portrait}
                 size="lg"
@@ -188,9 +190,10 @@ export default function WindowsPage() {
           </p>
         </div>
         <div className={`${designSystem.grid.two} ${designSystem.spacing.cardGap}`}>
-          {contemporaryWindows.map((window) => (
+          {contemporaryWindows.map((window, idx) => (
             <div key={window.title} className="space-y-6">
-              <EnhancedImagePlaceholder
+              <ImageSlot
+                slotId={`windows-contemporary-${idx}`}
                 label={window.title}
                 aspectRatio={designSystem.images.portrait}
                 size="lg"
@@ -219,9 +222,10 @@ export default function WindowsPage() {
           <h2 className={designSystem.typography.h2}>Engineered to last</h2>
         </div>
         <div className={`${designSystem.grid.three} ${designSystem.spacing.cardGap}`}>
-          {["Joinery Detail", "Hardware Close-up", "Glazing Profile"].map((label) => (
-            <EnhancedImagePlaceholder
+          {["Joinery Detail", "Hardware Close-up", "Glazing Profile"].map((label, idx) => (
+            <ImageSlot
               key={label}
+              slotId={`windows-detail-${idx}`}
               label={label}
               aspectRatio={designSystem.images.square}
               size="md"
@@ -232,7 +236,8 @@ export default function WindowsPage() {
 
       {/* Context Image */}
       <section className={`${designSystem.spacing.sectionCompact} ${designSystem.layout.maxWideWide} ${designSystem.spacing.containerPadding}`}>
-        <EnhancedImagePlaceholder
+        <ImageSlot
+          slotId="windows-context"
           label="Windows in Context"
           aspectRatio={designSystem.images.wide}
           size="xl"

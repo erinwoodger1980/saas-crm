@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { EnhancedImagePlaceholder } from "../_components/enhanced-image-placeholder";
+import { ImageSlot } from "../_components/image-slot";
 import { designSystem, components } from "../_lib/design-system";
 
 export const metadata: Metadata = {
@@ -126,7 +126,8 @@ export default function DoorsPage() {
             </div>
           </div>
           <div>
-            <EnhancedImagePlaceholder
+            <ImageSlot
+              slotId="doors-hero"
               label="Doors Hero"
               aspectRatio={designSystem.images.portrait}
               size="xl"
@@ -147,9 +148,10 @@ export default function DoorsPage() {
           </p>
         </div>
         <div className="grid gap-8 md:grid-cols-2">
-          {doorTypes.map((door) => (
+          {doorTypes.map((door, idx) => (
             <div key={door.title} className={`${designSystem.cards.elevated} overflow-hidden`}>
-              <EnhancedImagePlaceholder
+              <ImageSlot
+                slotId={`doors-type-${idx}`}
                 label={door.title}
                 aspectRatio={designSystem.images.landscape}
                 overlayPosition="bottom-center"
@@ -200,9 +202,10 @@ export default function DoorsPage() {
           <h2 className={designSystem.typography.h2}>Our Timber Doors</h2>
         </div>
         <div className={`${designSystem.grid.four} ${designSystem.spacing.cardGap}`}>
-          {["Entrance Door 1", "Entrance Door 2", "French Doors", "Bifold Doors", "Sliding Doors", "Detail Shot 1", "Detail Shot 2", "Detail Shot 3"].map((label) => (
-            <EnhancedImagePlaceholder
+          {["Entrance Door 1", "Entrance Door 2", "French Doors", "Bifold Doors", "Sliding Doors", "Detail Shot 1", "Detail Shot 2", "Detail Shot 3"].map((label, idx) => (
+            <ImageSlot
               key={label}
+              slotId={`doors-gallery-${idx}`}
               label={label}
               aspectRatio={designSystem.images.portrait}
               size="md"

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { EnhancedImagePlaceholder } from "./_components/enhanced-image-placeholder";
+import { ImageSlot } from "./_components/image-slot";
 import { designSystem, components } from "./_lib/design-system";
 
 export const metadata: Metadata = {
@@ -76,7 +76,8 @@ export default function WealdenHomePage() {
             </div>
           </div>
           <div>
-            <EnhancedImagePlaceholder
+            <ImageSlot
+              slotId="home-hero"
               label="Hero Image"
               aspectRatio={designSystem.images.portrait}
               size="xl"
@@ -110,9 +111,10 @@ export default function WealdenHomePage() {
           <h2 className={designSystem.typography.h2}>Five product ranges</h2>
         </div>
         <div className={`${designSystem.grid.three} ${designSystem.spacing.cardGap}`}>
-          {products.slice(0, 3).map((product) => (
+          {products.slice(0, 3).map((product, idx) => (
             <Link key={product.name} href={product.href} className="group space-y-4">
-              <EnhancedImagePlaceholder
+              <ImageSlot
+                slotId={`home-product-${idx}`}
                 label={product.name}
                 aspectRatio="aspect-[3/4]"
                 size="lg"
@@ -127,7 +129,8 @@ export default function WealdenHomePage() {
 
       {/* Single Lifestyle Image */}
       <section className={`${designSystem.spacing.sectionCompact} ${designSystem.layout.maxWideWide} ${designSystem.spacing.containerPadding}`}>
-        <EnhancedImagePlaceholder
+        <ImageSlot
+          slotId="home-lifestyle"
           label="Lifestyle Context"
           aspectRatio={designSystem.images.wide}
           size="xl"
@@ -162,9 +165,10 @@ export default function WealdenHomePage() {
           <h2 className={designSystem.typography.h2}>Recent projects</h2>
         </div>
         <div className={`${designSystem.grid.three} ${designSystem.spacing.cardGap}`}>
-          {["Victorian Villa, Kent", "Georgian Townhouse, Sussex", "Country Home, Kent"].map((title) => (
+          {["Victorian Villa, Kent", "Georgian Townhouse, Sussex", "Country Home, Kent"].map((title, idx) => (
             <div key={title} className={designSystem.cards.elevated}>
-              <EnhancedImagePlaceholder
+              <ImageSlot
+                slotId={`home-case-study-${idx}`}
                 label={title}
                 aspectRatio={designSystem.images.landscape}
                 overlayPosition="bottom-center"
