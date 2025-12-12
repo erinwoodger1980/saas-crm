@@ -9,10 +9,10 @@ export function WealdenFooter() {
         <div className="space-y-4">
           <Link href="/wealden-joinery">
             <Image 
-              src="/lignum-windows-logo.svg" 
+              src="/lignum-windows-logo.jpg" 
               alt="Lignum Windows by Wealden Joinery" 
-              width={200} 
-              height={60}
+              width={250} 
+              height={83}
               className="h-14 w-auto"
             />
           </Link>

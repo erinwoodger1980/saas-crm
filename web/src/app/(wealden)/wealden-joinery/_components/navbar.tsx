@@ -19,10 +19,10 @@ export function WealdenNavbar() {
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 md:px-8">
         <Link href="/wealden-joinery" className="flex items-center transition-opacity hover:opacity-80">
           <Image 
-            src="/lignum-windows-logo.svg" 
+            src="/lignum-windows-logo.jpg" 
             alt="Lignum Windows by Wealden Joinery" 
-            width={240} 
-            height={80}
+            width={300} 
+            height={100}
             className="h-16 w-auto"
             priority
           />
