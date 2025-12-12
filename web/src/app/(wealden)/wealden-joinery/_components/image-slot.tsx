@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import Image from "next/image";
-import { Upload } from "lucide-react";
+import { Upload, CheckCircle2, Loader2 } from "lucide-react";
+import { optimizeImageFile, getRecommendedMaxEdge } from "../_lib/imageOptimizer";
 
 interface ImageSlotProps {
   slotId: string;
@@ -11,6 +12,8 @@ interface ImageSlotProps {
   size?: "sm" | "md" | "lg" | "xl";
   overlayPosition?: "top-right" | "bottom-center";
   defaultImage?: string;
+  /** Image context for optimization (default: 'default') */
+  imageContext?: "hero" | "card" | "thumbnail" | "default";
 }
 
 const sizeClasses = {
@@ -20,6 +23,8 @@ const sizeClasses = {
   xl: "rounded-3xl",
 };
 
+type ProcessingState = "idle" | "optimizing" | "success" | "error";
+
 export function ImageSlot({
   slotId,
   label,
@@ -27,9 +32,11 @@ export function ImageSlot({
   size = "md",
   overlayPosition = "top-right",
   defaultImage,
+  imageContext = "default",
 }: ImageSlotProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
+  const [processingState, setProcessingState] = useState<ProcessingState>("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
 
@@ -53,58 +60,113 @@ export function ImageSlot({
     };
   }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     // Validate file type
-    if (!file.type.match(/^image\/(jpeg|jpg|png|webp)$/)) {
-      alert("Please select a JPG, PNG, or WEBP image");
+    if (!file.type.match(/^image\/(jpeg|jpg|png|webp|heic)$/i)) {
+      alert("Please select a JPG, PNG, WEBP, or HEIC image");
+      setProcessingState("error");
+      setTimeout(() => setProcessingState("idle"), 2000);
       return;
     }
 
     // Revoke old object URL if exists
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
     }
 
-    // Create new object URL for immediate preview
-    const objectUrl = URL.createObjectURL(file);
-    objectUrlRef.current = objectUrl;
+    // Show optimizing state
+    setProcessingState("optimizing");
 
-    // Convert to base64 for localStorage
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      
-      // Check size (localStorage has ~5-10MB limit, be conservative)
-      if (base64String.length > 1000000) {
-        alert("Image too large. Please select a smaller image (< 1MB)");
-        URL.revokeObjectURL(objectUrl);
-        objectUrlRef.current = null;
-        return;
-      }
+    try {
+      // Optimize the image
+      const maxEdgePx = getRecommendedMaxEdge(imageContext);
+      const optimized = await optimizeImageFile(file, { maxEdgePx });
 
-      // Save to localStorage
-      try {
-        localStorage.setItem(`wealden-image-${slotId}`, base64String);
-        setImageUrl(base64String);
-      } catch (err) {
-        console.error("Failed to save image:", err);
-        alert("Failed to save image. It may be too large.");
-      }
-    };
-    reader.readAsDataURL(file);
+      console.log(
+        `[ImageSlot ${slotId}] Optimized: ${(optimized.originalSize / 1024).toFixed(1)}KB → ${(optimized.optimizedSize / 1024).toFixed(1)}KB`
+      );
+
+      // Convert optimized file to base64 for localStorage
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+
+        // Save to localStorage
+        try {
+          localStorage.setItem(`wealden-image-${slotId}`, base64String);
+          setImageUrl(base64String);
+          setProcessingState("success");
+          
+          // Clear success state after 2 seconds
+          setTimeout(() => setProcessingState("idle"), 2000);
+        } catch (err) {
+          console.error("Failed to save image:", err);
+          alert("Failed to save image to localStorage. Storage may be full.");
+          setProcessingState("error");
+          setTimeout(() => setProcessingState("idle"), 2000);
+        }
+      };
+      reader.onerror = () => {
+        console.error("Failed to read optimized file");
+        setProcessingState("error");
+        setTimeout(() => setProcessingState("idle"), 2000);
+      };
+      reader.readAsDataURL(optimized.file);
+    } catch (error) {
+      console.error("Image optimization failed:", error);
+      alert(error instanceof Error ? error.message : "Failed to process image");
+      setProcessingState("error");
+      setTimeout(() => setProcessingState("idle"), 2000);
+    }
+
+    // Reset file input to allow re-uploading the same file
+    e.target.value = "";
   };
 
-  const handleClick = () => {
+  const handleButtonClick = (e: React.MouseEvent) => {
+    // Prevent any parent click handlers (like navigation)
+    e.preventDefault();
+    e.stopPropagation();
     fileInputRef.current?.click();
   };
 
   const overlayClasses =
     overlayPosition === "top-right"
-      ? "absolute top-4 right-4"
-      : "absolute bottom-4 left-1/2 -translate-x-1/2";
+      ? "absolute top-4 right-4 z-10"
+      : "absolute bottom-4 left-1/2 -translate-x-1/2 z-10";
+
+  // Render button content based on state
+  const renderButtonContent = () => {
+    switch (processingState) {
+      case "optimizing":
+        return (
+          <>
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>Optimizing...</span>
+          </>
+        );
+      case "success":
+        return (
+          <>
+            <CheckCircle2 className="w-3 h-3" />
+            <span>Optimized ✓</span>
+          </>
+        );
+      case "error":
+        return <span>Error</span>;
+      default:
+        return (
+          <>
+            <Upload className="w-3 h-3" />
+            <span>{imageUrl ? "Replace" : "Upload"}</span>
+          </>
+        );
+    }
+  };
 
   if (!isClient) {
     // SSR fallback
@@ -147,14 +209,15 @@ export function ImageSlot({
         </div>
       )}
 
-      {/* Upload control overlay */}
+      {/* Upload control overlay - positioned absolutely with z-index to prevent navigation */}
       <div className={overlayClasses}>
         <button
-          onClick={handleClick}
-          className="image-upload-control px-4 py-2 text-xs font-medium uppercase tracking-wider bg-white/90 hover:bg-white text-slate-900 rounded-full shadow-lg backdrop-blur-sm transition-all hover:scale-105 border border-slate-200"
+          onClick={handleButtonClick}
+          className="image-upload-control px-4 py-2 text-xs font-medium uppercase tracking-wider bg-white/90 hover:bg-white text-slate-900 rounded-full shadow-lg backdrop-blur-sm transition-all hover:scale-105 border border-slate-200 flex items-center gap-2"
           type="button"
+          disabled={processingState === "optimizing"}
         >
-          {imageUrl ? "Replace" : "Upload"}
+          {renderButtonContent()}
         </button>
       </div>
 
@@ -162,7 +225,7 @@ export function ImageSlot({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/jpg,image/png,image/webp"
+        accept="image/jpeg,image/jpg,image/png,image/webp,image/heic"
         onChange={handleFileChange}
         className="hidden"
         aria-label={`Upload image for ${label}`}

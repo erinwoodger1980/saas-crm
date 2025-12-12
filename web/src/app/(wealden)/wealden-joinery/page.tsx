@@ -81,6 +81,7 @@ export default function WealdenHomePage() {
               label="Hero Image"
               aspectRatio={designSystem.images.portrait}
               size="xl"
+              imageContext="hero"
             />
           </div>
         </div>
@@ -112,17 +113,20 @@ export default function WealdenHomePage() {
         </div>
         <div className={`${designSystem.grid.three} ${designSystem.spacing.cardGap}`}>
           {products.slice(0, 3).map((product, idx) => (
-            <Link key={product.name} href={product.href} className="group space-y-4">
+            <div key={product.name} className="group space-y-4">
               <ImageSlot
                 slotId={`home-product-${idx}`}
                 label={product.name}
                 aspectRatio="aspect-[3/4]"
                 size="lg"
+                imageContext="card"
               />
-              <h3 className={`${designSystem.typography.h4} group-hover:text-slate-600 transition-colors`}>
-                {product.name}
-              </h3>
-            </Link>
+              <Link href={product.href} className="block">
+                <h3 className={`${designSystem.typography.h4} group-hover:text-slate-600 transition-colors`}>
+                  {product.name}
+                </h3>
+              </Link>
+            </div>
           ))}
         </div>
       </section>
@@ -134,6 +138,7 @@ export default function WealdenHomePage() {
           label="Lifestyle Context"
           aspectRatio={designSystem.images.wide}
           size="xl"
+          imageContext="hero"
         />
       </section>
 
@@ -172,6 +177,7 @@ export default function WealdenHomePage() {
                 label={title}
                 aspectRatio={designSystem.images.landscape}
                 overlayPosition="bottom-center"
+                imageContext="card"
               />
               <div className="p-6 space-y-2">
                 <h3 className={designSystem.typography.h4}>{title}</h3>

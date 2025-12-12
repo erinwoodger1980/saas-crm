@@ -136,6 +136,7 @@ export default function WindowsPage() {
               label="Windows Hero"
               aspectRatio={designSystem.images.portrait}
               size="xl"
+              imageContext="hero"
             />
           </div>
         </div>
