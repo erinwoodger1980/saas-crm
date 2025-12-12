@@ -5,15 +5,15 @@ import { SectionHeading } from "../_components/section-heading";
 import { getHeroImage, getImagesByHint } from "../_lib/wealdenAiImages";
 
 export const metadata: Metadata = {
-  title: "Timber Windows for Period & Contemporary Homes | Wealden Joinery",
+  title: "Timber Windows | Lignum by Wealden Joinery",
   description:
-    "Sash and casement windows crafted in Sussex. Heritage glazing bars, high performance, secure locking, and sympathetic designs for listed buildings.",
+    "Precision-engineered timber windows for heritage and contemporary architecture. Box sash, casement, and wood-aluminium systems.",
 };
 
+// Curated image selection - quality over quantity
 const heroImg = getHeroImage();
-const windowTypeImages = getImagesByHint("range-windows", 8);
-const detailImages = getImagesByHint("detail", 6);
-const lifestyleImages = getImagesByHint("lifestyle", 6);
+const detailImages = getImagesByHint("detail", 3); // Reduced to 3 key detail shots
+const contextImage = getImagesByHint("lifestyle", 1)[0]; // Single contextual lifestyle shot
 
 const windowTypes = [
   {
@@ -105,195 +105,186 @@ const windowFaqs = [
 
 export default function WindowsPage() {
   return (
-    <div className="space-y-16">
-      {/* Hero */}
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid items-center gap-10 px-6 py-12 md:px-10 md:py-16 lg:grid-cols-2">
-          <div className="space-y-6">
-            <p className="inline-block rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">
-              Timber Windows
-            </p>
-            <h1 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
-              Timber Windows for Period & Contemporary Homes
-            </h1>
-            <p className="text-lg text-slate-600">
-              Sash and casement windows crafted with heritage detailing and modern performance. From conservation-friendly
-              replacements to contemporary new builds, every window is made to suit the property and last for decades.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/wealden-joinery/contact"
-                className="rounded-full bg-emerald-700 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:scale-[1.02] hover:bg-emerald-800"
-              >
-                Get a Windows Quote
-              </Link>
-              <Link
-                href="/wealden-joinery"
-                className="rounded-full border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:border-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"
-              >
-                Back to Home
-              </Link>
+    <div className="space-y-32">
+      {/* Hero - Full width, calm, architectural */}
+      <section className="relative overflow-hidden">
+        {heroImg && (
+          <div className="relative h-[70vh] min-h-[500px] w-full">
+            <Image
+              src={heroImg.publicPath}
+              alt={heroImg.caption}
+              width={heroImg.width}
+              height={heroImg.height}
+              className="object-cover"
+              priority
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/20 to-transparent" />
+            <div className="absolute inset-0 flex items-end">
+              <div className="w-full px-6 pb-16 md:px-16 md:pb-24">
+                <div className="mx-auto max-w-4xl space-y-6 text-white">
+                  <p className="text-sm font-medium uppercase tracking-[0.2em] text-white/80">
+                    Timber Windows
+                  </p>
+                  <h1 className="text-5xl font-light leading-[1.1] tracking-tight md:text-7xl">
+                    Precision-Engineered<br />Timber Windows
+                  </h1>
+                  <p className="max-w-2xl text-lg font-light leading-relaxed text-white/90">
+                    For heritage and contemporary architecture. Box sash, casement, and wood-aluminium systems crafted to last generations.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
-
-          {heroImg && (
-            <div className="relative h-64 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-lg sm:h-80 lg:h-[400px]">
-              <Image
-                src={heroImg.publicPath}
-                alt={heroImg.caption}
-                width={heroImg.width}
-                height={heroImg.height}
-                className="object-cover"
-                priority
-              />
-            </div>
-          )}
-        </div>
+        )}
       </section>
 
-      {/* Window Types */}
-      <section>
-        <SectionHeading
-          eyebrow="Window Types"
-          title="Comprehensive range for every style and application."
-          copy="From traditional box sash to contemporary wood-aluminium systems, all engineered for lasting performance with modern standards."
-        />
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {windowTypes.map((type, idx) => {
-            const typeImg = windowTypeImages[idx % windowTypeImages.length];
-            return (
-              <article
-                key={type.title}
-                className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-              >
-                {typeImg && (
-                  <div className="relative h-56 w-full">
-                    <Image
-                      src={typeImg.publicPath}
-                      alt={typeImg.caption}
-                      width={typeImg.width}
-                      height={typeImg.height}
-                      className="object-cover"
-                    />
-                  </div>
-                )}
-                <div className="space-y-4 p-6">
-                  <div>
-                    <h3 className="text-xl font-semibold text-slate-900">{type.title}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-600">{type.summary}</p>
-                  </div>
-                  <ul className="space-y-2 text-sm text-slate-700">
-                    {type.details.map((detail) => (
-                      <li key={detail} className="flex gap-2">
-                        <span className="text-emerald-700">•</span>
-                        <span>{detail}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Gallery */}
-      <section>
-        <SectionHeading
-          title="Our Timber Windows"
-          copy="From heritage sash windows to contemporary casements, all crafted for lasting performance."
-        />
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-          {windowTypeImages.map((img) => (
-            <div key={img.id} className="relative aspect-[3/4] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
-              <Image
-                src={img.publicPath}
-                alt={img.caption}
-                width={img.width}
-                height={img.height}
-                className="object-cover"
-              />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <SectionHeading
-          title="In Period & Contemporary Homes"
-          copy="See how our windows enhance character and comfort in properties across the South East."
-        />
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
-          {lifestyleImages.map((img) => (
-            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
-              <Image
-                src={img.publicPath}
-                alt={img.caption}
-                width={img.width}
-                height={img.height}
-                className="object-cover"
-              />
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Performance & Options */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-10">
-        <SectionHeading
-          eyebrow="Performance & Options"
-          title="Materials, glazing, finishes, and hardware."
-          copy="Premium specifications so windows perform quietly, securely, and look beautiful for years."
-        />
-        <div className="grid gap-5 md:grid-cols-2">
-          {performanceOptions.map((option) => (
-            <div
-              key={option.title}
-              className="rounded-xl border border-slate-200 bg-slate-50 p-6"
-            >
-              <h4 className="text-base font-semibold text-slate-900">{option.title}</h4>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">{option.copy}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Windows FAQ */}
-      <section>
-        <SectionHeading
-          eyebrow="FAQ"
-          title="Common questions about timber windows."
-          copy="Practical advice on specifications, planning, and maintenance."
-        />
-        <div className="grid gap-5 md:grid-cols-2">
-          {windowFaqs.map((item) => (
-            <div key={item.q} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h4 className="text-base font-semibold text-slate-900">{item.q}</h4>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.a}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="rounded-2xl border border-emerald-800 bg-gradient-to-br from-emerald-900 via-emerald-800 to-slate-900 p-8 text-white shadow-lg md:p-10">
-        <div className="mx-auto max-w-2xl text-center space-y-4">
-          <h3 className="text-3xl font-semibold">Ready to start your windows project?</h3>
-          <p className="text-sm leading-relaxed text-emerald-50">
-            Get an instant estimate or book a consultation to discuss your requirements, heritage constraints, and design options.
+      {/* Introduction - Clear, confident, understated */}
+      <section className="mx-auto max-w-4xl px-6 md:px-8">
+        <div className="space-y-8 text-center">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">
+            Lignum by Wealden Joinery
           </p>
-          <div className="flex flex-wrap justify-center gap-3 text-sm font-semibold">
-            <Link
-              href="/wealden-joinery/estimate"
-              className="rounded-full bg-white px-6 py-3 text-emerald-900 transition hover:scale-[1.02] hover:bg-emerald-50"
+          <h2 className="text-4xl font-light leading-tight text-slate-900 md:text-5xl">
+            Engineered for longevity.<br />Detailed for authenticity.
+          </h2>
+          <p className="mx-auto max-w-2xl text-lg leading-relaxed text-slate-600">
+            Every window is manufactured to exacting standards using sustainably sourced timber, precision CNC machinery, and hand finishing. From listed Georgian townhouses to contemporary new builds, we engineer windows that respect architectural intent while meeting modern performance requirements.
+          </p>
+        </div>
+      </section>
+
+      {/* Window Systems - Clean, organized, premium feel */}
+      <section className="mx-auto max-w-7xl px-6 md:px-8">
+        <div className="mb-16 text-center">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Window Systems</p>
+          <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">Five engineered systems</h2>
+        </div>
+        <div className="space-y-24">
+          {windowTypes.map((type, idx) => (
+            <article
+              key={type.title}
+              className={`grid gap-12 lg:grid-cols-2 lg:items-center ${idx % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}
             >
-              Get an Instant Estimate
-            </Link>
+              <div className={`space-y-6 ${idx % 2 === 1 ? 'lg:order-2' : ''}`}>
+                <h3 className="text-3xl font-light text-slate-900">{type.title}</h3>
+                <p className="text-lg leading-relaxed text-slate-600">{type.summary}</p>
+                <div className="border-l-2 border-slate-200 pl-6 space-y-3">
+                  {type.details.slice(0, 4).map((detail) => (
+                    <p key={detail} className="text-sm leading-relaxed text-slate-600">
+                      {detail}
+                    </p>
+                  ))}
+                </div>
+              </div>
+              <div className={`${idx % 2 === 1 ? 'lg:order-1' : ''}`}>
+                <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-slate-100">
+                  {/* Placeholder for high-quality product image */}
+                  <div className="flex h-full items-center justify-center text-slate-400">
+                    <div className="text-center space-y-2">
+                      <p className="text-sm font-medium uppercase tracking-wider">High-Quality Image</p>
+                      <p className="text-xs">{type.title}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* Craftsmanship Details - 3 key detail shots only */}
+      <section className="bg-slate-50 py-24">
+        <div className="mx-auto max-w-7xl px-6 md:px-8">
+          <div className="mb-16 text-center">
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Precision Details</p>
+            <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">Engineered to last</h2>
+          </div>
+          <div className="grid gap-8 md:grid-cols-3">
+            {detailImages.slice(0, 3).map((img) => (
+              <div key={img.id} className="space-y-4">
+                <div className="relative aspect-square overflow-hidden rounded-lg bg-white">
+                  <Image
+                    src={img.publicPath}
+                    alt={img.caption}
+                    width={img.width}
+                    height={img.height}
+                    className="object-cover"
+                  />
+                </div>
+                <p className="text-center text-sm font-medium text-slate-600">{img.caption}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Context Image - Single lifestyle shot */}
+      {contextImage && (
+        <section className="mx-auto max-w-7xl px-6 md:px-8">
+          <div className="relative aspect-[21/9] overflow-hidden rounded-lg">
+            <Image
+              src={contextImage.publicPath}
+              alt={contextImage.caption}
+              width={contextImage.width}
+              height={contextImage.height}
+              className="object-cover"
+            />
+          </div>
+          <p className="mt-6 text-center text-sm text-slate-500">{contextImage.caption}</p>
+        </section>
+      )}
+
+      {/* Specifications - Clean, organized */}
+      <section className="mx-auto max-w-4xl px-6 md:px-8">
+        <div className="mb-12 space-y-4 text-center">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Specifications</p>
+          <h2 className="text-3xl font-light text-slate-900 md:text-4xl">Materials & Performance</h2>
+        </div>
+        <div className="space-y-12">
+          {performanceOptions.map((option) => (
+            <div key={option.title} className="border-b border-slate-100 pb-12 last:border-0 last:pb-0">
+              <h3 className="mb-4 text-xl font-medium text-slate-900">{option.title}</h3>
+              <p className="leading-relaxed text-slate-600">{option.copy}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Compact FAQ */}
+      <section className="mx-auto max-w-3xl px-6 md:px-8">
+        <div className="mb-12 text-center">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Questions</p>
+          <h2 className="mt-4 text-3xl font-light text-slate-900">Common enquiries</h2>
+        </div>
+        <div className="space-y-8">
+          {windowFaqs.map((item) => (
+            <div key={item.q} className="border-b border-slate-100 pb-8 last:border-0 last:pb-0">
+              <h3 className="mb-3 text-lg font-medium text-slate-900">{item.q}</h3>
+              <p className="leading-relaxed text-slate-600">{item.a}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA - Understated, confident */}
+      <section className="bg-slate-900 py-24">
+        <div className="mx-auto max-w-3xl px-6 text-center md:px-8">
+          <h2 className="text-4xl font-light text-white md:text-5xl">Discuss your project</h2>
+          <p className="mt-6 text-lg leading-relaxed text-slate-300">
+            Book a consultation to discuss requirements, heritage constraints, and specifications.
+          </p>
+          <div className="mt-10 flex flex-wrap justify-center gap-4">
             <Link
               href="/wealden-joinery/contact"
-              className="rounded-full bg-white/10 px-6 py-3 text-white ring-1 ring-white/30 transition hover:scale-[1.02] hover:bg-white/20"
+              className="border border-white px-8 py-4 text-sm font-medium uppercase tracking-wider text-white transition hover:bg-white hover:text-slate-900"
             >
-              Book a Consultation
+              Book Consultation
+            </Link>
+            <Link
+              href="/wealden-joinery/estimate"
+              className="border border-white/30 px-8 py-4 text-sm font-medium uppercase tracking-wider text-white/80 transition hover:border-white hover:text-white"
+            >
+              Request Estimate
             </Link>
           </div>
         </div>

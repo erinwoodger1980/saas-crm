@@ -97,152 +97,112 @@ const faqs = [
 
 export default function WealdenHomePage() {
   return (
-    <div className="space-y-16">
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid items-center gap-10 px-6 py-12 md:px-10 md:py-16 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-          <div className="space-y-6">
-            <p className="inline-block rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">
-              Wealden Joinery
-            </p>
-            <h1 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
-              Premium Timber Windows & Doors
-            </h1>
-            <p className="text-lg text-slate-600">
-              Sustainably crafted timber windows and doors built for people who want the character of timber with modern-day performance. Whether restoring a period property, building new or renovating, our products combine traditional craftsmanship with up-to-date standards on energy efficiency, security, and durability.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/wealden-joinery/estimate"
-                className="rounded-full bg-emerald-700 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:scale-[1.02] hover:bg-emerald-800"
-              >
-                Get an Instant Estimate
-              </Link>
-              <Link
-                href="/wealden-joinery/contact"
-                className="rounded-full border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:border-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"
-              >
-                Book a Consultation
-              </Link>
-            </div>
-            <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                <span>Crowborough HQ & Manufacturing</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
-                <span>Showrooms Nationwide</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-slate-500" />
-                <span>FENSA & PAS 24 Certified</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative w-full h-64 sm:h-80 lg:h-[400px] rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-lg">
-            {heroImage && (
-              <Image
-                src={heroImage.publicPath}
-                alt={heroImage.caption}
-                width={heroImage.width}
-                height={heroImage.height}
-                className="object-cover"
-                priority
-              />
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <SectionHeading
-          eyebrow="Why Wealden Joinery"
-          title="Premium craft, reliable delivery, calm experience."
-          copy="Thoughtful design and disciplined installation so homeowners, architects, and contractors can trust every detail."
-        />
-        <div className="grid gap-5 md:grid-cols-2">
-          {reasons.map((reason) => (
-            <div
-              key={reason.title}
-              className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-            >
-              <h3 className="text-lg font-semibold text-slate-900">{reason.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">{reason.copy}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <SectionHeading
-          eyebrow="Ranges"
-          title="Windows & doors tailored to character and performance."
-          copy="From conservation-friendly sashes to contemporary alu-clad systems, every range is built to suit the property."
-        />
-        <div className="grid gap-4 md:grid-cols-2">
-          {products.map((product, idx) => {
-            // Map products to images
-            const productImage = 
-              product.name.includes("Sash") || product.name.includes("Casement") 
-                ? windowImages[idx % windowImages.length]
-                : product.name.includes("Alu-Clad")
-                  ? aluImages[0]
-                  : doorImages[idx % doorImages.length];
-
-            return (
-              <article
-                key={product.name}
-                className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col transition hover:-translate-y-1 hover:shadow-lg"
-              >
-                {productImage && (
-                  <div className="relative w-full h-48">
-                    <Image
-                      src={productImage.publicPath}
-                      alt={productImage.caption}
-                      width={productImage.width}
-                      height={productImage.height}
-                      className="object-cover"
-                    />
+    <div className="space-y-32">
+      {/* Hero - Full width, architectural, calm */}
+      <section className="relative overflow-hidden">
+        {heroImage && (
+          <div className="relative h-[75vh] min-h-[600px] w-full">
+            <Image
+              src={heroImage.publicPath}
+              alt={heroImage.caption}
+              width={heroImage.width}
+              height={heroImage.height}
+              className="object-cover"
+              priority
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/30 to-transparent" />
+            <div className="absolute inset-0 flex items-end">
+              <div className="w-full px-6 pb-20 md:px-16 md:pb-32">
+                <div className="mx-auto max-w-5xl space-y-8 text-white">
+                  <p className="text-sm font-medium uppercase tracking-[0.25em] text-white/70">
+                    Lignum by Wealden Joinery
+                  </p>
+                  <h1 className="max-w-4xl text-5xl font-light leading-[1.08] tracking-tight md:text-7xl lg:text-8xl">
+                    Precision-Engineered<br />Timber Windows & Doors
+                  </h1>
+                  <p className="max-w-2xl text-lg font-light leading-relaxed text-white/90">
+                    For heritage and contemporary architecture. Sustainably sourced, manufactured to exacting standards, engineered to last generations.
+                  </p>
+                  <div className="flex flex-wrap gap-4 pt-4">
+                    <Link
+                      href="/wealden-joinery/contact"
+                      className="border border-white px-8 py-4 text-sm font-medium uppercase tracking-wider text-white transition hover:bg-white hover:text-slate-900"
+                    >
+                      Book Consultation
+                    </Link>
+                    <Link
+                      href="/wealden-joinery/windows"
+                      className="border border-white/30 px-8 py-4 text-sm font-medium uppercase tracking-wider text-white/80 transition hover:border-white hover:text-white"
+                    >
+                      View Windows
+                    </Link>
                   </div>
-                )}
-                <div className="p-6 space-y-3 flex-1 flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-semibold text-slate-900">{product.name}</h3>
-                    <p className="text-sm leading-relaxed text-slate-600">{product.summary}</p>
-                  </div>
-                  <Link
-                    href={`/wealden-joinery/${product.name.toLowerCase().split(" ")[0] === "timber" ? "windows" : "doors"}`}
-                    className="inline-flex text-sm font-semibold text-emerald-700 hover:text-emerald-800 hover:underline"
-                  >
-                    View details →
-                  </Link>
                 </div>
-              </article>
-            );
-          })}
-        </div>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
-      <section>
-        <SectionHeading
-          title="Premium timber joinery in homes across the region"
-          copy="From heritage restorations to contemporary new builds, our work enhances comfort and character."
-        />
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-          {lifestyleImages.map((img) => (
-            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
-              <Image
-                src={img.publicPath}
-                alt={img.caption}
-                width={img.width}
-                height={img.height}
-                className="object-cover"
-              />
+      {/* Brand Pillars - Clean, confident */}
+      <section className="mx-auto max-w-6xl px-6 md:px-8">
+        <div className="mb-16 text-center">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Why Lignum</p>
+          <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">
+            Engineered for longevity. Certified for quality.
+          </h2>
+        </div>
+        <div className="grid gap-12 md:grid-cols-2">
+          {reasons.map((reason) => (
+            <div key={reason.title} className="space-y-3">
+              <h3 className="text-xl font-medium text-slate-900">{reason.title}</h3>
+              <p className="leading-relaxed text-slate-600">{reason.copy}</p>
             </div>
           ))}
         </div>
       </section>
+
+      {/* Product Systems - Minimal, clean */}
+      <section className="mx-auto max-w-6xl px-6 md:px-8">
+        <div className="mb-16 text-center">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Systems</p>
+          <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">Five product ranges</h2>
+        </div>
+        <div className="grid gap-8 md:grid-cols-3">
+          {products.slice(0, 3).map((product) => (
+            <Link
+              key={product.name}
+              href={`/wealden-joinery/${product.name.toLowerCase().split(" ")[0] === "timber" ? "windows" : "doors"}`}
+              className="group space-y-4"
+            >
+              <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-slate-100">
+                <div className="flex h-full items-center justify-center text-slate-400">
+                  <p className="text-sm font-medium uppercase tracking-wider">{product.name}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-medium text-slate-900 group-hover:text-slate-600 transition">{product.name}</h3>
+                <p className="text-sm leading-relaxed text-slate-600">{product.summary}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Single Hero Context Image */}
+      {lifestyleImages[0] && (
+        <section className="mx-auto max-w-7xl px-6 md:px-8">
+          <div className="relative aspect-[21/9] overflow-hidden rounded-lg">
+            <Image
+              src={lifestyleImages[0].publicPath}
+              alt={lifestyleImages[0].caption}
+              width={lifestyleImages[0].width}
+              height={lifestyleImages[0].height}
+              className="object-cover"
+            />
+          </div>
+        </section>
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-10">
         <SectionHeading
@@ -298,77 +258,26 @@ export default function WealdenHomePage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm md:p-10">
-        <div className="grid gap-8 md:grid-cols-2 md:items-center">
-          <div>
-            <SectionHeading
-              eyebrow="Industry Leading Guarantees"
-              title="Built to last a lifetime with exceptional warranties."
-              copy="With over 30 years of experience, we know that lasting quality comes down to the details. That's why Lignum windows and doors are built to stand the test of time."
-            />
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center">
-                <div className="text-3xl font-bold text-emerald-700">30</div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
-                <div className="text-sm text-slate-700 mt-2">Rot & Fungal Decay</div>
-              </div>
-              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center">
-                <div className="text-3xl font-bold text-emerald-700">10</div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
-                <div className="text-sm text-slate-700 mt-2">Workmanship</div>
-              </div>
-              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center">
-                <div className="text-3xl font-bold text-emerald-700">10</div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
-                <div className="text-sm text-slate-700 mt-2">Paint Finish</div>
-              </div>
-              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center">
-                <div className="text-3xl font-bold text-emerald-700">10</div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
-                <div className="text-sm text-slate-700 mt-2">Hardware</div>
-              </div>
-              <div className="rounded-lg border border-emerald-200 bg-white p-4 text-center col-span-2">
-                <div className="text-3xl font-bold text-emerald-700">15</div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 mt-1">Years</div>
-                <div className="text-sm text-slate-700 mt-2">Glazing</div>
-              </div>
+      {/* Guarantees - Clean, architectural */}
+      <section className="bg-slate-50 py-24">
+        <div className="mx-auto max-w-4xl px-6 text-center md:px-8">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">Guarantees</p>
+          <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">Built to last a lifetime</h2>
+          <p className="mt-6 text-lg leading-relaxed text-slate-600">
+            Industry-leading warranties reflect our confidence in materials, manufacturing, and finishing processes.
+          </p>
+          <div className="mt-12 grid gap-8 text-left md:grid-cols-3">
+            <div className="space-y-2">
+              <div className="text-4xl font-light text-slate-900">30yr</div>
+              <p className="text-sm font-medium uppercase tracking-wider text-slate-600">Rot & Fungal Decay</p>
             </div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            {workshopImage && (
-              <div className="relative w-full h-48">
-                <Image
-                  src={workshopImage.publicPath}
-                  alt={workshopImage.caption}
-                  width={workshopImage.width}
-                  height={workshopImage.height}
-                  className="object-cover"
-                />
-              </div>
-            )}
-            <div className="p-6">
-              <p className="inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-700">
-                AI Estimator
-              </p>
-              <h3 className="mt-3 text-xl font-semibold text-slate-900">Get a tailored estimate in minutes.</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                Outline your windows and doors, select styles, and receive an indicative budget range with next steps. No obligation,
-                no pushy follow-up.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-3 text-sm font-semibold">
-                <Link
-                  href="/wealden-joinery/estimate"
-                  className="rounded-full bg-emerald-700 px-6 py-3 text-white transition hover:scale-[1.02] hover:bg-emerald-800"
-                >
-                  Start the AI Estimator
-                </Link>
-                <Link
-                  href="/wealden-joinery/windows"
-                  className="rounded-full border border-slate-300 px-6 py-3 text-slate-700 transition hover:border-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"
-                >
-                  Explore windows first
-                </Link>
-              </div>
+            <div className="space-y-2">
+              <div className="text-4xl font-light text-slate-900">10yr</div>
+              <p className="text-sm font-medium uppercase tracking-wider text-slate-600">Workmanship, Paint, Hardware</p>
+            </div>
+            <div className="space-y-2">
+              <div className="text-4xl font-light text-slate-900">15yr</div>
+              <p className="text-sm font-medium uppercase tracking-wider text-slate-600">Glazing Performance</p>
             </div>
           </div>
         </div>
