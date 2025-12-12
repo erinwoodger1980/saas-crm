@@ -40,15 +40,26 @@ export function ImageSlot({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
 
-  // Load from localStorage on mount
+  // Load from server on mount
   useEffect(() => {
     setIsClient(true);
-    const stored = localStorage.getItem(`wealden-image-${slotId}`);
-    if (stored) {
-      setImageUrl(stored);
-    } else if (defaultImage) {
-      setImageUrl(defaultImage);
-    }
+    
+    // Fetch existing image from server
+    fetch(`/api/wealden/upload-image?slotId=${encodeURIComponent(slotId)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.image?.imageUrl) {
+          setImageUrl(data.image.imageUrl);
+        } else if (defaultImage) {
+          setImageUrl(defaultImage);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch image:", err);
+        if (defaultImage) {
+          setImageUrl(defaultImage);
+        }
+      });
   }, [slotId, defaultImage]);
 
   // Cleanup object URLs on unmount
@@ -90,32 +101,38 @@ export function ImageSlot({
         `[ImageSlot ${slotId}] Optimized: ${(optimized.originalSize / 1024).toFixed(1)}KB → ${(optimized.optimizedSize / 1024).toFixed(1)}KB`
       );
 
-      // Convert optimized file to base64 for localStorage
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
+      // Upload optimized file to server
+      const formData = new FormData();
+      formData.append("file", optimized.file);
+      formData.append("slotId", slotId);
 
-        // Save to localStorage
-        try {
-          localStorage.setItem(`wealden-image-${slotId}`, base64String);
-          setImageUrl(base64String);
+      try {
+        const response = await fetch("/api/wealden/upload-image", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Upload failed: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.ok && data.imageUrl) {
+          setImageUrl(data.imageUrl);
           setProcessingState("success");
           
           // Clear success state after 2 seconds
           setTimeout(() => setProcessingState("idle"), 2000);
-        } catch (err) {
-          console.error("Failed to save image:", err);
-          alert("Failed to save image to localStorage. Storage may be full.");
-          setProcessingState("error");
-          setTimeout(() => setProcessingState("idle"), 2000);
+        } else {
+          throw new Error("Upload response missing imageUrl");
         }
-      };
-      reader.onerror = () => {
-        console.error("Failed to read optimized file");
+      } catch (err) {
+        console.error("Failed to upload image:", err);
+        alert("Failed to upload image to server. Please try again.");
         setProcessingState("error");
         setTimeout(() => setProcessingState("idle"), 2000);
-      };
-      reader.readAsDataURL(optimized.file);
+      }
     } catch (error) {
       console.error("Image optimization failed:", error);
       alert(error instanceof Error ? error.message : "Failed to process image");

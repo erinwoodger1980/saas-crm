@@ -3673,3 +3673,18 @@ enum FinancialTargetHorizon {
   YEAR
   FIVE_YEAR
 }
+
+model WealdenImage {
+  id        String   @id @default(cuid())
+  slotId    String   @unique
+  imageUrl  String
+  filename  String
+  width     Int?
+  height    Int?
+  mimeType  String?
+  fileSize  Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slotId])
+}
