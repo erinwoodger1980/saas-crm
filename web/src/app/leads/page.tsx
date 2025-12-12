@@ -521,7 +521,7 @@ function LeadsPageContent() {
       const lead = await apiFetch<any>("/leads", {
         method: "POST",
         headers: buildAuthHeaders(),
-        json: { contactName: "", email: "", description, custom: { provider: "manual" } },
+        json: { contactName: "Manual Lead", email: "", description, custom: { provider: "manual" } },
       });
       
       leadCreated = true;
