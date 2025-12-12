@@ -3,17 +3,19 @@ import Image from "next/image";
 import Link from "next/link";
 import { SectionHeading } from "../_components/section-heading";
 import { getHeroImage, getImagesByHint } from "../_lib/wealdenAiImages";
+import { ImagePlaceholder } from "../_components/image-placeholder";
+import { HeroSection } from "../_components/hero-section";
 
 export const metadata: Metadata = {
-  title: "Alu-Clad Timber Windows & Doors | Wealden Joinery",
+  title: "Alu-Clad Timber Systems — Low Maintenance, High Performance | Lignum by Wealden Joinery",
   description:
-    "Timber warmth inside, durable aluminium outside. Low-maintenance alu-clad systems for new builds and exposed locations across the South East.",
+    "Timber warmth inside, maintenance-free aluminium outside. Engineered for contemporary architecture, exposed locations, and long-life performance.",
 };
 
 const heroImg = getHeroImage();
 const aluImages = getImagesByHint("alu-clad", 2);
-const lifestyleImages = getImagesByHint("lifestyle", 6);
-const detailImages = getImagesByHint("detail", 4);
+const lifestyleImages = getImagesByHint("lifestyle", 3); // Reduced from 6
+const detailImages = getImagesByHint("detail", 3); // Reduced from 4
 
 const benefits = [
   {
@@ -63,237 +65,295 @@ const comparisonData = [
 export default function AluCladPage() {
   const aluImg = aluImages[0] || heroImg;
   return (
-    <div className="space-y-16">
-      {/* Hero */}
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid items-center gap-10 px-6 py-12 md:px-10 md:py-16 lg:grid-cols-2">
-          <div className="space-y-6">
-            <p className="inline-block rounded-full bg-emerald-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700">Alu-Clad Systems</p>
-            <h1 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
-              Alu-Clad Timber Windows & Doors
-            </h1>
-            <p className="text-lg text-slate-600">
-              Timber warmth inside, durable aluminium outside. Low-maintenance systems for contemporary builds, exposed
-              locations, and projects requiring long-life warranties with minimal upkeep.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/wealden-joinery/contact"
-                className="rounded-full bg-emerald-700 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:scale-[1.02] hover:bg-emerald-800"
-              >
-                Get an Alu-Clad Quote
-              </Link>
-              <Link
-                href="/wealden-joinery"
-                className="rounded-full border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:border-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"
-              >
-                Back to Home
-              </Link>
+    <div className="space-y-32">
+      {/* Hero - Full width, architectural */}
+      <section className="relative overflow-hidden">
+        {aluImg ? (
+          <div className="relative h-[75vh] min-h-[600px] w-full">
+            <Image
+              src={aluImg.publicPath}
+              alt={aluImg.caption}
+              width={aluImg.width}
+              height={aluImg.height}
+              className="object-cover"
+              priority
+            />
+            <div className="image-upload-control absolute top-4 right-4 z-20">
+              <ImagePlaceholder label="Alu-Clad Hero" aspectRatio="aspect-[21/9]" imageUrl={aluImg.publicPath} />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/30 to-transparent" />
+            <div className="absolute inset-0 flex items-end">
+              <div className="w-full px-6 pb-20 md:px-16 md:pb-32">
+                <div className="mx-auto max-w-4xl space-y-6 text-white">
+                  <p className="text-xs font-medium uppercase tracking-[0.25em] text-white/70">
+                    System Products
+                  </p>
+                  <h1 className="text-5xl font-light leading-[1.05] tracking-tight md:text-7xl lg:text-8xl">
+                    Alu-clad timber<br />systems
+                  </h1>
+                  <p className="max-w-2xl text-lg font-light leading-relaxed text-white/85 md:text-xl">
+                    Timber warmth inside, maintenance-free aluminium outside. Engineered for contemporary architecture and exposed locations.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
+        ) : (
+          <div className="image-upload-control">
+            <ImagePlaceholder label="Alu-Clad Hero" aspectRatio="h-[75vh] min-h-[600px]" />
+          </div>
+        )}
+      </section>
 
-          {aluImg && (
-            <div className="relative h-64 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-lg sm:h-80 lg:h-[400px]">
-              <Image
-                src={aluImg.publicPath}
-                alt={aluImg.caption}
-                width={aluImg.width}
-                height={aluImg.height}
-                className="object-cover"
-                priority
-              />
-            </div>
-          )}
+      {/* Introduction */}
+      <section className="mx-auto max-w-4xl px-6 md:px-8">
+        <div className="space-y-8 text-center">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">
+            The System
+          </p>
+          <h2 className="text-4xl font-light leading-tight text-slate-900 md:text-5xl">
+            Timber inside.<br />Aluminium outside.
+          </h2>
+          <p className="mx-auto max-w-2xl text-lg leading-relaxed text-slate-600">
+            Factory-bonded aluminium cladding protects timber from weather while preserving natural warmth and character internally. No external painting. No staining cycles. Engineered for longevity.
+          </p>
         </div>
       </section>
 
-      {/* What is Alu-Clad */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-10">
-        <SectionHeading
-          eyebrow="What is Alu-Clad?"
-          title="Timber inside, aluminium outside."
-          copy="Factory-bonded aluminium capping protects timber from weather while preserving interior character."
-        />
-        <div className="space-y-4 text-sm text-slate-700">
-          <p>
-            Alu-clad timber systems combine solid timber frames (visible from the interior) with powder-coated aluminium
-            cladding on the exterior. The aluminium is bonded to the timber during manufacture, creating a weather-resistant
-            barrier that eliminates the need for regular external painting or staining.
-          </p>
-          <p>
-            Inside, you see and feel timber—natural grain, warmth, and traditional detailing. Outside, durable aluminium
-            capping in any RAL colour protects the timber from rain, UV, and coastal exposure.
-          </p>
-          <p>
-            This hybrid approach suits contemporary builds, exposed hilltop or coastal locations, and projects where
-            low-maintenance performance is essential without sacrificing timber character.
-          </p>
+      {/* System Explanation with Image */}
+      <section className="mx-auto max-w-7xl px-6 md:px-8">
+        <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
+          <div className="space-y-6">
+            <h3 className="text-3xl font-light text-slate-900">How it works</h3>
+            <div className="space-y-4 text-slate-600">
+              <p>
+                Alu-clad systems combine solid timber frames with powder-coated aluminium cladding. The aluminium is bonded to the timber during manufacture, creating a weather-resistant barrier that eliminates regular external maintenance.
+              </p>
+              <p>
+                Inside, you see and feel timber—natural grain, warmth, traditional detailing. Outside, durable aluminium in any RAL colour protects the timber from rain, UV, and coastal exposure.
+              </p>
+              <p>
+                Ideal for contemporary builds, exposed locations, and projects where low-maintenance performance is essential without sacrificing timber character.
+              </p>
+            </div>
+          </div>
+          <div className="image-upload-control">
+            <ImagePlaceholder 
+              label="System Detail" 
+              aspectRatio="aspect-[4/3]"
+            />
+          </div>
         </div>
       </section>
 
       {/* Benefits */}
-      <section>
-        <SectionHeading
-          eyebrow="Benefits"
-          title="Durability, flexibility, and reduced maintenance."
-          copy="Alu-clad systems deliver long-life performance with minimal upkeep and design freedom."
-        />
-        <div className="grid gap-4 md:grid-cols-2">
-          {benefits.map((benefit) => (
-            <div
-              key={benefit.title}
-              className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-            >
-              <h3 className="text-lg font-semibold text-slate-900">{benefit.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">{benefit.copy}</p>
-            </div>
-          ))}
+      <section className="bg-slate-50 py-24">
+        <div className="mx-auto max-w-7xl px-6 md:px-8">
+          <div className="mb-16 text-center">
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">Benefits</p>
+            <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">Long-life performance</h2>
+          </div>
+          <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
+            {benefits.map((benefit) => (
+              <div key={benefit.title} className="space-y-3">
+                <h3 className="text-lg font-medium text-slate-900">{benefit.title}</h3>
+                <p className="text-sm leading-relaxed text-slate-600">{benefit.copy}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* Where it Works Best */}
-      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6 shadow-sm md:p-10">
-        <SectionHeading
-          eyebrow="Where it Works Best"
-          title="Contemporary builds, exposed locations, low-maintenance projects."
-          copy="Alu-clad systems suit specific project types where durability and reduced upkeep are priorities."
-        />
-        <ul className="space-y-2 text-sm text-slate-700">
-          {bestFor.map((item) => (
-            <li key={item} className="flex gap-2">
-              <span className="text-emerald-700">•</span>
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
+      <section className="mx-auto max-w-4xl px-6 md:px-8">
+        <div className="space-y-8">
+          <div className="space-y-4 text-center">
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">Applications</p>
+            <h2 className="text-3xl font-light text-slate-900 md:text-4xl">Where it works best</h2>
+          </div>
+          <div className="space-y-3 border-l-2 border-slate-200 pl-6">
+            {bestFor.map((item) => (
+              <p key={item} className="text-slate-600">
+                {item}
+              </p>
+            ))}
+          </div>
+        </div>
       </section>
 
-      {/* Design Flexibility */}
-      <section>
-        <SectionHeading
-          eyebrow="Design Flexibility"
-          title="Colour options, slim profiles, large glass areas."
-          copy="Aluminium cladding offers wide colour choice and structural strength for contemporary designs."
-        />
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
-            <h4 className="text-base font-semibold text-slate-900">Colour Range</h4>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">
-              Any RAL colour for aluminium exterior. Popular choices include anthracite grey, jet black, and heritage slate.
+      {/* Design Flexibility with Images */}
+      <section className="mx-auto max-w-7xl px-6 md:px-8">
+        <div className="mb-16 text-center">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">Design Freedom</p>
+          <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">Contemporary configurations</h2>
+          <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-600">
+            Wide RAL colour range, slim profiles, and structural strength for large glass areas and modern architecture.
+          </p>
+        </div>
+        <div className="grid gap-8 md:grid-cols-3">
+          <div className="space-y-4">
+            <div className="image-upload-control">
+              <ImagePlaceholder label="Colour Options" aspectRatio="aspect-square" />
+            </div>
+            <h4 className="text-lg font-medium text-slate-900">Colour Range</h4>
+            <p className="text-sm leading-relaxed text-slate-600">
+              Any RAL colour for aluminium exterior. Anthracite grey, jet black, slate blue.
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
-            <h4 className="text-base font-semibold text-slate-900">Slim Profiles</h4>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">
-              Narrow sight lines and large glass areas for contemporary aesthetics and maximum daylight.
+          <div className="space-y-4">
+            <div className="image-upload-control">
+              <ImagePlaceholder label="Slim Profiles" aspectRatio="aspect-square" />
+            </div>
+            <h4 className="text-lg font-medium text-slate-900">Slim Profiles</h4>
+            <p className="text-sm leading-relaxed text-slate-600">
+              Narrow sight lines and large glass areas for maximum daylight.
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
-            <h4 className="text-base font-semibold text-slate-900">Large Openings</h4>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">
-              Structural strength of aluminium supports larger panels for bi-fold and sliding door systems.
+          <div className="space-y-4">
+            <div className="image-upload-control">
+              <ImagePlaceholder label="Large Openings" aspectRatio="aspect-square" />
+            </div>
+            <h4 className="text-lg font-medium text-slate-900">Large Openings</h4>
+            <p className="text-sm leading-relaxed text-slate-600">
+              Structural strength supports bi-fold and sliding door systems.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Gallery */}
-      <section>
-        <SectionHeading
-          title="Contemporary Installations"
-          copy="See alu-clad systems in modern homes across the South East."
-        />
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
-          {lifestyleImages.map((img) => (
-            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
-              <Image
-                src={img.publicPath}
-                alt={img.caption}
-                width={img.width}
-                height={img.height}
-                className="object-cover"
-              />
+      {/* Contemporary Installations */}
+      <section className="mx-auto max-w-7xl px-6 md:px-8">
+        <div className="mb-16 text-center">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">Installations</p>
+          <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">Contemporary projects</h2>
+        </div>
+        <div className="grid gap-8 md:grid-cols-3">
+          {lifestyleImages.slice(0, 3).map((img, idx) => (
+            <div key={img.id} className="space-y-3">
+              <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-slate-100">
+                <Image
+                  src={img.publicPath}
+                  alt={img.caption}
+                  width={img.width}
+                  height={img.height}
+                  className="object-cover"
+                />
+                <div className="image-upload-control absolute top-4 right-4 z-10">
+                  <ImagePlaceholder 
+                    label={`Installation ${idx + 1}`}
+                    aspectRatio="aspect-[3/4]"
+                    imageUrl={img.publicPath}
+                  />
+                </div>
+              </div>
+              <p className="text-sm text-slate-500">{img.caption}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <section>
-        <SectionHeading
-          title="Detail & Finish Quality"
-          copy="Precision engineering and refined detailing throughout."
-        />
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-2">
-          {detailImages.map((img) => (
-            <div key={img.id} className="relative aspect-[4/3] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition">
-              <Image
-                src={img.publicPath}
-                alt={img.caption}
-                width={img.width}
-                height={img.height}
-                className="object-cover"
-              />
-            </div>
-          ))}
+      {/* Detail & Finish Quality */}
+      <section className="bg-slate-50 py-24">
+        <div className="mx-auto max-w-7xl px-6 md:px-8">
+          <div className="mb-16 text-center">
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">Precision Details</p>
+            <h2 className="mt-4 text-3xl font-light text-slate-900 md:text-4xl">Engineered to last</h2>
+          </div>
+          <div className="grid gap-8 md:grid-cols-3">
+            {detailImages.slice(0, 3).map((img, idx) => (
+              <div key={img.id} className="space-y-4">
+                <div className="relative aspect-square overflow-hidden rounded-lg bg-white">
+                  <Image
+                    src={img.publicPath}
+                    alt={img.caption}
+                    width={img.width}
+                    height={img.height}
+                    className="object-cover"
+                  />
+                  <div className="image-upload-control absolute top-4 right-4 z-10">
+                    <ImagePlaceholder 
+                      label={`Detail ${idx + 1}`}
+                      aspectRatio="aspect-square"
+                      imageUrl={img.publicPath}
+                    />
+                  </div>
+                </div>
+                <p className="text-center text-sm font-medium text-slate-600">{img.caption}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* Comparison Block */}
-      <section>
-        <SectionHeading
-          eyebrow="Comparison"
-          title="Timber vs Alu-Clad vs uPVC."
-          copy="Each system has strengths. Choose based on property type, maintenance appetite, and budget."
-        />
-        <div className="grid gap-4 md:grid-cols-3">
-          {comparisonData.map((item) => (
-            <div
-              key={item.system}
-              className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-            >
-              <h4 className="text-lg font-semibold text-slate-900">{item.system}</h4>
-              <div className="mt-4 space-y-3 text-sm">
-                <div>
-                  <p className="font-semibold text-emerald-900">Pros:</p>
-                  <ul className="mt-1 space-y-1 text-slate-700">
-                    {item.pros.map((pro) => (
-                      <li key={pro}>• {pro}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-semibold text-rose-900">Cons:</p>
-                  <ul className="mt-1 space-y-1 text-slate-700">
-                    {item.cons.map((con) => (
-                      <li key={con}>• {con}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          ))}
+      <section className="mx-auto max-w-5xl px-6 md:px-8">
+        <div className="mb-12 space-y-4 text-center">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">System Comparison</p>
+          <h2 className="text-3xl font-light text-slate-900 md:text-4xl">How systems compare</h2>
+          <p className="mx-auto max-w-2xl text-lg leading-relaxed text-slate-600">
+            Each system has strengths. Choose based on property type, maintenance requirements, and budget.
+          </p>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-6 py-4 font-medium text-slate-900">System</th>
+                <th className="px-6 py-4 font-medium text-slate-900">Key Strengths</th>
+                <th className="px-6 py-4 font-medium text-slate-900">Considerations</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 bg-white">
+              {comparisonData.map((item) => (
+                <tr key={item.system} className="hover:bg-slate-50">
+                  <td className="px-6 py-4 font-medium text-slate-900">{item.system}</td>
+                  <td className="px-6 py-4 text-slate-600">
+                    <ul className="space-y-1">
+                      {item.pros.map((pro) => (
+                        <li key={pro}>• {pro}</li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className="px-6 py-4 text-slate-600">
+                    <ul className="space-y-1">
+                      {item.cons.map((con) => (
+                        <li key={con}>• {con}</li>
+                      ))}
+                    </ul>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="rounded-2xl border border-emerald-800 bg-gradient-to-br from-emerald-900 via-emerald-800 to-slate-900 p-8 shadow-lg md:p-10 text-white">
-        <div className="mx-auto max-w-2xl space-y-4 text-center">
-          <h3 className="text-3xl font-semibold">Interested in alu-clad systems?</h3>
-          <p className="text-sm leading-relaxed text-emerald-100">
-            Get an instant estimate or book a consultation to discuss your project, colour options, and performance requirements.
-          </p>
-          <div className="flex flex-wrap justify-center gap-3 text-sm font-semibold">
+      {/* CTA - Confident, considered */}
+      <section className="bg-slate-900 py-32">
+        <div className="mx-auto max-w-3xl space-y-12 px-6 text-center md:px-8">
+          <div className="space-y-6">
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-white/60">
+              Start Your Project
+            </p>
+            <h2 className="text-4xl font-light leading-tight text-white md:text-5xl">
+              Discuss your<br />alu-clad project
+            </h2>
+            <p className="mx-auto max-w-xl text-lg font-light leading-relaxed text-white/75">
+              Book a consultation to discuss exposed location requirements, colour options, and long-life specifications.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-4">
             <Link
-              href="/wealden-joinery/estimate"
-              className="rounded-full bg-white px-6 py-3 text-emerald-900 transition hover:scale-[1.02] hover:bg-emerald-50"
+              href="/wealden-joinery/contact"
+              className="border-2 border-white px-10 py-4 text-sm font-medium uppercase tracking-[0.15em] text-white transition hover:bg-white hover:text-slate-900"
             >
-              Get an Instant Estimate
+              Book Consultation
             </Link>
             <Link
-              href="/wealden-joinery/projects"
-              className="rounded-full bg-white/10 px-6 py-3 text-white ring-1 ring-white/30 transition hover:scale-[1.02] hover:bg-white/20"
+              href="/wealden-joinery/estimate"
+              className="border border-white/20 px-10 py-4 text-sm font-medium uppercase tracking-[0.15em] text-white/70 transition hover:border-white/40 hover:text-white"
             >
-              View Projects
+              Request Estimate
             </Link>
           </div>
         </div>
